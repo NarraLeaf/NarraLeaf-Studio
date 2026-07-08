@@ -100,7 +100,7 @@ export function createStoryMotionEditorTab(payload: StoryMotionEditorPayload): E
     };
 }
 
-export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps<StoryMotionEditorPayload>) {
+export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabComponentProps<StoryMotionEditorPayload>) {
     const { context, isInitialized } = useWorkspace();
     const storyService = useMemo(
         () => context && isInitialized ? context.services.get<StoryService>(Services.Story) : null,
@@ -362,8 +362,16 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
         durationRef.current = durationMs;
     }, [durationMs]);
 
+    // Kept-alive tabs stay mounted while hidden; stop timeline playback when this tab isn't visible so
+    // its per-frame rAF loop doesn't keep re-rendering in the background.
     useEffect(() => {
-        if (!playing) {
+        if (!active) {
+            setPlaying(false);
+        }
+    }, [active]);
+
+    useEffect(() => {
+        if (!playing || !active) {
             return;
         }
         let frame = 0;

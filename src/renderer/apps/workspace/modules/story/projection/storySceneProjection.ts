@@ -8,6 +8,8 @@ import type {
     StoryScene,
     StoryVariableRef,
 } from "@shared/types/story";
+import { layerActionTargetRef, resolveStoryLayerRef } from "@shared/types/story";
+import { getSceneName } from "../scene-editor/storySceneBlockUtils";
 
 export type EditableStoryLineKind = "narration" | "dialogue" | "note";
 
@@ -172,7 +174,7 @@ function projectBlockLine(
         return { text: `${indent}/condition`, editable: false, prefix: "" };
     }
     if (block.kind === "jump") {
-        return { text: `${indent}/jump ${block.payload.targetSceneId}`, editable: false, prefix: "" };
+        return { text: `${indent}/jump ${getSceneName(document?.scenes, block.payload.targetSceneId)}`, editable: false, prefix: "" };
     }
     if (block.kind === "code") {
         const marker = block.payload.folded ? " folded" : "";
@@ -248,7 +250,10 @@ function formatAction(payload: StoryActionPayload, scene: StoryScene, document?:
         return `/text ${payload.operation} ${payload.objectName}${payload.text ? ` ${payload.text}` : ""}`.trimEnd();
     }
     if (payload.action === "layer") {
-        return `/layer ${payload.operation} ${payload.objectName}`.trimEnd();
+        const name = payload.operation === "create"
+            ? payload.objectName
+            : resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)).name;
+        return `/layer ${payload.operation} ${name}`.trimEnd();
     }
     if (payload.action === "video") {
         return `/video ${payload.operation} ${payload.objectName}`.trimEnd();

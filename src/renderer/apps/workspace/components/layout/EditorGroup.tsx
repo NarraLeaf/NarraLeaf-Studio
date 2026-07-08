@@ -8,7 +8,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui";
 import type { FocusContext } from "@/lib/workspace/services/ui/types";
 import { isMacPlatform } from "@/lib/app/platform";
-import { useKeybinding, contextual, whenEditorTabsFocused } from "../../hooks";
+import { useKeybinding, contextual, whenEditorTabsFocused, useMaxActiveEditors } from "../../hooks";
 import { useEditorGroupAssetDrop } from "./useEditorGroupAssetDrop";
 import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
 
@@ -30,6 +30,46 @@ export function EditorGroup({ group }: EditorGroupProps) {
     const { dropTargetProps, overlayClassName } = useEditorGroupAssetDrop(group.id);
 
     const activeTab = group.tabs.find((tab) => tab.id === group.focus);
+
+    const maxActiveEditors = useMaxActiveEditors();
+
+    // Keep-alive: keep up to `maxActiveEditors` most-recently-active tabs mounted (hidden with
+    // display:none) so their DOM scroll position, focus, and in-memory state survive a tab switch
+    // instead of being reconstructed on a cold remount. The active tab is always mounted; the
+    // least-recently-active tabs beyond the cap are unmounted and cold-restore when reopened.
+    const [mru, setMru] = useState<string[]>(() => (group.focus ? [group.focus] : []));
+
+    useEffect(() => {
+        setMru((prev) => {
+            const existing = new Set(group.tabs.map((t) => t.id));
+            const ordered: string[] = [];
+            const seen = new Set<string>();
+            for (const id of [group.focus, ...prev]) {
+                if (id && existing.has(id) && !seen.has(id)) {
+                    seen.add(id);
+                    ordered.push(id);
+                }
+            }
+            if (ordered.length === prev.length && ordered.every((id, i) => id === prev[i])) {
+                return prev;
+            }
+            return ordered;
+        });
+    }, [group.focus, group.tabs]);
+
+    const mountedTabIds = useMemo(() => {
+        const set = new Set<string>();
+        if (group.focus) {
+            set.add(group.focus);
+        }
+        for (const id of mru) {
+            if (set.size >= maxActiveEditors) {
+                break;
+            }
+            set.add(id);
+        }
+        return set;
+    }, [group.focus, mru, maxActiveEditors]);
 
     const tabIds = useMemo(() => new Set(group.tabs.map((t) => t.id)), [group.tabs]);
     const closeTabShortcut = useMemo(() => isMacPlatform() ? "cmd+w" : "ctrl+w", []);
@@ -273,14 +313,28 @@ export function EditorGroup({ group }: EditorGroupProps) {
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={handleEditorBodyClick}
             >
-                {activeTab ? (
-                    <WorkspacePanelErrorBoundary
-                        regionLabel={String(activeTab.title)}
-                        isolationKey={activeTab.id}
-                    >
-                        <activeTab.component tabId={activeTab.id} payload={activeTab.payload} />
-                    </WorkspacePanelErrorBoundary>
-                ) : (
+                {group.tabs.map((tab) => {
+                    if (!mountedTabIds.has(tab.id)) {
+                        return null;
+                    }
+                    const isActive = tab.id === group.focus;
+                    return (
+                        <div
+                            key={tab.id}
+                            className="h-full w-full"
+                            style={{ display: isActive ? undefined : "none" }}
+                            aria-hidden={isActive ? undefined : true}
+                        >
+                            <WorkspacePanelErrorBoundary
+                                regionLabel={String(tab.title)}
+                                isolationKey={tab.id}
+                            >
+                                <tab.component tabId={tab.id} payload={tab.payload} active={isActive} />
+                            </WorkspacePanelErrorBoundary>
+                        </div>
+                    );
+                })}
+                {!activeTab && (
                     <div className="h-full flex items-center justify-center text-gray-500">
                         <p>No active editor</p>
                     </div>

@@ -297,6 +297,11 @@ export type StoryActionPayload =
           action: "layer";
           operation: "create" | "setZIndex" | "show" | "hide" | "transform";
           objectName: string;
+          /**
+           * Which layer non-`create` ops act on — a built-in (`background`/`displayable`) or a custom
+           * layer bound by its create block. `create` names a new custom layer via `objectName`.
+           */
+          target?: StoryLayerRef;
           zIndex?: number;
           transform?: StoryTransformRef;
       }
@@ -406,6 +411,13 @@ export type StoryVariableRefLegacy = {
     key: string;
 };
 
+/**
+ * The stage singletons every scene has without a creator block: the scene background image
+ * (`Scene.background`) and NarraLeaf-React's two built-in layers. All are Displayables, so any of
+ * them can be a transform / show / hide / effect target.
+ */
+export type StoryDisplayableBuiltin = "background" | "backgroundLayer" | "displayableLayer";
+
 export type StoryDisplayableTargetRef = {
     kind?: StoryDisplayableTargetKind;
     name: string;
@@ -417,6 +429,11 @@ export type StoryDisplayableTargetRef = {
      * `name` remains as a legacy fallback and last-known label when the source is unresolvable.
      */
     sourceBlockId?: StoryBlockId;
+    /**
+     * A built-in stage singleton (scene background / built-in layer) that has no creator block.
+     * When set it is the source of truth; `name`/`kind`/`sourceBlockId` are display fallbacks only.
+     */
+    builtin?: StoryDisplayableBuiltin;
 };
 
 /**
@@ -487,8 +504,10 @@ export type StoryTransitionRef = {
         | "maskWipe"
         | "softWipe"
         | "blinds"
-        | "blindsBlackout"
         | "slide"
+        | "softIris"
+        | "blurDissolve"
+        | "throughColor"
         | "darkness"
         | "custom";
     durationMs?: number;

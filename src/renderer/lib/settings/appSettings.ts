@@ -7,6 +7,11 @@ import {
     EDITOR_FONT_SIZE_MAX,
     EDITOR_FONT_SIZE_MIN,
 } from "@/lib/settings/editorFontOptions";
+import {
+    MAX_ACTIVE_EDITORS_DEFAULT,
+    MAX_ACTIVE_EDITORS_MAX,
+    MAX_ACTIVE_EDITORS_MIN,
+} from "@/lib/settings/editorLayoutOptions";
 
 /**
  * Category metadata used by the shared settings UI.
@@ -77,5 +82,15 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Typeface used for story text in the scene editor.",
         defaultValue: EDITOR_FONT_FAMILY_DEFAULT,
         options: [...EDITOR_FONT_FAMILY_OPTIONS],
+    },
+    {
+        // Applied by the workspace editor area (`EditorGroup` keep-alive logic).
+        key: "editor.maxActiveEditors",
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Integer,
+        label: "Maximum active editors",
+        description: `How many editor tabs stay loaded at once so their scroll position and focus are preserved when you switch between them (${MAX_ACTIVE_EDITORS_MIN}–${MAX_ACTIVE_EDITORS_MAX}). Tabs beyond this reload when reopened.`,
+        defaultValue: MAX_ACTIVE_EDITORS_DEFAULT,
     },
 ];

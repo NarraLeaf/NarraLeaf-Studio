@@ -1041,11 +1041,11 @@ function BlockPreview(props: {
                 blockId={block.id}
                 document={props.document}
                 characters={props.characters}
-                fallback={describeBlock(block, props.characters, props.scene)}
+                fallback={describeBlock(block, props.characters, props.scene, props.document.scenes)}
             />
         );
     }
-    return <span className="min-w-0 flex-1 truncate text-sm text-slate-300" style={textStyle}>{describeBlock(block, props.characters, props.scene)}</span>;
+    return <span className="min-w-0 flex-1 truncate text-sm text-slate-300" style={textStyle}>{describeBlock(block, props.characters, props.scene, props.document.scenes)}</span>;
 }
 
 function BackgroundBlockPreview({ payload }: { payload: Extract<StoryActionPayload, { action: "setBackground" }> }) {

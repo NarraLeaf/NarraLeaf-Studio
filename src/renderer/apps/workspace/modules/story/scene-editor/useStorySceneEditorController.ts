@@ -279,6 +279,17 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         rootRef.current?.focus();
     }, [focusWorkspace, uiService]);
 
+    // Make a block the active/selected row (used by deep-link navigation). Scrolling the row into
+    // view and moving DOM focus is handled by the tab, which owns the rendered row elements.
+    const revealBlock = useCallback((blockId: StoryBlockId): boolean => {
+        if (!scene?.blocks[blockId]) {
+            return false;
+        }
+        setActiveBlockId(blockId);
+        setSelectedBlockIds(new Set([blockId]));
+        return true;
+    }, [scene]);
+
     const captureHistoryState = useCallback((): StorySceneHistoryState | null => {
         if (!scene) {
             return null;
@@ -433,9 +444,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         storyService.insertBlock(storyId, sceneId, block, getInsertionTargetAfter(scene, afterBlockId));
         setActiveBlockId(block.id);
         setSelectedBlockIds(new Set([block.id]));
-        setStatusText(`Inserted ${describeBlock(block, characters)}.`);
+        setStatusText(`Inserted ${describeBlock(block, characters, scene, document?.scenes)}.`);
         setEditorMode(openInspector ? { kind: "inspector", blockId: block.id } : { kind: "idle" });
-    }, [characters, recordHistory, scene, sceneId, storyId, storyService]);
+    }, [characters, document, recordHistory, scene, sceneId, storyId, storyService]);
 
     // Insert a `layer` create block immediately before `beforeBlockId` at the same nesting level and
     // return its id, without stealing focus from the currently-open inspector. Used by the Layer
@@ -613,6 +624,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         storyId,
         sceneId,
         scene,
+        scenes: document?.scenes,
         characters,
         selectedBlockIds,
         activeBlockId,
@@ -789,7 +801,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         activeBlockId, selectedBlockIds, collapsedBlockIds, editorMode,
         characters, visibleRows, shouldRenderActiveInsertSlot,
         rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
-        focusRoot, focusWorkspace, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
+        focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
         deleteSelection, startInsertAfter, selectRow, beginDragSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateSceneMetadata,
         setDialogueCharacter, commitTextEdit, handleInsertValueChange,
@@ -806,7 +818,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 function nextLayerName(scene: StoryScene): string {
     const existing = new Set<string>();
     for (const block of Object.values(scene.blocks)) {
-        if (block.kind === "action" && block.payload.action === "layer") {
+        if (block.kind === "action" && block.payload.action === "layer" && block.payload.operation === "create") {
             existing.add(block.payload.objectName.trim().toLowerCase());
         }
     }
