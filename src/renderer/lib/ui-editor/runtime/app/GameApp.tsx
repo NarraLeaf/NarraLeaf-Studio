@@ -7,7 +7,7 @@ import {
     type ReactNode,
 } from "react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
-import { Game, KeyBindingType, type LiveGame, type SavedGame } from "narraleaf-react";
+import { type LiveGame, type SavedGame } from "narraleaf-react";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
@@ -22,9 +22,6 @@ import type { PageAnimationNavigationDirection } from "@/lib/ui-editor/runtime/p
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import {
     createDevModeBlueprintHostApi,
-    type BlueprintGameNotification,
-    type BlueprintGamePreferenceKey,
-    type BlueprintGamePreferenceValue,
     type DevModeWidgetRuntimePatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
@@ -58,18 +55,14 @@ import {
     AppSurfaceLayerWithAdapter,
     type AppSurfaceLayerNavEntry,
 } from "./AppSurfaceLayer";
-import { createDialogSlotComponent } from "./DialogSlotSurface";
-import { createNotificationSlotComponent } from "./NotificationSlotSurface";
-import { createChoiceSlotComponent, type ChoiceSlotRuntime } from "./ChoiceSlotSurface";
-import { createNvlSlotComponent } from "./NvlSlotSurface";
-import { createOnStageSlotNode } from "./OnStageSlotSurface";
+import type { ChoiceSlotRuntime } from "./ChoiceSlotSurface";
 import type { GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
+import { createGameUiSlotComponents, createLiveGameUiCallbacks, createNlrGameWithGameUi } from "./gameUiSlots";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
-import { readNlrCharacterName, readNlrLastDialogSpeaker } from "./nlrDialogReaders";
+import { readNlrCharacterName } from "./nlrDialogReaders";
 import { waitForAnimationFrame } from "./frameTiming";
-import { findStageSurfaceForSlot } from "./stageSlots";
 import { NavigationController } from "./navigation/NavigationController";
 import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
 import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
@@ -396,49 +389,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         core?.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, null);
     }, [core]);
 
-    const getCurrentNametag = useCallback((): string | null => {
-        const liveGameSpeaker = readNlrLastDialogSpeaker(nlrLiveGameRef.current);
-        return liveGameSpeaker ?? currentDialogNametagRef.current;
-    }, []);
-
     const setChoiceRuntime = useCallback((runtime: ChoiceSlotRuntime | null): void => {
         choiceRuntimeRef.current = runtime;
-    }, []);
-
-    const getNotificationsInGame = useCallback((): BlueprintGameNotification[] => {
-        const gameState = nlrLiveGameRef.current?.getGameState?.();
-        const manager = (gameState as { notificationMgr?: { toArray?: () => unknown } } | null | undefined)
-            ?.notificationMgr;
-        const raw = typeof manager?.toArray === "function" ? manager.toArray() : null;
-        if (!Array.isArray(raw)) {
-            return [];
-        }
-        return raw.flatMap(entry => {
-            if (!entry || typeof entry !== "object") {
-                return [];
-            }
-            const record = entry as Record<string, unknown>;
-            return [{ id: String(record.id ?? ""), message: String(record.message ?? "") }];
-        });
-    }, []);
-
-    const getChoiceCountInGame = useCallback((): number => {
-        return choiceRuntimeRef.current?.count ?? 0;
-    }, []);
-
-    const isNvlModeInGame = useCallback((): boolean => {
-        const gameState = nlrLiveGameRef.current?.getGameState?.();
-        const nvlState = (gameState as { getNvlState?: () => { active?: unknown } } | null | undefined)
-            ?.getNvlState?.();
-        return nvlState?.active === true;
-    }, []);
-
-    const selectChoiceInGame = useCallback(async (index: number): Promise<void> => {
-        const runtime = choiceRuntimeRef.current;
-        if (!runtime) {
-            throw new Error("Select Choice: no active choice menu");
-        }
-        runtime.choose(index);
     }, []);
 
     const isInGame = useCallback((): boolean => {
@@ -456,65 +408,27 @@ export function GameApp(props: GameAppProps): ReactNode {
         return nlrLiveGameRef.current;
     }, [nlrSession?.id]);
 
-    const nextInGame = useCallback(async (): Promise<void> => {
-        const dialogClickTarget = nlrDialogVirtualClickTargetRef.current;
-        if (dialogClickTarget?.isConnected) {
-            dialogClickTarget.click();
-            return;
-        }
-        const liveGame = requireActiveLiveGame("Next");
-        const gameState = liveGame.getGameState();
-        if (!gameState) {
-            throw new Error("Next: game state is not available");
-        }
-        const clickTarget = gameState.mainContentNode ?? gameState.playerCurrent;
-        if (!clickTarget) {
-            throw new Error("Next: virtual click target is not available");
-        }
-        clickTarget.click();
-    }, [requireActiveLiveGame]);
-
-    const skipInGame = useCallback(async (): Promise<void> => {
-        requireActiveLiveGame("Skip").skipDialog();
-    }, [requireActiveLiveGame]);
-
-    const showDialogInGame = useCallback(async (): Promise<void> => {
-        requireActiveLiveGame("Show Dialog").game.preference.setPreference("showDialog", true);
-    }, [requireActiveLiveGame]);
-
-    const hideDialogInGame = useCallback(async (): Promise<void> => {
-        requireActiveLiveGame("Hide Dialog").game.preference.setPreference("showDialog", false);
-    }, [requireActiveLiveGame]);
-
-    const toggleDialogDisplayInGame = useCallback(async (): Promise<void> => {
-        const preference = requireActiveLiveGame("Toggle Dialog Display").game.preference;
-        preference.setPreference("showDialog", preference.getPreference("showDialog") !== true);
-    }, [requireActiveLiveGame]);
-
-    const setSentenceSpeedInGame = useCallback(async (cps: number): Promise<void> => {
-        const value = typeof cps === "number" ? cps : Number(cps);
-        if (!Number.isFinite(value) || value <= 0) {
-            throw new Error("Set Sentence Speed: CPS must be a positive number");
-        }
-        requireActiveLiveGame("Set Sentence Speed").game.preference.setPreference("cps", value);
-    }, [requireActiveLiveGame]);
-
-    const getGamePreferenceInGame = useCallback((key: BlueprintGamePreferenceKey): BlueprintGamePreferenceValue => {
-        const preference = requireActiveLiveGame(`Get ${key} Preference`).game.preference as {
-            getPreference: (preferenceKey: BlueprintGamePreferenceKey) => unknown;
-        };
-        return preference.getPreference(key) as BlueprintGamePreferenceValue;
-    }, [requireActiveLiveGame]);
-
-    const setGamePreferenceInGame = useCallback(async (
-        key: BlueprintGamePreferenceKey,
-        value: BlueprintGamePreferenceValue,
-    ): Promise<void> => {
-        const preference = requireActiveLiveGame(`Set ${key} Preference`).game.preference as {
-            setPreference: (preferenceKey: BlueprintGamePreferenceKey, preferenceValue: BlueprintGamePreferenceValue) => void;
-        };
-        preference.setPreference(key, value);
-    }, [requireActiveLiveGame]);
+    const {
+        getCurrentNametag,
+        getNotificationsInGame,
+        getChoiceCountInGame,
+        isNvlModeInGame,
+        selectChoiceInGame,
+        nextInGame,
+        skipInGame,
+        showDialogInGame,
+        hideDialogInGame,
+        toggleDialogDisplayInGame,
+        setSentenceSpeedInGame,
+        getGamePreferenceInGame,
+        setGamePreferenceInGame,
+    } = useMemo(() => createLiveGameUiCallbacks({
+        requireLiveGame: requireActiveLiveGame,
+        getLiveGame: () => nlrLiveGameRef.current,
+        choiceRuntimeRef,
+        currentDialogNametagRef,
+        dialogVirtualClickTargetRef: nlrDialogVirtualClickTargetRef,
+    }), [requireActiveLiveGame]);
 
     const quitGame = useCallback(async (surfaceId: string): Promise<void> => {
         const targetSurfaceId = String(surfaceId ?? "").trim();
@@ -699,43 +613,20 @@ export function GameApp(props: GameAppProps): ReactNode {
             widgetPatchesByScopeRef,
             widgetRuntimeStore,
         };
-        const dialogSurface = findStageSurfaceForSlot(bundle.ui.uidoc, "dialog", host.id);
-        const notificationSurface = findStageSurfaceForSlot(bundle.ui.uidoc, "notification", host.id);
-        const choiceSurface = findStageSurfaceForSlot(bundle.ui.uidoc, "choice", host.id);
-        const nvlSurface = findStageSurfaceForSlot(bundle.ui.uidoc, "nvl", host.id);
-        const onStageSurface = findStageSurfaceForSlot(bundle.ui.uidoc, "onStage", host.id);
-        const dialogComponent = dialogSurface
-            ? createDialogSlotComponent({
-                  options: slotHostOptions,
-                  surface: dialogSurface,
-                  setDialogVirtualClickTarget: setNlrDialogVirtualClickTarget,
-              })
-            : undefined;
-        const notificationComponent = notificationSurface
-            ? createNotificationSlotComponent(slotHostOptions, notificationSurface)
-            : undefined;
-        const choiceComponent = choiceSurface
-            ? createChoiceSlotComponent(slotHostOptions, choiceSurface, setChoiceRuntime)
-            : undefined;
-        const nvlComponent = nvlSurface
-            ? createNvlSlotComponent(slotHostOptions, nvlSurface)
-            : undefined;
-        const onStageNode = onStageSurface
-            ? createOnStageSlotNode(slotHostOptions, onStageSurface)
-            : undefined;
-        const game = new Game({
-            app: { debug: false },
+        const slots = createGameUiSlotComponents({
+            uidoc: bundle.ui.uidoc,
+            logLabel: host.id,
+            slotHostOptions,
+            setDialogVirtualClickTarget: setNlrDialogVirtualClickTarget,
+            setChoiceRuntime,
+        });
+        const onStageNode = slots.onStageNode;
+        const game = createNlrGameWithGameUi({
             width,
             height,
-            aspectRatio: width / height,
-            ratioUpdateInterval: 0,
             contentContainerId: `__nlr_preview_stage_${sessionId.replace(/[^a-zA-Z0-9_-]/g, "_")}`,
-            ...(dialogComponent ? { dialog: dialogComponent, dialogWidth: width, dialogHeight: height } : {}),
-            ...(notificationComponent ? { notification: notificationComponent } : {}),
-            ...(choiceComponent ? { menu: choiceComponent } : {}),
-            ...(nvlComponent ? { nvlDialog: nvlComponent } : {}),
+            slots,
         });
-        game.keyMap.setKeyBinding(KeyBindingType.nextAction, null);
         const environmentReady = new Promise<void>((resolve, reject) => {
             pendingEnvReadyRef.current.set(sessionId, { resolve, reject });
         });

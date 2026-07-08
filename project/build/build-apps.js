@@ -62,6 +62,14 @@ const { postcssPlugin } = require('./postCss-plugin');
             minify: !isDev(),
             jsx: 'automatic',
             target: ['chrome114', 'firefox120', 'safari16'],
+            // narraleaf-react is linked from a sibling checkout whose own node_modules also
+            // contains these packages; pin them to THIS repo's copies so the bundle never
+            // carries two React (or motion) instances.
+            alias: {
+                'react': path.join(rootDir, 'node_modules', 'react'),
+                'react-dom': path.join(rootDir, 'node_modules', 'react-dom'),
+                'motion': path.join(rootDir, 'node_modules', 'motion'),
+            },
             loader: {
                 '.ts': 'ts',
                 '.tsx': 'tsx',

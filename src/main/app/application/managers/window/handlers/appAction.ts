@@ -132,7 +132,28 @@ export class AppGlobalStateSetHandler extends IPCHandler<IPCEventType.appGlobalS
     readonly type = IPCMessageType.request;
 
     public handle(window: AppWindow, data: IPCEvents[IPCEventType.appGlobalStateSet]["data"]) {
-        window.app.globalState.set(data.key, data.value);
+        const app = window.app;
+        app.globalState.set(data.key, data.value);
+
+        // Fan the change out to every open window so live views (e.g. the i18n
+        // locale) stay in sync without a reload.
+        for (const win of app.windowManager.getWindows()) {
+            if (win.isClosed()) {
+                continue;
+            }
+            try {
+                win.sendIpcEvent(IPCEventType.appGlobalStateChanged, { key: data.key, value: data.value });
+            } catch (error) {
+                app.logger.debug(`Failed to broadcast global state change to a window: ${String(error)}`);
+            }
+        }
+
+        // The language also drives the native application menu, which is owned by
+        // the main process and must be rebuilt here.
+        if (data.key === "app.language") {
+            app.menuManager.updateMenu();
+        }
+
         return this.success(void 0);
     }
 }

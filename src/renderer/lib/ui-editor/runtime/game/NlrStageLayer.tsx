@@ -196,7 +196,10 @@ export function NlrStageLayer(props: {
             className="absolute inset-0 z-0 overflow-hidden bg-black"
             style={{ pointerEvents: interactive ? "auto" : "none" }}
         >
-            <GameProviders game={session.game}>
+            {/* Key the providers by session id: NLR's GameProvider captures the `game` instance
+                once via useState and never reacts to a changed prop, so a new Game (e.g. the
+                story preview recompiling per row) needs the whole provider subtree to remount. */}
+            <GameProviders key={session.id} game={session.game}>
                 <Player
                     key={session.id}
                     story={session.compiled.story}

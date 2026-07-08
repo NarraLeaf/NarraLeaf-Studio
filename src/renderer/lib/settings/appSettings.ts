@@ -12,6 +12,7 @@ import {
     MAX_ACTIVE_EDITORS_MAX,
     MAX_ACTIVE_EDITORS_MIN,
 } from "@/lib/settings/editorLayoutOptions";
+import { DEFAULT_LOCALE, LOCALE_META, SUPPORTED_LOCALES } from "@shared/i18n";
 
 /**
  * Category metadata used by the shared settings UI.
@@ -20,37 +21,49 @@ export const AppSettingCategories: SettingCategory[] = [
     {
         key: "general",
         label: "General",
+        labelKey: "settings.categories.general.label",
         description: "Application defaults, language, and notifications.",
+        descriptionKey: "settings.categories.general.description",
         order: 0,
     },
     {
         key: "appearance",
         label: "Appearance",
+        labelKey: "settings.categories.appearance.label",
         description: "Interface theme, accent colors, and motion preferences.",
+        descriptionKey: "settings.categories.appearance.description",
         order: 1,
     },
     {
         key: "editor",
         label: "Editor",
+        labelKey: "settings.categories.editor.label",
         description: "Font rendering, lines, wrapping and layout defaults.",
+        descriptionKey: "settings.categories.editor.description",
         order: 2,
     },
     {
         key: "workspace",
         label: "Workspace",
+        labelKey: "settings.categories.workspace.label",
         description: "Startup behavior, workspace history, and auto-save helpers.",
+        descriptionKey: "settings.categories.workspace.description",
         order: 3,
     },
     {
         key: "sync",
         label: "Sync",
+        labelKey: "settings.categories.sync.label",
         description: "Local backup cadence and synchronization helpers.",
+        descriptionKey: "settings.categories.sync.description",
         order: 4,
     },
     {
         key: "advanced",
         label: "Advanced",
+        labelKey: "settings.categories.advanced.label",
         description: "Telemetry, developer helpers and experimental toggles.",
+        descriptionKey: "settings.categories.advanced.description",
         order: 5,
     },
 ];
@@ -62,6 +75,25 @@ export const AppSettingCategories: SettingCategory[] = [
  * production code reads the stored value and applies it to real behavior.
  */
 export const AppSettings: AppSettingDefinition[] = [
+    {
+        // Applied by the i18n runtime (`src/shared/i18n`): changing this writes the
+        // `app.language` global-state key, which the main process broadcasts so every
+        // window re-localizes live. Options are locale codes; the dropdown shows each
+        // language's endonym via `optionLabels`.
+        key: "app.language",
+        category: "general",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Language",
+        labelKey: "settings.items.language.label",
+        description: "Display language for the Studio interface.",
+        descriptionKey: "settings.items.language.description",
+        defaultValue: DEFAULT_LOCALE,
+        options: [...SUPPORTED_LOCALES],
+        optionLabels: Object.fromEntries(
+            SUPPORTED_LOCALES.map((code) => [code, LOCALE_META[code].nativeName]),
+        ),
+    },
     {
         // Applied by the Story scene editor via `storyEditorTextStyle.tsx`.
         key: "editor.fontSize",
