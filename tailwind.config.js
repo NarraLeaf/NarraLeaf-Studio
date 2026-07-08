@@ -7,7 +7,44 @@ module.exports = {
     theme: {
         extend: {
             colors: {
+                // Brand anchor — fixed. Do not change; secondary colors derive
+                // from this by hue-shift at low saturation. See docs/design-system.md.
                 primary: '#40a8c4',
+
+                // Dark surface ladder (5 depths). Channel values live in
+                // styles.css :root so raw CSS / inline styles can reference the
+                // same source via rgb(var(--nl-surface)).
+                surface: {
+                    DEFAULT: 'rgb(var(--nl-surface) / <alpha-value>)',
+                    canvas: 'rgb(var(--nl-surface-canvas) / <alpha-value>)',
+                    sunken: 'rgb(var(--nl-surface-sunken) / <alpha-value>)',
+                    raised: 'rgb(var(--nl-surface-raised) / <alpha-value>)',
+                    overlay: 'rgb(var(--nl-surface-overlay) / <alpha-value>)',
+                },
+
+                // Foreground text ramp.
+                fg: {
+                    DEFAULT: 'rgb(var(--nl-fg) / <alpha-value>)',
+                    muted: 'rgb(var(--nl-fg-muted) / <alpha-value>)',
+                    subtle: 'rgb(var(--nl-fg-subtle) / <alpha-value>)',
+                },
+
+                // Hairline borders (fixed white alphas).
+                edge: {
+                    DEFAULT: 'rgb(255 255 255 / 0.1)',
+                    subtle: 'rgb(255 255 255 / 0.05)',
+                    strong: 'rgb(255 255 255 / 0.2)',
+                },
+
+                // Semantic accents — low-saturation, hue-shifted from the anchor.
+                binding: 'rgb(var(--nl-binding) / <alpha-value>)',
+                danger: 'rgb(var(--nl-danger) / <alpha-value>)',
+                success: 'rgb(var(--nl-success) / <alpha-value>)',
+                warning: 'rgb(var(--nl-warning) / <alpha-value>)',
+            },
+            fontSize: {
+                // Single small tier — collapses the ad-hoc text-[9px]/[10px]/[11px].
+                '2xs': ['0.6875rem', { lineHeight: '1rem' }],
             },
             fontWeight: {
                 normal: '300',

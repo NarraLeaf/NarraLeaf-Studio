@@ -258,6 +258,14 @@ function broadcastReload(target = 'all') {
             sourcemap: true,
             jsx: 'automatic',
             target: ['chrome114'],
+            // narraleaf-react is linked from a sibling checkout whose own node_modules also
+            // contains these packages; pin them to THIS repo's copies so the bundle never
+            // carries two React (or motion) instances (see build-apps.js).
+            alias: {
+                'react': path.join(rootDir, 'node_modules', 'react'),
+                'react-dom': path.join(rootDir, 'node_modules', 'react-dom'),
+                'motion': path.join(rootDir, 'node_modules', 'motion'),
+            },
             loader: {
                 '.css': 'css',
                 '.ttf': 'file',

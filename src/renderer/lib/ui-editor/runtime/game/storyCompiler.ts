@@ -62,7 +62,19 @@ import type {
 } from "@shared/types/story";
 import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
-import { parseStoryEasing } from "@shared/utils/storyEasing";
+import {
+    boolProp,
+    getCharacterStageObjectName,
+    getInlineTransformProps as getInlineTransformPropsShared,
+    getPresetPosition,
+    injectVisibilityDefault,
+    normalizeObjectName,
+    numberProp,
+    stringProp,
+    timelineToNlrTransformSequences,
+    toNlrTransformSequence,
+} from "./storyTransformProps";
+import type { StageSnapshotDisplayable, StageSnapshotEffects, StoryStageSnapshot } from "./storyStageSnapshot";
 import type { ScriptCtx } from "narraleaf-react";
 import {
     compileStoryActionBlueprintToScript,
@@ -108,6 +120,13 @@ type NlrChainLike = {
 export type StoryAssetKind = "image" | "audio" | "video" | "font" | "other";
 type NlrCondition = Lambda<boolean> | (() => boolean);
 
+/** Name-keyed NLR elements a compiled scene created; lets hosts look up live objects (e.g. a preview's transform target). */
+export type CompiledSceneElements = {
+    images: Map<string, Image>;
+    texts: Map<string, Text>;
+    layers: Map<string, Layer>;
+};
+
 export type CompiledNlrStory = {
     story: Story;
     scene: Scene;
@@ -116,6 +135,30 @@ export type CompiledNlrStory = {
     sceneId: string;
     actionIdBindings: NlrActionIdBinding[];
     diagnostics: NlrStoryCompileDiagnostic[];
+    /** Per-scene element registries, keyed by scene id (normalized object name → element). */
+    sceneElements?: Record<string, CompiledSceneElements>;
+};
+
+/**
+ * Input for {@link compileStagePreviewToNlr}: a Studio-computed stage snapshot (the settled state
+ * at the target row) plus the target block whose own action plays live on the pre-posed stage.
+ */
+export type StagePreviewCompileInput = {
+    document: StoryDocument;
+    sceneId: string;
+    /** The settled stage state immediately before the target block (see computeStoryStageSnapshot). */
+    snapshot: StoryStageSnapshot;
+    /** Block whose own action plays on the pre-posed stage; null previews the snapshot state only. */
+    targetBlockId: string | null;
+    characters?: readonly DevModeCharacterSummary[];
+    animations?: Record<string, StoryAnimationAsset>;
+    resolveAssetUrl?: CompileInput["resolveAssetUrl"];
+    blueprintDocument?: BlueprintDocument;
+    persistence?: StoryPersistenceBridge;
+    /** Fires synchronously immediately before the target's own statements. */
+    onBeforeTarget: () => void;
+    /** Fires synchronously immediately after the target's own statements complete. */
+    onAfterTarget: () => void;
 };
 
 type SceneCompileContext = {
@@ -195,6 +238,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const nlrStory = new Story(input.document.name || input.document.id);
     const diagnostics: NlrStoryCompileDiagnostic[] = [];
     const actionIdBindings: NlrActionIdBinding[] = [];
+    const sceneElements: Record<string, CompiledSceneElements> = {};
     const characters = new Map<string, Character>();
     const characterSummaries = new Map((input.characters ?? []).map(character => [character.id, character]));
     const animations = new Map(Object.entries(input.animations ?? {}));
@@ -248,6 +292,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         };
         const statements = await compileBlockList(ctx, scene.rootBlockIds);
         nlrScene.action(statements as unknown as Parameters<Scene["action"]>[0]);
+        sceneElements[scene.id] = { images: ctx.images, texts: ctx.texts, layers: ctx.layers };
     }
 
     const nlrEntryScene = allScenes[input.sceneId];
@@ -261,7 +306,256 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         sceneId: entryScene.id,
         actionIdBindings,
         diagnostics,
+        sceneElements,
     };
+}
+
+/** A compiled statement that synchronously invokes a host callback when execution reaches it. */
+function previewMarker(callback: () => void): NlrStatement {
+    return Script.execute(() => {
+        callback();
+    });
+}
+
+/**
+ * Compile a Studio-computed stage snapshot into a minimal "state player" story: one scene whose
+ * elements are constructed pre-posed at their settled transform state (constructor config, so the
+ * pose survives `newGame()`), registered in a single synchronous `Script` via
+ * `DevTools.registerDisplayable`, followed by the target block's own action between the two
+ * markers. No runtime fast-forwarding is involved — the compiled story IS the state, and looping
+ * a replay is a plain `newGame()`.
+ */
+export async function compileStagePreviewToNlr(input: StagePreviewCompileInput): Promise<CompiledNlrStory> {
+    const scene = input.document.scenes[input.sceneId];
+    if (!scene) {
+        throw new Error(`Scene not found: ${input.sceneId}`);
+    }
+    const snapshot = input.snapshot;
+    const diagnostics: NlrStoryCompileDiagnostic[] = snapshot.diagnostics.map(entry => ({ ...entry }));
+    const actionIdBindings: NlrActionIdBinding[] = [];
+    const characterSummaries = new Map((input.characters ?? []).map(character => [character.id, character]));
+    const animations = new Map(Object.entries(input.animations ?? {}));
+    const assetUrlCache = new Map<string, string | null>();
+    const resolveAssetUrl = input.resolveAssetUrl ?? ((assetId: string) => assetId);
+    let actionIndex = 0;
+
+    const nlrStory = new Story(`${input.document.name || input.document.id} (preview)`);
+    const savedDefaults: Record<string, StoryLiteralValue> = {};
+    for (const saved of Object.values(input.document.savedVariables ?? {})) {
+        savedDefaults[saved.storageKey] = saved.defaultValue ?? null;
+    }
+    Object.assign(savedDefaults, snapshot.savedVariables);
+    const savedPersistent = nlrStory.createPersistent(SAVED_PERSISTENT_NAMESPACE, savedDefaults);
+
+    // Snapshot background wins; otherwise the scene's default initial background.
+    const backgroundSrc = snapshot.background?.assetId
+        ? await resolveAssetUrlCached({
+            assetId: snapshot.background.assetId,
+            assetType: "image",
+            blockId: SCENE_INITIAL_BACKGROUND_BLOCK_ID,
+            resolveAssetUrl,
+            assetUrlCache,
+            diagnostics,
+        })
+        : snapshot.background?.color
+            ?? await resolveSceneInitialBackground({ scene, resolveAssetUrl, assetUrlCache, diagnostics });
+    const previewScene = new Scene(
+        scene.runtimeName || scene.name || scene.id,
+        backgroundSrc ? { background: backgroundSrc } : undefined,
+    );
+
+    const ctx: SceneCompileContext = {
+        document: input.document,
+        nlrStory,
+        scene,
+        nlrScene: previewScene,
+        allScenes: { [scene.id]: previewScene },
+        characters: new Map(),
+        characterSummaries,
+        savedPersistent,
+        persistence: input.persistence,
+        blueprintDocument: input.blueprintDocument,
+        sceneFnCatalog: collectSceneStoryActionFns({
+            document: input.document,
+            blueprintDocument: input.blueprintDocument,
+            scene,
+        }),
+        images: new Map(),
+        texts: new Map(),
+        layers: new Map(),
+        videos: new Map(),
+        sounds: new Map(),
+        animations,
+        resolveAssetUrl,
+        assetUrlCache,
+        diagnostics,
+        actionIdBindings,
+        nextActionIndex: () => actionIndex++,
+    };
+
+    // Custom layers first so images/texts can bind to them, all pre-posed via constructor config.
+    for (const record of snapshot.displayables) {
+        if (record.kind === "layer") {
+            getLayer(ctx, record.objectName, record.zIndex ?? 0, snapshotPoseProps(record));
+        }
+    }
+    const registrations: { element: Image | Text; layer: Layer | undefined }[] = [];
+    for (const record of snapshot.displayables) {
+        if (record.kind === "layer") {
+            continue;
+        }
+        const layer = resolveLayerForRef(ctx, record.layer);
+        if (record.kind === "image") {
+            const src = await resolveSnapshotImageSource(ctx, record);
+            const image = getImage(ctx, record.objectName, {
+                autoFit: record.autoFit ?? false,
+                layer,
+                src: src ?? undefined,
+                initialProps: snapshotPoseProps(record),
+            });
+            registrations.push({ element: image, layer });
+        } else {
+            const text = getText(ctx, record.objectName, {
+                text: record.text ?? "",
+                fontSize: record.fontSize,
+                fontColor: record.fontColor,
+                layer,
+                initialProps: snapshotPoseProps(record),
+            });
+            registrations.push({ element: text, layer });
+        }
+    }
+    // Injected elements sit outside the action tree, so story construction never assigns them
+    // ids — give each a unique one or they collide as React keys on the stage.
+    registrations.forEach((registration, index) => {
+        DevTools.setElementId(registration.element as any, `preview-e-${index}`);
+    });
+
+    const statements: NlrStatement[] = [];
+    // Seed scene variables (defaults overlaid with the snapshot's assignments) so conditions and
+    // inline interpolations in the target line read the accumulated values.
+    for (const def of Object.values(scene.sceneVariables ?? {})) {
+        const value = snapshot.sceneVariables[def.storageKey] ?? def.defaultValue ?? null;
+        statements.push(previewScene.local.set(def.storageKey, value as any));
+    }
+
+    // One synchronous injection step: register pre-posed elements into the render tree and apply
+    // props accumulated against the built-in singletons (scene background / built-in layers).
+    const backgroundProps = snapshot.backgroundProps;
+    const builtinLayerProps = snapshot.builtinLayerProps;
+    statements.push(Script.execute(((scriptCtx: ScriptCtx) => {
+        for (const registration of registrations) {
+            DevTools.registerDisplayable(scriptCtx.gameState, registration.element as any, previewScene, registration.layer ?? null);
+        }
+        if (Object.keys(backgroundProps).length > 0) {
+            DevTools.setDisplayableTransformProps(scriptCtx.gameState, previewScene.background as any, backgroundProps);
+        }
+        if (Object.keys(builtinLayerProps.backgroundLayer).length > 0) {
+            DevTools.setDisplayableTransformProps(scriptCtx.gameState, previewScene.backgroundLayer as any, builtinLayerProps.backgroundLayer);
+        }
+        if (Object.keys(builtinLayerProps.displayableLayer).length > 0) {
+            DevTools.setDisplayableTransformProps(scriptCtx.gameState, previewScene.displayableLayer as any, builtinLayerProps.displayableLayer);
+        }
+    }) as any));
+
+    // Residual instant effects (mask/clip/filter/darken end states) re-applied at duration 0.
+    for (const record of snapshot.displayables) {
+        const element = record.kind === "image"
+            ? ctx.images.get(normalizeObjectName(record.objectName))
+            : record.kind === "text"
+                ? ctx.texts.get(normalizeObjectName(record.objectName))
+                : ctx.layers.get(normalizeObjectName(record.objectName));
+        if (element) {
+            statements.push(...await compileSnapshotEffects(ctx, element, record.effects));
+        }
+    }
+    statements.push(...await compileSnapshotEffects(ctx, previewScene.background, snapshot.backgroundEffects));
+
+    statements.push(previewMarker(input.onBeforeTarget));
+    const targetBlock = input.targetBlockId ? scene.blocks[input.targetBlockId] : undefined;
+    if (targetBlock) {
+        let own = await compilePreviewTargetOwnStatements(ctx, targetBlock);
+        if (snapshot.nvl && own.length > 0) {
+            own = [previewScene.nvl({ duration: 0 } as any, own as any)];
+        }
+        statements.push(...own);
+    }
+    statements.push(previewMarker(input.onAfterTarget));
+
+    // Register every image URL this compile resolved (snapshot poses AND the target's own
+    // sources) with the scene's preloader — injected elements bypass NLR's usual preload
+    // prediction, which would otherwise warn per image.
+    for (const [cacheKey, url] of assetUrlCache) {
+        if (cacheKey.startsWith("image:") && url) {
+            previewScene.preloadImage(url);
+        }
+    }
+
+    previewScene.action(statements as unknown as Parameters<Scene["action"]>[0]);
+    nlrStory.entry(previewScene);
+
+    return {
+        story: nlrStory,
+        scene: previewScene,
+        scenes: { [scene.id]: previewScene },
+        storyId: input.document.id,
+        sceneId: scene.id,
+        actionIdBindings,
+        diagnostics,
+        sceneElements: { [scene.id]: { images: ctx.images, texts: ctx.texts, layers: ctx.layers } },
+    };
+}
+
+/** Constructor-config pose: settled props with visibility folded into opacity. */
+function snapshotPoseProps(record: StageSnapshotDisplayable): Record<string, unknown> {
+    const props = { ...record.props };
+    if (props.opacity === undefined) {
+        props.opacity = record.visible ? 1 : 0;
+    }
+    return props;
+}
+
+async function resolveSnapshotImageSource(ctx: SceneCompileContext, record: StageSnapshotDisplayable): Promise<string | null> {
+    const source = record.source;
+    const blockId = record.sourceBlockId ?? record.objectName;
+    if (!source) {
+        return null;
+    }
+    if (source.type === "asset") {
+        return resolveAsset(ctx, source.assetId, "image", blockId);
+    }
+    if (source.type === "color") {
+        return source.color;
+    }
+    return resolveCharacterImageUrl(ctx, source.characterId, source.formName, source.variants, blockId);
+}
+
+/** Re-apply a snapshot record's residual effects as instant (duration 0) statements. */
+async function compileSnapshotEffects(ctx: SceneCompileContext, element: any, effects: StageSnapshotEffects): Promise<NlrStatement[]> {
+    const statements: NlrStatement[] = [];
+    const instant = { duration: 0 };
+    if (effects.mask === "clear" && typeof element.clearMask === "function") {
+        statements.push(element.clearMask(instant));
+    } else if (effects.mask && effects.mask !== "clear" && typeof element.mask === "function") {
+        const src = await resolveAsset(ctx, effects.mask.assetId, "image", "__preview_effect");
+        if (src) {
+            statements.push(element.mask(src, instant));
+        }
+    }
+    if (effects.clip === "clear" && typeof element.clearClip === "function") {
+        statements.push(element.clearClip(instant));
+    } else if (effects.clip && effects.clip !== "clear" && typeof element.clip === "function") {
+        statements.push(element.clip(effects.clip.clipPath, instant));
+    }
+    if (effects.filter === "clear" && typeof element.clearFilter === "function") {
+        statements.push(element.clearFilter(instant));
+    } else if (effects.filter && effects.filter !== "clear" && typeof element.filter === "function") {
+        statements.push(element.filter(effects.filter.filter, instant));
+    }
+    if (effects.darkness !== undefined && typeof element.darken === "function") {
+        statements.push(element.darken(effects.darkness, 0));
+    }
+    return statements;
 }
 
 async function createNlrScenes(input: {
@@ -367,6 +661,46 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
         return [];
     }
 
+    return [];
+}
+
+/**
+ * Compile a preview target block's OWN statements (no trailing children): the action that plays
+ * live on the pre-posed snapshot stage. Container targets (choice, condition, control, nvl) keep
+ * their full body so the row previews as the real construct — e.g. a choice target renders its
+ * menu and holds.
+ */
+async function compilePreviewTargetOwnStatements(ctx: SceneCompileContext, block: StoryBlock): Promise<NlrStatement[]> {
+    if (block.kind === "jump") {
+        // Jumping would leave the previewed scene; hold at the pre-jump state instead.
+        diagnostic(ctx, "warning", block.id, "Preview holds before the jump instead of leaving the scene.");
+        return [];
+    }
+    if (block.kind === "nodeAction") {
+        if (block.payload.action === "choice") {
+            return compileChoice(ctx, block);
+        }
+        if (block.payload.action === "choiceOption") {
+            // Normally normalized to the parent choice upstream; preview the option's branch state.
+            return [];
+        }
+        return compileNodeAction(ctx, block);
+    }
+    if (block.kind === "action") {
+        if (block.payload.action === "nvl") {
+            return compileNvl(ctx, block);
+        }
+        return compileStoryAction(ctx, block);
+    }
+    if (block.kind === "control") {
+        if (block.payload.control === "condition") {
+            return compileCondition(ctx, block);
+        }
+        if (block.payload.control === "conditionBranch") {
+            return [];
+        }
+        return compileControlGroup(ctx, block);
+    }
     return [];
 }
 
@@ -755,7 +1089,12 @@ function compileTextAction(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "text" }>,
 ): NlrStatement[] {
-    const text = getText(ctx, payload.objectName, payload);
+    const text = getText(ctx, payload.objectName, {
+        text: payload.text,
+        fontSize: payload.fontSize,
+        fontColor: payload.fontColor,
+        layer: resolveLayerForRef(ctx, payload.layer),
+    });
     const statements: NlrStatement[] = [];
 
     if ((payload.operation === "create" || payload.operation === "setText") && payload.text !== undefined) {
@@ -921,7 +1260,7 @@ function getCharacter(ctx: SceneCompileContext, characterId: string | undefined)
     return character;
 }
 
-function getImage(ctx: SceneCompileContext, objectName: string, options?: { layer?: Layer; autoFit?: boolean; src?: string }): Image {
+function getImage(ctx: SceneCompileContext, objectName: string, options?: { layer?: Layer; autoFit?: boolean; src?: string; initialProps?: Record<string, unknown> }): Image {
     const name = normalizeObjectName(objectName);
     const existing = ctx.images.get(name);
     if (existing) {
@@ -935,37 +1274,39 @@ function getImage(ctx: SceneCompileContext, objectName: string, options?: { laye
         src: options?.src ?? EMPTY_IMAGE_SRC,
         autoFit: options?.autoFit ?? false,
         layer: options?.layer,
-    });
+        // Initial transform-state pose baked into the constructor config (survives reset()).
+        ...(options?.initialProps ?? {}),
+    } as any);
     ctx.images.set(name, image);
     return image;
 }
 
-function getText(ctx: SceneCompileContext, objectName: string, payload: Extract<StoryActionPayload, { action: "text" }>): Text {
+function getText(ctx: SceneCompileContext, objectName: string, options: { text?: string; fontSize?: number; fontColor?: string; layer?: Layer; initialProps?: Record<string, unknown> }): Text {
     const name = normalizeObjectName(objectName);
-    const layer = resolveLayerForRef(ctx, payload.layer);
     const existing = ctx.texts.get(name);
     if (existing) {
-        if (layer) {
-            existing.useLayer(layer);
+        if (options.layer) {
+            existing.useLayer(options.layer);
         }
         return existing;
     }
-    const text = new Text(payload.text ?? "", {
-        fontSize: payload.fontSize ?? 32,
-        fontColor: (payload.fontColor ?? "#ffffff") as any,
-        layer,
-    });
+    const text = new Text(options.text ?? "", {
+        fontSize: options.fontSize ?? 32,
+        fontColor: (options.fontColor ?? "#ffffff") as any,
+        layer: options.layer,
+        ...(options.initialProps ?? {}),
+    } as any);
     ctx.texts.set(name, text);
     return text;
 }
 
-function getLayer(ctx: SceneCompileContext, objectName: string, zIndex = 0): Layer {
+function getLayer(ctx: SceneCompileContext, objectName: string, zIndex = 0, initialProps?: Record<string, unknown>): Layer {
     const name = normalizeObjectName(objectName);
     const existing = ctx.layers.get(name);
     if (existing) {
         return existing;
     }
-    const layer = new Layer(name, { zIndex });
+    const layer = new Layer(name, { zIndex, ...(initialProps ?? {}) } as any);
     ((ctx.nlrScene as unknown as { config: { layers: Layer[] } }).config.layers).push(layer);
     ctx.layers.set(name, layer);
     return layer;
@@ -1258,54 +1599,7 @@ function createShowTransform(transform: StoryTransformRef | undefined, ctx: Scen
 }
 
 function getInlineTransformProps(transform: StoryTransformRef | undefined, ctx: SceneCompileContext, blockId: string): Record<string, unknown> {
-    if (!transform) {
-        return {};
-    }
-    if (transform.mode === "animation") {
-        return {};
-    }
-    const preset = transform.preset ?? "none";
-    if (preset === "none" || preset === "fadeIn" || preset === "fadeOut") {
-        return {};
-    }
-
-    const props = transform.props ?? {};
-    const inlineProps: Record<string, unknown> = {};
-    const position = getPresetPosition(preset, props);
-    if (position) {
-        inlineProps.position = position;
-    }
-
-    const explicitZoom = optionalNumberProp(props, "zoom");
-    if (explicitZoom !== undefined) {
-        inlineProps.zoom = explicitZoom;
-    }
-    if (preset === "zoom") {
-        inlineProps.zoom = explicitZoom ?? 1;
-        return inlineProps;
-    }
-    if (preset === "scale") {
-        const scale = numberProp(props, "scale", 1);
-        inlineProps.scaleX = numberProp(props, "scaleX", scale);
-        inlineProps.scaleY = numberProp(props, "scaleY", scale);
-        return inlineProps;
-    }
-    if (preset === "rotate") {
-        inlineProps.rotation = numberProp(props, "rotation", numberProp(props, "degrees", 0));
-        return inlineProps;
-    }
-    if (preset === "opacity") {
-        inlineProps.opacity = numberProp(props, "opacity", 1);
-        return inlineProps;
-    }
-    if (preset === "darken") {
-        inlineProps.filter = `brightness(${1 - numberProp(props, "darkness", 0.5)})`;
-        return inlineProps;
-    }
-    if (preset === "circleReveal" || preset === "circleClose" || preset === "wipe") {
-        diagnostic(ctx, "warning", blockId, `${preset} transforms cannot be folded into character show yet.`);
-    }
-    return inlineProps;
+    return getInlineTransformPropsShared(transform, message => diagnostic(ctx, "warning", blockId, message));
 }
 
 type VisibilityTransformMode = "show" | "hide" | "none";
@@ -1337,173 +1631,6 @@ function createAnimationTransform(
         repeat: asset.config?.repeat,
         repeatDelay: asset.config?.repeatDelayMs,
     } as any);
-}
-
-function timelineToNlrTransformSequences(timeline: StoryAnimationTimeline): { props: Record<string, unknown>; options: Record<string, unknown> }[] {
-    const groups = new Map<string, {
-        startMs: number;
-        durationMs: number;
-        props: Record<string, unknown>;
-        options: Record<string, unknown>;
-    }>();
-    for (const track of timeline.tracks) {
-        const keyframes = [...track.keyframes].sort((a, b) => a.timeMs - b.timeMs || a.id.localeCompare(b.id));
-        let previousTimeMs = 0;
-        for (const keyframe of keyframes) {
-            const startMs = Math.max(0, previousTimeMs);
-            const endMs = Math.max(startMs, keyframe.timeMs);
-            const durationMs = endMs - startMs;
-            const props = keyframeToTransformProps(track, keyframe);
-            previousTimeMs = endMs;
-            if (Object.keys(props).length === 0) {
-                continue;
-            }
-            const groupKey = `${startMs}:${durationMs}:${keyframe.easing ?? ""}`;
-            const group = groups.get(groupKey) ?? {
-                startMs,
-                durationMs,
-                props: {},
-                options: cleanObject({
-                    duration: durationMs,
-                    ease: parseStoryEasing(keyframe.easing),
-                    at: startMs,
-                }),
-            };
-            group.props = {
-                ...group.props,
-                ...props,
-            };
-            groups.set(groupKey, group);
-        }
-    }
-    const sequences = [...groups.values()]
-        .sort((a, b) => a.startMs - b.startMs || a.durationMs - b.durationMs)
-        .map(group => ({
-            props: group.props,
-            options: group.options,
-        }));
-    return sequences.length > 0 ? sequences : [{ props: {}, options: { duration: 0 } }];
-}
-
-function keyframeToTransformProps(track: StoryAnimationTrack, keyframe: StoryAnimationKeyframe): Record<string, unknown> {
-    const props: StoryTransformSequenceProps = {};
-    if (track.property === "position" && keyframe.value && typeof keyframe.value === "object") {
-        props.position = keyframe.value as StoryTransformSequenceProps["position"];
-    } else if (isNumericTrackProperty(track.property) && typeof keyframe.value === "number") {
-        (props as Record<string, unknown>)[track.property] = keyframe.value;
-    } else if (typeof keyframe.value === "string") {
-        (props as Record<string, unknown>)[track.property] = keyframe.value;
-    }
-    return cleanTransformSequenceProps(props);
-}
-
-function isNumericTrackProperty(property: StoryAnimationTrackProperty): boolean {
-    return property === "opacity"
-        || property === "zoom"
-        || property === "scaleX"
-        || property === "scaleY"
-        || property === "rotation";
-}
-
-function toNlrTransformSequence(sequence: StoryAnimationSequence): { props: Record<string, unknown>; options: Record<string, unknown> } {
-    return {
-        props: cleanTransformSequenceProps(sequence.props),
-        options: cleanTransformSequenceOptions(sequence),
-    };
-}
-
-function cleanTransformSequenceProps(props: StoryTransformSequenceProps): Record<string, unknown> {
-    const next: Record<string, unknown> = {};
-    if (props.position) {
-        const position = cleanObject({
-            xalign: props.position.xalign,
-            yalign: props.position.yalign,
-            xoffset: props.position.xoffset,
-            yoffset: props.position.yoffset,
-        });
-        if (Object.keys(position).length > 0) {
-            next.position = position;
-        }
-    }
-    assignDefined(next, "opacity", props.opacity);
-    assignDefined(next, "zoom", props.zoom);
-    assignDefined(next, "scaleX", props.scaleX);
-    assignDefined(next, "scaleY", props.scaleY);
-    assignDefined(next, "rotation", props.rotation);
-    assignDefined(next, "fontColor", props.fontColor);
-    assignDefined(next, "maskImage", props.maskImage);
-    assignDefined(next, "maskSize", props.maskSize);
-    assignDefined(next, "maskPosition", props.maskPosition);
-    assignDefined(next, "maskRepeat", props.maskRepeat);
-    assignDefined(next, "maskMode", props.maskMode);
-    assignDefined(next, "clipPath", props.clipPath);
-    assignDefined(next, "filter", props.filter);
-    assignDefined(next, "backdropFilter", props.backdropFilter);
-    assignDefined(next, "mixBlendMode", props.mixBlendMode);
-    return next;
-}
-
-function cleanTransformSequenceOptions(sequence: StoryAnimationSequence): Record<string, unknown> {
-    const options = sequence.options ?? {};
-    const next: Record<string, unknown> = {};
-    assignDefined(next, "duration", options.durationMs);
-    assignDefined(next, "ease", parseStoryEasing(options.easing));
-    assignDefined(next, "delay", options.delayMs);
-    assignDefined(next, "at", options.at);
-    return next;
-}
-
-function injectVisibilityDefault(sequences: { props: Record<string, unknown>; options: Record<string, unknown> }[], visibility: VisibilityTransformMode): void {
-    if (visibility === "none" || sequences.length === 0) {
-        return;
-    }
-    const opacity = visibility === "show" ? 1 : 0;
-    const last = sequences[sequences.length - 1];
-    if (last.props.opacity === undefined) {
-        last.props = {
-            ...last.props,
-            opacity,
-        };
-    }
-}
-
-function cleanObject(input: Record<string, unknown>): Record<string, unknown> {
-    return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
-}
-
-function assignDefined(target: Record<string, unknown>, key: string, value: unknown): void {
-    if (value !== undefined) {
-        target[key] = value;
-    }
-}
-
-type StoryAlignPosition = {
-    xalign: number;
-    yalign: number;
-    xoffset?: number;
-    yoffset?: number;
-};
-
-function getPresetPosition(preset: string, props: Record<string, StoryLiteralValue>): StoryAlignPosition | null {
-    const xalign = optionalNumberProp(props, "xalign") ?? optionalNumberProp(props, "x");
-    const yalign = optionalNumberProp(props, "yalign") ?? optionalNumberProp(props, "y") ?? 0.5;
-    const xoffset = optionalNumberProp(props, "xoffset") ?? optionalNumberProp(props, "xOffset");
-    const yoffset = optionalNumberProp(props, "yoffset") ?? optionalNumberProp(props, "yOffset");
-    const withOffsets = (position: { xalign: number; yalign: number }): StoryAlignPosition => ({
-        ...position,
-        ...(xoffset !== undefined ? { xoffset } : {}),
-        ...(yoffset !== undefined ? { yoffset } : {}),
-    });
-
-    if (preset === "left" || preset === "center" || preset === "right" || preset === "custom") {
-        const targetX = preset === "left" ? 0.25 : preset === "right" ? 0.75 : preset === "center" ? 0.5 : xalign ?? 0.5;
-        return withOffsets({ xalign: targetX, yalign });
-    }
-    if (preset === "slideLeft") return withOffsets({ xalign: xalign ?? 0.25, yalign });
-    if (preset === "slideRight") return withOffsets({ xalign: xalign ?? 0.75, yalign });
-    if (preset === "slideUp") return withOffsets({ xalign: xalign ?? 0.5, yalign: yalign ?? 0.7 });
-    if (preset === "slideDown") return withOffsets({ xalign: xalign ?? 0.5, yalign: yalign ?? 0.3 });
-    return null;
 }
 
 function transformOptions(transform: StoryTransformRef | undefined): { duration: number; ease?: string } {
@@ -1870,43 +1997,12 @@ function pushDiagnostic(
     diagnostics.push({ level, blockId, message });
 }
 
-function normalizeObjectName(value: string | undefined): string {
-    const normalized = value?.trim();
-    return normalized || "object";
-}
 
-function getCharacterStageObjectName(payload: Extract<StoryActionPayload, { action: "character" }>): string {
-    const explicitName = payload.objectName?.trim();
-    if (explicitName && explicitName !== "character") {
-        return normalizeObjectName(explicitName);
-    }
-    return normalizeObjectName(payload.characterId || explicitName || "character");
-}
 
 function normalizePersistentNamespace(namespace: string | undefined): string {
     return namespace?.trim() || "story";
 }
 
-function numberProp(props: Record<string, StoryLiteralValue>, key: string, fallback: number | undefined): number {
-    return optionalNumberProp(props, key) ?? fallback ?? 0;
-}
 
-function optionalNumberProp(props: Record<string, StoryLiteralValue>, key: string): number | undefined {
-    const value = props[key];
-    if (typeof value === "number") return value;
-    if (typeof value === "string") {
-        const parsed = Number(value);
-        if (Number.isFinite(parsed)) return parsed;
-    }
-    return undefined;
-}
 
-function stringProp(props: Record<string, StoryLiteralValue>, key: string, fallback: string): string {
-    const value = props[key];
-    return typeof value === "string" && value.trim() ? value : fallback;
-}
 
-function boolProp(props: Record<string, StoryLiteralValue>, key: string, fallback: boolean): boolean {
-    const value = props[key];
-    return typeof value === "boolean" ? value : fallback;
-}

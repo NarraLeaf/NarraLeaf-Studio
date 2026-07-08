@@ -1,5 +1,6 @@
 import { SettingValueType, TypeofSettingSchema } from "@/lib/settings/types";
 import { GlobalStateKeys } from "@shared/types/state/globalState";
+import { TranslationKey } from "@shared/i18n";
 
 /**
  * Scopes describe where a setting is stored and applied.
@@ -18,6 +19,8 @@ export interface SettingDescriptor<T extends SettingValueType = SettingValueType
     description: string;
     defaultValue: TypeofSettingSchema<T>;
     options?: string[];
+    /** Human-facing label per option value (e.g. locale code → endonym). */
+    optionLabels?: Record<string, string>;
 }
 
 /**
@@ -29,9 +32,15 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     scope: SettingScope;
     type: T;
     label: string;
+    /** i18n key; when set, it overrides `label` at render time (falls back to `label`). */
+    labelKey?: TranslationKey;
     description: string;
+    /** i18n key; when set, it overrides `description` at render time. */
+    descriptionKey?: TranslationKey;
     defaultValue: TypeofSettingSchema<T>;
     options?: string[];
+    /** Human-facing label per option value (e.g. locale code → endonym). */
+    optionLabels?: Record<string, string>;
 }
 
 /**
@@ -40,7 +49,11 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
 export interface SettingCategory {
     key: string;
     label: string;
+    /** i18n key; when set, it overrides `label` at render time. */
+    labelKey?: TranslationKey;
     description: string;
+    /** i18n key; when set, it overrides `description` at render time. */
+    descriptionKey?: TranslationKey;
     order: number;
 }
 

@@ -91,7 +91,7 @@ export function StoryBlockRow(props: {
             style={sortableStyle}
             data-story-row-block-id={block.id}
             className={[
-                "group relative grid min-h-[40px] grid-cols-[44px_28px_1fr] items-start border-l-2 pr-3",
+                "group relative grid min-h-[35px] grid-cols-[36px_28px_1fr] items-start border-l-2 pr-3",
                 selected ? "border-primary bg-primary/20" : active ? "border-primary bg-white/[0.035]" : "border-transparent hover:bg-white/[0.025]",
             ].join(" ")}
             onClick={props.onSelect}
@@ -102,22 +102,24 @@ export function StoryBlockRow(props: {
                 textSegment ? props.onStartTextEdit() : props.onOpenInspector();
             }}
         >
-            <div className="flex h-full items-start justify-end gap-1 pt-2 text-[12px] tabular-nums text-slate-500">
-                {canFold ? (
-                    <button
-                        type="button"
-                        className="mt-0.5 rounded text-slate-500 hover:bg-white/10 hover:text-primary"
-                        onClick={event => {
-                            event.stopPropagation();
-                            props.onToggleCollapsed();
-                        }}
-                    >
-                        {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                    </button>
-                ) : (
-                    <span className="h-3.5 w-3.5" />
-                )}
-                <span>{row.lineNumber}</span>
+            <div className="flex h-full items-start justify-end pt-1 text-[12px] tabular-nums text-slate-500">
+                <div className="flex min-h-[27px] items-center gap-1">
+                    {canFold ? (
+                        <button
+                            type="button"
+                            className="rounded text-slate-500 hover:bg-white/10 hover:text-primary"
+                            onClick={event => {
+                                event.stopPropagation();
+                                props.onToggleCollapsed();
+                            }}
+                        >
+                            {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                        </button>
+                    ) : (
+                        <span className="h-3.5 w-3.5" />
+                    )}
+                    <span>{row.lineNumber}</span>
+                </div>
             </div>
             <div className="flex self-stretch items-center justify-center">
                 <div
@@ -135,8 +137,8 @@ export function StoryBlockRow(props: {
                     <GripVertical className="pointer-events-none h-4 w-4" />
                 </div>
             </div>
-            <div className="min-w-0 py-1.5" style={{ paddingLeft: row.depth * 22 }}>
-                <div className="flex min-h-[28px] min-w-0 items-center gap-2">
+            <div className="min-w-0 py-1" style={{ paddingLeft: row.depth * 22 }}>
+                <div className="flex min-h-[27px] min-w-0 items-center gap-2">
                     {hideBadge ? <span className="h-6 w-6 shrink-0" aria-hidden /> : <BlockBadge block={block} characters={characters} />}
                     {editing && textSegment ? (
                         <TextEditBox
@@ -363,8 +365,8 @@ function TextEditBox(props: {
 
 function RowActions(props: { onInsertAfter: () => void }) {
     return (
-        <div className="ml-auto hidden shrink-0 items-center gap-1 group-hover:flex">
-            <button type="button" className="rounded px-1.5 py-1 text-[11px] text-slate-400 hover:bg-white/10 hover:text-primary" onClick={event => {
+        <div className="pointer-events-none ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+            <button type="button" tabIndex={-1} className="rounded px-1.5 py-1 text-[11px] text-slate-400 hover:bg-white/10 hover:text-primary" onClick={event => {
                 event.stopPropagation();
                 props.onInsertAfter();
             }}>
@@ -394,7 +396,7 @@ export function InsertRow(props: {
     const textStyle = useStoryEditorTextStyle();
 
     return (
-        <div className="relative grid min-h-[40px] grid-cols-[44px_28px_1fr] items-start pr-3">
+        <div className="relative grid min-h-[40px] grid-cols-[36px_28px_1fr] items-start pr-3">
             <div className="pt-2 text-right text-[12px] text-slate-600">+</div>
             <div className="flex justify-center pt-2">
                 <Plus className="h-4 w-4 text-primary" />

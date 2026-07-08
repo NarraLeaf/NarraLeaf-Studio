@@ -24,7 +24,10 @@ interface EditorGroupProps {
 export function EditorGroup({ group }: EditorGroupProps) {
     const { closeEditorTab, closeEditorTabs, setActiveEditorTab } = useRegistry();
     const { context } = useWorkspace();
-    const [isEditorBodyFocused, setIsEditorBodyFocused] = useState(false);
+    // True when THIS group owns the active editor focus — either the editor body (a tab is
+    // focused) or its tab strip. Drives the accent edge on this group's active tab so the whole
+    // workspace shows exactly one "globally active" tab.
+    const [isEditorGroupActive, setIsEditorGroupActive] = useState(false);
     const [selectedTabIds, setSelectedTabIds] = useState<Set<string>>(() => new Set());
     const rangeAnchorTabIdRef = useRef<string | null>(null);
     const { dropTargetProps, overlayClassName } = useEditorGroupAssetDrop(group.id);
@@ -91,11 +94,14 @@ export function EditorGroup({ group }: EditorGroupProps) {
         const uiService = context.services.get<UIService>(Services.UI);
 
         const sync = (focusContext: FocusContext) => {
-            setIsEditorBodyFocused(
+            const bodyFocused =
                 focusContext.area === FocusArea.Editor &&
-                    focusContext.targetId !== undefined &&
-                    tabIds.has(focusContext.targetId)
-            );
+                focusContext.targetId !== undefined &&
+                tabIds.has(focusContext.targetId);
+            const tabStripFocused =
+                focusContext.area === FocusArea.EditorTabs &&
+                focusContext.targetId === group.id;
+            setIsEditorGroupActive(bodyFocused || tabStripFocused);
         };
 
         sync(uiService.focus.getFocus());
@@ -221,15 +227,12 @@ export function EditorGroup({ group }: EditorGroupProps) {
         enabled: group.tabs.length > 0,
     });
 
-    // Outer chrome border only when editor content has logical focus; tab strip focus is invisible.
-    const isGroupChromeFocused = isEditorBodyFocused;
-
+    // The accent edge now lives on the single globally-active TAB, not on the whole group chrome,
+    // so the group frame stays neutral.
     return (
         <div
             {...dropTargetProps}
-            className={`h-full flex flex-col border transition-colors ${
-                isGroupChromeFocused ? "border-primary" : "border-transparent border-b-white/10"
-            } ${overlayClassName}`}
+            className={`h-full flex flex-col border border-transparent border-b-white/10 transition-colors ${overlayClassName}`}
         >
             {/* Tab Bar */}
             {group.tabs.length > 0 && (
@@ -250,6 +253,10 @@ export function EditorGroup({ group }: EditorGroupProps) {
                         {group.tabs.map((tab) => {
                             const isActive = tab.id === group.focus;
                             const isSelected = selectedTabIds.has(tab.id);
+                            // The single globally-active tab: this group's current tab AND this
+                            // group owns editor focus. It gets the accent edge; every group's
+                            // current tab gets the low-contrast themed fill.
+                            const isGloballyActive = isActive && isEditorGroupActive;
                             const closable = tab.closable !== false;
 
                             return (
@@ -259,18 +266,20 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                         group relative flex items-center gap-2 px-3 h-9 border-r border-white/10 cursor-default
                                         transition-colors
                                         ${
-                                            isActive
-                                                ? "bg-[#12151c] text-white"
-                                                : isSelected
-                                                  ? "bg-[#10141b] text-gray-100"
-                                                  : "bg-[#0b0d12] text-gray-400 hover:bg-[#0f1115] hover:text-white"
+                                            isGloballyActive
+                                                ? "bg-primary/[0.15] text-white"
+                                                : isActive
+                                                  ? "bg-primary/[0.08] text-gray-100"
+                                                  : isSelected
+                                                    ? "bg-white/[0.06] text-gray-100"
+                                                    : "bg-[#0b0d12] text-gray-400 hover:bg-[#0f1115] hover:text-white"
                                         }
                                     `}
                                     onClick={(e) => handleTabClick(tab.id, e)}
                                 >
-                                    {isSelected && (
+                                    {isGloballyActive && (
                                         <span
-                                            className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-0.5 bg-primary/70"
+                                            className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-0.5 bg-primary"
                                             aria-hidden
                                         />
                                     )}

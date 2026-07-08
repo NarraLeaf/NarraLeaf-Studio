@@ -191,6 +191,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             setGlobalState: <K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>) => ipcClient.invoke(IPCEventType.appGlobalStateSet, { key, value }) as Promise<RequestStatus<void>>,
             getAllGlobalState: () =>
                 ipcClient.invoke(IPCEventType.appGlobalStateGetAll, {}) as Promise<RequestStatus<{ settings: Record<string, any> }>>,
+            onGlobalStateChanged: (handler: (change: { key: GlobalStateKeys; value: any }) => void) =>
+                ipcClient.onMessage(IPCEventType.appGlobalStateChanged, handler),
         },
         addRecentProject: (name: string, path: string) =>
             ipcClient.invoke(IPCEventType.appAddRecentProject, { name, path }) as Promise<RequestStatus<void>>,
