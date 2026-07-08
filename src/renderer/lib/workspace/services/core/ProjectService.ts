@@ -1,7 +1,13 @@
 import { RendererError, throwException } from "@shared/utils/error";
 import { decodeProjectConfig, encodeProjectConfig, findProjectConfigFileName } from "@shared/utils/nlproj";
+import { ProjectDependencyTable, normalizeProjectDependencyTable } from "@shared/types/pluginDependencies";
 import { basename, extname, join } from "@shared/utils/path";
-import { ProjectConfig, ProjectIconConfig, ProjectIconPlatform, Resolution } from "../../project/project";
+import { ProjectConfig, ProjectIconConfig, ProjectIconPlatform, ProjectMetadata, Resolution } from "../../project/project";
+import {
+    NetworkConfiguration,
+    ProjectAppConfiguration,
+    normalizeNetworkConfiguration,
+} from "../../project/configuration";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IProjectService, Services, WorkspaceContext } from "../services";
@@ -72,6 +78,15 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
             projectConfig = throwException(await filesystemService.readJSON<ProjectConfig>(configPath));
         }
 
+        // Normalize (or drop) a possibly-malformed dependency table up front so a
+        // corrupt table can never propagate — a broken table must not block load.
+        const normalizedDependencies = normalizeProjectDependencyTable(projectConfig.dependencies);
+        if (normalizedDependencies) {
+            projectConfig.dependencies = normalizedDependencies;
+        } else {
+            delete projectConfig.dependencies;
+        }
+
         this.projectConfig = projectConfig;
         this.projectConfigPath = configPath;
         this.projectConfigFormat = isNlproj ? "nlproj" : "json";
@@ -102,6 +117,56 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
             ...config,
             name: nextName,
         }));
+    }
+
+    /**
+     * Merge a partial patch into the project metadata (description, version,
+     * author, website, ...). Undefined values in the patch are ignored so
+     * callers can update a single field without clobbering the rest.
+     */
+    public async updateProjectMetadata(patch: Partial<ProjectMetadata>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const metadata = { ...config.metadata };
+            for (const [key, value] of Object.entries(patch)) {
+                if (value !== undefined) {
+                    (metadata as Record<string, unknown>)[key] = value;
+                }
+            }
+            return {
+                ...config,
+                metadata,
+            };
+        });
+    }
+
+    /**
+     * Read the effective network policy, falling back to the secure defaults
+     * for projects that predate the `app.network` config.
+     */
+    public getNetworkConfiguration(): NetworkConfiguration {
+        return normalizeNetworkConfiguration(this.getProjectConfig().app?.network);
+    }
+
+    /**
+     * Merge a partial patch into the project network policy. Used by the
+     * project settings UI (e.g. the "Allow HTTP" toggle) and consumed by the
+     * packaging pipeline when producing a distributable build.
+     */
+    public async updateNetworkConfiguration(patch: Partial<NetworkConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const network: NetworkConfiguration = {
+                ...normalizeNetworkConfiguration(config.app?.network),
+                ...patch,
+            };
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
     }
 
     public async importProjectIcon(platform: ProjectIconPlatform): Promise<{
@@ -179,6 +244,28 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         return read.data;
     }
 
+    /** The project's recorded plugin dependency table, or undefined when unused. */
+    public getDependencyTable(): ProjectDependencyTable | undefined {
+        return this.getProjectConfig().dependencies;
+    }
+
+    /**
+     * Persist a freshly scanned dependency table into the manifest. Passing
+     * undefined (or an empty table) removes the field so plugin-free projects
+     * keep a clean manifest.
+     */
+    public async setDependencyTable(table: ProjectDependencyTable | undefined): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const next = { ...config };
+            if (table && table.plugins.length > 0) {
+                next.dependencies = table;
+            } else {
+                delete next.dependencies;
+            }
+            return next;
+        });
+    }
+
     private async writeProjectConfig(config: ProjectConfig): Promise<void> {
         if (!this.projectConfigPath || !this.projectConfigFormat) {
             throw new RendererError("Project config path not initialized");
@@ -210,6 +297,14 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         }
         if (!config.metadata || typeof config.metadata !== "object") {
             config.metadata = {};
+        }
+        // Tolerate the machine-managed dependency table: normalize it if present,
+        // drop it if malformed. Never throw — dependencies must not gate a save.
+        const normalizedDependencies = normalizeProjectDependencyTable(config.dependencies);
+        if (normalizedDependencies && normalizedDependencies.plugins.length > 0) {
+            config.dependencies = normalizedDependencies;
+        } else {
+            delete config.dependencies;
         }
     }
 }

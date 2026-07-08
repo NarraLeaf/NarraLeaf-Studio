@@ -17,6 +17,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { Separator } from "../../registry/types";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
+import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
 import { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import type { DevModeStatus } from "@shared/types/devMode";
@@ -229,10 +230,23 @@ export const fileActionGroup: ModuleActionGroup = {
             tooltip: "Export the current project as a package",
             onClick: (workspace: Workspace) => {
                 void (async () => {
-                    const uiService = workspace.getContext().services.get<UIService>(Services.UI);
+                    const context = workspace.getContext();
+                    const uiService = context.services.get<UIService>(Services.UI);
+
+                    // Refresh the plugin dependency table so the exported package
+                    // records exactly which plugins this project needs. Best-effort:
+                    // a scan failure must not block the export itself.
+                    try {
+                        await context.services
+                            .get<ProjectDependencyService>(Services.ProjectDependency)
+                            .rescanAndPersist();
+                    } catch (error) {
+                        console.warn("[export] plugin dependency rescan failed", error);
+                    }
+
                     uiService.showNotification("Choose a folder for the exported project package.", "info");
 
-                    const projectPath = workspace.getContext().project.getConfig().projectPath;
+                    const projectPath = context.project.getConfig().projectPath;
                     const result = await getInterface().workspace.exportProjectPackage(projectPath);
                     if (!result.success) {
                         uiService.showNotification(result.error || "Failed to export project.", "error");

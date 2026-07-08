@@ -23,6 +23,7 @@ import { ConsoleService } from "./core/ConsoleService";
 import { UIEditorFontFaceService } from "./ui-editor/UIEditorFontFaceService";
 import { BlueprintNodeCatalogService } from "./ui-editor/BlueprintNodeCatalogService";
 import { StoryService } from "./story/StoryService";
+import { ProjectDependencyService } from "./core/ProjectDependencyService";
 
 export class ServiceRegistry {
     private services: Record<Services, Service> = {
@@ -49,6 +50,7 @@ export class ServiceRegistry {
         [Services.Console]: ConsoleService.getInstance(),
         [Services.UIEditorFontFace]: UIEditorFontFaceService.getInstance(),
         [Services.BlueprintNodeCatalog]: BlueprintNodeCatalogService.getInstance(),
+        [Services.ProjectDependency]: ProjectDependencyService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {

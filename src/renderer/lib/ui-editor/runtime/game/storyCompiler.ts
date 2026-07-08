@@ -23,6 +23,14 @@ import {
     Word,
 } from "narraleaf-react";
 import { blink, vignette } from "narraleaf-react/built-in";
+import {
+    Blinds,
+    BlindsBlackout,
+    Slide,
+    SoftWipe,
+    type BlindsOrientation,
+    type WipeDirection,
+} from "./transitions/customImageTransitions";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import type {
     StoryActionPayload,
@@ -38,6 +46,7 @@ import type {
     StoryControlPayload,
     StoryDocument,
     StoryInterpolationRef,
+    StoryLayerRef,
     StoryLiteralValue,
     StoryScene,
     StoryTextMarks,
@@ -47,7 +56,7 @@ import type {
     StoryTransformRef,
     StoryVariableRef,
 } from "@shared/types/story";
-import { resolveDisplayableTargetRef } from "@shared/types/story";
+import { resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { parseStoryEasing } from "@shared/utils/storyEasing";
 import type { ScriptCtx } from "narraleaf-react";
@@ -401,7 +410,7 @@ function buildSentencePrompt(segment: StoryTextSegment, ctx: SceneCompileContext
             continue;
         }
         if ("interpolation" in run) {
-            const word = buildInterpolationWord(ctx, run.interpolation, blockId);
+            const word = buildInterpolationWord(ctx, run.interpolation, blockId, run.marks);
             if (word != null) {
                 prompt.push(word);
             }
@@ -443,8 +452,29 @@ function buildStoryActionScriptInput(
     };
 }
 
+/**
+ * Style an inline value's dynamic word: bold/italic/color apply to the rendered value text (matching
+ * how the chip renders in the editor). `toWord` takes no config, so we compose the public Word helpers.
+ */
+function applyInterpolationWordMarks(word: unknown, marks: StoryTextMarks | undefined): unknown {
+    const clean = marks;
+    if (!clean || (!clean.bold && !clean.italic && !clean.color)) {
+        return word;
+    }
+    let styled = word as Word;
+    if (clean.color) styled = Word.color(styled, clean.color as never);
+    if (clean.bold) styled = Word.bold(styled);
+    if (clean.italic) styled = Word.italic(styled);
+    return styled;
+}
+
 /** Compile an inline interpolation run to an NLR word (a dynamic value shown in dialogue). */
-function buildInterpolationWord(ctx: SceneCompileContext, interp: StoryInterpolationRef, blockId: string): unknown | null {
+function buildInterpolationWord(
+    ctx: SceneCompileContext,
+    interp: StoryInterpolationRef,
+    blockId: string,
+    marks?: StoryTextMarks,
+): unknown | null {
     if (interp.kind === "blueprint") {
         if (!ctx.blueprintDocument) {
             diagnostic(ctx, "warning", blockId, "Blueprint text interpolation needs the project blueprint document; interpolation skipped.");
@@ -453,14 +483,14 @@ function buildInterpolationWord(ctx: SceneCompileContext, interp: StoryInterpola
         // Inline blueprints are restricted to synchronous nodes, so the "On Call" Return Value can be
         // evaluated in-line by a dynamic word. Any async node reached at runtime throws and renders empty.
         const input = buildStoryActionScriptInput(ctx, interp.blueprintId, message => diagnostic(ctx, "warning", blockId, message));
-        return new Word((((scriptCtx: ScriptCtx) => {
+        return applyInterpolationWordMarks(new Word((((scriptCtx: ScriptCtx) => {
             try {
                 const value = evaluateStoryActionBlueprintValueSync(input, scriptCtx);
                 return value === null || value === undefined ? "" : String(value);
             } catch {
                 return "";
             }
-        }) as unknown) as any);
+        }) as unknown) as any), marks);
     }
     const target = interp.target;
     if (target.scope === "scene") {
@@ -469,7 +499,7 @@ function buildInterpolationWord(ctx: SceneCompileContext, interp: StoryInterpola
             diagnostic(ctx, "warning", blockId, "Scene variable not found; interpolation skipped.");
             return null;
         }
-        return ctx.nlrScene.local.toWord(def.storageKey as any);
+        return applyInterpolationWordMarks(ctx.nlrScene.local.toWord(def.storageKey as any), marks);
     }
     if (target.scope === "saved") {
         const def = ctx.document.savedVariables?.[target.variableId];
@@ -477,7 +507,7 @@ function buildInterpolationWord(ctx: SceneCompileContext, interp: StoryInterpola
             diagnostic(ctx, "warning", blockId, "Saved variable not found; interpolation skipped.");
             return null;
         }
-        return ctx.savedPersistent.toWord(def.storageKey as any);
+        return applyInterpolationWordMarks(ctx.savedPersistent.toWord(def.storageKey as any), marks);
     }
     // Persistent (app-level): a dynamic word reading the shared host snapshot synchronously.
     const persistence = ctx.persistence;
@@ -486,10 +516,10 @@ function buildInterpolationWord(ctx: SceneCompileContext, interp: StoryInterpola
         return null;
     }
     const storageKey = target.storageKey;
-    return new Word(((() => {
+    return applyInterpolationWordMarks(new Word(((() => {
         const value = persistence.get(storageKey);
         return value === null || value === undefined ? "" : String(value);
-    }) as unknown) as any);
+    }) as unknown) as any), marks);
 }
 
 function buildWord(text: string, marks: StoryTextMarks | undefined): string | Word {
@@ -692,7 +722,10 @@ async function compileImageAction(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "image" }>,
 ): Promise<NlrStatement[]> {
-    const image = getImage(ctx, payload.objectName, payload);
+    const image = getImage(ctx, payload.objectName, {
+        autoFit: payload.autoFit,
+        layer: resolveLayerForRef(ctx, payload.layer),
+    });
     const statements: NlrStatement[] = [];
     const src = payload.assetId
         ? await resolveAsset(ctx, payload.assetId, "image", block.id)
@@ -879,12 +912,12 @@ function getCharacter(ctx: SceneCompileContext, characterId: string | undefined)
     return character;
 }
 
-function getImage(ctx: SceneCompileContext, objectName: string, options?: { layerName?: string; autoFit?: boolean; src?: string }): Image {
+function getImage(ctx: SceneCompileContext, objectName: string, options?: { layer?: Layer; autoFit?: boolean; src?: string }): Image {
     const name = normalizeObjectName(objectName);
     const existing = ctx.images.get(name);
     if (existing) {
-        if (options?.layerName) {
-            existing.useLayer(getLayer(ctx, options.layerName));
+        if (options?.layer) {
+            existing.useLayer(options.layer);
         }
         return existing;
     }
@@ -892,7 +925,7 @@ function getImage(ctx: SceneCompileContext, objectName: string, options?: { laye
         name,
         src: options?.src ?? EMPTY_IMAGE_SRC,
         autoFit: options?.autoFit ?? false,
-        layer: options?.layerName ? getLayer(ctx, options.layerName) : undefined,
+        layer: options?.layer,
     });
     ctx.images.set(name, image);
     return image;
@@ -900,17 +933,18 @@ function getImage(ctx: SceneCompileContext, objectName: string, options?: { laye
 
 function getText(ctx: SceneCompileContext, objectName: string, payload: Extract<StoryActionPayload, { action: "text" }>): Text {
     const name = normalizeObjectName(objectName);
+    const layer = resolveLayerForRef(ctx, payload.layer);
     const existing = ctx.texts.get(name);
     if (existing) {
-        if (payload.layerName) {
-            existing.useLayer(getLayer(ctx, payload.layerName));
+        if (layer) {
+            existing.useLayer(layer);
         }
         return existing;
     }
     const text = new Text(payload.text ?? "", {
         fontSize: payload.fontSize ?? 32,
         fontColor: (payload.fontColor ?? "#ffffff") as any,
-        layer: payload.layerName ? getLayer(ctx, payload.layerName) : undefined,
+        layer,
     });
     ctx.texts.set(name, text);
     return text;
@@ -926,6 +960,30 @@ function getLayer(ctx: SceneCompileContext, objectName: string, zIndex = 0): Lay
     ((ctx.nlrScene as unknown as { config: { layers: Layer[] } }).config.layers).push(layer);
     ctx.layers.set(name, layer);
     return layer;
+}
+
+/**
+ * Resolve an image/text `layer` reference to a concrete NLR {@link Layer}, or `undefined` to leave
+ * the displayable on the scene's default layer. Built-in refs map to NLR's `Scene.backgroundLayer`
+ * / `Scene.displayableLayer`; a custom ref resolves through its stable creator block (so it follows
+ * renames) to the same name-keyed layer the `layer` create block registers.
+ */
+function resolveLayerForRef(ctx: SceneCompileContext, ref: StoryLayerRef | undefined): Layer | undefined {
+    if (!ref) {
+        return undefined;
+    }
+    if (ref.kind === "default") {
+        return ref.layer === "background" ? ctx.nlrScene.backgroundLayer : ctx.nlrScene.displayableLayer;
+    }
+    const name = resolveStoryLayerRef(ctx.scene, ref).name.trim();
+    if (!name) {
+        return undefined;
+    }
+    const sourceBlock = ref.sourceBlockId ? ctx.scene.blocks[ref.sourceBlockId] : undefined;
+    const zIndex = sourceBlock?.kind === "action" && sourceBlock.payload.action === "layer"
+        ? sourceBlock.payload.zIndex ?? 0
+        : 0;
+    return getLayer(ctx, name, zIndex);
 }
 
 async function getVideo(ctx: SceneCompileContext, objectName: string, assetId: string | undefined, muted: boolean | undefined, blockId: string): Promise<Video | null> {
@@ -1464,6 +1522,38 @@ function createTransition(transition: StoryTransitionRef | undefined, ctx: Scene
             direction: stringProp(props, "direction", "left") as any,
             reverse: boolProp(props, "reverse", false),
         });
+    }
+    if (transition.kind === "softWipe") {
+        const props = transition.props ?? {};
+        return new SoftWipe(
+            duration,
+            stringProp(props, "direction", "left") as WipeDirection,
+            numberProp(props, "feather", 12),
+            easing,
+        );
+    }
+    if (transition.kind === "blinds") {
+        const props = transition.props ?? {};
+        return new Blinds(
+            duration,
+            stringProp(props, "orientation", "horizontal") as BlindsOrientation,
+            numberProp(props, "slats", 8),
+            easing,
+        );
+    }
+    if (transition.kind === "blindsBlackout") {
+        const props = transition.props ?? {};
+        return new BlindsBlackout(
+            duration,
+            stringProp(props, "orientation", "horizontal") as BlindsOrientation,
+            numberProp(props, "slats", 8),
+            numberProp(props, "hold", 30) / 100,
+            easing,
+        );
+    }
+    if (transition.kind === "slide") {
+        const props = transition.props ?? {};
+        return new Slide(duration, stringProp(props, "direction", "left") as WipeDirection, easing);
     }
     diagnostic(ctx, "warning", blockId, `Transition "${transition.kind}" is not supported by public NLR imports yet.`);
     return undefined;
