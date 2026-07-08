@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { Blinds, BlindsBlackout, Slide, SoftWipe } from "./customImageTransitions";
+import { Blinds, BlurDissolve, Slide, SoftIris, SoftWipe, ThroughColor } from "./customImageTransitions";
 
 // The resolver entries produced by asPrev/asTarget are wrapped as
-// `{ resolver, key }`; a bare resolver (the blackout's black slat layer) is a
-// plain function. Unwrap to the callable form for inspection.
+// `{ resolver, key }`; a bare resolver (e.g. the through-colour overlay layer)
+// is a plain function. Unwrap to the callable form for inspection.
 type ResolverEntry = ((...args: number[]) => any) | { resolver: (...args: number[]) => any; key: string };
 function call(entry: ResolverEntry, t: number): any {
     const fn = typeof entry === "function" ? entry : entry.resolver;
@@ -15,7 +15,7 @@ function keyOf(entry: ResolverEntry): string | undefined {
 
 // The wrapped asPrev/asTarget resolvers merge the transition's prev/target src
 // into their output and throw if none is set, so give both a Color src (which
-// NLR accepts) before invoking them. This does not affect the mask/transform
+// NLR accepts) before invoking them. This does not affect the mask/filter
 // styles we assert on.
 function prepared<T>(inst: T): T {
     (inst as any)._setPrevSrc("#000000");
@@ -57,54 +57,96 @@ describe("custom image transitions", () => {
             .toContain("repeating-linear-gradient(to right");
     });
 
-    it("BlindsBlackout: adds a black slat layer, holds full black at the midpoint", () => {
-        const task = prepared(new BlindsBlackout(600, "horizontal", 10, 0.4)).createTask() as any;
-        expect(task.resolve).toHaveLength(3);
+    it("SoftIris: target revealed through an expanding feathered radial mask", () => {
+        const task = prepared(new SoftIris(400, "50% 50%", 12)).createTask() as any;
+        expect(task.resolve).toHaveLength(2);
         expect(keyOf(task.resolve[0])).toBe("current");
-        expect(keyOf(task.resolve[1])).toBe("target");
-        expect(keyOf(task.resolve[2])).toBeUndefined(); // the extra black layer
-
-        const black = task.resolve[2] as ResolverEntry;
-        const mid = call(black, 0.5);
-        expect(mid.style.backgroundColor).toBe("#000");
-        expect(mid.src).toBeTruthy(); // a real (transparent) src so the layer mounts
-        // pitch = 100/10 = 10; at the fully-black hold, cover === pitch (all black).
-        expect(mid.style.maskImage).toContain("#000 10%");
-        // At the very start/end the black layer is fully open (cover 0 → invisible).
-        expect(call(black, 0).style.maskImage).toContain("#000 0%");
-        expect(call(black, 1).style.maskImage).toContain("#000 0%");
+        const mask = call(task.resolve[1], 0.5).style.maskImage as string;
+        expect(mask).toContain("radial-gradient(circle at 50% 50%");
+        // At t=1 the opaque disc has grown to cover (r = 150) → target fully shown.
+        expect(call(task.resolve[1], 1).style.maskImage).toContain("#000 138%");
     });
 
-    it("BlindsBlackout: outgoing/incoming images swap under the black at the midpoint", () => {
-        const task = prepared(new BlindsBlackout(600, "horizontal", 10, 0.4)).createTask() as any;
-        // Outgoing (prev) visible before mid, gone after.
-        expect(call(task.resolve[0], 0.2).style.opacity).toBe(1);
-        expect(call(task.resolve[0], 0.8).style.opacity).toBe(0);
-        // Incoming (target) hidden before mid, shown after.
-        expect(call(task.resolve[1], 0.2).style.opacity).toBe(0);
-        expect(call(task.resolve[1], 0.8).style.opacity).toBe(1);
+    it("BlurDissolve: crossfades opacity while blurring out/in", () => {
+        const task = prepared(new BlurDissolve(400, 16)).createTask() as any;
+        expect(task.resolve).toHaveLength(2);
+        // Outgoing: sharp+opaque at start, blurred+gone at end.
+        expect(call(task.resolve[0], 0).style).toMatchObject({ opacity: 1, filter: "blur(0px)" });
+        expect(call(task.resolve[0], 1).style).toMatchObject({ opacity: 0, filter: "blur(16px)" });
+        // Incoming: blurred+gone at start, sharp+opaque at end.
+        expect(call(task.resolve[1], 0).style).toMatchObject({ opacity: 0, filter: "blur(16px)" });
+        expect(call(task.resolve[1], 1).style).toMatchObject({ opacity: 1, filter: "blur(0px)" });
     });
 
-    it("Slide: outgoing and incoming translate in opposite directions, centring preserved", () => {
+    describe("ThroughColor", () => {
+        it("adds a colour overlay layer; plain pattern fades it fully in at the hold", () => {
+            const task = prepared(new ThroughColor(600, "plain", "#000000", 0.4)).createTask() as any;
+            expect(task.resolve).toHaveLength(3);
+            expect(keyOf(task.resolve[0])).toBe("current");
+            expect(keyOf(task.resolve[1])).toBe("target");
+            expect(keyOf(task.resolve[2])).toBeUndefined(); // the overlay layer
+
+            const overlay = task.resolve[2] as ResolverEntry;
+            const mid = call(overlay, 0.5);
+            expect(mid.src).toBeTruthy(); // a real (transparent) src so the layer mounts
+            expect(mid.style.backgroundColor).toBe("#000000");
+            expect(mid.style.opacity).toBe(1); // fully covered at the hold
+            expect(mid.style.maskImage).toBeUndefined(); // plain = no mask, just opacity
+            // Fully clear (invisible) at both ends.
+            expect(call(overlay, 0).style.opacity).toBe(0);
+            expect(call(overlay, 1).style.opacity).toBe(0);
+        });
+
+        it("outgoing/incoming images swap under the colour at the midpoint", () => {
+            const task = prepared(new ThroughColor(600, "plain", "#000000", 0.4)).createTask() as any;
+            expect(call(task.resolve[0], 0.2).style.opacity).toBe(1);
+            expect(call(task.resolve[0], 0.8).style.opacity).toBe(0);
+            expect(call(task.resolve[1], 0.2).style.opacity).toBe(0);
+            expect(call(task.resolve[1], 0.8).style.opacity).toBe(1);
+        });
+
+        it("honours the hold colour and masks by pattern", () => {
+            // Fade through white.
+            const white = prepared(new ThroughColor(600, "plain", "#ffffff", 0.4)).createTask().resolve[2] as ResolverEntry;
+            expect(call(white, 0.5).style.backgroundColor).toBe("#ffffff");
+
+            // Soft wipe through black → a feathered linear overlay mask.
+            const linear = prepared(new ThroughColor(600, "linear", "#000000", 0.3, { direction: "right", feather: 15 })).createTask().resolve[2] as ResolverEntry;
+            expect(call(linear, 0.5).style.maskImage).toContain("linear-gradient(to right");
+
+            // Iris to black → a radial overlay mask.
+            const iris = prepared(new ThroughColor(600, "iris", "#000000", 0.3, { center: "50% 50%" })).createTask().resolve[2] as ResolverEntry;
+            expect(call(iris, 0.5).style.maskImage).toContain("radial-gradient(circle at 50% 50%");
+
+            // Blinds black hold → a repeating overlay mask.
+            const blinds = prepared(new ThroughColor(600, "blinds", "#000000", 0.3, { orientation: "vertical", slats: 6 })).createTask().resolve[2] as ResolverEntry;
+            expect(call(blinds, 0.5).style.maskImage).toContain("repeating-linear-gradient(to right");
+        });
+    });
+
+    it("Slide: uses the independent `translate` property, no offset at rest", () => {
         const task = prepared(new Slide(400, "left")).createTask() as any;
         expect(task.resolve).toHaveLength(2);
-        // Incoming starts a full viewport to the right of centre and ends centred.
-        expect(call(task.resolve[1], 0).style.transform).toBe("translate(calc(-50% + 100vw), -50%)");
-        expect(call(task.resolve[1], 1).style.transform).toBe("translate(calc(-50% + 0vw), -50%)");
-        // Outgoing ends a full viewport to the left.
-        expect(call(task.resolve[0], 1).style.transform).toBe("translate(calc(-50% + -100vw), -50%)");
+        // Must not touch `transform` (that would clobber NLR's base positioning).
+        expect(call(task.resolve[0], 0).style.transform).toBeUndefined();
+        // Outgoing is at rest at t=0 (offset 0 → no jump) and a full viewport left at t=1.
+        expect(call(task.resolve[0], 0).style.translate).toBe("0vw 0px");
+        expect(call(task.resolve[0], 1).style.translate).toBe("-100vw 0px");
+        // Incoming starts a full viewport to the right and ends at rest.
+        expect(call(task.resolve[1], 0).style.translate).toBe("100vw 0px");
+        expect(call(task.resolve[1], 1).style.translate).toBe("0vw 0px");
         // Vertical direction uses vh on the Y axis.
-        expect(call(prepared(new Slide(400, "bottom")).createTask().resolve[1] as ResolverEntry, 0).style.transform)
-            .toBe("translate(-50%, calc(-50% + -100vh))");
+        expect(call(prepared(new Slide(400, "bottom")).createTask().resolve[1] as ResolverEntry, 0).style.translate)
+            .toBe("0px -100vh");
     });
 
     it("copy() returns an equivalent independent instance", () => {
-        const original = new BlindsBlackout(600, "vertical", 6, 0.25);
+        const original = new ThroughColor(600, "linear", "#123456", 0.25, { direction: "top", feather: 20 });
         const clone = original.copy();
         expect(clone).not.toBe(original);
-        expect(clone).toBeInstanceOf(BlindsBlackout);
-        // Same configuration → structurally identical black-layer output.
-        const blackAtMid = (inst: BlindsBlackout) => call(inst.createTask().resolve[2] as ResolverEntry, 0.5).style;
-        expect(blackAtMid(clone)).toEqual(blackAtMid(original));
+        expect(clone).toBeInstanceOf(ThroughColor);
+        // Same configuration → structurally identical overlay output.
+        const overlayAtMid = (inst: ThroughColor) => call(inst.createTask().resolve[2] as ResolverEntry, 0.5).style;
+        expect(overlayAtMid(clone)).toEqual(overlayAtMid(original));
     });
 });

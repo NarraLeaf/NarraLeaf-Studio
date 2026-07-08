@@ -102,7 +102,7 @@ function findEditorGroupIdByTabId(layout: EditorLayout, tabId: string): string |
     return findEditorGroupIdByTabId(layout.first, tabId) ?? findEditorGroupIdByTabId(layout.second, tabId);
 }
 
-export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ surfaceId?: string; componentId?: string }>) {
+export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentProps<{ surfaceId?: string; componentId?: string }>) {
     const componentId = payload?.componentId;
     const isComponentEdit = Boolean(componentId);
     const baseSurfaceId = payload?.surfaceId;
@@ -504,7 +504,10 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
 
     useEffect(() => {
         const root = editorRootRef.current;
-        if (!root) {
+        // These are document-level capture listeners; a kept-alive tab stays mounted while hidden, so
+        // only the visible surface editor should listen — otherwise every hidden editor runs its
+        // handler on every app-wide mousedown/dblclick.
+        if (!root || !active) {
             return undefined;
         }
         const shouldHandleEditorClick = (event: MouseEvent) => {
@@ -579,7 +582,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
             document.removeEventListener("mousedown", handleMouseDown, true);
             document.removeEventListener("dblclick", handleNativeDoubleClick, true);
         };
-    }, [handleSurfaceDoubleClick]);
+    }, [handleSurfaceDoubleClick, active]);
 
     if (!surface) {
         return (

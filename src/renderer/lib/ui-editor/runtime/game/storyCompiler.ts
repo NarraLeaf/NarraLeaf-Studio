@@ -25,10 +25,13 @@ import {
 import { blink, vignette } from "narraleaf-react/built-in";
 import {
     Blinds,
-    BlindsBlackout,
+    BlurDissolve,
     Slide,
+    SoftIris,
     SoftWipe,
+    ThroughColor,
     type BlindsOrientation,
+    type ThroughColorPattern,
     type WipeDirection,
 } from "./transitions/customImageTransitions";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
@@ -44,6 +47,7 @@ import type {
     StoryCharacterVariantSelection,
     StoryConditionRef,
     StoryControlPayload,
+    StoryDisplayableTargetRef,
     StoryDocument,
     StoryInterpolationRef,
     StoryLayerRef,
@@ -56,7 +60,7 @@ import type {
     StoryTransformRef,
     StoryVariableRef,
 } from "@shared/types/story";
-import { resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
+import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { parseStoryEasing } from "@shared/utils/storyEasing";
 import type { ScriptCtx } from "narraleaf-react";
@@ -585,10 +589,10 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
     }
 
     if (payload.action === "displayable") {
-        const resolvedTarget = resolveDisplayableTargetRef(ctx.scene, payload.target);
-        const target = getDisplayable(ctx, resolvedTarget.name, resolvedTarget.kind);
+        const target = resolveDisplayableActionTarget(ctx, payload.target);
         if (!target) {
-            diagnostic(ctx, "warning", block.id, `Displayable target not found: ${resolvedTarget.name || "(empty)"}`);
+            const label = resolveDisplayableTargetRef(ctx.scene, payload.target).name || "(empty)";
+            diagnostic(ctx, "warning", block.id, `Displayable target not found: ${label}`);
             return [];
         }
         if (isDisplayableEffectOperation(payload.operation)) {
@@ -776,7 +780,12 @@ function compileLayerAction(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "layer" }>,
 ): NlrStatement[] {
-    const layer = getLayer(ctx, payload.objectName, payload.zIndex);
+    // `create` names a new custom layer; every other op resolves an existing layer — a built-in
+    // (background / displayable) or a custom one — via the target ref (falling back to the default
+    // displayable layer), so a transform can now target the background instead of only named layers.
+    const layer = payload.operation === "create"
+        ? getLayer(ctx, payload.objectName, payload.zIndex)
+        : resolveLayerForRef(ctx, layerActionTargetRef(payload.target, payload.objectName)) ?? ctx.nlrScene.displayableLayer;
     const statements: NlrStatement[] = [];
     if (payload.operation === "setZIndex" || (payload.operation === "create" && payload.zIndex !== undefined)) {
         statements.push(recordStatement(ctx, layer.setZIndex(payload.zIndex ?? 0), block));
@@ -1033,6 +1042,19 @@ async function getSound(
     });
     ctx.sounds.set(name, sound);
     return sound;
+}
+
+/**
+ * Resolve a `displayable` action target to its concrete NLR object. Built-in singletons map to the
+ * scene's `background` Image / built-in layers (always present); every other target resolves through
+ * the stable creator-block ref to a named image / text / character / custom layer on stage.
+ */
+function resolveDisplayableActionTarget(ctx: SceneCompileContext, ref: StoryDisplayableTargetRef): any | null {
+    if (ref.builtin === "background") return ctx.nlrScene.background;
+    if (ref.builtin === "backgroundLayer") return ctx.nlrScene.backgroundLayer;
+    if (ref.builtin === "displayableLayer") return ctx.nlrScene.displayableLayer;
+    const resolved = resolveDisplayableTargetRef(ctx.scene, ref);
+    return getDisplayable(ctx, resolved.name, resolved.kind);
 }
 
 function getDisplayable(ctx: SceneCompileContext, name: string, kind?: string): any | null {
@@ -1516,11 +1538,14 @@ function createTransition(transition: StoryTransitionRef | undefined, ctx: Scene
     }
     if (transition.kind === "maskWipe") {
         const props = transition.props ?? {};
+        // NOTE: NLR's MaskTransition.wipe `reverse` does not flip the wipe
+        // direction — it wipes the *new* background out to nothing, which (since
+        // setBackground discards the old background) ends on a black frame. It is
+        // never a valid "reveal", so we always reveal (no reverse) here.
         return MaskTransition.wipe({
             duration,
             easing,
             direction: stringProp(props, "direction", "left") as any,
-            reverse: boolProp(props, "reverse", false),
         });
     }
     if (transition.kind === "softWipe") {
@@ -1541,19 +1566,34 @@ function createTransition(transition: StoryTransitionRef | undefined, ctx: Scene
             easing,
         );
     }
-    if (transition.kind === "blindsBlackout") {
-        const props = transition.props ?? {};
-        return new BlindsBlackout(
-            duration,
-            stringProp(props, "orientation", "horizontal") as BlindsOrientation,
-            numberProp(props, "slats", 8),
-            numberProp(props, "hold", 30) / 100,
-            easing,
-        );
-    }
     if (transition.kind === "slide") {
         const props = transition.props ?? {};
         return new Slide(duration, stringProp(props, "direction", "left") as WipeDirection, easing);
+    }
+    if (transition.kind === "softIris") {
+        const props = transition.props ?? {};
+        return new SoftIris(duration, stringProp(props, "center", "50% 50%"), numberProp(props, "feather", 12), easing);
+    }
+    if (transition.kind === "blurDissolve") {
+        const props = transition.props ?? {};
+        return new BlurDissolve(duration, numberProp(props, "blur", 16), easing);
+    }
+    if (transition.kind === "throughColor") {
+        const props = transition.props ?? {};
+        return new ThroughColor(
+            duration,
+            stringProp(props, "pattern", "plain") as ThroughColorPattern,
+            stringProp(props, "color", "#000"),
+            numberProp(props, "hold", 30) / 100,
+            {
+                direction: stringProp(props, "direction", "left") as WipeDirection,
+                feather: numberProp(props, "feather", 12),
+                orientation: stringProp(props, "orientation", "horizontal") as BlindsOrientation,
+                slats: numberProp(props, "slats", 8),
+                center: stringProp(props, "center", "50% 50%"),
+            },
+            easing,
+        );
     }
     diagnostic(ctx, "warning", blockId, `Transition "${transition.kind}" is not supported by public NLR imports yet.`);
     return undefined;

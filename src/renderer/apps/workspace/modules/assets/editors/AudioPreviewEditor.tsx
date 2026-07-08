@@ -26,7 +26,7 @@ function formatDuration(seconds: number): string {
  * Audio preview editor component
  * Displays audio with playback controls and metadata
  */
-export function AudioPreviewEditor({ tabId, payload }: EditorComponentProps<AudioPreviewPayload>) {
+export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentProps<AudioPreviewPayload>) {
     const { context } = useWorkspace();
     const [audioData, setAudioData] = useState<AssetData<AssetType.Audio> | null>(null);
     const [loading, setLoading] = useState(true);
@@ -172,6 +172,15 @@ export function AudioPreviewEditor({ tabId, payload }: EditorComponentProps<Audi
             }
         };
     }, []);
+
+    // Kept-alive tabs stay mounted while hidden; pause playback when this tab isn't visible, since
+    // display:none does not stop an <audio> element.
+    useEffect(() => {
+        if (!active) {
+            audioRef.current?.pause();
+            setIsPlaying(false);
+        }
+    }, [active]);
 
     if (loading) {
         return (

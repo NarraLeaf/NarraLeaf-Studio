@@ -281,7 +281,7 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
         case "layerCreate":
             return { ...base, kind: "action", payload: { action: "layer", operation: "create", objectName: "layer", zIndex: 1 } };
         case "layerZIndex":
-            return { ...base, kind: "action", payload: { action: "layer", operation: "setZIndex", objectName: "layer", zIndex: 1 } };
+            return { ...base, kind: "action", payload: { action: "layer", operation: "setZIndex", objectName: "", target: { kind: "default", layer: "displayable" }, zIndex: 1 } };
         case "videoCreate":
             return { ...base, kind: "action", payload: { action: "video", operation: "create", objectName: "video", muted: false } };
         case "videoShow":

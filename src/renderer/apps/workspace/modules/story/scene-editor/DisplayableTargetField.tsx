@@ -3,12 +3,13 @@ import type { RefObject } from "react";
 import { AlertTriangle, Check, ChevronDown, Image as ImageIcon, Layers, Search, Type, UserRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type {
+    StoryDisplayableBuiltin,
     StoryDisplayableTargetKind,
     StoryDisplayableTargetRef,
     StoryDocument,
     StorySceneId,
 } from "@shared/types/story";
-import { resolveDisplayableTargetRef } from "@shared/types/story";
+import { DISPLAYABLE_BUILTIN_META, resolveDisplayableTargetRef } from "@shared/types/story";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { listSceneDisplayableTargets, type SceneDisplayableRef } from "../../story-motion/storyMotionPreviewTarget";
 
@@ -20,6 +21,9 @@ const KIND_META: Record<StoryDisplayableTargetKind, { label: string; icon: Lucid
     text: { label: "Text", icon: Type },
     layer: { label: "Layer", icon: Layers },
 };
+
+/** Built-in stage singletons offered at the top of every target list, in display order. */
+const BUILTIN_ORDER: StoryDisplayableBuiltin[] = ["background", "backgroundLayer", "displayableLayer"];
 
 function sameName(left: string, right: string): boolean {
     return left.trim().toLowerCase() === right.trim().toLowerCase();
@@ -34,10 +38,12 @@ function matchesTarget(option: SceneDisplayableRef, target: { name: string; kind
 }
 
 /**
- * Target picker for `displayable` actions. Displayables can only be declared statically by earlier
- * action blocks (there is no dynamic creation), so every valid target is discoverable by scanning
- * the scene. This lists the named displayables that exist on stage before this block and lets the
- * author pick one — which sets both name and kind — instead of retyping a name and inferring a kind.
+ * Target picker for `displayable` actions. The list is the full set of transformable stage objects:
+ * the built-in singletons every scene has (scene background + the two built-in layers) followed by
+ * the named displayables declared by earlier action blocks (characters / images / texts / custom
+ * layers). Displayables can only be declared statically, so the named ones are discoverable by
+ * scanning the scene; picking any option sets the ref (built-in id, or name + kind + stable block id)
+ * so the author never retypes a name or infers a kind.
  */
 export function DisplayableTargetField(props: {
     label?: string;
@@ -58,13 +64,15 @@ export function DisplayableTargetField(props: {
 
     const target = props.target;
     const selected = useMemo(
-        () => options.find(option => matchesTarget(option, target)) ?? null,
+        () => (target.builtin ? null : options.find(option => matchesTarget(option, target)) ?? null),
         [options, target],
     );
     // Resolve through the stable anchor so the label follows renames; fall back to the stored name.
+    // Built-ins (scene background / built-in layers) always resolve to their label + kind.
     const scene = props.document.scenes[props.sceneId];
-    const name = selected?.name ?? resolveDisplayableTargetRef(scene, target).name;
-    const unresolved = name.trim().length > 0 && !selected;
+    const resolved = resolveDisplayableTargetRef(scene, target);
+    const name = selected?.name ?? resolved.name;
+    const unresolved = !target.builtin && name.trim().length > 0 && !selected;
 
     const placement = useAutoMenuPlacement(rootRef, open, 320);
 
@@ -97,12 +105,29 @@ export function DisplayableTargetField(props: {
             option.name.toLowerCase().includes(normalized) || option.kind.includes(normalized));
     }, [options, query]);
 
+    const filteredBuiltins = useMemo(() => {
+        const normalized = query.trim().toLowerCase();
+        if (!normalized) {
+            return BUILTIN_ORDER;
+        }
+        return BUILTIN_ORDER.filter(builtin => {
+            const meta = DISPLAYABLE_BUILTIN_META[builtin];
+            return meta.label.toLowerCase().includes(normalized) || meta.kind.includes(normalized);
+        });
+    }, [query]);
+
     const choose = (option: SceneDisplayableRef) => {
         props.onChange({ name: option.name, kind: option.kind, sourceBlockId: option.sourceBlockId });
         setOpen(false);
     };
 
-    const displayKind = selected?.kind ?? target.kind ?? "image";
+    const chooseBuiltin = (builtin: StoryDisplayableBuiltin) => {
+        const meta = DISPLAYABLE_BUILTIN_META[builtin];
+        props.onChange({ builtin, kind: meta.kind, name: meta.label });
+        setOpen(false);
+    };
+
+    const displayKind = selected?.kind ?? resolved.kind ?? target.kind ?? "image";
     const TriggerIcon = unresolved ? AlertTriangle : KIND_META[displayKind].icon;
 
     return (
@@ -125,7 +150,7 @@ export function DisplayableTargetField(props: {
                                 Not on stage
                             </span>
                         ) : (
-                            <span className="shrink-0 text-[11px] text-slate-500">{KIND_META[displayKind].label}</span>
+                            <span className="shrink-0 text-[11px] text-slate-500">{target.builtin ? "Built-in" : KIND_META[displayKind].label}</span>
                         )}
                     </>
                 ) : (
@@ -140,7 +165,7 @@ export function DisplayableTargetField(props: {
                         placement === "above" ? "bottom-full mb-1" : "top-full mt-1",
                     ].join(" ")}
                 >
-                    {options.length > 5 ? (
+                    {options.length + BUILTIN_ORDER.length > 5 ? (
                         <div className="flex items-center gap-2 border-b border-white/10 px-2.5 py-1.5">
                             <Search className="h-3.5 w-3.5 shrink-0 text-slate-500" />
                             <input
@@ -153,26 +178,62 @@ export function DisplayableTargetField(props: {
                         </div>
                     ) : null}
                     <div className="max-h-72 overflow-auto p-1">
-                        {filtered.length === 0 ? (
-                            <div className="px-2 py-3 text-center text-xs text-slate-500">
-                                {options.length === 0
-                                    ? "No displayable is on stage yet. Add a character, image, text, or layer earlier in the scene first."
-                                    : "No match."}
-                            </div>
-                        ) : (
-                            filtered.map(option => (
-                                <DisplayableOptionRow
-                                    key={option.sourceBlockId}
-                                    option={option}
-                                    active={selected?.sourceBlockId === option.sourceBlockId}
-                                    onChoose={() => choose(option)}
-                                />
-                            ))
-                        )}
+                        {filteredBuiltins.map(builtin => (
+                            <BuiltinTargetRow
+                                key={`builtin-${builtin}`}
+                                builtin={builtin}
+                                active={target.builtin === builtin}
+                                onChoose={() => chooseBuiltin(builtin)}
+                            />
+                        ))}
+                        {filteredBuiltins.length > 0 && filtered.length > 0 ? (
+                            <div className="my-1 border-t border-white/[0.06]" />
+                        ) : null}
+                        {filtered.map(option => (
+                            <DisplayableOptionRow
+                                key={option.sourceBlockId}
+                                option={option}
+                                active={selected?.sourceBlockId === option.sourceBlockId}
+                                onChoose={() => choose(option)}
+                            />
+                        ))}
+                        {filteredBuiltins.length === 0 && filtered.length === 0 ? (
+                            <div className="px-2 py-3 text-center text-xs text-slate-500">No match.</div>
+                        ) : null}
                     </div>
                 </div>
             ) : null}
         </div>
+    );
+}
+
+function BuiltinTargetRow(props: {
+    builtin: StoryDisplayableBuiltin;
+    active: boolean;
+    onChoose: () => void;
+}) {
+    const meta = DISPLAYABLE_BUILTIN_META[props.builtin];
+    const Icon = KIND_META[meta.kind].icon;
+    return (
+        <button
+            type="button"
+            role="option"
+            aria-selected={props.active}
+            className={[
+                "flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-left transition-colors",
+                props.active ? "bg-primary/15 text-white" : "hover:bg-white/[0.06]",
+            ].join(" ")}
+            onClick={props.onChoose}
+        >
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-white/10 bg-white/[0.04]">
+                <Icon className="h-3.5 w-3.5 text-slate-400" />
+            </span>
+            <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-slate-100">{meta.label}</span>
+                <span className="block truncate text-[11px] text-slate-500">{meta.hint}</span>
+            </span>
+            {props.active ? <Check className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
+        </button>
     );
 }
 

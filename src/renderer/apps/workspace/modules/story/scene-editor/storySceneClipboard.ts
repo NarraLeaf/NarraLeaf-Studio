@@ -1,4 +1,4 @@
-import type { StoryBlock, StoryBlockId, StoryScene, StoryTextSegment } from "@shared/types/story";
+import type { StoryBlock, StoryBlockId, StoryScene, StorySceneId, StoryTextSegment } from "@shared/types/story";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { describeBlock, getBlockBadgeInfo, getCharacterName } from "./storySceneBlockUtils";
@@ -39,7 +39,7 @@ export function insertSerializedClone(
     }
 }
 
-export function exportBlockPlainText(block: StoryBlock, characters: Character[]): string {
+export function exportBlockPlainText(block: StoryBlock, characters: Character[], scenes?: Record<StorySceneId, StoryScene>): string {
     if (block.kind === "nodeAction") {
         if (block.payload.action === "dialogue") {
             return `${getCharacterName(characters, block.payload.characterId)} - ${block.payload.text.value}`;
@@ -54,7 +54,7 @@ export function exportBlockPlainText(block: StoryBlock, characters: Character[])
     if (block.kind === "note") {
         return block.payload.text.value;
     }
-    return `[${getBlockBadgeInfo(block).label}] ${describeBlock(block, characters)}`;
+    return `[${getBlockBadgeInfo(block).label}] ${describeBlock(block, characters, undefined, scenes)}`;
 }
 
 export function parseDialogueLine(line: string, characters: Character[]): { characterId: string; text: string } | null {

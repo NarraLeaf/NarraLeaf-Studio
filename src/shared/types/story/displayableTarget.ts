@@ -1,9 +1,17 @@
 import type {
     StoryBlock,
+    StoryDisplayableBuiltin,
     StoryDisplayableTargetKind,
     StoryDisplayableTargetRef,
     StoryScene,
 } from "./document";
+
+/** Author-facing label + transform kind for each built-in stage singleton. */
+export const DISPLAYABLE_BUILTIN_META: Record<StoryDisplayableBuiltin, { label: string; kind: StoryDisplayableTargetKind; hint: string }> = {
+    background: { label: "Scene background", kind: "image", hint: "The scene's background image" },
+    backgroundLayer: { label: "Background layer", kind: "layer", hint: "Built-in layer, behind everything" },
+    displayableLayer: { label: "Displayable layer", kind: "layer", hint: "Built-in default layer" },
+};
 
 /**
  * The kind + *current* stage name of the displayable a creator action block introduces, or null
@@ -25,7 +33,9 @@ export function displayableSourceIdentity(block: StoryBlock): { kind: StoryDispl
         return { kind: "text", name: payload.objectName || "Text" };
     }
     if (payload.action === "layer") {
-        return { kind: "layer", name: payload.objectName || "Layer" };
+        // Only a `create` op introduces a layer; other ops (transform / z-index / show / hide)
+        // reference an existing one via `target`, so they are not a source of stage identity.
+        return payload.operation === "create" ? { kind: "layer", name: payload.objectName || "Layer" } : null;
     }
     return null;
 }
@@ -40,6 +50,10 @@ export function resolveDisplayableTargetRef(
     scene: StoryScene | null | undefined,
     target: StoryDisplayableTargetRef,
 ): { name: string; kind?: StoryDisplayableTargetKind } {
+    if (target.builtin) {
+        const meta = DISPLAYABLE_BUILTIN_META[target.builtin];
+        return { name: meta.label, kind: meta.kind };
+    }
     if (target.sourceBlockId) {
         const source = scene?.blocks[target.sourceBlockId];
         const identity = source ? displayableSourceIdentity(source) : null;

@@ -17,7 +17,7 @@ import type {
     StoryVariableScope,
     StoryVariableValueType,
 } from "@shared/types/story";
-import { resolveDisplayableTargetRef } from "@shared/types/story";
+import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronRight, Image as ImageIcon, Music, Palette, Trash2, Video, X } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
@@ -214,13 +214,15 @@ const EASING_OPTIONS: SelectOption[] = [
 const TRANSITION_OPTIONS: SelectOption[] = [
     { value: "none", label: "None" },
     { value: "dissolve", label: "Dissolve" },
+    { value: "blurDissolve", label: "Blur dissolve" },
     { value: "fadeIn", label: "Fade in" },
     { value: "maskCircle", label: "Mask circle" },
+    { value: "softIris", label: "Soft iris" },
     { value: "maskWipe", label: "Slide reveal" },
     { value: "softWipe", label: "Soft wipe" },
     { value: "blinds", label: "Blinds" },
-    { value: "blindsBlackout", label: "Blinds (black hold)" },
     { value: "slide", label: "Push" },
+    { value: "throughColor", label: "Through color" },
 ];
 
 const WIPE_DIRECTION_OPTIONS: SelectOption[] = [
@@ -235,15 +237,24 @@ const BLINDS_ORIENTATION_OPTIONS: SelectOption[] = [
     { value: "vertical", label: "Vertical" },
 ];
 
+const THROUGH_COLOR_PATTERN_OPTIONS: SelectOption[] = [
+    { value: "plain", label: "Plain (fade)" },
+    { value: "linear", label: "Soft edge" },
+    { value: "blinds", label: "Blinds" },
+    { value: "iris", label: "Iris" },
+];
+
 const TRANSITION_HINTS: Record<string, string> = {
     dissolve: "Crossfades from the previous image to the new one.",
+    blurDissolve: "Crossfades while blurring — a dreamy flashback / dream-state dissolve.",
     fadeIn: "Fades the new image in from a start position offset.",
     maskCircle: "Circular reveal / close driven by an animated mask radius.",
+    softIris: "Feathered circular reveal — the soft-edged counterpart of Mask circle.",
     maskWipe: "Hard-edged directional reveal — the new image is uncovered by a sweeping straight edge (no feather).",
     softWipe: "Feathered directional wipe — the new image erases in with a soft gradient edge.",
     blinds: "Venetian blinds reveal — slats widen to uncover the new image.",
-    blindsBlackout: "Blinds close to a black frame, hold, then open on the new image (the target appears only after the black).",
     slide: "Push — the new image slides in from one edge as the old one slides out.",
+    throughColor: "Covers the frame with a solid colour (using the chosen pattern), holds, then uncovers on the new image — the target appears only after the colour hold. Covers fade-to-black/white, soft wipe through black, blinds black hold, iris to black, and flash (hold 0).",
 };
 
 const IMAGE_OPERATION_OPTIONS: SelectOption[] = [
@@ -295,12 +306,15 @@ const TEXT_OPERATION_OPTIONS: SelectOption[] = [
     { value: "setFontColor", label: "Set font color" },
 ];
 
+// `transform` is intentionally omitted: transforming a layer goes through the unified
+// "Transform displayable" target list (which includes both built-in layers). The `layer` action
+// stays layer-lifecycle only. `transform` remains valid in the type + compiler so pre-existing
+// layer-transform blocks still compile; it is just no longer offered as a new choice here.
 const LAYER_OPERATION_OPTIONS: SelectOption[] = [
     { value: "create", label: "Create" },
     { value: "setZIndex", label: "Set z-index" },
     { value: "show", label: "Show" },
     { value: "hide", label: "Hide" },
-    { value: "transform", label: "Transform" },
 ];
 
 const VIDEO_OPERATION_OPTIONS: SelectOption[] = [
@@ -386,7 +400,7 @@ export function ActionInspector(props: {
                 </span>
                 <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-slate-100">{label}</div>
-                    <div className="truncate text-xs text-slate-500">{describeBlock(block, props.characters, props.document.scenes[props.sceneId])}</div>
+                    <div className="truncate text-xs text-slate-500">{describeBlock(block, props.characters, props.document.scenes[props.sceneId], props.document.scenes)}</div>
                 </div>
                 <button
                     type="button"
@@ -543,12 +557,18 @@ function InspectorFields(props: {
             label: scene.name,
         }));
         return (
-            <div className="max-w-sm">
-                <SelectField
-                    label="Target scene"
-                    options={sceneOptions}
-                    value={payload.targetSceneId}
-                    onChange={targetSceneId => props.onUpdatePayload({ ...payload, targetSceneId: String(targetSceneId) })}
+            <div className="grid grid-cols-1 gap-3">
+                <div className="max-w-sm">
+                    <SelectField
+                        label="Target scene"
+                        options={sceneOptions}
+                        value={payload.targetSceneId}
+                        onChange={targetSceneId => props.onUpdatePayload({ ...payload, targetSceneId: String(targetSceneId) })}
+                    />
+                </div>
+                <TransitionEditor
+                    value={payload.transition}
+                    onChange={transition => props.onUpdatePayload({ ...payload, transition })}
                 />
             </div>
         );
@@ -813,6 +833,15 @@ function ActionPayloadFields(props: {
         );
     }
     if (payload.action === "layer") {
+        const isCreate = payload.operation === "create";
+        // Non-create ops target an existing layer (built-in or custom) via the layer picker; `create`
+        // names a new one. Z-index only applies to create / setZIndex; transform/show/hide animate.
+        const showZIndex = isCreate || payload.operation === "setZIndex";
+        const showTransform = payload.operation === "transform" || payload.operation === "show" || payload.operation === "hide";
+        const layerRefValue = layerActionTargetRef(payload.target, payload.objectName);
+        const layerName = isCreate
+            ? (payload.objectName || "Layer")
+            : (resolveStoryLayerRef(props.document.scenes[props.sceneId], layerRefValue).name || "Layer");
         return (
             <div className="grid grid-cols-1 gap-3">
                 <div className="nl-field-grid">
@@ -822,19 +851,35 @@ function ActionPayloadFields(props: {
                         value={payload.operation}
                         onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "layer" }>["operation"] })}
                     />
-                    <TextField label="Layer name" value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
-                    <NumberField label="Z-index" value={payload.zIndex} onChange={zIndex => props.onChange({ ...payload, zIndex })} />
+                    {isCreate ? (
+                        <TextField label="Layer name" value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
+                    ) : (
+                        <StoryLayerField
+                            label="Layer"
+                            document={props.document}
+                            sceneId={props.sceneId}
+                            blockId={props.block.id}
+                            value={layerRefValue}
+                            onChange={target => props.onChange({ ...payload, target })}
+                            onCreateLayer={() => props.onCreateLayer(props.block.id)}
+                        />
+                    )}
+                    {showZIndex ? (
+                        <NumberField label="Z-index" value={payload.zIndex} onChange={zIndex => props.onChange({ ...payload, zIndex })} />
+                    ) : null}
                 </div>
-                <TransformPresetEditor
-                    value={payload.transform}
-                    motionTargetKind="layer"
-                    motionLabel={`${payload.objectName || "Layer"} ${payload.operation}`}
-                    storyId={props.document.id}
-                    sceneId={props.sceneId}
-                    blockId={props.block.id}
-                    storyName={props.document.name}
-                    onChange={transform => props.onChange({ ...payload, transform })}
-                />
+                {showTransform ? (
+                    <TransformPresetEditor
+                        value={payload.transform}
+                        motionTargetKind="layer"
+                        motionLabel={`${layerName} ${payload.operation}`}
+                        storyId={props.document.id}
+                        sceneId={props.sceneId}
+                        blockId={props.block.id}
+                        storyName={props.document.name}
+                        onChange={transform => props.onChange({ ...payload, transform })}
+                    />
+                ) : null}
             </div>
         );
     }
@@ -1293,15 +1338,12 @@ function TransitionEditor(props: {
                     </>
                 ) : null}
                 {kind === "maskWipe" ? (
-                    <>
-                        <SelectField
-                            label="Direction"
-                            options={WIPE_DIRECTION_OPTIONS}
-                            value={paramString(value.props, "direction", "left")}
-                            onChange={direction => setParam({ direction: String(direction) })}
-                        />
-                        <CheckboxField label="Reverse" checked={paramBool(value.props, "reverse")} onChange={reverse => setParam({ reverse: reverse || undefined })} />
-                    </>
+                    <SelectField
+                        label="Direction"
+                        options={WIPE_DIRECTION_OPTIONS}
+                        value={paramString(value.props, "direction", "left")}
+                        onChange={direction => setParam({ direction: String(direction) })}
+                    />
                 ) : null}
                 {kind === "softWipe" ? (
                     <>
@@ -1325,7 +1367,47 @@ function TransitionEditor(props: {
                         <NumberField label="Slats" value={paramNumber(value.props, "slats")} onChange={slats => setParam({ slats })} />
                     </>
                 ) : null}
-                {kind === "blindsBlackout" ? (
+                {kind === "slide" ? (
+                    <SelectField
+                        label="Direction"
+                        options={WIPE_DIRECTION_OPTIONS}
+                        value={paramString(value.props, "direction", "left")}
+                        onChange={direction => setParam({ direction: String(direction) })}
+                    />
+                ) : null}
+                {kind === "softIris" ? (
+                    <>
+                        <TextField label="Center" value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
+                        <NumberField label="Feather %" value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                    </>
+                ) : null}
+                {kind === "blurDissolve" ? (
+                    <NumberField label="Blur px" value={paramNumber(value.props, "blur")} onChange={blur => setParam({ blur })} />
+                ) : null}
+                {kind === "throughColor" ? (
+                    <>
+                        <SelectField
+                            label="Pattern"
+                            options={THROUGH_COLOR_PATTERN_OPTIONS}
+                            value={paramString(value.props, "pattern", "plain")}
+                            onChange={pattern => setParam({ pattern: String(pattern) })}
+                        />
+                        <ColorTextField label="Color" value={paramString(value.props, "color", "#000000")} onChange={color => setParam({ color })} />
+                        <NumberField label="Hold %" value={paramNumber(value.props, "hold")} onChange={hold => setParam({ hold })} />
+                    </>
+                ) : null}
+                {kind === "throughColor" && paramString(value.props, "pattern", "plain") === "linear" ? (
+                    <>
+                        <SelectField
+                            label="Direction"
+                            options={WIPE_DIRECTION_OPTIONS}
+                            value={paramString(value.props, "direction", "left")}
+                            onChange={direction => setParam({ direction: String(direction) })}
+                        />
+                        <NumberField label="Feather %" value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                    </>
+                ) : null}
+                {kind === "throughColor" && paramString(value.props, "pattern", "plain") === "blinds" ? (
                     <>
                         <SelectField
                             label="Orientation"
@@ -1334,16 +1416,13 @@ function TransitionEditor(props: {
                             onChange={orientation => setParam({ orientation: String(orientation) })}
                         />
                         <NumberField label="Slats" value={paramNumber(value.props, "slats")} onChange={slats => setParam({ slats })} />
-                        <NumberField label="Black hold %" value={paramNumber(value.props, "hold")} onChange={hold => setParam({ hold })} />
                     </>
                 ) : null}
-                {kind === "slide" ? (
-                    <SelectField
-                        label="Direction"
-                        options={WIPE_DIRECTION_OPTIONS}
-                        value={paramString(value.props, "direction", "left")}
-                        onChange={direction => setParam({ direction: String(direction) })}
-                    />
+                {kind === "throughColor" && paramString(value.props, "pattern", "plain") === "iris" ? (
+                    <>
+                        <TextField label="Center" value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
+                        <NumberField label="Feather %" value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                    </>
                 ) : null}
             </FieldGrid>
             {kind === "none" ? null : (

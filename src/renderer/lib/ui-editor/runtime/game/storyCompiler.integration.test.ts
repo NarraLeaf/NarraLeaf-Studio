@@ -553,6 +553,84 @@ describe("compileStudioStoryToNlr", () => {
         expect(compiled.diagnostics).toEqual([]);
     });
 
+    it("still compiles a layer-action transform (back-compat: no longer offered in the UI)", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            bgZoom: {
+                id: "bgZoom",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                // The `layer` action no longer offers `transform` in the operation menu (transforms go
+                // through the unified displayable target list), but existing blocks must still compile.
+                payload: {
+                    action: "layer",
+                    operation: "transform",
+                    objectName: "",
+                    target: { kind: "default", layer: "background" },
+                    transform: { mode: "preset", preset: "zoom", durationMs: 300, props: { zoom: 1.4 } },
+                },
+            },
+        };
+
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["bgZoom"]),
+            sceneId: "scene-1",
+        });
+
+        const byBlock = (blockId: string) => compiled.actionIdBindings
+            .filter(binding => binding.blockId === blockId)
+            .flatMap(binding => collectActionTree(binding.action, compiled.story));
+
+        // Background layer resolved as a transform target (no "not found") and a real zoom was applied.
+        expect(compiled.diagnostics).toEqual([]);
+        expect(getDisplayableTransformProps(byBlock("bgZoom"))).toContainEqual(expect.objectContaining({ zoom: 1.4 }));
+    });
+
+    it("transforms built-in singletons (scene background + built-in layer) via displayable targets", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            bg: {
+                id: "bg",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                // The unified transform list: pick the scene background image (no create block needed).
+                payload: {
+                    action: "displayable",
+                    operation: "transform",
+                    target: { builtin: "background", kind: "image", name: "Scene background" },
+                    transform: { mode: "preset", preset: "zoom", durationMs: 300, props: { zoom: 1.25 } },
+                },
+            },
+            fgLayer: {
+                id: "fgLayer",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                // ...and the built-in displayable layer.
+                payload: {
+                    action: "displayable",
+                    operation: "transform",
+                    target: { builtin: "displayableLayer", kind: "layer", name: "Displayable layer" },
+                    transform: { mode: "preset", preset: "opacity", durationMs: 200, props: { opacity: 0.5 } },
+                },
+            },
+        };
+
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["bg", "fgLayer"]),
+            sceneId: "scene-1",
+        });
+
+        const byBlock = (blockId: string) => compiled.actionIdBindings
+            .filter(binding => binding.blockId === blockId)
+            .flatMap(binding => collectActionTree(binding.action, compiled.story));
+
+        // Both built-ins resolved as transform targets with no "not found" diagnostic.
+        expect(compiled.diagnostics).toEqual([]);
+        expect(getDisplayableTransformProps(byBlock("bg"))).toContainEqual(expect.objectContaining({ zoom: 1.25 }));
+        expect(getDisplayableTransformProps(byBlock("fgLayer"))).toContainEqual(expect.objectContaining({ opacity: 0.5 }));
+    });
+
     it("compiles displayable visual effects on an existing stage image", async () => {
         const blocks: Record<string, StoryBlock> = {
             show: {
@@ -803,7 +881,7 @@ describe("compileStudioStoryToNlr", () => {
     it("maps the custom transition kinds onto real NLR transitions without diagnostics", async () => {
         // Each new kind must be handled by createTransition; an unmapped kind
         // falls through to a "not supported" diagnostic, which this guards against.
-        const kinds: StoryTransitionRef["kind"][] = ["softWipe", "blinds", "blindsBlackout", "slide"];
+        const kinds: StoryTransitionRef["kind"][] = ["softWipe", "blinds", "slide", "softIris", "blurDissolve", "throughColor"];
         for (const kind of kinds) {
             const bg: StoryBlock = {
                 id: "bg",
@@ -817,7 +895,7 @@ describe("compileStudioStoryToNlr", () => {
                         kind,
                         durationMs: 400,
                         // Superset of every custom transition's params; each kind reads only its own.
-                        props: { direction: "right", orientation: "vertical", slats: 6, feather: 20, hold: 40 },
+                        props: { pattern: "iris", color: "#000000", blur: 12, direction: "right", orientation: "vertical", slats: 6, feather: 20, hold: 40, center: "50% 50%" },
                     },
                 },
             };
