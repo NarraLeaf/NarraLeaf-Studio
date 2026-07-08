@@ -236,7 +236,7 @@ export function BlueprintLayerPreview({
 
     return (
         <div
-            className={`relative ${heightClassName} w-full overflow-hidden rounded-md border border-white/10 bg-[#05060a]`}
+            className={`relative ${heightClassName} w-full overflow-hidden rounded-md border border-edge bg-surface-canvas`}
         >
             <ReactFlowProvider>
                 <ReactFlow
@@ -260,18 +260,18 @@ export function BlueprintLayerPreview({
                     preventScrolling={false}
                     proOptions={{ hideAttribution: true }}
                     onlyRenderVisibleElements
-                    className="pointer-events-none bg-[#05060a]"
+                    className="pointer-events-none bg-surface-canvas"
                 >
                     <Background color="rgba(148, 163, 184, 0.18)" gap={18} size={1} />
                 </ReactFlow>
             </ReactFlowProvider>
             {!hasLayer || !hasNodes ? (
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-[11px] text-slate-500">
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-2xs text-fg-subtle">
                     {!hasLayer ? "No blueprint" : model?.emptyLabel ?? "Empty layer"}
                 </div>
             ) : null}
             {model?.graphName ? (
-                <div className="pointer-events-none absolute bottom-2 left-2 max-w-[calc(100%-16px)] truncate text-[10px] text-slate-500">
+                <div className="pointer-events-none absolute bottom-2 left-2 max-w-[calc(100%-16px)] truncate text-2xs text-fg-subtle">
                     {model.graphName}
                 </div>
             ) : null}

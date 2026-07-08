@@ -61,7 +61,7 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
                     onKeyDown={handleKeyDown}
                     placeholder={placeholder}
                     autoFocus
-                    className={`bg-transparent text-sm text-gray-300 placeholder-gray-500 outline-none w-full ${className}`}
+                    className={`bg-transparent text-sm text-fg-muted placeholder-fg-subtle outline-none w-full ${className}`}
                 />
             );
         }
@@ -72,10 +72,10 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
                     flex items-center gap-2 px-3 py-2 rounded-md border transition-colors
                     ${isFocused
                         ? 'border-primary bg-primary/5'
-                        : 'border-white/20 bg-white/5 hover:bg-white/10'
+                        : 'border-edge-strong bg-fill-subtle hover:bg-fill'
                     }
                 `}>
-                    <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <Search className="w-4 h-4 text-fg-muted flex-shrink-0" />
                     <input
                         {...inputProps}
                         ref={inputRef}
@@ -86,13 +86,13 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
                         onBlur={handleInputBlur}
                         onKeyDown={handleKeyDown}
                         placeholder={placeholder}
-                        className="flex-1 bg-transparent text-sm text-gray-300 placeholder-gray-500 outline-none"
+                        className="flex-1 bg-transparent text-sm text-fg-muted placeholder-fg-subtle outline-none"
                     />
                     {value && (
                         <button
                             type="button"
                             onClick={handleClear}
-                            className="p-0.5 rounded hover:bg-white/10 text-gray-400 hover:text-gray-300 transition-colors"
+                            className="p-0.5 rounded hover:bg-fill text-fg-muted hover:text-fg-muted transition-colors"
                             title="Clear search"
                             aria-label="Clear search"
                         >

@@ -22,15 +22,15 @@ function SectionFieldInner<TData>({ field, data, onSaving }: SectionFieldProps<T
     }, [field.collapsible]);
 
     return (
-        <div className={`border border-white/10 rounded-md overflow-visible ${field.className || ""}`}>
+        <div className={`border border-edge rounded-md overflow-visible ${field.className || ""}`}>
             <div
-                className={`flex items-center gap-2 px-3 py-2 bg-[#1e1f22] ${
+                className={`flex items-center gap-2 px-3 py-2 bg-surface-raised ${
                     field.collapsible ? "cursor-pointer hover:bg-[#252629]" : ""
                 }`}
                 onClick={toggleCollapse}
             >
                 {field.collapsible && (
-                    <span className="text-gray-400">
+                    <span className="text-fg-muted">
                         {isCollapsed ? (
                             <ChevronRight className="w-4 h-4" />
                         ) : (
@@ -38,7 +38,7 @@ function SectionFieldInner<TData>({ field, data, onSaving }: SectionFieldProps<T
                         )}
                     </span>
                 )}
-                <span className="text-sm font-medium text-gray-300">{field.title}</span>
+                <span className="text-sm font-medium text-fg-muted">{field.title}</span>
             </div>
             {!isCollapsed && (
                 <div className="p-3 space-y-3">

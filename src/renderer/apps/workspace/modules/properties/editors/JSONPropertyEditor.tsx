@@ -47,13 +47,13 @@ export function JSONPropertyEditor({ asset, onChange }: PropertyEditorProps<Asse
         <BasePropertyEditor asset={asset} onChange={onChange}>
             {/* Preview */}
             {jsonData && (
-                <div className="bg-[#1e1f22] rounded-md p-3 border border-white/10">
+                <div className="bg-surface-raised rounded-md p-3 border border-edge">
                     <div className="flex items-center gap-2 mb-2">
-                        <FileJson className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm font-medium text-gray-300">JSON Structure</span>
+                        <FileJson className="w-4 h-4 text-fg-muted" />
+                        <span className="text-sm font-medium text-fg-muted">JSON Structure</span>
                     </div>
-                    <div className="flex items-center justify-center bg-[#0f1115] rounded p-2">
-                        <div className="text-xs text-gray-500 text-center">
+                    <div className="flex items-center justify-center bg-surface rounded p-2">
+                        <div className="text-xs text-fg-subtle text-center">
                             {jsonData.metadata.schema ? `Schema: ${jsonData.metadata.schema}` : 'No schema'}
                         </div>
                     </div>
@@ -63,23 +63,23 @@ export function JSONPropertyEditor({ asset, onChange }: PropertyEditorProps<Asse
             {/* Technical Info (Read-only) */}
             {jsonData && (
                 <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">
+                    <label className="block text-xs font-medium text-fg-muted mb-1">
                         JSON Information
                     </label>
-                    <div className="bg-[#1e1f22] border border-white/10 rounded-md p-3 space-y-1">
+                    <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-1">
                         {jsonData.metadata.schema && (
                             <div className="flex justify-between text-xs">
-                                <span className="text-gray-400">Schema:</span>
-                                <span className="text-gray-300">{jsonData.metadata.schema}</span>
+                                <span className="text-fg-muted">Schema:</span>
+                                <span className="text-fg-muted">{jsonData.metadata.schema}</span>
                             </div>
                         )}
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Size:</span>
-                            <span className="text-gray-300">{(jsonData.metadata.size / 1024).toFixed(1)} KB</span>
+                            <span className="text-fg-muted">Size:</span>
+                            <span className="text-fg-muted">{(jsonData.metadata.size / 1024).toFixed(1)} KB</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Hash:</span>
-                            <span className="text-gray-300 font-mono text-[10px]">{asset.hash.slice(0, 16)}...</span>
+                            <span className="text-fg-muted">Hash:</span>
+                            <span className="text-fg-muted font-mono text-2xs">{asset.hash.slice(0, 16)}...</span>
                         </div>
                     </div>
                 </div>

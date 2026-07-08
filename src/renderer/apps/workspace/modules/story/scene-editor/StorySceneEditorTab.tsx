@@ -45,8 +45,8 @@ import {
     type StoryScenePreviewPaneState,
 } from "./preview/storyScenePreviewSessionStore";
 
-const SCENE_FIELD_LABEL_CLASS = "mb-1 block text-[11px] font-medium text-slate-500";
-const SCENE_TEXT_FIELD_CLASS = "w-full rounded-md border border-white/10 bg-[#16181d] px-3 py-2 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-600 focus:border-primary/50";
+const SCENE_FIELD_LABEL_CLASS = "mb-1 block text-2xs font-medium text-fg-subtle";
+const SCENE_TEXT_FIELD_CLASS = "w-full rounded-md border border-edge bg-[#16181d] px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-primary/50";
 
 function StorySceneOverviewBlock(props: {
     document: StoryDocument;
@@ -99,31 +99,31 @@ function StorySceneOverviewBlock(props: {
     const backgroundLabel = backgroundAsset?.name ?? (backgroundAssetId ? "Missing image" : "No background");
 
     return (
-        <div className="mx-3 mb-3 rounded-lg border border-white/10 bg-white/[0.025] p-3">
+        <div className="mx-3 mb-3 rounded-lg border border-edge bg-white/[0.025] p-3">
             <div
                 className="grid items-start gap-3"
                 style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))" }}
             >
                 <button
                     type="button"
-                    className="group relative aspect-[16/9] min-h-40 overflow-hidden rounded-md border border-white/10 bg-[#101216] text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
+                    className="group relative aspect-[16/9] min-h-40 overflow-hidden rounded-md border border-edge bg-[#101216] text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
                     onClick={() => setSelectorOpen(true)}
                     title={backgroundAssetId ? "Change default background" : "Select default background"}
                 >
                     {url ? (
                         <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
                     ) : (
-                        <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-sm text-slate-500">
-                            <ImageIcon className="h-6 w-6 text-slate-600" />
+                        <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-sm text-fg-subtle">
+                            <ImageIcon className="h-6 w-6 text-fg-subtle" />
                             <span className="max-w-[80%] truncate">{backgroundLabel}</span>
                         </div>
                     )}
                     {loading ? (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-xs text-slate-100">
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-xs text-fg">
                             Loading...
                         </div>
                     ) : null}
-                    <div className="absolute inset-x-0 bottom-0 flex min-h-9 items-center justify-between gap-2 bg-black/55 px-3 py-2 text-xs text-slate-200 backdrop-blur-sm">
+                    <div className="absolute inset-x-0 bottom-0 flex min-h-9 items-center justify-between gap-2 bg-black/55 px-3 py-2 text-xs text-fg backdrop-blur-sm">
                         <span className="min-w-0 truncate">{backgroundLabel}</span>
                         <span className="shrink-0 text-primary opacity-0 transition-opacity group-hover:opacity-100">
                             {backgroundAssetId ? "Change" : "Select"}
@@ -137,7 +137,7 @@ function StorySceneOverviewBlock(props: {
                             <FileText className="h-4 w-4 shrink-0 text-primary" />
                             <div className="min-w-0">
                                 <div className="truncate text-sm font-medium text-white">{document.name}</div>
-                                <div className="truncate text-[11px] text-slate-500">{scene.runtimeName || "Untitled scene"}</div>
+                                <div className="truncate text-2xs text-fg-subtle">{scene.runtimeName || "Untitled scene"}</div>
                             </div>
                         </div>
                         <label className={SCENE_FIELD_LABEL_CLASS}>Scene name</label>
@@ -187,17 +187,17 @@ function StorySceneOverviewBlock(props: {
                             <button
                                 ref={selectButtonRef}
                                 type="button"
-                                className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-white/10 bg-[#16181d] px-3 text-left text-sm text-gray-300 hover:border-primary/40"
+                                className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-edge bg-[#16181d] px-3 text-left text-sm text-fg-muted hover:border-primary/40"
                                 onClick={() => setSelectorOpen(true)}
                             >
-                                <ImageIcon className="h-3.5 w-3.5 shrink-0 text-slate-500" />
-                                <span className={["truncate", backgroundAsset ? "" : "italic text-gray-500"].join(" ")}>
+                                <ImageIcon className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
+                                <span className={["truncate", backgroundAsset ? "" : "italic text-fg-subtle"].join(" ")}>
                                     {backgroundLabel}
                                 </span>
                             </button>
                             <button
                                 type="button"
-                                className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04] text-slate-400 hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                                className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
                                 disabled={!backgroundAssetId}
                                 title="Clear background"
                                 onClick={clearBackground}
@@ -206,7 +206,7 @@ function StorySceneOverviewBlock(props: {
                             </button>
                         </div>
                         {backgroundAssetId && error ? (
-                            <div className="mt-1 text-[11px] text-amber-400/90">
+                            <div className="mt-1 text-2xs text-amber-400/90">
                                 Image asset could not be resolved: {error}
                             </div>
                         ) : null}
@@ -615,7 +615,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
 
     if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
         return (
-            <div className="flex h-full items-center justify-center p-6 text-sm text-gray-400">
+            <div className="flex h-full items-center justify-center p-6 text-sm text-fg-muted">
                 Story scene editor tab is invalid.
             </div>
         );
@@ -623,7 +623,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
 
     if (editor.loading) {
         return (
-            <div className="flex h-full items-center justify-center p-6 text-sm text-gray-400">
+            <div className="flex h-full items-center justify-center p-6 text-sm text-fg-muted">
                 Loading story scene...
             </div>
         );
@@ -661,19 +661,19 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         <div
             ref={editor.rootRef}
             tabIndex={0}
-            className="flex h-full min-h-0 flex-col bg-[#0d0f12] text-slate-100 outline-none"
+            className="flex h-full min-h-0 flex-col bg-[#0d0f12] text-fg outline-none"
             onFocus={editor.focusWorkspace}
             onFocusCapture={handleEditorFocusCapture}
             onKeyDown={editor.handleKeyDown}
             onCopy={editor.copySelectionToClipboard}
             onPaste={editor.handlePaste}
         >
-            <div className="flex min-h-[44px] items-center gap-3 border-b border-white/10 px-3">
+            <div className="flex min-h-[44px] items-center gap-3 border-b border-edge px-3">
                 <div className="flex min-w-0 items-center gap-2">
                     <FileText className="h-4 w-4 shrink-0 text-primary" />
                     <div className="min-w-0">
                         <div className="truncate text-sm font-medium text-white">{scene.name}</div>
-                        <div className="truncate text-[11px] text-slate-400">{document.name}</div>
+                        <div className="truncate text-2xs text-fg-muted">{document.name}</div>
                     </div>
                 </div>
             </div>
@@ -765,7 +765,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 ) : isInsertingAfterLastRow ? null : (
                     <button
                         type="button"
-                        className="mt-1 flex min-h-[32px] w-full items-center gap-2 pl-[64px] pr-3 text-left text-sm italic text-slate-500 hover:bg-white/[0.04] hover:text-slate-300"
+                        className="mt-1 flex min-h-[32px] w-full items-center gap-2 pl-[64px] pr-3 text-left text-sm italic text-fg-subtle hover:bg-fill-subtle hover:text-fg-muted"
                         onClick={() => editor.startInsertAfter(null, true)}
                     >
                         <Plus className="h-4 w-4 text-primary" />
@@ -780,7 +780,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             </div>
             <button
                 type="button"
-                className={`absolute bottom-3 right-3 z-[5] flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs shadow-lg transition-colors ${previewOpen ? "bg-primary/20 text-primary" : "bg-[#0b0d12] text-slate-300 hover:bg-white/10"}`}
+                className={`absolute bottom-3 right-3 z-[5] flex items-center gap-1.5 rounded-lg border border-edge px-2.5 py-1.5 text-xs shadow-lg transition-colors ${previewOpen ? "bg-primary/20 text-primary" : "bg-surface-sunken text-fg-muted hover:bg-fill"}`}
                 onClick={togglePreview}
                 title={previewOpen ? "Close live preview" : "Open live preview"}
             >
@@ -793,9 +793,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     <ResizableHandle
                         direction="horizontal"
                         onResize={handlePreviewResize}
-                        className="w-1 shrink-0 border-r-2 border-transparent bg-white/5"
+                        className="w-1 shrink-0 border-r-2 border-transparent bg-fill-subtle"
                     />
-                    <div style={{ width: previewWidth }} className="min-h-0 shrink-0 border-l border-white/10">
+                    <div style={{ width: previewWidth }} className="min-h-0 shrink-0 border-l border-edge">
                         <StoryScenePreviewPane controller={preview} onClose={togglePreview} />
                     </div>
                 </>

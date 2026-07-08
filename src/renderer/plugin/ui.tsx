@@ -85,7 +85,7 @@ export function PluginPanelRoot({
     return (
         <div
             className={cx(
-                "h-full min-h-0 bg-[#0f1115] text-gray-200 flex flex-col overflow-hidden",
+                "h-full min-h-0 bg-surface text-fg flex flex-col overflow-hidden",
                 padded && "p-3",
                 className,
             )}
@@ -112,13 +112,13 @@ export function PluginPanelHeader({
 }: PluginPanelHeaderProps) {
     return (
         <div
-            className={cx("flex items-start justify-between gap-3 border-b border-white/10 pb-3 mb-3", className)}
+            className={cx("flex items-start justify-between gap-3 border-b border-edge pb-3 mb-3", className)}
             {...props}
         >
             <div className="min-w-0">
-                <div className="text-sm font-semibold text-gray-100 truncate">{title}</div>
+                <div className="text-sm font-semibold text-fg truncate">{title}</div>
                 {description && (
-                    <div className="mt-1 text-xs text-gray-400 leading-relaxed">{description}</div>
+                    <div className="mt-1 text-xs text-fg-muted leading-relaxed">{description}</div>
                 )}
                 {children}
             </div>
@@ -159,7 +159,7 @@ export function PluginPanelSection({
         <section className={cx("min-w-0 py-2", className)} {...props}>
             {(title || actions) && (
                 <div className="mb-2 flex items-center justify-between gap-2">
-                    {title && <h3 className="text-xs font-semibold tracking-wide text-gray-400">{title}</h3>}
+                    {title && <h3 className="text-xs font-semibold tracking-wide text-fg-muted">{title}</h3>}
                     {actions && <div className="flex items-center gap-1">{actions}</div>}
                 </div>
             )}
@@ -185,8 +185,8 @@ export function PluginPanelRow({
     return (
         <div className={cx("flex min-w-0 items-center justify-between gap-3 py-1.5", className)} {...props}>
             <div className="min-w-0">
-                {label && <div className="text-sm text-gray-200 truncate">{label}</div>}
-                {description && <div className="mt-0.5 text-xs text-gray-500 leading-relaxed">{description}</div>}
+                {label && <div className="text-sm text-fg truncate">{label}</div>}
+                {description && <div className="mt-0.5 text-xs text-fg-subtle leading-relaxed">{description}</div>}
                 {children}
             </div>
             {control && <div className="shrink-0">{control}</div>}
@@ -211,12 +211,12 @@ export function PluginPanelEmptyState({
 }: PluginPanelEmptyStateProps) {
     return (
         <div
-            className={cx("flex min-h-36 flex-col items-center justify-center rounded-md border border-dashed border-white/10 px-4 py-6 text-center", className)}
+            className={cx("flex min-h-36 flex-col items-center justify-center rounded-md border border-dashed border-edge px-4 py-6 text-center", className)}
             {...props}
         >
-            {icon && <div className="mb-2 text-gray-500">{icon}</div>}
-            <div className="text-sm font-medium text-gray-200">{title}</div>
-            {description && <div className="mt-1 max-w-xs text-xs leading-relaxed text-gray-500">{description}</div>}
+            {icon && <div className="mb-2 text-fg-subtle">{icon}</div>}
+            <div className="text-sm font-medium text-fg">{title}</div>
+            {description && <div className="mt-1 max-w-xs text-xs leading-relaxed text-fg-subtle">{description}</div>}
             {actions && <div className="mt-3 flex items-center justify-center gap-2">{actions}</div>}
         </div>
     );

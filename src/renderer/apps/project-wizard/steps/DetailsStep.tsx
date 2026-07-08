@@ -51,8 +51,8 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
         <div className="p-6">
             <div className="space-y-6">
                 <div className="space-y-2">
-                    <h2 className="text-lg font-semibold text-gray-200">Project Details</h2>
-                    <p className="text-sm text-gray-400">
+                    <h2 className="text-lg font-semibold text-fg">Project Details</h2>
+                    <p className="text-sm text-fg-muted">
                         Provide basic information about your project.
                     </p>
                 </div>

@@ -45,13 +45,13 @@ export function VideoPropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
         <BasePropertyEditor asset={asset} onChange={onChange}>
             {/* Preview */}
             {videoData && (
-                <div className="bg-[#1e1f22] rounded-md p-3 border border-white/10">
+                <div className="bg-surface-raised rounded-md p-3 border border-edge">
                     <div className="flex items-center gap-2 mb-2">
-                        <Video className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm font-medium text-gray-300">Video Info</span>
+                        <Video className="w-4 h-4 text-fg-muted" />
+                        <span className="text-sm font-medium text-fg-muted">Video Info</span>
                     </div>
-                    <div className="flex items-center justify-center bg-[#0f1115] rounded p-2">
-                        <div className="text-xs text-gray-500 text-center">
+                    <div className="flex items-center justify-center bg-surface rounded p-2">
+                        <div className="text-xs text-fg-subtle text-center">
                             {videoData.metadata.width} × {videoData.metadata.height}
                             <br />
                             {formatDuration(videoData.metadata.duration)}
@@ -65,37 +65,37 @@ export function VideoPropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
             {/* Technical Info (Read-only) */}
             {videoData && (
                 <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">
+                    <label className="block text-xs font-medium text-fg-muted mb-1">
                         Video Information
                     </label>
-                    <div className="bg-[#1e1f22] border border-white/10 rounded-md p-3 space-y-1">
+                    <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-1">
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Duration:</span>
-                            <span className="text-gray-300">{formatDuration(videoData.metadata.duration)}</span>
+                            <span className="text-fg-muted">Duration:</span>
+                            <span className="text-fg-muted">{formatDuration(videoData.metadata.duration)}</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Dimensions:</span>
-                            <span className="text-gray-300">
+                            <span className="text-fg-muted">Dimensions:</span>
+                            <span className="text-fg-muted">
                                 {videoData.metadata.width} × {videoData.metadata.height}
                             </span>
                         </div>
                         {videoData.metadata.frameRate && (
                             <div className="flex justify-between text-xs">
-                                <span className="text-gray-400">Frame Rate:</span>
-                                <span className="text-gray-300">{videoData.metadata.frameRate} FPS</span>
+                                <span className="text-fg-muted">Frame Rate:</span>
+                                <span className="text-fg-muted">{videoData.metadata.frameRate} FPS</span>
                             </div>
                         )}
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Format:</span>
-                            <span className="text-gray-300">{videoData.metadata.format.toUpperCase()}</span>
+                            <span className="text-fg-muted">Format:</span>
+                            <span className="text-fg-muted">{videoData.metadata.format.toUpperCase()}</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Size:</span>
-                            <span className="text-gray-300">{(videoData.metadata.size / 1024).toFixed(1)} KB</span>
+                            <span className="text-fg-muted">Size:</span>
+                            <span className="text-fg-muted">{(videoData.metadata.size / 1024).toFixed(1)} KB</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Hash:</span>
-                            <span className="text-gray-300 font-mono text-[10px]">{asset.hash.slice(0, 16)}...</span>
+                            <span className="text-fg-muted">Hash:</span>
+                            <span className="text-fg-muted font-mono text-2xs">{asset.hash.slice(0, 16)}...</span>
                         </div>
                     </div>
                 </div>

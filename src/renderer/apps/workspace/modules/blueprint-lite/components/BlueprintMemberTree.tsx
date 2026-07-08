@@ -19,7 +19,7 @@ import { BlueprintVariableDialogContent, type BlueprintVariableDialogValue } fro
 import { ChevronDown, ChevronRight, Plus, Save, Trash2 } from "lucide-react";
 
 const FIELD_INPUT =
-    "w-full rounded-md border border-white/20 bg-white/5 px-2 py-1 text-[11px] text-gray-200 outline-none transition-colors focus:border-[#40a8c4] focus:ring-1 focus:ring-[#40a8c4]/30";
+    "w-full rounded-md border border-edge-strong bg-fill-subtle px-2 py-1 text-2xs text-fg outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/30";
 
 type Props = {
     blueprint: Blueprint;
@@ -100,10 +100,10 @@ function CollapsibleSection({
 
     return (
         <section className="shrink-0">
-            <div className="mb-1 flex items-center justify-between gap-2 text-[10px] tracking-wide text-gray-500">
+            <div className="mb-1 flex items-center justify-between gap-2 text-2xs tracking-wide text-fg-subtle">
                 <button
                     type="button"
-                    className="flex min-w-0 flex-1 items-center gap-1 text-left hover:text-gray-300"
+                    className="flex min-w-0 flex-1 items-center gap-1 text-left hover:text-fg-muted"
                     onClick={() => setOpen(!actualOpen)}
                 >
                     {actualOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -150,12 +150,12 @@ function BlueprintVariableRow({
     }, [blueprintId, draftName, localBp, v.id, v.name]);
 
     return (
-        <div className="group rounded border border-white/10 bg-[#0d0f12] px-2 py-1.5 space-y-1.5">
+        <div className="group rounded border border-edge bg-[#0d0f12] px-2 py-1.5 space-y-1.5">
             <div className="flex items-center justify-between gap-1">
                 <div className="flex min-w-0 items-center gap-1.5">
-                    <span className={`text-[9px] ${accentClass}`}>{scopeLabel}</span>
+                    <span className={`text-2xs ${accentClass}`}>{scopeLabel}</span>
                     {v.valueType ? (
-                        <span className="truncate rounded border border-white/10 bg-white/5 px-1 py-0.5 font-mono text-[9px] text-gray-400">
+                        <span className="truncate rounded border border-edge bg-fill-subtle px-1 py-0.5 font-mono text-2xs text-fg-muted">
                             {v.valueType}
                         </span>
                     ) : null}
@@ -201,7 +201,7 @@ function BlueprintVariableRow({
                 }}
             />
             <div>
-                <div className="mb-0.5 text-[9px] text-gray-500">Default</div>
+                <div className="mb-0.5 text-2xs text-fg-subtle">Default</div>
                 <BlueprintLiteralValueControl
                     variant="inspector"
                     value={v.defaultValue ?? null}
@@ -243,9 +243,9 @@ function BlueprintPersistentVariableRow({
     }, [draftName, historyBlueprintId, localBp, v.id, v.name]);
 
     return (
-        <div className="group rounded border border-white/10 bg-[#0d0f12] px-2 py-1.5 space-y-1.5">
+        <div className="group rounded border border-edge bg-[#0d0f12] px-2 py-1.5 space-y-1.5">
             <div className="flex items-center justify-between gap-1">
-                <label htmlFor={`persistent-variable-name-${v.id}`} className="text-[10px] font-medium text-gray-500">
+                <label htmlFor={`persistent-variable-name-${v.id}`} className="text-2xs font-medium text-fg-subtle">
                     Name
                 </label>
                 <button
@@ -290,7 +290,7 @@ function BlueprintPersistentVariableRow({
                 }}
             />
             <div>
-                <div className="mb-0.5 text-[9px] text-gray-500">Default</div>
+                <div className="mb-0.5 text-2xs text-fg-subtle">Default</div>
                 <BlueprintLiteralValueControl
                     variant="inspector"
                     value={v.defaultValue ?? null}
@@ -585,7 +585,7 @@ export function BlueprintMemberTree({
     }, [blueprintId, localBp, onVariableGroupOpenChange, promptCreatePersistentVariable]);
 
     if (blueprint.program.kind !== "graph") {
-        return <p className="text-xs text-gray-500">Not a graph blueprint.</p>;
+        return <p className="text-xs text-fg-subtle">Not a graph blueprint.</p>;
     }
 
     const blueprintDocument = localBp.getBlueprintDocument();
@@ -683,9 +683,9 @@ export function BlueprintMemberTree({
     }, [blueprintId, events, hideMenu, inputDialog, localBp, menuLayerId, onDeleteLayer, uiService]);
 
     return (
-        <div className="flex h-full min-h-0 flex-col gap-4 text-xs text-gray-300">
+        <div className="flex h-full min-h-0 flex-col gap-4 text-xs text-fg-muted">
             <section className="shrink-0">
-                <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-gray-500">
+                <div className="mb-1 flex items-center justify-between text-2xs font-medium text-fg-subtle">
                     <span>Layers</span>
                     <button
                         type="button"
@@ -698,7 +698,7 @@ export function BlueprintMemberTree({
                 </div>
                 <ul className="space-y-0.5">
                     {Object.keys(events).length === 0 ? (
-                        <li className="text-gray-500">-</li>
+                        <li className="text-fg-subtle">-</li>
                     ) : (
                         Object.keys(events).map(id => {
                             const { errors, warnings } = countForGraph(diagnostics, "event", id);
@@ -706,10 +706,10 @@ export function BlueprintMemberTree({
                                 <li key={id}>
                                     <button
                                         type="button"
-                                        className={`w-full rounded px-2 py-1 text-left font-mono text-[11px] ${
+                                        className={`w-full rounded px-2 py-1 text-left font-mono text-2xs ${
                                             layerActive(id)
                                                 ? "bg-cyan-500/15 text-cyan-100"
-                                                : "text-gray-300 hover:bg-white/5"
+                                                : "text-fg-muted hover:bg-fill-subtle"
                                         }`}
                                         onClick={() => onSelectLayer(id)}
                                         onContextMenu={e => {
@@ -731,7 +731,7 @@ export function BlueprintMemberTree({
                 </ul>
             </section>
 
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto border-t border-white/5 pt-2">
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto border-t border-edge-subtle pt-2">
                 {variableGroups.map(group => {
                     const vars = sortedVariables(group.blueprint);
                     return (
@@ -753,7 +753,7 @@ export function BlueprintMemberTree({
                             }
                         >
                             <div className="space-y-2">
-                                {vars.length === 0 ? <p className="text-gray-500">{group.emptyText}</p> : null}
+                                {vars.length === 0 ? <p className="text-fg-subtle">{group.emptyText}</p> : null}
                                 {vars.map(v => (
                                     <BlueprintVariableRow
                                         key={v.id}
@@ -788,7 +788,7 @@ export function BlueprintMemberTree({
                     }
                 >
                     <div className="space-y-2">
-                        {sortedPersistentList.length === 0 ? <p className="text-gray-500">No persistent variables.</p> : null}
+                        {sortedPersistentList.length === 0 ? <p className="text-fg-subtle">No persistent variables.</p> : null}
                         {sortedPersistentList.map(v => (
                             <BlueprintPersistentVariableRow
                                 key={v.id}

@@ -108,11 +108,11 @@ export function SettingsApp() {
 
     return (
         <AppLayout title={t("settings.title")} iconSrc="/favicon.ico">
-            <div className="flex h-full overflow-hidden rounded-md border border-white/10 bg-[#0f1115] shadow-xl">
-                <aside className="w-64 shrink-0 border-r border-white/5 bg-black/50 p-4 space-y-4">
+            <div className="flex h-full overflow-hidden rounded-md border border-edge bg-surface shadow-xl">
+                <aside className="w-64 shrink-0 border-r border-edge-subtle bg-black/50 p-4 space-y-4">
                     <div>
                         <p className="text-lg font-semibold text-white">{t("settings.title")}</p>
-                        <p className="text-xs text-gray-400">
+                        <p className="text-xs text-fg-muted">
                             {t("settings.subtitle")}
                         </p>
                     </div>
@@ -131,17 +131,17 @@ export function SettingsApp() {
                                         <button
                                             key={category.key}
                                             onClick={() => handleCategoryClick(category.key)}
-                                            className={`w-full rounded-md px-3 py-2 text-left transition-colors ${isActive ? "bg-white/10 text-white" : "text-gray-300 hover:bg-white/10 hover:text-white"}`}
+                                            className={`w-full rounded-md px-3 py-2 text-left transition-colors ${isActive ? "bg-fill text-white" : "text-fg-muted hover:bg-fill hover:text-white"}`}
                                         >
                                             <div className="text-sm font-medium">{category.label}</div>
-                                            <p className="text-xs text-gray-500">{category.description}</p>
+                                            <p className="text-xs text-fg-subtle">{category.description}</p>
                                         </button>
                                     );
                                 })}
                             </div>
                         </>
                     ) : (
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-fg-subtle">
                             {t("settings.noneExposed")}
                         </p>
                     )}

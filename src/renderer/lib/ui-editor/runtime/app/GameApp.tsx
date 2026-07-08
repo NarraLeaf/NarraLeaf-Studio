@@ -1376,7 +1376,12 @@ export function GameApp(props: GameAppProps): ReactNode {
                     }
                 }
             }}
-            onError={err => {
+            onError={(err, errorSessionId) => {
+                // Teardown noise from an already-replaced session must not reject the current boot.
+                if (nlrSession?.id !== errorSessionId) {
+                    host.log("warning", `stale NLR session error (${errorSessionId}): ${normalizeError(err)}`);
+                    return;
+                }
                 rejectPendingGameStarts(err);
                 host.log("error", normalizeError(err));
             }}

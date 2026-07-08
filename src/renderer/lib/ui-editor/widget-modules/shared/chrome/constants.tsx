@@ -12,7 +12,7 @@ function StrokeStyleIcon({ style }: { style: StrokeStyleOptionValue }) {
   return (
     <svg
       viewBox="0 0 16 16"
-      className="w-4 h-4 text-gray-400"
+      className="w-4 h-4 text-fg-muted"
       aria-hidden="true"
       fill="none"
       stroke="currentColor"
@@ -44,7 +44,7 @@ function CornerIcon({ position }: { position: CornerPosition }) {
   return (
     <svg
       viewBox="0 0 16 16"
-      className="w-4 h-4 text-gray-400"
+      className="w-4 h-4 text-fg-muted"
       aria-hidden="true"
       fill="none"
       stroke="currentColor"
@@ -57,8 +57,8 @@ function CornerIcon({ position }: { position: CornerPosition }) {
 }
 
 const CONTROL_BUTTON_BASE =
-  "grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-transparent text-gray-300 transition hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50";
-const CONTROL_BUTTON_ACTIVE = "bg-white/10 border-white/40 text-white";
+  "grid h-9 w-9 place-items-center rounded-lg border border-edge bg-transparent text-fg-muted transition hover:bg-fill-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50";
+const CONTROL_BUTTON_ACTIVE = "bg-fill border-white/40 text-white";
 
 export function controlButtonClass(active?: boolean) {
   return [CONTROL_BUTTON_BASE, active ? CONTROL_BUTTON_ACTIVE : null].filter(Boolean).join(" ");

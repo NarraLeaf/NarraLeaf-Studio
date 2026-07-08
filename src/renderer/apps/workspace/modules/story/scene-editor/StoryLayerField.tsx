@@ -9,7 +9,7 @@ import { DEFAULT_LAYER_OPTIONS, resolveStoryLayerRef } from "@shared/types/story
 import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPreviewTarget";
 import { useAutoMenuPlacement } from "./DisplayableTargetField";
 
-const FIELD_LABEL_CLASS = "block text-xs font-medium text-gray-400 mb-1";
+const FIELD_LABEL_CLASS = "block text-xs font-medium text-fg-muted mb-1";
 
 type LayerOption =
     | { kind: "default"; layer: "background" | "displayable"; label: string; hint: string }
@@ -87,27 +87,27 @@ export function StoryLayerField(props: {
             <label className={FIELD_LABEL_CLASS}>{props.label ?? "Layer"}</label>
             <button
                 type="button"
-                className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-white/10 bg-[#1e1f22] px-3 text-left text-sm text-gray-300 transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60"
+                className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-edge bg-surface-raised px-3 text-left text-sm text-fg-muted transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60"
                 onClick={() => setOpen(current => !current)}
             >
-                <TriggerIcon className={["h-3.5 w-3.5 shrink-0", unresolved ? "text-amber-400" : "text-slate-400"].join(" ")} />
-                <span className="truncate text-slate-100">{resolved.name || "Displayable layer"}</span>
+                <TriggerIcon className={["h-3.5 w-3.5 shrink-0", unresolved ? "text-amber-400" : "text-fg-muted"].join(" ")} />
+                <span className="truncate text-fg">{resolved.name || "Displayable layer"}</span>
                 {unresolved ? (
                     <span
-                        className="shrink-0 rounded bg-amber-400/10 px-1 text-[10px] text-amber-300/90"
+                        className="shrink-0 rounded bg-amber-400/10 px-1 text-2xs text-amber-300/90"
                         title="No layer with this name is declared earlier in this scene — pick an existing layer"
                     >
                         Not on stage
                     </span>
                 ) : resolved.kind === "default" ? (
-                    <span className="shrink-0 text-[11px] text-slate-500">Built-in</span>
+                    <span className="shrink-0 text-2xs text-fg-subtle">Built-in</span>
                 ) : null}
-                <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-slate-500" />
+                <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-fg-subtle" />
             </button>
             {open ? (
                 <div
                     className={[
-                        "absolute left-0 z-50 w-full min-w-[240px] overflow-hidden rounded-xl border border-white/10 bg-[#181b20] shadow-xl",
+                        "absolute left-0 z-50 w-full min-w-[240px] overflow-hidden rounded-xl border border-edge bg-[#181b20] shadow-xl",
                         placement === "above" ? "bottom-full mb-1" : "top-full mt-1",
                     ].join(" ")}
                 >
@@ -166,16 +166,16 @@ function LayerRow(props: {
             aria-selected={props.active}
             className={[
                 "flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-left transition-colors",
-                props.active ? "bg-primary/15 text-white" : "hover:bg-white/[0.06]",
+                props.active ? "bg-primary/15 text-white" : "hover:bg-fill",
             ].join(" ")}
             onClick={props.onChoose}
         >
-            <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-white/10 bg-white/[0.04]">
-                <Layers className="h-3.5 w-3.5 text-slate-400" />
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-edge bg-fill-subtle">
+                <Layers className="h-3.5 w-3.5 text-fg-muted" />
             </span>
             <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-slate-100">{props.label}</span>
-                <span className="block truncate text-[11px] text-slate-500">{props.hint}</span>
+                <span className="block truncate text-sm text-fg">{props.label}</span>
+                <span className="block truncate text-2xs text-fg-subtle">{props.hint}</span>
             </span>
             {props.active ? <Check className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
         </button>

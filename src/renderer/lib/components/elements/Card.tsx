@@ -1,4 +1,5 @@
 import React from "react";
+import { cn } from "../../utils/cn";
 
 export type CardVariant = "default" | "elevated" | "outlined" | "ghost";
 export type CardSize = "sm" | "md" | "lg";
@@ -15,9 +16,9 @@ export interface CardProps {
 }
 
 const variantStyles: Record<CardVariant, string> = {
-    default: "bg-white/5 border border-white/10",
-    elevated: "bg-white/10 border border-white/20 shadow-lg shadow-black/20",
-    outlined: "bg-transparent border border-white/20",
+    default: "bg-fill-subtle border border-edge",
+    elevated: "bg-fill border border-edge-strong shadow-lg shadow-black/20",
+    outlined: "bg-transparent border border-edge-strong",
     ghost: "bg-transparent border border-transparent",
 };
 
@@ -45,14 +46,14 @@ export function Card({
 
     return (
         <Component
-            className={`
-                ${variantStyles[variant]}
-                ${sizeStyles[size]}
-                transition-all duration-150 ease-out
-                ${hover || onClick ? "hover:bg-white/10 cursor-pointer" : ""}
-                ${onClick ? "focus:outline-none focus:ring-0 focus:ring-transparent focus:shadow-none" : ""}
-                ${className}
-            `}
+            className={cn(
+                variantStyles[variant],
+                sizeStyles[size],
+                "transition-all duration-150 ease-out",
+                (hover || onClick) && "hover:bg-fill cursor-pointer",
+                onClick && "focus:outline-none",
+                className,
+            )}
             onClick={onClick}
             onFocus={onFocus}
             onBlur={onBlur}
@@ -73,7 +74,7 @@ export function CardHeader({
     children: React.ReactNode;
 }) {
     return (
-        <div className={`mb-3 ${className}`}>
+        <div className={cn("mb-3", className)}>
             {children}
         </div>
     );
@@ -90,7 +91,7 @@ export function CardTitle({
     children: React.ReactNode;
 }) {
     return (
-        <h3 className={`text-sm font-semibold text-gray-200 ${className}`}>
+        <h3 className={cn("text-sm font-semibold text-fg", className)}>
             {children}
         </h3>
     );
@@ -107,7 +108,7 @@ export function CardDescription({
     children: React.ReactNode;
 }) {
     return (
-        <p className={`text-xs text-gray-400 mt-1 ${className}`}>
+        <p className={cn("text-xs text-fg-muted mt-1", className)}>
             {children}
         </p>
     );
@@ -124,7 +125,7 @@ export function CardContent({
     children: React.ReactNode;
 }) {
     return (
-        <div className={`text-sm text-gray-200 ${className}`}>
+        <div className={cn("text-sm text-fg", className)}>
             {children}
         </div>
     );
@@ -141,7 +142,7 @@ export function CardFooter({
     children: React.ReactNode;
 }) {
     return (
-        <div className={`mt-4 pt-3 border-t border-white/10 flex items-center justify-between ${className}`}>
+        <div className={cn("mt-4 pt-3 border-t border-edge flex items-center justify-between", className)}>
             {children}
         </div>
     );
@@ -179,7 +180,7 @@ export function InteractiveCard({
         >
             <div className="flex items-start gap-3">
                 {icon && (
-                    <div className="flex-shrink-0 mt-0.5 text-gray-400">
+                    <div className="flex-shrink-0 mt-0.5 text-fg-muted">
                         {icon}
                     </div>
                 )}

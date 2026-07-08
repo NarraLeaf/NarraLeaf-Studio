@@ -145,7 +145,7 @@ export function StoryMotionKeyframeProperties(props: {
 
     if (!asset || !selected) {
         return (
-            <div className="flex h-full items-center justify-center p-4 text-center text-xs text-gray-500">
+            <div className="flex h-full items-center justify-center p-4 text-center text-xs text-fg-subtle">
                 Loading keyframe...
             </div>
         );
@@ -290,7 +290,7 @@ function createStoryMotionKeyframeSchema(
                     <SurfaceEditorToolbarButtonGroup aria-label="Keyframe actions" className="w-full">
                         <SurfaceEditorToolbarSegButton
                             type="button"
-                            className="!w-auto flex-1 gap-2 px-3 !text-gray-300 hover:!bg-red-500/10 hover:!text-red-100 focus-visible:!ring-red-400/40"
+                            className="!w-auto flex-1 gap-2 px-3 !text-fg-muted hover:!bg-red-500/10 hover:!text-red-100 focus-visible:!ring-red-400/40"
                             onClick={() => deleteKeyframe(data)}
                             title="Delete keyframe"
                         >
@@ -406,7 +406,7 @@ function StoryMotionBezierEditor(props: { easing: string; onChange: (easing: str
             <svg
                 ref={svgRef}
                 viewBox={`0 0 ${BEZIER_VIEW_SIZE} ${BEZIER_VIEW_SIZE}`}
-                className="w-full touch-none rounded border border-white/10 bg-black/20"
+                className="w-full touch-none rounded border border-edge bg-black/20"
             >
                 <rect x={0} y={toY(1)} width={BEZIER_VIEW_SIZE} height={toY(0) - toY(1)} fill="rgba(255,255,255,0.03)" />
                 <line x1={0} y1={toY(0)} x2={BEZIER_VIEW_SIZE} y2={toY(0)} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
@@ -438,7 +438,7 @@ function StoryMotionBezierEditor(props: { easing: string; onChange: (easing: str
                     onPointerDown={event => startHandleDrag(event, 1)}
                 />
             </svg>
-            <div className="text-center text-[11px] tabular-nums text-slate-500">{formatStoryBezierEasing(points)}</div>
+            <div className="text-center text-2xs tabular-nums text-fg-subtle">{formatStoryBezierEasing(points)}</div>
         </div>
     );
 }

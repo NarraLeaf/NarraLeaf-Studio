@@ -1,4 +1,5 @@
 import React from "react";
+import { cn } from "../../utils/cn";
 import { TitleBar } from "./TitleBar";
 import { WindowControlPolicy, type WindowControlAbility } from "@shared/types/window";
 
@@ -25,7 +26,7 @@ export function AppLayout({
     windowControlPolicy,
 }: AppLayoutProps) {
     return (
-        <div className={`h-screen w-screen text-gray-200 bg-[#0f1115] ${className}`}>
+        <div className={cn("h-screen w-screen text-fg bg-surface", className)}>
             <div className="grid grid-rows-[40px,1fr] h-full">
                 {/* Title Bar */}
                 <div className="col-span-full">

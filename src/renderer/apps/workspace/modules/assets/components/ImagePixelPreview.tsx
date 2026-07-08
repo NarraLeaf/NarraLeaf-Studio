@@ -284,7 +284,7 @@ export function ImagePixelPreview({
     };
 
     return (
-        <div className="h-full flex flex-col bg-[#0f1115]">
+        <div className="h-full flex flex-col bg-surface">
             {renderToolbar?.(controls)}
             <div
                 ref={containerRef}

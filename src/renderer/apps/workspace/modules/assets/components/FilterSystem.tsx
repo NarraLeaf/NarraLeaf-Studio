@@ -85,7 +85,7 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
                     flex items-center gap-2 px-3 py-2 rounded-md border transition-colors
                     ${hasActiveFilters
                         ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-white/20 bg-white/5 hover:bg-white/10'
+                        : 'border-edge-strong bg-fill-subtle hover:bg-fill'
                     }
                 `}
             >
@@ -119,11 +119,11 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
 
             {/* Filter Options Panel */}
             {isExpanded && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-[#0b0d12] border border-white/20 rounded-lg shadow-xl z-10">
+                <div className="absolute top-full left-0 right-0 mt-2 bg-surface-sunken border border-edge-strong rounded-lg shadow-xl z-10">
                     <div className="p-3 space-y-3">
                         {filters.map(filter => (
                             <div key={filter.id} className="space-y-2">
-                                <div className="flex items-center gap-2 text-sm text-gray-300">
+                                <div className="flex items-center gap-2 text-sm text-fg-muted">
                                     {filter.icon}
                                     <span>{filter.label}</span>
                                 </div>
@@ -138,7 +138,7 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
                                                     px-2 py-1 text-xs rounded transition-colors
                                                     ${isActive
                                                         ? 'bg-primary text-white'
-                                                        : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                                                        : 'bg-fill text-fg-muted hover:bg-fill-strong'
                                                     }
                                                 `}
                                             >

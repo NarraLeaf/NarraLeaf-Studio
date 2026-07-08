@@ -44,7 +44,7 @@ const LEVEL_META: Record<ConsoleLogLevel, {
     },
     verbose: {
         label: "Verbose",
-        textClassName: "text-gray-500/80",
+        textClassName: "text-fg-subtle/80",
     },
 };
 
@@ -189,8 +189,8 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
     };
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-[#0f1115] text-gray-300">
-            <div className="flex h-9 shrink-0 items-center justify-between border-b border-white/10 bg-[#0b0d12]">
+        <div className="flex h-full min-h-0 flex-col bg-surface text-fg-muted">
+            <div className="flex h-9 shrink-0 items-center justify-between border-b border-edge bg-surface-sunken">
                 <div className="flex h-full min-w-0 overflow-x-auto" role="tablist" aria-label="Console channels">
                     {CONSOLE_CHANNELS.map(channel => {
                         const active = activeChannel === channel.id;
@@ -205,16 +205,16 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                                 className={`relative flex min-w-28 cursor-default items-center justify-center gap-2 px-4 text-xs transition-colors ${
                                     active
                                         ? "bg-[#12151c] text-white"
-                                        : "text-gray-400 hover:bg-[#11141b] hover:text-gray-200"
+                                        : "text-fg-muted hover:bg-[#11141b] hover:text-fg"
                                 }`}
                                 onClick={() => setActiveChannel(channel.id)}
                             >
                                 <span>{channel.label}</span>
                                 <span
-                                    className={`rounded border px-1.5 py-0.5 text-[10px] leading-none ${
+                                    className={`rounded border px-1.5 py-0.5 text-2xs leading-none ${
                                         active
                                             ? "border-primary/40 bg-primary/10 text-primary"
-                                            : "border-white/10 bg-white/[0.03] text-gray-500"
+                                            : "border-edge bg-fill-subtle text-fg-subtle"
                                     }`}
                                 >
                                     {count}
@@ -231,7 +231,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                     <div ref={filterMenuRef} className="relative">
                         <button
                             type="button"
-                            className="flex h-7 w-7 cursor-default items-center justify-center rounded border border-white/10 text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
+                            className="flex h-7 w-7 cursor-default items-center justify-center rounded border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-white"
                             title="Filter levels"
                             aria-label="Filter levels"
                             aria-haspopup="menu"
@@ -243,20 +243,20 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                         {filterMenuOpen ? (
                             <div
                                 role="menu"
-                                className="absolute right-0 top-full z-20 mt-1 w-36 rounded border border-white/10 bg-[#11141b] p-1 shadow-xl"
+                                className="absolute right-0 top-full z-20 mt-1 w-36 rounded border border-edge bg-[#11141b] p-1 shadow-xl"
                             >
                                 {LOG_LEVELS.map(level => {
                                     const meta = LEVEL_META[level];
                                     return (
                                         <label
                                             key={level}
-                                            className="flex cursor-default items-center gap-2 rounded px-1.5 py-1 text-[10px] text-gray-300 hover:bg-white/10"
+                                            className="flex cursor-default items-center gap-2 rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill"
                                         >
                                             <input
                                                 type="checkbox"
                                                 checked={visibleLevels.has(level)}
                                                 onChange={() => toggleLevel(level)}
-                                                className="h-3 w-3 rounded border-white/20 bg-[#0b0d12]"
+                                                className="h-3 w-3 rounded border-edge-strong bg-surface-sunken"
                                             />
                                             <span className={meta.textClassName}>{meta.label}</span>
                                         </label>
@@ -269,7 +269,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="h-7 border border-white/10 px-2 py-0 text-[10px]"
+                        className="h-7 border border-edge px-2 py-0 text-2xs"
                         onClick={handleClear}
                     >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -280,7 +280,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
 
             <div
                 ref={scrollRef}
-                className={`${visibleEntries.length > 0 ? "nl-selectable-text cursor-text" : "cursor-default select-none"} min-h-0 flex-1 overflow-auto overscroll-contain py-1 font-mono text-[11px] leading-relaxed`}
+                className={`${visibleEntries.length > 0 ? "nl-selectable-text cursor-text" : "cursor-default select-none"} min-h-0 flex-1 overflow-auto overscroll-contain py-1 font-mono text-2xs leading-relaxed`}
             >
                 {visibleEntries.length === 0 ? (
                     <ConsoleEmptyState channel={activeChannel} total={channelEntries.length} />
@@ -295,10 +295,10 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
 function ConsoleEmptyState({ channel, total }: { channel: ConsoleChannelId; total: number }) {
     const label = channel === "blueprint" ? "Blueprint" : "Build";
     return (
-        <div className="flex h-full min-h-24 items-center justify-center px-4 text-center text-gray-500">
+        <div className="flex h-full min-h-24 items-center justify-center px-4 text-center text-fg-subtle">
             <div>
                 <Terminal className="mx-auto mb-2 h-8 w-8 opacity-45" />
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-fg-muted">
                     {total > 0 ? "No lines match the current filters" : `No ${label} output yet`}
                 </p>
             </div>
@@ -315,7 +315,7 @@ function ConsoleEntryGrid({ entries }: { entries: ConsoleEntry[] }) {
             {entries.map((entry, index) => (
                 <time
                     key={`${entry.id}:time`}
-                    className="select-text border-r border-white/[0.04] px-3 py-0.5 text-gray-600 hover:bg-white/[0.035]"
+                    className="select-text border-r border-white/[0.04] px-3 py-0.5 text-fg-subtle hover:bg-white/[0.035]"
                     style={{ gridColumn: 1, gridRow: index + 1 }}
                 >
                     {formatTimestamp(entry.timestamp)}
@@ -338,10 +338,10 @@ function ConsoleEntryGrid({ entries }: { entries: ConsoleEntry[] }) {
             {entries.map((entry, index) => (
                 <div
                     key={`${entry.id}:message`}
-                    className="select-text whitespace-pre-wrap break-words px-3 py-0.5 text-gray-300 hover:bg-white/[0.035]"
+                    className="select-text whitespace-pre-wrap break-words px-3 py-0.5 text-fg-muted hover:bg-white/[0.035]"
                     style={{ gridColumn: 3, gridRow: index + 1 }}
                 >
-                    {entry.source ? <span className="text-gray-500">[{entry.source}] </span> : null}
+                    {entry.source ? <span className="text-fg-subtle">[{entry.source}] </span> : null}
                     <span
                         className={`${entry.bold ? "font-semibold" : ""} ${entry.italic ? "italic" : ""}`}
                         style={entry.color ? { color: entry.color } : undefined}
@@ -350,7 +350,7 @@ function ConsoleEntryGrid({ entries }: { entries: ConsoleEntry[] }) {
                             <ConsoleSegment key={`${entry.id}:${segmentIndex}`} segment={segment} fallbackColor={entry.color} />
                         ))}
                     </span>
-                    {entryText(entry).length === 0 ? <span className="text-gray-600">(empty)</span> : null}
+                    {entryText(entry).length === 0 ? <span className="text-fg-subtle">(empty)</span> : null}
                 </div>
             ))}
         </div>

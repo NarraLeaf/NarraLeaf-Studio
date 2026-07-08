@@ -354,7 +354,7 @@ export function AppearanceAuthoringPanel({
                     type="button"
                     title="Add variant (duplicate current)"
                     onClick={handleAddVariant}
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/5 text-gray-300 hover:bg-white/10"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-edge bg-fill-subtle text-fg-muted hover:bg-fill"
                 >
                     <Plus className="w-4 h-4" />
                 </button>
@@ -363,7 +363,7 @@ export function AppearanceAuthoringPanel({
                     title="Set as default variant"
                     onClick={handleSetDefault}
                     disabled={!selectedVariant || model.defaultVariantId === selectedVariant.id}
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/5 text-gray-300 hover:bg-white/10 disabled:opacity-40"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-edge bg-fill-subtle text-fg-muted hover:bg-fill disabled:opacity-40"
                 >
                     <Star className="w-4 h-4" />
                 </button>
@@ -372,14 +372,14 @@ export function AppearanceAuthoringPanel({
                     title="Delete variant"
                     onClick={handleRemoveVariant}
                     disabled={model.variants.length <= 1}
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/5 text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-edge bg-fill-subtle text-red-300 hover:bg-red-500/10 disabled:opacity-40"
                 >
                     <Trash2 className="w-4 h-4" />
                 </button>
             </div>
 
             <div className="min-w-0">
-                <label className="text-[10px] tracking-wide text-gray-500 block mb-1">Variant name</label>
+                <label className="text-2xs tracking-wide text-fg-subtle block mb-1">Variant name</label>
                 <EnhancedInput
                     key={selectedVariant?.id}
                     value={selectedVariant?.name ?? ""}

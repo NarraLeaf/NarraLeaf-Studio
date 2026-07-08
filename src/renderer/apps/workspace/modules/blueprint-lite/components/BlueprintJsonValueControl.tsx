@@ -70,10 +70,10 @@ const BOOLEAN_OPTIONS: SelectOption[] = [
 ];
 
 const ICON_BUTTON =
-    "nodrag !h-5 !w-5 shrink-0 !gap-0 rounded !p-1 text-gray-400 hover:bg-white/5 hover:text-gray-200";
-const INPUT_CLASS = "h-6 rounded border-white/15 bg-[#111418] px-1.5 py-0.5 font-mono text-[10px]";
+    "nodrag !h-5 !w-5 shrink-0 !gap-0 rounded !p-1 text-fg-muted hover:bg-fill-subtle hover:text-fg";
+const INPUT_CLASS = "h-6 rounded border-edge bg-[#111418] px-1.5 py-0.5 font-mono text-2xs";
 const RAW_TEXTAREA_CLASS =
-    "min-h-[300px] resize-none rounded border-white/15 bg-[#0d1014] px-2 py-1.5 font-mono text-[11px] leading-relaxed";
+    "min-h-[300px] resize-none rounded border-edge bg-[#0d1014] px-2 py-1.5 font-mono text-2xs leading-relaxed";
 const JSON_EDITOR_SCOPE_ATTRIBUTE = "data-blueprint-json-editor-scope";
 const JSON_EDITOR_PANEL_Z_INDEX = 10000;
 const JSON_EDITOR_MENU_Z_INDEX = JSON_EDITOR_PANEL_Z_INDEX + 1;
@@ -241,7 +241,7 @@ function PrimitiveValueEditor({
         );
     }
     if (value === null) {
-        return <span className="px-1 text-[10px] italic text-gray-500">null</span>;
+        return <span className="px-1 text-2xs italic text-fg-subtle">null</span>;
     }
     return null;
 }
@@ -344,7 +344,7 @@ function JsonTreeRow({
     return (
         <div>
             <div
-                className="flex min-h-[28px] min-w-0 items-center gap-1 rounded px-1 py-0.5 hover:bg-white/[0.03]"
+                className="flex min-h-[28px] min-w-0 items-center gap-1 rounded px-1 py-0.5 hover:bg-fill-subtle"
                 style={{ paddingLeft: 4 + depth * 12 }}
             >
                 {expandable ? (
@@ -369,13 +369,13 @@ function JsonTreeRow({
                 )}
                 <div className="flex min-w-0 flex-1 items-center gap-1">
                     {objectKeyEditor ?? (
-                        <span className="min-w-[4.5rem] truncate text-[10px] text-gray-400" title={String(label)}>
+                        <span className="min-w-[4.5rem] truncate text-2xs text-fg-muted" title={String(label)}>
                             {label}
                         </span>
                     )}
                     {lockedKind ? (
                         <span
-                            className="w-[6.25rem] shrink-0 rounded border border-white/10 bg-[#0d1014] px-1.5 py-1 text-[10px] capitalize tracking-wide text-gray-500"
+                            className="w-[6.25rem] shrink-0 rounded border border-edge bg-[#0d1014] px-1.5 py-1 text-2xs capitalize tracking-wide text-fg-subtle"
                             title="Schema field type"
                         >
                             {lockedKind}
@@ -392,7 +392,7 @@ function JsonTreeRow({
                         />
                     )}
                     {expandable ? (
-                        <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-gray-500">
+                        <span className="min-w-0 flex-1 truncate font-mono text-2xs text-fg-subtle">
                             {summarizeJsonValue(value)}
                         </span>
                     ) : (
@@ -685,17 +685,17 @@ function JsonEditorPortal({
         <div
             ref={panelRef}
             data-blueprint-json-editor-scope={scopeId}
-            className="rounded-md border border-white/15 bg-[#111418] p-2 text-xs text-gray-200 shadow-2xl"
+            className="rounded-md border border-edge bg-[#111418] p-2 text-xs text-fg shadow-2xl"
             style={style}
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
             onWheelCapture={stopFlowNodePointerBubble}
         >
             <JsonEditorScopeContext.Provider value={scopeId}>
-                <div className="mb-2 flex min-w-0 items-center gap-2 border-b border-white/10 pb-2">
+                <div className="mb-2 flex min-w-0 items-center gap-2 border-b border-edge pb-2">
                     <div className="min-w-0 flex-1">
-                        <div className="text-[10px] tracking-wide text-gray-500">JSON</div>
-                        <div className="truncate font-mono text-[10px] text-gray-300">
+                        <div className="text-2xs tracking-wide text-fg-subtle">JSON</div>
+                        <div className="truncate font-mono text-2xs text-fg-muted">
                             {summarizeJsonValue(root)}
                         </div>
                     </div>
@@ -736,7 +736,7 @@ function JsonEditorPortal({
                                 commitRawDraft();
                             }}
                         />
-                        {rawError ? <div className="text-[10px] text-red-300">{rawError}</div> : null}
+                        {rawError ? <div className="text-2xs text-red-300">{rawError}</div> : null}
                     </div>
                 ) : (
                     <div className="max-h-[360px] overflow-auto pr-1">
@@ -771,9 +771,9 @@ export function BlueprintJsonValueControl({ value, onChange, schema }: Props) {
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
-            <div className="min-w-0 flex-1 rounded border border-white/10 bg-[#111418] px-1.5 py-1">
-                <div className="text-[9px] capitalize tracking-wide text-gray-500">{kind}</div>
-                <div className="truncate font-mono text-[10px] text-gray-300" title={summarizeJsonValue(root)}>
+            <div className="min-w-0 flex-1 rounded border border-edge bg-[#111418] px-1.5 py-1">
+                <div className="text-2xs capitalize tracking-wide text-fg-subtle">{kind}</div>
+                <div className="truncate font-mono text-2xs text-fg-muted" title={summarizeJsonValue(root)}>
                     {summarizeJsonValue(root)}
                 </div>
             </div>
@@ -783,7 +783,7 @@ export function BlueprintJsonValueControl({ value, onChange, schema }: Props) {
                 aria-label="Edit JSON"
                 variant="ghost"
                 size="sm"
-                className="nodrag !h-8 !w-8 shrink-0 !gap-0 rounded border border-white/10 !p-1.5 text-gray-300 hover:bg-white/5"
+                className="nodrag !h-8 !w-8 shrink-0 !gap-0 rounded border border-edge !p-1.5 text-fg-muted hover:bg-fill-subtle"
                 onMouseDown={stopFlowNodePointerBubble}
                 onPointerDown={stopFlowNodePointerBubble}
                 onClick={e => {

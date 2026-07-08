@@ -49,22 +49,22 @@ export function PausePopover(props: {
     return createPortal(
         <div
             ref={panelRef}
-            className="fixed z-[70] w-56 rounded-lg border border-white/15 bg-[#16191e] p-2 shadow-2xl"
+            className="fixed z-[70] w-56 rounded-lg border border-edge bg-[#16191e] p-2 shadow-2xl"
             style={{ top, left: Math.max(8, left) }}
             onMouseDown={event => event.stopPropagation()}
         >
-                <div className="mb-1.5 text-[11px] font-medium tracking-wide text-slate-400">Pause</div>
-                <div className="mb-2 inline-flex overflow-hidden rounded-md border border-white/10 bg-[#101216]">
+                <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">Pause</div>
+                <div className="mb-2 inline-flex overflow-hidden rounded-md border border-edge bg-[#101216]">
                     <button
                         type="button"
-                        className={[MODE_BTN, !isWait ? "bg-primary/20 text-primary" : "text-slate-400 hover:bg-white/[0.05]"].join(" ")}
+                        className={[MODE_BTN, !isWait ? "bg-primary/20 text-primary" : "text-fg-muted hover:bg-fill-subtle"].join(" ")}
                         onClick={() => props.onChange(true)}
                     >
                         Click to proceed
                     </button>
                     <button
                         type="button"
-                        className={[MODE_BTN, "border-l border-white/10", isWait ? "bg-primary/20 text-primary" : "text-slate-400 hover:bg-white/[0.05]"].join(" ")}
+                        className={[MODE_BTN, "border-l border-edge", isWait ? "bg-primary/20 text-primary" : "text-fg-muted hover:bg-fill-subtle"].join(" ")}
                         onClick={() => props.onChange(ms)}
                     >
                         Wait for
@@ -77,17 +77,17 @@ export function PausePopover(props: {
                             min={0}
                             value={ms}
                             autoFocus
-                            className="h-8 w-24 rounded-md border border-white/10 bg-[#1e1f22] px-2 text-sm text-slate-100 outline-none focus:border-primary/50"
+                            className="h-8 w-24 rounded-md border border-edge bg-surface-raised px-2 text-sm text-fg outline-none focus:border-primary/50"
                             onChange={event => props.onChange(Math.max(0, Math.round(Number(event.target.value) || 0)))}
                         />
-                        <span className="text-xs text-slate-400">ms</span>
+                        <span className="text-xs text-fg-muted">ms</span>
                     </div>
                 ) : (
-                    <div className="text-[11px] text-slate-500">Waits until the player clicks to continue.</div>
+                    <div className="text-2xs text-fg-subtle">Waits until the player clicks to continue.</div>
                 )}
                 <button
                     type="button"
-                    className="mt-2 flex items-center gap-1 text-xs text-slate-400 transition-colors hover:text-red-300"
+                    className="mt-2 flex items-center gap-1 text-xs text-fg-muted transition-colors hover:text-red-300"
                     onClick={props.onRemove}
                 >
                     <Trash2 className="h-3 w-3" />

@@ -19,8 +19,8 @@ interface ImagePreviewPayload {
 
 function LoadingState() {
     return (
-        <div className="h-full flex items-center justify-center bg-[#0f1115]">
-            <div className="flex items-center gap-2 text-gray-400">
+        <div className="h-full flex items-center justify-center bg-surface">
+            <div className="flex items-center gap-2 text-fg-muted">
                 <RefreshCw className="w-5 h-5 animate-spin" />
                 <span>Loading image...</span>
             </div>
@@ -30,7 +30,7 @@ function LoadingState() {
 
 function ErrorState({ error }: { error: string }) {
     return (
-        <div className="h-full flex items-center justify-center bg-[#0f1115] p-4">
+        <div className="h-full flex items-center justify-center bg-surface p-4">
             <div className="flex items-start gap-2 text-red-400 bg-red-500/10 rounded-md p-4 max-w-md">
                 <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
                 <div>
@@ -52,15 +52,15 @@ function PreviewToolbar({
     const size = controls.imageSize ?? imageData.metadata;
 
     return (
-        <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#1e1f22]">
+        <div className="flex items-center justify-between px-4 py-2 border-b border-edge bg-surface-raised">
             <div className="flex items-center gap-4">
-                <span className="text-sm text-gray-300">
+                <span className="text-sm text-fg-muted">
                     {size.width} x {size.height}
                 </span>
-                <span className="text-sm text-gray-400">
+                <span className="text-sm text-fg-muted">
                     {imageData.metadata.format.toUpperCase()}
                 </span>
-                <span className="text-sm text-gray-400">
+                <span className="text-sm text-fg-muted">
                     {(imageData.metadata.size / 1024).toFixed(1)} KB
                 </span>
             </div>
@@ -68,24 +68,24 @@ function PreviewToolbar({
             <div className="flex items-center gap-2">
                 <button
                     onClick={controls.zoomOut}
-                    className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-default"
+                    className="p-1 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors cursor-default"
                     title="Zoom Out"
                 >
                     <ZoomOut className="w-4 h-4" />
                 </button>
-                <span className="text-sm text-gray-400 min-w-16 text-center">
+                <span className="text-sm text-fg-muted min-w-16 text-center">
                     {controls.zoomLabel}
                 </span>
                 <button
                     onClick={controls.zoomIn}
-                    className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-default"
+                    className="p-1 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors cursor-default"
                     title="Zoom In"
                 >
                     <ZoomIn className="w-4 h-4" />
                 </button>
                 <button
                     onClick={controls.resetView}
-                    className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-default ml-2"
+                    className="p-1 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors cursor-default ml-2"
                     title="Reset View"
                 >
                     <RefreshCw className="w-4 h-4" />

@@ -26,8 +26,8 @@ function VariantPreview({
 }) {
     if (loading) {
         return (
-            <div className="h-full flex items-center justify-center bg-[#0f1115]">
-                <div className="flex items-center gap-2 text-gray-400">
+            <div className="h-full flex items-center justify-center bg-surface">
+                <div className="flex items-center gap-2 text-fg-muted">
                     <RefreshCw className="w-5 h-5 animate-spin" />
                     <span>Loading preview...</span>
                 </div>
@@ -37,7 +37,7 @@ function VariantPreview({
 
     if (error) {
         return (
-            <div className="h-full flex items-center justify-center bg-[#0f1115] p-4">
+            <div className="h-full flex items-center justify-center bg-surface p-4">
                 <div className="flex items-start gap-2 text-red-400 bg-red-500/10 rounded-md p-4 max-w-md">
                     <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
                     <div>
@@ -51,7 +51,7 @@ function VariantPreview({
 
     if (!view?.url) {
         return (
-            <div className="h-full flex items-center justify-center bg-[#0f1115] text-gray-500">
+            <div className="h-full flex items-center justify-center bg-surface text-fg-subtle">
                 Select a variant with an image to preview
             </div>
         );
@@ -61,36 +61,36 @@ function VariantPreview({
         const size = controls.imageSize ?? view.metadata;
 
         return (
-            <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#1e1f22]">
-                <div className="flex items-center gap-4 text-xs text-gray-300">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-edge bg-surface-raised">
+                <div className="flex items-center gap-4 text-xs text-fg-muted">
                     {view.metadata ? (
                         <>
                             <span>{size ? `${size.width} x ${size.height}` : "No size"}</span>
-                            <span className="text-gray-400">{view.metadata.format.toUpperCase()}</span>
-                            <span className="text-gray-400">{(view.metadata.size / 1024).toFixed(1)} KB</span>
+                            <span className="text-fg-muted">{view.metadata.format.toUpperCase()}</span>
+                            <span className="text-fg-muted">{(view.metadata.size / 1024).toFixed(1)} KB</span>
                         </>
                     ) : (
-                        <span className="text-gray-400">{size ? `${size.width} x ${size.height}` : "No metadata"}</span>
+                        <span className="text-fg-muted">{size ? `${size.width} x ${size.height}` : "No metadata"}</span>
                     )}
                 </div>
                 <div className="flex items-center gap-2">
                     <button
-                        className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                        className="p-1 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors"
                         onClick={controls.zoomOut}
                         title="Zoom Out"
                     >
                         <ZoomOut className="w-4 h-4" />
                     </button>
-                    <span className="text-sm text-gray-300 min-w-14 text-center">{controls.zoomLabel}</span>
+                    <span className="text-sm text-fg-muted min-w-14 text-center">{controls.zoomLabel}</span>
                     <button
-                        className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                        className="p-1 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors"
                         onClick={controls.zoomIn}
                         title="Zoom In"
                     >
                         <ZoomIn className="w-4 h-4" />
                     </button>
                     <button
-                        className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors ml-2"
+                        className="p-1 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors ml-2"
                         onClick={controls.resetView}
                         title="Reset View"
                     >
@@ -126,10 +126,10 @@ export function PreviewPanel({
 
     return (
         <div className="flex flex-col">
-            <div className="px-4 py-2 border-b border-white/10 flex items-center gap-3">
+            <div className="px-4 py-2 border-b border-edge flex items-center gap-3">
                 <span className="text-sm font-semibold">Preview</span>
-                <span className="text-xs text-gray-500">{label}</span>
-                {previewVariant && <span className="text-xs text-gray-400">Variant: {previewVariant}</span>}
+                <span className="text-xs text-fg-subtle">{label}</span>
+                {previewVariant && <span className="text-xs text-fg-muted">Variant: {previewVariant}</span>}
             </div>
             <VariantPreview view={previewAsset} loading={previewLoading} error={previewError} />
         </div>

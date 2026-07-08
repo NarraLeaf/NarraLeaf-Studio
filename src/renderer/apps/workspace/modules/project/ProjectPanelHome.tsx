@@ -50,13 +50,13 @@ export function ProjectPanelHome({
     onOpen: (section: ProjectSectionId) => void;
 }) {
     return (
-        <div className="flex h-full min-h-0 flex-col bg-[#101114] text-slate-200">
-            <div className="border-b border-white/10 p-3">
-                <div className="truncate text-sm font-semibold text-slate-100">
+        <div className="flex h-full min-h-0 flex-col bg-[#101114] text-fg">
+            <div className="border-b border-edge p-3">
+                <div className="truncate text-sm font-semibold text-fg">
                     {config?.name?.trim() || "Untitled project"}
                 </div>
                 {config?.identifier?.trim() ? (
-                    <div className="mt-0.5 truncate text-[11px] text-slate-500">{config.identifier}</div>
+                    <div className="mt-0.5 truncate text-2xs text-fg-subtle">{config.identifier}</div>
                 ) : null}
             </div>
 
@@ -71,7 +71,7 @@ export function ProjectPanelHome({
                                 title={item.title}
                                 description={item.description}
                                 icon={<ItemIcon className="h-4 w-4" />}
-                                actions={<ChevronRight className="h-4 w-4 text-slate-500" />}
+                                actions={<ChevronRight className="h-4 w-4 text-fg-subtle" />}
                                 onClick={config ? () => onOpen(item.id) : undefined}
                                 className="text-left"
                             />

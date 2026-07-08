@@ -36,6 +36,15 @@ module.exports = {
                     strong: 'rgb(255 255 255 / 0.2)',
                 },
 
+                // Translucent white FILLS (button secondary, hover backgrounds,
+                // subtle surfaces). Same values as `edge` but a distinct role so
+                // background usage never borrows a border token.
+                fill: {
+                    DEFAULT: 'rgb(255 255 255 / 0.1)',
+                    subtle: 'rgb(255 255 255 / 0.05)',
+                    strong: 'rgb(255 255 255 / 0.2)',
+                },
+
                 // Semantic accents — low-saturation, hue-shifted from the anchor.
                 binding: 'rgb(var(--nl-binding) / <alpha-value>)',
                 danger: 'rgb(var(--nl-danger) / <alpha-value>)',

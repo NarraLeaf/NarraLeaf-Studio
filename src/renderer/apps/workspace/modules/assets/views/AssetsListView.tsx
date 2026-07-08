@@ -104,7 +104,7 @@ export function AssetsListView({
                             onContextMenu={(e) => e.preventDefault()}
                         >
                             {typeAssets.length === 0 && typeGroups.length === 0 ? (
-                                <div className="p-4 text-center text-xs text-gray-500">No {ASSET_TYPE_LABELS[type].toLowerCase()} yet</div>
+                                <div className="p-4 text-center text-xs text-fg-subtle">No {ASSET_TYPE_LABELS[type].toLowerCase()} yet</div>
                             ) : (
                                 <div className="py-1">
                                     {typeGroups.filter(g => !g.parentGroupId).map(group => <GroupItem key={group.id} group={group} type={type} level={0} />)}
@@ -116,7 +116,7 @@ export function AssetsListView({
                 );
             })}
             {!hasAnyItems && (
-                <div className="px-3 py-4 text-center text-xs text-gray-500">No assets matched the current filters.</div>
+                <div className="px-3 py-4 text-center text-xs text-fg-subtle">No assets matched the current filters.</div>
             )}
         </Accordion>
     );
@@ -205,7 +205,7 @@ function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType;
             >
                 <FolderPlus className="w-4 h-4 text-primary" />
                 <span className="text-sm">{group.name}</span>
-                <span className="text-xs text-gray-500">({groupAssets.length + childGroups.length})</span>
+                <span className="text-xs text-fg-subtle">({groupAssets.length + childGroups.length})</span>
             </div>
 
             {isOpen && (
@@ -237,9 +237,9 @@ function AssetItem({ asset, type, level }: { asset: Asset; type: AssetType; leve
             onDragStart={(e) => handleDragStart?.(e, type, asset, false)}
             onDragEnd={() => handleDragEnd?.()}
         >
-            <Icon className="w-4 h-4 text-gray-400" />
+            <Icon className="w-4 h-4 text-fg-muted" />
             <span className="text-sm flex-1 truncate">{asset.name}</span>
-            {asset.tags.length > 0 && <span className="text-xs text-gray-500">+{asset.tags.length}</span>}
+            {asset.tags.length > 0 && <span className="text-xs text-fg-subtle">+{asset.tags.length}</span>}
         </div>
     );
 }

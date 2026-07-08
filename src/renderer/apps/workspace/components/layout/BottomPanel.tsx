@@ -6,7 +6,7 @@ import { PanelPosition } from "../../registry/types";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui";
-import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
+import { SidebarPanelStack } from "./SidebarPanelStack";
 
 interface BottomPanelProps {
     panelId: string;
@@ -22,7 +22,8 @@ interface BottomPanelProps {
 export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
     const { panels } = useRegistry();
     const { context } = useWorkspace();
-    const panel = panels.find((p) => p.id === panelId && p.position === PanelPosition.Bottom);
+    const bottomPanels = panels.filter((p) => p.position === PanelPosition.Bottom);
+    const panel = bottomPanels.find((p) => p.id === panelId);
     const [isFocused, setIsFocused] = useState(false);
 
     // Set focus when panel is displayed or clicked
@@ -49,8 +50,6 @@ export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
         return null;
     }
 
-    const PanelComponent = panel.component;
-
     const handleClick = () => {
         if (!context) return;
         const uiService = context.services.get<UIService>(Services.UI);
@@ -59,7 +58,7 @@ export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
 
     return (
         <div 
-            className={`bg-[#0f1115] flex flex-col border transition-colors ${
+            className={`bg-surface flex flex-col border transition-colors ${
                 isFocused ? 'border-primary' : 'border-transparent border-t-white/10'
             }`}
             style={{ height: `${height - 1}px` }}
@@ -67,14 +66,14 @@ export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
             tabIndex={0}
         >
             {/* Panel Header */}
-            <div className="h-10 flex items-center justify-between px-4 bg-[#0b0d12] border-b border-white/10">
+            <div className="h-10 flex items-center justify-between px-4 bg-surface-sunken border-b border-edge">
                 <div className="flex items-center gap-2">
-                    <span className="text-gray-400">{panel.icon}</span>
+                    <span className="text-fg-muted">{panel.icon}</span>
                     <h2 className="text-sm font-medium text-white">{panel.title}</h2>
                 </div>
                 <button
                     onClick={onClose}
-                    className="w-6 h-6 rounded flex items-center justify-center text-gray-400 hover:bg-white/10 hover:text-white transition-colors cursor-default"
+                    className="w-6 h-6 rounded flex items-center justify-center text-fg-muted hover:bg-fill hover:text-white transition-colors cursor-default"
                     aria-label="Close panel"
                     title="Close panel"
                 >
@@ -82,11 +81,9 @@ export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
                 </button>
             </div>
 
-            {/* Panel Content with payload */}
-            <div className="flex-1 overflow-auto">
-                <WorkspacePanelErrorBoundary regionLabel={panel.title} isolationKey={panelId}>
-                    <PanelComponent panelId={panelId} payload={panel.payload} />
-                </WorkspacePanelErrorBoundary>
+            {/* Panel Content: keep-alive stack (active shown, others mounted-but-hidden) */}
+            <div className="flex-1 min-h-0">
+                <SidebarPanelStack positionPanels={bottomPanels} activePanelId={panelId} />
             </div>
         </div>
     );

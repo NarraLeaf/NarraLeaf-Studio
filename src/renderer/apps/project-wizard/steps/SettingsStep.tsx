@@ -37,8 +37,8 @@ export function SettingsStep({
         <div className="p-6">
             <div className="space-y-6">
                 <div className="space-y-2">
-                    <h2 className="text-lg font-semibold text-gray-200">Project Settings</h2>
-                    <p className="text-sm text-gray-400">
+                    <h2 className="text-lg font-semibold text-fg">Project Settings</h2>
+                    <p className="text-sm text-fg-muted">
                         Configure project location, backup, and version control settings.
                     </p>
                 </div>
@@ -71,13 +71,13 @@ export function SettingsStep({
                                             type="button"
                                             onClick={onSelectDirectory}
                                             disabled={isSelectingDirectory || isValidatingDirectory}
-                                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-fg-muted hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             <FolderOpen className="w-4 h-4" />
                                         </button>
                                     </div>
                                     {isValidatingDirectory && (
-                                        <p className="text-sm text-gray-400">Validating directory...</p>
+                                        <p className="text-sm text-fg-muted">Validating directory...</p>
                                     )}
 
                                     {/* Show informational message when directory doesn't exist */}

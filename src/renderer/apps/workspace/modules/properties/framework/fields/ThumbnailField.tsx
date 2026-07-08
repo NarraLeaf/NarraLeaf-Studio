@@ -334,13 +334,13 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
     return (
         <div className={field.className}>
             {field.label && (
-                <label className="block text-xs font-medium text-gray-400 mb-1">
+                <label className="block text-xs font-medium text-fg-muted mb-1">
                     {field.label}
                 </label>
             )}
-            <div className="bg-[#1e1f22] border border-white/10 rounded-md p-3 space-y-3">
+            <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm text-gray-200">Preview</span>
+                    <span className="text-sm text-fg">Preview</span>
                     <div className="flex items-center gap-2">
                         {thumbnailId && (
                             <button
@@ -361,7 +361,7 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
                         </button>
                     </div>
                 </div>
-                <div className="relative w-full aspect-square rounded-md border border-white/10 bg-[#0f1115] text-xs text-gray-400 overflow-hidden">
+                <div className="relative w-full aspect-square rounded-md border border-edge bg-surface text-xs text-fg-muted overflow-hidden">
                     {thumbnailUrl ? (
                         <img
                             src={thumbnailUrl}
@@ -369,11 +369,11 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
                             className="absolute inset-0 w-full h-full object-cover"
                         />
                     ) : thumbnailId ? (
-                        <div className="absolute inset-0 flex items-center justify-center text-gray-300" />
+                        <div className="absolute inset-0 flex items-center justify-center text-fg-muted" />
                     ) : (
                         <div className="absolute inset-0 flex flex-col items-center justify-center space-y-1">
                             <div>No thumbnail yet</div>
-                            <div className="text-[11px] text-gray-500">Click Select to choose one</div>
+                            <div className="text-2xs text-fg-subtle">Click Select to choose one</div>
                         </div>
                     )}
                 </div>

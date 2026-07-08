@@ -150,7 +150,7 @@ function PaletteDockerBar({
     const overflowMenu = overflowOpen && showOverflowMenu ? (
         <div
             ref={overflowMenuRef}
-            className="min-w-40 rounded-md border border-white/15 bg-[#1e1f22] py-1 shadow-lg shadow-black/30"
+            className="min-w-40 rounded-md border border-edge bg-surface-raised py-1 shadow-lg shadow-black/30"
             style={overflowMenuStyle}
             onPointerDown={stopPointerPropagation}
             onMouseDown={stopPointerPropagation}
@@ -166,7 +166,7 @@ function PaletteDockerBar({
                         className={`flex h-8 w-full items-center gap-2 px-3 text-left text-xs transition-colors ${
                             isActive
                                 ? "bg-primary/20 text-white"
-                                : "text-gray-300 hover:bg-white/10 hover:text-white"
+                                : "text-fg-muted hover:bg-fill hover:text-white"
                         }`}
                         title={`Insert ${mod.displayName}`}
                         onClick={() => selectType(mod.type)}
@@ -180,13 +180,13 @@ function PaletteDockerBar({
             })}
             {showComponentsEntry ? (
                 <>
-                    {overflowEntries.length > 0 ? <div className="my-1 h-px bg-white/10" /> : null}
+                    {overflowEntries.length > 0 ? <div className="my-1 h-px bg-fill" /> : null}
                     <button
                         type="button"
                         className={`flex h-8 w-full items-center gap-2 px-3 text-left text-xs transition-colors ${
                             componentsActive
                                 ? "bg-primary/20 text-white"
-                                : "text-gray-300 hover:bg-white/10 hover:text-white"
+                                : "text-fg-muted hover:bg-fill hover:text-white"
                         }`}
                         title="Open Component Library"
                         onClick={() => {
@@ -217,7 +217,7 @@ function PaletteDockerBar({
                         className={`flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium transition-colors ${
                             isActive
                                 ? "bg-primary/20 text-white border border-primary/40"
-                                : "text-gray-300 hover:bg-white/10 hover:text-white border border-transparent"
+                                : "text-fg-muted hover:bg-fill hover:text-white border border-transparent"
                         }`}
                         onClick={() => selectType(mod.type)}
                         onPointerDown={stopPointerPropagation}
@@ -237,7 +237,7 @@ function PaletteDockerBar({
                         className={`flex h-8 items-center justify-center rounded-md border px-2.5 text-xs font-medium transition-colors ${
                             overflowOpen || overflowActive
                                 ? "border-primary/40 bg-primary/20 text-white"
-                                : "border-transparent text-gray-300 hover:bg-white/10 hover:text-white"
+                                : "border-transparent text-fg-muted hover:bg-fill hover:text-white"
                         }`}
                         onClick={() => setOverflowOpen(open => !open)}
                         onPointerDown={stopPointerPropagation}
@@ -275,7 +275,7 @@ function DockerItemRenderer({ item }: { item: DockerBarItem }) {
                     className={`flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium transition-colors ${
                         item.active
                             ? "bg-primary/20 text-white border border-primary/40"
-                            : "text-gray-300 hover:bg-white/10 hover:text-white"
+                            : "text-fg-muted hover:bg-fill hover:text-white"
                     } ${item.disabled ? "opacity-50 cursor-not-allowed" : ""}`}
                     onClick={item.onClick}
                     disabled={item.disabled}
@@ -297,7 +297,7 @@ function DockerItemRenderer({ item }: { item: DockerBarItem }) {
                     onMouseDownCapture={stopPointerPropagation}
                 >
                     {item.label && (
-                        <span className="text-[11px] text-gray-500 select-none shrink-0">{item.label}</span>
+                        <span className="text-2xs text-fg-subtle select-none shrink-0">{item.label}</span>
                     )}
                     {/* Fixed-width shell + fullWidth trigger avoids a gap: min-w on Select alone
                         stretches the wrapper while the inner Button stayed content-sized. */}
@@ -330,7 +330,7 @@ function DockerItemRenderer({ item }: { item: DockerBarItem }) {
                     onMouseDownCapture={stopPointerPropagation}
                 >
                     {item.label && (
-                        <span className="text-[11px] text-gray-500 select-none">{item.label}</span>
+                        <span className="text-2xs text-fg-subtle select-none">{item.label}</span>
                     )}
                     <DeferredNumberInput
                         value={item.value}
@@ -340,7 +340,7 @@ function DockerItemRenderer({ item }: { item: DockerBarItem }) {
                         step={item.step}
                         disabled={item.disabled}
                         readOnly={item.readOnly}
-                        inputClassName="w-16 h-7 rounded-md border border-white/10 bg-white/5 px-2 text-xs text-gray-200 outline-none transition-colors focus:border-primary hover:border-white/20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        inputClassName="w-16 h-7 rounded-md border border-edge bg-fill-subtle px-2 text-xs text-fg outline-none transition-colors focus:border-primary hover:border-edge-strong [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         inputProps={{
                             title: item.tooltip,
                             onMouseDown: stopPointerPropagation,
@@ -352,7 +352,7 @@ function DockerItemRenderer({ item }: { item: DockerBarItem }) {
         }
 
         case "separator": {
-            return <div className="w-px h-5 bg-white/10 mx-1" />;
+            return <div className="w-px h-5 bg-fill mx-1" />;
         }
 
         default:
@@ -418,7 +418,7 @@ function DockerBarAnimatedWidthShell({ children }: { children: React.ReactNode }
 
     return (
         <motion.div
-            className={`inline-block overflow-hidden rounded-lg border border-white/15 bg-[#0b0d12]/90 backdrop-blur-sm shadow-lg shadow-black/30 ${shellUsesMvWidth ? "" : "w-max"}`}
+            className={`inline-block overflow-hidden rounded-lg border border-edge bg-surface-sunken/90 backdrop-blur-sm shadow-lg shadow-black/30 ${shellUsesMvWidth ? "" : "w-max"}`}
             style={shellUsesMvWidth ? { width: widthMv } : undefined}
         >
             <div ref={measureRef} className="flex items-center px-2 py-1.5 w-max">
@@ -514,8 +514,8 @@ function ElementDockerBar({
 }) {
     return (
         <div className="flex items-center gap-1">
-            <span className="text-[11px] text-gray-500 font-medium mr-1 select-none">{moduleName}</span>
-            <div className="w-px h-5 bg-white/10 mx-0.5" />
+            <span className="text-2xs text-fg-subtle font-medium mr-1 select-none">{moduleName}</span>
+            <div className="w-px h-5 bg-fill mx-0.5" />
             {items.map((item) => (
                 <DockerItemRenderer key={item.id} item={item} />
             ))}
@@ -526,8 +526,8 @@ function ElementDockerBar({
 function MultiSelectDockerBar({ items }: { items: DockerBarItem[] }) {
     return (
         <div className="flex items-center gap-1">
-            <span className="text-[11px] text-gray-500 font-medium mr-1 select-none">Multiple</span>
-            <div className="w-px h-5 bg-white/10 mx-0.5" />
+            <span className="text-2xs text-fg-subtle font-medium mr-1 select-none">Multiple</span>
+            <div className="w-px h-5 bg-fill mx-0.5" />
             {items.map((item) => (
                 <DockerItemRenderer key={`multi-${item.id}`} item={item} />
             ))}
@@ -572,7 +572,7 @@ function ComponentPreview({
     });
 
     return (
-        <div ref={frameRef} className="h-[104px] overflow-hidden rounded-md border border-white/10 bg-[#05060a]">
+        <div ref={frameRef} className="h-[104px] overflow-hidden rounded-md border border-edge bg-surface-canvas">
             <div className="relative h-full w-full">
                 {content && scale > 0 ? (
                     <div
@@ -681,7 +681,7 @@ function ComponentsLibraryModal({
                         role="dialog"
                         aria-modal="true"
                         aria-label="Component Library"
-                        className="relative flex h-[min(760px,calc(100%-3rem))] w-[min(1100px,calc(100%-3rem))] flex-col overflow-hidden rounded-lg border border-white/10 bg-[#1e1e1e] shadow-2xl"
+                        className="relative flex h-[min(760px,calc(100%-3rem))] w-[min(1100px,calc(100%-3rem))] flex-col overflow-hidden rounded-lg border border-edge bg-surface-overlay shadow-2xl"
                         initial={{ opacity: 0, scale: 0.96, y: 10 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.98, y: 6 }}
@@ -689,24 +689,24 @@ function ComponentsLibraryModal({
                         onPointerDown={stopPointerPropagation}
                         onMouseDown={stopPointerPropagation}
                     >
-                        <div className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-6">
-                            <Component className="h-4 w-4 text-gray-300" />
+                        <div className="flex h-14 shrink-0 items-center gap-3 border-b border-edge px-6">
+                            <Component className="h-4 w-4 text-fg-muted" />
                             <div className="min-w-0 flex-1">
                                 <div className="text-sm font-semibold text-white">Component Library</div>
                             </div>
                             <div className="relative w-72 max-w-[40vw]">
-                                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-500" />
+                                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-subtle" />
                                 <input
                                     ref={searchRef}
                                     value={query}
                                     onChange={event => setQuery(event.target.value)}
                                     placeholder="Search components"
-                                    className="h-8 w-full rounded-md border border-white/10 bg-white/[0.04] pl-8 pr-2 text-xs text-gray-200 outline-none focus:border-primary/60"
+                                    className="h-8 w-full rounded-md border border-edge bg-fill-subtle pl-8 pr-2 text-xs text-fg outline-none focus:border-primary/60"
                                 />
                             </div>
                             <button
                                 type="button"
-                                className="grid h-8 w-8 place-items-center rounded-md text-gray-400 hover:bg-white/10 hover:text-white"
+                                className="grid h-8 w-8 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-white"
                                 onClick={onClose}
                                 title="Close"
                                 aria-label="Close"
@@ -716,7 +716,7 @@ function ComponentsLibraryModal({
                         </div>
                         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
                             {filtered.length === 0 ? (
-                                <div className="flex h-full items-center justify-center text-sm text-gray-500">
+                                <div className="flex h-full items-center justify-center text-sm text-fg-subtle">
                                     {components.length === 0 ? "No components in this project." : "No matching components."}
                                 </div>
                             ) : (
@@ -731,7 +731,7 @@ function ComponentsLibraryModal({
                                                 className={`rounded-md border p-2 text-left transition ${
                                                     active
                                                         ? "border-primary/70 bg-primary/15"
-                                                        : "border-white/10 bg-white/[0.03] hover:border-white/25 hover:bg-white/[0.06]"
+                                                        : "border-edge bg-fill-subtle hover:border-edge-strong hover:bg-fill"
                                                 }`}
                                                 onClick={() => {
                                                     onSelectComponent(component.id);
@@ -744,8 +744,8 @@ function ComponentsLibraryModal({
                                                     width={component.previewMeta?.width ?? root?.layout.width ?? 180}
                                                     height={component.previewMeta?.height ?? root?.layout.height ?? 104}
                                                 />
-                                                <div className="mt-2 truncate text-xs font-medium text-gray-100">{component.name}</div>
-                                                <div className="text-[11px] text-gray-500">
+                                                <div className="mt-2 truncate text-xs font-medium text-fg">{component.name}</div>
+                                                <div className="text-2xs text-fg-subtle">
                                                     {Math.round(component.previewMeta?.width ?? root?.layout.width ?? 0)}×
                                                     {Math.round(component.previewMeta?.height ?? root?.layout.height ?? 0)}
                                                 </div>

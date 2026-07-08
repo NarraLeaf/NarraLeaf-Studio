@@ -54,7 +54,7 @@ function SelectFieldInner<TData>({ field, data, onSaving }: SelectFieldProps<TDa
     return (
         <div className={field.className}>
             {field.label && (
-                <label className="block text-xs font-medium text-gray-400 mb-1">
+                <label className="block text-xs font-medium text-fg-muted mb-1">
                     {field.label}
                 </label>
             )}
@@ -67,7 +67,7 @@ function SelectFieldInner<TData>({ field, data, onSaving }: SelectFieldProps<TDa
                 disabled={isDisabled}
             />
             {field.helpText && (
-                <p className="mt-1 text-xs text-gray-500">{field.helpText}</p>
+                <p className="mt-1 text-xs text-fg-subtle">{field.helpText}</p>
             )}
         </div>
     );

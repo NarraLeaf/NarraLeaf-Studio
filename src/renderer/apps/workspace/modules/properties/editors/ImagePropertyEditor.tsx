@@ -40,27 +40,27 @@ export function ImagePropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
             {/* Technical Info (Read-only) */}
             {imageData && (
                 <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">
+                    <label className="block text-xs font-medium text-fg-muted mb-1">
                         Image Information
                     </label>
-                    <div className="bg-[#1e1f22] border border-white/10 rounded-md p-3 space-y-1">
+                    <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-1">
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Dimensions:</span>
-                            <span className="text-gray-300">
+                            <span className="text-fg-muted">Dimensions:</span>
+                            <span className="text-fg-muted">
                                 {imageData.metadata.width} × {imageData.metadata.height}
                             </span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Format:</span>
-                            <span className="text-gray-300">{imageData.metadata.format.toUpperCase()}</span>
+                            <span className="text-fg-muted">Format:</span>
+                            <span className="text-fg-muted">{imageData.metadata.format.toUpperCase()}</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Size:</span>
-                            <span className="text-gray-300">{(imageData.metadata.size / 1024).toFixed(1)} KB</span>
+                            <span className="text-fg-muted">Size:</span>
+                            <span className="text-fg-muted">{(imageData.metadata.size / 1024).toFixed(1)} KB</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Hash:</span>
-                            <span className="text-gray-300 font-mono text-[10px]">{asset.hash.slice(0, 16)}...</span>
+                            <span className="text-fg-muted">Hash:</span>
+                            <span className="text-fg-muted font-mono text-2xs">{asset.hash.slice(0, 16)}...</span>
                         </div>
                     </div>
                 </div>

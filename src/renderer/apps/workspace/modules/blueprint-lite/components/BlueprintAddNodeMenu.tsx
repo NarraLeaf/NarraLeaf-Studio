@@ -288,11 +288,11 @@ export function BlueprintAddNodeMenu({
             />
             <div
                 role="presentation"
-                className="fixed z-[101] flex max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-md border border-white/15 bg-[#101318] shadow-xl"
+                className="fixed z-[101] flex max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-md border border-edge bg-[#101318] shadow-xl"
                 style={{ left: layout.left, top: layout.top, width: MENU_W, maxHeight: layout.maxHeight }}
                 onContextMenu={e => e.preventDefault()}
             >
-                <div className="border-b border-white/10 bg-[#0f1115] px-3 py-3">
+                <div className="border-b border-edge bg-surface px-3 py-3">
                     <SearchBox
                         value={query}
                         onChange={setQuery}
@@ -331,13 +331,13 @@ export function BlueprintAddNodeMenu({
                                         "flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors",
                                         active
                                             ? "border-primary/45 bg-primary/15 text-white"
-                                            : "border-white/10 bg-white/[0.03] text-slate-400 hover:bg-white/[0.06] hover:text-slate-100",
+                                            : "border-edge bg-fill-subtle text-fg-muted hover:bg-fill hover:text-fg",
                                     ].join(" ")}
                                     onClick={() => setActiveCategoryId(category.id)}
                                 >
                                     <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: visual.color }} aria-hidden />
                                     <span>{category.label}</span>
-                                    <span className="text-[10px] text-slate-500">{category.count}</span>
+                                    <span className="text-2xs text-fg-subtle">{category.count}</span>
                                 </button>
                             );
                         })}
@@ -353,7 +353,7 @@ export function BlueprintAddNodeMenu({
                     style={{ maxHeight: listMaxHeight }}
                 >
                     {filteredEntries.length === 0 ? (
-                        <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-500">
+                        <div className="rounded-md border border-edge bg-fill-subtle px-3 py-3 text-sm text-fg-subtle">
                             No nodes found.
                         </div>
                     ) : (
@@ -401,7 +401,7 @@ function BlueprintAddNodeRow(props: {
         <div
             className={[
                 "group flex h-[52px] items-center rounded-md transition-colors",
-                props.active ? "bg-white/[0.08]" : "hover:bg-white/[0.06]",
+                props.active ? "bg-fill" : "hover:bg-fill",
             ].join(" ")}
         >
             <button
@@ -417,14 +417,14 @@ function BlueprintAddNodeRow(props: {
                 onClick={() => props.onPick(props.entry)}
                 onMouseEnter={() => props.onHover(props.flatIndex)}
             >
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04]">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle">
                     <Icon className="h-4 w-4" style={{ color: visual.color }} aria-hidden />
                 </span>
                 <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-slate-100">{props.entry.displayName}</span>
-                    <span className="block truncate text-[11px] text-slate-500">{subtitle}</span>
+                    <span className="block truncate text-sm text-fg">{props.entry.displayName}</span>
+                    <span className="block truncate text-2xs text-fg-subtle">{subtitle}</span>
                 </span>
-                <span className="min-w-0 max-w-[180px] shrink-0 truncate font-mono text-[11px] text-slate-500">
+                <span className="min-w-0 max-w-[180px] shrink-0 truncate font-mono text-2xs text-fg-subtle">
                     {props.entry.type}
                 </span>
             </button>
