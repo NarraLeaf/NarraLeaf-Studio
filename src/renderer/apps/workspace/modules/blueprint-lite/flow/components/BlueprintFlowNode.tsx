@@ -128,15 +128,15 @@ export type BlueprintFlowNodeData = {
     onBindElementLiteral?: (nodeId: string) => void;
 };
 
-const EXEC_HANDLE_CLASS = "!h-2 !w-2 !border border-white/30 !bg-cyan-500";
+const EXEC_HANDLE_CLASS = "!h-2 !w-2 !border border-edge-strong !bg-cyan-500";
 const DATA_HANDLE_CLASS = "!h-2 !w-2 !border border-amber-200/35 !bg-amber-500";
-const PIN_LABEL_CLASS = "text-gray-400";
-const OPTIONAL_UNWIRED_PIN_LABEL_CLASS = "text-gray-500 italic";
+const PIN_LABEL_CLASS = "text-fg-muted";
+const OPTIONAL_UNWIRED_PIN_LABEL_CLASS = "text-fg-subtle italic";
 
 const CARD_INPUT =
-    "rounded border-white/15 bg-[#111418] px-1.5 py-1 font-mono text-[10px]";
+    "rounded border-edge bg-[#111418] px-1.5 py-1 font-mono text-2xs";
 const CARD_ICON_BUTTON =
-    "nodrag !h-4 !w-4 shrink-0 !gap-0 rounded !p-0.5 text-gray-400 hover:bg-white/5 hover:text-gray-300";
+    "nodrag !h-4 !w-4 shrink-0 !gap-0 rounded !p-0.5 text-fg-muted hover:bg-fill-subtle hover:text-fg-muted";
 
 /** Hide native number steppers — keep same look as other card fields (WebKit + Firefox). */
 const INPUT_NUMBER_NO_SPINNER =
@@ -201,8 +201,8 @@ function ImageAssetPickerCard({
                     ref={anchorRef}
                     type="button"
                     disabled={disabled}
-                    className={`group relative flex w-full min-w-0 overflow-hidden rounded border border-white/10 bg-[#0f1115] text-left transition-colors ${
-                        disabled ? "cursor-default opacity-80" : "hover:border-cyan-300/35 hover:bg-white/[0.04]"
+                    className={`group relative flex w-full min-w-0 overflow-hidden rounded border border-edge bg-surface text-left transition-colors ${
+                        disabled ? "cursor-default opacity-80" : "hover:border-cyan-300/35 hover:bg-fill-subtle"
                     } ${heightClass}`}
                     title={assetId ? `${label} (${assetId})` : "Select image asset"}
                     onClick={e => {
@@ -221,19 +221,19 @@ function ImageAssetPickerCard({
                                 draggable={false}
                             />
                         ) : (
-                            <div className="flex h-full w-full items-center justify-center text-gray-500">
+                            <div className="flex h-full w-full items-center justify-center text-fg-subtle">
                                 <ImageIcon className="h-5 w-5" aria-hidden />
                             </div>
                         )}
                         {loading ? (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-[9px] text-gray-100">
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-2xs text-fg">
                                 Loading
                             </div>
                         ) : null}
                     </div>
                     <div className="flex min-w-0 flex-1 flex-col justify-center px-2 py-1">
-                        <div className="truncate text-[11px] font-medium text-gray-100">{label}</div>
-                        <div className={`truncate text-[9px] ${error ? "text-amber-300" : "text-gray-500"}`}>
+                        <div className="truncate text-2xs font-medium text-fg">{label}</div>
+                        <div className={`truncate text-2xs ${error ? "text-amber-300" : "text-fg-subtle"}`}>
                             {detail}
                         </div>
                     </div>
@@ -244,7 +244,7 @@ function ImageAssetPickerCard({
                 {assetId && !disabled ? (
                     <button
                         type="button"
-                        className="absolute right-1 top-1 rounded bg-black/55 p-0.5 text-gray-300 hover:bg-black/80 hover:text-white"
+                        className="absolute right-1 top-1 rounded bg-black/55 p-0.5 text-fg-muted hover:bg-black/80 hover:text-white"
                         title="Clear image asset"
                         aria-label="Clear image asset"
                         onMouseDown={stopFlowNodePointerBubble}
@@ -649,7 +649,7 @@ function InputPinRow({
                 />
             ) : (
                 <span
-                    className={`shrink-0 text-[9px] leading-tight ${labelClass}`}
+                    className={`shrink-0 text-2xs leading-tight ${labelClass}`}
                     title={pinLabelOnly(pin)}
                 >
                     {pinLabelOnly(pin)}
@@ -665,7 +665,7 @@ function InputPinRow({
                             aria-label="Remove input pin"
                             variant="ghost"
                             size="sm"
-                            className={`${CARD_ICON_BUTTON} text-gray-500`}
+                            className={`${CARD_ICON_BUTTON} text-fg-subtle`}
                             onMouseDown={stopFlowNodePointerBubble}
                             onPointerDown={stopFlowNodePointerBubble}
                             onClick={e => {
@@ -719,7 +719,7 @@ function InputPinRow({
             />
         ) : (
             <span
-                className={`min-w-0 shrink truncate text-[9px] leading-tight ${labelClass}`}
+                className={`min-w-0 shrink truncate text-2xs leading-tight ${labelClass}`}
                 title={pinCaption(pin, semantic)}
             >
                 {pinCaption(pin, semantic)}
@@ -743,7 +743,7 @@ function InputPinRow({
                             aria-label="Remove input pin"
                             variant="ghost"
                             size="sm"
-                            className={`${CARD_ICON_BUTTON} text-gray-500`}
+                            className={`${CARD_ICON_BUTTON} text-fg-subtle`}
                             onMouseDown={stopFlowNodePointerBubble}
                             onPointerDown={stopFlowNodePointerBubble}
                             onClick={e => {
@@ -818,7 +818,7 @@ function OutputPinRow({
                         aria-label="Remove output pin"
                         variant="ghost"
                         size="sm"
-                        className={`${CARD_ICON_BUTTON} text-gray-500`}
+                        className={`${CARD_ICON_BUTTON} text-fg-subtle`}
                         onMouseDown={stopFlowNodePointerBubble}
                         onPointerDown={stopFlowNodePointerBubble}
                         onClick={e => {
@@ -838,7 +838,7 @@ function OutputPinRow({
                         onPatchNodeParam={onPatchNodeParam}
                     />
                 ) : (
-                    <span className="min-w-0 shrink truncate text-[9px] leading-tight text-gray-400">
+                    <span className="min-w-0 shrink truncate text-2xs leading-tight text-fg-muted">
                         {pinLabelOnly(pin)}
                     </span>
                 )}
@@ -866,7 +866,7 @@ function OutputPinRow({
     return (
         <div className="relative flex min-h-[20px] w-full min-w-0 items-center justify-end pl-0.5 pr-1">
             <span
-                className="min-w-0 flex-1 truncate pr-3.5 text-right text-[9px] leading-tight text-gray-400"
+                className="min-w-0 flex-1 truncate pr-3.5 text-right text-2xs leading-tight text-fg-muted"
                 title={pinCaption(pin, semantic)}
             >
                 {pinCaption(pin, semantic)}
@@ -993,10 +993,10 @@ function KeyboardBindingCardControl({
         <div ref={rootRef} className="nodrag relative min-w-0">
             {listening ? (
                 <div className="absolute bottom-full left-0 z-[60] mb-1 w-full rounded border border-cyan-300/35 bg-[#0b1016] px-2 py-1.5 text-left shadow-lg ring-1 ring-black/35">
-                    <div className="truncate font-mono text-[11px] text-cyan-100">
+                    <div className="truncate font-mono text-2xs text-cyan-100">
                         {preview || "Press a key"}
                     </div>
-                    <div className="mt-0.5 truncate text-[9px] text-gray-400">Any key or combo</div>
+                    <div className="mt-0.5 truncate text-2xs text-fg-muted">Any key or combo</div>
                 </div>
             ) : null}
             <button
@@ -1004,7 +1004,7 @@ function KeyboardBindingCardControl({
                 className={`flex min-h-[26px] w-full min-w-0 items-center gap-1.5 rounded border px-2 py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50 ${
                     listening
                         ? "border-cyan-300/45 bg-cyan-400/10 text-cyan-100"
-                        : "border-white/15 bg-[#111418] text-gray-200 hover:border-cyan-300/35 hover:bg-white/[0.04]"
+                        : "border-edge bg-[#111418] text-fg hover:border-cyan-300/35 hover:bg-fill-subtle"
                 } ${displayValue ? "pr-7" : ""}`}
                 title={displayValue ? `Bound to ${displayValue}` : "Bind keyboard"}
                 aria-label={displayValue ? `Bound to ${displayValue}` : "Bind keyboard"}
@@ -1019,14 +1019,14 @@ function KeyboardBindingCardControl({
                 }}
             >
                 <KeyboardIcon className="h-3.5 w-3.5 shrink-0 text-cyan-300/80" aria-hidden />
-                <span className={`min-w-0 flex-1 truncate font-mono text-[10px] ${displayValue ? "" : "text-gray-500"}`}>
+                <span className={`min-w-0 flex-1 truncate font-mono text-2xs ${displayValue ? "" : "text-fg-subtle"}`}>
                     {displayValue || "Unbound"}
                 </span>
             </button>
             {displayValue ? (
                 <button
                     type="button"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-500 hover:bg-white/10 hover:text-gray-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-fg-subtle hover:bg-fill hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50"
                     title="Clear binding"
                     aria-label="Clear binding"
                     onMouseDown={event => {
@@ -1125,11 +1125,11 @@ function InspectorParamOnCard({
     return (
         <div
             key={spec.key}
-            className="mt-1.5 border-t border-white/5 pt-1.5"
+            className="mt-1.5 border-t border-edge-subtle pt-1.5"
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
-            <div className="mb-0.5 text-[9px] tracking-wide text-gray-500">{spec.label}</div>
+            <div className="mb-0.5 text-2xs tracking-wide text-fg-subtle">{spec.label}</div>
             {spec.kind === "select" && selectComponentOptions ? (
                 <Select
                     fullWidth
@@ -1171,7 +1171,7 @@ function InspectorParamOnCard({
                 />
             ) : isReadonlyAnyDefaultValue ? (
                 <Input
-                    className={`${CARD_INPUT} cursor-not-allowed text-gray-500`}
+                    className={`${CARD_INPUT} cursor-not-allowed text-fg-subtle`}
                     type="text"
                     value="null"
                     size="sm"
@@ -1313,7 +1313,7 @@ function opacityPercentParam(params: Record<string, unknown>, key: string, fallb
 }
 
 function CardFieldLabel({ children }: { children: ReactNode }) {
-    return <div className="mb-0.5 text-[9px] tracking-wide text-gray-500">{children}</div>;
+    return <div className="mb-0.5 text-2xs tracking-wide text-fg-subtle">{children}</div>;
 }
 
 function CardNumberInput({
@@ -1387,7 +1387,7 @@ function CardNumberInput({
     return (
         <div className="relative">
             <input
-                className={`nodrag block w-full rounded border border-white/15 bg-[#111418] px-1.5 py-1 font-mono text-[10px] text-gray-200 transition-colors focus:border-[#40a8c4] focus:outline-none ${
+                className={`nodrag block w-full rounded border border-edge bg-[#111418] px-1.5 py-1 font-mono text-2xs text-fg transition-colors focus:border-primary focus:outline-none ${
                     unit ? "pr-8" : ""
                 } ${disabled ? "cursor-not-allowed opacity-55" : ""} ${INPUT_NUMBER_NO_SPINNER}`}
                 type="text"
@@ -1415,7 +1415,7 @@ function CardNumberInput({
                 }}
             />
             {unit ? (
-                <span className="pointer-events-none absolute inset-y-0 right-1.5 flex items-center font-mono text-[9px] text-gray-500">
+                <span className="pointer-events-none absolute inset-y-0 right-1.5 flex items-center font-mono text-2xs text-fg-subtle">
                     {unit}
                 </span>
             ) : null}
@@ -1501,7 +1501,7 @@ function DisplayableGetPropertyCard({
     const property = typeof params.property === "string" ? params.property : "position";
     return (
         <div
-            className="mt-1.5 border-t border-white/5 pt-1.5"
+            className="mt-1.5 border-t border-edge-subtle pt-1.5"
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
@@ -1565,7 +1565,7 @@ function DisplayableSetPropertyCard({
 
     return (
         <div
-            className="mt-1.5 border-t border-white/5 pt-1.5"
+            className="mt-1.5 border-t border-edge-subtle pt-1.5"
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
@@ -1659,7 +1659,7 @@ function DisplayableSetVariantCard({
 
     return (
         <div
-            className="mt-1.5 border-t border-white/5 pt-1.5"
+            className="mt-1.5 border-t border-edge-subtle pt-1.5"
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
@@ -1689,8 +1689,8 @@ function DisplayableSetVariantCard({
             </div>
             {message ? (
                 <div
-                    className={`mt-1 truncate text-[9px] ${
-                        targetVariants?.supported === false ? "text-amber-300" : "text-gray-500"
+                    className={`mt-1 truncate text-2xs ${
+                        targetVariants?.supported === false ? "text-amber-300" : "text-fg-subtle"
                     }`}
                     title={message}
                 >
@@ -1737,7 +1737,7 @@ function DisplayableAnimatePropertyCard({
 
     return (
         <div
-            className="mt-1.5 border-t border-white/5 pt-1.5"
+            className="mt-1.5 border-t border-edge-subtle pt-1.5"
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
@@ -1928,7 +1928,7 @@ function BlueprintCommentNodeCard({
                 style={{ borderColor: color.border, background: color.header }}
             >
                 <div
-                    className="min-w-0 flex-1 truncate text-[10px] font-semibold"
+                    className="min-w-0 flex-1 truncate text-2xs font-semibold"
                     style={{ color: color.text }}
                 >
                     {displayName}
@@ -1942,7 +1942,7 @@ function BlueprintCommentNodeCard({
                             key={key}
                             type="button"
                             className={`h-4 w-4 rounded-full border ${
-                                key === colorKey ? "border-white/85" : "border-white/20"
+                                key === colorKey ? "border-white/85" : "border-edge-strong"
                             }`}
                             style={{ background: item.swatch }}
                             title={item.label}
@@ -1975,7 +1975,7 @@ function BlueprintCommentNodeCard({
                 </div>
             </div>
             <TextArea
-                className="nodrag min-h-0 flex-1 resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed text-gray-100 placeholder-white/35 focus:border-transparent"
+                className="nodrag min-h-0 flex-1 resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed text-fg placeholder-white/35 focus:border-transparent"
                 value={typeof params.text === "string" ? params.text : ""}
                 rows={4}
                 placeholder={displayName}
@@ -1984,7 +1984,7 @@ function BlueprintCommentNodeCard({
                 onChange={e => onPatchNodeParam?.(nodeId, "text", e.target.value)}
             />
             <div
-                className="nodrag absolute bottom-1 right-1 h-4 w-4 cursor-nwse-resize rounded-sm border border-white/25 bg-black/20"
+                className="nodrag absolute bottom-1 right-1 h-4 w-4 cursor-nwse-resize rounded-sm border border-edge-strong bg-black/20"
                 title="Resize comment"
                 onPointerDown={startResize}
             >
@@ -2023,21 +2023,21 @@ function BlueprintElementLiteralNodeCard({
                     ? "border-red-400/85 ring-1 ring-red-500/40"
                     : selected
                       ? "border-yellow-300/90 ring-1 ring-yellow-500/45 shadow-[0_0_20px_rgba(234,179,8,0.18)]"
-                      : "border-white/15"
+                      : "border-edge"
             }`}
             title={firstNodeError?.message}
             aria-invalid={Boolean(firstNodeError)}
         >
-            <div className="border-b border-white/10 px-2 py-1.5">
-                <div className="text-[10px] text-gray-500">{catalog.category}</div>
-                <div className="font-medium leading-tight text-gray-100">{catalog.displayName}</div>
-                <div className="mt-1 min-w-0 truncate text-[11px] text-gray-300">{boundLabel}</div>
-                <div className="min-w-0 truncate font-mono text-[10px] text-gray-500">{typeLabel}</div>
+            <div className="border-b border-edge px-2 py-1.5">
+                <div className="text-2xs text-fg-subtle">{catalog.category}</div>
+                <div className="font-medium leading-tight text-fg">{catalog.displayName}</div>
+                <div className="mt-1 min-w-0 truncate text-2xs text-fg-muted">{boundLabel}</div>
+                <div className="min-w-0 truncate font-mono text-2xs text-fg-subtle">{typeLabel}</div>
             </div>
             <div className="mx-2 my-1.5">
                 <button
                     type="button"
-                    className="nodrag block w-full overflow-hidden rounded border border-white/10 bg-black/20 p-1.5 text-left transition-colors hover:border-cyan-300/35 hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50"
+                    className="nodrag block w-full overflow-hidden rounded border border-edge bg-black/20 p-1.5 text-left transition-colors hover:border-cyan-300/35 hover:bg-fill-subtle focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50"
                     aria-label={elementPreview ? `Select element ${boundLabel}` : "Select element"}
                     onMouseDown={stopFlowNodePointerBubble}
                     onPointerDown={stopFlowNodePointerBubble}
@@ -2049,7 +2049,7 @@ function BlueprintElementLiteralNodeCard({
                     {elementPreview?.preview ? (
                         elementPreview.preview
                     ) : (
-                        <div className="flex h-[72px] w-full items-center justify-center rounded-sm border border-dashed border-white/10 bg-[#0d1117] text-[11px] text-gray-400">
+                        <div className="flex h-[72px] w-full items-center justify-center rounded-sm border border-dashed border-edge bg-[#0d1117] text-2xs text-fg-muted">
                             Select element
                         </div>
                     )}
@@ -2091,14 +2091,14 @@ function BlueprintImageAssetLiteralNodeCard({
                     ? "border-red-400/85 ring-1 ring-red-500/40"
                     : selected
                       ? "border-cyan-400/80 ring-1 ring-cyan-500/40"
-                      : "border-white/15"
+                      : "border-edge"
             }`}
             title={firstNodeError?.message}
             aria-invalid={Boolean(firstNodeError)}
         >
-            <div className="border-b border-white/10 px-2 py-1.5">
-                <div className="text-[10px] tracking-wide text-gray-500">{catalog.category}</div>
-                <div className="font-medium leading-tight text-gray-100">{catalog.displayName}</div>
+            <div className="border-b border-edge px-2 py-1.5">
+                <div className="text-2xs tracking-wide text-fg-subtle">{catalog.category}</div>
+                <div className="font-medium leading-tight text-fg">{catalog.displayName}</div>
             </div>
             <div className="mx-2 my-1.5">
                 <ImageAssetPickerCard
@@ -2245,7 +2245,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
         <Button
             type="button"
             title={catalog.dynamicInputPinAddLabel ?? "Add input pin"}
-            className="nodrag mt-0.5 flex w-full items-center justify-center rounded border border-dashed border-white/10 !py-0.5 text-gray-500 hover:border-white/20 hover:bg-white/[0.03] hover:text-gray-400"
+            className="nodrag mt-0.5 flex w-full items-center justify-center rounded border border-dashed border-edge !py-0.5 text-fg-subtle hover:border-edge-strong hover:bg-fill-subtle hover:text-fg-muted"
             variant="ghost"
             size="sm"
             aria-label={catalog.dynamicInputPinAddLabel ?? "Add input pin"}
@@ -2269,7 +2269,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                     ? "border-red-400/85 ring-1 ring-red-500/40"
                     : selected
                       ? "border-cyan-400/80 ring-1 ring-cyan-500/40"
-                      : "border-white/15"
+                      : "border-edge"
             } ${!firstNodeError && isEventHead ? "border-l-cyan-400/70" : ""} ${
                 !firstNodeError && isVarDeclare ? "border-l-amber-500/80" : ""
             } ${
@@ -2278,9 +2278,9 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
             title={firstNodeError?.message}
             aria-invalid={Boolean(firstNodeError)}
         >
-            <div className="border-b border-white/5 px-2 py-1.5">
-                <div className="text-[10px] tracking-wide text-gray-500">{catalog.category}</div>
-                <div className="font-medium leading-tight text-gray-100">{catalog.displayName}</div>
+            <div className="border-b border-edge-subtle px-2 py-1.5">
+                <div className="text-2xs tracking-wide text-fg-subtle">{catalog.category}</div>
+                <div className="font-medium leading-tight text-fg">{catalog.displayName}</div>
                 {showAnimatePropertyCard && onPatchNodeParam ? (
                     <DisplayableAnimatePropertyCard
                         nodeId={nodeId}

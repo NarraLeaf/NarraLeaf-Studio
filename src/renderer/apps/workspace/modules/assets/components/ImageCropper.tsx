@@ -417,15 +417,15 @@ export function ImageCropper({
         >
             <div
                 style={anchorRef?.current ? { position: "fixed", top: anchorStyle.top, left: anchorStyle.left, width: anchorStyle.width } : { width: anchorStyle.width }}
-                className={`${anchorRef?.current ? "" : "mt-10 mx-auto"} bg-[#111218] border border-white/10 rounded-xl shadow-xl text-gray-200 max-h-[640px] flex flex-col ${className}`}
+                className={`${anchorRef?.current ? "" : "mt-10 mx-auto"} bg-[#111218] border border-edge rounded-xl shadow-xl text-fg max-h-[640px] flex flex-col ${className}`}
                 onMouseDown={(e) => e.stopPropagation()}
             >
-                <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-edge">
                     <div className="flex items-center gap-2">
                         <Crop className="w-4 h-4 text-primary" />
                         <div className="flex flex-col">
                             <span className="text-sm font-semibold">{headerLabel}</span>
-                            <span className="text-xs text-gray-400">
+                            <span className="text-xs text-fg-muted">
                                 {imageSize ? `${imageSize.width}x${imageSize.height}px` : "Loading..."}
                             </span>
                         </div>
@@ -440,26 +440,26 @@ export function ImageCropper({
                                     img.src = imageUrl;
                                 }
                             }}
-                            className="p-1 rounded hover:bg-white/10 disabled:opacity-50"
+                            className="p-1 rounded hover:bg-fill disabled:opacity-50"
                             disabled={loading}
                             title="Reload"
                         >
                             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
                         </button>
-                        <button onClick={onClose} className="p-1 rounded hover:bg-white/10" title="Close">
+                        <button onClick={onClose} className="p-1 rounded hover:bg-fill" title="Close">
                             <X className="w-4 h-4" />
                         </button>
                     </div>
                 </div>
 
-                <div className="p-4 space-y-3 border-b border-white/10">
+                <div className="p-4 space-y-3 border-b border-edge">
                     <div
                         ref={containerRef}
-                        className="relative w-full h-[460px] bg-[#0d0f14] border border-white/5 rounded-lg overflow-hidden select-none"
+                        className="relative w-full h-[460px] bg-[#0d0f14] border border-edge-subtle rounded-lg overflow-hidden select-none"
                         onPointerDown={handleContainerPointerDown}
                     >
                         {loading && (
-                            <div className="absolute inset-0 flex items-center justify-center text-gray-400 gap-2">
+                            <div className="absolute inset-0 flex items-center justify-center text-fg-muted gap-2">
                                 <RefreshCw className="w-4 h-4 animate-spin" />
                                 <span>Loading...</span>
                             </div>
@@ -538,7 +538,7 @@ export function ImageCropper({
                                     )}
 
                                     {dragState && dragState.handle !== "move" && (
-                                        <div className="absolute left-2 bottom-2 bg-black/60 text-[11px] px-2 py-1 rounded text-white pointer-events-none">
+                                        <div className="absolute left-2 bottom-2 bg-black/60 text-2xs px-2 py-1 rounded text-white pointer-events-none">
                                             {Math.round(selection.width)} x {Math.round(selection.height)}
                                         </div>
                                     )}
@@ -549,11 +549,11 @@ export function ImageCropper({
                 </div>
 
                 <div className="px-4 py-3 rounded-xl flex items-center justify-between bg-[#0d0f14]">
-                    <div className="text-xs text-gray-300">
+                    <div className="text-xs text-fg-muted">
                         {selection ? `Selection: ${Math.round(selection.width)}x${Math.round(selection.height)}` : "Waiting for selection..."}
                     </div>
                     <div className="flex gap-2">
-                        <button onClick={onClose} className="px-3 py-1.5 text-sm rounded-md bg-white/5 hover:bg-white/10 text-gray-200">
+                        <button onClick={onClose} className="px-3 py-1.5 text-sm rounded-md bg-fill-subtle hover:bg-fill text-fg">
                             Cancel
                         </button>
                         <button

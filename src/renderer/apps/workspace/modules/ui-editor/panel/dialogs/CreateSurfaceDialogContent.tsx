@@ -69,7 +69,7 @@ export function CreateSurfaceDialogContent({
     if (!isPage) {
         return (
             <div className="space-y-4">
-                <div className="text-sm text-gray-400">Choose where this Game UI belongs during gameplay.</div>
+                <div className="text-sm text-fg-muted">Choose where this Game UI belongs during gameplay.</div>
                 <div className="grid gap-2">
                     {GAME_UI_SLOT_OPTIONS.map(option => {
                         const isActive = slotId === option.value;
@@ -87,18 +87,18 @@ export function CreateSurfaceDialogContent({
                                 className={`w-full rounded-md border px-3 py-3 text-left text-sm transition-colors ${
                                     isActive
                                         ? "border-primary bg-primary/10 text-white"
-                                        : "border-white/10 text-gray-300 hover:border-white/30 hover:bg-white/5"
-                                } ${disabled ? "cursor-not-allowed opacity-45 hover:border-white/10 hover:bg-transparent" : ""}`}
+                                        : "border-edge text-fg-muted hover:border-edge-strong hover:bg-fill-subtle"
+                                } ${disabled ? "cursor-not-allowed opacity-45 hover:border-edge hover:bg-transparent" : ""}`}
                             >
                                 <div className="font-semibold">{option.label}</div>
-                                <div className="text-[11px] text-gray-400">
+                                <div className="text-2xs text-fg-muted">
                                     {disabled ? "Already created. Open the existing Game UI from the list." : option.description}
                                 </div>
                             </button>
                         );
                     })}
                 </div>
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-fg-subtle">
                     Game UI uses the project resolution: {defaultDesignSize.width}×{defaultDesignSize.height}.
                 </div>
             </div>

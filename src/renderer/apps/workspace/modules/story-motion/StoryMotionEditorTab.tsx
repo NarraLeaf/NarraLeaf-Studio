@@ -1072,7 +1072,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
 
     if (!asset) {
         return (
-            <div className="flex h-full items-center justify-center bg-[#101114] text-sm text-slate-400">
+            <div className="flex h-full items-center justify-center bg-[#101114] text-sm text-fg-muted">
                 {loadError ?? "Loading motion asset..."}
             </div>
         );
@@ -1081,13 +1081,13 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
     return (
         <div
             ref={editorRootRef}
-            className="flex h-full min-h-0 flex-col bg-[#101114] text-slate-200 outline-none"
+            className="flex h-full min-h-0 flex-col bg-[#101114] text-fg outline-none"
             tabIndex={-1}
             onKeyDownCapture={handleEditorKeyDown}
             onMouseDownCapture={focusEditor}
         >
-            <div className="flex h-12 shrink-0 items-center gap-2 border-b border-white/10 px-3">
-                <div className="min-w-0 flex-[0_1_320px] truncate text-sm font-medium text-slate-100" title={asset.name}>
+            <div className="flex h-12 shrink-0 items-center gap-2 border-b border-edge px-3">
+                <div className="min-w-0 flex-[0_1_320px] truncate text-sm font-medium text-fg" title={asset.name}>
                     {asset.name}
                 </div>
                 <button className={ICON_BUTTON_CLASS} type="button" onClick={togglePlayback} title={playing ? "Pause" : "Play"}>
@@ -1101,7 +1101,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                     value={Math.min(playheadMs, durationMs)}
                     onChange={event => setPlayheadMs(clampNumber(Number(event.target.value), 0, durationMs, 0))}
                 />
-                <span className="shrink-0 text-[11px] tabular-nums text-slate-500">
+                <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">
                     {formatStoryMotionTime(Math.min(playheadMs, durationMs))}
                 </span>
             </div>
@@ -1110,7 +1110,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                 <div className="flex min-h-0 flex-col">
                     <div
                         ref={previewViewportRef}
-                        className={`min-h-0 flex-1 overflow-auto bg-[#0f1115] ${previewPanning ? "cursor-grabbing" : "cursor-default"}`}
+                        className={`min-h-0 flex-1 overflow-auto bg-surface ${previewPanning ? "cursor-grabbing" : "cursor-default"}`}
                         onPointerDown={handlePreviewPointerDown}
                         onPointerMove={handlePreviewPointerMove}
                         onPointerUp={stopPreviewPan}
@@ -1178,9 +1178,9 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                         </div>
                     </div>
 
-                    <div className="h-64 shrink-0 border-t border-white/10 bg-[#0f1013]">
-                        <div className="flex h-12 items-center gap-3 border-b border-white/10 px-3">
-                            <div className="w-[168px] text-xs font-medium text-slate-300">Animated properties</div>
+                    <div className="h-64 shrink-0 border-t border-edge bg-[#0f1013]">
+                        <div className="flex h-12 items-center gap-3 border-b border-edge px-3">
+                            <div className="w-[168px] text-xs font-medium text-fg-muted">Animated properties</div>
                             <Select
                                 className="w-44"
                                 size="md"
@@ -1213,13 +1213,13 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                     gridTemplateColumns: `${TIMELINE_LEFT_COL_PX}px ${timelineWidth}px`,
                                 }}
                             >
-                                <div className="sticky left-0 top-0 z-40 flex h-8 items-center border-r border-b border-white/10 bg-[#0f1013] px-3 text-xs font-medium text-slate-300">
+                                <div className="sticky left-0 top-0 z-40 flex h-8 items-center border-r border-b border-edge bg-[#0f1013] px-3 text-xs font-medium text-fg-muted">
                                     Property
                                 </div>
-                                <div className="sticky top-0 z-30 h-8 border-b border-white/10 bg-[#0f1013]" onPointerDown={startPlayheadDrag}>
+                                <div className="sticky top-0 z-30 h-8 border-b border-edge bg-[#0f1013]" onPointerDown={startPlayheadDrag}>
                                     {buildTicks(pxPerMs, timelineWidth, timelineViewport, STORY_MOTION_FPS).map(tick => (
-                                        <div key={tick.timeMs} className="absolute top-0 h-full border-l border-white/10" style={{ left: tick.timeMs * pxPerMs }}>
-                                            <span className="ml-1 text-[10px] text-slate-500">{tick.label}</span>
+                                        <div key={tick.timeMs} className="absolute top-0 h-full border-l border-edge" style={{ left: tick.timeMs * pxPerMs }}>
+                                            <span className="ml-1 text-2xs text-fg-subtle">{tick.label}</span>
                                         </div>
                                     ))}
                                     <div className="absolute top-0 z-20 h-full w-px bg-orange-400" style={{ left: playheadMs * pxPerMs }}>
@@ -1228,11 +1228,11 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                 </div>
                                 {tracks.map(track => (
                                     <Fragment key={track.id}>
-                                        <div className="group sticky left-0 z-20 flex h-[34px] items-center gap-2 border-r border-b border-white/[0.06] bg-[#0f1013] px-3 text-xs text-slate-400">
+                                        <div className="group sticky left-0 z-20 flex h-[34px] items-center gap-2 border-r border-b border-white/[0.06] bg-[#0f1013] px-3 text-xs text-fg-muted">
                                             <span className="min-w-0 flex-1 truncate">{getStoryMotionPropertyMeta(track.property).label}</span>
                                             <button
                                                 type="button"
-                                                className="grid h-6 w-6 shrink-0 place-items-center rounded text-slate-500 opacity-0 transition group-hover:opacity-100 hover:bg-primary/10 hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
+                                                className="grid h-6 w-6 shrink-0 place-items-center rounded text-fg-subtle opacity-0 transition group-hover:opacity-100 hover:bg-primary/10 hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
                                                 onClick={event => {
                                                     event.stopPropagation();
                                                     addKeyframeAtTime(track, playheadMs);
@@ -1245,7 +1245,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                             </button>
                                             <button
                                                 type="button"
-                                                className="grid h-6 w-6 shrink-0 place-items-center rounded text-slate-500 opacity-0 transition group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400/50"
+                                                className="grid h-6 w-6 shrink-0 place-items-center rounded text-fg-subtle opacity-0 transition group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400/50"
                                                 onClick={event => {
                                                     event.stopPropagation();
                                                     deleteTrack(track);

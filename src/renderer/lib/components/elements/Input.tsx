@@ -1,4 +1,5 @@
 import React from "react";
+import { cn } from "../../utils/cn";
 
 export type InputVariant = "default" | "error" | "success";
 export type InputSize = "sm" | "md" | "lg";
@@ -13,9 +14,9 @@ export interface BaseInputProps extends Omit<React.InputHTMLAttributes<HTMLInput
 }
 
 const variantStyles: Record<InputVariant, string> = {
-    default: "border-white/20 hover:border-white/30 focus:border-[#40a8c4] focus:ring-1 focus:ring-[#40a8c4]/30 focus:shadow-lg focus:shadow-[#40a8c4]/10",
-    error: "border-red-500/50 hover:border-red-400/70 focus:border-red-500 focus:ring-1 focus:ring-red-500/30 focus:shadow-lg focus:shadow-red-500/10",
-    success: "border-green-500/50 hover:border-green-400/70 focus:border-green-500 focus:ring-1 focus:ring-green-500/30 focus:shadow-lg focus:shadow-green-500/10",
+    default: "border-edge-strong focus:border-primary",
+    error: "border-danger/50 focus:border-danger",
+    success: "border-success/50 focus:border-success",
 };
 
 const sizeStyles: Record<InputSize, string> = {
@@ -23,6 +24,10 @@ const sizeStyles: Record<InputSize, string> = {
     md: "px-3 py-2 text-sm",
     lg: "px-4 py-2 text-base",
 };
+
+const inputBase = "w-full bg-fill-subtle border rounded-md text-fg placeholder-fg-subtle "
+    + "focus:outline-none transition-all duration-150 ease-out "
+    + "disabled:opacity-50 disabled:cursor-not-allowed cursor-text";
 
 /**
  * Text input component with VS Code-like styling
@@ -38,28 +43,21 @@ export function Input({
     ...props
 }: BaseInputProps) {
     return (
-        <div className={`relative ${fullWidth ? "w-full" : ""}`}>
+        <div className={cn("relative", fullWidth && "w-full")}>
             {leftIcon && (
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <div className="text-gray-400">{leftIcon}</div>
+                    <div className="text-fg-muted">{leftIcon}</div>
                 </div>
             )}
             <input
-                className={`
-                    w-full bg-white/5 border rounded-md text-gray-200 placeholder-gray-400
-                    focus:outline-none focus:ring-0
-                    transition-all duration-150 ease-out
-                    disabled:opacity-50 disabled:cursor-not-allowed cursor-text
-                    ${leftIcon ? "pl-10" : ""}
-                    ${rightIcon ? "pr-10" : ""}
-                    ${variantStyles[variant]}
-                    ${sizeStyles[size]}
-                    ${className}
-                `}
-                style={{
-                    outline: 'none',
-                    boxShadow: 'none'
-                }}
+                className={cn(
+                    inputBase,
+                    leftIcon && "pl-10",
+                    rightIcon && "pr-10",
+                    variantStyles[variant],
+                    sizeStyles[size],
+                    className,
+                )}
                 {...props}
             />
             {rightIcon && (
@@ -67,7 +65,7 @@ export function Input({
                     <button
                         type="button"
                         onClick={onRightIconClick}
-                        className="text-gray-400 hover:text-gray-200 transition-colors cursor-default"
+                        className="text-fg-muted hover:text-fg transition-colors cursor-default"
                     >
                         {rightIcon}
                     </button>
@@ -96,20 +94,14 @@ export function TextArea({
     return (
         <textarea
             rows={rows}
-            className={`
-                w-full bg-white/5 border rounded-md text-gray-200 placeholder-gray-400
-                focus:outline-none focus:ring-0
-                transition-all duration-150 ease-out resize-vertical
-                disabled:opacity-50 disabled:cursor-not-allowed cursor-text
-                ${variantStyles[variant]}
-                ${sizeStyles[size]}
-                ${fullWidth ? "w-full" : ""}
-                ${className}
-            `}
-            style={{
-                outline: 'none',
-                boxShadow: 'none'
-            }}
+            className={cn(
+                inputBase,
+                "resize-vertical",
+                variantStyles[variant],
+                sizeStyles[size],
+                fullWidth && "w-full",
+                className,
+            )}
             {...props}
         />
     );
@@ -160,11 +152,11 @@ export function InputGroup({
     const inputVariant = error ? "error" : "default";
 
     return (
-        <div className={`space-y-1 ${className}`}>
+        <div className={cn("space-y-1", className)}>
             {label && (
-                <label className="block text-sm font-medium text-gray-200">
+                <label className="block text-sm font-medium text-fg">
                     {label}
-                    {required && <span className="text-red-400 ml-1">*</span>}
+                    {required && <span className="text-danger ml-1">*</span>}
                 </label>
             )}
             <div>
@@ -174,10 +166,10 @@ export function InputGroup({
                 }
             </div>
             {error && (
-                <p className="text-xs text-red-400">{error}</p>
+                <p className="text-xs text-danger">{error}</p>
             )}
             {helper && !error && (
-                <p className="text-xs text-gray-400">{helper}</p>
+                <p className="text-xs text-fg-muted">{helper}</p>
             )}
         </div>
     );

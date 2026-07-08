@@ -86,7 +86,7 @@ export function ButtonAppearanceValueEditor({
                     min={0}
                     max={100}
                     precision={null}
-                    leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                    leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                     className="w-full min-w-0"
                 />
             );
@@ -96,7 +96,7 @@ export function ButtonAppearanceValueEditor({
             return (
                 <input
                     type="text"
-                    className="w-full min-w-0 rounded-lg border border-white/10 bg-transparent px-2 py-1.5 text-xs text-gray-200"
+                    className="w-full min-w-0 rounded-lg border border-edge bg-transparent px-2 py-1.5 text-xs text-fg"
                     value={v}
                     onChange={e => onChange(e.target.value)}
                     placeholder="URL or asset ref (legacy)"
@@ -121,7 +121,7 @@ export function ButtonAppearanceValueEditor({
         }
         case "imageFill": {
             if (!inspectorData || !onSaving) {
-                return <span className="text-xs text-gray-500">Image fill requires inspector context</span>;
+                return <span className="text-xs text-fg-subtle">Image fill requires inspector context</span>;
             }
             const baseline = buttonPropsToImageFillBaseline(getButtonProps(inspectorData.element));
             const fillField: ImageFillFieldDefinition<UIInspectorData> = {
@@ -169,7 +169,7 @@ export function ButtonAppearanceValueEditor({
                     min={0}
                     max={max}
                     unit="px"
-                    leftIcon={fieldKey === "borderWidth" ? <Square className="w-4 h-4 text-gray-400" /> : undefined}
+                    leftIcon={fieldKey === "borderWidth" ? <Square className="w-4 h-4 text-fg-muted" /> : undefined}
                     className="w-full min-w-0"
                 />
             );
@@ -192,12 +192,12 @@ export function ButtonAppearanceValueEditor({
         case "clipContent": {
             const b = Boolean(value);
             return (
-                <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+                <label className="flex items-center gap-2 text-xs text-fg-muted cursor-pointer">
                     <input
                         type="checkbox"
                         checked={b}
                         onChange={e => onChange(e.target.checked)}
-                        className="rounded border-white/20"
+                        className="rounded border-edge-strong"
                     />
                     Clip
                 </label>
@@ -206,6 +206,6 @@ export function ButtonAppearanceValueEditor({
         case "cursor":
             return <ButtonCursorSelect value={value} onChange={onChange} />;
         default:
-            return <span className="text-xs text-gray-500">{String(value ?? "")}</span>;
+            return <span className="text-xs text-fg-subtle">{String(value ?? "")}</span>;
     }
 }

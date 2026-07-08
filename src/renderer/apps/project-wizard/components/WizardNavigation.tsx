@@ -31,7 +31,7 @@ export function WizardNavigation({
     const currentStepIndex = ["template", "details", "settings", "review"].indexOf(currentStep);
 
     return (
-        <div className="flex items-center justify-between p-6 border-t border-white/10">
+        <div className="flex items-center justify-between p-6 border-t border-edge">
             <Button
                 variant="ghost"
                 onClick={onPrevStep}

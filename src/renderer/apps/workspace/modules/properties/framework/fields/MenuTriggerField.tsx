@@ -44,7 +44,7 @@ export function MenuTriggerField<TData>({
                 ref={buttonRef}
                 type="button"
                 onClick={handleToggle}
-                className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-transparent text-gray-300 transition hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                className="grid h-9 w-9 place-items-center rounded-lg border border-edge bg-transparent text-fg-muted transition hover:bg-fill-subtle focus:outline-none focus:ring-2 focus:ring-primary/50"
                 aria-label={field.buttonAriaLabel ?? "Open menu"}
             >
                 {field.icon ?? <MoreHorizontal className="w-4 h-4" />}

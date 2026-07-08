@@ -53,10 +53,10 @@ function SettingRow({
     onChange: (value: boolean) => void;
 }) {
     return (
-        <section className="flex items-start justify-between gap-3 rounded-md border border-white/10 bg-white/[0.025] p-3">
+        <section className="flex items-start justify-between gap-3 rounded-md border border-edge bg-white/[0.025] p-3">
             <div className="min-w-0">
-                <div className="text-sm font-medium text-slate-100">{title}</div>
-                <div className="mt-1 text-[11px] leading-relaxed text-slate-500">{description}</div>
+                <div className="text-sm font-medium text-fg">{title}</div>
+                <div className="mt-1 text-2xs leading-relaxed text-fg-subtle">{description}</div>
             </div>
             <Switch
                 size="sm"

@@ -80,20 +80,20 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
         if (binding) {
             return (
                 <div className="space-y-2">
-                    <div className="rounded-md border border-white/10 bg-[#111315] px-3 py-2">
+                    <div className="rounded-md border border-edge bg-[#111315] px-3 py-2">
                         <div className="flex min-w-0 items-center gap-2">
                             <GitBranch className="h-4 w-4 shrink-0 text-cyan-300" />
                             <div className="min-w-0 flex-1">
-                                <div className="truncate text-xs font-medium text-gray-100">
+                                <div className="truncate text-xs font-medium text-fg">
                                     {blueprint?.name ?? "Blueprint Value"}
                                 </div>
-                                <div className="truncate font-mono text-[10px] text-gray-500">
+                                <div className="truncate font-mono text-2xs text-fg-subtle">
                                     {config.valueLabel}
                                 </div>
                             </div>
                             <button
                                 type="button"
-                                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-white/10 bg-white/5 text-gray-200 hover:bg-white/10 disabled:opacity-40"
+                                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-edge bg-fill-subtle text-fg hover:bg-fill disabled:opacity-40"
                                 disabled={!surfaceId}
                                 onClick={() => openValueBlueprint(binding.blueprintId)}
                                 aria-label="Open Blueprint Value"
@@ -105,7 +105,7 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
                     </div>
                     <button
                         type="button"
-                        className="inline-flex items-center gap-1.5 rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-gray-200 hover:bg-white/10"
+                        className="inline-flex items-center gap-1.5 rounded border border-edge bg-fill-subtle px-2 py-1 text-xs text-fg hover:bg-fill"
                         onClick={() => props.data.documentService.clearElementBlueprintValueBinding(live.id, config.propPath)}
                     >
                         <Pencil className="h-3.5 w-3.5" />
@@ -118,14 +118,14 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
         return (
             <div className="space-y-2">
                 {config.renderLiteralEditor?.({ data: props.data, liveElement: live }) ?? (
-                    <div className="rounded-md border border-white/10 bg-[#111315] px-3 py-2">
+                    <div className="rounded-md border border-edge bg-[#111315] px-3 py-2">
                         <div className="flex min-w-0 items-center gap-2">
-                            <GitBranch className="h-4 w-4 shrink-0 text-gray-500" />
+                            <GitBranch className="h-4 w-4 shrink-0 text-fg-subtle" />
                             <div className="min-w-0 flex-1">
-                                <div className="truncate text-xs font-medium text-gray-200">
+                                <div className="truncate text-xs font-medium text-fg">
                                     {config.title}
                                 </div>
-                                <div className="truncate font-mono text-[10px] text-gray-500">
+                                <div className="truncate font-mono text-2xs text-fg-subtle">
                                     {config.valueLabel}
                                 </div>
                             </div>

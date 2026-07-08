@@ -39,7 +39,7 @@ const PREVIEW_LOOP_GAP_MS = 1100;
 const PREVIEW_FRAME_MS = 1000 / 30;
 
 const ICON_BUTTON_CLASS = controlButtonClass();
-const TOOL_BUTTON_CLASS = "inline-flex h-8 items-center gap-1.5 rounded border border-white/10 bg-white/[0.04] px-2 text-xs text-slate-200 hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
+const TOOL_BUTTON_CLASS = "inline-flex h-8 items-center gap-1.5 rounded border border-edge bg-fill-subtle px-2 text-xs text-fg hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
 
 function clamp(value: number, min: number, max: number): number {
     return Math.min(Math.max(value, min), max);
@@ -228,16 +228,16 @@ export function MotionSelector(props: {
             <div
                 ref={panelRef}
                 style={{ position: "fixed", top: anchorStyle.top, left: anchorStyle.left, width: anchorStyle.width }}
-                className="flex max-h-[420px] flex-col overflow-hidden rounded-lg border border-white/20 bg-[#0b0d12] shadow-2xl"
+                className="flex max-h-[420px] flex-col overflow-hidden rounded-lg border border-edge-strong bg-surface-sunken shadow-2xl"
                 onMouseDown={event => event.stopPropagation()}
             >
-                <div className="flex items-center gap-2 border-b border-white/10 p-2">
+                <div className="flex items-center gap-2 border-b border-edge p-2">
                     <EnhancedInput
                         className="flex-1"
                         value={query}
                         onChange={setQuery}
                         placeholder="Search story motions"
-                        leftIcon={<Search className="h-3.5 w-3.5 text-slate-500" />}
+                        leftIcon={<Search className="h-3.5 w-3.5 text-fg-subtle" />}
                     />
                     <Select
                         className="w-40"
@@ -255,7 +255,7 @@ export function MotionSelector(props: {
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto p-1">
                     {filteredAssets.length === 0 ? (
-                        <div className="p-6 text-center text-xs text-slate-500">
+                        <div className="p-6 text-center text-xs text-fg-subtle">
                             No {formatTargetKind(props.targetKind).toLowerCase()} motions yet. Use “New” to create one.
                         </div>
                     ) : filteredAssets.map(asset => {
@@ -265,7 +265,7 @@ export function MotionSelector(props: {
                                 key={asset.id}
                                 className={[
                                     "group flex items-center gap-2 rounded-md px-2 py-2 transition-colors",
-                                    selected ? "bg-primary/20 ring-1 ring-inset ring-primary/50" : "hover:bg-white/5",
+                                    selected ? "bg-primary/20 ring-1 ring-inset ring-primary/50" : "hover:bg-fill-subtle",
                                 ].join(" ")}
                                 onMouseEnter={event => scheduleHover(asset.id, event.currentTarget)}
                                 onMouseLeave={clearHover}
@@ -275,12 +275,12 @@ export function MotionSelector(props: {
                                     className="flex min-w-0 flex-1 items-center gap-2 text-left"
                                     onClick={() => props.onSelect(asset.id)}
                                 >
-                                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-white/10 bg-white/[0.04] text-primary">
+                                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-edge bg-fill-subtle text-primary">
                                         <Spline className="h-3.5 w-3.5" />
                                     </span>
                                     <span className="min-w-0 flex-1">
-                                        <span className="block truncate text-xs font-medium text-slate-200">{asset.name}</span>
-                                        <span className="block truncate text-[11px] text-slate-500">{formatTargetKind(asset.targetKind)}</span>
+                                        <span className="block truncate text-xs font-medium text-fg">{asset.name}</span>
+                                        <span className="block truncate text-2xs text-fg-subtle">{formatTargetKind(asset.targetKind)}</span>
                                     </span>
                                 </button>
                                 <button
@@ -390,7 +390,7 @@ function MotionHoverPreview(props: {
     return (
         <div
             style={{ position: "fixed", top: props.position.top, left: props.position.left, width: PREVIEW_BOX.width, height: PREVIEW_BOX.height }}
-            className="pointer-events-none z-[70] overflow-hidden rounded-lg border border-white/20 bg-black/80 shadow-2xl backdrop-blur"
+            className="pointer-events-none z-[70] overflow-hidden rounded-lg border border-edge-strong bg-black/80 shadow-2xl backdrop-blur"
         >
             {asset ? (
                 <div className="relative flex h-full w-full items-center justify-center overflow-hidden">
@@ -407,15 +407,15 @@ function MotionHoverPreview(props: {
                             />
                         </div>
                     </div>
-                    <div className="absolute left-2 top-2 truncate rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-slate-200">
+                    <div className="absolute left-2 top-2 truncate rounded bg-black/55 px-1.5 py-0.5 text-2xs font-medium text-fg">
                         {asset.name}
                     </div>
-                    <div className="absolute right-2 bottom-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] text-slate-400">
+                    <div className="absolute right-2 bottom-2 rounded bg-black/55 px-1.5 py-0.5 text-2xs text-fg-muted">
                         {motionSummary(asset)}
                     </div>
                 </div>
             ) : (
-                <div className="grid h-full w-full place-items-center text-xs text-slate-500">Loading preview…</div>
+                <div className="grid h-full w-full place-items-center text-xs text-fg-subtle">Loading preview…</div>
             )}
         </div>
     );
@@ -475,14 +475,14 @@ export function MotionField(props: {
             <button
                 ref={triggerRef}
                 type="button"
-                className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-white/10 bg-[#1e1f22] px-3 text-left text-sm text-gray-300 hover:border-primary/40"
+                className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-edge bg-surface-raised px-3 text-left text-sm text-fg-muted hover:border-primary/40"
                 onClick={() => setSelectorOpen(open => !open)}
             >
                 <Spline className="h-3.5 w-3.5 shrink-0 text-primary" />
-                <span className={["truncate", animationId ? "" : "italic text-gray-500"].join(" ")}>
+                <span className={["truncate", animationId ? "" : "italic text-fg-subtle"].join(" ")}>
                     {asset?.name ?? (animationId ? "Motion asset" : "Choose motion…")}
                 </span>
-                {asset ? <span className="ml-auto shrink-0 text-[11px] text-slate-500">{motionSummary(asset)}</span> : null}
+                {asset ? <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{motionSummary(asset)}</span> : null}
             </button>
             {animationId ? (
                 <>

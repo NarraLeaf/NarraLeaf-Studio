@@ -44,7 +44,7 @@ function ComponentPreviewFrame({
     const scale = frameWidth > 0 ? Math.min(frameWidth / designWidth, frameHeight / designHeight) : 0;
 
     return (
-        <div ref={frameRef} className="mt-2 h-20 w-full overflow-hidden rounded border border-white/10 bg-[#05060a]">
+        <div ref={frameRef} className="mt-2 h-20 w-full overflow-hidden rounded border border-edge bg-surface-canvas">
             <div className="relative h-full w-full">
                 {scale > 0 ? (
                     <div
@@ -273,7 +273,7 @@ export function ComponentLibraryPanel({
     return (
         <div
             ref={panelRef}
-            className="shrink-0 border-t border-white/10 bg-[#0b0d12]"
+            className="shrink-0 border-t border-edge bg-surface-sunken"
             tabIndex={0}
             onKeyDown={event => {
                 if (event.key === "Delete" && selectedIds.size > 0) {
@@ -284,29 +284,29 @@ export function ComponentLibraryPanel({
         >
             <button
                 type="button"
-                className="flex h-9 w-full items-center gap-2 px-3 text-left text-xs font-semibold text-gray-200 hover:bg-white/5"
+                className="flex h-9 w-full items-center gap-2 px-3 text-left text-xs font-semibold text-fg hover:bg-fill-subtle"
                 onClick={() => setOpen(value => !value)}
             >
                 <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "" : "-rotate-90"}`} />
                 <Component className="h-3.5 w-3.5" />
                 <span className="min-w-0 flex-1">Component Library</span>
-                <span className="text-[11px] font-normal text-gray-500">{components.length}</span>
+                <span className="text-2xs font-normal text-fg-subtle">{components.length}</span>
             </button>
             {open ? (
-                <div className="space-y-2 border-t border-white/10 p-2">
+                <div className="space-y-2 border-t border-edge p-2">
                     <div className="flex items-center gap-1">
                         <div className="relative min-w-0 flex-1">
-                            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-500" />
+                            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-subtle" />
                             <input
                                 value={query}
                                 onChange={event => setQuery(event.target.value)}
                                 placeholder="Search"
-                                className="h-8 w-full rounded-md border border-white/10 bg-white/[0.04] pl-8 pr-2 text-xs text-gray-200 outline-none focus:border-primary/60"
+                                className="h-8 w-full rounded-md border border-edge bg-fill-subtle pl-8 pr-2 text-xs text-fg outline-none focus:border-primary/60"
                             />
                         </div>
                         <button
                             type="button"
-                            className="grid h-8 w-8 place-items-center rounded-md border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white"
+                            className="grid h-8 w-8 place-items-center rounded-md border border-edge text-fg-muted hover:bg-fill hover:text-white"
                             onClick={() => void handleCreate()}
                             title="Create component"
                             aria-label="Create component"
@@ -316,11 +316,11 @@ export function ComponentLibraryPanel({
                     </div>
 
                     {selectedCount > 0 ? (
-                        <div className="flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] p-1">
-                            <span className="min-w-0 flex-1 px-1 text-[11px] text-gray-400">{selectedCount} selected</span>
+                        <div className="flex items-center gap-1 rounded-md border border-edge bg-fill-subtle p-1">
+                            <span className="min-w-0 flex-1 px-1 text-2xs text-fg-muted">{selectedCount} selected</span>
                             <button
                                 type="button"
-                                className="grid h-7 w-7 place-items-center rounded text-gray-300 hover:bg-white/10 hover:text-white"
+                                className="grid h-7 w-7 place-items-center rounded text-fg-muted hover:bg-fill hover:text-white"
                                 onClick={() => handleDuplicate([...selectedIds])}
                                 title="Duplicate selected"
                                 aria-label="Duplicate selected"
@@ -341,7 +341,7 @@ export function ComponentLibraryPanel({
 
                     <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
                         {filteredComponents.length === 0 ? (
-                            <div className="rounded-md border border-dashed border-white/10 px-3 py-4 text-center text-xs text-gray-500">
+                            <div className="rounded-md border border-dashed border-edge px-3 py-4 text-center text-xs text-fg-subtle">
                                 {components.length === 0 ? "Create a component or add selected elements from the canvas." : "No matches."}
                             </div>
                         ) : (
@@ -359,7 +359,7 @@ export function ComponentLibraryPanel({
                                         className={`group rounded-md border px-2 py-2 transition ${
                                             selected
                                                 ? "border-primary/60 bg-primary/10"
-                                                : "border-white/10 bg-white/[0.025] hover:border-white/20 hover:bg-white/[0.05]"
+                                                : "border-edge bg-white/[0.025] hover:border-edge-strong hover:bg-fill-subtle"
                                         }`}
                                         onContextMenu={event => openContextMenu(event, component)}
                                         onClick={() => onOpenComponent(component)}
@@ -385,14 +385,14 @@ export function ComponentLibraryPanel({
                                                 aria-label={`Select ${component.name}`}
                                             />
                                             <div
-                                                className="min-w-0 flex-1 truncate text-left text-xs font-medium text-gray-100"
+                                                className="min-w-0 flex-1 truncate text-left text-xs font-medium text-fg"
                                                 title={component.name}
                                             >
                                                 {component.name}
                                             </div>
                                             <button
                                                 type="button"
-                                                className="grid h-6 w-6 place-items-center rounded text-gray-400 opacity-0 hover:bg-white/10 hover:text-white group-hover:opacity-100"
+                                                className="grid h-6 w-6 place-items-center rounded text-fg-muted opacity-0 hover:bg-fill hover:text-white group-hover:opacity-100"
                                                 onClick={event => {
                                                     event.stopPropagation();
                                                     void handleRename(component);
@@ -404,7 +404,7 @@ export function ComponentLibraryPanel({
                                             </button>
                                             <button
                                                 type="button"
-                                                className="grid h-6 w-6 place-items-center rounded text-gray-400 hover:bg-white/10 hover:text-white"
+                                                className="grid h-6 w-6 place-items-center rounded text-fg-muted hover:bg-fill hover:text-white"
                                                 onClick={event => openContextMenu(event, component, { selectComponent: false })}
                                                 title="Component actions"
                                                 aria-label="Component actions"
@@ -413,7 +413,7 @@ export function ComponentLibraryPanel({
                                             </button>
                                         </div>
                                         <ComponentPreviewFrame component={component}>{preview}</ComponentPreviewFrame>
-                                        <div className="mt-1 text-[11px] text-gray-500">
+                                        <div className="mt-1 text-2xs text-fg-subtle">
                                             {Math.round(component.previewMeta?.width ?? root?.layout.width ?? 0)}×
                                             {Math.round(component.previewMeta?.height ?? root?.layout.height ?? 0)}
                                             {documentService ? (

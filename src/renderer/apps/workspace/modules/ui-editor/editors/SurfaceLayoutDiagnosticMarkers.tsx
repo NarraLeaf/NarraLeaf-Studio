@@ -31,7 +31,7 @@ export function SurfaceLayoutDiagnosticMarkers(props: {
                             height: Math.max(boxH, 2),
                         }}
                     >
-                        <span className="absolute left-0 top-full z-10 mt-0.5 max-w-[240px] truncate rounded bg-black/75 px-1 py-0.5 text-[9px] leading-tight text-amber-100/95 shadow-sm">
+                        <span className="absolute left-0 top-full z-10 mt-0.5 max-w-[240px] truncate rounded bg-black/75 px-1 py-0.5 text-2xs leading-tight text-amber-100/95 shadow-sm">
                             {hint.label}
                         </span>
                     </div>

@@ -12,7 +12,7 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick }: Props) {
 
     if (diagnostics.length === 0) {
         return (
-            <div className="shrink-0 border-t border-white/10 bg-[#0b0d12] px-3 py-1.5 text-[11px] text-gray-500">
+            <div className="shrink-0 border-t border-edge bg-surface-sunken px-3 py-1.5 text-2xs text-fg-subtle">
                 No diagnostics.
             </div>
         );
@@ -21,7 +21,7 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick }: Props) {
     const Row = ({ d }: { d: BlueprintGraphEditorDiagnostic }) => (
         <button
             type="button"
-            className="flex w-full gap-2 rounded px-2 py-1 text-left hover:bg-white/5"
+            className="flex w-full gap-2 rounded px-2 py-1 text-left hover:bg-fill-subtle"
             onClick={() => onPick(d)}
         >
             <span
@@ -30,19 +30,19 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick }: Props) {
                         ? "text-red-400"
                         : d.severity === "warning"
                           ? "text-amber-400"
-                          : "text-gray-400"
+                          : "text-fg-muted"
                 }
             >
                 {d.severity}
             </span>
-            <span className="flex-1 text-gray-300">{d.message}</span>
-            {d.code ? <span className="font-mono text-[10px] text-gray-500">{d.code}</span> : null}
+            <span className="flex-1 text-fg-muted">{d.message}</span>
+            {d.code ? <span className="font-mono text-2xs text-fg-subtle">{d.code}</span> : null}
         </button>
     );
 
     return (
-        <div className="max-h-32 shrink-0 overflow-y-auto border-t border-white/10 bg-[#0b0d12] px-2 py-1.5">
-            <p className="mb-1 px-1 text-[10px] tracking-wide text-gray-500">
+        <div className="max-h-32 shrink-0 overflow-y-auto border-t border-edge bg-surface-sunken px-2 py-1.5">
+            <p className="mb-1 px-1 text-2xs tracking-wide text-fg-subtle">
                 Messages · {errors.length}E · {warnings.length}W · {infos.length}I
             </p>
             <div className="space-y-0.5">

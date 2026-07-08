@@ -91,7 +91,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
 
     return (
         <div className="flex h-full min-h-0 flex-col bg-[#101318]">
-            <div className="border-b border-white/10 bg-[#0f1115] px-3 py-3">
+            <div className="border-b border-edge bg-surface px-3 py-3">
                 <SearchBox
                     value={query}
                     onChange={setQuery}
@@ -119,7 +119,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                                     "flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors",
                                     active
                                         ? "border-primary/45 bg-primary/15 text-white"
-                                        : "border-white/10 bg-white/[0.03] text-slate-400 hover:bg-white/[0.06] hover:text-slate-100",
+                                        : "border-edge bg-fill-subtle text-fg-muted hover:bg-fill hover:text-fg",
                                 ].join(" ")}
                                 onClick={() => setActiveCategoryId(category.id)}
                             >
@@ -133,7 +133,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
 
             <div className="min-h-0 flex-1 overflow-auto p-2">
                 {filteredCommands.length === 0 ? (
-                    <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-500">
+                    <div className="rounded-md border border-edge bg-fill-subtle px-3 py-3 text-sm text-fg-subtle">
                         No action found.
                     </div>
                 ) : (
@@ -163,24 +163,24 @@ function ActionCreatorRow(props: {
     const category = getActionCommandCategory(props.command.category);
     const Icon = props.command.icon;
     return (
-        <div className="group flex items-center rounded-md transition-colors hover:bg-white/[0.06]">
+        <div className="group flex items-center rounded-md transition-colors hover:bg-fill">
             <button
                 type="button"
                 className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-2 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
                 onClick={() => props.onCreate(props.command.id)}
             >
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04]">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle">
                     <Icon className="h-4 w-4" style={{ color: category.iconColor }} />
                 </span>
                 <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-slate-100">{props.command.label}</span>
-                    <span className="block truncate text-[11px] text-slate-500">{props.command.detail}</span>
+                    <span className="block truncate text-sm text-fg">{props.command.label}</span>
+                    <span className="block truncate text-2xs text-fg-subtle">{props.command.detail}</span>
                 </span>
             </button>
             <button
                 type="button"
                 className={[
-                    "mr-1 grid h-7 w-7 shrink-0 place-items-center rounded text-slate-500 transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50",
+                    "mr-1 grid h-7 w-7 shrink-0 place-items-center rounded text-fg-subtle transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50",
                     props.starred ? "opacity-100 text-[#c8b06e]" : "opacity-0 hover:text-[#c8b06e] group-hover:opacity-100",
                 ].join(" ")}
                 title={props.starred ? "Remove from starred" : "Add to starred"}

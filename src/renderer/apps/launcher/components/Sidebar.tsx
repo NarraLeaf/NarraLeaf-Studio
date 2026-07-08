@@ -64,10 +64,10 @@ export function Sidebar({ active, onChange }: SidebarProps) {
                 <img src="/favicon.ico" className="w-6 h-6" alt="app" />
                 <div className="flex flex-col leading-tight">
                     <span className="text-sm text-white">NarraLeaf Studio</span>
-                    <span className="text-[11px] text-gray-400">v0.0.1</span>
+                    <span className="text-2xs text-fg-muted">v0.0.1</span>
                 </div>
             </div>
-            <div className="border-t border-white/10" />
+            <div className="border-t border-edge" />
 
             {/* Navigation Items */}
             <nav className="flex flex-col gap-1 flex-1">
@@ -85,7 +85,7 @@ export function Sidebar({ active, onChange }: SidebarProps) {
             {/* Footer */}
             <div className="mt-auto">
                 <button
-                    className="flex items-center justify-start p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-md transition-colors w-fit cursor-default"
+                    className="flex items-center justify-start p-2 text-fg-muted hover:text-white hover:bg-fill rounded-md transition-colors w-fit cursor-default"
                     onClick={openSettings}
                     title={t("launcher.nav.settings")}
                 >

@@ -414,14 +414,14 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
     }, [serviceAssets, thumbnailId]);
 
     return (
-        <div className="p-4 space-y-4 text-gray-200">
+        <div className="p-4 space-y-4 text-fg">
             <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
+                <label className="block text-xs font-medium text-fg-muted mb-1">
                     Thumbnail
                 </label>
-                <div className="bg-[#1e1f22] border border-white/10 rounded-md p-3 space-y-3">
+                <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-3">
                     <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm text-gray-200">Preview</span>
+                        <span className="text-sm text-fg">Preview</span>
                         <div className="flex items-center gap-2">
                             {thumbnailId && (
                                 <button
@@ -440,15 +440,15 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
                             </button>
                         </div>
                     </div>
-                    <div className="relative w-full aspect-square rounded-md border border-white/10 bg-[#0f1115] text-xs text-gray-400 overflow-hidden">
+                    <div className="relative w-full aspect-square rounded-md border border-edge bg-surface text-xs text-fg-muted overflow-hidden">
                         {thumbnailUrl ? (
                             <img src={thumbnailUrl} alt="thumbnail" className="absolute inset-0 w-full h-full object-cover" />
                         ) : thumbnailId ? (
-                            <div className="absolute inset-0 flex items-center justify-center text-gray-300"></div>
+                            <div className="absolute inset-0 flex items-center justify-center text-fg-muted"></div>
                         ) : (
                             <div className="absolute inset-0 flex flex-col items-center justify-center space-y-1">
                                 <div>No thumbnail yet</div>
-                                <div className="text-[11px] text-gray-500">Click Select to choose one</div>
+                                <div className="text-2xs text-fg-subtle">Click Select to choose one</div>
                             </div>
                         )}
                     </div>
@@ -457,11 +457,11 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
             </div>
 
             <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
+                <label className="block text-xs font-medium text-fg-muted mb-1">
                     Name
                 </label>
                 <input
-                    className="w-full px-3 py-2 rounded-md bg-[#1e1f22] border border-white/10 text-sm text-gray-300 focus:outline-none focus:border-primary/50 transition-colors"
+                    className="w-full px-3 py-2 rounded-md bg-surface-raised border border-edge text-sm text-fg-muted focus:outline-none focus:border-primary/50 transition-colors"
                     value={name}
                     onChange={e => setName(e.target.value)}
                     onBlur={handleNameBlur}
@@ -470,11 +470,11 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
             </div>
 
             <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
+                <label className="block text-xs font-medium text-fg-muted mb-1">
                     Description
                 </label>
                 <textarea
-                    className="w-full px-3 py-2 rounded-md bg-[#1e1f22] border border-white/10 text-sm text-gray-300 focus:outline-none focus:border-primary/50 transition-colors resize-none"
+                    className="w-full px-3 py-2 rounded-md bg-surface-raised border border-edge text-sm text-fg-muted focus:outline-none focus:border-primary/50 transition-colors resize-none"
                     rows={4}
                     value={description}
                     onChange={e => setDescription(e.target.value)}
@@ -484,7 +484,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
             </div>
 
             <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
+                <label className="block text-xs font-medium text-fg-muted mb-1">
                     Tags
                 </label>
                 <TagEditor
@@ -498,7 +498,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
             </div>
 
             <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
+                <label className="block text-xs font-medium text-fg-muted mb-1">
                     Default Form
                 </label>
                 <Select
@@ -566,7 +566,7 @@ function TagEditor({ tags, hasTags, newTag, onChangeNewTag, onAdd, onRemove }: T
                             <X className="w-3 h-3" />
                         </button>
                     </span>
-                )) : <span className="text-xs text-gray-500">No tags yet</span>}
+                )) : <span className="text-xs text-fg-subtle">No tags yet</span>}
             </div>
             <div className="flex gap-1">
                 <input
@@ -580,7 +580,7 @@ function TagEditor({ tags, hasTags, newTag, onChangeNewTag, onAdd, onRemove }: T
                         }
                     }}
                     placeholder="Add tag..."
-                    className="flex-1 px-3 py-1.5 bg-[#1e1f22] border border-white/10 rounded-md text-sm text-gray-300 focus:outline-none focus:border-primary/50 transition-colors"
+                    className="flex-1 px-3 py-1.5 bg-surface-raised border border-edge rounded-md text-sm text-fg-muted focus:outline-none focus:border-primary/50 transition-colors"
                 />
                 <button
                     onClick={onAdd}

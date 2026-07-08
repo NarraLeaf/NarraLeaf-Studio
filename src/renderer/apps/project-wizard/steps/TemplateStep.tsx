@@ -32,8 +32,8 @@ export function TemplateStep({ projectData, updateProjectData }: TemplateStepPro
         <div className="p-6">
             <div className="space-y-6">
                 <div className="space-y-2">
-                    <h2 className="text-lg font-semibold text-gray-200">Choose a Project Template</h2>
-                    <p className="text-sm text-gray-400">
+                    <h2 className="text-lg font-semibold text-fg">Choose a Project Template</h2>
+                    <p className="text-sm text-fg-muted">
                         Select a project template to get started quickly with pre-configured structure and settings.
                     </p>
                 </div>
@@ -54,7 +54,7 @@ export function TemplateStep({ projectData, updateProjectData }: TemplateStepPro
                             onBlur={handleBlur}
                         >
                             {/* Icon in top-left corner */}
-                            <div className="absolute top-2 left-2 text-gray-400 z-10">
+                            <div className="absolute top-2 left-2 text-fg-muted z-10">
                                 <template.icon className="w-5 h-5" />
                             </div>
 
@@ -72,23 +72,23 @@ export function TemplateStep({ projectData, updateProjectData }: TemplateStepPro
                 </div>
 
                 {/* {projectData.template && (
-                    <div className="mt-6 p-4 bg-[#40a8c4]/10 border border-[#40a8c4]/30 rounded-lg shadow-lg shadow-[#40a8c4]/10">
+                    <div className="mt-6 p-4 bg-primary/10 border border-primary/30 rounded-lg shadow-lg shadow-primary/10">
                         <div className="flex items-start gap-3">
-                            <div className="text-[#40a8c4] mt-0.5">
+                            <div className="text-primary mt-0.5">
                                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                                 </svg>
                             </div>
                             <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-1">
-                                    <h3 className="text-sm font-medium text-[#40a8c4]">
+                                    <h3 className="text-sm font-medium text-primary">
                                         ✓ {projectTemplates.find(t => t.id === projectData.template)?.name}
                                     </h3>
-                                    <span className="text-xs text-[#40a8c4] bg-[#40a8c4]/20 px-2 py-1 rounded-full">
+                                    <span className="text-xs text-primary bg-primary/20 px-2 py-1 rounded-full">
                                         Template Selected
                                     </span>
                                 </div>
-                                <p className="text-sm text-gray-300">
+                                <p className="text-sm text-fg-muted">
                                     {projectTemplates.find(t => t.id === projectData.template)?.description}
                                 </p>
                             </div>

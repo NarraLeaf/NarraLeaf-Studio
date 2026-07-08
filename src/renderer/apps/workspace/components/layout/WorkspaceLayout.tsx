@@ -481,7 +481,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const hiddenActionGroupIds = isMac ? MACOS_NATIVE_MENU_GROUP_IDS : undefined;
 
     return (
-        <div className="h-screen w-screen flex flex-col bg-[#0f1115] text-gray-200">
+        <div className="h-screen w-screen flex flex-col bg-surface text-fg">
             {/* Title Bar with Action Bar and Control Bar */}
             <TitleBar
                 title=""
@@ -521,7 +521,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     <ResizableHandle
                         direction="horizontal"
                         onResize={handleLeftSidebarResize}
-                        className="w-1 border-r border-white/10 hover:bg-primary/20"
+                        className="w-1 border-r border-edge hover:bg-primary/20"
                     />
                 </div>
 
@@ -536,13 +536,13 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
                         {/* Bottom Panel - Always rendered, controlled by CSS visibility */}
                         <div 
-                            className={bottomPanelVisible && activeBottomPanelId ? "border-t border-white/10" : "hidden"}
+                            className={bottomPanelVisible && activeBottomPanelId ? "border-t border-edge" : "hidden"}
                             style={{ height: bottomPanelVisible && activeBottomPanelId ? `${bottomPanelHeight}px` : 0 }}
                         >
                             <ResizableHandle
                                 direction="vertical"
                                 onResize={handleBottomPanelResize}
-                                className="h-1 border-t border-white/10 hover:bg-primary/20"
+                                className="h-1 border-t border-edge hover:bg-primary/20"
                             />
                             <BottomPanel
                                 panelId={activeBottomPanelId || ""}
@@ -560,7 +560,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     <ResizableHandle
                         direction="horizontal"
                         onResize={handleRightSidebarResize}
-                        className="w-1 border-l border-white/10 hover:bg-primary/20"
+                        className="w-1 border-l border-edge hover:bg-primary/20"
                     />
                     <RightSidebar 
                         panelId={activeRightPanelId || ""} 

@@ -8,7 +8,7 @@ export type SurfaceEditorToolbarButtonGroupProps = {
 };
 
 const GROUP_SHELL =
-    "inline-flex h-9 shrink-0 overflow-hidden rounded-md border border-white/10 divide-x divide-white/10 bg-[#05060a]/90";
+    "inline-flex h-9 shrink-0 overflow-hidden rounded-md border border-edge divide-x divide-edge bg-surface-canvas/90";
 
 /**
  * Segmented toolbar control: children are separated by vertical dividers; no inner border radius.
@@ -41,7 +41,7 @@ export const SurfaceEditorToolbarSegButton = forwardRef<HTMLButtonElement, Surfa
     ) {
         const state = active
             ? "bg-primary/20 text-white"
-            : "text-gray-400 hover:bg-white/10 hover:text-white";
+            : "text-fg-muted hover:bg-fill hover:text-white";
         return (
             <button
                 ref={ref}

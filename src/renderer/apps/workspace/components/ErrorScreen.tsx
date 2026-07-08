@@ -13,9 +13,9 @@ interface ErrorScreenProps {
  */
 export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
     return (
-        <div className="h-screen w-screen flex flex-col bg-[#0f1115] text-gray-200">
+        <div className="h-screen w-screen flex flex-col bg-surface text-fg">
             <TitleBar title="NarraLeaf Studio" iconSrc="/favicon.ico" />
-            <div className="h-screen w-screen flex items-center justify-center bg-[#0f1115] p-6">
+            <div className="h-screen w-screen flex items-center justify-center bg-surface p-6">
                 <div className="max-w-md">
                     <div className="flex items-center gap-3 mb-4">
                         <AlertCircle className="w-8 h-8 text-red-400 flex-shrink-0" />
@@ -46,7 +46,7 @@ export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
                         </button>
                     )}
 
-                    <p className="text-xs text-gray-500 mt-4 text-center">
+                    <p className="text-xs text-fg-subtle mt-4 text-center">
                         If the problem persists, please check the console for more details.
                     </p>
                 </div>

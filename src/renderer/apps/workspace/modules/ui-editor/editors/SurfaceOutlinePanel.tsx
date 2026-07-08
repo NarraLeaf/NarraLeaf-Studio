@@ -52,7 +52,7 @@ export function SurfaceOutlinePanel({
         return null;
     }
 
-    const panelClasses = `absolute inset-y-0 left-0 z-10 w-64 border-r border-white/5 bg-[#080a0e] transition-transform duration-200 ease-out ${
+    const panelClasses = `absolute inset-y-0 left-0 z-10 w-64 border-r border-edge-subtle bg-[#080a0e] transition-transform duration-200 ease-out ${
         isCollapsed ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100 pointer-events-auto"
     }`;
 
@@ -61,11 +61,11 @@ export function SurfaceOutlinePanel({
     return (
         <>
             <div className={panelClasses}>
-                <div className="px-3 py-2 border-b border-white/10 text-xs text-gray-500 flex items-center justify-between">
+                <div className="px-3 py-2 border-b border-edge text-xs text-fg-subtle flex items-center justify-between">
                     <span>UI Outline</span>
                     <button
                         type="button"
-                        className="text-gray-400 hover:text-white transition-colors"
+                        className="text-fg-muted hover:text-white transition-colors"
                         onClick={toggleCollapsed}
                         title={isCollapsed ? "Expand outline panel" : "Collapse outline panel"}
                     >
@@ -85,7 +85,7 @@ export function SurfaceOutlinePanel({
                                 allowAddSelectionToComponentLibrary={allowAddSelectionToComponentLibrary}
                             />
                         ) : (
-                            <div className="p-4 text-xs text-gray-500">Loading editor services…</div>
+                            <div className="p-4 text-xs text-fg-subtle">Loading editor services…</div>
                         )}
                     </div>
                 )}
@@ -93,7 +93,7 @@ export function SurfaceOutlinePanel({
             {isCollapsed && (
                 <button
                     type="button"
-                    className="absolute left-3 top-3 z-20 h-10 w-10 flex items-center justify-center rounded-full border border-white/20 bg-[#05060a]/80 text-gray-300 hover:text-white focus:outline-none"
+                    className="absolute left-3 top-3 z-20 h-10 w-10 flex items-center justify-center rounded-full border border-edge-strong bg-surface-canvas/80 text-fg-muted hover:text-white focus:outline-none"
                     onClick={() => setCollapsed(false)}
                     title="Expand outline panel"
                 >

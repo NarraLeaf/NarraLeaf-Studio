@@ -17,7 +17,7 @@ export function DevModeApp() {
 
     return (
         <AppLayout title="Dev Mode" iconSrc="/favicon.ico">
-            <div className="h-full w-full min-h-0 bg-[#0f1115] overflow-hidden">
+            <div className="h-full w-full min-h-0 bg-surface overflow-hidden">
                 <DevModeContent
                     bundle={bundle}
                     projectPath={projectPath}

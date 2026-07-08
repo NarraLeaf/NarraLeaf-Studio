@@ -30,20 +30,20 @@ function InfoFieldInner<TData>({ field, data }: InfoFieldProps<TData>) {
     return (
         <div className={field.className}>
             {field.label && (
-                <label className="block text-xs font-medium text-gray-400 mb-1">
+                <label className="block text-xs font-medium text-fg-muted mb-1">
                     {field.label}
                 </label>
             )}
-            <div className="bg-[#1e1f22] border border-white/10 rounded-md p-3 space-y-1">
+            <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-1">
                 {visibleItems.map((item, index) => (
                     <div key={index} className="flex justify-between text-xs">
-                        <span className="text-gray-400">{item.label}:</span>
-                        <span className="text-gray-300">{item.getValue(data)}</span>
+                        <span className="text-fg-muted">{item.label}:</span>
+                        <span className="text-fg-muted">{item.getValue(data)}</span>
                     </div>
                 ))}
             </div>
             {field.helpText && (
-                <p className="mt-1 text-xs text-gray-500">{field.helpText}</p>
+                <p className="mt-1 text-xs text-fg-subtle">{field.helpText}</p>
             )}
         </div>
     );

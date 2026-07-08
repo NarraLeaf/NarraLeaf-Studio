@@ -28,7 +28,7 @@ export function NavigationLayout({
     const windowControlPolicy = WindowControlPolicy.MacNativeOutsideTitleBar;
 
     return (
-        <div className={`fixed inset-0 h-[100vh] w-[100vw] overflow-hidden text-gray-200 bg-[#0f1115] ${className}`}>
+        <div className={`fixed inset-0 h-[100vh] w-[100vw] overflow-hidden text-fg bg-surface ${className}`}>
             <div
                 className="grid h-full min-h-0 min-w-0 overflow-hidden"
                 style={{
@@ -37,9 +37,9 @@ export function NavigationLayout({
                 }}
             >
                 {/* Navigation Sidebar - spans full height */}
-                <aside className="flex min-h-0 flex-col border-r border-white/10 bg-white/5 overflow-hidden">
+                <aside className="flex min-h-0 flex-col border-r border-edge bg-fill-subtle overflow-hidden">
                     {isMac && windowControlPolicy === WindowControlPolicy.MacNativeOutsideTitleBar && (
-                        <div className="titlebar-drag h-10 min-h-10 shrink-0 border-b border-white/5" />
+                        <div className="titlebar-drag h-10 min-h-10 shrink-0 border-b border-edge-subtle" />
                     )}
                     <div className="min-h-0 flex-1 overflow-hidden">
                         {navigation}

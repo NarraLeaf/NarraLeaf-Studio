@@ -45,7 +45,7 @@ function patchSlider(data: UIInspectorData, partial: Partial<UISliderWidgetProps
 }
 
 function FieldLabel({ children }: { children: string }) {
-    return <span className="text-xs font-medium text-gray-400">{children}</span>;
+    return <span className="text-xs font-medium text-fg-muted">{children}</span>;
 }
 
 function SliderNumberControl({
@@ -111,10 +111,10 @@ function OrientationButton({
     return (
         <button
             type="button"
-            className={`flex h-8 w-8 items-center justify-center border text-gray-200 transition first:rounded-l-md last:rounded-r-md ${
+            className={`flex h-8 w-8 items-center justify-center border text-fg transition first:rounded-l-md last:rounded-r-md ${
                 active
                     ? "border-cyan-500/50 bg-cyan-500/20 text-cyan-100"
-                    : "border-white/10 bg-white/5 hover:bg-white/10"
+                    : "border-edge bg-fill-subtle hover:bg-fill"
             }`}
             title={orientation === "horizontal" ? "Horizontal" : "Vertical"}
             aria-label={orientation === "horizontal" ? "Horizontal" : "Vertical"}

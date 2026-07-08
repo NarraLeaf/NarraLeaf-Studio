@@ -12,7 +12,7 @@ export function BlueprintFlowZoomControls() {
 
     return (
         <div
-            className="absolute bottom-3 left-3 z-[5] flex flex-col gap-0.5 rounded-lg border border-white/10 bg-[#0b0d12] p-0.5 shadow-lg"
+            className="absolute bottom-3 left-3 z-[5] flex flex-col gap-0.5 rounded-lg border border-edge bg-surface-sunken p-0.5 shadow-lg"
             onPointerDown={e => e.stopPropagation()}
         >
             <Button
@@ -24,7 +24,7 @@ export function BlueprintFlowZoomControls() {
                 title="Zoom in"
                 onClick={() => zoomIn({ duration: 180 })}
             >
-                <ZoomIn className="h-3.5 w-3.5 text-gray-300" />
+                <ZoomIn className="h-3.5 w-3.5 text-fg-muted" />
             </Button>
             <Button
                 type="button"
@@ -35,7 +35,7 @@ export function BlueprintFlowZoomControls() {
                 title="Zoom out"
                 onClick={() => zoomOut({ duration: 180 })}
             >
-                <ZoomOut className="h-3.5 w-3.5 text-gray-300" />
+                <ZoomOut className="h-3.5 w-3.5 text-fg-muted" />
             </Button>
             <Button
                 type="button"
@@ -46,7 +46,7 @@ export function BlueprintFlowZoomControls() {
                 title="Fit view"
                 onClick={() => fitView({ duration: 220, padding: 0.2 })}
             >
-                <Maximize2 className="h-3.5 w-3.5 text-gray-300" />
+                <Maximize2 className="h-3.5 w-3.5 text-fg-muted" />
             </Button>
         </div>
     );

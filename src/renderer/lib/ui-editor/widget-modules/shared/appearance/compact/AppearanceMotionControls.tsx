@@ -44,7 +44,7 @@ const MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX = 90;
 function motionIconTriggerClass(active: boolean): string {
     return [
         "grid h-7 w-7 shrink-0 place-items-center rounded border-0 bg-transparent p-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
-        active ? "text-primary hover:text-primary" : "text-gray-500 hover:text-gray-200",
+        active ? "text-primary hover:text-primary" : "text-fg-subtle hover:text-fg",
     ].join(" ");
 }
 
@@ -202,14 +202,14 @@ export function AppearanceFieldMotionButton({
         ? createPortal(
               <div
                   ref={panelRef}
-                  className="fixed z-[80] w-[280px] rounded-xl border border-white/10 bg-[#17181c] p-3 shadow-2xl"
+                  className="fixed z-[80] w-[280px] rounded-xl border border-edge bg-[#17181c] p-3 shadow-2xl"
                   style={{ left: position.left, top: position.top, maxWidth: "calc(100vw - 16px)" }}
                   onMouseDown={event => event.stopPropagation()}
               >
                   <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                          <div className="text-xs font-medium text-gray-100">{label}</div>
-                          <div className="mt-1 text-[10px] text-gray-500">
+                          <div className="text-xs font-medium text-fg">{label}</div>
+                          <div className="mt-1 text-2xs text-fg-subtle">
                               {formatAppearanceTransitionSummary(transition)}
                           </div>
                       </div>
@@ -217,7 +217,7 @@ export function AppearanceFieldMotionButton({
                           <button
                               type="button"
                               onClick={() => commitTransition(null)}
-                              className="grid h-7 w-7 place-items-center rounded-md border border-white/10 bg-white/5 text-gray-400 transition hover:bg-red-500/10 hover:text-red-200"
+                              className="grid h-7 w-7 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted transition hover:bg-red-500/10 hover:text-red-200"
                               title="Clear motion for this field"
                           >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -227,7 +227,7 @@ export function AppearanceFieldMotionButton({
 
                   {!transition ? (
                       <div className="mt-3 space-y-3">
-                          <p className="text-xs leading-relaxed text-gray-400">
+                          <p className="text-xs leading-relaxed text-fg-muted">
                               Motion is off for this field. Turn it on to configure timing and easing.
                           </p>
                           <button
@@ -241,7 +241,7 @@ export function AppearanceFieldMotionButton({
                   ) : (
                       <div className="mt-3 space-y-3">
                           <div>
-                              <label className="mb-1 block text-[10px] tracking-wide text-gray-500">
+                              <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
                                   Type
                               </label>
                               <Select
@@ -265,7 +265,7 @@ export function AppearanceFieldMotionButton({
                               <>
                                   <div className="grid grid-cols-2 gap-2">
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-[10px] tracking-wide text-gray-500">
+                                          <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
                                               Duration
                                           </label>
                                           <NumericDraftEnhancedInput
@@ -288,7 +288,7 @@ export function AppearanceFieldMotionButton({
                                           />
                                       </div>
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-[10px] tracking-wide text-gray-500">
+                                          <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
                                               Delay
                                           </label>
                                           <NumericDraftEnhancedInput
@@ -312,7 +312,7 @@ export function AppearanceFieldMotionButton({
                                       </div>
                                   </div>
                                   <div>
-                                      <label className="mb-1 block text-[10px] tracking-wide text-gray-500">
+                                      <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
                                           Easing
                                       </label>
                                       <Select
@@ -336,7 +336,7 @@ export function AppearanceFieldMotionButton({
                               <>
                                   <div className="grid grid-cols-2 gap-2">
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-[10px] tracking-wide text-gray-500">
+                                          <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
                                               Stiffness
                                           </label>
                                           <NumericDraftEnhancedInput
@@ -358,7 +358,7 @@ export function AppearanceFieldMotionButton({
                                           />
                                       </div>
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-[10px] tracking-wide text-gray-500">
+                                          <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
                                               Damping
                                           </label>
                                           <NumericDraftEnhancedInput
@@ -382,7 +382,7 @@ export function AppearanceFieldMotionButton({
                                   </div>
                                   <div className="grid grid-cols-2 gap-2">
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-[10px] tracking-wide text-gray-500">
+                                          <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
                                               Mass
                                           </label>
                                           <NumericDraftEnhancedInput
@@ -405,7 +405,7 @@ export function AppearanceFieldMotionButton({
                                           />
                                       </div>
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-[10px] tracking-wide text-gray-500">
+                                          <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
                                               Delay
                                           </label>
                                           <NumericDraftEnhancedInput

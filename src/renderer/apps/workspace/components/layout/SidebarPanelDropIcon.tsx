@@ -43,8 +43,8 @@ export function SidebarPanelDropIcon({
                 w-10 h-10 rounded-md flex items-center justify-center transition-colors cursor-default
                 ${
                     active && sidebarVisible
-                        ? "bg-white/15 text-white"
-                        : "text-gray-400 hover:bg-white/10 hover:text-white"
+                        ? "bg-fill-strong text-white"
+                        : "text-fg-muted hover:bg-fill hover:text-white"
                 }
                 ${overlayClassName}
             `}

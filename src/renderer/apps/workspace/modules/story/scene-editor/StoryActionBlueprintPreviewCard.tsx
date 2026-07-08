@@ -37,7 +37,7 @@ export function StoryActionBlueprintPreviewCard(props: {
     );
 
     return (
-        <div className="space-y-2 rounded-lg border border-white/10 bg-[#111315] px-3 py-3">
+        <div className="space-y-2 rounded-lg border border-edge bg-[#111315] px-3 py-3">
             <button
                 type="button"
                 className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"

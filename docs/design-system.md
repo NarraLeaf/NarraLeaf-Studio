@@ -48,8 +48,13 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),通道值(RGB)在 [s
 | `edge` | `white/10` | 默认边框 |
 | `edge-subtle` | `white/5` | 弱分隔线 |
 | `edge-strong` | `white/20` | 强调 / hover 边框 |
+| `fill` | `white/10` | 半透明**填充**(按钮次要态、hover 底) |
+| `fill-subtle` | `white/5` | 弱填充(输入框底、卡片底) |
+| `fill-strong` | `white/20` | 强填充 |
 
-用法：`text-fg-muted`、`border-edge`、`divide-edge`。
+用法：`text-fg-muted`、`border-edge`、`divide-edge`、`bg-fill`、`hover:bg-fill`。
+
+**`edge` vs `fill` 的区别**：值相同(白色叠加),但角色不同——`edge` 只用于 `border-`/`divide-`,`fill` 只用于 `bg-`。不要拿边框 token 当背景色。
 
 ## 2. 圆角
 
@@ -79,7 +84,24 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),通道值(RGB)在 [s
 ## 6. 组件与 `cn()`
 
 - 合并 className **一律用** [`cn()`](../src/renderer/lib/utils/cn.ts)(`clsx` + `tailwind-merge`),不要字符串拼接——这样调用方传入的 `className` 才能可靠覆盖组件基础样式。
-- 优先复用 `src/renderer/lib/components` 下的共享组件,不要重新手写 `<button>` / tab / badge / 空状态。缺什么组件按收敛计划的 Phase 2 补齐后再用。
+- 优先复用 `src/renderer/lib/components/elements` 下的共享组件,不要重新手写 `<button>` / tab / badge / 空状态。
+
+### 组件清单（`lib/components/elements`）
+
+已有:`Button` / `IconButton`、`Input` / `TextArea` / `SearchInput` / `InputGroup`、`Select` / `Combobox`、`Modal`(+ `ConfirmModal` / `AlertModal`)、`Card`、`Switch`、`Progress`、`Accordion`、`ContextMenu`。
+
+Phase 2 新增(用来替换各处手写模式):
+
+| 组件 | 替换的手写模式 |
+|---|---|
+| `ToolbarButton` | 工具栏方形图标按钮(`grid place-items-center …`,原 20+ 处;size xs/sm/md/lg + `active`/`bordered`) |
+| `TabStrip` | tab 条 + 下划线(原 4 套实现) |
+| `Badge` | 状态 pill(tone: neutral/primary/binding/danger/success/warning) |
+| `EmptyState` | 居中空状态占位 |
+| `FieldLabel` | eyebrow 小标签(原 `FIELD_LABEL_CLASS` 复制) |
+| `SectionCard` | 带边框的区块卡片 |
+| `PanelHeader` | 面板 / 编辑器头部行(size sm/md/lg) |
+| `Tooltip` | 替换原生 `title=`(轻量 CSS 版,overflow-hidden 容器内慎用) |
 
 ## 7. 防回归
 

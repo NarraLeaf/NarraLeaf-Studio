@@ -65,7 +65,7 @@ function InsertPreviewOverlay({ preview, viewport }: { preview: InsertPreview; v
                 height: screenHeight,
             }}
         >
-            <div className="absolute -top-6 left-0 text-[10px] text-primary font-mono whitespace-nowrap">
+            <div className="absolute -top-6 left-0 text-2xs text-primary font-mono whitespace-nowrap">
                 {Math.round(width)} × {Math.round(height)}
             </div>
         </div>
@@ -772,7 +772,7 @@ export function UIEditorInteractionLayer({
                     />
                     {hasFloatingToolbar && floatingToolbarPosition ? (
                         <div
-                            className="pointer-events-auto absolute z-[10000] flex -translate-y-full overflow-hidden rounded-md border border-white/15 bg-[#080b10]/90 text-gray-200 shadow-lg shadow-black/30"
+                            className="pointer-events-auto absolute z-[10000] flex -translate-y-full overflow-hidden rounded-md border border-edge bg-[#080b10]/90 text-fg shadow-lg shadow-black/30"
                             style={{
                                 left: floatingToolbarPosition.left,
                                 top: floatingToolbarPosition.top,
@@ -791,10 +791,10 @@ export function UIEditorInteractionLayer({
                                     <button
                                         key={item.id}
                                         type="button"
-                                        className={`flex h-7 items-center justify-center text-xs transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 ${
+                                        className={`flex h-7 items-center justify-center text-xs transition-colors hover:bg-fill hover:text-white disabled:cursor-not-allowed disabled:opacity-40 ${
                                             Icon ? "w-7" : "min-w-7 px-2"
                                         } ${
-                                            index < floatingToolbarItems.length - 1 ? "border-r border-white/10" : ""
+                                            index < floatingToolbarItems.length - 1 ? "border-r border-edge" : ""
                                         }`}
                                         title={item.tooltip ?? label}
                                         aria-label={item.tooltip ?? label}

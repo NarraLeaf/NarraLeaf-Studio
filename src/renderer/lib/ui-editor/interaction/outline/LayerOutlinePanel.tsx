@@ -423,7 +423,7 @@ export function UILayersPanel({
     );
 
     if (!surface || !root || !outlineRoot || !outlineEffectiveRootId) {
-        return <div className="p-4 text-xs text-gray-500">No surface available</div>;
+        return <div className="p-4 text-xs text-fg-subtle">No surface available</div>;
     }
 
     const activeDragElement = activeDragId ? document.elements[activeDragId] : undefined;
@@ -446,9 +446,9 @@ export function UILayersPanel({
 
     return (
         <div className="space-y-2 px-2 py-2" onContextMenu={openBlankContextMenu}>
-            <div className="text-xs tracking-wide text-gray-400">Layers</div>
+            <div className="text-xs tracking-wide text-fg-muted">Layers</div>
             {isLinkedTree ? (
-                <div className="text-[10px] leading-snug text-amber-400/90 px-0.5">
+                <div className="text-2xs leading-snug text-amber-400/90 px-0.5">
                     Linked surface — editing the linked app root tree (same as canvas).
                 </div>
             ) : null}

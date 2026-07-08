@@ -7,7 +7,7 @@ import { EditorComponentProps } from "../types";
  */
 export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
     return (
-        <div className="h-full overflow-auto bg-[#0f1115]">
+        <div className="h-full overflow-auto bg-surface">
             <div className="max-w-4xl mx-auto py-12 px-6">
                 {/* Header */}
                 <div className="text-center mb-12">
@@ -15,13 +15,13 @@ export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
                         <Sparkles className="w-12 h-12 text-primary" />
                         <h1 className="text-4xl font-bold text-white">NarraLeaf Studio</h1>
                     </div>
-                    <p className="text-lg text-gray-400">
+                    <p className="text-lg text-fg-muted">
                         All-in-one IDE for NarraLeaf Projects.
                     </p>
                 </div>
 
                 {/* Getting Started */}
-                <div className="bg-[#0b0d12] rounded-lg p-6 border border-white/10">
+                <div className="bg-surface-sunken rounded-lg p-6 border border-edge">
                     <h2 className="text-xl font-semibold text-white mb-4">Getting Started</h2>
                     <div className="space-y-4">
                         <GettingStartedStep
@@ -72,7 +72,7 @@ function GettingStartedStep({ number, title, description }: GettingStartedStepPr
             </div>
             <div>
                 <h3 className="text-base font-medium text-white mb-1">{title}</h3>
-                <p className="text-sm text-gray-400">{description}</p>
+                <p className="text-sm text-fg-muted">{description}</p>
             </div>
         </div>
     );

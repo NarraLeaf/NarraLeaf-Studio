@@ -108,6 +108,18 @@ export function createWorkspaceBlobUrlResolver(context: WorkspaceContext): Works
             return url;
         })();
         cache.set(assetId, promise);
+        // Only successes stay cached: a transient fetch failure must not pin the asset to null
+        // for the rest of the pane's lifetime (it black-screens every row that references it).
+        // Evicting lets the next compile retry.
+        promise.then(url => {
+            if (url === null && cache.get(assetId) === promise) {
+                cache.delete(assetId);
+            }
+        }, () => {
+            if (cache.get(assetId) === promise) {
+                cache.delete(assetId);
+            }
+        });
         return promise;
     };
 

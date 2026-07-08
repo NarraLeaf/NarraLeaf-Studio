@@ -66,7 +66,7 @@ function NotificationItem({ notification, onClose }: { notification: Notificatio
             <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-white">{notification.message}</p>
                 {notification.detail && (
-                    <p className="mt-1 text-xs text-gray-400">{notification.detail}</p>
+                    <p className="mt-1 text-xs text-fg-muted">{notification.detail}</p>
                 )}
                 
                 {notification.actions && notification.actions.length > 0 && (
@@ -81,8 +81,8 @@ function NotificationItem({ notification, onClose }: { notification: Notificatio
                                 className={`
                                     px-3 py-1 text-xs rounded transition-colors
                                     ${action.primary
-                                        ? "bg-white/20 hover:bg-white/30 text-white font-medium"
-                                        : "bg-white/5 hover:bg-white/10 text-gray-300"
+                                        ? "bg-fill-strong hover:bg-white/30 text-white font-medium"
+                                        : "bg-fill-subtle hover:bg-fill text-fg-muted"
                                     }
                                 `}
                             >
@@ -96,7 +96,7 @@ function NotificationItem({ notification, onClose }: { notification: Notificatio
             {notification.closable && (
                 <button
                     onClick={onClose}
-                    className="flex-shrink-0 p-1 rounded hover:bg-white/10 transition-colors"
+                    className="flex-shrink-0 p-1 rounded hover:bg-fill transition-colors"
                     aria-label="Close"
                 >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

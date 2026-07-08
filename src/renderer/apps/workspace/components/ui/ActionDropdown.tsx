@@ -165,7 +165,7 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
                         e.preventDefault();
                     }
                 }}
-                className="h-8 px-2 rounded-md flex items-center gap-2 text-sm transition-colors cursor-default text-gray-300 hover:bg-white/10 hover:text-white"
+                className="h-8 px-2 rounded-md flex items-center gap-2 text-sm transition-colors cursor-default text-fg-muted hover:bg-fill hover:text-white"
                 title={String(group.label)}
                 aria-label={String(group.label)}
                 aria-expanded={isOpen}
@@ -187,7 +187,7 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
                     {/* Root menu */}
                     <div
                         ref={rootMenuRef}
-                        className="absolute top-full left-0 mt-1 z-20 min-w-64 bg-[#1a1a1a] border border-white/20 rounded-md shadow-lg py-1"
+                        className="absolute top-full left-0 mt-1 z-20 min-w-64 bg-[#1a1a1a] border border-edge-strong rounded-md shadow-lg py-1"
                         role="menu"
                         aria-label={group.label}
                         tabIndex={0}
@@ -296,7 +296,7 @@ function MenuLevel(props: MenuLevelProps) {
                 {items.map((item, index) => {
                     if (isActionMenuSeparator(item)) {
                         return (
-                            <div key={`sep-${index}`} className="h-px bg-white/20 my-1 mx-2" />
+                            <div key={`sep-${index}`} className="h-px bg-fill-strong my-1 mx-2" />
                         );
                     }
                     const isFocused = focusedIndex === index;
@@ -337,7 +337,7 @@ function MenuLevel(props: MenuLevelProps) {
                     return (
                         <div key={item.id}
                             className={`w-full px-3 py-2 text-sm flex items-center justify-between cursor-default ${
-                                isDisabled ? "text-gray-500 cursor-not-allowed" : isFocused ? "bg-white/10 text-white" : "text-gray-300 hover:bg-white/10 hover:text-white"
+                                isDisabled ? "text-fg-subtle cursor-not-allowed" : isFocused ? "bg-fill text-white" : "text-fg-muted hover:bg-fill hover:text-white"
                             }`}
                             role="menuitem"
                             aria-disabled={isDisabled || undefined}
@@ -367,7 +367,7 @@ function MenuLevel(props: MenuLevelProps) {
                             {/* Right side: shortcut + badge/chevron */}
                             <span className="flex items-center gap-2">
                                 {isActionMenuAction(item) && item.shortcut ? (
-                                    <span className="text-sm text-gray-400 tabular-nums">{item.shortcut}</span>
+                                    <span className="text-sm text-fg-muted tabular-nums">{item.shortcut}</span>
                                 ) : null}
                                 {isActionMenuAction(item) ? (
                                     item.badge ? (
@@ -378,7 +378,7 @@ function MenuLevel(props: MenuLevelProps) {
                                 )}
                             </span>
                             {!isActionMenuAction(item) && isOpened && (
-                                <div className="absolute top-0 left-full ml-1 z-20 min-w-56 bg-[#1a1a1a] border border-white/20 rounded-md shadow-lg py-1">
+                                <div className="absolute top-0 left-full ml-1 z-20 min-w-56 bg-[#1a1a1a] border border-edge-strong rounded-md shadow-lg py-1">
                                     <MenuLevel
                                         level={level + 1}
                                         items={getVisibleActionMenuItems(item.items, focusContext)}

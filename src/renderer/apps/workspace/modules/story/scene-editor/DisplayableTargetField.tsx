@@ -13,7 +13,7 @@ import { DISPLAYABLE_BUILTIN_META, resolveDisplayableTargetRef } from "@shared/t
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { listSceneDisplayableTargets, type SceneDisplayableRef } from "../../story-motion/storyMotionPreviewTarget";
 
-const FIELD_LABEL_CLASS = "block text-xs font-medium text-gray-400 mb-1";
+const FIELD_LABEL_CLASS = "block text-xs font-medium text-fg-muted mb-1";
 
 const KIND_META: Record<StoryDisplayableTargetKind, { label: string; icon: LucideIcon }> = {
     character: { label: "Character", icon: UserRound },
@@ -135,45 +135,45 @@ export function DisplayableTargetField(props: {
             <label className={FIELD_LABEL_CLASS}>{props.label ?? "Target"}</label>
             <button
                 type="button"
-                className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-white/10 bg-[#1e1f22] px-3 text-left text-sm text-gray-300 transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60"
+                className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-edge bg-surface-raised px-3 text-left text-sm text-fg-muted transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60"
                 onClick={() => setOpen(current => !current)}
             >
                 {name ? (
                     <>
-                        <TriggerIcon className={["h-3.5 w-3.5 shrink-0", unresolved ? "text-amber-400" : "text-slate-400"].join(" ")} />
-                        <span className="truncate text-slate-100">{name}</span>
+                        <TriggerIcon className={["h-3.5 w-3.5 shrink-0", unresolved ? "text-amber-400" : "text-fg-muted"].join(" ")} />
+                        <span className="truncate text-fg">{name}</span>
                         {unresolved ? (
                             <span
-                                className="shrink-0 rounded bg-amber-400/10 px-1 text-[10px] text-amber-300/90"
+                                className="shrink-0 rounded bg-amber-400/10 px-1 text-2xs text-amber-300/90"
                                 title="Not created earlier in this scene — pick an existing displayable"
                             >
                                 Not on stage
                             </span>
                         ) : (
-                            <span className="shrink-0 text-[11px] text-slate-500">{target.builtin ? "Built-in" : KIND_META[displayKind].label}</span>
+                            <span className="shrink-0 text-2xs text-fg-subtle">{target.builtin ? "Built-in" : KIND_META[displayKind].label}</span>
                         )}
                     </>
                 ) : (
-                    <span className="truncate italic text-gray-500">Select displayable…</span>
+                    <span className="truncate italic text-fg-subtle">Select displayable…</span>
                 )}
-                <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-slate-500" />
+                <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-fg-subtle" />
             </button>
             {open ? (
                 <div
                     className={[
-                        "absolute left-0 z-50 w-full min-w-[260px] overflow-hidden rounded-xl border border-white/10 bg-[#181b20] shadow-xl",
+                        "absolute left-0 z-50 w-full min-w-[260px] overflow-hidden rounded-xl border border-edge bg-[#181b20] shadow-xl",
                         placement === "above" ? "bottom-full mb-1" : "top-full mt-1",
                     ].join(" ")}
                 >
                     {options.length + BUILTIN_ORDER.length > 5 ? (
-                        <div className="flex items-center gap-2 border-b border-white/10 px-2.5 py-1.5">
-                            <Search className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                        <div className="flex items-center gap-2 border-b border-edge px-2.5 py-1.5">
+                            <Search className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
                             <input
                                 autoFocus
                                 value={query}
                                 onChange={event => setQuery(event.target.value)}
                                 placeholder="Search stage displayables"
-                                className="w-full bg-transparent text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none"
+                                className="w-full bg-transparent text-sm text-fg placeholder:text-fg-subtle focus:outline-none"
                             />
                         </div>
                     ) : null}
@@ -198,7 +198,7 @@ export function DisplayableTargetField(props: {
                             />
                         ))}
                         {filteredBuiltins.length === 0 && filtered.length === 0 ? (
-                            <div className="px-2 py-3 text-center text-xs text-slate-500">No match.</div>
+                            <div className="px-2 py-3 text-center text-xs text-fg-subtle">No match.</div>
                         ) : null}
                     </div>
                 </div>
@@ -221,16 +221,16 @@ function BuiltinTargetRow(props: {
             aria-selected={props.active}
             className={[
                 "flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-left transition-colors",
-                props.active ? "bg-primary/15 text-white" : "hover:bg-white/[0.06]",
+                props.active ? "bg-primary/15 text-white" : "hover:bg-fill",
             ].join(" ")}
             onClick={props.onChoose}
         >
-            <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-white/10 bg-white/[0.04]">
-                <Icon className="h-3.5 w-3.5 text-slate-400" />
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-edge bg-fill-subtle">
+                <Icon className="h-3.5 w-3.5 text-fg-muted" />
             </span>
             <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-slate-100">{meta.label}</span>
-                <span className="block truncate text-[11px] text-slate-500">{meta.hint}</span>
+                <span className="block truncate text-sm text-fg">{meta.label}</span>
+                <span className="block truncate text-2xs text-fg-subtle">{meta.hint}</span>
             </span>
             {props.active ? <Check className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
         </button>
@@ -254,20 +254,20 @@ function DisplayableOptionRow(props: {
             aria-selected={props.active}
             className={[
                 "flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-left transition-colors",
-                props.active ? "bg-primary/15 text-white" : "hover:bg-white/[0.06]",
+                props.active ? "bg-primary/15 text-white" : "hover:bg-fill",
             ].join(" ")}
             onClick={props.onChoose}
         >
-            <span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded border border-white/10 bg-white/[0.04]">
+            <span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded border border-edge bg-fill-subtle">
                 {url ? (
                     <img src={url} alt="" className="h-full w-full object-cover" draggable={false} />
                 ) : (
-                    <Icon className="h-3.5 w-3.5 text-slate-400" />
+                    <Icon className="h-3.5 w-3.5 text-fg-muted" />
                 )}
             </span>
             <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-slate-100">{props.option.name}</span>
-                <span className="block truncate text-[11px] text-slate-500">
+                <span className="block truncate text-sm text-fg">{props.option.name}</span>
+                <span className="block truncate text-2xs text-fg-subtle">
                     {meta.label}{preview ? ` · ${preview}` : ""}
                 </span>
             </span>

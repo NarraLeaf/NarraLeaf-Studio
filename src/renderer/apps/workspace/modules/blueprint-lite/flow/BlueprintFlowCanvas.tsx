@@ -1092,7 +1092,7 @@ function BlueprintFlowCanvasInner({
                     zoom: viewport.zoom,
                 })}
                 defaultViewport={initialViewport ?? undefined}
-                className="narraleaf-blueprint-flow bg-[#0f1115]"
+                className="narraleaf-blueprint-flow bg-surface"
                 proOptions={{ hideAttribution: true }}
                 deleteKeyCode={deleteKeyCode ?? null}
                 edgesReconnectable={false}
@@ -1104,7 +1104,7 @@ function BlueprintFlowCanvasInner({
                 <Background color="#334155" gap={20} size={1} />
                 <BlueprintFlowZoomControls />
                 <MiniMap
-                    className="!bg-[#0b0d12] !border-white/10"
+                    className="!bg-surface-sunken !border-edge"
                     maskColor="rgba(15, 23, 42, 0.65)"
                     nodeColor={() => "#0891b2"}
                 />

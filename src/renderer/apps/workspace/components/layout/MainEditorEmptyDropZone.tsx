@@ -29,9 +29,9 @@ export function MainEditorEmptyDropZone({ groupId }: MainEditorEmptyDropZoneProp
     return (
         <div
             {...dropTargetProps}
-            className={`h-full flex items-center justify-center bg-[#0f1115] relative overflow-hidden rounded-sm transition-colors ${overlayClassName}`}
+            className={`h-full flex items-center justify-center bg-surface relative overflow-hidden rounded-sm transition-colors ${overlayClassName}`}
         >
-            <div className="text-center text-gray-500 relative z-10 pointer-events-none">
+            <div className="text-center text-fg-subtle relative z-10 pointer-events-none">
                 <div className="relative mb-8">
                     <img
                         src="/img/narraleaf-studio/logo-icon-white.png"

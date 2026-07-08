@@ -63,8 +63,8 @@ const booleanOptions: SelectOption[] = [
     { value: "false", label: "False" },
 ];
 
-const inputInspector = "px-2 py-1 text-[11px]";
-const inputNodeCard = "min-w-0 px-1.5 py-0.5 font-mono text-[10px]";
+const inputInspector = "px-2 py-1 text-2xs";
+const inputNodeCard = "min-w-0 px-1.5 py-0.5 font-mono text-2xs";
 
 function stringifyJsonDraft(value: unknown, variant: "inspector" | "nodeCard"): string {
     try {
@@ -166,7 +166,7 @@ export function BlueprintLiteralValueControl({ value, onChange, variant, fixedMo
                         />
                     ) : null}
                     {activeMode === "null" ? (
-                        <span className="text-[10px] text-gray-500 italic">no value</span>
+                        <span className="text-2xs text-fg-subtle italic">no value</span>
                     ) : null}
                 </div>
             ) : null}

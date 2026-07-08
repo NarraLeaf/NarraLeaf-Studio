@@ -82,7 +82,7 @@ export function ProjectDependenciesSection(_props: ProjectSectionProps) {
                     type="button"
                     onClick={() => void rescan()}
                     disabled={busy}
-                    className="flex shrink-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] font-medium text-slate-300 transition hover:bg-white/[0.06] disabled:opacity-50"
+                    className="flex shrink-0 items-center gap-1.5 rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs font-medium text-fg-muted transition hover:bg-fill disabled:opacity-50"
                 >
                     <RefreshCw className={`h-3.5 w-3.5 ${busy ? "animate-spin" : ""}`} />
                     Rescan
@@ -94,7 +94,7 @@ export function ProjectDependenciesSection(_props: ProjectSectionProps) {
             ) : null}
 
             {entries.length === 0 ? (
-                <div className="rounded-md border border-white/10 bg-white/[0.025] p-4 text-center text-[11px] text-slate-500">
+                <div className="rounded-md border border-edge bg-white/[0.025] p-4 text-center text-2xs text-fg-subtle">
                     {busy ? "Scanning project…" : "No plugin dependencies — this project uses only built-in Studio features."}
                 </div>
             ) : (
@@ -112,7 +112,7 @@ function OverallBanner({ overall }: { overall: "warnings" | "blocked" }) {
     const blocked = overall === "blocked";
     return (
         <div
-            className={`rounded-md border p-2.5 text-[11px] leading-relaxed ${
+            className={`rounded-md border p-2.5 text-2xs leading-relaxed ${
                 blocked
                     ? "border-rose-500/30 bg-rose-500/10 text-rose-200"
                     : "border-amber-500/30 bg-amber-500/10 text-amber-200"
@@ -140,25 +140,25 @@ function DependencyRow({ entry }: { entry: DependencyResolutionEntry }) {
     ].filter(Boolean).join("  ·  ");
 
     return (
-        <section className="rounded-md border border-white/10 bg-white/[0.025] p-3">
+        <section className="rounded-md border border-edge bg-white/[0.025] p-3">
             <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
                     <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${style.dot}`} aria-hidden />
-                    <span className="truncate text-sm font-medium text-slate-100">
+                    <span className="truncate text-sm font-medium text-fg">
                         {dependency.name?.trim() || dependency.id}
                     </span>
                 </div>
                 {needsAttention ? (
-                    <span className={`shrink-0 text-[11px] font-medium ${style.text}`}>
+                    <span className={`shrink-0 text-2xs font-medium ${style.text}`}>
                         {suppressed ? "Disabled" : style.label}
                     </span>
                 ) : null}
             </div>
 
             {dependency.publisher?.trim() ? (
-                <div className="mt-0.5 truncate pl-3.5 text-[11px] text-slate-500">{dependency.publisher}</div>
+                <div className="mt-0.5 truncate pl-3.5 text-2xs text-fg-subtle">{dependency.publisher}</div>
             ) : null}
-            <div className="mt-1 pl-3.5 text-[11px] text-slate-500">{meta}</div>
+            <div className="mt-1 pl-3.5 text-2xs text-fg-subtle">{meta}</div>
         </section>
     );
 }

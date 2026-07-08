@@ -186,7 +186,7 @@ export function ContainerStackPaddingEditor({
                       ref={panelRef}
                       role="dialog"
                       aria-label="Padding per side"
-                      className="fixed z-[70] rounded-xl border border-white/10 bg-[#17181c] p-3 shadow-2xl"
+                      className="fixed z-[70] rounded-xl border border-edge bg-[#17181c] p-3 shadow-2xl"
                       style={{
                           left: popoverPos.left,
                           top: popoverPos.top,
@@ -195,11 +195,11 @@ export function ContainerStackPaddingEditor({
                       }}
                       onMouseDown={e => e.stopPropagation()}
                   >
-                      <p className="mb-2 text-xs font-medium text-gray-400">Per side (px)</p>
+                      <p className="mb-2 text-xs font-medium text-fg-muted">Per side (px)</p>
                       <div className="grid grid-cols-2 gap-2 min-w-0">
                           {sideKeys.map(({ key, label }) => (
                               <div key={key} className="flex min-w-0 flex-col gap-1">
-                                  <span className="text-[10px] font-medium text-gray-500">{label}</span>
+                                  <span className="text-2xs font-medium text-fg-subtle">{label}</span>
                                   <NumericDraftEnhancedInput
                                       committedDisplay={String(current[key])}
                                       draftResetKey={`${draftResetKey}-pad-${key}`}
@@ -225,7 +225,7 @@ export function ContainerStackPaddingEditor({
     return (
         <>
             <div ref={anchorRef} className="flex min-w-0 w-full flex-col gap-1 self-start">
-                <span className="text-xs font-medium text-gray-400">Padding</span>
+                <span className="text-xs font-medium text-fg-muted">Padding</span>
                 <div className="flex min-w-0 flex-nowrap items-stretch gap-2">
                     <div className="min-w-0 flex-1">
                         <NumericDraftEnhancedInput

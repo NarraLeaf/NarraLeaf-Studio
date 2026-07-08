@@ -103,7 +103,7 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
 
             {/* Name */}
             <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
+                <label className="block text-xs font-medium text-fg-muted mb-1">
                     Name
                 </label>
                 <input
@@ -111,14 +111,14 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     onBlur={handleNameBlur}
-                    className="w-full px-3 py-2 bg-[#1e1f22] border border-white/10 rounded-md text-sm text-gray-300 focus:outline-none focus:border-primary/50 transition-colors"
+                    className="w-full px-3 py-2 bg-surface-raised border border-edge rounded-md text-sm text-fg-muted focus:outline-none focus:border-primary/50 transition-colors"
                     disabled={saving}
                 />
             </div>
 
             {/* Tags */}
             <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
+                <label className="block text-xs font-medium text-fg-muted mb-1">
                     Tags
                 </label>
                 <div className="flex flex-wrap gap-1 mb-2">
@@ -151,7 +151,7 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
                             }
                         }}
                         placeholder="Add tag..."
-                        className="flex-1 px-3 py-1.5 bg-[#1e1f22] border border-white/10 rounded-md text-sm text-gray-300 focus:outline-none focus:border-primary/50 transition-colors"
+                        className="flex-1 px-3 py-1.5 bg-surface-raised border border-edge rounded-md text-sm text-fg-muted focus:outline-none focus:border-primary/50 transition-colors"
                         disabled={saving}
                     />
                     <button
@@ -166,7 +166,7 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
 
             {/* Description */}
             <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
+                <label className="block text-xs font-medium text-fg-muted mb-1">
                     Description
                 </label>
                 <textarea
@@ -174,14 +174,14 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
                     onChange={(e) => setDescription(e.target.value)}
                     onBlur={handleDescriptionBlur}
                     rows={4}
-                    className="w-full px-3 py-2 bg-[#1e1f22] border border-white/10 rounded-md text-sm text-gray-300 focus:outline-none focus:border-primary/50 transition-colors resize-none"
+                    className="w-full px-3 py-2 bg-surface-raised border border-edge rounded-md text-sm text-fg-muted focus:outline-none focus:border-primary/50 transition-colors resize-none"
                     placeholder="Enter description..."
                     disabled={saving}
                 />
             </div>
 
             {saving && (
-                <div className="text-xs text-gray-400 text-center">
+                <div className="text-xs text-fg-muted text-center">
                     Saving...
                 </div>
             )}

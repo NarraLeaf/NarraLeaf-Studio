@@ -484,25 +484,25 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         return (
             <div
                 key={item.id}
-                className={`group flex items-center gap-3 px-3 py-2 cursor-default hover:bg-gray-600/30 border-b border-white/5 last:border-b-0 transition-colors ${focusedStyles}`}
+                className={`group flex items-center gap-3 px-3 py-2 cursor-default hover:bg-gray-600/30 border-b border-edge-subtle last:border-b-0 transition-colors ${focusedStyles}`}
                 data-character-id={item.id}
                 onClick={() => handleCharacterClick(item.source)}
             >
-                <div className="w-10 h-10 rounded-md bg-white/10 overflow-hidden flex items-center justify-center flex-shrink-0">
+                <div className="w-10 h-10 rounded-md bg-fill overflow-hidden flex items-center justify-center flex-shrink-0">
                     {thumbnailUrl ? (
                         <img src={thumbnailUrl} alt={item.name} className="w-full h-full object-cover" />
                     ) : (
-                        <User className="w-5 h-5 text-gray-400" />
+                        <User className="w-5 h-5 text-fg-muted" />
                     )}
                 </div>
                 <div className="min-w-0 flex-1">
                     <div className="text-sm text-white truncate">{item.name}</div>
                     {item.nicknames.length > 0 && (
-                        <div className="text-xs text-gray-500 truncate">{item.nicknames.join(", ")}</div>
+                        <div className="text-xs text-fg-subtle truncate">{item.nicknames.join(", ")}</div>
                     )}
                 </div>
                 <button
-                    className="p-1 rounded hover:bg-white/10 text-gray-300 opacity-0 group-hover:opacity-100"
+                    className="p-1 rounded hover:bg-fill text-fg-muted opacity-0 group-hover:opacity-100"
                     onClick={(event) => { event.stopPropagation(); handleMenuOpen(event, { type: "character", character: item.source }); }}
                     title="Actions"
                 >
@@ -516,7 +516,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
 
     return (
         <div className="h-full flex flex-col" data-panel-id={panelId} onClick={setFocusToPanel}>
-            <div className="px-3 py-2 border-b border-white/10 space-y-3">
+            <div className="px-3 py-2 border-b border-edge space-y-3">
                 <SearchBox
                     value={searchQuery}
                     onChange={setSearchQuery}
@@ -533,7 +533,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     </button>
                     <button
                         onClick={(event) => { event.stopPropagation(); handleCreateGroup(); }}
-                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-white/20 bg-white/5 text-white hover:bg-white/10 transition-colors"
+                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-edge-strong bg-fill-subtle text-white hover:bg-fill transition-colors"
                         title="Add Group"
                     >
                         <FolderPlus className="w-4 h-4" />
@@ -550,7 +550,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     {/* Count removed per request */}
                     <button
                         onClick={loadCharacters}
-                        className="p-2 rounded hover:bg-white/10 text-gray-300"
+                        className="p-2 rounded hover:bg-fill text-fg-muted"
                         title="Refresh"
                     >
                         <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -560,22 +560,22 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
 
             <div className="flex-1 overflow-y-auto">
                 {loading ? (
-                    <div className="p-4 flex items-center gap-2 text-gray-400">
+                    <div className="p-4 flex items-center gap-2 text-fg-muted">
                         <RefreshCw className="w-4 h-4 animate-spin" />
                         <span>Loading characters...</span>
                     </div>
                 ) : hasNoData ? (
-                    <div className="p-4 text-sm text-gray-400">No characters match your filters.</div>
+                    <div className="p-4 text-sm text-fg-muted">No characters match your filters.</div>
                 ) : (
-                    <div className="divide-y divide-white/10">
+                    <div className="divide-y divide-edge">
                         {ungroupedCharacters.length > 0 && (
                             <div>
-                                <div className="px-3 py-2 text-xs text-gray-400 flex items-center gap-2 border-b border-white/10">
+                                <div className="px-3 py-2 text-xs text-fg-muted flex items-center gap-2 border-b border-edge">
                                     <Users className="w-4 h-4" />
                                     <span>Ungrouped</span>
-                                    <span className="text-gray-500">({ungroupedCharacters.length})</span>
+                                    <span className="text-fg-subtle">({ungroupedCharacters.length})</span>
                                 </div>
-                                <div className="divide-y divide-white/5">
+                                <div className="divide-y divide-edge-subtle">
                                     {ungroupedCharacters.map(renderCharacterRow)}
                                 </div>
                             </div>
@@ -595,7 +595,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                                             title={
                                                 <div className="flex items-center gap-2">
                                                     <span>{group.name}</span>
-                                                    <span className="text-xs text-gray-500">({members.length})</span>
+                                                    <span className="text-xs text-fg-subtle">({members.length})</span>
                                                 </div>
                                             }
                                             icon={<Users className="w-4 h-4" />}
@@ -613,20 +613,20 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                                                     </button>
                                                     <button
                                                         onClick={(event) => handleMenuOpen(event, { type: "group", group })}
-                                                        className="p-1 rounded hover:bg-white/10"
+                                                        className="p-1 rounded hover:bg-fill"
                                                         title="Group actions"
                                                     >
                                                         <MoreVertical className="w-3 h-3" />
                                                     </button>
                                                 </div>
                                             }
-                                            headerClassName="border-b border-white/10"
+                                            headerClassName="border-b border-edge"
                                             focusable={false}
                                         >
                                             {members.length === 0 ? (
-                                                <div className="px-3 py-2 text-xs text-gray-500">No characters in this group.</div>
+                                                <div className="px-3 py-2 text-xs text-fg-subtle">No characters in this group.</div>
                                             ) : (
-                                                <div className="divide-y divide-white/5">
+                                                <div className="divide-y divide-edge-subtle">
                                                     {members.map(renderCharacterRow)}
                                                 </div>
                                             )}

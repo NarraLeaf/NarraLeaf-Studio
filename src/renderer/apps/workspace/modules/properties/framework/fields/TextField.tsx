@@ -45,7 +45,7 @@ function TextFieldInner<TData>({ field, data, onSaving }: TextFieldProps<TData>)
     const isDisabled = field.disabled || isSaving;
     const isReadOnly = field.readOnly;
 
-    const inputClassName = `w-full px-3 py-2 bg-[#1e1f22] border border-white/10 rounded-md text-sm text-gray-300 
+    const inputClassName = `w-full px-3 py-2 bg-surface-raised border border-edge rounded-md text-sm text-fg-muted 
         focus:outline-none focus:border-primary/50 transition-colors 
         disabled:opacity-50 disabled:cursor-not-allowed ${field.className || ""}`;
 
@@ -54,7 +54,7 @@ function TextFieldInner<TData>({ field, data, onSaving }: TextFieldProps<TData>)
         return (
             <div>
                 {field.label && (
-                    <label htmlFor={inputId} className="block text-xs font-medium text-gray-400 mb-1">
+                    <label htmlFor={inputId} className="block text-xs font-medium text-fg-muted mb-1">
                         {field.label}
                     </label>
                 )}
@@ -71,7 +71,7 @@ function TextFieldInner<TData>({ field, data, onSaving }: TextFieldProps<TData>)
                     className={`${inputClassName} resize-none`}
                 />
                 {field.helpText && (
-                    <p className="mt-1 text-xs text-gray-500">{field.helpText}</p>
+                    <p className="mt-1 text-xs text-fg-subtle">{field.helpText}</p>
                 )}
             </div>
         );
@@ -81,7 +81,7 @@ function TextFieldInner<TData>({ field, data, onSaving }: TextFieldProps<TData>)
     return (
         <div>
             {field.label && (
-                <label htmlFor={inputId} className="block text-xs font-medium text-gray-400 mb-1">
+                <label htmlFor={inputId} className="block text-xs font-medium text-fg-muted mb-1">
                     {field.label}
                 </label>
             )}
@@ -98,7 +98,7 @@ function TextFieldInner<TData>({ field, data, onSaving }: TextFieldProps<TData>)
                 className={inputClassName}
             />
             {field.helpText && (
-                <p className="mt-1 text-xs text-gray-500">{field.helpText}</p>
+                <p className="mt-1 text-xs text-fg-subtle">{field.helpText}</p>
             )}
         </div>
     );

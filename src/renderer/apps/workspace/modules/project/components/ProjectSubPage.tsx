@@ -18,21 +18,21 @@ export function ProjectSubPage({
     children: ReactNode;
 }) {
     return (
-        <div className="flex h-full min-h-0 flex-col bg-[#101114] text-slate-200">
-            <div className="flex items-center gap-2 border-b border-white/10 p-2">
+        <div className="flex h-full min-h-0 flex-col bg-[#101114] text-fg">
+            <div className="flex items-center gap-2 border-b border-edge p-2">
                 <button
                     type="button"
                     onClick={onBack}
-                    className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-slate-400 transition-colors hover:bg-white/10 hover:text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#40a8c4]"
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-fg-muted transition-colors hover:bg-fill hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
                     aria-label="Back to project overview"
                     title="Back"
                 >
                     <ArrowLeft className="h-4 w-4" />
                 </button>
                 <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-slate-100">{title}</div>
+                    <div className="truncate text-sm font-medium text-fg">{title}</div>
                     {description ? (
-                        <div className="truncate text-[11px] text-slate-500">{description}</div>
+                        <div className="truncate text-2xs text-fg-subtle">{description}</div>
                     ) : null}
                 </div>
             </div>

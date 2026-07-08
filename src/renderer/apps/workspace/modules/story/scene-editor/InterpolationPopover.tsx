@@ -128,11 +128,11 @@ export function InterpolationPopover(props: {
     return createPortal(
         <div
             ref={panelRef}
-            className="fixed z-[70] w-60 rounded-lg border border-white/15 bg-[#16191e] p-2 shadow-2xl"
+            className="fixed z-[70] w-60 rounded-lg border border-edge bg-[#16191e] p-2 shadow-2xl"
             style={{ top, left: Math.max(8, left) }}
             onMouseDown={event => event.stopPropagation()}
         >
-            <div className="mb-1.5 text-[11px] font-medium tracking-wide text-slate-400">Insert value</div>
+            <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">Insert value</div>
             <div className="flex flex-col gap-1.5">
                 <Select options={KIND_OPTIONS} value={kind} onChange={value => setKind(String(value))} size="sm" fullWidth portalMenu menuZIndex={MENU_Z} menuDataAttributes={{ "data-select-menu": "true" }} />
                 {kind === "variable" ? (
@@ -157,7 +157,7 @@ export function InterpolationPopover(props: {
             </div>
             <button
                 type="button"
-                className="mt-2 flex items-center gap-1 text-xs text-slate-400 transition-colors hover:text-red-300"
+                className="mt-2 flex items-center gap-1 text-xs text-fg-muted transition-colors hover:text-red-300"
                 onClick={props.onRemove}
             >
                 <Trash2 className="h-3 w-3" />

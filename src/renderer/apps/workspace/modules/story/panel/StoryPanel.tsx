@@ -480,7 +480,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                         }
                     >
                         {stories.length === 0 ? (
-                            <div className="px-3 py-4 text-center text-xs text-gray-500">No stories in this project.</div>
+                            <div className="px-3 py-4 text-center text-xs text-fg-subtle">No stories in this project.</div>
                         ) : (
                             <div className="py-1">
                                 {stories.map(entry => {
@@ -496,14 +496,14 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                             onContextMenu={event => handleOpenStoryMenu(event, entry)}
                                         >
                                             {isDefault ? (
-                                                <Star className="h-4 w-4 shrink-0 text-gray-400" />
+                                                <Star className="h-4 w-4 shrink-0 text-fg-muted" />
                                             ) : (
-                                                <BookOpen className="h-4 w-4 shrink-0 text-gray-400" />
+                                                <BookOpen className="h-4 w-4 shrink-0 text-fg-muted" />
                                             )}
-                                            <span className="min-w-0 flex-1 truncate text-sm text-gray-100">{entry.name}</span>
+                                            <span className="min-w-0 flex-1 truncate text-sm text-fg">{entry.name}</span>
                                             <button
                                                 type="button"
-                                                className="rounded p-1 text-gray-400 opacity-0 hover:bg-white/10 hover:text-white group-hover/story:opacity-100"
+                                                className="rounded p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-white group-hover/story:opacity-100"
                                                 title="Story actions"
                                                 onClick={event => handleOpenStoryMenu(event, entry)}
                                             >
@@ -522,7 +522,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                             title={
                                 <span className="flex min-w-0 items-center gap-2">
                                     <span className="truncate">Outline</span>
-                                    <span className="truncate text-xs text-gray-500">{selectedEntry.name}</span>
+                                    <span className="truncate text-xs text-fg-subtle">{selectedEntry.name}</span>
                                 </span>
                             }
                             className="!border-b-0"
@@ -538,7 +538,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                             }
                         >
                             {loadingDocument ? (
-                                <div className="flex items-center gap-2 px-3 py-3 text-sm text-gray-400">
+                                <div className="flex items-center gap-2 px-3 py-3 text-sm text-fg-muted">
                                     <RefreshCw className="h-4 w-4 animate-spin" />
                                     Loading story...
                                 </div>
@@ -549,7 +549,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                     onOpenChange={handleChapterOpenChange}
                                     multiple
                                     disableAnimation={disableAccordionAnimation}
-                                    className="border-t border-white/5"
+                                    className="border-t border-edge-subtle"
                                 >
                                     {document.chapters.map(chapter => (
                                         <AccordionItem
@@ -568,11 +568,11 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                     <Plus className="h-3 w-3" />
                                                 </button>
                                             }
-                                            headerClassName="bg-white/[0.01]"
+                                            headerClassName="bg-fill-subtle"
                                             contentClassName="py-1"
                                         >
                                             {chapter.sceneIds.length === 0 ? (
-                                                <div className="px-8 py-2 text-xs text-gray-500">No scenes.</div>
+                                                <div className="px-8 py-2 text-xs text-fg-subtle">No scenes.</div>
                                             ) : (
                                                 chapter.sceneIds.map(sceneId => {
                                                     const scene = document.scenes[sceneId];
@@ -590,19 +590,19 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                             onContextMenu={event => handleOpenSceneMenu(event, scene)}
                                                         >
                                                             {isEntry ? (
-                                                                <Star className="h-4 w-4 shrink-0 text-gray-400" />
+                                                                <Star className="h-4 w-4 shrink-0 text-fg-muted" />
                                                             ) : (
-                                                                <FileText className="h-4 w-4 shrink-0 text-gray-400" />
+                                                                <FileText className="h-4 w-4 shrink-0 text-fg-muted" />
                                                             )}
                                                             <div className="min-w-0 flex-1">
                                                                 <div className="flex min-w-0 items-center gap-2">
-                                                                    <span className="min-w-0 flex-1 truncate text-sm text-gray-100">{scene.name}</span>
+                                                                    <span className="min-w-0 flex-1 truncate text-sm text-fg">{scene.name}</span>
                                                                 </div>
-                                                                <div className="truncate text-[11px] text-gray-500">{lineCount} lines</div>
+                                                                <div className="truncate text-2xs text-fg-subtle">{lineCount} lines</div>
                                                             </div>
                                                             <button
                                                                 type="button"
-                                                                className="rounded p-1 text-gray-400 opacity-0 hover:bg-white/10 hover:text-white group-hover/scene:opacity-100"
+                                                                className="rounded p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-white group-hover/scene:opacity-100"
                                                                 title="Scene actions"
                                                                 onClick={event => handleOpenSceneMenu(event, scene)}
                                                             >
@@ -616,7 +616,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                     ))}
                                 </Accordion>
                             ) : (
-                                <div className="px-3 py-3 text-sm text-gray-400">Story document unavailable.</div>
+                                <div className="px-3 py-3 text-sm text-fg-muted">Story document unavailable.</div>
                             )}
                         </AccordionItem>
                     ) : null}

@@ -75,7 +75,7 @@ function Thumb(props: { assetId: string | null; className?: string; alt?: string
     const { url } = useAssetObjectUrl(props.assetId);
     if (!url) {
         return (
-            <div className={["grid place-items-center rounded bg-black/30 text-slate-600", props.className ?? ""].join(" ")}>
+            <div className={["grid place-items-center rounded bg-black/30 text-fg-subtle", props.className ?? ""].join(" ")}>
                 <ImageOff className="h-4 w-4" />
             </div>
         );
@@ -139,13 +139,13 @@ export function CharacterAppearancePicker(props: {
     };
 
     if (forms.length === 0) {
-        return <div className="rounded-md border border-dashed border-white/10 bg-black/10 p-3 text-xs text-slate-500">This character has no forms defined.</div>;
+        return <div className="rounded-md border border-dashed border-edge bg-black/10 p-3 text-xs text-fg-subtle">This character has no forms defined.</div>;
     }
 
     return (
-        <div ref={scrollRef} className="flex gap-3 overflow-x-auto rounded-lg border border-white/10 bg-black/20 p-2">
+        <div ref={scrollRef} className="flex gap-3 overflow-x-auto rounded-lg border border-edge bg-black/20 p-2">
             <div className={COLUMN}>
-                <div className="px-1 text-[10px] font-medium tracking-wide text-slate-500">Form</div>
+                <div className="px-1 text-2xs font-medium tracking-wide text-fg-subtle">Form</div>
                 {forms.map(form => {
                     const active = form.name === selectedForm?.name;
                     return (
@@ -153,10 +153,10 @@ export function CharacterAppearancePicker(props: {
                             key={form.name}
                             type="button"
                             onClick={() => selectForm(form.name)}
-                            className={[CARD, active ? "border-primary/60 bg-primary/15" : "border-white/10 hover:bg-white/5"].join(" ")}
+                            className={[CARD, active ? "border-primary/60 bg-primary/15" : "border-edge hover:bg-fill-subtle"].join(" ")}
                         >
                             <Thumb assetId={formThumbnailId(form)} className="h-8 w-8 shrink-0" />
-                            <span className="min-w-0 flex-1 truncate text-slate-200">{form.name}</span>
+                            <span className="min-w-0 flex-1 truncate text-fg">{form.name}</span>
                             {active ? <ChevronRight className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
                         </button>
                     );
@@ -165,7 +165,7 @@ export function CharacterAppearancePicker(props: {
 
             {selectedForm ? (
                 <div className={COLUMN}>
-                    <div className="px-1 text-[10px] font-medium tracking-wide text-slate-500">Appearance</div>
+                    <div className="px-1 text-2xs font-medium tracking-wide text-fg-subtle">Appearance</div>
                     {groups.map(group => {
                         const active = group.name === activeGroup;
                         const currentVariant = selectionMap[group.name] ?? group.defaultVariant ?? group.variants[0]?.name;
@@ -174,14 +174,14 @@ export function CharacterAppearancePicker(props: {
                                 key={group.name}
                                 type="button"
                                 onClick={() => setActiveGroup(group.name)}
-                                className={[CARD, active ? "border-primary/60 bg-primary/15" : "border-white/10 hover:bg-white/5"].join(" ")}
+                                className={[CARD, active ? "border-primary/60 bg-primary/15" : "border-edge hover:bg-fill-subtle"].join(" ")}
                             >
                                 <Thumb assetId={variantAssetId(selectedForm, currentVariant)} className="h-8 w-8 shrink-0" />
                                 <span className="min-w-0 flex-1">
-                                    <span className="block truncate text-slate-200">{groupLabel(group.name)}</span>
-                                    <span className="block truncate text-[10px] text-slate-500">{currentVariant ? variantLabel(currentVariant) : "—"}</span>
+                                    <span className="block truncate text-fg">{groupLabel(group.name)}</span>
+                                    <span className="block truncate text-2xs text-fg-subtle">{currentVariant ? variantLabel(currentVariant) : "—"}</span>
                                 </span>
-                                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
                             </button>
                         );
                     })}
@@ -190,7 +190,7 @@ export function CharacterAppearancePicker(props: {
 
             {activeGroupObj && selectedForm ? (
                 <div className={COLUMN}>
-                    <div className="px-1 text-[10px] font-medium tracking-wide text-slate-500">{groupLabel(activeGroupObj.name)}</div>
+                    <div className="px-1 text-2xs font-medium tracking-wide text-fg-subtle">{groupLabel(activeGroupObj.name)}</div>
                     {activeGroupObj.variants.map(variant => {
                         const active = selectionMap[activeGroupObj.name] === variant.name;
                         return (
@@ -198,10 +198,10 @@ export function CharacterAppearancePicker(props: {
                                 key={variant.name}
                                 type="button"
                                 onClick={() => selectVariant(activeGroupObj.name, variant.name)}
-                                className={[CARD, active ? "border-primary/60 bg-primary/15" : "border-white/10 hover:bg-white/5"].join(" ")}
+                                className={[CARD, active ? "border-primary/60 bg-primary/15" : "border-edge hover:bg-fill-subtle"].join(" ")}
                             >
                                 <Thumb assetId={variantAssetId(selectedForm, variant.name)} className="h-8 w-8 shrink-0" />
-                                <span className="min-w-0 flex-1 truncate text-slate-200">{variantLabel(variant.name)}</span>
+                                <span className="min-w-0 flex-1 truncate text-fg">{variantLabel(variant.name)}</span>
                             </button>
                         );
                     })}
@@ -210,11 +210,11 @@ export function CharacterAppearancePicker(props: {
 
             {selectedForm && selectedVariant ? (
                 <div className="flex w-44 shrink-0 flex-col gap-1">
-                    <div className="px-1 text-[10px] font-medium tracking-wide text-slate-500">Preview</div>
-                    <div className="grid min-h-[8rem] flex-1 place-items-center rounded-md border border-white/10 bg-[#0f1115] p-2">
+                    <div className="px-1 text-2xs font-medium tracking-wide text-fg-subtle">Preview</div>
+                    <div className="grid min-h-[8rem] flex-1 place-items-center rounded-md border border-edge bg-surface p-2">
                         <Thumb assetId={variantAssetId(selectedForm, selectedVariant)} className="max-h-40 w-full" alt={selectedVariant} />
                     </div>
-                    <div className="truncate px-1 text-center text-[11px] text-slate-400">{variantLabel(selectedVariant)}</div>
+                    <div className="truncate px-1 text-center text-2xs text-fg-muted">{variantLabel(selectedVariant)}</div>
                 </div>
             ) : null}
         </div>

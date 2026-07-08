@@ -129,7 +129,7 @@ const InputDialogContent: React.FC<InputDialogContentProps> = ({
             }}
         >
             {description && (
-                <div className="text-sm text-gray-300">{description}</div>
+                <div className="text-sm text-fg-muted">{description}</div>
             )}
 
             <Input
@@ -145,7 +145,7 @@ const InputDialogContent: React.FC<InputDialogContentProps> = ({
             />
 
             {validationError && (
-                <div className="text-sm text-red-400">{validationError}</div>
+                <div className="text-sm text-danger">{validationError}</div>
             )}
         </form>
     );

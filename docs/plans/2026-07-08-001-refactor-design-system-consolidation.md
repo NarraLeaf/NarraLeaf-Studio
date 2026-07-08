@@ -135,8 +135,18 @@ styles.css `:root` 定义 RGB 通道变量,`tailwind.config.js` 以 `rgb(var(--x
 2. **10px/11px** → **合并为单档** `2xs: 11px`,`text-[9px]` 一并并入。后续如需微调易改。
 3. **`surface-raised` 的归一值** → 取现最高频的 `#1e1f22`。
 
+## 实施进度（2026-07-08）
+
+- **Phase 0 ✅** 见上。
+- **Phase 1 ✅ 组件库自治**：`lib/components` 全部 16 个组件接入 `cn()` 并换语义 token（Button/Input/Select/Switch/Progress 原先硬编码 `#40a8c4` 已消除；`error`→`danger` 命名分歧因是"输入校验态 vs 按钮意图"两个语义域,保留未强制合并以免破坏调用方）。新增 `fill` token 家族(半透明白色填充,与 `edge` 边框角色区分)。Progress 修掉了原先失效的 indeterminate 渐变 hack。
+- **Phase 2 ✅ 补齐原语**：新增 `ToolbarButton`(收编 20+ 处手写图标按钮)、`TabStrip`、`Badge`、`EmptyState`、`FieldLabel`、`SectionCard`、`PanelHeader`、`Tooltip`(轻量 CSS 版)。
+- **Phase 3 ⏳ 大部分完成**：`scripts/style-codemod.mjs` 跑了保值/已批准的全局替换(189 文件、~2800 处)。债务下降:任意 hex 309→102、裸中性色板 1176→22、white/black alpha 795→79、任意 px 字号 312→3、裸 accent 127→93。**剩余(判断密集,留给 Phase 4 监督式迁移)**:长尾近黑表面 hex、`cyan-*` 的 binding vs primary 归属、`bg-gray-*`/`border-gray-*` 少量、控件 vs 容器的裸 `rounded`(223 未动)、black alpha scrim/shadow。
+- **验证**：renderer `tsc` exit 0;`yarn build:apps:dev` 6 个 app 全过;构建产物 CSS 含 token;ratchet 全项下降、基线已收紧到新低点;CDP 重载 workspace 截图视觉无回归。
+- **Phase 4 / 5 待办**：逐模块把裸 `<button>`/手写 tab/badge/空状态替换为新组件(靠 ratchet 兜底监督式推进);全部归零后把 ratchet 转硬性 lint。
+
 ## Key Files
 - token/配置：`tailwind.config.js`、`src/renderer/styles/styles.css`
+- codemod / 护栏：`scripts/style-codemod.mjs`、`scripts/style-ratchet.mjs` + `scripts/style-ratchet.baseline.json`
 - 工具：`src/renderer/lib/utils/cn.ts`（新）、`scripts/style-ratchet.*`（新）
 - 组件库：`src/renderer/lib/components/**`
 - 升格来源：`lib/ui-editor/widget-modules/shared/chrome/constants.tsx`（controlButtonClass）、`apps/workspace/modules/assets/components/SearchBox.tsx`

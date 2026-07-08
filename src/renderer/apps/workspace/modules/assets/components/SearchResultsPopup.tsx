@@ -82,7 +82,7 @@ export function SearchResultsPopup({
     const popup = (
         <div
             className={`
-                fixed z-50 bg-[#0b0d12] border border-white/20 rounded-md shadow-xl
+                fixed z-50 bg-surface-sunken border border-edge-strong rounded-md shadow-xl
                 max-w-sm w-full max-h-80 overflow-y-auto
                 ${className}
             `}
@@ -93,19 +93,19 @@ export function SearchResultsPopup({
             }}
         >
                 {/* Header */}
-                <div className="px-3 py-2 border-b border-white/10">
+                <div className="px-3 py-2 border-b border-edge">
                     <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-gray-300">
+                        <span className="text-xs font-medium text-fg-muted">
                             {results.length} result{results.length !== 1 ? 's' : ''}
                         </span>
                         <button
                             onClick={onClose}
-                            className="text-gray-400 hover:text-gray-300 transition-colors text-sm"
+                            className="text-fg-muted hover:text-fg-muted transition-colors text-sm"
                         >
                             ✕
                         </button>
                     </div>
-                    <div className="text-xs text-gray-500 mt-0.5">
+                    <div className="text-xs text-fg-subtle mt-0.5">
                         "{searchQuery}"
                     </div>
                 </div>
@@ -121,7 +121,7 @@ export function SearchResultsPopup({
                             />
                         ))
                     ) : (
-                        <div className="px-3 py-4 text-center text-gray-500 text-sm">
+                        <div className="px-3 py-4 text-center text-fg-subtle text-sm">
                             No matching assets found
                         </div>
                     )}
@@ -144,20 +144,20 @@ function SearchResultItem({ result, onClick }: SearchResultItemProps) {
     return (
         <button
             onClick={onClick}
-            className="w-full px-4 py-2 hover:bg-white/5 transition-colors text-left"
+            className="w-full px-4 py-2 hover:bg-fill-subtle transition-colors text-left"
         >
             <div className="flex items-center gap-3">
-                <Icon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <Icon className="w-4 h-4 text-fg-muted flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                    <div className="text-sm text-gray-300 truncate">
+                    <div className="text-sm text-fg-muted truncate">
                         {result.name}
                     </div>
                     {result.groupPath && result.groupPath.length > 0 && (
-                        <div className="text-xs text-gray-500 truncate">
+                        <div className="text-xs text-fg-subtle truncate">
                             {result.groupPath.join(" / ")}
                         </div>
                     )}
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-fg-subtle">
                         {result.matchReason === 'name' && 'Name'}
                         {result.matchReason === 'tag' && `Tag: ${result.matchText}`}
                         {result.matchReason === 'description' && 'Description'}

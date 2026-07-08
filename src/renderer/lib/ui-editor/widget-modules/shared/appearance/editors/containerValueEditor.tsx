@@ -98,7 +98,7 @@ export function ContainerAppearanceValueEditor({
                     className={controlButtonClass(b)}
                     title="Link corner radii"
                 >
-                    <span className="text-[10px] font-medium px-1">Link</span>
+                    <span className="text-2xs font-medium px-1">Link</span>
                 </button>
             );
         }
@@ -142,7 +142,7 @@ export function ContainerAppearanceValueEditor({
                     type="number"
                     min={0}
                     unit="px"
-                    leftIcon={<Square className="w-4 h-4 text-gray-400" />}
+                    leftIcon={<Square className="w-4 h-4 text-fg-muted" />}
                     className="w-full min-w-0"
                 />
             );
@@ -163,7 +163,7 @@ export function ContainerAppearanceValueEditor({
             return (
                 <input
                     type="text"
-                    className="w-full min-w-0 rounded-lg border border-white/10 bg-transparent px-2 py-1.5 text-xs text-gray-200"
+                    className="w-full min-w-0 rounded-lg border border-edge bg-transparent px-2 py-1.5 text-xs text-fg"
                     value={v}
                     onChange={e => onChange(e.target.value)}
                     placeholder="URL or asset ref"
@@ -242,7 +242,7 @@ export function ContainerAppearanceValueEditor({
                     min={0}
                     max={100}
                     precision={null}
-                    leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                    leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                     className="w-full min-w-0"
                 />
             );
@@ -302,10 +302,10 @@ export function ContainerAppearanceValueEditor({
             if (isMultiSide) {
                 return (
                     <div className="space-y-1 min-w-0">
-                        <p className="text-xs text-gray-500 leading-snug">
+                        <p className="text-xs text-fg-subtle leading-snug">
                             Multiple sides — use the compact Border panel to edit.
                         </p>
-                        <span className="text-xs font-mono text-gray-300 break-all">{v}</span>
+                        <span className="text-xs font-mono text-fg-muted break-all">{v}</span>
                     </div>
                 );
             }
@@ -331,7 +331,7 @@ export function ContainerAppearanceValueEditor({
         }
         default:
             return (
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-fg-subtle">
                     {String(value ?? "")}
                 </span>
             );

@@ -312,7 +312,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           min={0}
                           max={100}
                           precision={null}
-                          leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                          leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                           className="w-full min-w-0"
                         />
                       );
@@ -428,7 +428,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           min={0}
                           max={100}
                           precision={null}
-                          leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                          leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                         />
                       );
                     },
@@ -510,7 +510,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           min={0}
                           max={100}
                           precision={null}
-                          leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                          leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                         />
                       );
                     },
@@ -606,7 +606,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           min={0}
                           unit="px"
                           precision={2}
-                          leftIcon={<Square className="w-4 h-4 text-gray-400" />}
+                          leftIcon={<Square className="w-4 h-4 text-fg-muted" />}
                           className="w-full min-w-0"
                         />
                       );
@@ -713,7 +713,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           min={0}
                           max={100}
                           precision={null}
-                          leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                          leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                           disabled={!strokeVisible}
                           className="w-full min-w-0"
                         />

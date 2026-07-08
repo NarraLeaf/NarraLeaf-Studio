@@ -77,7 +77,7 @@ const ButtonLabelBlueprintValueField = createBlueprintValueField({
         const buttonProps = getButtonProps(liveElement);
         return (
             <textarea
-                className="min-h-[88px] w-full resize-y rounded-md border border-white/10 bg-[#0b0d10] px-2 py-1.5 text-xs text-gray-100 outline-none focus:border-cyan-400/70 focus:ring-1 focus:ring-cyan-400/40"
+                className="min-h-[88px] w-full resize-y rounded-md border border-edge bg-[#0b0d10] px-2 py-1.5 text-xs text-fg outline-none focus:border-cyan-400/70 focus:ring-1 focus:ring-cyan-400/40"
                 value={buttonProps.label}
                 rows={4}
                 onChange={event => {
@@ -174,7 +174,7 @@ export function createButtonInspector(ctx: InspectorContext) {
                                                             min={8}
                                                             max={256}
                                                             unit="px"
-                                                            leftIcon={<Type className="w-4 h-4 text-gray-400" />}
+                                                            leftIcon={<Type className="w-4 h-4 text-fg-muted" />}
                                                         />
                                                     );
                                                 },
@@ -206,7 +206,7 @@ export function createButtonInspector(ctx: InspectorContext) {
                                                             min={0.8}
                                                             max={4}
                                                             step={0.05}
-                                                            leftIcon={<Baseline className="w-4 h-4 text-gray-400" />}
+                                                            leftIcon={<Baseline className="w-4 h-4 text-fg-muted" />}
                                                             title="Line height (unitless)"
                                                         />
                                                     );

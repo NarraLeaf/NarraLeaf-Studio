@@ -46,7 +46,7 @@ export type StoryScenePreviewController = {
     /** Wire into NlrStageLayer's onLiveGameReady. */
     onLiveGameReady: (sessionId: string, liveGame: LiveGame) => void;
     /** Wire into NlrStageLayer's onError. */
-    onStageError: (error: Error) => void;
+    onStageError: (error: Error, sessionId: string) => void;
 };
 
 /**
@@ -75,10 +75,14 @@ export function useStoryScenePreviewController(input: {
     const [session, setSession] = useState<NlrStageSession | null>(null);
 
     const runIdRef = useRef(0);
+    /** The run that produced the currently mounted session; detects late onReady from superseded runs. */
+    const sessionRunIdRef = useRef(0);
     const phaseRef = useRef<StoryScenePreviewPhase>("idle");
     const sessionRef = useRef<NlrStageSession | null>(null);
     const liveGameRef = useRef<LiveGame | null>(null);
     const liveGameSessionIdRef = useRef<string | null>(null);
+    /** Retired LiveGame awaiting disposal at the next session swap (its Player keeps the last frame until then). */
+    const pendingDisposeRef = useRef<LiveGame | null>(null);
     const wireLiveGameRef = useRef<((liveGame: LiveGame) => () => void) | null>(null);
     const wireDisposeRef = useRef<(() => void) | null>(null);
     const arrivedRef = useRef(false);
@@ -135,14 +139,50 @@ export function useStoryScenePreviewController(input: {
         }
     }, []);
 
+    // Dispose a retired LiveGame: aborts its timelines/audio/async stacks so a replaced session
+    // can't keep ticking after its Player unmounts (zombie animations throw "No game state found"
+    // and their errors would otherwise bleed into the current run).
+    const disposeLiveGame = useCallback((liveGame: LiveGame | null) => {
+        if (!liveGame) {
+            return;
+        }
+        try {
+            const disposable = liveGame as LiveGame & { dispose?: () => void };
+            if (typeof disposable.dispose === "function") {
+                disposable.dispose();
+            } else {
+                liveGame.reset();
+            }
+        } catch {
+            // The game may never have fully initialised (no game state yet) — nothing to abort.
+        }
+    }, []);
+
+    // Flush the pending retired LiveGame. Called synchronously right before the session swap
+    // (its Player is still mounted, so the reset can abort everything cleanly), in the same task
+    // as setSession — React commits both in one paint, so the old frame never flashes empty.
+    const flushPendingDispose = useCallback(() => {
+        const pending = pendingDisposeRef.current;
+        pendingDisposeRef.current = null;
+        disposeLiveGame(pending);
+    }, [disposeLiveGame]);
+
     const disposeRun = useCallback(() => {
         clearDriveTimers();
         wireDisposeRef.current?.();
         wireDisposeRef.current = null;
+        // Keep the retiring LiveGame alive until the next session swap so the previous frame
+        // stays visible during the recompile; it is disposed in flushPendingDispose.
+        if (liveGameRef.current) {
+            if (pendingDisposeRef.current && pendingDisposeRef.current !== liveGameRef.current) {
+                disposeLiveGame(pendingDisposeRef.current);
+            }
+            pendingDisposeRef.current = liveGameRef.current;
+        }
         liveGameRef.current = null;
         liveGameSessionIdRef.current = null;
         arrivedRef.current = false;
-    }, [clearDriveTimers]);
+    }, [clearDriveTimers, disposeLiveGame]);
 
     const failRun = useCallback((runId: number, message: string) => {
         if (runId !== runIdRef.current) {
@@ -192,6 +232,7 @@ export function useStoryScenePreviewController(input: {
         const runId = ++runIdRef.current;
         disposeRun();
         if (!open || !active || !host.ready || !context || !document || !scene || !sceneId) {
+            flushPendingDispose();
             sessionRef.current = null;
             setSession(null);
             setPhase("idle");
@@ -257,7 +298,9 @@ export function useStoryScenePreviewController(input: {
             };
             wireDisposeRef.current = null;
             wireLiveGameRef.current = previewGame.wireLiveGame;
+            flushPendingDispose();
             sessionRef.current = nextSession;
+            sessionRunIdRef.current = runId;
             setPhase("mounting");
             setSession(nextSession);
         } catch (error) {
@@ -269,6 +312,7 @@ export function useStoryScenePreviewController(input: {
         disposeRun,
         document,
         failRun,
+        flushPendingDispose,
         handleBeforeTarget,
         host,
         open,
@@ -291,6 +335,7 @@ export function useStoryScenePreviewController(input: {
         if (!open || !active) {
             runIdRef.current += 1;
             disposeRun();
+            flushPendingDispose();
             sessionRef.current = null;
             setSession(null);
             setPhase("idle");
@@ -306,17 +351,29 @@ export function useStoryScenePreviewController(input: {
                 debounceTimerRef.current = null;
             }
         };
-    }, [open, active, host.ready, document, sceneId, resolvedTargetId, disposeRun, setPhase]);
+    }, [open, active, host.ready, document, sceneId, resolvedTargetId, disposeRun, flushPendingDispose, setPhase]);
 
     // Full teardown on unmount.
     useEffect(() => () => {
         runIdRef.current += 1;
         disposeRun();
-    }, [disposeRun]);
+        flushPendingDispose();
+    }, [disposeRun, flushPendingDispose]);
 
     const handleLiveGameReady = useCallback((sessionId: string, liveGame: LiveGame) => {
         const currentSession = sessionRef.current;
         if (!currentSession || currentSession.id !== sessionId) {
+            // A session that was replaced before it became ready: retire its game immediately.
+            disposeLiveGame(liveGame);
+            return;
+        }
+        if (runIdRef.current !== sessionRunIdRef.current) {
+            // A newer run is compiling; this session is about to be replaced. Starting playback
+            // now would race the swap — queue the game for disposal at the swap instead.
+            if (pendingDisposeRef.current && pendingDisposeRef.current !== liveGame) {
+                disposeLiveGame(pendingDisposeRef.current);
+            }
+            pendingDisposeRef.current = liveGame;
             return;
         }
         const runId = runIdRef.current;
@@ -335,11 +392,17 @@ export function useStoryScenePreviewController(input: {
             // Preference names are stable across NLR versions; a failure here is non-fatal.
         }
         beginPlayback(runId, liveGame);
-    }, [beginPlayback, clearDriveTimers]);
+    }, [beginPlayback, clearDriveTimers, disposeLiveGame]);
 
-    const handleStageError = useCallback((error: Error) => {
+    const handleStageError = useCallback((error: Error, sessionId: string) => {
+        if (sessionRef.current?.id !== sessionId) {
+            // Teardown noise from a replaced session (aborted preloads, cancelled animations)
+            // must not fail the run that superseded it.
+            pushIssue({ level: "warning", message: `Previous preview session: ${error.message}` });
+            return;
+        }
         failRun(runIdRef.current, error.message);
-    }, [failRun]);
+    }, [failRun, pushIssue]);
 
     const getStageContext = useCallback((): StoryScenePreviewStageContext | null => {
         const currentSession = sessionRef.current;

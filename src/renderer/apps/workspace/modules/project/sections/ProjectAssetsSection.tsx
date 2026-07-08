@@ -226,13 +226,13 @@ function ProjectIconCard({
         : null;
 
     return (
-        <section className="rounded-md border border-white/10 bg-white/[0.025] p-3">
+        <section className="rounded-md border border-edge bg-white/[0.025] p-3">
             <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
-                    <PlatformIcon className="h-4 w-4 shrink-0 text-slate-400" />
+                    <PlatformIcon className="h-4 w-4 shrink-0 text-fg-muted" />
                     <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-slate-100">{option.label}</div>
-                        <div className="truncate text-[11px] text-slate-500">{option.detail}</div>
+                        <div className="truncate text-sm font-medium text-fg">{option.label}</div>
+                        <div className="truncate text-2xs text-fg-subtle">{option.detail}</div>
                     </div>
                 </div>
                 <button
@@ -248,13 +248,13 @@ function ProjectIconCard({
             </div>
 
             <div className="mt-3 flex min-w-0 gap-3">
-                <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-md border border-white/10 bg-[#17181c]">
+                <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-md border border-edge bg-[#17181c]">
                     {state.preview ? (
                         <img src={state.preview.url} alt={`${option.label} icon`} className="max-h-full max-w-full object-contain" />
                     ) : busy ? (
-                        <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
+                        <Loader2 className="h-5 w-5 animate-spin text-fg-subtle" />
                     ) : (
-                        <ImageIcon className="h-5 w-5 text-slate-600" />
+                        <ImageIcon className="h-5 w-5 text-fg-subtle" />
                     )}
                 </div>
                 <div className="min-w-0 flex-1 self-center">
@@ -264,16 +264,16 @@ function ProjectIconCard({
                         ) : state.icon ? (
                             <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-primary" />
                         ) : (
-                            <RefreshCw className="h-3.5 w-3.5 shrink-0 text-slate-600" />
+                            <RefreshCw className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
                         )}
-                        <span className="min-w-0 truncate text-xs text-slate-300">
+                        <span className="min-w-0 truncate text-xs text-fg-muted">
                             {state.status === "error"
                                 ? state.error
                                 : state.icon?.sourceName ?? "No icon selected"}
                         </span>
                     </div>
                     {state.icon ? (
-                        <div className="mt-1 min-w-0 truncate text-[11px] text-slate-500">
+                        <div className="mt-1 min-w-0 truncate text-2xs text-fg-subtle">
                             {[
                                 dimensions,
                                 state.preview?.extractedFromIcns ? "ICNS preview" : null,

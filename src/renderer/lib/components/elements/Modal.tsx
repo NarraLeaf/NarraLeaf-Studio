@@ -1,22 +1,23 @@
 import React, { useEffect } from "react";
 import { X } from "lucide-react";
+import { cn } from "../../utils/cn";
 
 /** Footer action buttons — same classes as DialogContainer (workspace input / info dialogs). */
 export function dialogFooterButtonClass(options: {
     variant: "secondary" | "primary" | "danger";
     disabled?: boolean;
 }): string {
-    const base = "px-4 py-2 text-sm rounded transition-colors";
+    const base = "px-4 py-2 text-sm rounded-md transition-colors";
     if (options.disabled) {
-        return `${base} bg-gray-700 text-gray-500 cursor-not-allowed`;
+        return `${base} bg-fill-strong text-fg-subtle cursor-not-allowed`;
     }
     if (options.variant === "primary") {
-        return `${base} bg-primary hover:bg-primary/80 text-white font-medium`;
+        return `${base} bg-primary hover:brightness-110 text-white font-medium`;
     }
     if (options.variant === "danger") {
-        return `${base} bg-red-600 hover:bg-red-700 text-white font-medium`;
+        return `${base} bg-danger hover:brightness-110 text-white font-medium`;
     }
-    return `${base} bg-white/5 hover:bg-white/10 text-gray-300`;
+    return `${base} bg-fill-subtle hover:bg-fill text-fg-muted`;
 }
 
 export interface ModalProps {
@@ -91,37 +92,37 @@ export function Modal({
 
             {/* Modal panel */}
             <div
-                className={`
-                    relative bg-[#1e1e1e] border border-white/10 rounded-lg shadow-2xl animate-scale-in
-                    ${sizeStyles[size]} w-full max-h-[90vh] overflow-hidden
-                    ${className}
-                `}
+                className={cn(
+                    "relative bg-surface-raised border border-edge rounded-lg shadow-2xl animate-scale-in",
+                    sizeStyles[size], "w-full max-h-[90vh] overflow-hidden",
+                    className,
+                )}
             >
                 {/* Header */}
                 {(title || showCloseButton) && (
-                    <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-                        {title && <h2 className="text-lg font-semibold text-white">{title}</h2>}
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-edge">
+                        {title && <h2 className="text-lg font-semibold text-fg">{title}</h2>}
                         {showCloseButton && (
                             <button
                                 type="button"
                                 onClick={onClose}
-                                className="p-1 rounded hover:bg-white/10 transition-colors ml-auto"
+                                className="p-1 rounded-md hover:bg-fill transition-colors ml-auto"
                                 aria-label="Close modal"
                             >
-                                <X className="w-5 h-5 text-gray-400" strokeWidth={2} />
+                                <X className="w-5 h-5 text-fg-muted" strokeWidth={2} />
                             </button>
                         )}
                     </div>
                 )}
 
                 {/* Content */}
-                <div className="px-6 py-4 overflow-y-auto max-h-[calc(90vh-140px)] text-gray-200">
+                <div className="px-6 py-4 overflow-y-auto max-h-[calc(90vh-140px)] text-fg">
                     {children}
                 </div>
 
                 {/* Footer */}
                 {footer && (
-                    <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-white/10 bg-[#252525]">
+                    <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-edge bg-surface-overlay">
                         {footer}
                     </div>
                 )}
@@ -184,7 +185,7 @@ export function ConfirmModal({
                 </div>
             }
         >
-            <p className="text-sm text-gray-200 whitespace-pre-wrap">{message}</p>
+            <p className="text-sm text-fg whitespace-pre-wrap">{message}</p>
         </Modal>
     );
 }
@@ -221,7 +222,7 @@ export function AlertModal({
                 </button>
             }
         >
-            <p className="text-sm text-gray-200 whitespace-pre-wrap">{message}</p>
+            <p className="text-sm text-fg whitespace-pre-wrap">{message}</p>
         </Modal>
     );
 }
@@ -237,7 +238,7 @@ export function ModalHeader({
     children: React.ReactNode;
 }) {
     return (
-        <div className={`flex items-center justify-between px-6 py-4 border-b border-white/10 ${className}`}>
+        <div className={cn("flex items-center justify-between px-6 py-4 border-b border-edge", className)}>
             {children}
         </div>
     );
@@ -254,7 +255,7 @@ export function ModalBody({
     children: React.ReactNode;
 }) {
     return (
-        <div className={`px-6 py-4 text-gray-200 ${className}`}>
+        <div className={cn("px-6 py-4 text-fg", className)}>
             {children}
         </div>
     );
@@ -271,9 +272,7 @@ export function ModalFooter({
     children: React.ReactNode;
 }) {
     return (
-        <div
-            className={`flex items-center justify-end gap-2 px-6 py-4 border-t border-white/10 bg-[#252525] ${className}`}
-        >
+        <div className={cn("flex items-center justify-end gap-2 px-6 py-4 border-t border-edge bg-surface-overlay", className)}>
             {children}
         </div>
     );

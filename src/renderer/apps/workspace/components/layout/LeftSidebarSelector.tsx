@@ -42,7 +42,7 @@ export function LeftSidebarSelector({
     return (
         <div
             data-workspace-sidebar-rail=""
-            className="bg-[#0b0d12] border-r border-white/10 flex flex-col items-center py-2 px-1 gap-1"
+            className="bg-surface-sunken border-r border-edge flex flex-col items-center py-2 px-1 gap-1"
         >
             {panels.map((panel) => (
                 <SidebarPanelDropIcon

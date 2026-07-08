@@ -133,7 +133,7 @@ const TextBlueprintValueField = createBlueprintValueField({
     const textProps = getTextProps(liveElement);
     return (
       <textarea
-        className="min-h-[88px] w-full resize-y rounded-md border border-white/10 bg-[#0b0d10] px-2 py-1.5 text-xs text-gray-100 outline-none focus:border-cyan-400/70 focus:ring-1 focus:ring-cyan-400/40"
+        className="min-h-[88px] w-full resize-y rounded-md border border-edge bg-[#0b0d10] px-2 py-1.5 text-xs text-fg outline-none focus:border-cyan-400/70 focus:ring-1 focus:ring-cyan-400/40"
         value={textProps.text}
         rows={4}
         onChange={event => {
@@ -225,7 +225,7 @@ export function createTextInspector(ctx: InspectorContext) {
                           min={8}
                           max={256}
                           unit="px"
-                          leftIcon={<Type className="w-4 h-4 text-gray-400" />}
+                          leftIcon={<Type className="w-4 h-4 text-fg-muted" />}
                         />
                       );
                     },
@@ -255,7 +255,7 @@ export function createTextInspector(ctx: InspectorContext) {
                           min={0.8}
                           max={4}
                           step={0.05}
-                          leftIcon={<Baseline className="w-4 h-4 text-gray-400" />}
+                          leftIcon={<Baseline className="w-4 h-4 text-fg-muted" />}
                           title="Line height (unitless)"
                         />
                       );
@@ -271,10 +271,10 @@ export function createTextInspector(ctx: InspectorContext) {
                         <button
                           type="button"
                           className={[
-                            "flex h-9 min-h-[34px] w-9 items-center justify-center rounded-md border border-white/10 transition",
+                            "flex h-9 min-h-[34px] w-9 items-center justify-center rounded-md border border-edge transition",
                             isItalic
-                              ? "bg-white/10 text-white"
-                              : "bg-[#1e1f22] text-gray-300 hover:bg-white/10 hover:text-white",
+                              ? "bg-fill text-white"
+                              : "bg-surface-raised text-fg-muted hover:bg-fill hover:text-white",
                           ].join(" ")}
                           aria-label={isItalic ? "Disable italic" : "Enable italic"}
                           aria-pressed={isItalic}

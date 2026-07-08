@@ -70,7 +70,7 @@ function SurfacePreview({ surface, children }: { surface: UISurface; children: R
     return (
         <div
             ref={frameRef}
-            className="mt-2 h-24 w-full overflow-hidden rounded-md border border-white/10 bg-[#05060a]"
+            className="mt-2 h-24 w-full overflow-hidden rounded-md border border-edge bg-surface-canvas"
             aria-hidden="true"
         >
             <div className="relative h-full w-full">
@@ -108,19 +108,19 @@ export function SurfaceList({
                 : "Use Create Game UI above. Game UI is fixed to the project resolution.";
 
         return (
-            <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2 bg-[#0b0d12]">
-                <p className="text-xs text-gray-400">{emptyPrimary}</p>
-                <p className="text-xs text-gray-500">{emptySecondary}</p>
+            <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2 bg-surface-sunken">
+                <p className="text-xs text-fg-muted">{emptyPrimary}</p>
+                <p className="text-xs text-fg-subtle">{emptySecondary}</p>
             </div>
         );
     }
 
     return (
-        <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2 bg-[#0b0d12]">
+        <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2 bg-surface-sunken">
             {globalBlueprintCard ? (
                 <button
                     type="button"
-                    className="group w-full text-left rounded-md border border-white/10 bg-[#0b0d12] px-3 py-2 transition-colors hover:bg-white/5 disabled:cursor-default disabled:hover:bg-[#0b0d12]"
+                    className="group w-full text-left rounded-md border border-edge bg-surface-sunken px-3 py-2 transition-colors hover:bg-fill-subtle disabled:cursor-default disabled:hover:bg-surface-sunken"
                     disabled={!globalBlueprintCard.canOpen}
                     onClick={globalBlueprintCard.onClick}
                     onContextMenu={event => event.preventDefault()}
@@ -131,8 +131,8 @@ export function SurfaceList({
                     <div className="flex items-start gap-2">
                         <div className="flex-1 min-w-0">
                             <div className="text-sm font-semibold text-white truncate">{globalBlueprintCard.title}</div>
-                            <div className="text-[11px] text-gray-400">{globalBlueprintCard.subtitle}</div>
-                            <div className="text-[11px] text-gray-500">{globalBlueprintCard.typeLabel}</div>
+                            <div className="text-2xs text-fg-muted">{globalBlueprintCard.subtitle}</div>
+                            <div className="text-2xs text-fg-subtle">{globalBlueprintCard.typeLabel}</div>
                         </div>
                     </div>
                     <div className="mt-2">{globalBlueprintCard.preview}</div>
@@ -144,7 +144,7 @@ export function SurfaceList({
                 return (
                     <div
                         key={surface.id}
-                        className="group w-full text-left rounded-md border border-white/10 bg-[#0b0d12] px-3 py-2 transition-colors hover:bg-white/5"
+                        className="group w-full text-left rounded-md border border-edge bg-surface-sunken px-3 py-2 transition-colors hover:bg-fill-subtle"
                         onClick={() => onSurfaceClick(surface)}
                         onContextMenu={event => onOpenMenu(event, surface)}
                         role="button"
@@ -153,17 +153,17 @@ export function SurfaceList({
                         <div className="flex items-start gap-2">
                             <div className="flex-1 min-w-0">
                                 <div className="text-sm font-semibold text-white truncate">{surface.name}</div>
-                                <div className="text-[11px] text-gray-400">
+                                <div className="text-2xs text-fg-muted">
                                     {surface.designSize.width}×{surface.designSize.height}
                                 </div>
-                                <div className="text-[11px] text-gray-500">{typeLabel}</div>
+                                <div className="text-2xs text-fg-subtle">{typeLabel}</div>
                                 {surface.kind === "stageSurface" && (
-                                    <div className="text-[11px] text-gray-500">{formatStageMountLabel(surface.mount)}</div>
+                                    <div className="text-2xs text-fg-subtle">{formatStageMountLabel(surface.mount)}</div>
                                 )}
                             </div>
                             <button
                                 type="button"
-                                className="p-1 rounded hover:bg-white/10 text-gray-300 opacity-0 group-hover:opacity-100"
+                                className="p-1 rounded hover:bg-fill text-fg-muted opacity-0 group-hover:opacity-100"
                                 onClick={event => onOpenMenu(event, surface)}
                                 title={`${typeLabel} actions`}
                             >

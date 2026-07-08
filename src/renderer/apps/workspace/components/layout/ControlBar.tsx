@@ -36,8 +36,8 @@ export function ControlBar({
                 className={`
                     w-8 h-8 rounded flex items-center justify-center transition-colors cursor-default
                     ${leftSidebarVisible
-                        ? "bg-white/15 text-white"
-                        : "text-gray-400 hover:bg-white/10 hover:text-white"
+                        ? "bg-fill-strong text-white"
+                        : "text-fg-muted hover:bg-fill hover:text-white"
                     }
                 `}
                 title="Toggle Left Sidebar"
@@ -52,8 +52,8 @@ export function ControlBar({
                 className={`
                     w-8 h-8 rounded flex items-center justify-center transition-colors cursor-default
                     ${bottomPanelVisible
-                        ? "bg-white/15 text-white"
-                        : "text-gray-400 hover:bg-white/10 hover:text-white"
+                        ? "bg-fill-strong text-white"
+                        : "text-fg-muted hover:bg-fill hover:text-white"
                     }
                 `}
                 title="Toggle Bottom Panel"
@@ -68,8 +68,8 @@ export function ControlBar({
                 className={`
                     w-8 h-8 rounded flex items-center justify-center transition-colors cursor-default
                     ${rightSidebarVisible
-                        ? "bg-white/15 text-white"
-                        : "text-gray-400 hover:bg-white/10 hover:text-white"
+                        ? "bg-fill-strong text-white"
+                        : "text-fg-muted hover:bg-fill hover:text-white"
                     }
                 `}
                 title="Toggle Right Sidebar"
@@ -81,7 +81,7 @@ export function ControlBar({
             {/* Settings Button */}
             <button
                 onClick={handleOpenSettings}
-                className="w-8 h-8 rounded flex items-center justify-center text-gray-400 hover:bg-white/10 hover:text-white transition-colors cursor-default"
+                className="w-8 h-8 rounded flex items-center justify-center text-fg-muted hover:bg-fill hover:text-white transition-colors cursor-default"
                 title="Open Settings"
                 aria-label="Open Settings"
             >

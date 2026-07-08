@@ -134,7 +134,7 @@ function createLayoutInspectorSchema(
                             type="number"
                             precision={2}
                             unit="px"
-                            leftIcon={<ArrowLeftRight className="w-4 h-4 text-gray-400" />}
+                            leftIcon={<ArrowLeftRight className="w-4 h-4 text-fg-muted" />}
                             className="w-full min-w-0"
                             selectAllOnFocus
                             aria-label="Width"
@@ -163,7 +163,7 @@ function createLayoutInspectorSchema(
                             type="number"
                             precision={2}
                             unit="px"
-                            leftIcon={<ArrowUpDown className="w-4 h-4 text-gray-400" />}
+                            leftIcon={<ArrowUpDown className="w-4 h-4 text-fg-muted" />}
                             className="w-full min-w-0"
                             selectAllOnFocus
                             aria-label="Height"
@@ -250,7 +250,7 @@ function createLayoutInspectorSchema(
                 {
                     id: "layout.x",
                     label: "X",
-                    icon: <MoveHorizontal className="w-4 h-4 text-gray-400" />,
+                    icon: <MoveHorizontal className="w-4 h-4 text-fg-muted" />,
                     type: "number",
                     precision: 2,
                     getValue: (data: UIInspectorData) => {
@@ -269,7 +269,7 @@ function createLayoutInspectorSchema(
                 {
                     id: "layout.y",
                     label: "Y",
-                    icon: <MoveVertical className="w-4 h-4 text-gray-400" />,
+                    icon: <MoveVertical className="w-4 h-4 text-fg-muted" />,
                     type: "number",
                     precision: 2,
                     getValue: (data: UIInspectorData) => {
@@ -320,7 +320,7 @@ function createLayoutInspectorSchema(
                                 max={360}
                                 unit="°"
                                 precision={2}
-                                leftIcon={<RotateCw className="w-4 h-4 text-gray-400" />}
+                                leftIcon={<RotateCw className="w-4 h-4 text-fg-muted" />}
                                 className="w-full min-w-0"
                                 selectAllOnFocus
                             />
@@ -399,7 +399,7 @@ function createLayoutInspectorSchema(
                                 precision={null}
                                 popoverWhenNarrow
                                 popoverThreshold={124}
-                                leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                                leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                                 className="w-full min-w-0"
                             />
                         );
@@ -424,7 +424,7 @@ function createLayoutInspectorSchema(
                             <button
                                 type="button"
                                 onClick={toggleVisibility}
-                                className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-transparent text-gray-300 transition hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                className="grid h-9 w-9 place-items-center rounded-lg border border-edge bg-transparent text-fg-muted transition hover:bg-fill-subtle focus:outline-none focus:ring-2 focus:ring-primary/50"
                                 aria-pressed={visible}
                                 aria-label="Toggle visibility"
                             >
@@ -503,7 +503,7 @@ function LinkedComponentInfoField({ data }: { data: UIInspectorData }) {
     return (
         <div className="rounded-md border border-cyan-400/20 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-50">
             <div className="font-medium">{component?.name ?? "Missing component"}</div>
-            <div className="mt-1 text-[11px] leading-snug text-cyan-100/70">
+            <div className="mt-1 text-2xs leading-snug text-cyan-100/70">
                 Linked instance. Only position, size, and rotation can be changed before unlinking.
             </div>
         </div>
@@ -754,7 +754,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         }
         const surfaceId = deferredUiSelection.surfaceId;
         return (
-            <div className="shrink-0 border-b border-amber-500/25 bg-amber-950/30 px-3 py-2 text-[11px] text-amber-100/90">
+            <div className="shrink-0 border-b border-amber-500/25 bg-amber-950/30 px-3 py-2 text-2xs text-amber-100/90">
                 <span className="font-medium text-amber-200/95">Static checks</span>
                 <ul className="mt-1 list-none space-y-1 pl-0">
                     {picked.map(d => (
@@ -766,7 +766,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                                     onClick={() => selectUiCanvasElement(surfaceId, d.elementId!)}
                                 >
                                     {d.message}
-                                    <span className="ml-1 text-[10px] text-cyan-300/80">→ select on canvas</span>
+                                    <span className="ml-1 text-2xs text-cyan-300/80">→ select on canvas</span>
                                 </button>
                             ) : (
                                 <span className="text-amber-100/90">{d.message}</span>
@@ -774,7 +774,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                         </li>
                     ))}
                 </ul>
-                <span className="mt-2 block text-[10px] leading-snug text-gray-500">
+                <span className="mt-2 block text-2xs leading-snug text-fg-subtle">
                     Graph structure and binding issues: open the Blueprint editor tab from the Blueprint section. Live
                     execution, node enter/exit, and Host API traces appear in Dev Mode only.
                 </span>
@@ -974,7 +974,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         if (!activeAsset && !activeCharacter && !sceneEditorContext && !storyMotionSelection) {
             return (
                 <div className="flex-1 flex items-center justify-center p-4">
-                    <div className="text-center text-gray-500 py-8">
+                    <div className="text-center text-fg-subtle py-8">
                         <Settings className="w-12 h-12 mx-auto mb-3 opacity-50" />
                         <p className="text-sm">No item selected</p>
                         <p className="text-xs mt-1">Select an item to view its properties</p>
@@ -999,12 +999,12 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     return (
         <div className="h-full flex flex-col">
             {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-edge">
             <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400">{panelTitle}</span>
+                <span className="text-xs text-fg-muted">{panelTitle}</span>
             </div>
             {panelSubtitle && (
-                <span className="text-xs text-gray-500">{panelSubtitle}</span>
+                <span className="text-xs text-fg-subtle">{panelSubtitle}</span>
             )}
             </div>
 

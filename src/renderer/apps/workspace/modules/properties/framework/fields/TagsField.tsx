@@ -85,7 +85,7 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
     return (
         <div className={field.className}>
             {field.label && (
-                <label className="block text-xs font-medium text-gray-400 mb-1">
+                <label className="block text-xs font-medium text-fg-muted mb-1">
                     {field.label}
                 </label>
             )}
@@ -110,7 +110,7 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
                             </span>
                         ))
                     ) : (
-                        <span className="text-xs text-gray-500">No tags yet</span>
+                        <span className="text-xs text-fg-subtle">No tags yet</span>
                     )}
                 </div>
                 <div className="flex gap-1">
@@ -127,7 +127,7 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
                         }}
                         placeholder={field.addPlaceholder ?? "Add tag..."}
                         disabled={isDisabled}
-                        className="flex-1 px-3 py-1.5 bg-[#1e1f22] border border-white/10 rounded-md text-sm text-gray-300 
+                        className="flex-1 px-3 py-1.5 bg-surface-raised border border-edge rounded-md text-sm text-fg-muted 
                             focus:outline-none focus:border-primary/50 transition-colors
                             disabled:opacity-50 disabled:cursor-not-allowed"
                     />
@@ -144,7 +144,7 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
                 </div>
             </div>
             {field.helpText && (
-                <p className="mt-1 text-xs text-gray-500">{field.helpText}</p>
+                <p className="mt-1 text-xs text-fg-subtle">{field.helpText}</p>
             )}
         </div>
     );
