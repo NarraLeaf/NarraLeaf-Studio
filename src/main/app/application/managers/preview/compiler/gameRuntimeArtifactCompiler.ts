@@ -109,6 +109,11 @@ export async function compileGameRuntimePreviewArtifact(
         assets: {
             items: assetManifest,
         },
+        network: {
+            // Secure default: HTTP is only permitted when the project explicitly
+            // opts in via app.network.allowHttp. Mirrors normalizeNetworkConfiguration.
+            allowHttp: (projectConfig?.app as { network?: { allowHttp?: unknown } } | undefined)?.network?.allowHttp === true,
+        },
         preview: {
             controlPort: input.controlPort,
             controlToken: input.controlToken,

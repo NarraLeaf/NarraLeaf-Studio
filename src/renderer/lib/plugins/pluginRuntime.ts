@@ -20,9 +20,11 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
+import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { WorkspacePluginDescriptor } from "@shared/types/plugins";
 import { FsRejectErrorCode } from "@shared/types/os";
+import { pluginStoreNamespace } from "@shared/utils/pluginStorage";
 
 type PluginModule = {
     default?: unknown;
@@ -60,8 +62,26 @@ async function loadWorkspacePluginsNow(ctx: WorkspaceContext): Promise<Workspace
         throw new Error(result.error ?? "Failed to load workspace plugins");
     }
 
+    // Skip plugins this project's dependency resolution flagged as incompatible
+    // (e.g. a built-in plugin whose major version changed across a Studio update).
+    // Suppressing them here — before import()/setup() — keeps their nodes, widgets,
+    // and actions from registering and corrupting the open project.
+    const suppressed = new Set(
+        ctx.services.get<ProjectDependencyService>(Services.ProjectDependency).getSuppressedPluginIds(),
+    );
+    const descriptors = result.data.plugins;
+    const eligible = descriptors.filter(descriptor => !suppressed.has(descriptor.plugin.id));
+
+    const skipped = descriptors.filter(descriptor => suppressed.has(descriptor.plugin.id));
+    if (skipped.length > 0) {
+        const names = skipped.map(descriptor => descriptor.manifest.name).join(", ");
+        ctx.services.get<UIService>(Services.UI).notifications.warning(
+            `Disabled plugin(s) incompatible with this project: ${names}. Update or re-enable them from the plugins manager.`,
+        );
+    }
+
     const loadResults = await Promise.all(
-        result.data.plugins.map(descriptor => loadWorkspacePlugin(ctx, descriptor)),
+        eligible.map(descriptor => loadWorkspacePlugin(ctx, descriptor)),
     );
 
     return loadResults;
@@ -200,7 +220,7 @@ export function createPluginApp(
         services: {
             storage: {
                 readJson: async namespace => {
-                    const result = await storage.readStore(namespace);
+                    const result = await storage.readStore(pluginStoreNamespace(descriptor.plugin.id, namespace));
                     if (result.ok) {
                         return result.data as any;
                     }
@@ -210,7 +230,7 @@ export function createPluginApp(
                     throw new Error(result.error.message);
                 },
                 writeJson: async (namespace, data) => {
-                    const result = await storage.writeStore(namespace, data);
+                    const result = await storage.writeStore(pluginStoreNamespace(descriptor.plugin.id, namespace), data);
                     if (!result.ok) {
                         throw new Error(result.error.message);
                     }
@@ -297,7 +317,7 @@ export function createPluginApp(
             },
             widgets: {
                 register: module => {
-                    widgetModuleRegistry.register(module);
+                    widgetModuleRegistry.register(module, { ownerPluginId: descriptor.plugin.id });
                     track(() => {
                         if (widgetModuleRegistry.get(module.type) === module) {
                             widgetModuleRegistry.unregister(module.type);
@@ -306,7 +326,7 @@ export function createPluginApp(
                 },
                 registerMany: modules => {
                     for (const module of modules) {
-                        widgetModuleRegistry.register(module);
+                        widgetModuleRegistry.register(module, { ownerPluginId: descriptor.plugin.id });
                         track(() => {
                             if (widgetModuleRegistry.get(module.type) === module) {
                                 widgetModuleRegistry.unregister(module.type);

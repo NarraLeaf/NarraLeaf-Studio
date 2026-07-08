@@ -217,7 +217,7 @@ function DisplayableOptionRow(props: {
 
 type MenuPlacement = "above" | "below";
 
-function useAutoMenuPlacement(anchorRef: RefObject<HTMLElement | null>, open: boolean, expectedHeight: number): MenuPlacement {
+export function useAutoMenuPlacement(anchorRef: RefObject<HTMLElement | null>, open: boolean, expectedHeight: number): MenuPlacement {
     const [placement, setPlacement] = useState<MenuPlacement>("below");
 
     useEffect(() => {

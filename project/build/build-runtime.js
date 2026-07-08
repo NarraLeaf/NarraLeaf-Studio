@@ -11,14 +11,14 @@ const runtimeOutDir = path.join(rootDir, 'dist', 'runtime');
 const runtimeTsconfig = path.join(runtimeSourceDir, 'tsconfig.json');
 
 function runtimeHtml() {
+    // NOTE: the Content-Security-Policy is intentionally NOT baked in here. It is
+    // injected into <head> at serve time by the runtime main process
+    // (src/runtime/main/networkPolicy.ts), because the policy is gated on the
+    // project's per-launch `allowHttp` flag which is only known at runtime.
     return `<!doctype html>
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta
-        http-equiv="Content-Security-Policy"
-        content="default-src 'self' nlgame: data: blob:; script-src 'self' nlgame:; style-src 'self' nlgame: 'unsafe-inline'; img-src 'self' nlgame: data: blob:; media-src 'self' nlgame: data: blob:; font-src 'self' nlgame: data: blob:;"
-    />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NarraLeaf Game</title>
     <link rel="stylesheet" href="nlgame://runtime/renderer.css" />

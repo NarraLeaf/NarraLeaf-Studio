@@ -2,6 +2,7 @@ import { WindowAppType, WindowControlPolicy, WindowProps } from "@shared/types/w
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
 import { AppWindow, WindowConfig } from "./application/managers/window/appWindow";
 import { DevModeManager } from "./application/managers/devMode/DevModeManager";
+import { devModeNetworkPolicy, readProjectAllowHttp } from "./application/managers/devMode/devModeNetworkPolicy";
 import { PreviewManager } from "./application/managers/preview/PreviewManager";
 
 export interface AppConfig extends BaseAppConfig {
@@ -193,6 +194,14 @@ export class App extends BaseApp {
         const window = new AppWindow<WindowAppType.DevMode>(this, config, props);
         window.setTitle("Dev Mode - NarraLeaf Studio");
         this.applyWindowIcon(window);
+
+        // Confine the preview renderer to the app protocol unless the project
+        // opts into HTTP. Must be applied BEFORE loadFile so the initial
+        // document load and every subsequent game request is governed.
+        const allowHttp = await readProjectAllowHttp(props.projectPath);
+        const previewWebContentsId = window.win.webContents.id;
+        devModeNetworkPolicy.apply(previewWebContentsId, { allowHttp });
+        window.onClose(() => devModeNetworkPolicy.release(previewWebContentsId));
 
         try {
             await window.loadFile(this.getAppEntry(WindowAppType.DevMode));

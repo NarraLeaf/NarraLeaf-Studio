@@ -1,5 +1,5 @@
 export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
-export const STORY_DOCUMENT_SCHEMA_VERSION = 2 as const;
+export const STORY_DOCUMENT_SCHEMA_VERSION = 3 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -246,7 +246,7 @@ export type StoryActionPayload =
           objectName: string;
           assetId?: string;
           color?: string;
-          layerName?: string;
+          layer?: StoryLayerRef;
           autoFit?: boolean;
           transition?: StoryTransitionRef;
           transform?: StoryTransformRef;
@@ -290,7 +290,7 @@ export type StoryActionPayload =
           text?: string;
           fontSize?: number;
           fontColor?: string;
-          layerName?: string;
+          layer?: StoryLayerRef;
           transform?: StoryTransformRef;
       }
     | {
@@ -391,7 +391,8 @@ export type StoryInterpolationRef =
 export type StoryRichRun =
     | { text: string; marks?: StoryTextMarks }
     | { pause: number | true }
-    | { interpolation: StoryInterpolationRef };
+    /** An inline value (variable/blueprint), stylable like a word: bold/italic/color apply to its text. */
+    | { interpolation: StoryInterpolationRef; marks?: StoryTextMarks };
 
 export type StoryVariableRef =
     | { scope: "scene"; variableId: string }
@@ -417,6 +418,21 @@ export type StoryDisplayableTargetRef = {
      */
     sourceBlockId?: StoryBlockId;
 };
+
+/**
+ * Reference to the render layer an image/text is placed on. Layers can only be declared statically
+ * (by a `layer` create block) or be one of NarraLeaf-React's two built-in scene layers, so every
+ * valid target is discoverable by scanning the scene — never free-text.
+ *  - "default": one of NLR `Scene.backgroundLayer` (z-index -1) / `Scene.displayableLayer` (z-index
+ *    0, the default). An absent ref is equivalent to `{ kind: "default", layer: "displayable" }`.
+ *  - "custom": a user-declared layer, bound to the stable id of the `layer` create block. The
+ *    block's current name is resolved at every read site so the reference survives renames; `name`
+ *    is only a legacy fallback / last-known label (also the sole binding for pre-v3 documents whose
+ *    layer name never matched a create block).
+ */
+export type StoryLayerRef =
+    | { kind: "default"; layer: "background" | "displayable" }
+    | { kind: "custom"; sourceBlockId?: StoryBlockId; name?: string };
 
 export type StoryCharacterVariantSelection = string[] | Record<string, string>;
 
@@ -463,7 +479,18 @@ export type StoryTransformRef = {
 };
 
 export type StoryTransitionRef = {
-    kind: "none" | "dissolve" | "fadeIn" | "maskCircle" | "maskWipe" | "darkness" | "custom";
+    kind:
+        | "none"
+        | "dissolve"
+        | "fadeIn"
+        | "maskCircle"
+        | "maskWipe"
+        | "softWipe"
+        | "blinds"
+        | "blindsBlackout"
+        | "slide"
+        | "darkness"
+        | "custom";
     durationMs?: number;
     easing?: string;
     props?: Record<string, StoryLiteralValue>;

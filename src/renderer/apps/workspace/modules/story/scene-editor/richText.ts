@@ -14,7 +14,7 @@ export function isTextRun(run: StoryRichRun): run is { text: string; marks?: Sto
     return "text" in run;
 }
 
-export function isInterpolationRun(run: StoryRichRun): run is { interpolation: StoryInterpolationRef } {
+export function isInterpolationRun(run: StoryRichRun): run is { interpolation: StoryInterpolationRef; marks?: StoryTextMarks } {
     return "interpolation" in run;
 }
 
@@ -33,6 +33,18 @@ function parseInterpolation(raw: string): StoryInterpolationRef | null {
         // fall through
     }
     return null;
+}
+
+/** Parse a chip's serialized marks (`data-marks`), dropping anything empty. */
+function parseMarks(raw: string | undefined): StoryTextMarks | undefined {
+    if (!raw) {
+        return undefined;
+    }
+    try {
+        return cleanMarks(JSON.parse(raw) as StoryTextMarks);
+    } catch {
+        return undefined;
+    }
 }
 
 /** Plain-text projection of rich runs (pause runs contribute nothing). */
@@ -98,7 +110,8 @@ export function normalizeRuns(runs: StoryRichRun[]): StoryRichRun[] {
                 out.push(marks ? { text: run.text, marks } : { text: run.text });
             }
         } else if (isInterpolationRun(run)) {
-            out.push({ interpolation: run.interpolation });
+            const marks = cleanMarks(run.marks);
+            out.push(marks ? { interpolation: run.interpolation, marks } : { interpolation: run.interpolation });
         } else {
             out.push({ pause: run.pause });
         }
@@ -189,9 +202,13 @@ export function createPauseChip(pause: number | true): HTMLSpanElement {
     return span;
 }
 
-export function createInterpolationChip(interp: StoryInterpolationRef, label: string): HTMLSpanElement {
+export function createInterpolationChip(interp: StoryInterpolationRef, label: string, marks?: StoryTextMarks): HTMLSpanElement {
     const span = globalThis.document.createElement("span");
     span.dataset.interp = JSON.stringify(interp);
+    const clean = cleanMarks(marks);
+    if (clean) {
+        span.dataset.marks = JSON.stringify(clean);
+    }
     span.contentEditable = "false";
     span.className = INTERP_CHIP_CLASS;
     span.setAttribute("role", "button");
@@ -201,6 +218,10 @@ export function createInterpolationChip(interp: StoryInterpolationRef, label: st
     const labelSpan = globalThis.document.createElement("span");
     labelSpan.className = "ml-0.5";
     labelSpan.textContent = label;
+    // Marks style the value text only — never the chip background.
+    if (clean?.bold) labelSpan.style.fontWeight = "700";
+    if (clean?.italic) labelSpan.style.fontStyle = "italic";
+    if (clean?.color) labelSpan.style.color = clean.color;
     span.appendChild(labelSpan);
     return span;
 }
@@ -213,7 +234,7 @@ export function renderRunsToElement(root: HTMLElement, runs: StoryRichRun[], res
             const marks = cleanMarks(run.marks);
             root.appendChild(marks ? createMarkSpan(run.text, marks) : globalThis.document.createTextNode(run.text));
         } else if (isInterpolationRun(run)) {
-            root.appendChild(createInterpolationChip(run.interpolation, resolveLabel?.(run.interpolation) ?? "value"));
+            root.appendChild(createInterpolationChip(run.interpolation, resolveLabel?.(run.interpolation) ?? "value", run.marks));
         } else {
             root.appendChild(createPauseChip(run.pause));
         }
@@ -243,7 +264,8 @@ export function domToRuns(root: HTMLElement): StoryRichRun[] {
             if (el.dataset.interp !== undefined) {
                 const interp = parseInterpolation(el.dataset.interp);
                 if (interp) {
-                    runs.push({ interpolation: interp });
+                    const chipMarks = parseMarks(el.dataset.marks);
+                    runs.push(chipMarks ? { interpolation: interp, marks: chipMarks } : { interpolation: interp });
                 }
                 return;
             }
@@ -308,7 +330,7 @@ export function spliceRuns(runs: StoryRichRun[], start: number, end: number, ins
     ]);
 }
 
-/** True when every text unit in [start, end) already carries the given mark. */
+/** True when every stylable unit (text or inline value) in [start, end) already carries the mark. */
 export function rangeHasMark(runs: StoryRichRun[], start: number, end: number, key: keyof StoryTextMarks): boolean {
     let pos = 0;
     let hasAny = false;
@@ -318,7 +340,7 @@ export function rangeHasMark(runs: StoryRichRun[], start: number, end: number, k
         const runStart = pos;
         const runEnd = pos + len;
         pos = runEnd;
-        if (runEnd <= start || runStart >= end || !isTextRun(run)) {
+        if (runEnd <= start || runStart >= end || (!isTextRun(run) && !isInterpolationRun(run))) {
             continue;
         }
         hasAny = true;
@@ -327,6 +349,30 @@ export function rangeHasMark(runs: StoryRichRun[], start: number, end: number, k
         }
     }
     return hasAny && allHave;
+}
+
+/** The single color shared by every stylable unit in [start, end), or undefined if they differ / none. */
+export function rangeMarkColor(runs: StoryRichRun[], start: number, end: number): string | undefined {
+    let pos = 0;
+    let color: string | undefined;
+    let first = true;
+    for (const run of runs) {
+        const len = runLength(run);
+        const runStart = pos;
+        const runEnd = pos + len;
+        pos = runEnd;
+        if (runEnd <= start || runStart >= end || (!isTextRun(run) && !isInterpolationRun(run))) {
+            continue;
+        }
+        const c = run.marks?.color;
+        if (first) {
+            color = c;
+            first = false;
+        } else if (c !== color) {
+            return undefined;
+        }
+    }
+    return color;
 }
 
 /** Apply a marks patch to the text units in [start, end), splitting runs at the boundaries. */
@@ -346,7 +392,17 @@ export function applyMarkToRange(
         const runStart = pos;
         const runEnd = pos + len;
         pos = runEnd;
-        if (!isTextRun(run) || runEnd <= start || runStart >= end) {
+        if (runEnd <= start || runStart >= end) {
+            out.push(run);
+            continue;
+        }
+        if (isInterpolationRun(run)) {
+            // Atomic single-unit chip fully inside the range: style its value text.
+            const marks = cleanMarks(patch({ ...(run.marks ?? {}) }));
+            out.push(marks ? { interpolation: run.interpolation, marks } : { interpolation: run.interpolation });
+            continue;
+        }
+        if (!isTextRun(run)) {
             out.push(run);
             continue;
         }
@@ -445,6 +501,22 @@ export function unitOffsetOfElement(root: HTMLElement, el: HTMLElement): number 
     range.setStart(root, 0);
     range.setEndBefore(el);
     return countUnits(range.cloneContents());
+}
+
+/**
+ * Flag chips (`data-selected`) whose atomic unit falls inside the selection, so a `contentEditable=false`
+ * chip can show a selection highlight (the browser draws none on non-editable inline elements).
+ */
+export function markSelectedChips(root: HTMLElement, range: { start: number; end: number } | null): void {
+    const active = Boolean(range) && (range as { start: number; end: number }).end > (range as { start: number; end: number }).start;
+    root.querySelectorAll<HTMLElement>("[data-interp],[data-pause]").forEach(chip => {
+        const start = unitOffsetOfElement(root, chip);
+        if (active && start >= (range as { start: number; end: number }).start && start + 1 <= (range as { start: number; end: number }).end) {
+            chip.dataset.selected = "true";
+        } else {
+            delete chip.dataset.selected;
+        }
+    });
 }
 
 export function setSelectionUnitRange(root: HTMLElement, start: number, end: number): void {

@@ -449,6 +449,56 @@ describe("storyModel", () => {
         expect((normalizedScene.blocks.fx.payload as any).durationMs).toBe(500);
     });
 
+    it("migrates legacy image/text layerName strings to stable layer refs (v2 → v3)", () => {
+        const now = "2026-06-08T00:00:00.000Z";
+        const document = createEmptyStoryDocument({
+            id: STORY_ID_1,
+            name: "Story",
+            now,
+            generateId: idFactory(),
+        });
+        const scene = document.scenes[document.entrySceneId!];
+        insertBlockInScene(scene, {
+            id: "layer-block",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: { action: "layer", operation: "create", objectName: "Foreground", zIndex: 2 },
+        }, { parentId: null });
+        insertBlockInScene(scene, {
+            id: "img-bound",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            // Legacy free-text layer name matching the layer block (case-insensitively).
+            payload: { action: "image", operation: "create", objectName: "hero", layerName: "foreground" },
+        } as unknown as StoryBlock, { parentId: null });
+        insertBlockInScene(scene, {
+            id: "text-orphan",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            // Legacy layer name with no matching layer block — keeps the last-known name only.
+            payload: { action: "text", operation: "create", objectName: "caption", layerName: "ghost" },
+        } as unknown as StoryBlock, { parentId: null });
+        (document as { schemaVersion: number }).schemaVersion = 2;
+
+        const normalized = normalizeStoryDocument(document, now);
+        const migratedScene = normalized.scenes[document.entrySceneId!];
+
+        expect(normalized.schemaVersion).toBe(3);
+        expect((migratedScene.blocks["img-bound"].payload as Record<string, unknown>).layerName).toBeUndefined();
+        expect((migratedScene.blocks["img-bound"].payload as Record<string, unknown>).layer).toEqual({
+            kind: "custom",
+            sourceBlockId: "layer-block",
+            name: "foreground",
+        });
+        expect((migratedScene.blocks["text-orphan"].payload as Record<string, unknown>).layer).toEqual({
+            kind: "custom",
+            name: "ghost",
+        });
+    });
+
     it("preserves rich text runs through normalization", () => {
         const now = "2026-06-08T00:00:00.000Z";
         const document = createEmptyStoryDocument({
