@@ -28,7 +28,7 @@ function Swatch(props: { color: string; active?: boolean; onPick: (color: string
         <button
             type="button"
             className={`h-5 w-5 rounded border transition-transform hover:scale-110 ${
-                props.active ? "border-white ring-2 ring-white/80 ring-offset-1 ring-offset-[#16191e]" : "border-white/20"
+                props.active ? "border-white ring-2 ring-white/80 ring-offset-1 ring-offset-[#16191e]" : "border-edge-strong"
             }`}
             style={{ backgroundColor: props.color }}
             title={props.color}
@@ -66,7 +66,7 @@ export function ProjectPalette(props: {
         <div className={props.className}>
             {PROJECT_PALETTE_SECTIONS.map(section => (
                 <div key={section.label} className="mb-2">
-                    <div className="mb-1 text-[10px] font-medium tracking-wide text-slate-500">{section.label}</div>
+                    <div className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{section.label}</div>
                     <div className="flex flex-wrap gap-1">
                         {section.colors.map(color => (
                             <Swatch key={color} color={color} active={colorKey(color) === activeKey} onPick={pickSwatch} />
@@ -75,7 +75,7 @@ export function ProjectPalette(props: {
                 </div>
             ))}
             <div className="mb-2">
-                <div className="mb-1 text-[10px] font-medium tracking-wide text-slate-500">Recent</div>
+                <div className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">Recent</div>
                 {recent.length > 0 ? (
                     <div className="flex flex-wrap gap-1">
                         {recent.map(color => (
@@ -83,11 +83,11 @@ export function ProjectPalette(props: {
                         ))}
                     </div>
                 ) : (
-                    <div className="text-[10px] text-slate-600">No recent colors yet</div>
+                    <div className="text-2xs text-fg-subtle">No recent colors yet</div>
                 )}
             </div>
-            <div className="mt-2 flex items-center gap-2 border-t border-white/10 pt-2">
-                <span className="text-[10px] font-medium tracking-wide text-slate-500">Custom</span>
+            <div className="mt-2 flex items-center gap-2 border-t border-edge pt-2">
+                <span className="text-2xs font-medium tracking-wide text-fg-subtle">Custom</span>
                 <ColorPickerTrigger
                     value={colorValue}
                     displayMode="icon-hex"

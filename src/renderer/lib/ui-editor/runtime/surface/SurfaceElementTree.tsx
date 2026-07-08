@@ -197,7 +197,7 @@ function renderSurfaceElementTreeWithValueRuntime(
 
 function NestedSurfacePlaceholder({ label }: { label: string }) {
     return (
-        <div className="flex h-full w-full items-center justify-center bg-black/20 px-3 text-center text-xs text-gray-400">
+        <div className="flex h-full w-full items-center justify-center bg-black/20 px-3 text-center text-xs text-fg-muted">
             {label}
         </div>
     );
@@ -673,7 +673,7 @@ function cloneElementRenderSnapshot(element: UIElement): UIElement {
 
 function ComponentInstancePlaceholder({ label }: { label: string }) {
     return (
-        <div className="flex h-full w-full items-center justify-center border border-dashed border-white/20 bg-black/20 px-3 text-center text-xs text-gray-400">
+        <div className="flex h-full w-full items-center justify-center border border-dashed border-edge-strong bg-black/20 px-3 text-center text-xs text-fg-muted">
             {label}
         </div>
     );

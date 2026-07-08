@@ -17,11 +17,11 @@ function createPanelErrorFallback(
 ): React.ComponentType<ErrorFallbackProps> {
     return function WorkspacePanelErrorFallback() {
         return (
-            <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-3 bg-[#0f1115] p-4 text-center">
+            <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-3 bg-surface p-4 text-center">
                 <AlertCircle className="h-8 w-8 shrink-0 text-red-400" aria-hidden />
                 <div>
                     <p className="text-sm font-medium text-white">This panel hit a rendering error</p>
-                    <p className="mt-1 text-xs text-gray-500">{regionLabel}</p>
+                    <p className="mt-1 text-xs text-fg-subtle">{regionLabel}</p>
                 </div>
                 <button
                     type="button"

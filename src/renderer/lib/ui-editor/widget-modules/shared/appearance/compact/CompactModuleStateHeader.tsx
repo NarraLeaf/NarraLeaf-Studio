@@ -27,10 +27,10 @@ type Props = {
 
 function chipClass(active: boolean): string {
     return [
-        "rounded px-1.5 py-0.5 text-[10px] font-medium border transition shrink-0",
+        "rounded px-1.5 py-0.5 text-2xs font-medium border transition shrink-0",
         active
             ? "border-primary/60 bg-primary/15 text-primary"
-            : "border-white/10 bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200",
+            : "border-edge bg-fill-subtle text-fg-muted hover:bg-fill hover:text-fg",
     ].join(" ");
 }
 

@@ -111,7 +111,7 @@ function patchListScrollbarProps(data: UIInspectorData, partial: Partial<UIListS
 }
 
 function FieldLabel({ children }: { children: string }) {
-    return <span className="text-xs font-medium text-gray-400">{children}</span>;
+    return <span className="text-xs font-medium text-fg-muted">{children}</span>;
 }
 
 function ListNumberControl({
@@ -331,7 +331,7 @@ function ListContentPaddingEditor({
                       ref={panelRef}
                       role="dialog"
                       aria-label="Content padding per side"
-                      className="fixed z-[70] rounded-lg border border-white/10 bg-[#17181c] p-3 shadow-2xl"
+                      className="fixed z-[70] rounded-lg border border-edge bg-[#17181c] p-3 shadow-2xl"
                       style={{
                           left: popoverPos.left,
                           top: popoverPos.top,
@@ -340,11 +340,11 @@ function ListContentPaddingEditor({
                       }}
                       onMouseDown={event => event.stopPropagation()}
                   >
-                      <p className="mb-2 text-xs font-medium text-gray-400">Per side (px)</p>
+                      <p className="mb-2 text-xs font-medium text-fg-muted">Per side (px)</p>
                       <div className="grid grid-cols-2 gap-2 min-w-0">
                           {sides.map(({ key, label }) => (
                               <div key={key} className="flex min-w-0 flex-col gap-1">
-                                  <span className="text-[10px] font-medium text-gray-500">{label}</span>
+                                  <span className="text-2xs font-medium text-fg-subtle">{label}</span>
                                   <NumericDraftEnhancedInput
                                       committedDisplay={String(current[key])}
                                       draftResetKey={`${draftResetKey}-pad-${key}`}
@@ -475,11 +475,11 @@ function ScrollbarCustomizeField(props: CustomFieldProps<UIInspectorData>) {
                 {hasAuthoredParts ? "Scrollbar parts created" : "Customize scrollbar"}
             </Button>
             {hasAuthoredParts ? (
-                <p className="text-[10px] leading-snug text-gray-500">
+                <p className="text-2xs leading-snug text-fg-subtle">
                     Track and thumb are authored elements in the list outline. Select them to edit their appearance.
                 </p>
             ) : (
-                <p className="text-[10px] leading-snug text-gray-500">
+                <p className="text-2xs leading-snug text-fg-subtle">
                     Creates authored track and thumb elements without changing the item template.
                 </p>
             )}
@@ -511,14 +511,14 @@ function ListToggleControl({
     return (
         <button
             type="button"
-            className="flex h-9 w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-transparent px-2.5 text-left text-xs font-medium text-gray-200 transition hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            className="flex h-9 w-full items-center justify-between gap-3 rounded-lg border border-edge bg-transparent px-2.5 text-left text-xs font-medium text-fg transition hover:bg-fill-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
             aria-pressed={checked}
             onClick={() => onChange(!checked)}
         >
             <span className="min-w-0 truncate">{label}</span>
             <span
                 className={`relative h-5 w-9 shrink-0 rounded-full border transition ${
-                    checked ? "border-primary/60 bg-primary/30" : "border-white/15 bg-white/5"
+                    checked ? "border-primary/60 bg-primary/30" : "border-edge bg-fill-subtle"
                 }`}
                 aria-hidden="true"
             >

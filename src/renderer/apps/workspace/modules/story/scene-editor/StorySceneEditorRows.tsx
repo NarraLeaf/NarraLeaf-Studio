@@ -102,12 +102,12 @@ export function StoryBlockRow(props: {
                 textSegment ? props.onStartTextEdit() : props.onOpenInspector();
             }}
         >
-            <div className="flex h-full items-start justify-end pt-1 text-[12px] tabular-nums text-slate-500">
+            <div className="flex h-full items-start justify-end pt-1 text-[12px] tabular-nums text-fg-subtle">
                 <div className="flex min-h-[27px] items-center gap-1">
                     {canFold ? (
                         <button
                             type="button"
-                            className="rounded text-slate-500 hover:bg-white/10 hover:text-primary"
+                            className="rounded text-fg-subtle hover:bg-fill hover:text-primary"
                             onClick={event => {
                                 event.stopPropagation();
                                 props.onToggleCollapsed();
@@ -130,7 +130,7 @@ export function StoryBlockRow(props: {
                     tabIndex={0}
                     aria-label="Drag row"
                     title="Drag row"
-                    className="flex h-7 w-7 touch-none select-none items-center justify-center rounded text-slate-500 opacity-0 transition-colors hover:cursor-grab hover:text-primary hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 group-hover:opacity-100"
+                    className="flex h-7 w-7 touch-none select-none items-center justify-center rounded text-fg-subtle opacity-0 transition-colors hover:cursor-grab hover:text-primary hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 group-hover:opacity-100"
                     onMouseDown={event => event.stopPropagation()}
                     onClick={event => event.stopPropagation()}
                 >
@@ -307,14 +307,14 @@ function TextEditBox(props: {
                     characters={props.characters}
                     characterId={dialoguePayload.characterId}
                     onChoose={props.onSetDialogueCharacter}
-                    className="min-w-[128px] max-w-[200px] rounded-r-none border-r border-white/10 px-2"
+                    className="min-w-[128px] max-w-[200px] rounded-r-none border-r border-edge px-2"
                     style={textStyle}
                 />
             ) : null}
             <RichTextInput
                 ref={props.editorRef}
                 initialRuns={initialRuns}
-                className="min-h-[28px] flex-1 whitespace-pre-wrap break-words bg-transparent px-2 py-1 text-slate-100 outline-none empty:before:italic empty:before:text-slate-500 empty:before:content-[attr(data-placeholder)]"
+                className="min-h-[28px] flex-1 whitespace-pre-wrap break-words bg-transparent px-2 py-1 text-fg outline-none empty:before:italic empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]"
                 style={textStyle}
                 placeholder={editorPlaceholder(props.block)}
                 onChange={props.onEditRichChange}
@@ -366,7 +366,7 @@ function TextEditBox(props: {
 function RowActions(props: { onInsertAfter: () => void }) {
     return (
         <div className="pointer-events-none ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
-            <button type="button" tabIndex={-1} className="rounded px-1.5 py-1 text-[11px] text-slate-400 hover:bg-white/10 hover:text-primary" onClick={event => {
+            <button type="button" tabIndex={-1} className="rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill hover:text-primary" onClick={event => {
                 event.stopPropagation();
                 props.onInsertAfter();
             }}>
@@ -397,14 +397,14 @@ export function InsertRow(props: {
 
     return (
         <div className="relative grid min-h-[40px] grid-cols-[36px_28px_1fr] items-start pr-3">
-            <div className="pt-2 text-right text-[12px] text-slate-600">+</div>
+            <div className="pt-2 text-right text-[12px] text-fg-subtle">+</div>
             <div className="flex justify-center pt-2">
                 <Plus className="h-4 w-4 text-primary" />
             </div>
             <div ref={menuAnchorRef} className="relative py-1.5">
                 <textarea
                     ref={props.inputRef}
-                    className="min-h-[30px] w-full resize-none rounded border border-primary/40 bg-black/30 px-2 py-1 text-slate-100 outline-none placeholder:italic placeholder:text-slate-500"
+                    className="min-h-[30px] w-full resize-none rounded border border-primary/40 bg-black/30 px-2 py-1 text-fg outline-none placeholder:italic placeholder:text-fg-subtle"
                     style={textStyle}
                     rows={1}
                     value={props.mode.value}
@@ -655,19 +655,19 @@ function ActionCommandMenu(props: {
 
     return (
         <div
-            className={["absolute left-0 z-50 w-[420px] overflow-hidden rounded-xl border border-white/10 bg-[#181b20] shadow-xl", getPopupPlacementClass(props.placement)].join(" ")}
+            className={["absolute left-0 z-50 w-[420px] overflow-hidden rounded-xl border border-edge bg-[#181b20] shadow-xl", getPopupPlacementClass(props.placement)].join(" ")}
             onMouseDown={event => {
                 event.preventDefault();
                 event.stopPropagation();
             }}
         >
             {props.categories.length === 0 ? (
-                <button type="button" className="w-full px-3 py-2 text-left text-sm text-slate-400 hover:bg-white/[0.06]" onMouseDown={props.onCancel}>
+                <button type="button" className="w-full px-3 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
                     No action found. 
                 </button>
             ) : (
                 <>
-                    <div ref={categoryListRef} className="flex overflow-x-auto border-b border-white/10 bg-[#0f1115]" role="tablist" aria-label="Action types">
+                    <div ref={categoryListRef} className="flex overflow-x-auto border-b border-edge bg-surface" role="tablist" aria-label="Action types">
                         {props.categories.map(category => {
                             const active = category.id === activeCategory?.id;
                             return (
@@ -679,7 +679,7 @@ function ActionCommandMenu(props: {
                                     data-action-category-id={category.id}
                                     className={[
                                         "relative flex h-9 min-w-[74px] flex-none cursor-default items-center justify-center px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
-                                        active ? "bg-[#151922] text-white" : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-100",
+                                        active ? "bg-[#151922] text-white" : "text-fg-muted hover:bg-fill-subtle hover:text-fg",
                                     ].join(" ")}
                                     onMouseDown={() => props.onSelectCategory(category.id)}
                                 >
@@ -691,7 +691,7 @@ function ActionCommandMenu(props: {
                     </div>
                     <div ref={listRef} className="max-h-64 overflow-auto p-1">
                         {activeCategory && activeCategory.commands.length === 0 ? (
-                            <button type="button" className="w-full rounded px-2 py-2 text-left text-sm text-slate-400 hover:bg-white/[0.06]" onMouseDown={props.onCancel}>
+                            <button type="button" className="w-full rounded px-2 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
                                 No {activeCategory.label.toLowerCase()} action found. 
                             </button>
                         ) : activeCategory?.commands.map(command => {
@@ -707,15 +707,15 @@ function ActionCommandMenu(props: {
                                     data-action-command-id={command.id}
                                     className={[
                                         "flex w-full items-center gap-2 rounded px-2 py-2 text-left transition-colors",
-                                        active ? "bg-primary/15 text-white" : "hover:bg-white/[0.06]",
+                                        active ? "bg-primary/15 text-white" : "hover:bg-fill",
                                     ].join(" ")}
                                     onMouseDown={() => props.onChoose(command.id)}
                                     onMouseEnter={() => props.onHighlightCommand(command.id)}
                                 >
                                     <Icon className="h-4 w-4 shrink-0" style={{ color: category.iconColor }} />
                                     <span className="min-w-0 flex-1">
-                                        <span className="block truncate text-sm text-slate-100">{command.label}</span>
-                                        <span className="block truncate text-[11px] text-slate-500">{command.detail}</span>
+                                        <span className="block truncate text-sm text-fg">{command.label}</span>
+                                        <span className="block truncate text-2xs text-fg-subtle">{command.detail}</span>
                                     </span>
                                 </button>
                             );
@@ -783,14 +783,14 @@ function CharacterPicker(props: {
     return (
         <div
             ref={listRef}
-            className={["absolute left-0 z-50 max-h-72 w-[320px] overflow-auto rounded-xl border border-white/10 bg-[#181b20] p-1 shadow-xl", getPopupPlacementClass(props.placement)].join(" ")}
+            className={["absolute left-0 z-50 max-h-72 w-[320px] overflow-auto rounded-xl border border-edge bg-[#181b20] p-1 shadow-xl", getPopupPlacementClass(props.placement)].join(" ")}
             onMouseDown={event => {
                 event.preventDefault();
                 event.stopPropagation();
             }}
         >
             {props.characters.length === 0 ? (
-                <button type="button" className="w-full rounded px-2 py-2 text-left text-sm text-slate-400 hover:bg-white/[0.06]" onMouseDown={props.onClear}>
+                <button type="button" className="w-full rounded px-2 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onClear}>
                     No character found. 
                 </button>
             ) : (
@@ -806,13 +806,13 @@ function CharacterPicker(props: {
                             data-character-id={characterId}
                             className={[
                                 "flex w-full items-center gap-2 rounded px-2 py-2 text-left transition-colors",
-                                active ? "bg-primary/15 text-white" : "hover:bg-white/[0.06]",
+                                active ? "bg-primary/15 text-white" : "hover:bg-fill",
                             ].join(" ")}
                             onMouseEnter={() => props.onHighlight(characterId)}
                             onMouseDown={() => props.onChoose(characterId)}
                         >
                             <Hash className={["h-4 w-4 shrink-0", active ? "text-primary" : "text-primary/80"].join(" ")} />
-                            <span className="truncate text-sm text-slate-100">{character.profile.getName()}</span>
+                            <span className="truncate text-sm text-fg">{character.profile.getName()}</span>
                         </button>
                     );
                 })
@@ -859,8 +859,8 @@ function CharacterSelectTrigger(props: {
             <button
                 type="button"
                 className={[
-                    "flex h-full min-h-[28px] max-w-full items-center truncate rounded px-1 py-0.5 text-left text-sm hover:bg-white/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
-                    unassigned ? "italic text-slate-500 hover:text-primary" : "text-primary",
+                    "flex h-full min-h-[28px] max-w-full items-center truncate rounded px-1 py-0.5 text-left text-sm hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
+                    unassigned ? "italic text-fg-subtle hover:text-primary" : "text-primary",
                     props.className ?? "",
                 ].join(" ")}
                 style={props.style}
@@ -909,7 +909,7 @@ function BlockBadge({ block, characters }: { block: StoryBlock; characters: Char
     const thumbnailUrl = useServiceAssetObjectUrl(thumbnailId);
 
     return (
-        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded border border-white/10 bg-white/[0.04]" title={label} aria-label={label}>
+        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded border border-edge bg-fill-subtle" title={label} aria-label={label}>
             {thumbnailUrl ? (
                 <img
                     src={thumbnailUrl}
@@ -1011,7 +1011,7 @@ function BlockPreview(props: {
                     onChoose={props.onSetDialogueCharacter}
                     style={textStyle}
                 />
-                <span className={["min-w-0 flex-1 whitespace-pre-wrap break-words", hasValue ? "text-slate-100" : "italic text-slate-500"].join(" ")} style={textStyle} onDoubleClick={event => {
+                <span className={["min-w-0 flex-1 whitespace-pre-wrap break-words", hasValue ? "text-fg" : "italic text-fg-subtle"].join(" ")} style={textStyle} onDoubleClick={event => {
                     event.stopPropagation();
                     props.onTextDoubleClick();
                 }}>
@@ -1024,7 +1024,7 @@ function BlockPreview(props: {
         const hasValue = Boolean(text.value) || Boolean(text.rich && text.rich.length > 0);
         const note = block.kind === "note";
         return (
-            <span className={["min-w-0 flex-1 whitespace-pre-wrap break-words", note ? "italic text-slate-400" : hasValue ? "text-slate-100" : "italic text-slate-500"].join(" ")} style={textStyle} onDoubleClick={event => {
+            <span className={["min-w-0 flex-1 whitespace-pre-wrap break-words", note ? "italic text-fg-muted" : hasValue ? "text-fg" : "italic text-fg-subtle"].join(" ")} style={textStyle} onDoubleClick={event => {
                 event.stopPropagation();
                 props.onTextDoubleClick();
             }}>
@@ -1047,7 +1047,7 @@ function BlockPreview(props: {
             />
         );
     }
-    return <span className="min-w-0 flex-1 truncate text-sm text-slate-300" style={textStyle}>{describeBlock(block, props.characters, props.scene, props.document.scenes)}</span>;
+    return <span className="min-w-0 flex-1 truncate text-sm text-fg-muted" style={textStyle}>{describeBlock(block, props.characters, props.scene, props.document.scenes)}</span>;
 }
 
 function BackgroundBlockPreview({ payload }: { payload: Extract<StoryActionPayload, { action: "setBackground" }> }) {
@@ -1063,9 +1063,9 @@ function BackgroundBlockPreview({ payload }: { payload: Extract<StoryActionPaylo
     const isColor = !payload.assetId && Boolean(payload.color);
 
     return (
-        <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-300" style={textStyle}>
+        <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-fg-muted" style={textStyle}>
             {payload.assetId ? (
-                <span className="h-5 w-8 shrink-0 overflow-hidden rounded border border-white/10 bg-[#0f1115]">
+                <span className="h-5 w-8 shrink-0 overflow-hidden rounded border border-edge bg-surface">
                     {url ? (
                         <img
                             src={url}
@@ -1075,18 +1075,18 @@ function BackgroundBlockPreview({ payload }: { payload: Extract<StoryActionPaylo
                         />
                     ) : (
                         <span className="flex h-full w-full items-center justify-center">
-                            <Image className="h-3 w-3 text-slate-600" />
+                            <Image className="h-3 w-3 text-fg-subtle" />
                         </span>
                     )}
                 </span>
             ) : isColor ? (
                 <span
-                    className="h-4 w-7 shrink-0 rounded border border-white/10"
+                    className="h-4 w-7 shrink-0 rounded border border-edge"
                     style={{ backgroundColor: payload.color }}
                 />
             ) : null}
             <span className="min-w-0 truncate">
-                Set background <span className={payload.assetId || payload.color ? "text-slate-100" : "italic text-slate-500"}>{label}</span>
+                Set background <span className={payload.assetId || payload.color ? "text-fg" : "italic text-fg-subtle"}>{label}</span>
             </span>
         </span>
     );
@@ -1138,12 +1138,12 @@ function DisplayableTransformPreview(props: {
 
     // No resolvable image (e.g. a text/layer target or an unresolved name) — keep the plain description.
     if (!assetId) {
-        return <span className="min-w-0 flex-1 truncate text-sm text-slate-300" style={textStyle}>{props.fallback}</span>;
+        return <span className="min-w-0 flex-1 truncate text-sm text-fg-muted" style={textStyle}>{props.fallback}</span>;
     }
 
     return (
-        <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-300" style={textStyle}>
-            <span className="h-5 w-8 shrink-0 overflow-hidden rounded border border-white/10 bg-[#0f1115]">
+        <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-fg-muted" style={textStyle}>
+            <span className="h-5 w-8 shrink-0 overflow-hidden rounded border border-edge bg-surface">
                 {url ? (
                     <img
                         src={url}
@@ -1153,13 +1153,13 @@ function DisplayableTransformPreview(props: {
                     />
                 ) : (
                     <span className="flex h-full w-full items-center justify-center">
-                        <Image className="h-3 w-3 text-slate-600" />
+                        <Image className="h-3 w-3 text-fg-subtle" />
                     </span>
                 )}
             </span>
             <span className="min-w-0 truncate">
-                Transform <span className="text-slate-100">{name}</span>
-                {asset ? <span className="text-slate-500"> · {asset.name}</span> : null}
+                Transform <span className="text-fg">{name}</span>
+                {asset ? <span className="text-fg-subtle"> · {asset.name}</span> : null}
             </span>
         </span>
     );

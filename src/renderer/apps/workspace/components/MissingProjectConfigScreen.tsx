@@ -12,19 +12,19 @@ export function MissingProjectConfigScreen({ projectPath }: MissingProjectConfig
     };
 
     return (
-        <div className="h-screen w-screen flex flex-col bg-[#0f1115] text-gray-200">
+        <div className="h-screen w-screen flex flex-col bg-surface text-fg">
             <TitleBar title="NarraLeaf Studio" iconSrc="/favicon.ico" />
             <main className="min-h-0 flex-1 flex items-center justify-center px-8">
                 <section className="w-full max-w-sm text-center">
-                    <div className="mx-auto mb-5 grid h-11 w-11 place-items-center rounded-md border border-white/10 bg-white/5 text-gray-300">
+                    <div className="mx-auto mb-5 grid h-11 w-11 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted">
                         <FolderX className="h-5 w-5" />
                     </div>
                     <h1 className="text-base font-semibold text-white">This folder is not a NarraLeaf project</h1>
-                    <p className="mt-2 text-sm leading-6 text-gray-400">
+                    <p className="mt-2 text-sm leading-6 text-fg-muted">
                         No .nlproj file was found.
                     </p>
                     {projectPath && (
-                        <p className="mt-3 truncate text-xs text-gray-600" title={projectPath}>
+                        <p className="mt-3 truncate text-xs text-fg-subtle" title={projectPath}>
                             {projectPath}
                         </p>
                     )}

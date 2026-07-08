@@ -485,7 +485,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         `w-9 h-9 rounded-md border flex items-center justify-center text-xs transition-colors ${
             active
                 ? "border-primary bg-primary/20 text-white"
-                : "border-white/10 text-gray-400 hover:border-primary hover:text-white hover:bg-white/10"
+                : "border-edge text-fg-muted hover:border-primary hover:text-white hover:bg-fill"
         } disabled:opacity-50 disabled:cursor-not-allowed`;
 
     useSurfaceInteractionCropDimming({
@@ -586,7 +586,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
 
     if (!surface) {
         return (
-            <div className="h-full flex items-center justify-center text-sm text-gray-500">
+            <div className="h-full flex items-center justify-center text-sm text-fg-subtle">
                 {isComponentEdit ? "Component not found" : "Interface not found"}
             </div>
         );
@@ -598,7 +598,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     };
 
     return (
-        <div className="h-full flex overflow-hidden border border-white/10">
+        <div className="h-full flex overflow-hidden border border-edge">
             <WidgetRuntimeStateProvider key={surface.id}>
                 <div
                     ref={editorRootRef}
@@ -618,7 +618,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                     />
 
                     {/* Top toolbar */}
-                    <div className="absolute top-3 right-3 z-20 flex items-center gap-2 rounded-md border border-white/20 bg-[#05060a]/80 px-2 py-1">
+                    <div className="absolute top-3 right-3 z-20 flex items-center gap-2 rounded-md border border-edge-strong bg-surface-canvas/80 px-2 py-1">
                         <button
                             type="button"
                             className={toolButtonClass(tool.kind === "select")}
@@ -654,7 +654,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                                 </SurfaceEditorToolbarSegButton>
                             )}
                         </SurfaceEditorToolbarButtonGroup>
-                        <div className="mx-1 h-6 w-px bg-white/10" />
+                        <div className="mx-1 h-6 w-px bg-fill" />
                         <button
                             type="button"
                             className={toolButtonClass(false)}
@@ -667,16 +667,16 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                     </div>
 
                     {activeBindingSession ? (
-                        <div className="absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-2 rounded-md border border-cyan-400/30 bg-[#111820]/95 px-3 py-2 text-xs text-gray-100 shadow-lg">
+                        <div className="absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-2 rounded-md border border-cyan-400/30 bg-[#111820]/95 px-3 py-2 text-xs text-fg shadow-lg">
                             <div className="min-w-[220px]">
                                 <div className="font-medium text-cyan-100">Bind Element</div>
-                                <div className="max-w-[300px] truncate text-[11px] text-gray-400">
+                                <div className="max-w-[300px] truncate text-2xs text-fg-muted">
                                     {bindingSelection ? bindingSelection.label : "Select one element on this Surface"}
                                 </div>
                             </div>
                             <button
                                 type="button"
-                                className="rounded border border-cyan-300/35 bg-cyan-300/15 px-2.5 py-1 text-[11px] font-medium text-cyan-50 hover:bg-cyan-300/25 disabled:cursor-not-allowed disabled:opacity-45"
+                                className="rounded border border-cyan-300/35 bg-cyan-300/15 px-2.5 py-1 text-2xs font-medium text-cyan-50 hover:bg-cyan-300/25 disabled:cursor-not-allowed disabled:opacity-45"
                                 disabled={!bindingSelection}
                                 onClick={handleConfirmElementBinding}
                             >
@@ -684,7 +684,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             </button>
                             <button
                                 type="button"
-                                className="rounded border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-gray-300 hover:bg-white/[0.08]"
+                                className="rounded border border-edge bg-fill-subtle px-2.5 py-1 text-2xs text-fg-muted hover:bg-fill"
                                 onClick={handleCancelElementBinding}
                             >
                                 Cancel
@@ -699,10 +699,10 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                         {...surfaceImageDropTargetProps}
                     >
                         {surfaceLevelDiagnosticMessages.length > 0 ? (
-                            <div className="absolute left-64 right-36 top-14 z-20 rounded-md border border-amber-500/35 bg-amber-950/40 px-3 py-2 text-[11px] text-amber-100/90">
+                            <div className="absolute left-64 right-36 top-14 z-20 rounded-md border border-amber-500/35 bg-amber-950/40 px-3 py-2 text-2xs text-amber-100/90">
                                 <span className="font-medium text-amber-200/95">Static checks (editor only): </span>
                                 <span className="text-amber-100/85">{surfaceLevelDiagnosticMessages.join(" · ")}</span>
-                                <span className="mt-1 block text-[10px] text-gray-500">
+                                <span className="mt-1 block text-2xs text-fg-subtle">
                                     Open Dev Mode for real execution, node traces, and Host API calls.
                                 </span>
                             </div>

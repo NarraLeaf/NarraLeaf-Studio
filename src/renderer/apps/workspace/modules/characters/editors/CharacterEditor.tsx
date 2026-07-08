@@ -607,12 +607,12 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     }, [formsCollapsed, variantsCollapsed]);
 
     return (
-        <div className="h-full bg-[#0f1115] text-gray-200 flex flex-col">
-            <div className="px-4 py-2 border-b border-white/10 flex items-center gap-2">
+        <div className="h-full bg-surface text-fg flex flex-col">
+            <div className="px-4 py-2 border-b border-edge flex items-center gap-2">
                 <span className="text-sm font-semibold truncate">
                     {payload?.character.profile.getProfile().name || "Character"}
                 </span>
-                <span className="text-xs text-gray-500">Character Editor</span>
+                <span className="text-xs text-fg-subtle">Character Editor</span>
             </div>
 
             <div

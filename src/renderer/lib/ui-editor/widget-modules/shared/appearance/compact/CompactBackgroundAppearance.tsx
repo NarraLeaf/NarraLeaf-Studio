@@ -180,7 +180,7 @@ export function CompactBackgroundAppearance({
                                 min={0}
                                 max={100}
                                 precision={null}
-                                leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                                leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                                 className="w-full min-w-0"
                             />
                             {motionVisible ? (
@@ -237,7 +237,7 @@ export function CompactBackgroundAppearance({
                                     min={0}
                                     max={100}
                                     precision={null}
-                                    leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                                    leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                                     className="w-full min-w-0"
                                 />
                                 {motionVisible ? (

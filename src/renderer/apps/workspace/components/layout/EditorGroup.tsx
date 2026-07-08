@@ -237,7 +237,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
             {/* Tab Bar */}
             {group.tabs.length > 0 && (
                 <div
-                    className="relative bg-[#0b0d12] border-b border-white/10 overflow-x-auto outline-none"
+                    className="relative bg-surface-sunken border-b border-edge overflow-x-auto outline-none"
                     tabIndex={0}
                     onMouseDown={(e) => {
                         e.stopPropagation();
@@ -263,16 +263,16 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                 <div
                                     key={tab.id}
                                     className={`
-                                        group relative flex items-center gap-2 px-3 h-9 border-r border-white/10 cursor-default
+                                        group relative flex items-center gap-2 px-3 h-9 border-r border-edge cursor-default
                                         transition-colors
                                         ${
                                             isGloballyActive
                                                 ? "bg-primary/[0.15] text-white"
                                                 : isActive
-                                                  ? "bg-primary/[0.08] text-gray-100"
+                                                  ? "bg-primary/[0.08] text-fg"
                                                   : isSelected
-                                                    ? "bg-white/[0.06] text-gray-100"
-                                                    : "bg-[#0b0d12] text-gray-400 hover:bg-[#0f1115] hover:text-white"
+                                                    ? "bg-fill text-fg"
+                                                    : "bg-surface-sunken text-fg-muted hover:bg-surface hover:text-white"
                                         }
                                     `}
                                     onClick={(e) => handleTabClick(tab.id, e)}
@@ -299,8 +299,8 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                                 w-4 h-4 rounded flex items-center justify-center transition-colors
                                                 ${
                                                     isActive
-                                                        ? "hover:bg-white/20"
-                                                        : "opacity-0 group-hover:opacity-100 hover:bg-white/10"
+                                                        ? "hover:bg-fill-strong"
+                                                        : "opacity-0 group-hover:opacity-100 hover:bg-fill"
                                                 }
                                             `}
                                             aria-label={`Close ${tab.title}`}
@@ -344,7 +344,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
                     );
                 })}
                 {!activeTab && (
-                    <div className="h-full flex items-center justify-center text-gray-500">
+                    <div className="h-full flex items-center justify-center text-fg-subtle">
                         <p>No active editor</p>
                     </div>
                 )}

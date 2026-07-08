@@ -122,7 +122,7 @@ function createImageInfoItems(): InfoItem<AssetEditorContext<AssetType.Image>>[]
         {
             label: "Hash",
             getValue: (ctx) => (
-                <span className="font-mono text-[10px]">{ctx.asset.hash.slice(0, 16)}...</span>
+                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}...</span>
             ),
         },
     ];
@@ -191,7 +191,7 @@ function createAudioInfoItems(): InfoItem<AssetEditorContext<AssetType.Audio>>[]
         {
             label: "Hash",
             getValue: (ctx) => (
-                <span className="font-mono text-[10px]">{ctx.asset.hash.slice(0, 16)}...</span>
+                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}...</span>
             ),
         },
     ];
@@ -260,7 +260,7 @@ function createVideoInfoItems(): InfoItem<AssetEditorContext<AssetType.Video>>[]
         {
             label: "Hash",
             getValue: (ctx) => (
-                <span className="font-mono text-[10px]">{ctx.asset.hash.slice(0, 16)}...</span>
+                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}...</span>
             ),
         },
     ];
@@ -329,7 +329,7 @@ function createFontInfoItems(): InfoItem<AssetEditorContext<AssetType.Font>>[] {
         {
             label: "Hash",
             getValue: (ctx) => (
-                <span className="font-mono text-[10px]">{ctx.asset.hash.slice(0, 16)}...</span>
+                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}...</span>
             ),
         },
     ];
@@ -374,7 +374,7 @@ function createJSONInfoItems(): InfoItem<AssetEditorContext<AssetType.JSON>>[] {
         {
             label: "Hash",
             getValue: (ctx) => (
-                <span className="font-mono text-[10px]">{ctx.asset.hash.slice(0, 16)}...</span>
+                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}...</span>
             ),
         },
     ];
@@ -426,7 +426,7 @@ function createOtherInfoItems(): InfoItem<AssetEditorContext<AssetType.Other>>[]
         {
             label: "Hash",
             getValue: (ctx) => (
-                <span className="font-mono text-[10px]">{ctx.asset.hash.slice(0, 16)}...</span>
+                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}...</span>
             ),
         },
     ];

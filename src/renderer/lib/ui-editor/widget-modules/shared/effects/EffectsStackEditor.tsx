@@ -58,14 +58,14 @@ function ShadowStoredFields({
         return (
             <div className="space-y-2">
                 <textarea
-                    className="w-full min-h-[4rem] rounded-md border border-white/10 bg-black/30 px-2 py-1.5 font-mono text-[11px] text-gray-200 placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-white/20"
+                    className="w-full min-h-[4rem] rounded-md border border-edge bg-black/30 px-2 py-1.5 font-mono text-2xs text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-1 focus:ring-white/20"
                     rows={4}
                     value={value.css}
                     onChange={e => onChange({ storage: "css", css: e.target.value })}
                 />
                 <button
                     type="button"
-                    className="text-[10px] text-primary hover:underline"
+                    className="text-2xs text-primary hover:underline"
                     onClick={() => {
                         const p = parseShadowLikeFragment(value.css.trim());
                         if (!p.ok) {
@@ -90,7 +90,7 @@ function ShadowStoredFields({
     return (
         <div className="grid grid-cols-2 gap-2 min-w-0">
             <div className="min-w-0">
-                <span className="text-[10px] font-medium text-gray-500 block mb-0.5">X</span>
+                <span className="text-2xs font-medium text-fg-subtle block mb-0.5">X</span>
                 <NumericDraftEnhancedInput
                     popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                     committedDisplay={String(L.offsetX)}
@@ -102,7 +102,7 @@ function ShadowStoredFields({
                 />
             </div>
             <div className="min-w-0">
-                <span className="text-[10px] font-medium text-gray-500 block mb-0.5">Y</span>
+                <span className="text-2xs font-medium text-fg-subtle block mb-0.5">Y</span>
                 <NumericDraftEnhancedInput
                     popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                     committedDisplay={String(L.offsetY)}
@@ -114,7 +114,7 @@ function ShadowStoredFields({
                 />
             </div>
             <div className="min-w-0">
-                <span className="text-[10px] font-medium text-gray-500 block mb-0.5">Blur</span>
+                <span className="text-2xs font-medium text-fg-subtle block mb-0.5">Blur</span>
                 <NumericDraftEnhancedInput
                     popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                     committedDisplay={String(Math.max(0, L.blur))}
@@ -128,7 +128,7 @@ function ShadowStoredFields({
                 />
             </div>
             <div className="min-w-0">
-                <span className="text-[10px] font-medium text-gray-500 block mb-0.5">Spread</span>
+                <span className="text-2xs font-medium text-fg-subtle block mb-0.5">Spread</span>
                 <NumericDraftEnhancedInput
                     popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                     committedDisplay={String(L.spread)}
@@ -146,12 +146,12 @@ function ShadowStoredFields({
                     allowOpacity
                     onChange={cv => commitLayer({ ...L, color: colorValueToCss(cv) })}
                 />
-                <span className="text-[10px] text-gray-500 truncate">Color</span>
+                <span className="text-2xs text-fg-subtle truncate">Color</span>
             </div>
             <div className="col-span-2">
                 <button
                     type="button"
-                    className="text-[10px] text-primary hover:underline"
+                    className="text-2xs text-primary hover:underline"
                     onClick={() =>
                         onChange({
                             storage: "css",
@@ -179,14 +179,14 @@ function FilterStoredFields({
         return (
             <div className="space-y-2">
                 <textarea
-                    className="w-full min-h-[4rem] rounded-md border border-white/10 bg-black/30 px-2 py-1.5 font-mono text-[11px] text-gray-200 placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-white/20"
+                    className="w-full min-h-[4rem] rounded-md border border-edge bg-black/30 px-2 py-1.5 font-mono text-2xs text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-1 focus:ring-white/20"
                     rows={4}
                     value={value.css}
                     onChange={e => onChange({ storage: "css", css: e.target.value })}
                 />
                 <button
                     type="button"
-                    className="text-[10px] text-primary hover:underline"
+                    className="text-2xs text-primary hover:underline"
                     onClick={() => {
                         const p = parseSimpleFilter(value.css.trim());
                         if (p.kind === "preset") {
@@ -236,7 +236,7 @@ function FilterStoredFields({
             />
             <button
                 type="button"
-                className="text-[10px] text-primary hover:underline"
+                className="text-2xs text-primary hover:underline"
                 onClick={() =>
                     onChange({
                         storage: "css",
@@ -278,7 +278,7 @@ function EffectDetailBody({
                     type="number"
                     min={0}
                     unit="px"
-                    leftIcon={<Sparkles className="w-4 h-4 text-gray-400" />}
+                    leftIcon={<Sparkles className="w-4 h-4 text-fg-muted" />}
                     className="w-full min-w-0"
                 />
             );
@@ -457,7 +457,7 @@ function EffectsAnchoredPanel({
     return createPortal(
         <div
             ref={panelRef}
-            className="fixed z-[80] flex max-h-[min(70vh,calc(100vh-24px))] w-[280px] max-w-[calc(100vw-16px)] flex-col overflow-visible rounded-xl border border-white/10 bg-[#17181c] p-3 shadow-2xl"
+            className="fixed z-[80] flex max-h-[min(70vh,calc(100vh-24px))] w-[280px] max-w-[calc(100vw-16px)] flex-col overflow-visible rounded-xl border border-edge bg-[#17181c] p-3 shadow-2xl"
             style={{
                 left: pos.left,
                 top: pos.top,
@@ -471,7 +471,7 @@ function EffectsAnchoredPanel({
 }
 
 const ROW_BTN =
-    "grid h-7 w-7 shrink-0 place-items-center rounded border border-white/10 bg-black/25 text-gray-400 transition-colors hover:border-white/20 hover:bg-white/10 hover:text-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-40 disabled:pointer-events-none";
+    "grid h-7 w-7 shrink-0 place-items-center rounded border border-edge bg-black/25 text-fg-muted transition-colors hover:border-edge-strong hover:bg-fill hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-40 disabled:pointer-events-none";
 
 export type EffectsStackEditorProps = {
     values: ElementEffectValues;
@@ -548,12 +548,12 @@ export function EffectsStackEditor({
             </div>
 
             {enabled.map(kind => (
-                <div key={kind} className="flex flex-col gap-0 min-w-0 rounded-md border border-white/10 bg-black/15 px-2 py-1.5">
+                <div key={kind} className="flex flex-col gap-0 min-w-0 rounded-md border border-edge bg-black/15 px-2 py-1.5">
                     <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="text-[10px] font-medium text-gray-400 shrink-0 w-[4.5rem]">
+                        <span className="text-2xs font-medium text-fg-muted shrink-0 w-[4.5rem]">
                             {EFFECT_KIND_LABEL[kind]}
                         </span>
-                        <span className="text-[10px] text-gray-500 truncate flex-1 min-w-0 font-mono">
+                        <span className="text-2xs text-fg-subtle truncate flex-1 min-w-0 font-mono">
                             {summarizeEffectKind(kind, values)}
                         </span>
                         <button

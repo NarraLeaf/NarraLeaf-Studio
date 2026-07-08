@@ -14,13 +14,13 @@ export function BlueprintEventBindingField(props: CustomFieldProps<UIInspectorDa
     }
 
     return (
-        <div className="mt-2 space-y-2 border-t border-white/5 pt-3">
-            <p className="text-[10px] tracking-wide text-gray-500">Events</p>
+        <div className="mt-2 space-y-2 border-t border-edge-subtle pt-3">
+            <p className="text-2xs tracking-wide text-fg-subtle">Events</p>
             <div className="flex flex-wrap gap-1.5">
                 {rows.map(row => (
                     <span
                         key={row.eventId}
-                        className="rounded border border-white/10 bg-[#0d0f11] px-2 py-1 text-[11px] text-gray-200"
+                        className="rounded border border-edge bg-[#0d0f11] px-2 py-1 text-2xs text-fg"
                         title={row.description}
                     >
                         {row.displayName}
@@ -28,7 +28,7 @@ export function BlueprintEventBindingField(props: CustomFieldProps<UIInspectorDa
                 ))}
             </div>
             {rows.some(row => row.legacyGraphEventId && row.legacyGraphEventId !== row.eventId) ? (
-                <p className="text-[11px] text-amber-200/90">Legacy event ids detected.</p>
+                <p className="text-2xs text-amber-200/90">Legacy event ids detected.</p>
             ) : null}
         </div>
     );

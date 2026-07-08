@@ -211,17 +211,17 @@ export function PluginPermissionApp() {
             initialControlAbility={PLUGIN_PERMISSION_WINDOW_CONTROL_ABILITY}
             windowControlPolicy={WindowControlPolicy.None}
         >
-            <div className="flex h-full min-h-0 flex-col bg-[#0f1115] text-gray-200">
+            <div className="flex h-full min-h-0 flex-col bg-surface text-fg">
                 {!request && !error ? (
                     <div className="flex min-h-0 flex-1 items-center justify-center">
-                        <Loader2 className="h-6 w-6 animate-spin text-gray-500" aria-label="Loading" />
+                        <Loader2 className="h-6 w-6 animate-spin text-fg-subtle" aria-label="Loading" />
                     </div>
                 ) : null}
 
                 {copy ? (
                     <>
-                        <div className="border-b border-white/10 bg-[#0b0d12] px-4 py-2">
-                            <div className="text-[11px] font-medium tracking-normal text-gray-400">
+                        <div className="border-b border-edge bg-surface-sunken px-4 py-2">
+                            <div className="text-2xs font-medium tracking-normal text-fg-muted">
                                 {copy.type}
                             </div>
                             <div className="mt-1 text-sm font-medium text-white">
@@ -230,18 +230,18 @@ export function PluginPermissionApp() {
                         </div>
 
                         <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
-                            <div className="space-y-2 text-sm leading-5 text-gray-300">
+                            <div className="space-y-2 text-sm leading-5 text-fg-muted">
                                 {copy.body.map((line, index) => (
                                     <p key={index}>{line}</p>
                                 ))}
                             </div>
 
                             {copy.permissions.length > 0 ? (
-                                <div className="mt-3 border border-white/10 bg-white/[0.03]">
+                                <div className="mt-3 border border-edge bg-fill-subtle">
                                     {copy.permissions.map((permission, index) => (
                                         <div
                                             key={`${permission}-${index}`}
-                                            className="border-b border-white/10 px-3 py-2 text-sm text-gray-200 last:border-b-0"
+                                            className="border-b border-edge px-3 py-2 text-sm text-fg last:border-b-0"
                                         >
                                             {permission}
                                         </div>
@@ -250,13 +250,13 @@ export function PluginPermissionApp() {
                             ) : null}
 
                             {copy.detail ? (
-                                <div className="mt-3 truncate font-mono text-[11px] text-gray-500">
+                                <div className="mt-3 truncate font-mono text-2xs text-fg-subtle">
                                     {copy.detail}
                                 </div>
                             ) : null}
 
                             {request?.reason ? (
-                                <div className="mt-3 border border-white/10 bg-[#111318] px-3 py-2 text-xs leading-5 text-gray-400">
+                                <div className="mt-3 border border-edge bg-[#111318] px-3 py-2 text-xs leading-5 text-fg-muted">
                                     {request.reason}
                                 </div>
                             ) : null}
@@ -277,12 +277,12 @@ export function PluginPermissionApp() {
                 ) : null}
 
                 {request ? (
-                    <div className={`grid gap-2 border-t border-white/10 bg-[#0b0d12] p-3 ${showPersistentChoices ? "grid-cols-[1fr_1fr_1.15fr]" : "grid-cols-2"}`}>
+                    <div className={`grid gap-2 border-t border-edge bg-surface-sunken p-3 ${showPersistentChoices ? "grid-cols-[1fr_1fr_1.15fr]" : "grid-cols-2"}`}>
                         <button
                             type="button"
                             onClick={handleDeny}
                             autoFocus
-                            className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded border border-white/10 bg-white/[0.04] px-3 text-sm font-medium text-gray-200 hover:bg-white/[0.08] focus:outline-none focus:ring-2 focus:ring-primary/60"
+                            className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded border border-edge bg-fill-subtle px-3 text-sm font-medium text-fg hover:bg-fill focus:outline-none focus:ring-2 focus:ring-primary/60"
                         >
                             <X size={15} className="shrink-0" />
                             <span className="whitespace-nowrap">{request.kind === "install" ? "Don't Allow" : "Deny"}</span>
@@ -292,7 +292,7 @@ export function PluginPermissionApp() {
                                 type="button"
                                 onClick={() => handleApprove("temporary")}
                                 disabled={!request || busy}
-                                className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded border border-white/10 bg-white/[0.06] px-3 text-sm font-medium text-gray-100 hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
+                                className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded border border-edge bg-fill px-3 text-sm font-medium text-fg hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 <Check size={15} className="shrink-0" />
                                 <span className="whitespace-nowrap">Allow Once</span>

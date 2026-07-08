@@ -104,10 +104,10 @@ export function ActionBar({ hiddenGroupIds = [] }: ActionBarProps) {
                     isPreviewAction && isPreviewRuntimeActive(previewStatus);
                 const isRuntimeActionActive = isDevModeActive || isPreviewActive;
                 const stateClasses = action.disabled
-                    ? "text-gray-500 cursor-not-allowed"
+                    ? "text-fg-subtle cursor-not-allowed"
                     : isRuntimeActionActive
                         ? "bg-red-600 text-white hover:bg-red-700 hover:text-white"
-                        : "text-gray-300 hover:bg-white/10 hover:text-white";
+                        : "text-fg-muted hover:bg-fill hover:text-white";
                 const title = isRuntimeActionActive
                     ? isDevModeAction
                         ? "Stop Dev Mode"

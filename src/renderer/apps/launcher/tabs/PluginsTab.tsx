@@ -104,9 +104,9 @@ export function PluginsTab() {
     });
 
     return (
-        <div className="flex h-full min-h-0 bg-[#0f1115] text-gray-200">
-            <div className="flex min-h-0 w-[320px] shrink-0 flex-col border-r border-white/10">
-                <div className="flex h-10 shrink-0 items-center justify-between border-b border-white/10 bg-[#0b0d12] px-3">
+        <div className="flex h-full min-h-0 bg-surface text-fg">
+            <div className="flex min-h-0 w-[320px] shrink-0 flex-col border-r border-edge">
+                <div className="flex h-10 shrink-0 items-center justify-between border-b border-edge bg-surface-sunken px-3">
                     <div className="text-sm font-medium text-white">Plugins</div>
                     <div className="flex items-center gap-1">
                         <IconButton title="Install local plugin" disabled={busy} onClick={installLocal}>
@@ -120,7 +120,7 @@ export function PluginsTab() {
 
                 <div className="min-h-0 flex-1 overflow-auto">
                     {plugins.length === 0 ? (
-                        <div className="px-2 py-8 text-center text-xs text-gray-500">No plugins installed</div>
+                        <div className="px-2 py-8 text-center text-xs text-fg-subtle">No plugins installed</div>
                     ) : (
                         <div>
                             {plugins.map(plugin => {
@@ -134,14 +134,14 @@ export function PluginsTab() {
                                         className={`no-drag w-full border-b border-l-2 border-b-white/10 px-3 py-2 text-left transition-colors ${
                                             isSelected
                                                 ? "border-l-primary"
-                                                : "border-l-transparent hover:bg-white/10"
+                                                : "border-l-transparent hover:bg-fill"
                                         }`}
                                     >
                                         <div className="flex min-w-0 items-center justify-between gap-2">
                                             <div className="truncate text-sm font-medium text-white">{plugin.manifest.name}</div>
                                             <StatusBadge status={plugin.status} />
                                         </div>
-                                        <div className="mt-1 truncate font-mono text-[11px] text-gray-500">{plugin.pluginId}</div>
+                                        <div className="mt-1 truncate font-mono text-2xs text-fg-subtle">{plugin.pluginId}</div>
                                     </button>
                                 );
                             })}
@@ -151,7 +151,7 @@ export function PluginsTab() {
             </div>
 
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                <div className="flex h-10 shrink-0 items-center justify-between border-b border-white/10 bg-[#0b0d12] px-4">
+                <div className="flex h-10 shrink-0 items-center justify-between border-b border-edge bg-surface-sunken px-4">
                     <div className="min-w-0 truncate text-sm font-medium text-white">
                         {selected?.manifest.name ?? "Plugins"}
                     </div>
@@ -193,7 +193,7 @@ export function PluginsTab() {
                     {selected ? (
                         <PluginDetails plugin={selected} />
                     ) : (
-                        <div className="flex h-full items-center justify-center text-sm text-gray-500">No plugin selected</div>
+                        <div className="flex h-full items-center justify-center text-sm text-fg-subtle">No plugin selected</div>
                     )}
                 </div>
             </div>
@@ -209,26 +209,26 @@ function PluginDetails({ plugin }: { plugin: PluginListItem }) {
             <div>
                 <div className="flex min-w-0 items-center gap-2">
                     <div className="truncate text-lg font-semibold text-white">{plugin.manifest.name}</div>
-                    <span className="shrink-0 rounded border border-white/10 px-1.5 py-0.5 text-[11px] text-gray-400">
+                    <span className="shrink-0 rounded border border-edge px-1.5 py-0.5 text-2xs text-fg-muted">
                         {plugin.manifest.version}
                     </span>
                     {plugin.builtIn ? (
-                        <span className="shrink-0 rounded border border-cyan-400/20 px-1.5 py-0.5 text-[11px] text-cyan-200">
+                        <span className="shrink-0 rounded border border-cyan-400/20 px-1.5 py-0.5 text-2xs text-cyan-200">
                             Built-in
                         </span>
                     ) : null}
                 </div>
-                <div className="mt-1 font-mono text-xs text-gray-500">{plugin.pluginId}</div>
+                <div className="mt-1 font-mono text-xs text-fg-subtle">{plugin.pluginId}</div>
                 {plugin.manifest.publisher ? (
-                    <div className="mt-1 text-xs text-gray-400">{plugin.manifest.publisher}</div>
+                    <div className="mt-1 text-xs text-fg-muted">{plugin.manifest.publisher}</div>
                 ) : null}
             </div>
 
             {plugin.manifest.description ? (
-                <div className="text-sm leading-6 text-gray-300">{plugin.manifest.description}</div>
+                <div className="text-sm leading-6 text-fg-muted">{plugin.manifest.description}</div>
             ) : null}
 
-            <div className="space-y-1 text-sm text-gray-300">
+            <div className="space-y-1 text-sm text-fg-muted">
                 <InfoLine label="Status" value={statusText(plugin.status)} />
                 <InfoLine label="Entry" value={plugin.manifest.entry} mono />
                 <InfoLine label="Installed" value={new Date(plugin.installedAt).toLocaleString()} />
@@ -236,10 +236,10 @@ function PluginDetails({ plugin }: { plugin: PluginListItem }) {
             </div>
 
             <div>
-                <div className="mb-2 text-xs font-medium tracking-normal text-gray-500">Permissions</div>
-                <div className="overflow-hidden rounded-md border border-white/10 bg-white/[0.03]">
+                <div className="mb-2 text-xs font-medium tracking-normal text-fg-subtle">Permissions</div>
+                <div className="overflow-hidden rounded-md border border-edge bg-fill-subtle">
                     {permissions.map((permission, index) => (
-                        <div key={`${permission}-${index}`} className="border-b border-white/10 px-3 py-2 text-sm text-gray-200 last:border-b-0">
+                        <div key={`${permission}-${index}`} className="border-b border-edge px-3 py-2 text-sm text-fg last:border-b-0">
                             {permission}
                         </div>
                     ))}
@@ -258,15 +258,15 @@ function PluginDetails({ plugin }: { plugin: PluginListItem }) {
 function InfoLine({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
     return (
         <div className="flex min-w-0 items-baseline gap-2">
-            <span className="w-16 shrink-0 text-gray-500">{label}</span>
-            <span className={`min-w-0 truncate text-gray-200 ${mono ? "font-mono" : ""}`}>{value}</span>
+            <span className="w-16 shrink-0 text-fg-subtle">{label}</span>
+            <span className={`min-w-0 truncate text-fg ${mono ? "font-mono" : ""}`}>{value}</span>
         </div>
     );
 }
 
 function StatusBadge({ status }: { status: PluginStatus }) {
     return (
-        <span className={`shrink-0 border px-1.5 py-0.5 text-[11px] ${statusClass(status)}`}>
+        <span className={`shrink-0 border px-1.5 py-0.5 text-2xs ${statusClass(status)}`}>
             {statusText(status)}
         </span>
     );
@@ -285,7 +285,7 @@ function IconButton({ title, disabled, onClick, children }: {
             aria-label={title}
             disabled={disabled}
             onClick={onClick}
-            className="no-drag grid h-8 w-8 place-items-center rounded-md text-gray-400 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="no-drag grid h-8 w-8 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
             {children}
         </button>
@@ -335,7 +335,7 @@ function statusClass(status: PluginStatus): string {
         case "error":
             return "border-red-400/25 text-red-200";
         default:
-            return "border-white/10 text-gray-400";
+            return "border-edge text-fg-muted";
     }
 }
 
@@ -348,7 +348,7 @@ function taskClass(status: TaskState["status"]): string {
         case "working":
             return "border-cyan-400/25 bg-cyan-500/10 text-cyan-100";
         default:
-            return "border-white/10 bg-white/[0.03] text-gray-400";
+            return "border-edge bg-fill-subtle text-fg-muted";
     }
 }
 

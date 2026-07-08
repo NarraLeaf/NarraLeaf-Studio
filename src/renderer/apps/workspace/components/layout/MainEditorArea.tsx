@@ -32,7 +32,7 @@ export function MainEditorArea() {
                 <div
                     className={`
                         ${isHorizontal ? "w-[2px]" : "h-[2px]"}
-                        bg-white/10
+                        bg-fill
                         hover:bg-primary/50
                         cursor-${isHorizontal ? "col" : "row"}-resize
                         transition-colors
@@ -56,7 +56,7 @@ export function MainEditorArea() {
 
     return (
         <WorkspacePanelErrorBoundary regionLabel="Main editor" isolationKey="main-editor-layout">
-            <div className="h-full bg-[#0f1115]">{renderLayout(editorLayout)}</div>
+            <div className="h-full bg-surface">{renderLayout(editorLayout)}</div>
         </WorkspacePanelErrorBoundary>
     );
 }

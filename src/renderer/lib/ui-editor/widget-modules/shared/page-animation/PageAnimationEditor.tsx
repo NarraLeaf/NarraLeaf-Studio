@@ -73,7 +73,7 @@ function PreviewButton({ label, ariaLabel, onClick }: { label: string; ariaLabel
     return (
         <button
             type="button"
-            className="inline-flex h-7 min-w-0 items-center justify-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-2 text-[11px] text-gray-300 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            className="inline-flex h-7 min-w-0 items-center justify-center gap-1 rounded-md border border-edge bg-fill-subtle px-2 text-2xs text-fg-muted transition hover:bg-fill hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
             onClick={onClick}
             title={ariaLabel}
             aria-label={ariaLabel}
@@ -102,7 +102,7 @@ function PageAnimationPreview({
     const animate = phase === "enter" ? motionProps.animate : motionProps.exit;
 
     return (
-        <div className="relative h-[68px] overflow-hidden rounded-md border border-white/10 bg-[#080a0d]">
+        <div className="relative h-[68px] overflow-hidden rounded-md border border-edge bg-[#080a0d]">
             <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] [background-size:16px_16px]" />
             <div className="absolute inset-0 flex items-center justify-center">
                 <motion.div
@@ -161,11 +161,11 @@ function AnimationPhaseBlock({
     const isAngle = shownDirection === "angle";
 
     return (
-        <div className="space-y-2 rounded-md border border-white/10 bg-white/[0.025] p-2">
+        <div className="space-y-2 rounded-md border border-edge bg-white/[0.025] p-2">
             <div className="flex min-h-7 items-center justify-between gap-2">
-                <span className="text-[11px] font-semibold tracking-wide text-gray-400">{label}</span>
+                <span className="text-2xs font-semibold tracking-wide text-fg-muted">{label}</span>
                 {showExitBlocking ? (
-                    <label className="flex min-w-0 items-center gap-2 text-[11px] text-gray-400">
+                    <label className="flex min-w-0 items-center gap-2 text-2xs text-fg-muted">
                         <span>Wait</span>
                         <Switch
                             checked={exitBlocking === true}
@@ -177,7 +177,7 @@ function AnimationPhaseBlock({
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_92px] gap-2">
                 <label className="min-w-0 space-y-1">
-                    <span className="block text-[10px] font-medium tracking-wide text-gray-500">Preset</span>
+                    <span className="block text-2xs font-medium tracking-wide text-fg-subtle">Preset</span>
                     <Select
                         fullWidth
                         options={PRESET_OPTIONS}
@@ -187,7 +187,7 @@ function AnimationPhaseBlock({
                     />
                 </label>
                 <label className="min-w-0 space-y-1">
-                    <span className="block text-[10px] font-medium tracking-wide text-gray-500">Seconds</span>
+                    <span className="block text-2xs font-medium tracking-wide text-fg-subtle">Seconds</span>
                     <NumericDraftEnhancedInput
                         committedDisplay={formatDurationSeconds(durationSeconds)}
                         onFiniteNumber={value => onDurationChange(normalizeDurationInput(value))}
@@ -204,7 +204,7 @@ function AnimationPhaseBlock({
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_76px] gap-2">
                 <div className="min-w-0 space-y-1">
-                    <span className="block text-[10px] font-medium tracking-wide text-gray-500">Direction</span>
+                    <span className="block text-2xs font-medium tracking-wide text-fg-subtle">Direction</span>
                     <IconButtonSegGroup
                         options={DIRECTION_OPTIONS}
                         mode="single"
@@ -216,7 +216,7 @@ function AnimationPhaseBlock({
                     />
                 </div>
                 <label className="min-w-0 space-y-1">
-                    <span className="block text-[10px] font-medium tracking-wide text-gray-500">Angle</span>
+                    <span className="block text-2xs font-medium tracking-wide text-fg-subtle">Angle</span>
                     <NumericDraftEnhancedInput
                         committedDisplay={formatAngleDegrees(angleDegrees)}
                         onFiniteNumber={value => onAngleChange(normalizeAngleInput(value))}
@@ -263,8 +263,8 @@ export function PageAnimationEditor({
     return (
         <div className="space-y-2.5">
             {onInheritedChange ? (
-                <div className="flex min-h-9 items-center justify-between gap-3 rounded-md border border-white/10 bg-white/[0.03] px-3 py-1.5">
-                    <span className="min-w-0 text-xs font-medium text-gray-300">{inheritLabel}</span>
+                <div className="flex min-h-9 items-center justify-between gap-3 rounded-md border border-edge bg-fill-subtle px-3 py-1.5">
+                    <span className="min-w-0 text-xs font-medium text-fg-muted">{inheritLabel}</span>
                     <Switch
                         checked={inherited}
                         size="sm"

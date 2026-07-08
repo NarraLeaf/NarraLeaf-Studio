@@ -1,11 +1,11 @@
 import type { StoryInterpolationRef, StoryRichRun, StoryTextMarks, StoryTextSegment } from "@shared/types/story";
 
 /** Pause chip class (a literal so Tailwind's content scan can see it). */
-const PAUSE_CHIP_CLASS = "story-rt-pause mx-0.5 inline-flex cursor-pointer select-none items-center rounded bg-primary/20 px-1 py-0.5 align-middle text-[10px] font-medium text-primary hover:bg-primary/30";
+const PAUSE_CHIP_CLASS = "story-rt-pause mx-0.5 inline-flex cursor-pointer select-none items-center rounded bg-primary/20 px-1 py-0.5 align-middle text-2xs font-medium text-primary hover:bg-primary/30";
 const PAUSE_ICON_SVG = '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="14" y="4" width="4" height="16" rx="1"></rect><rect x="6" y="4" width="4" height="16" rx="1"></rect></svg>';
 
 /** Interpolation chip class (variable / blueprint value). */
-const INTERP_CHIP_CLASS = "story-rt-interp mx-0.5 inline-flex cursor-pointer select-none items-center rounded bg-emerald-500/20 px-1 py-0.5 align-middle text-[10px] font-medium text-emerald-300 hover:bg-emerald-500/30";
+const INTERP_CHIP_CLASS = "story-rt-interp mx-0.5 inline-flex cursor-pointer select-none items-center rounded bg-emerald-500/20 px-1 py-0.5 align-middle text-2xs font-medium text-emerald-300 hover:bg-emerald-500/30";
 const INTERP_ICON_SVG = '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1"></path><path d="M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"></path></svg>';
 
 export type ResolveInterpolationLabel = (interp: StoryInterpolationRef) => string;

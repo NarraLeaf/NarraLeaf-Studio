@@ -136,7 +136,11 @@ export function NlrStageLayer(props: {
      * The first scene has mounted and painted after the game was entered (`newGame()`).
      */
     onFirstSceneReady: (sessionId: string) => void;
-    onError: (error: Error) => void;
+    /**
+     * A stage error surfaced from this session's Player. `sessionId` identifies the emitting
+     * session so hosts can ignore teardown noise from an already-replaced session.
+     */
+    onError: (error: Error, sessionId: string) => void;
 }) {
     const { session, interactive, renderOnStage, onFirstSceneReady, onEnvironmentReady, onLiveGameReady, onError } = props;
     const startedSessionRef = useRef<string | null>(null);
@@ -156,7 +160,7 @@ export function NlrStageLayer(props: {
         // Initialise the environment only (dispatch gameReady, hand back the LiveGame).
         // Entering the game (newGame) is the host's decision, made when the player starts a game.
         void Promise.resolve(onLiveGameReady(sessionId, ctx.liveGame)).catch(error => {
-            onError(error instanceof Error ? error : new Error(String(error)));
+            onError(error instanceof Error ? error : new Error(String(error)), sessionId);
         });
     }, [onError, onLiveGameReady, session]);
 
@@ -210,7 +214,7 @@ export function NlrStageLayer(props: {
                     onReady={handleReady}
                     onPreloadComplete={handlePreloadComplete}
                     onFirstSceneReady={handleFirstSceneReady}
-                    onError={(error) => onError(error)}
+                    onError={(error) => onError(error, session.id)}
                 >
                     {renderOnStage ? session.onStageNode ?? null : null}
                 </Player>

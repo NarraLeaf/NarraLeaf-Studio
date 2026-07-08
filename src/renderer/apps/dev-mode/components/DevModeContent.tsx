@@ -44,12 +44,12 @@ function SessionErrorBanner(props: {
     return (
         <div className="shrink-0 border-b border-red-900/60 bg-red-950/80 px-3 py-2 text-xs text-red-100">
             <div className="flex items-start justify-between gap-2">
-                <pre className="max-h-24 flex-1 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-snug">
+                <pre className="max-h-24 flex-1 overflow-auto whitespace-pre-wrap font-mono text-2xs leading-snug">
                     {sessionError}
                 </pre>
                 <button
                     type="button"
-                    className="shrink-0 rounded border border-red-700/80 px-2 py-0.5 text-[11px] text-red-100 hover:bg-red-900/50"
+                    className="shrink-0 rounded border border-red-700/80 px-2 py-0.5 text-2xs text-red-100 hover:bg-red-900/50"
                     onClick={onDismissSessionError}
                 >
                     Dismiss
@@ -119,7 +119,7 @@ function DevModeDebugOverlay(props: {
                         key="blueprint-devtools"
                         role="complementary"
                         aria-label="Blueprint DevTools"
-                        className="pointer-events-auto absolute inset-y-0 right-0 z-30 flex w-[min(100%,380px)] max-w-full flex-col overflow-hidden border-l border-white/10 bg-[#0d0f11] shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
+                        className="pointer-events-auto absolute inset-y-0 right-0 z-30 flex w-[min(100%,380px)] max-w-full flex-col overflow-hidden border-l border-edge bg-[#0d0f11] shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
                         initial={{ x: "100%" }}
                         animate={{ x: 0 }}
                         exit={{ x: "100%" }}
@@ -147,7 +147,7 @@ function DevModeDebugOverlay(props: {
                                 ref={devtoolsMenuRef}
                                 role="menu"
                                 aria-label="Preview debug tools"
-                                className="absolute bottom-full left-0 z-10 mb-2 w-[min(15rem,calc(100vw-1.5rem))] rounded-md border border-white/10 bg-[#0b0d12] py-1 shadow-lg"
+                                className="absolute bottom-full left-0 z-10 mb-2 w-[min(15rem,calc(100vw-1.5rem))] rounded-md border border-edge bg-surface-sunken py-1 shadow-lg"
                             >
                                 <button
                                     type="button"
@@ -155,8 +155,8 @@ function DevModeDebugOverlay(props: {
                                     aria-pressed={blueprintPanelOpen}
                                     className={`flex w-full cursor-default items-center gap-2 px-3 py-2 text-left text-xs transition-colors ${
                                         blueprintPanelOpen
-                                            ? "bg-white/15 text-white"
-                                            : "text-gray-400 hover:bg-white/10 hover:text-white"
+                                            ? "bg-fill-strong text-white"
+                                            : "text-fg-muted hover:bg-fill hover:text-white"
                                     }`}
                                     onClick={() => {
                                         setBlueprintPanelOpen(prev => !prev);
@@ -178,7 +178,7 @@ function DevModeDebugOverlay(props: {
                         <button
                             ref={devtoolsFabRef}
                             type="button"
-                            className="pointer-events-auto flex h-11 w-11 shrink-0 cursor-default items-center justify-center rounded-full border border-white/15 bg-[#0b0d12] shadow-md outline-none ring-white/20 transition-colors duration-150 hover:border-white/22 hover:bg-[#151a24] hover:shadow-lg focus-visible:ring-2"
+                            className="pointer-events-auto flex h-11 w-11 shrink-0 cursor-default items-center justify-center rounded-full border border-edge bg-surface-sunken shadow-md outline-none ring-white/20 transition-colors duration-150 hover:border-white/22 hover:bg-[#151a24] hover:shadow-lg focus-visible:ring-2"
                             aria-label={devtoolsMenuOpen ? "Close preview debug tools menu" : "Open preview debug tools menu"}
                             aria-expanded={devtoolsMenuOpen}
                             aria-haspopup="menu"
@@ -392,7 +392,7 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [handleAspectUpdate]);
 
     const renderPlaceholder = useCallback(() => (
-        <div className="flex flex-1 items-center justify-center text-sm text-gray-400">
+        <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
             Surface not available
         </div>
     ), []);
@@ -417,7 +417,7 @@ export function DevModeContent(props: DevModeContentProps) {
         return (
             <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
                 <SessionErrorBanner sessionError={sessionError} onDismissSessionError={onDismissSessionError} />
-                <div className="flex flex-1 items-center justify-center text-sm text-gray-400">
+                <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
                     Waiting for Dev Mode payload...
                 </div>
             </div>
@@ -428,7 +428,7 @@ export function DevModeContent(props: DevModeContentProps) {
         return (
             <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
                 <SessionErrorBanner sessionError={sessionError} onDismissSessionError={onDismissSessionError} />
-                <div className="flex flex-1 items-center justify-center text-sm text-gray-400">
+                <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
                     Surface not found: {surfaceId}
                 </div>
             </div>

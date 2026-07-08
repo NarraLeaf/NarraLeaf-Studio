@@ -264,7 +264,7 @@ export function WorkspaceEditorQuickSwitch() {
     return (
         <div className="nl-window-content-layer z-[45] flex items-start justify-center pt-[12vh] pointer-events-none">
             <div
-                className="w-[min(560px,calc(100vw-32px))] max-h-[min(480px,70vh)] overflow-hidden rounded-md border border-white/10 bg-[#171a21]/95 shadow-2xl backdrop-blur-sm pointer-events-auto"
+                className="w-[min(560px,calc(100vw-32px))] max-h-[min(480px,70vh)] overflow-hidden rounded-md border border-edge bg-[#171a21]/95 shadow-2xl backdrop-blur-sm pointer-events-auto"
                 role="listbox"
                 aria-label="Editor tabs"
             >
@@ -292,10 +292,10 @@ export function WorkspaceEditorQuickSwitch() {
                                 className={`flex h-10 w-full items-center gap-3 px-3 text-left transition-colors ${
                                     selected
                                         ? "bg-primary/20 text-white"
-                                        : "text-gray-300 hover:bg-white/5 hover:text-white"
+                                        : "text-fg-muted hover:bg-fill-subtle hover:text-white"
                                 }`}
                             >
-                                <span className="flex h-4 w-4 shrink-0 items-center justify-center text-gray-400">
+                                <span className="flex h-4 w-4 shrink-0 items-center justify-center text-fg-muted">
                                     {candidate.tab.icon}
                                 </span>
                                 <span className="min-w-0 flex-1 truncate text-sm">
@@ -305,7 +305,7 @@ export function WorkspaceEditorQuickSwitch() {
                                     <Circle className="h-2 w-2 shrink-0 fill-current text-primary" />
                                 )}
                                 {showGroupId && (
-                                    <span className="shrink-0 text-xs text-gray-500">
+                                    <span className="shrink-0 text-xs text-fg-subtle">
                                         {candidate.groupId}
                                     </span>
                                 )}

@@ -24,7 +24,7 @@ import {
 } from "./storyMotionTimeline";
 
 const ICON_BUTTON_CLASS = controlButtonClass();
-const TOOL_BUTTON_CLASS = "inline-flex h-8 items-center gap-1.5 rounded border border-white/10 bg-white/[0.04] px-2 text-xs text-slate-200 hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
+const TOOL_BUTTON_CLASS = "inline-flex h-8 items-center gap-1.5 rounded border border-edge bg-fill-subtle px-2 text-xs text-fg hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
 
 export function StoryMotionPicker(props: {
     value: StoryTransformRef | undefined;
@@ -128,9 +128,9 @@ export function StoryMotionPicker(props: {
     }, [openEditorTab, props.actionContext]);
 
     return (
-        <div className="rounded-lg border border-white/10 bg-white/[0.025] p-2">
+        <div className="rounded-lg border border-edge bg-white/[0.025] p-2">
             <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="text-xs font-medium text-slate-300">Story Motion</div>
+                <div className="text-xs font-medium text-fg-muted">Story Motion</div>
                 <button
                     type="button"
                     className={TOOL_BUTTON_CLASS}
@@ -148,7 +148,7 @@ export function StoryMotionPicker(props: {
                     </span>
                     <div className="min-w-0 flex-1">
                         <div className="truncate text-xs font-medium text-primary">{selectedAsset?.name ?? props.motionLabel}</div>
-                        <div className="truncate text-[11px] text-slate-400">
+                        <div className="truncate text-2xs text-fg-muted">
                             {selectedAsset ? motionSummary(selectedAsset) : `Asset ${animationId}`}
                         </div>
                     </div>
@@ -165,20 +165,20 @@ export function StoryMotionPicker(props: {
                     </button>
                 </div>
             ) : (
-                <div className="rounded border border-dashed border-white/10 bg-black/10 p-3 text-xs text-slate-500">
+                <div className="rounded border border-dashed border-edge bg-black/10 p-3 text-xs text-fg-subtle">
                     No motion is bound to this action.
                 </div>
             )}
 
             {pickerOpen ? (
-                <div className="mt-2 rounded-lg border border-white/10 bg-[#101216] p-2 shadow-xl">
+                <div className="mt-2 rounded-lg border border-edge bg-[#101216] p-2 shadow-xl">
                     <div className="flex items-center gap-2">
                         <EnhancedInput
                             className="flex-1"
                             value={query}
                             onChange={setQuery}
                             placeholder="Search story motions"
-                            leftIcon={<Search className="h-3.5 w-3.5 text-slate-500" />}
+                            leftIcon={<Search className="h-3.5 w-3.5 text-fg-subtle" />}
                         />
                         <Select
                             className="w-44"
@@ -196,23 +196,23 @@ export function StoryMotionPicker(props: {
                     </div>
                     <div className="mt-2 max-h-56 overflow-auto rounded border border-white/[0.06]">
                         {filteredAssets.length === 0 ? (
-                            <div className="p-4 text-xs text-slate-500">No matching story motions.</div>
+                            <div className="p-4 text-xs text-fg-subtle">No matching story motions.</div>
                         ) : filteredAssets.map(asset => (
                             <button
                                 key={asset.id}
                                 type="button"
                                 className={[
                                     "flex w-full items-center gap-2 border-b border-white/[0.06] px-3 py-2 text-left last:border-b-0",
-                                    animationId === asset.id ? "bg-primary/10" : "hover:bg-white/[0.04]",
+                                    animationId === asset.id ? "bg-primary/10" : "hover:bg-fill-subtle",
                                 ].join(" ")}
                                 onClick={() => bindAsset(asset.id)}
                             >
-                                <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-white/10 bg-white/[0.04] text-primary">
+                                <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-edge bg-fill-subtle text-primary">
                                     <Spline className="h-3.5 w-3.5" />
                                 </span>
                                 <span className="min-w-0 flex-1">
-                                    <span className="block truncate text-xs font-medium text-slate-200">{asset.name}</span>
-                                    <span className="block truncate text-[11px] text-slate-500">Preview: {formatTargetKind(asset.targetKind)}</span>
+                                    <span className="block truncate text-xs font-medium text-fg">{asset.name}</span>
+                                    <span className="block truncate text-2xs text-fg-subtle">Preview: {formatTargetKind(asset.targetKind)}</span>
                                 </span>
                                 {animationId === asset.id ? <Check className="h-4 w-4 text-primary" /> : null}
                             </button>

@@ -368,15 +368,15 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
     const { url: previewBackgroundUrl } = useAssetObjectUrl(selectedAsset?.previewBackgroundAssetId ?? null);
 
     return (
-        <div className="flex h-full min-h-0 bg-[#101114] text-slate-200">
-            <aside className="flex w-64 shrink-0 flex-col border-r border-white/10">
-                <div className="flex items-center gap-2 border-b border-white/10 p-2">
+        <div className="flex h-full min-h-0 bg-[#101114] text-fg">
+            <aside className="flex w-64 shrink-0 flex-col border-r border-edge">
+                <div className="flex items-center gap-2 border-b border-edge p-2">
                     <EnhancedInput
                         className="flex-1"
                         value={query}
                         onChange={setQuery}
                         placeholder="Search motions"
-                        leftIcon={<Search className="h-3.5 w-3.5 text-slate-500" />}
+                        leftIcon={<Search className="h-3.5 w-3.5 text-fg-subtle" />}
                     />
                     <button className={ICON_BUTTON_CLASS} type="button" onClick={openCreateMenu} title="Create motion" aria-label="Create motion">
                         <Plus className="h-4 w-4" />
@@ -384,7 +384,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto py-1">
                     {filteredAssets.length === 0 ? (
-                        <div className="px-3 py-4 text-center text-xs text-gray-500">No motions.</div>
+                        <div className="px-3 py-4 text-center text-xs text-fg-subtle">No motions.</div>
                     ) : filteredAssets.map(asset => (
                         <button
                             key={asset.id}
@@ -396,8 +396,8 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                             onClick={() => setSelectedId(asset.id)}
                             title={asset.name}
                         >
-                            <Spline className="h-4 w-4 shrink-0 text-gray-400" />
-                            <span className="min-w-0 flex-1 truncate text-sm text-gray-100">{asset.name}</span>
+                            <Spline className="h-4 w-4 shrink-0 text-fg-muted" />
+                            <span className="min-w-0 flex-1 truncate text-sm text-fg">{asset.name}</span>
                         </button>
                     ))}
                 </div>
@@ -414,10 +414,10 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                 {selectedAsset ? (
                     <div className="grid h-full min-h-0 grid-cols-[minmax(240px,3fr)_minmax(0,7fr)] gap-4">
                         <div className="min-h-0 overflow-auto">
-                            <section className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
+                            <section className="rounded-lg border border-edge bg-white/[0.025] p-4">
                                 <div className="grid gap-4">
                                     <label className="grid min-w-0 gap-1.5">
-                                        <span className="text-xs font-medium text-slate-500">Name</span>
+                                        <span className="text-xs font-medium text-fg-subtle">Name</span>
                                         <EnhancedInput
                                             className="transition-colors focus-within:ring-0"
                                             value={renameDraft}
@@ -448,7 +448,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                     </SurfaceEditorToolbarButtonGroup>
                                     <div className="grid grid-cols-2 gap-3">
                                         <label className="grid min-w-0 gap-1.5">
-                                            <span className="text-xs font-medium text-slate-500">Repeat</span>
+                                            <span className="text-xs font-medium text-fg-subtle">Repeat</span>
                                             <NumericDraftEnhancedInput
                                                 committedDisplay={selectedAsset.config?.repeat ? String(selectedAsset.config.repeat) : ""}
                                                 draftResetKey={selectedAsset.id}
@@ -462,7 +462,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                             />
                                         </label>
                                         <label className="grid min-w-0 gap-1.5">
-                                            <span className="text-xs font-medium text-slate-500">Repeat delay ms</span>
+                                            <span className="text-xs font-medium text-fg-subtle">Repeat delay ms</span>
                                             <NumericDraftEnhancedInput
                                                 committedDisplay={selectedAsset.config?.repeatDelayMs ? String(selectedAsset.config.repeatDelayMs) : ""}
                                                 draftResetKey={selectedAsset.id}
@@ -484,7 +484,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                     <div className="grid gap-3">
                                         <div className="min-w-0">
                                             <div className="truncate text-xs font-medium text-primary">{descriptor.label}</div>
-                                            <div className="mt-1 truncate text-[11px] text-slate-400">
+                                            <div className="mt-1 truncate text-2xs text-fg-muted">
                                                 {actionAnimationId ? `Current action uses ${actionAnimationId}` : "Current action has no motion asset"}
                                             </div>
                                         </div>
@@ -502,17 +502,17 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                 </section>
                             ) : null}
                         </div>
-                        <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-white/10">
+                        <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-edge">
                             <StoryMotionFittedStage
                                 stageSize={stageSize}
                                 preview={preview}
                                 target={previewTarget}
                                 backgroundUrl={previewBackgroundUrl}
                             />
-                            <div className="flex h-10 shrink-0 items-center gap-2 border-t border-white/10 bg-[#0f1013] px-2">
+                            <div className="flex h-10 shrink-0 items-center gap-2 border-t border-edge bg-[#0f1013] px-2">
                                 <PreviewAssetSlot
                                     buttonRef={targetPickerButtonRef}
-                                    icon={<ImageIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+                                    icon={<ImageIcon className="h-3.5 w-3.5 shrink-0 text-fg-muted" />}
                                     label={imageAssetName(selectedAsset.previewAssetId) ?? "Target"}
                                     hasValue={Boolean(selectedAsset.previewAssetId)}
                                     title="Preview target image (editor only)"
@@ -521,21 +521,21 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                 />
                                 <PreviewAssetSlot
                                     buttonRef={backgroundPickerButtonRef}
-                                    icon={<Wallpaper className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+                                    icon={<Wallpaper className="h-3.5 w-3.5 shrink-0 text-fg-muted" />}
                                     label={imageAssetName(selectedAsset.previewBackgroundAssetId) ?? "Background"}
                                     hasValue={Boolean(selectedAsset.previewBackgroundAssetId)}
                                     title="Preview background image (editor only)"
                                     onOpen={() => setAssetPickerFor("background")}
                                     onClear={() => setPreviewAsset("previewBackgroundAssetId", undefined)}
                                 />
-                                <span className="ml-auto shrink-0 text-[11px] tabular-nums text-slate-500">
+                                <span className="ml-auto shrink-0 text-2xs tabular-nums text-fg-subtle">
                                     {formatStoryMotionTime(previewDurationMs)}
                                 </span>
                             </div>
                         </section>
                     </div>
                 ) : (
-                    <div className="flex h-full items-center justify-center text-sm text-slate-500">
+                    <div className="flex h-full items-center justify-center text-sm text-fg-subtle">
                         Select or create a story motion.
                     </div>
                 )}
@@ -642,7 +642,7 @@ function StoryMotionFittedStage(props: {
     }, [props.stageSize.height, props.stageSize.width]);
 
     return (
-        <div ref={wrapRef} className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[#0f1115]">
+        <div ref={wrapRef} className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-surface">
             {scale > 0 ? (
                 <div style={{ width: props.stageSize.width * scale, height: props.stageSize.height * scale }}>
                     <div
@@ -679,11 +679,11 @@ function PreviewAssetSlot(props: {
     onClear: () => void;
 }) {
     return (
-        <div className="flex min-w-0 max-w-56 items-center overflow-hidden rounded border border-white/10 bg-white/[0.03]">
+        <div className="flex min-w-0 max-w-56 items-center overflow-hidden rounded border border-edge bg-fill-subtle">
             <button
                 ref={props.buttonRef}
                 type="button"
-                className={`flex h-7 min-w-0 flex-1 items-center gap-1.5 px-2 text-xs ${props.hasValue ? "text-slate-200" : "text-slate-500"} hover:bg-white/5 hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50`}
+                className={`flex h-7 min-w-0 flex-1 items-center gap-1.5 px-2 text-xs ${props.hasValue ? "text-fg" : "text-fg-subtle"} hover:bg-fill-subtle hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50`}
                 onClick={props.onOpen}
                 title={props.title}
             >
@@ -693,7 +693,7 @@ function PreviewAssetSlot(props: {
             {props.hasValue ? (
                 <button
                     type="button"
-                    className="grid h-7 w-6 shrink-0 place-items-center border-l border-white/10 text-slate-500 hover:bg-red-500/10 hover:text-red-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400/50"
+                    className="grid h-7 w-6 shrink-0 place-items-center border-l border-edge text-fg-subtle hover:bg-red-500/10 hover:text-red-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400/50"
                     onClick={props.onClear}
                     title="Clear"
                     aria-label={`Clear ${props.title}`}

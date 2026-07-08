@@ -4,6 +4,7 @@ import { isMacPlatform } from "@/lib/app/platform";
 import { Minus, Square, X } from "lucide-react";
 import { ReactNode } from "react";
 import { WindowControlPolicy, type WindowControlAbility } from "@shared/types/window";
+import { cn } from "../../utils/cn";
 
 const MACOS_TRAFFIC_LIGHT_SAFE_AREA = 90;
 const TITLEBAR_EDGE_GAP = 5;
@@ -46,7 +47,7 @@ export function TitleBar({
         : undefined;
 
     return (
-        <div className={`titlebar-drag relative z-[20000] flex h-10 min-h-10 shrink-0 items-center bg-[#0b0d12] border-b border-white/10 ${className}`}>
+        <div className={cn("titlebar-drag relative z-[20000] flex h-10 min-h-10 shrink-0 items-center bg-surface-sunken border-b border-edge", className)}>
             {/* Left side - App Icon and Action Bar */}
             <div className="no-drag flex h-full min-w-0 items-center" style={leftSafeAreaStyle}>
                 {!usesInlineMacControls && iconSrc && (
@@ -71,7 +72,7 @@ export function TitleBar({
                 style={titleSafeAreaStyle}
             >
                 {title && (
-                    <span className="text-sm text-gray-300 truncate">
+                    <span className="text-sm text-fg-muted truncate">
                         {title}
                     </span>
                 )}
@@ -113,7 +114,7 @@ function CustomWindowControls({ initialAbility }: CustomWindowControlsProps) {
             {ability.minimizable && (
                 <button
                     onClick={minimize}
-                    className="h-10 w-10 grid place-items-center text-gray-300 hover:bg-white/10 rounded-sm transition-colors cursor-default"
+                    className="h-10 w-10 grid place-items-center text-fg-muted hover:bg-fill rounded-sm transition-colors cursor-default"
                     aria-label="Minimize"
                     title="Minimize"
                 >
@@ -123,7 +124,7 @@ function CustomWindowControls({ initialAbility }: CustomWindowControlsProps) {
             {ability.maximizable && (
                 <button
                     onClick={toggleMaximize}
-                    className="h-10 w-10 grid place-items-center text-gray-300 hover:bg-white/10 rounded-sm transition-colors cursor-default"
+                    className="h-10 w-10 grid place-items-center text-fg-muted hover:bg-fill rounded-sm transition-colors cursor-default"
                     aria-label={isMaximized ? "Restore" : "Maximize"}
                     title={isMaximized ? "Restore" : "Maximize"}
                 >
@@ -133,7 +134,7 @@ function CustomWindowControls({ initialAbility }: CustomWindowControlsProps) {
             {ability.closable && (
                 <button
                     onClick={close}
-                    className="h-10 w-10 grid place-items-center text-gray-300 hover:bg-red-500/80 hover:text-white rounded-sm transition-colors cursor-default"
+                    className="h-10 w-10 grid place-items-center text-fg-muted hover:bg-danger/80 hover:text-white rounded-sm transition-colors cursor-default"
                     aria-label="Close"
                     title="Close"
                 >

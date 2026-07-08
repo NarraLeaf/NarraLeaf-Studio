@@ -109,7 +109,7 @@ export function createFrameLayoutSizeField(
                             min={0}
                             precision={2}
                             unit="%"
-                            leftIcon={<Maximize2 className="w-4 h-4 text-gray-400" />}
+                            leftIcon={<Maximize2 className="w-4 h-4 text-fg-muted" />}
                             className="w-full min-w-0"
                             disabled={disabled}
                             placeholder="Select Page"

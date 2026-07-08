@@ -129,9 +129,9 @@ function DetailField({
     return (
         <label className="grid gap-1.5">
             <div className="flex items-center gap-1.5">
-                <span className="text-xs font-medium text-slate-500">{label}</span>
-                {required ? <span className="text-[11px] text-slate-600">Required</span> : null}
-                {saving ? <Loader2 className="h-3 w-3 animate-spin text-slate-500" /> : null}
+                <span className="text-xs font-medium text-fg-subtle">{label}</span>
+                {required ? <span className="text-2xs text-fg-subtle">Required</span> : null}
+                {saving ? <Loader2 className="h-3 w-3 animate-spin text-fg-subtle" /> : null}
             </div>
             {multiline ? (
                 <TextArea
@@ -174,12 +174,12 @@ function ReadOnlyField({
 }) {
     return (
         <div className="grid gap-1.5">
-            <span className="text-xs font-medium text-slate-500">{label}</span>
-            <div className="flex min-w-0 items-center gap-2 rounded-md border border-white/10 bg-white/[0.02] px-2.5 py-1.5">
-                <Lock className="h-3.5 w-3.5 shrink-0 text-slate-600" />
-                <span className="min-w-0 truncate text-sm text-slate-300">{value || "—"}</span>
+            <span className="text-xs font-medium text-fg-subtle">{label}</span>
+            <div className="flex min-w-0 items-center gap-2 rounded-md border border-edge bg-fill-subtle px-2.5 py-1.5">
+                <Lock className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
+                <span className="min-w-0 truncate text-sm text-fg-muted">{value || "—"}</span>
             </div>
-            {helper ? <span className="text-[11px] text-slate-600">{helper}</span> : null}
+            {helper ? <span className="text-2xs text-fg-subtle">{helper}</span> : null}
         </div>
     );
 }

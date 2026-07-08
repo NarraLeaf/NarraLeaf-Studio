@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
+import { cn } from "../../utils/cn";
 
 // Accordion context for managing state
 interface AccordionContextValue {
@@ -168,7 +169,7 @@ export function Accordion({
                 disableAnimation,
             }}
         >
-            <div ref={containerRef} data-accordion-root="" className={`${className}`}>
+            <div ref={containerRef} data-accordion-root="" className={cn(className)}>
                 {children}
             </div>
         </AccordionContext.Provider>
@@ -333,33 +334,41 @@ export function AccordionItem({
     return (
         <AccordionNestedContext.Provider value={{ notifyNestedToggle }}>
             <div
-                className={`border-b border-white/10 ${className}`}
+                className={cn("border-b border-edge", className)}
                 data-accordion-item={id}
             >
                 {/* Header */}
-                <div className={`w-full flex items-center group transition-colors duration-200 ${disabled ? '' : 'hover:bg-white/10'} ${isFocused && !disabled && focusable ? 'bg-primary/20' : ''} ${headerClassName}`}>
+                <div className={cn(
+                    "w-full flex items-center group transition-colors duration-200",
+                    !disabled && "hover:bg-fill",
+                    isFocused && !disabled && focusable && "bg-primary/20",
+                    headerClassName,
+                )}>
                     <button
                         onClick={handleClick}
                         onMouseEnter={handleMouseEnter}
                         disabled={disabled}
-                        className={`
-                        flex-1 flex items-center gap-2 pl-3 py-2 text-left
-                        transition-colors duration-200
-                        ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-default'}
-                    `}
+                        className={cn(
+                            "flex-1 flex items-center gap-2 pl-3 py-2 text-left",
+                            "transition-colors duration-200",
+                            disabled ? "opacity-50 cursor-not-allowed" : "cursor-default",
+                        )}
                         style={{ paddingLeft: `${12 + indentation}px` }}
                     >
                         {/* Expand/collapse icon */}
                         <ChevronRight
-                            className={`w-4 h-4 flex-shrink-0 text-gray-400 ${disableAnimation ? '' : 'transition-transform duration-200'} ${isOpen ? 'transform rotate-90' : ''
-                                }`}
+                            className={cn(
+                                "w-4 h-4 flex-shrink-0 text-fg-muted",
+                                !disableAnimation && "transition-transform duration-200",
+                                isOpen && "transform rotate-90",
+                            )}
                         />
 
                         {/* Custom icon (optional) */}
                         {icon && <span className="w-4 h-4 flex-shrink-0">{icon}</span>}
 
                         {/* Title */}
-                        <span className="flex-1 text-sm text-gray-300">{title}</span>
+                        <span className="flex-1 text-sm text-fg-muted">{title}</span>
                     </button>
 
                     {/* Actions */}

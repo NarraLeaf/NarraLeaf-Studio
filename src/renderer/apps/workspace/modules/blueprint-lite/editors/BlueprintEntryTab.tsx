@@ -399,7 +399,7 @@ function ElementLiteralSurfacePreview({
 
     if (!rendered) {
         return (
-            <div className="flex h-[72px] w-full items-center justify-center rounded-sm bg-[#0d1117] text-[10px] text-gray-500">
+            <div className="flex h-[72px] w-full items-center justify-center rounded-sm bg-[#0d1117] text-2xs text-fg-subtle">
                 Preview unavailable
             </div>
         );
@@ -408,7 +408,7 @@ function ElementLiteralSurfacePreview({
     return (
         <div className="relative flex h-[72px] w-full items-center justify-center overflow-hidden rounded-sm bg-[#0d1117]">
             <div
-                className="relative overflow-hidden rounded-[3px] border border-white/10 shadow-sm"
+                className="relative overflow-hidden rounded-[3px] border border-edge shadow-sm"
                 style={{
                     width: frameWidth,
                     height: frameHeight,
@@ -445,7 +445,7 @@ export function BlueprintEntryTab(props: EditorComponentProps<BlueprintEntryTabP
 
     if (!isInitialized || !context || !props.payload?.blueprintId) {
         return (
-            <div className="flex h-full items-center justify-center p-6 text-sm text-gray-400">
+            <div className="flex h-full items-center justify-center p-6 text-sm text-fg-muted">
                 Blueprint tab is invalid.
             </div>
         );
@@ -468,7 +468,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
 
     if (!isInitialized || !context || !payload?.blueprintId) {
         return (
-            <div className="flex h-full items-center justify-center p-6 text-sm text-gray-400">
+            <div className="flex h-full items-center justify-center p-6 text-sm text-fg-muted">
                 Blueprint tab is invalid.
             </div>
         );
@@ -1551,7 +1551,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         >
                             <span className="text-sm font-semibold text-white">TypeScript</span>
                             <BlueprintFrontendBadge kind="typescript" />
-                            <span className="truncate font-mono text-[11px] text-gray-400">{bp.name}</span>
+                            <span className="truncate font-mono text-2xs text-fg-muted">{bp.name}</span>
                         </div>
                     }
                     memberTree={
@@ -1573,7 +1573,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const header = (
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5" title={contextTitle}>
             <span className="text-sm font-semibold text-white">Blueprint</span>
-            <span className="truncate font-mono text-[11px] text-gray-400">{bp.name}</span>
+            <span className="truncate font-mono text-2xs text-fg-muted">{bp.name}</span>
         </div>
     );
 
@@ -1624,7 +1624,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 </button>
             </div>
         ) : (
-            <div className="flex h-full min-h-0 items-center justify-center text-xs text-gray-500">
+            <div className="flex h-full min-h-0 items-center justify-center text-xs text-fg-subtle">
                 Select a layer on the left.
             </div>
         );

@@ -165,10 +165,10 @@ export function AssetsIconView({
             }}
         >
             {activeGroup && !compactToolbar && (
-                <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 bg-[#0f1115] border-b border-white/10">
+                <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 bg-surface border-b border-edge">
                     <button
                         onClick={handleBack}
-                        className="p-1 rounded hover:bg-white/10"
+                        className="p-1 rounded hover:bg-fill"
                         title="Back to parent group"
                     >
                         <ChevronLeft className="w-4 h-4" />
@@ -187,7 +187,7 @@ export function AssetsIconView({
                     return (
                         <section
                             key={type}
-                            className={`border rounded-lg p-3 bg-white/5 ${dropTargetId === "root:" + type ? "border-primary" : "border-transparent"}`}
+                            className={`border rounded-lg p-3 bg-fill-subtle ${dropTargetId === "root:" + type ? "border-primary" : "border-transparent"}`}
                             onDrop={(e) => handleRootDrop(e, type, activeGroup?.group ?? undefined)}
                             onDragOver={(e) => {
                                 e.preventDefault();
@@ -203,15 +203,15 @@ export function AssetsIconView({
                         >
                             <header className="flex items-center justify-between gap-3">
                                 <div className="flex items-center gap-2">
-                                    <TypeIcon className="w-5 h-5 text-gray-200" />
+                                    <TypeIcon className="w-5 h-5 text-fg" />
                                     <div>
                                         <p className="text-sm font-medium">{ASSET_TYPE_LABELS[type]}</p>
-                                        <p className="text-xs text-gray-500">{typeAssets.length} assets</p>
+                                        <p className="text-xs text-fg-subtle">{typeAssets.length} assets</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1">
                                     {actionLoading ? (
-                                        <span className="text-xs text-gray-400">Updating...</span>
+                                        <span className="text-xs text-fg-muted">Updating...</span>
                                     ) : (
                                         <>
                                             <button
@@ -219,7 +219,7 @@ export function AssetsIconView({
                                                     e.stopPropagation();
                                                     handleImport(type);
                                                 }}
-                                                className="p-1 rounded hover:bg-white/10"
+                                                className="p-1 rounded hover:bg-fill"
                                                 title="Import"
                                             >
                                                 <Upload className="w-4 h-4" />
@@ -229,7 +229,7 @@ export function AssetsIconView({
                                                     e.stopPropagation();
                                                     handleImportRemote(type);
                                                 }}
-                                                className="p-1 rounded hover:bg-white/10"
+                                                className="p-1 rounded hover:bg-fill"
                                                 title="Import Remote"
                                             >
                                                 <Link className="w-4 h-4" />
@@ -239,7 +239,7 @@ export function AssetsIconView({
                                                     e.stopPropagation();
                                                     handleCreateGroup(type);
                                                 }}
-                                                className="p-1 rounded hover:bg-white/10"
+                                                className="p-1 rounded hover:bg-fill"
                                                 title="New Group"
                                             >
                                                 <FolderPlus className="w-4 h-4" />
@@ -283,7 +283,7 @@ export function AssetsIconView({
                                     ))}
                                 </div>
                             ) : (
-                                <div className="mt-4 text-center text-xs text-gray-500">
+                                <div className="mt-4 text-center text-xs text-fg-subtle">
                                     No {ASSET_TYPE_LABELS[type].toLowerCase()} yet.
                                 </div>
                             )}
@@ -326,7 +326,7 @@ function GroupIconTile({
     return (
         <div
             draggable
-            className={`nl-asset-drag-source border rounded-lg p-3 bg-white/5 flex flex-col gap-2 cursor-pointer hover:border-white/30 ${
+            className={`nl-asset-drag-source border rounded-lg p-3 bg-fill-subtle flex flex-col gap-2 cursor-pointer hover:border-edge-strong ${
                 isSelected ? "border-primary/80 bg-primary/10" : "border-transparent"
             } ${isDragging ? "opacity-50" : ""} ${isCut ? "opacity-40" : ""} ${isDragOverLocal ? "ring-1 ring-primary/50 bg-primary/10" : ""}`}
             onClick={(e) => {
@@ -370,7 +370,7 @@ function GroupIconTile({
                 <FolderPlus className="w-4 h-4 text-primary" />
                 <span className="truncate">{group.name}</span>
             </div>
-            <span className="text-xs text-gray-500">{childCount} items</span>
+            <span className="text-xs text-fg-subtle">{childCount} items</span>
         </div>
     );
 }
@@ -405,7 +405,7 @@ function AssetIconTile({
     return (
         <div
             draggable
-            className={`nl-asset-drag-source border rounded-lg p-3 bg-white/5 flex items-start gap-3 cursor-pointer hover:border-white/30 ${
+            className={`nl-asset-drag-source border rounded-lg p-3 bg-fill-subtle flex items-start gap-3 cursor-pointer hover:border-edge-strong ${
                 isSelected ? "border-primary/80 bg-primary/10" : "border-transparent"
             } ${isDragging ? "opacity-50" : ""} ${
                 clipboard?.type === "cut" && clipboard.assets.some((a) => a.id === asset.id) ? "opacity-40" : ""
@@ -423,15 +423,15 @@ function AssetIconTile({
                 {thumbnailUrl ? (
                     <img src={thumbnailUrl} alt={asset.name} draggable={false} className="w-full h-full object-cover" />
                 ) : (
-                    <Icon className="w-5 h-5 text-gray-400" />
+                    <Icon className="w-5 h-5 text-fg-muted" />
                 )}
             </div>
             <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{asset.name}</p>
-                <p className="text-xs text-gray-500">{asset.tags.length > 0 ? "+" + asset.tags.length + " tags" : "No tags"}</p>
+                <p className="text-xs text-fg-subtle">{asset.tags.length > 0 ? "+" + asset.tags.length + " tags" : "No tags"}</p>
             </div>
             {clipboard?.type === "cut" && clipboard.assets.some((a) => a.id === asset.id) && (
-                <span className="text-xs text-gray-400">Cut</span>
+                <span className="text-xs text-fg-muted">Cut</span>
             )}
         </div>
     );

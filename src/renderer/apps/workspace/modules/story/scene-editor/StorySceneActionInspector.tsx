@@ -43,8 +43,8 @@ import { DisplayableTargetField } from "./DisplayableTargetField";
 import { StoryLayerField } from "./StoryLayerField";
 import { MotionField } from "../../story-motion";
 
-const FIELD_LABEL_CLASS = "block text-xs font-medium text-gray-400 mb-1";
-const TEXTAREA_CLASS = "w-full resize-none rounded-md border border-white/10 bg-[#1e1f22] px-3 py-2 text-sm text-gray-300 outline-none transition-colors focus:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50";
+const FIELD_LABEL_CLASS = "block text-xs font-medium text-fg-muted mb-1";
+const TEXTAREA_CLASS = "w-full resize-none rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-fg-muted outline-none transition-colors focus:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50";
 const SELECT_CLASS = "[&>button]:h-9 [&>button]:min-h-[34px] [&>button]:py-0";
 
 const VARIABLE_SCOPE_OPTIONS: SelectOption[] = [
@@ -381,7 +381,7 @@ export function ActionInspector(props: {
 
     return (
         <div
-            className="mt-2 max-w-3xl animate-scale-in rounded-xl border border-white/10 bg-[#16191e] p-3 shadow-lg"
+            className="mt-2 max-w-3xl animate-scale-in rounded-xl border border-edge bg-[#16191e] p-3 shadow-lg"
             onClick={event => event.stopPropagation()}
             onMouseDown={event => event.stopPropagation()}
             onKeyDown={event => {
@@ -393,18 +393,18 @@ export function ActionInspector(props: {
         >
             <div className="mb-3 flex items-center gap-2">
                 <span
-                    className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04]"
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle"
                     style={{ boxShadow: `inset 0 0 0 1px ${iconColor}22` }}
                 >
                     <Icon className="h-4 w-4" style={{ color: iconColor }} />
                 </span>
                 <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-slate-100">{label}</div>
-                    <div className="truncate text-xs text-slate-500">{describeBlock(block, props.characters, props.document.scenes[props.sceneId], props.document.scenes)}</div>
+                    <div className="text-sm font-medium text-fg">{label}</div>
+                    <div className="truncate text-xs text-fg-subtle">{describeBlock(block, props.characters, props.document.scenes[props.sceneId], props.document.scenes)}</div>
                 </div>
                 <button
                     type="button"
-                    className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.03] text-slate-400 transition-colors hover:border-white/20 hover:text-slate-200"
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted transition-colors hover:border-edge-strong hover:text-fg"
                     title="Close editor"
                     onClick={props.onClose}
                 >
@@ -441,7 +441,7 @@ function InspectorFields(props: {
         if (payload.action === "narration") {
             return (
                 <div className="grid grid-cols-1 gap-2">
-                    <div className="text-xs text-slate-500">Double-click the row to edit narration text.</div>
+                    <div className="text-xs text-fg-subtle">Double-click the row to edit narration text.</div>
                     <TextIdReadout text={payload.text} />
                 </div>
             );
@@ -527,7 +527,7 @@ function InspectorFields(props: {
                                     onChange={disabledWhen => props.onUpdatePayload({ ...payload, disabledWhen })}
                                 />
                             </div>
-                            <div className="text-[11px] text-slate-500">Leave a condition untouched to always show / enable this option.</div>
+                            <div className="text-2xs text-fg-subtle">Leave a condition untouched to always show / enable this option.</div>
                         </div>
                     </Section>
                 </div>
@@ -587,7 +587,7 @@ function InspectorFields(props: {
             />
         );
     }
-    return <div className="text-sm text-slate-400">No editable fields for this action yet.</div>;
+    return <div className="text-sm text-fg-muted">No editable fields for this action yet.</div>;
 }
 
 function SetVariableEditor(props: {
@@ -906,7 +906,7 @@ function ActionPayloadFields(props: {
     if (payload.action === "nvl") {
         return (
             <div className="grid grid-cols-1 gap-3">
-                <div className="text-xs text-slate-500">Child rows run inside NLR NVL mode. The transform below animates the NVL layer as it enters.</div>
+                <div className="text-xs text-fg-subtle">Child rows run inside NLR NVL mode. The transform below animates the NVL layer as it enters.</div>
                 <TransformPresetEditor
                     value={payload.transition}
                     motionTargetKind="layer"
@@ -1002,7 +1002,7 @@ function CharacterActionEditor(props: {
                     />
                 </Section>
             ) : (
-                <div className="text-xs text-slate-500">Choose a character to pick its appearance.</div>
+                <div className="text-xs text-fg-subtle">Choose a character to pick its appearance.</div>
             )}
             <TransformPresetEditor
                 value={payload.transform}
@@ -1112,15 +1112,15 @@ function AssetField(props: {
                 <button
                     ref={buttonRef}
                     type="button"
-                    className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-white/10 bg-[#1e1f22] px-3 text-left text-sm text-gray-300 hover:border-primary/40"
+                    className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-edge bg-surface-raised px-3 text-left text-sm text-fg-muted hover:border-primary/40"
                     onClick={() => setSelectorOpen(true)}
                 >
-                    <Icon className="h-3.5 w-3.5 shrink-0 text-slate-500" />
-                    <span className={["truncate", selectedAsset ? "" : "italic text-gray-500"].join(" ")}>{label}</span>
+                    <Icon className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
+                    <span className={["truncate", selectedAsset ? "" : "italic text-fg-subtle"].join(" ")}>{label}</span>
                 </button>
                 <button
                     type="button"
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04] text-slate-400 hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
                     disabled={!props.assetId}
                     title="Clear asset"
                     onClick={() => props.onChange(undefined)}
@@ -1193,7 +1193,7 @@ function DisplayableEffectEditor(props: {
                     </>
                 ) : null}
             </FieldGrid>
-            <div className="mt-1.5 text-[11px] text-slate-500">{DISPLAYABLE_EFFECT_HINTS[op] ?? ""}</div>
+            <div className="mt-1.5 text-2xs text-fg-subtle">{DISPLAYABLE_EFFECT_HINTS[op] ?? ""}</div>
         </Section>
     );
 }
@@ -1426,7 +1426,7 @@ function TransitionEditor(props: {
                 ) : null}
             </FieldGrid>
             {kind === "none" ? null : (
-                <div className="mt-1.5 text-[11px] text-slate-500">{TRANSITION_HINTS[realKind] ?? ""}</div>
+                <div className="mt-1.5 text-2xs text-fg-subtle">{TRANSITION_HINTS[realKind] ?? ""}</div>
             )}
         </Section>
     );
@@ -1434,7 +1434,7 @@ function TransitionEditor(props: {
 
 function CheckboxField(props: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
     return (
-        <label className="flex h-full min-h-[34px] items-end gap-2 pb-1 text-sm text-slate-300">
+        <label className="flex h-full min-h-[34px] items-end gap-2 pb-1 text-sm text-fg-muted">
             <input
                 type="checkbox"
                 className="h-4 w-4 accent-primary"
@@ -1579,12 +1579,12 @@ function BackgroundActionEditor(props: {
 
     return (
         <div className="grid grid-cols-1 gap-3">
-            <div className="inline-flex w-fit overflow-hidden rounded-md border border-white/10 bg-[#101216]">
+            <div className="inline-flex w-fit overflow-hidden rounded-md border border-edge bg-[#101216]">
                 <button
                     type="button"
                     className={[
                         "flex h-8 items-center gap-1.5 px-3 text-xs transition-colors",
-                        mode === "image" ? "bg-primary/20 text-primary" : "text-slate-400 hover:bg-white/[0.05] hover:text-slate-100",
+                        mode === "image" ? "bg-primary/20 text-primary" : "text-fg-muted hover:bg-fill-subtle hover:text-fg",
                     ].join(" ")}
                     onClick={selectImageMode}
                 >
@@ -1594,8 +1594,8 @@ function BackgroundActionEditor(props: {
                 <button
                     type="button"
                     className={[
-                        "flex h-8 items-center gap-1.5 border-l border-white/10 px-3 text-xs transition-colors",
-                        mode === "color" ? "bg-primary/20 text-primary" : "text-slate-400 hover:bg-white/[0.05] hover:text-slate-100",
+                        "flex h-8 items-center gap-1.5 border-l border-edge px-3 text-xs transition-colors",
+                        mode === "color" ? "bg-primary/20 text-primary" : "text-fg-muted hover:bg-fill-subtle hover:text-fg",
                     ].join(" ")}
                     onClick={selectColorMode}
                 >
@@ -1609,7 +1609,7 @@ function BackgroundActionEditor(props: {
                     <button
                         ref={imageButtonRef}
                         type="button"
-                        className="group relative aspect-[16/9] min-h-32 overflow-hidden rounded-lg border border-white/10 bg-[#0f1115] text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
+                        className="group relative aspect-[16/9] min-h-32 overflow-hidden rounded-lg border border-edge bg-surface text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
                         onClick={() => setSelectorOpen(true)}
                     >
                         {url ? (
@@ -1620,25 +1620,25 @@ function BackgroundActionEditor(props: {
                                 draggable={false}
                             />
                         ) : (
-                            <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-xs text-slate-500">
-                                <ImageIcon className="h-5 w-5 text-slate-600" />
+                            <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-xs text-fg-subtle">
+                                <ImageIcon className="h-5 w-5 text-fg-subtle" />
                                 <span>{imageLabel}</span>
                             </div>
                         )}
                         {loading ? (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-slate-100">
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-fg">
                                 Loading...
                             </div>
                         ) : null}
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-[10px] tracking-[0.22em] text-white opacity-0 transition-opacity group-hover:opacity-100">
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-2xs tracking-[0.22em] text-white opacity-0 transition-opacity group-hover:opacity-100">
                             Change
                         </div>
                     </button>
                     <div className="flex min-w-0 flex-col gap-2">
                         <div>
                             <div className={FIELD_LABEL_CLASS}>Image</div>
-                            <div className="flex h-9 min-h-[34px] min-w-0 items-center rounded-md border border-white/10 bg-[#1e1f22] px-3 text-sm text-gray-300">
-                                <span className={["truncate", selectedAsset ? "" : "italic text-gray-500"].join(" ")}>
+                            <div className="flex h-9 min-h-[34px] min-w-0 items-center rounded-md border border-edge bg-surface-raised px-3 text-sm text-fg-muted">
+                                <span className={["truncate", selectedAsset ? "" : "italic text-fg-subtle"].join(" ")}>
                                     {imageLabel}
                                 </span>
                             </div>
@@ -1646,14 +1646,14 @@ function BackgroundActionEditor(props: {
                         <div className="flex gap-2">
                             <button
                                 type="button"
-                                className="h-8 rounded-md border border-white/10 bg-white/[0.04] px-3 text-xs text-slate-200 hover:border-primary/40 hover:text-primary"
+                                className="h-8 rounded-md border border-edge bg-fill-subtle px-3 text-xs text-fg hover:border-primary/40 hover:text-primary"
                                 onClick={() => setSelectorOpen(true)}
                             >
                                 {selectedAsset ? "Change" : "Select"}
                             </button>
                             <button
                                 type="button"
-                                className="grid h-8 w-8 place-items-center rounded-md border border-white/10 bg-white/[0.04] text-slate-400 hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                                className="grid h-8 w-8 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
                                 onClick={clearImage}
                                 disabled={!props.payload.assetId}
                                 title="Clear image"
@@ -1662,7 +1662,7 @@ function BackgroundActionEditor(props: {
                             </button>
                         </div>
                         {props.payload.assetId && error ? (
-                            <div className="text-[11px] leading-snug text-amber-400/90">
+                            <div className="text-2xs leading-snug text-amber-400/90">
                                 Image asset could not be resolved: {error}
                             </div>
                         ) : null}
@@ -1703,7 +1703,7 @@ function BackgroundActionEditor(props: {
 
 function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySceneId; payload: StoryControlPayload; onChange: (payload: StoryBlock["payload"]) => void }) {
     if (props.payload.control === "condition") {
-        return <div className="text-sm text-slate-400">Condition container. Add condition branches as children.</div>;
+        return <div className="text-sm text-fg-muted">Condition container. Add condition branches as children.</div>;
     }
     if (props.payload.control !== "conditionBranch") {
         const groupPayload = props.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
@@ -1753,7 +1753,7 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
                     onChange={condition => props.onChange({ ...branchPayload, condition })}
                 />
             ) : (
-                <div className="text-sm text-slate-400">Else branch runs when previous branches do not match.</div>
+                <div className="text-sm text-fg-muted">Else branch runs when previous branches do not match.</div>
             )}
         </div>
     );
@@ -1801,7 +1801,7 @@ function ConditionRefEditor(props: {
             ) : null}
             <button
                 type="button"
-                className="h-8 w-fit rounded-md border border-white/10 px-2 text-xs text-slate-400 hover:border-red-400/40 hover:text-red-300"
+                className="h-8 w-fit rounded-md border border-edge px-2 text-xs text-fg-muted hover:border-red-400/40 hover:text-red-300"
                 onClick={() => props.onChange(undefined)}
             >
                 Clear condition
@@ -1856,7 +1856,7 @@ function TextIdReadout(props: { text: StoryTextSegment }) {
     return (
         <div>
             <div className={FIELD_LABEL_CLASS}>Text ID</div>
-            <div className="flex h-9 min-h-[34px] min-w-0 items-center rounded-md border border-white/10 bg-[#1e1f22] px-3 text-xs text-gray-400">
+            <div className="flex h-9 min-h-[34px] min-w-0 items-center rounded-md border border-edge bg-surface-raised px-3 text-xs text-fg-muted">
                 <span className="truncate font-mono">{props.text.textId}</span>
             </div>
         </div>
@@ -1935,11 +1935,11 @@ function LabeledTextarea(props: { label: string; value: string; onChange: (value
  */
 function Section(props: { title?: string; right?: ReactNode; className?: string; children: ReactNode }) {
     return (
-        <section className={["rounded-lg border border-white/10 bg-white/[0.02] p-2.5", props.className ?? ""].join(" ")}>
+        <section className={["rounded-lg border border-edge bg-fill-subtle p-2.5", props.className ?? ""].join(" ")}>
             {props.title || props.right ? (
                 <div className="mb-2 flex items-center justify-between gap-2">
                     {props.title ? (
-                        <div className="min-w-0 truncate text-[11px] font-medium tracking-wide text-slate-400">{props.title}</div>
+                        <div className="min-w-0 truncate text-2xs font-medium tracking-wide text-fg-muted">{props.title}</div>
                     ) : <span />}
                     {props.right ? <div className="shrink-0">{props.right}</div> : null}
                 </div>
@@ -1953,7 +1953,7 @@ function Section(props: { title?: string; right?: ReactNode; className?: string;
 function Disclosure(props: { title: string; children: ReactNode }) {
     return (
         <details className="group">
-            <summary className="flex cursor-pointer select-none list-none items-center gap-1 text-[11px] font-medium tracking-wide text-slate-500 transition-colors hover:text-slate-300 [&::-webkit-details-marker]:hidden">
+            <summary className="flex cursor-pointer select-none list-none items-center gap-1 text-2xs font-medium tracking-wide text-fg-subtle transition-colors hover:text-fg-muted [&::-webkit-details-marker]:hidden">
                 <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
                 {props.title}
             </summary>
@@ -1976,15 +1976,15 @@ function FieldGrid(props: { cols?: 2 | 3 | 4; className?: string; children: Reac
 /** Compact inline segmented toggle (e.g. Preset / Motion). */
 function SegToggle<T extends string>(props: { value: T; options: { value: T; label: string }[]; onChange: (value: T) => void }) {
     return (
-        <div className="inline-flex overflow-hidden rounded-md border border-white/10 bg-[#101216]">
+        <div className="inline-flex overflow-hidden rounded-md border border-edge bg-[#101216]">
             {props.options.map((option, index) => (
                 <button
                     key={option.value}
                     type="button"
                     className={[
                         "h-7 px-2.5 text-xs transition-colors",
-                        index > 0 ? "border-l border-white/10" : "",
-                        props.value === option.value ? "bg-primary/20 text-primary" : "text-slate-400 hover:bg-white/[0.05] hover:text-slate-100",
+                        index > 0 ? "border-l border-edge" : "",
+                        props.value === option.value ? "bg-primary/20 text-primary" : "text-fg-muted hover:bg-fill-subtle hover:text-fg",
                     ].join(" ")}
                     onClick={() => props.onChange(option.value)}
                 >

@@ -450,7 +450,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     }, [showHeader]);
 
     if (loading && !hasLoaded && Object.values(assets).every(arr => arr.length === 0)) {
-        return <div className="p-4 flex items-center gap-2 text-gray-400"><RefreshCw className="w-4 h-4 animate-spin" /> <span>Loading assets...</span></div>;
+        return <div className="p-4 flex items-center gap-2 text-fg-muted"><RefreshCw className="w-4 h-4 animate-spin" /> <span>Loading assets...</span></div>;
     }
 
     if (error) {
@@ -478,14 +478,14 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                 onClick={setFocusToPanel}
             >
                 {showHeader ? (
-                    <div className="px-3 py-2 border-b border-white/10 space-y-2">
+                    <div className="px-3 py-2 border-b border-edge space-y-2">
                         <SearchBox ref={searchBoxRef} value={searchQuery} onChange={setSearchQuery} className="w-full" placeholder="Search assets..." />
                         <div className="flex items-center justify-between">
                             <FilterSystem filters={filterConfigs} activeFilters={activeFilters} onFiltersChange={setActiveFilters} onFilterOpen={handleFilterOpen} />
                             <div className="flex items-center gap-2">
-                                <span className="text-xs text-gray-400">{Object.values(filteredAssets).flat().length} items</span>
+                                <span className="text-xs text-fg-muted">{Object.values(filteredAssets).flat().length} items</span>
                                 <ViewModeToggle mode={viewMode} onChange={setViewMode} />
-                                <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-white/10"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
+                                <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
                             </div>
                         </div>
                     </div>
@@ -493,10 +493,10 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     <div
                         className={
                             isSearchActive
-                                ? "px-3 py-2 border-b border-white/10 flex items-center gap-2 overflow-hidden"
+                                ? "px-3 py-2 border-b border-edge flex items-center gap-2 overflow-hidden"
                                 : assetsIconToolbarCenter
-                                  ? "px-3 py-2 border-b border-white/10 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 overflow-hidden"
-                                  : "px-3 py-2 border-b border-white/10 flex items-center justify-between gap-2 overflow-hidden"
+                                  ? "px-3 py-2 border-b border-edge grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 overflow-hidden"
+                                  : "px-3 py-2 border-b border-edge flex items-center justify-between gap-2 overflow-hidden"
                         }
                     >
                         <div
@@ -523,7 +523,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                             setSearchQuery("");
                                             setSearchResultsVisible(false);
                                         }}
-                                        className="h-9 w-9 flex items-center justify-center rounded-md border border-white/20 bg-white/5 text-gray-400 hover:bg-white/10"
+                                        className="h-9 w-9 flex items-center justify-center rounded-md border border-edge-strong bg-fill-subtle text-fg-muted hover:bg-fill"
                                         title="Close search"
                                     >
                                         <X className="w-4 h-4" />
@@ -548,7 +548,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                         className={`h-9 w-9 flex items-center justify-center rounded-md border transition-colors ${
                                             searchQuery
                                                 ? "border-primary bg-primary/10 text-primary"
-                                                : "border-white/20 bg-white/5 text-gray-400 hover:bg-white/10"
+                                                : "border-edge-strong bg-fill-subtle text-fg-muted hover:bg-fill"
                                         }`}
                                         title="Search assets"
                                     >
@@ -562,7 +562,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                 <button
                                     type="button"
                                     onClick={assetsIconToolbarCenter.onBack}
-                                    className="p-1 rounded hover:bg-white/10 shrink-0"
+                                    className="p-1 rounded hover:bg-fill shrink-0"
                                     title="Back to parent group"
                                 >
                                     <ChevronLeft className="w-4 h-4" />
@@ -578,9 +578,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                         : "flex items-center gap-2 shrink-0"
                                 }
                             >
-                                <span className="text-[10px] text-gray-500 hidden sm:inline">{Object.values(filteredAssets).flat().length} items</span>
+                                <span className="text-2xs text-fg-subtle hidden sm:inline">{Object.values(filteredAssets).flat().length} items</span>
                                 <ViewModeToggle mode={viewMode} onChange={setViewMode} />
-                                <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-white/10"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
+                                <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
                             </div>
                         )}
                     </div>
@@ -633,7 +633,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
 
 function ViewModeToggle({ mode, onChange }: { mode: AssetViewMode; onChange: (mode: AssetViewMode) => void }) {
     return (
-        <div className="inline-flex items-center gap-1 rounded-md border border-white/20 bg-white/5 p-1">
+        <div className="inline-flex items-center gap-1 rounded-md border border-edge-strong bg-fill-subtle p-1">
             {VIEW_MODE_OPTIONS.map(({ id, icon: Icon, label }) => (
                 <button
                     key={id}
@@ -641,7 +641,7 @@ function ViewModeToggle({ mode, onChange }: { mode: AssetViewMode; onChange: (mo
                     title={label}
                     aria-pressed={mode === id}
                     onClick={() => onChange(id)}
-                    className={`p-1 rounded ${mode === id ? "bg-primary/80 text-white" : "text-gray-400 hover:bg-white/10"}`}
+                    className={`p-1 rounded ${mode === id ? "bg-primary/80 text-white" : "text-fg-muted hover:bg-fill"}`}
                 >
                     <Icon className="w-4 h-4" />
                 </button>

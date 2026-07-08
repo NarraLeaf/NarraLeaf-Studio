@@ -16,8 +16,8 @@ export function ReviewStep({ projectData }: ReviewStepProps) {
         <div className="p-6">
             <div className="space-y-6">
                 <div className="space-y-2">
-                    <h2 className="text-lg font-semibold text-gray-200">Review Project</h2>
-                    <p className="text-sm text-gray-400">
+                    <h2 className="text-lg font-semibold text-fg">Review Project</h2>
+                    <p className="text-sm text-fg-muted">
                         Review your project settings before creating it.
                     </p>
                 </div>
@@ -34,18 +34,18 @@ export function ReviewStep({ projectData }: ReviewStepProps) {
                         <CardContent className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <label className="text-sm font-medium text-gray-400">Name</label>
-                                    <p className="text-sm text-gray-200">{projectData.name || "Not specified"}</p>
+                                    <label className="text-sm font-medium text-fg-muted">Name</label>
+                                    <p className="text-sm text-fg">{projectData.name || "Not specified"}</p>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-sm font-medium text-gray-400">Author</label>
-                                    <p className="text-sm text-gray-200">{projectData.author || "Not specified"}</p>
+                                    <label className="text-sm font-medium text-fg-muted">Author</label>
+                                    <p className="text-sm text-fg">{projectData.author || "Not specified"}</p>
                                 </div>
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-sm font-medium text-gray-400">License</label>
-                                <p className="text-sm text-gray-200">
+                                <label className="text-sm font-medium text-fg-muted">License</label>
+                                <p className="text-sm text-fg">
                                     {projectData.license === "Other"
                                         ? (projectData.licenseCustom || "Custom")
                                         : (projectData.license || "Not specified")}
@@ -54,8 +54,8 @@ export function ReviewStep({ projectData }: ReviewStepProps) {
 
                             {projectData.description && (
                                 <div className="space-y-1">
-                                    <label className="text-sm font-medium text-gray-400">Description</label>
-                                    <p className="text-sm text-gray-200">{projectData.description}</p>
+                                    <label className="text-sm font-medium text-fg-muted">Description</label>
+                                    <p className="text-sm text-fg">{projectData.description}</p>
                                 </div>
                             )}
                         </CardContent>
@@ -72,17 +72,17 @@ export function ReviewStep({ projectData }: ReviewStepProps) {
                             </CardHeader>
                             <CardContent>
                                 <div className="flex items-start gap-3">
-                                    <div className="text-2xl text-gray-400">
+                                    <div className="text-2xl text-fg-muted">
                                         <selectedTemplate.icon className="w-6 h-6" />
                                     </div>
                                     <div className="flex-1">
-                                        <h3 className="text-sm font-medium text-gray-200">
+                                        <h3 className="text-sm font-medium text-fg">
                                             {selectedTemplate.name}
                                         </h3>
-                                        <p className="text-sm text-gray-400 mt-1">
+                                        <p className="text-sm text-fg-muted mt-1">
                                             {selectedTemplate.description}
                                         </p>
-                                        <span className="text-xs text-gray-500 bg-white/10 px-2 py-1 rounded mt-2 inline-block">
+                                        <span className="text-xs text-fg-subtle bg-fill px-2 py-1 rounded mt-2 inline-block">
                                             {selectedTemplate.category}
                                         </span>
                                     </div>
@@ -102,24 +102,24 @@ export function ReviewStep({ projectData }: ReviewStepProps) {
                         <CardContent className="space-y-3">
                             <div className="grid grid-cols-2 gap-4 text-sm">
                                 <div className="space-y-1">
-                                    <label className="font-medium text-gray-400">Location</label>
-                                    <p className="text-gray-200">{projectData.location}</p>
+                                    <label className="font-medium text-fg-muted">Location</label>
+                                    <p className="text-fg">{projectData.location}</p>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="font-medium text-gray-400">Version Control</label>
-                                    <p className="text-gray-200">
+                                    <label className="font-medium text-fg-muted">Version Control</label>
+                                    <p className="text-fg">
                                         {projectData.versionControl === "git" ? "Git" :
                                          projectData.versionControl === "none" ? "None" :
                                          "Git"}
                                     </p>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="font-medium text-gray-400">Resolution</label>
-                                    <p className="text-gray-200">{projectData.resolution || "Not specified"}</p>
+                                    <label className="font-medium text-fg-muted">Resolution</label>
+                                    <p className="text-fg">{projectData.resolution || "Not specified"}</p>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="font-medium text-gray-400">App ID</label>
-                                    <p className="text-gray-200">{projectData.appId || "Not specified"}</p>
+                                    <label className="font-medium text-fg-muted">App ID</label>
+                                    <p className="text-fg">{projectData.appId || "Not specified"}</p>
                                 </div>
                             </div>
                         </CardContent>
