@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent } from "react";
-import { FileText, Image as ImageIcon, ListPlus, Plus, Trash2, Variable } from "lucide-react";
+import { FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Trash2, Variable } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -33,6 +33,17 @@ import {
     resolveStoryEditorRestoreScrollTop,
 } from "./storyEditorSessionStore";
 import { useStorySceneEditorController } from "./useStorySceneEditorController";
+import { ResizableHandle } from "@/apps/workspace/components/ui/ResizableHandle";
+import { StoryScenePreviewPane } from "./preview/StoryScenePreviewPane";
+import { useStoryScenePreviewController } from "./preview/useStoryScenePreviewController";
+import {
+    getStoryScenePreviewPaneState,
+    patchStoryScenePreviewPaneState,
+    STORY_PREVIEW_PANE_DEFAULT_WIDTH,
+    STORY_PREVIEW_PANE_MAX_FRACTION,
+    STORY_PREVIEW_PANE_MIN_WIDTH,
+    type StoryScenePreviewPaneState,
+} from "./preview/storyScenePreviewSessionStore";
 
 const SCENE_FIELD_LABEL_CLASS = "mb-1 block text-[11px] font-medium text-slate-500";
 const SCENE_TEXT_FIELD_CLASS = "w-full rounded-md border border-white/10 bg-[#16181d] px-3 py-2 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-600 focus:border-primary/50";
@@ -552,6 +563,56 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         editor.focusRoot();
     }, [active, deepLinkBlockId, rowCount, scrollContainerRef, editor.revealBlock, editor.focusRoot]);
 
+    // Live preview pane: layout state persists globally (one workbench preference, not per-scene).
+    const [previewPane, setPreviewPane] = useState<StoryScenePreviewPaneState | null>(null);
+    useEffect(() => {
+        if (panelStateService && previewPane === null) {
+            setPreviewPane(getStoryScenePreviewPaneState(panelStateService));
+        }
+    }, [panelStateService, previewPane]);
+    const previewOpen = previewPane?.open === true;
+    const previewWidth = previewPane?.width ?? STORY_PREVIEW_PANE_DEFAULT_WIDTH;
+    const previewWidthRef = useRef(previewWidth);
+    previewWidthRef.current = previewWidth;
+    const editorBodyRef = useRef<HTMLDivElement | null>(null);
+
+    const togglePreview = useCallback(() => {
+        setPreviewPane(current => {
+            const next = { open: !(current?.open === true), width: current?.width ?? STORY_PREVIEW_PANE_DEFAULT_WIDTH };
+            if (panelStateService) {
+                patchStoryScenePreviewPaneState(panelStateService, { open: next.open });
+            }
+            return next;
+        });
+    }, [panelStateService]);
+
+    // The handle sits on the pane's left edge: dragging right shrinks the pane. Returns the
+    // unconsumed delta so ResizableHandle keeps its anchor aligned with the divider when clamped.
+    const handlePreviewResize = useCallback((delta: number): number => {
+        const width = previewWidthRef.current;
+        const containerWidth = editorBodyRef.current?.clientWidth ?? width * 2;
+        const maxWidth = Math.max(STORY_PREVIEW_PANE_MIN_WIDTH, containerWidth * STORY_PREVIEW_PANE_MAX_FRACTION);
+        const nextWidth = Math.round(Math.min(maxWidth, Math.max(STORY_PREVIEW_PANE_MIN_WIDTH, width - delta)));
+        if (nextWidth !== width) {
+            previewWidthRef.current = nextWidth;
+            setPreviewPane(current => ({ open: current?.open === true, width: nextWidth }));
+            if (panelStateService) {
+                patchStoryScenePreviewPaneState(panelStateService, { width: nextWidth });
+            }
+        }
+        return (width - nextWidth) - delta;
+    }, [panelStateService]);
+
+    const preview = useStoryScenePreviewController({
+        context: editor.context,
+        document: editor.document,
+        scene: editor.scene,
+        sceneId: payload?.sceneId ?? null,
+        activeBlockId: editor.activeBlockId,
+        active,
+        open: previewOpen,
+    });
+
     if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
         return (
             <div className="flex h-full items-center justify-center p-6 text-sm text-gray-400">
@@ -617,6 +678,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 </div>
             </div>
 
+            <div ref={editorBodyRef} className="flex min-h-0 flex-1 flex-row">
+            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
             <div
                 ref={editor.scrollContainerRef}
                 className="min-h-0 flex-1 overflow-auto py-2"
@@ -702,7 +765,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 ) : isInsertingAfterLastRow ? null : (
                     <button
                         type="button"
-                        className="ml-[72px] mt-1 flex min-h-[32px] w-[calc(100%-96px)] items-center gap-2 px-2 text-left text-sm italic text-slate-500 hover:bg-white/[0.04] hover:text-slate-300"
+                        className="mt-1 flex min-h-[32px] w-full items-center gap-2 pl-[64px] pr-3 text-left text-sm italic text-slate-500 hover:bg-white/[0.04] hover:text-slate-300"
                         onClick={() => editor.startInsertAfter(null, true)}
                     >
                         <Plus className="h-4 w-4 text-primary" />
@@ -714,6 +777,29 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     a percentage of the (definite, flex-sized) scroll container, so no measurement is
                     needed and scroll-position restore keeps working. */}
                 <div aria-hidden style={{ height: "calc(100% - 40px)" }} />
+            </div>
+            <button
+                type="button"
+                className={`absolute bottom-3 right-3 z-[5] flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs shadow-lg transition-colors ${previewOpen ? "bg-primary/20 text-primary" : "bg-[#0b0d12] text-slate-300 hover:bg-white/10"}`}
+                onClick={togglePreview}
+                title={previewOpen ? "Close live preview" : "Open live preview"}
+            >
+                <MonitorPlay className="h-4 w-4" />
+                Preview
+            </button>
+            </div>
+            {previewOpen ? (
+                <>
+                    <ResizableHandle
+                        direction="horizontal"
+                        onResize={handlePreviewResize}
+                        className="w-1 shrink-0 border-r-2 border-transparent bg-white/5"
+                    />
+                    <div style={{ width: previewWidth }} className="min-h-0 shrink-0 border-l border-white/10">
+                        <StoryScenePreviewPane controller={preview} onClose={togglePreview} />
+                    </div>
+                </>
+            ) : null}
             </div>
         </div>
         </StoryEditorTextStyleProvider>

@@ -158,6 +158,13 @@ function runtimeAliasPlugin() {
         jsx: 'automatic',
         target: ['chrome114'],
         tsconfig: runtimeTsconfig,
+        // Keep react/motion resolution pinned to this repo when narraleaf-react is a linked
+        // sibling checkout (see build-apps.js).
+        alias: {
+            'react': path.join(rootDir, 'node_modules', 'react'),
+            'react-dom': path.join(rootDir, 'node_modules', 'react-dom'),
+            'motion': path.join(rootDir, 'node_modules', 'motion'),
+        },
         loader: {
             '.css': 'css',
             '.ttf': 'file',

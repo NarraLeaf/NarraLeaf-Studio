@@ -10,9 +10,21 @@ import {
 import { AppSettingDefinition, AppSettingCategoryKey, SettingCategory, SettingDescriptor } from "@/lib/settings/models";
 import { getInterface } from "@/lib/app/bridge";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
+import { useTranslation } from "@/lib/i18n";
 
 export function SettingsApp() {
+    const { t } = useTranslation();
     const categories = useMemo<SettingCategory[]>(() => getAppSettingCategories(), []);
+
+    // Resolve category chrome to the active language (falls back to static label).
+    const localizedCategories = useMemo<SettingCategory[]>(
+        () => categories.map((category) => ({
+            ...category,
+            label: category.labelKey ? t(category.labelKey) : category.label,
+            description: category.descriptionKey ? t(category.descriptionKey) : category.description,
+        })),
+        [categories, t],
+    );
     const [values, setValues] = useState<Record<string, SettingValue>>({});
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
@@ -54,12 +66,13 @@ export function SettingsApp() {
         (setting: AppSettingDefinition): SettingDescriptor => ({
             id: setting.key,
             type: setting.type,
-            label: setting.label,
-            description: setting.description,
+            label: setting.labelKey ? t(setting.labelKey) : setting.label,
+            description: setting.descriptionKey ? t(setting.descriptionKey) : setting.description,
             defaultValue: setting.defaultValue,
             options: setting.options,
+            optionLabels: setting.optionLabels,
         }),
-        [],
+        [t],
     );
 
     const getSettingValue = useCallback(
@@ -94,25 +107,25 @@ export function SettingsApp() {
     }, []);
 
     return (
-        <AppLayout title="Settings" iconSrc="/favicon.ico">
+        <AppLayout title={t("settings.title")} iconSrc="/favicon.ico">
             <div className="flex h-full overflow-hidden rounded-md border border-white/10 bg-[#0f1115] shadow-xl">
                 <aside className="w-64 shrink-0 border-r border-white/5 bg-black/50 p-4 space-y-4">
                     <div>
-                        <p className="text-lg font-semibold text-white">Settings</p>
+                        <p className="text-lg font-semibold text-white">{t("settings.title")}</p>
                         <p className="text-xs text-gray-400">
-                            Editor Settings
+                            {t("settings.subtitle")}
                         </p>
                     </div>
-                    {categories.length > 0 ? (
+                    {localizedCategories.length > 0 ? (
                         <>
                             <SearchBox
                                 value={searchQuery}
                                 onChange={setSearchQuery}
-                                placeholder="Search settings..."
+                                placeholder={t("settings.searchPlaceholder")}
                                 className="w-full"
                             />
                             <div className="flex-1 space-y-2 overflow-y-auto pr-1">
-                                {categories.map((category) => {
+                                {localizedCategories.map((category) => {
                                     const isActive = selectedCategory === category.key;
                                     return (
                                         <button
@@ -129,13 +142,13 @@ export function SettingsApp() {
                         </>
                     ) : (
                         <p className="text-xs text-gray-500">
-                            No implemented settings are currently exposed.
+                            {t("settings.noneExposed")}
                         </p>
                     )}
                 </aside>
                 <section className="flex-1 p-4">
                     <SettingsExplorer
-                        categories={categories}
+                        categories={localizedCategories}
                         getSettingsForCategory={(category) => getSettingsByCategory(category as AppSettingCategoryKey)}
                         describeSetting={describeAppSetting}
                         getValue={(setting, _descriptor) => getSettingValue(setting)}
@@ -144,6 +157,7 @@ export function SettingsApp() {
                         onSearchChange={setSearchQuery}
                         showSearch={false}
                         loading={loading}
+                        emptyStateMessage={t("settings.empty")}
                         selectedCategory={selectedCategory}
                         selectedCategoryScrollSignal={categoryScrollSignal}
                     />

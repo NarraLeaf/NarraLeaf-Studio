@@ -160,6 +160,8 @@ export interface RendererPreloadedInterface {
             getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<{ value: GlobalStateValue<K> }>>;
             setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;
             getAllGlobalState(): Promise<RequestStatus<{ settings: Record<string, any> }>>;
+            /** Subscribe to global-state changes broadcast by the main process. */
+            onGlobalStateChanged(handler: (change: { key: GlobalStateKeys; value: any }) => void): AppEventToken;
         };
         addRecentProject(name: string, path: string): Promise<RequestStatus<void>>;
         getSystemPath(name: "desktop"): Promise<RequestStatus<{ path: string }>>;

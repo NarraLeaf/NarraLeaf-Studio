@@ -6,6 +6,7 @@ import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox"
 import { Loader2 } from "lucide-react";
 import { SettingValueType } from "@/lib/settings/types";
 import { SettingCategory, SettingDescriptor } from "@/lib/settings/models";
+import { useTranslation } from "@/lib/i18n";
 
 export type SettingValue = string | number | boolean;
 
@@ -66,6 +67,7 @@ export function SettingsExplorer<T>({
     emptyStateMessage = "No settings available.",
     panelFocusHandler,
 }: SettingsExplorerProps<T>) {
+    const { t } = useTranslation();
     const [localSearch, setLocalSearch] = useState("");
     const [saving, setSaving] = useState<Set<string>>(new Set());
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -235,7 +237,7 @@ export function SettingsExplorer<T>({
                 const options = descriptor.options ?? [];
                 const selectOptions: SelectOption[] = options.map(option => ({
                     value: option,
-                    label: option,
+                    label: descriptor.optionLabels?.[option] ?? option,
                 }));
                 return (
                     <Select
@@ -245,7 +247,7 @@ export function SettingsExplorer<T>({
                         value={displayValue}
                         onChange={(value) => handleEnumChange(entry, value as string)}
                         disabled={isSaving || options.length === 0}
-                        placeholder={displayValue || "Select..."}
+                        placeholder={descriptor.optionLabels?.[displayValue] ?? displayValue}
                     />
                 );
             }
@@ -347,7 +349,7 @@ export function SettingsExplorer<T>({
                     <SearchBox
                         value={effectiveSearch}
                         onChange={handleSearchChange}
-                        placeholder="Search settings..."
+                        placeholder={t("settings.searchPlaceholder")}
                         className="w-full"
                     />
                 </div>
@@ -356,11 +358,11 @@ export function SettingsExplorer<T>({
             <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
                 {loading ? (
                     <div className="flex h-full items-center justify-center text-xs text-gray-500">
-                        Loading settings...
+                        {t("settings.loading")}
                     </div>
                 ) : categoryEntriesToRender.length === 0 ? (
                     <div className="px-3 py-4 text-xs text-gray-500">
-                        {effectiveSearch.trim() ? "No settings match your search." : emptyStateMessage}
+                        {effectiveSearch.trim() ? t("settings.noResults") : emptyStateMessage}
                     </div>
                 ) : (
                     <div className="space-y-5 px-3 py-3">
