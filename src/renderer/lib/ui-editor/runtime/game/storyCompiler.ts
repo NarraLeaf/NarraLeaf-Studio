@@ -155,6 +155,18 @@ export type StagePreviewCompileInput = {
     resolveAssetUrl?: CompileInput["resolveAssetUrl"];
     blueprintDocument?: BlueprintDocument;
     persistence?: StoryPersistenceBridge;
+    /**
+     * Fires synchronously once the pre-posed stage state has been fully applied (elements
+     * registered, residual effects settled) — the first frame at which the stage is a faithful
+     * still of the snapshot. Precedes the reveal gate.
+     */
+    onStagePosed?: () => void;
+    /**
+     * Reveal gate for double-buffered hosts: after `onStagePosed`, execution pauses until this
+     * promise resolves, so the host can swap the posed (but hidden) stage in before the target's
+     * own action plays. Superseded runs never need it resolved — disposing the game aborts the wait.
+     */
+    revealGate?: Promise<void>;
     /** Fires synchronously immediately before the target's own statements. */
     onBeforeTarget: () => void;
     /** Fires synchronously immediately after the target's own statements complete. */
@@ -470,6 +482,15 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         }
     }
     statements.push(...await compileSnapshotEffects(ctx, previewScene.background, snapshot.backgroundEffects));
+
+    // The stage is now a faithful still of the snapshot; hold here until the host reveals the
+    // buffer so the target's own action plays entirely on a visible stage.
+    if (input.onStagePosed) {
+        statements.push(previewMarker(input.onStagePosed));
+    }
+    if (input.revealGate) {
+        statements.push(Control.sleep(input.revealGate));
+    }
 
     statements.push(previewMarker(input.onBeforeTarget));
     const targetBlock = input.targetBlockId ? scene.blocks[input.targetBlockId] : undefined;

@@ -35,13 +35,18 @@ import {
 import { useStorySceneEditorController } from "./useStorySceneEditorController";
 import { ResizableHandle } from "@/apps/workspace/components/ui/ResizableHandle";
 import { StoryScenePreviewPane } from "./preview/StoryScenePreviewPane";
+import { StoryScenePreviewFloat } from "./preview/StoryScenePreviewFloat";
 import { useStoryScenePreviewController } from "./preview/useStoryScenePreviewController";
 import {
+    createDefaultStoryPreviewFloatRect,
+    DEFAULT_STORY_SCENE_PREVIEW_PANE_STATE,
     getStoryScenePreviewPaneState,
     patchStoryScenePreviewPaneState,
     STORY_PREVIEW_PANE_DEFAULT_WIDTH,
     STORY_PREVIEW_PANE_MAX_FRACTION,
     STORY_PREVIEW_PANE_MIN_WIDTH,
+    type StoryScenePreviewFloatRect,
+    type StoryScenePreviewPaneMode,
     type StoryScenePreviewPaneState,
 } from "./preview/storyScenePreviewSessionStore";
 
@@ -263,9 +268,21 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             handler: editor.redoEdit,
         },
         {
-            id: "insert-after-active",
+            id: "edit-active",
             key: "enter",
-            description: "Insert a story row after the active row",
+            description: "Edit the active row (or open its inspector)",
+            handler: editor.enterEditOrInspectorForActive,
+        },
+        {
+            id: "insert-after-active-ctrl",
+            key: "ctrl+enter",
+            description: "Insert a new story row below the active row",
+            handler: editor.startInsertAfterActive,
+        },
+        {
+            id: "insert-after-active-meta",
+            key: "meta+enter",
+            description: "Insert a new story row below the active row",
             handler: editor.startInsertAfterActive,
         },
         {
@@ -293,6 +310,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             handler: editor.selectAllRows,
         },
         {
+            id: "duplicate-ctrl",
+            key: "ctrl+d",
+            description: "Duplicate selected story rows",
+            handler: editor.duplicateSelection,
+        },
+        {
+            id: "duplicate-meta",
+            key: "meta+d",
+            description: "Duplicate selected story rows",
+            handler: editor.duplicateSelection,
+        },
+        {
             id: "move-selection-down",
             key: "arrowdown",
             description: "Move story row selection down",
@@ -304,10 +333,76 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             description: "Move story row selection up",
             handler: () => editor.moveActiveRowSelection("up"),
         },
+        {
+            id: "extend-selection-down",
+            key: "shift+arrowdown",
+            description: "Extend story row selection down",
+            handler: () => editor.extendRowSelection("down"),
+        },
+        {
+            id: "extend-selection-up",
+            key: "shift+arrowup",
+            description: "Extend story row selection up",
+            handler: () => editor.extendRowSelection("up"),
+        },
+        {
+            id: "move-row-down",
+            key: "alt+arrowdown",
+            description: "Move the selected story row down",
+            handler: () => editor.moveSelectedRows("down"),
+        },
+        {
+            id: "move-row-up",
+            key: "alt+arrowup",
+            description: "Move the selected story row up",
+            handler: () => editor.moveSelectedRows("up"),
+        },
+        {
+            id: "select-first",
+            key: "home",
+            description: "Select the first story row",
+            handler: () => editor.jumpRowSelection("first"),
+        },
+        {
+            id: "select-last",
+            key: "end",
+            description: "Select the last story row",
+            handler: () => editor.jumpRowSelection("last"),
+        },
+        {
+            id: "select-first-ctrl",
+            key: "ctrl+home",
+            description: "Select the first story row",
+            handler: () => editor.jumpRowSelection("first"),
+        },
+        {
+            id: "select-last-ctrl",
+            key: "ctrl+end",
+            description: "Select the last story row",
+            handler: () => editor.jumpRowSelection("last"),
+        },
+        {
+            id: "page-down",
+            key: "pagedown",
+            description: "Move story row selection down a page",
+            handler: () => editor.pageRowSelection("down"),
+        },
+        {
+            id: "page-up",
+            key: "pageup",
+            description: "Move story row selection up a page",
+            handler: () => editor.pageRowSelection("up"),
+        },
     ], [
         editor.deleteSelection,
+        editor.duplicateSelection,
+        editor.enterEditOrInspectorForActive,
+        editor.extendRowSelection,
         editor.indentSelection,
+        editor.jumpRowSelection,
         editor.moveActiveRowSelection,
+        editor.moveSelectedRows,
+        editor.pageRowSelection,
         editor.redoEdit,
         editor.selectAllRows,
         editor.startInsertAfterActive,
@@ -572,15 +667,49 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     }, [panelStateService, previewPane]);
     const previewOpen = previewPane?.open === true;
     const previewWidth = previewPane?.width ?? STORY_PREVIEW_PANE_DEFAULT_WIDTH;
+    const previewMode: StoryScenePreviewPaneMode = previewPane?.mode ?? "dock";
+    const previewFloat = previewPane?.float ?? null;
     const previewWidthRef = useRef(previewWidth);
     previewWidthRef.current = previewWidth;
     const editorBodyRef = useRef<HTMLDivElement | null>(null);
 
     const togglePreview = useCallback(() => {
         setPreviewPane(current => {
-            const next = { open: !(current?.open === true), width: current?.width ?? STORY_PREVIEW_PANE_DEFAULT_WIDTH };
+            const base = current ?? DEFAULT_STORY_SCENE_PREVIEW_PANE_STATE;
+            const next = { ...base, open: !base.open };
             if (panelStateService) {
                 patchStoryScenePreviewPaneState(panelStateService, { open: next.open });
+            }
+            return next;
+        });
+    }, [panelStateService]);
+
+    // Switch the (open) pane between docked and picture-in-picture. Popping out for the first time
+    // seeds a bottom-right float placement from the editor body's current size.
+    const setPreviewMode = useCallback((mode: StoryScenePreviewPaneMode) => {
+        setPreviewPane(current => {
+            const base = current ?? DEFAULT_STORY_SCENE_PREVIEW_PANE_STATE;
+            const el = editorBodyRef.current;
+            const float = mode === "float" && base.float === null
+                ? createDefaultStoryPreviewFloatRect(el ? { width: el.clientWidth, height: el.clientHeight } : null)
+                : base.float;
+            const next = { ...base, open: true, mode, float };
+            if (panelStateService) {
+                patchStoryScenePreviewPaneState(panelStateService, { open: true, mode, float });
+            }
+            return next;
+        });
+    }, [panelStateService]);
+
+    // Persist float geometry once a drag/resize settles (called on pointer-up, not per frame).
+    const commitPreviewFloat = useCallback((float: StoryScenePreviewFloatRect) => {
+        setPreviewPane(current => {
+            if (!current) {
+                return current;
+            }
+            const next = { ...current, float };
+            if (panelStateService) {
+                patchStoryScenePreviewPaneState(panelStateService, { float });
             }
             return next;
         });
@@ -595,7 +724,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         const nextWidth = Math.round(Math.min(maxWidth, Math.max(STORY_PREVIEW_PANE_MIN_WIDTH, width - delta)));
         if (nextWidth !== width) {
             previewWidthRef.current = nextWidth;
-            setPreviewPane(current => ({ open: current?.open === true, width: nextWidth }));
+            setPreviewPane(current => ({ ...(current ?? DEFAULT_STORY_SCENE_PREVIEW_PANE_STATE), width: nextWidth }));
             if (panelStateService) {
                 patchStoryScenePreviewPaneState(panelStateService, { width: nextWidth });
             }
@@ -678,7 +807,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 </div>
             </div>
 
-            <div ref={editorBodyRef} className="flex min-h-0 flex-1 flex-row">
+            <div ref={editorBodyRef} className="relative flex min-h-0 flex-1 flex-row">
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
             <div
                 ref={editor.scrollContainerRef}
@@ -705,6 +834,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     active={editor.activeBlockId === row.block.id}
                                     collapsed={editor.collapsedBlockIds.has(row.block.id)}
                                     editing={editor.editorMode.kind === "text" && editor.editorMode.blockId === row.block.id}
+                                    editInitialCaret={editor.editorMode.kind === "text" && editor.editorMode.blockId === row.block.id ? (editor.editorMode.caret ?? "end") : undefined}
                                     textInputRef={editor.textInputRef}
                                     inspectorOpen={editor.editorMode.kind === "inspector" && editor.editorMode.blockId === row.block.id}
                                     onSelect={event => editor.selectRow(row.block.id, event)}
@@ -725,8 +855,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         )
                                     }
                                     onCommitTextEdit={editor.commitTextEdit}
-                                    onCancelTextEdit={() => editor.setEditorMode({ kind: "idle" })}
-                                    onInsertDialogueAfterCurrent={editor.insertDialogueAfterCurrentTextEdit}
+                                    onCancelTextEdit={() => { editor.setEditorMode({ kind: "idle" }); editor.focusRoot(); }}
+                                    onContinue={editor.insertContinuationAfterCurrentTextEdit}
+                                    onArrowOut={editor.navigateFromTextEdit}
+                                    onBackspaceAtEmptyStart={editor.handleBackspaceAtEmptyStart}
                                     onOpenInspector={() => editor.setEditorMode({ kind: "inspector", blockId: row.block.id })}
                                     onCloseInspector={() => editor.setEditorMode({ kind: "idle" })}
                                     onUpdatePayload={payload => editor.updateBlockPayloadFor(row.block.id, payload)}
@@ -788,7 +920,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 Preview
             </button>
             </div>
-            {previewOpen ? (
+            {previewOpen && previewMode === "dock" ? (
                 <>
                     <ResizableHandle
                         direction="horizontal"
@@ -796,9 +928,24 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         className="w-1 shrink-0 border-r-2 border-transparent bg-fill-subtle"
                     />
                     <div style={{ width: previewWidth }} className="min-h-0 shrink-0 border-l border-edge">
-                        <StoryScenePreviewPane controller={preview} onClose={togglePreview} />
+                        <StoryScenePreviewPane
+                            controller={preview}
+                            onClose={togglePreview}
+                            mode="dock"
+                            onToggleFloat={() => setPreviewMode("float")}
+                        />
                     </div>
                 </>
+            ) : null}
+            {previewOpen && previewMode === "float" ? (
+                <StoryScenePreviewFloat
+                    controller={preview}
+                    containerRef={editorBodyRef}
+                    initialRect={previewFloat ?? createDefaultStoryPreviewFloatRect(null)}
+                    onClose={togglePreview}
+                    onToggleDock={() => setPreviewMode("dock")}
+                    onCommit={commitPreviewFloat}
+                />
             ) : null}
             </div>
         </div>

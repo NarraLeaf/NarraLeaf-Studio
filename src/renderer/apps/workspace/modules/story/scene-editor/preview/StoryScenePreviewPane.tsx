@@ -1,20 +1,29 @@
-import { Loader2, MonitorPlay, X } from "lucide-react";
+import { Loader2, MonitorPlay, PanelRight, PictureInPicture2, X } from "lucide-react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { NlrStageLayer } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import type { StoryScenePreviewController } from "./useStoryScenePreviewController";
+import type { StoryScenePreviewPaneMode } from "./storyScenePreviewSessionStore";
 
 const NOOP = () => undefined;
 
 /**
  * The story editor's live-preview pane: an embedded NLR stage rendering the state of the
  * currently selected row, with a status/diagnostics strip underneath.
+ *
+ * The same pane is reused whether it is docked in the split-pane or floating as a
+ * picture-in-picture window; `mode` only affects the header controls, and
+ * `onHeaderPointerDown` (supplied by the floating shell) turns the header into a drag handle.
  */
 export function StoryScenePreviewPane(props: {
     controller: StoryScenePreviewController;
     onClose: () => void;
+    mode?: StoryScenePreviewPaneMode;
+    onToggleFloat?: () => void;
+    onHeaderPointerDown?: (event: ReactPointerEvent) => void;
 }) {
-    const { controller, onClose } = props;
+    const { controller, onClose, mode = "dock", onToggleFloat, onHeaderPointerDown } = props;
     const busy = controller.phase === "compiling" || controller.phase === "mounting" || controller.phase === "starting";
-    const showSceneStartHint = controller.session !== null && controller.targetBlockId === null && !busy && controller.phase !== "error";
+    const showSceneStartHint = controller.stageLayers.length > 0 && controller.targetBlockId === null && !busy && controller.phase !== "error";
     const notes = [
         ...controller.diagnostics.map(diagnostic => ({ level: diagnostic.level, message: diagnostic.message })),
         ...controller.issues,
@@ -22,15 +31,33 @@ export function StoryScenePreviewPane(props: {
 
     return (
         <div className="flex h-full min-h-0 flex-col bg-surface-sunken">
-            <div className="flex min-h-[36px] items-center gap-2 border-b border-edge px-3">
+            <div
+                className={`flex min-h-[36px] items-center gap-2 border-b border-edge px-3${onHeaderPointerDown ? " cursor-move select-none" : ""}`}
+                onPointerDown={onHeaderPointerDown}
+            >
                 <MonitorPlay className="h-4 w-4 shrink-0 text-primary" />
                 <span className="truncate text-xs font-medium text-fg">Live Preview</span>
                 {/* Refreshes keep the previous frame visible; the spinner is the only indicator. */}
                 {busy ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-fg-subtle" /> : null}
                 <div className="flex-1" />
+                {onToggleFloat ? (
+                    <button
+                        type="button"
+                        className="rounded p-1 text-fg-muted hover:bg-fill hover:text-fg"
+                        // Keep header clicks on controls from starting a window drag.
+                        onPointerDown={event => event.stopPropagation()}
+                        onClick={onToggleFloat}
+                        title={mode === "float" ? "Dock to sidebar" : "Picture-in-picture"}
+                    >
+                        {mode === "float"
+                            ? <PanelRight className="h-3.5 w-3.5" />
+                            : <PictureInPicture2 className="h-3.5 w-3.5" />}
+                    </button>
+                ) : null}
                 <button
                     type="button"
                     className="rounded p-1 text-fg-muted hover:bg-fill hover:text-fg"
+                    onPointerDown={event => event.stopPropagation()}
                     onClick={onClose}
                     title="Close live preview"
                 >
@@ -39,16 +66,23 @@ export function StoryScenePreviewPane(props: {
             </div>
 
             <div className="relative min-h-0 flex-1 overflow-hidden bg-black">
-                <NlrStageLayer
-                    session={controller.session}
-                    interactive={false}
-                    renderOnStage
-                    onLiveGameReady={controller.onLiveGameReady}
-                    onEnvironmentReady={NOOP}
-                    onFirstSceneReady={NOOP}
-                    onError={controller.onStageError}
-                />
-                {controller.session === null && controller.phase === "idle" ? (
+                {/* Double-buffered stage: array order is stacking order. During a rebuild the
+                    incoming session paints beneath the held frame; the controller unmounts the
+                    old buffer only once the new one is pixel-ready, so switches never flash. */}
+                {controller.stageLayers.map(layer => (
+                    <div key={layer.session.id} ref={layer.setRootElement} className="absolute inset-0">
+                        <NlrStageLayer
+                            session={layer.session}
+                            interactive={false}
+                            renderOnStage
+                            onLiveGameReady={controller.onLiveGameReady}
+                            onEnvironmentReady={NOOP}
+                            onFirstSceneReady={NOOP}
+                            onError={controller.onStageError}
+                        />
+                    </div>
+                ))}
+                {controller.stageLayers.length === 0 && controller.phase === "idle" ? (
                     <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs text-fg-subtle">
                         Select a story row to preview its stage state.
                     </div>

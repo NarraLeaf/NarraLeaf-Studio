@@ -18,7 +18,7 @@ export type InsertSlot = {
 
 export type EditorMode =
     | { kind: "idle" }
-    | { kind: "text"; blockId: StoryBlockId; value: string; rich?: StoryRichRun[] }
+    | { kind: "text"; blockId: StoryBlockId; value: string; rich?: StoryRichRun[]; caret?: "start" | "end" }
     | { kind: "insert"; slot: InsertSlot; value: string; chooser: "none" | "action" | "character" }
     | { kind: "inspector"; blockId: StoryBlockId };
 

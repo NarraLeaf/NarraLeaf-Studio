@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
 import type { StoryInterpolationRef, StoryRichRun } from "@shared/types/story";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import {
@@ -56,12 +56,24 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     className?: string;
     style?: CSSProperties;
     placeholder?: string;
+    /** Where the caret lands when the editor mounts. Defaults to the end (natural for entering a line). */
+    initialCaret?: "start" | "end";
     /** When set, Shift+Enter calls this; otherwise Shift+Enter inserts a line break. */
     onShiftEnter?: () => void;
     onChange: (value: string, runs: StoryRichRun[]) => void;
     onEnter: () => void;
     onCancel: () => void;
     onBlur: () => void;
+    /** Cmd/Ctrl+Enter — commit and open a fresh generic insert slot below (bypasses continuation). */
+    onModEnter?: () => void;
+    /**
+     * The caret sat at a visual boundary and the author pressed an arrow that would leave the line:
+     * ArrowUp on the first visual line, ArrowDown on the last, ArrowLeft at the very start, ArrowRight
+     * at the very end. The parent moves focus to the adjacent story row.
+     */
+    onArrowOut?: (direction: "up" | "down" | "left" | "right") => void;
+    /** Backspace pressed with a collapsed caret at the start of an empty line (row demote / delete). */
+    onBackspaceAtEmptyStart?: () => void;
     onPauseClick?: (info: PauseClickInfo) => void;
     onInterpolationClick?: (info: InterpolationClickInfo) => void;
     resolveInterpolationLabel?: ResolveInterpolationLabel;
@@ -88,8 +100,9 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         renderRunsToElement(el, runs, resolveLabelRef.current);
         el.focus();
         const end = totalUnits(runs);
-        setSelectionUnitRange(el, end, end);
-        savedRange.current = { start: end, end };
+        const caret = props.initialCaret === "start" ? 0 : end;
+        setSelectionUnitRange(el, caret, caret);
+        savedRange.current = { start: caret, end: caret };
         // Render initial content once; edits are model/DOM driven from here.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -146,6 +159,109 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         }
         reportActive();
     }, [reportActive]);
+
+    /**
+     * Where the collapsed caret currently sits, relative to the line's edges. `atFirstLine`/`atLastLine`
+     * are geometric (so wrapped or Shift+Enter multi-line text only leaves the field from the true top /
+     * bottom visual line), while `atStart`/`atEnd` are exact unit offsets. Returns null when there is no
+     * caret inside the editor.
+     */
+    const getCaretEdges = useCallback(() => {
+        const el = editorRef.current;
+        if (!el) {
+            return null;
+        }
+        const selection = globalThis.window.getSelection();
+        if (!selection || selection.rangeCount === 0) {
+            return null;
+        }
+        const range = selection.getRangeAt(0);
+        if (!el.contains(range.commonAncestorContainer)) {
+            return null;
+        }
+        const collapsed = range.collapsed;
+        const unit = getSelectionUnitRange(el);
+        const total = totalUnits(domToRuns(el));
+        const empty = total === 0;
+        const atStart = !!unit && unit.start === 0;
+        const atEnd = !!unit && unit.end >= total;
+        let atFirstLine = atStart;
+        let atLastLine = atEnd;
+        if (empty) {
+            atFirstLine = true;
+            atLastLine = true;
+        } else {
+            const caretRect = caretClientRect(range);
+            if (caretRect) {
+                const elRect = el.getBoundingClientRect();
+                const cs = globalThis.window.getComputedStyle(el);
+                const padTop = parseFloat(cs.paddingTop) || 0;
+                const padBottom = parseFloat(cs.paddingBottom) || 0;
+                const lineHeight = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4 || 18;
+                atFirstLine = caretRect.top - (elRect.top + padTop) <= lineHeight * 0.6;
+                atLastLine = (elRect.bottom - padBottom) - caretRect.bottom <= lineHeight * 0.6;
+            }
+        }
+        return { collapsed, atStart, atEnd, atFirstLine, atLastLine, empty };
+    }, []);
+
+    const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            props.onCancel();
+            return;
+        }
+        if (event.key === "Enter") {
+            event.preventDefault();
+            if (event.metaKey || event.ctrlKey) {
+                props.onModEnter ? props.onModEnter() : props.onEnter();
+                return;
+            }
+            if (event.shiftKey) {
+                if (props.onShiftEnter) {
+                    props.onShiftEnter();
+                } else {
+                    globalThis.document.execCommand("insertText", false, "\n");
+                    emitChange();
+                }
+                return;
+            }
+            props.onEnter();
+            return;
+        }
+        if (event.key === "Backspace" && props.onBackspaceAtEmptyStart) {
+            const edges = getCaretEdges();
+            if (edges && edges.collapsed && edges.empty) {
+                event.preventDefault();
+                props.onBackspaceAtEmptyStart();
+                return;
+            }
+        }
+        if (!props.onArrowOut) {
+            return;
+        }
+        const isArrow = event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === "ArrowLeft" || event.key === "ArrowRight";
+        if (!isArrow || event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) {
+            return;
+        }
+        const edges = getCaretEdges();
+        if (!edges || !edges.collapsed) {
+            return;
+        }
+        const leaves =
+            (event.key === "ArrowUp" && edges.atFirstLine) ||
+            (event.key === "ArrowDown" && edges.atLastLine) ||
+            (event.key === "ArrowLeft" && edges.atStart) ||
+            (event.key === "ArrowRight" && edges.atEnd);
+        if (!leaves) {
+            return;
+        }
+        event.preventDefault();
+        props.onArrowOut(
+            event.key === "ArrowUp" ? "up" : event.key === "ArrowDown" ? "down" : event.key === "ArrowLeft" ? "left" : "right",
+        );
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [emitChange, getCaretEdges, props.onArrowOut, props.onBackspaceAtEmptyStart, props.onCancel, props.onEnter, props.onModEnter, props.onShiftEnter]);
 
     // Keep the toolbar's active state in sync as the caret / selection moves.
     useEffect(() => {
@@ -299,27 +415,17 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             onKeyUp={saveSelection}
             onMouseUp={saveSelection}
             onBlur={() => { saveSelection(); props.onBlur(); }}
-            onKeyDown={event => {
-                if (event.key === "Escape") {
-                    event.preventDefault();
-                    props.onCancel();
-                    return;
-                }
-                if (event.key === "Enter" && event.shiftKey) {
-                    event.preventDefault();
-                    if (props.onShiftEnter) {
-                        props.onShiftEnter();
-                    } else {
-                        globalThis.document.execCommand("insertText", false, "\n");
-                        emitChange();
-                    }
-                    return;
-                }
-                if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    props.onEnter();
-                }
-            }}
+            onKeyDown={handleKeyDown}
         />
     );
 });
+
+/** Bounding rect of a (usually collapsed) caret range, tolerant of Chromium's empty-rect edge cases. */
+function caretClientRect(range: Range): DOMRect | null {
+    const rect = range.getBoundingClientRect();
+    if (rect && (rect.height > 0 || rect.width > 0 || rect.top !== 0 || rect.bottom !== 0)) {
+        return rect;
+    }
+    const rects = range.getClientRects();
+    return rects.length > 0 ? rects[0] : null;
+}
