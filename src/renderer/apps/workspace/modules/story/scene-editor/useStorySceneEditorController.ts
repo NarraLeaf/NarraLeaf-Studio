@@ -26,12 +26,15 @@ import {
 } from "./storySceneBlockUtils";
 import { isInteractiveTarget, isTextInputActive } from "./storySceneDom";
 import { getStoryEditorViewState, patchStoryEditorViewState } from "./storyEditorSessionStore";
+import { cloneSerializedBlock, insertSerializedClone, serializeBlockSubtree } from "./storySceneClipboard";
 import { richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
 import type { EditorMode } from "./storySceneEditorTypes";
 import { useStorySceneClipboardHandlers } from "./useStorySceneClipboardHandlers";
 
 const STORY_EDITOR_HISTORY_LIMIT = 100;
+/** Rows the selection jumps by on PageUp / PageDown. */
+const STORY_EDITOR_PAGE_ROWS = 10;
 const DRAG_SELECT_AUTO_SCROLL_EDGE_PX = 64;
 const DRAG_SELECT_AUTO_SCROLL_MAX_SPEED = 18;
 
@@ -66,6 +69,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const dragSelectPointerRef = useRef<{ x: number; y: number } | null>(null);
     const dragSelectAutoScrollRef = useRef<number | null>(null);
     const draggingBlockIdRef = useRef<StoryBlockId | null>(null);
+    // Anchor row for keyboard range-selection (Shift+Arrow grows the selection from here).
+    const selectionAnchorRef = useRef<StoryBlockId | null>(null);
     const plainPasteRequestedRef = useRef(false);
     const undoStackRef = useRef<StorySceneHistoryState[]>([]);
     const redoStackRef = useRef<StorySceneHistoryState[]>([]);
@@ -287,6 +292,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         setActiveBlockId(blockId);
         setSelectedBlockIds(new Set([blockId]));
+        selectionAnchorRef.current = blockId;
         return true;
     }, [scene]);
 
@@ -468,27 +474,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         return block.id;
     }, [recordHistory, scene, sceneId, storyId, storyService, uuidService]);
 
-    const insertDialogueAfterCurrentTextEdit = useCallback(() => {
-        if (editorMode.kind !== "text" || !storyService || !storyId || !sceneId || !scene) {
-            return;
-        }
-        const currentBlock = scene.blocks[editorMode.blockId];
-        if (!currentBlock || currentBlock.kind !== "nodeAction" || currentBlock.payload.action !== "dialogue") {
-            return;
-        }
-        recordHistory();
-        const updatedPayload = updateTextPayload(currentBlock, editorMode.value, editorMode.rich);
-        if (updatedPayload) {
-            storyService.updateBlock(storyId, sceneId, currentBlock.id, updatedPayload);
-        }
-        const block = createBlock("dialogue", "", currentBlock.payload.characterId);
-        if (!block) {
-            return;
-        }
-        insertBlock(block, currentBlock.id, false, { recordHistory: false });
-        setEditorMode({ kind: "text", blockId: block.id, value: "" });
-    }, [createBlock, editorMode, insertBlock, recordHistory, scene, sceneId, storyId, storyService]);
-
     const startInsertAfter = useCallback((afterBlockId: StoryBlockId | null, focus = true) => {
         setEditorMode({ kind: "insert", slot: { afterBlockId, focusToken: Date.now() }, value: "", chooser: "none" });
         if (afterBlockId) {
@@ -498,6 +483,147 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             window.requestAnimationFrame(() => insertInputRef.current?.focus());
         }
     }, []);
+
+    // Enter while editing a text row: commit and open a new row that continues the same kind — narration
+    // begets narration, a dialogue keeps its speaker, a menu option adds a sibling option. Kinds without a
+    // natural successor (e.g. a choice prompt) fall back to the generic "/"-and-"#" insert slot.
+    const insertContinuationAfterCurrentTextEdit = useCallback(() => {
+        if (editorMode.kind !== "text" || !storyService || !storyId || !sceneId || !scene) {
+            return;
+        }
+        const currentBlock = scene.blocks[editorMode.blockId];
+        if (!currentBlock) {
+            return;
+        }
+        const continuation = continuationCommandFor(currentBlock);
+        if (!continuation) {
+            commitTextEdit();
+            startInsertAfter(editorMode.blockId, true);
+            return;
+        }
+        recordHistory();
+        // Persist the current line from the live editor DOM (captures marks/chips not yet flushed to draft).
+        const liveRuns = textInputRef.current?.getRuns();
+        const value = liveRuns ? richRunsToPlain(liveRuns) : editorMode.value;
+        const rich = liveRuns ?? editorMode.rich;
+        const updatedPayload = updateTextPayload(currentBlock, value, rich);
+        if (updatedPayload) {
+            storyService.updateBlock(storyId, sceneId, currentBlock.id, updatedPayload);
+        }
+        const characterId = currentBlock.kind === "nodeAction" && currentBlock.payload.action === "dialogue"
+            ? currentBlock.payload.characterId
+            : undefined;
+        const block = createBlock(continuation, "", characterId);
+        if (!block) {
+            return;
+        }
+        insertBlock(block, currentBlock.id, false, { recordHistory: false });
+        setEditorMode({ kind: "text", blockId: block.id, value: "", caret: "end" });
+    }, [commitTextEdit, createBlock, editorMode, insertBlock, recordHistory, scene, sceneId, startInsertAfter, storyId, storyService]);
+
+    // Arrow navigation across the row boundary while editing text. The current line is committed first;
+    // landing on a text row re-opens it for editing (caret at the near edge), landing on an action row
+    // just selects it and hands focus back to the keyboard so plain arrows keep walking the list.
+    const navigateFromTextEdit = useCallback((direction: "up" | "down" | "left" | "right") => {
+        if (editorMode.kind !== "text") {
+            return;
+        }
+        const currentId = editorMode.blockId;
+        const currentIndex = rowIndexById.get(currentId);
+        commitTextEdit();
+        if (currentIndex === undefined) {
+            return;
+        }
+        const goingBack = direction === "up" || direction === "left";
+        const target = visibleRows[goingBack ? currentIndex - 1 : currentIndex + 1];
+        if (!target) {
+            if (!goingBack) {
+                // Past the last row — drop into a fresh insert slot so the author can keep writing downward.
+                startInsertAfter(currentId, true);
+            } else {
+                setActiveBlockId(currentId);
+                setSelectedBlockIds(new Set([currentId]));
+                selectionAnchorRef.current = currentId;
+                focusRoot();
+            }
+            return;
+        }
+        const targetBlock = target.block;
+        setActiveBlockId(targetBlock.id);
+        setSelectedBlockIds(new Set([targetBlock.id]));
+        selectionAnchorRef.current = targetBlock.id;
+        if (isTextEditableBlock(targetBlock)) {
+            const segment = getTextSegment(targetBlock);
+            setEditorMode({ kind: "text", blockId: targetBlock.id, value: segment?.value ?? "", rich: segment?.rich, caret: goingBack ? "end" : "start" });
+        } else {
+            setEditorMode({ kind: "idle" });
+            focusRoot();
+        }
+    }, [commitTextEdit, editorMode, focusRoot, rowIndexById, startInsertAfter, visibleRows]);
+
+    // Backspace on an empty line: a dialogue descends a rung to plain narration (keeps the row so the
+    // author can keep typing); any other empty text row is deleted and focus steps back to the line above.
+    const handleBackspaceAtEmptyStart = useCallback(() => {
+        if (editorMode.kind !== "text" || !storyService || !storyId || !sceneId || !scene) {
+            return;
+        }
+        const id = editorMode.blockId;
+        const block = scene.blocks[id];
+        if (!block) {
+            return;
+        }
+        if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
+            recordHistory();
+            storyService.updateBlock(storyId, sceneId, id, { action: "narration", text: { textId: block.payload.text.textId, role: "narration", value: "" } });
+            setEditorMode({ kind: "text", blockId: id, value: "", caret: "start" });
+            return;
+        }
+        // Don't silently delete a container row that still holds children (e.g. an empty menu option).
+        if (block.childrenIds.length > 0) {
+            return;
+        }
+        const currentIndex = rowIndexById.get(id);
+        const previous = currentIndex !== undefined ? visibleRows[currentIndex - 1] : undefined;
+        recordHistory();
+        storyService.deleteBlock(storyId, sceneId, id);
+        if (previous) {
+            setActiveBlockId(previous.block.id);
+            setSelectedBlockIds(new Set([previous.block.id]));
+            selectionAnchorRef.current = previous.block.id;
+            if (isTextEditableBlock(previous.block)) {
+                const segment = getTextSegment(previous.block);
+                setEditorMode({ kind: "text", blockId: previous.block.id, value: segment?.value ?? "", rich: segment?.rich, caret: "end" });
+            } else {
+                setEditorMode({ kind: "idle" });
+                focusRoot();
+            }
+        } else {
+            setActiveBlockId(null);
+            setSelectedBlockIds(new Set());
+            setEditorMode({ kind: "idle" });
+            focusRoot();
+        }
+    }, [editorMode, focusRoot, recordHistory, rowIndexById, scene, sceneId, storyId, storyService, visibleRows]);
+
+    // Enter on a selected-but-not-editing row: text rows open for editing (caret at the end); action rows
+    // open their inspector; with nothing selected it falls back to a fresh insert slot.
+    const enterEditOrInspectorForActive = useCallback(() => {
+        if (!scene || !activeBlockId) {
+            startInsertAfter(null, true);
+            return;
+        }
+        const block = scene.blocks[activeBlockId];
+        if (!block) {
+            startInsertAfter(null, true);
+            return;
+        }
+        if (isTextEditableBlock(block)) {
+            const segment = getTextSegment(block);
+            setEditorMode({ kind: "text", blockId: activeBlockId, value: segment?.value ?? "", rich: segment?.rich, caret: "end" });
+        } else {
+            setEditorMode({ kind: "inspector", blockId: activeBlockId });
+        }
+    }, [activeBlockId, scene, startInsertAfter]);
 
     const commitNarrationFromInsert = useCallback((focusNext: boolean) => {
         if (editorMode.kind !== "insert") {
@@ -570,6 +696,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         if (event?.ctrlKey || event?.metaKey) {
+            selectionAnchorRef.current = blockId;
             setSelectedBlockIds(previous => {
                 const next = new Set(previous);
                 next.has(blockId) ? next.delete(blockId) : next.add(blockId);
@@ -577,6 +704,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             });
             return;
         }
+        selectionAnchorRef.current = blockId;
         setSelectedBlockIds(new Set([blockId]));
     }, [activeBlockId, visibleRows]);
 
@@ -728,17 +856,142 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setSelectedBlockIds(new Set(visibleRows.map(row => row.block.id)));
     }, [visibleRows]);
 
+    const selectSingleRow = useCallback((blockId: StoryBlockId) => {
+        setActiveBlockId(blockId);
+        setSelectedBlockIds(new Set([blockId]));
+        selectionAnchorRef.current = blockId;
+    }, []);
+
     const moveActiveRowSelection = useCallback((direction: "up" | "down") => {
+        if (visibleRows.length === 0) {
+            return;
+        }
         const currentIndex = activeBlockId ? rowIndexById.get(activeBlockId) ?? -1 : -1;
-        const nextIndex = direction === "down"
-            ? Math.min(visibleRows.length - 1, currentIndex + 1)
-            : Math.max(0, currentIndex - 1);
+        const nextIndex = currentIndex === -1
+            ? (direction === "down" ? 0 : visibleRows.length - 1)
+            : direction === "down"
+                ? Math.min(visibleRows.length - 1, currentIndex + 1)
+                : Math.max(0, currentIndex - 1);
         const next = visibleRows[nextIndex];
         if (next) {
-            setActiveBlockId(next.block.id);
-            setSelectedBlockIds(new Set([next.block.id]));
+            selectSingleRow(next.block.id);
         }
-    }, [activeBlockId, rowIndexById, visibleRows]);
+    }, [activeBlockId, rowIndexById, selectSingleRow, visibleRows]);
+
+    // Shift+Arrow — grow (or shrink) the selection between the anchor row and the moving head.
+    const extendRowSelection = useCallback((direction: "up" | "down") => {
+        if (visibleRows.length === 0) {
+            return;
+        }
+        const anchorId = selectionAnchorRef.current ?? activeBlockId;
+        const headIndex = activeBlockId ? rowIndexById.get(activeBlockId) ?? -1 : -1;
+        if (!anchorId || headIndex === -1) {
+            moveActiveRowSelection(direction);
+            return;
+        }
+        selectionAnchorRef.current = anchorId;
+        const nextIndex = direction === "down"
+            ? Math.min(visibleRows.length - 1, headIndex + 1)
+            : Math.max(0, headIndex - 1);
+        const head = visibleRows[nextIndex];
+        if (!head) {
+            return;
+        }
+        setSelectedBlockIds(selectRange(visibleRows, anchorId, head.block.id));
+        setActiveBlockId(head.block.id);
+    }, [activeBlockId, moveActiveRowSelection, rowIndexById, visibleRows]);
+
+    const jumpRowSelection = useCallback((edge: "first" | "last") => {
+        const row = edge === "first" ? visibleRows[0] : visibleRows[visibleRows.length - 1];
+        if (row) {
+            selectSingleRow(row.block.id);
+        }
+    }, [selectSingleRow, visibleRows]);
+
+    const pageRowSelection = useCallback((direction: "up" | "down") => {
+        if (visibleRows.length === 0) {
+            return;
+        }
+        const currentIndex = activeBlockId ? rowIndexById.get(activeBlockId) ?? -1 : -1;
+        const base = currentIndex === -1 ? (direction === "down" ? -1 : visibleRows.length) : currentIndex;
+        const nextIndex = direction === "down"
+            ? Math.min(visibleRows.length - 1, base + STORY_EDITOR_PAGE_ROWS)
+            : Math.max(0, base - STORY_EDITOR_PAGE_ROWS);
+        const row = visibleRows[nextIndex];
+        if (row) {
+            selectSingleRow(row.block.id);
+        }
+    }, [activeBlockId, rowIndexById, selectSingleRow, visibleRows]);
+
+    // Alt+Arrow — reorder the selected row among its siblings (keyboard equivalent of drag-to-reorder).
+    // Deliberately single-row for predictability; multi-row keyboard moves are surprising in outliners.
+    const moveSelectedRows = useCallback((direction: "up" | "down") => {
+        if (!storyService || !storyId || !sceneId || !scene) {
+            return;
+        }
+        const ids = selectedBlockIds.size > 0 ? [...selectedBlockIds] : activeBlockId ? [activeBlockId] : [];
+        const roots = filterOutSelectedDescendants(scene, ids);
+        if (roots.length !== 1) {
+            return;
+        }
+        const id = roots[0];
+        const block = scene.blocks[id];
+        if (!block) {
+            return;
+        }
+        const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds : scene.rootBlockIds;
+        if (!siblings) {
+            return;
+        }
+        const siblingIndex = siblings.indexOf(id);
+        if (direction === "up") {
+            const previousId = siblings[siblingIndex - 1];
+            if (!previousId) {
+                return;
+            }
+            recordHistory();
+            storyService.moveBlock(storyId, sceneId, id, getMoveTargetBefore(scene, id, previousId));
+        } else {
+            const nextId = siblings[siblingIndex + 1];
+            if (!nextId) {
+                return;
+            }
+            recordHistory();
+            storyService.moveBlock(storyId, sceneId, id, getMoveTargetAfter(scene, id, nextId));
+        }
+        selectSingleRow(id);
+        setStatusText("Moved row.");
+    }, [activeBlockId, recordHistory, scene, sceneId, selectSingleRow, selectedBlockIds, storyId, storyService]);
+
+    // Cmd/Ctrl+D — duplicate the selected rows (with their subtrees, new ids) directly below the block.
+    const duplicateSelection = useCallback(() => {
+        if (!storyService || !uuidService || !storyId || !sceneId || !scene) {
+            return;
+        }
+        const ids = selectedBlockIds.size > 0 ? [...selectedBlockIds] : activeBlockId ? [activeBlockId] : [];
+        const roots = filterOutSelectedDescendants(scene, ids);
+        if (roots.length === 0) {
+            return;
+        }
+        const rootSet = new Set(roots);
+        const orderedRoots = visibleRows.map(row => row.block.id).filter(blockId => rootSet.has(blockId));
+        const anchorId = orderedRoots[orderedRoots.length - 1] ?? roots[roots.length - 1];
+        recordHistory();
+        const target = getInsertionTargetAfter(scene, anchorId);
+        const insertedIds: StoryBlockId[] = [];
+        for (const rootId of orderedRoots) {
+            const cloned = cloneSerializedBlock(serializeBlockSubtree(scene, rootId), () => uuidService.generate());
+            insertSerializedClone(storyService, storyId, sceneId, cloned, target);
+            insertedIds.push(cloned.block.id);
+        }
+        if (insertedIds[0]) {
+            setActiveBlockId(insertedIds[0]);
+            setSelectedBlockIds(new Set(insertedIds));
+            selectionAnchorRef.current = insertedIds[0];
+        }
+        setEditorMode({ kind: "idle" });
+        setStatusText(`Duplicated ${insertedIds.length} row${insertedIds.length === 1 ? "" : "s"}.`);
+    }, [activeBlockId, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uuidService, visibleRows]);
 
     const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
         if (!isStoryEditorFocusActive()) {
@@ -807,11 +1060,29 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setDialogueCharacter, commitTextEdit, handleInsertValueChange,
         undoEdit, redoEdit,
         startInsertAfterActive, indentSelection, selectAllRows, moveActiveRowSelection,
-        insertDialogueAfterCurrentTextEdit, commitNarrationFromInsert, chooseCommand, chooseCharacterForInsert,
+        insertContinuationAfterCurrentTextEdit, commitNarrationFromInsert, chooseCommand, chooseCharacterForInsert,
         createActionFromSidebar,
+        navigateFromTextEdit, handleBackspaceAtEmptyStart, enterEditOrInspectorForActive,
+        extendRowSelection, moveSelectedRows, duplicateSelection, jumpRowSelection, pageRowSelection,
         moveDraggedBlockAfter, moveDraggedBlockToSortablePosition, startDraggingBlock, endDraggingBlock,
         createLayerBeforeBlock,
     };
+}
+
+/**
+ * The action command a text row's Enter continues with — a same-kind successor. Kinds with no natural
+ * successor (a choice prompt) return null so the caller falls back to the generic insert slot.
+ */
+function continuationCommandFor(block: StoryBlock): ActionCommandId | null {
+    if (block.kind === "note") {
+        return "note";
+    }
+    if (block.kind === "nodeAction") {
+        if (block.payload.action === "narration") return "narration";
+        if (block.payload.action === "dialogue") return "dialogue";
+        if (block.payload.action === "choiceOption") return "choiceOption";
+    }
+    return null;
 }
 
 /** Pick a unique default name ("Layer 1", "Layer 2", …) for a freshly-created layer in a scene. */
