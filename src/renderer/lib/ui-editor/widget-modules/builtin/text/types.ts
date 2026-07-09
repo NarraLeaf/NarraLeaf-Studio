@@ -12,6 +12,10 @@ import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
 
 export type TextWidgetProps = {
     text: string;
+    /** Game-localization opt-in: registers the implicit translation unit `ui:<elementId>.text`. */
+    localizable?: boolean;
+    /** Named localization key reference; takes precedence over the implicit unit. */
+    localizationKey?: string;
     fontSize: number;
     color: string;
     fontWeight: "normal" | "bold" | "600";

@@ -113,6 +113,8 @@ export interface CheckboxFieldDefinition<TData = any> extends BaseFieldDefinitio
 export interface SelectOption {
     value: string | number;
     label: string;
+    /** Muted secondary text after the label (passed through to the Select element). */
+    secondaryLabel?: string;
     disabled?: boolean;
 }
 

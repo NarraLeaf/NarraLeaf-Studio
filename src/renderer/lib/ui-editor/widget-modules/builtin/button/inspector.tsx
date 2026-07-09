@@ -16,6 +16,7 @@ import type {
     InlineRowItemContext,
 } from "@/apps/workspace/modules/properties/framework/types";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
+import { listLocalizationKeyOptions } from "@/lib/ui-editor/widget-modules/shared/localizationKeyOptions";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
@@ -364,6 +365,30 @@ export function createButtonInspector(ctx: InspectorContext) {
                                 label: "Interaction disabled",
                                 getValue: (d: D) => Boolean(getButtonProps(d.element).interactionDisabled),
                                 setValue: (_d: D, v: boolean) => patch({ interactionDisabled: v }),
+                            }),
+                        ],
+                    }),
+                    defineField<D, any>({
+                        id: "section.localization",
+                        type: "section",
+                        title: "Localization",
+                        collapsible: true,
+                        defaultCollapsed: true,
+                        fields: [
+                            defineField<D, any>({
+                                id: "button.localizable",
+                                type: "checkbox",
+                                label: "Localize label",
+                                getValue: (d: D) => Boolean(getButtonProps(d.element).localizable),
+                                setValue: (_d: D, v: boolean) => patch({ localizable: v }),
+                            }),
+                            defineField<D, any>({
+                                id: "button.localizationKey",
+                                type: "select",
+                                label: "Text key",
+                                options: () => listLocalizationKeyOptions(),
+                                getValue: (d: D) => getButtonProps(d.element).localizationKey ?? "",
+                                setValue: (_d: D, v: string | number) => patch({ localizationKey: String(v).trim() || undefined }),
                             }),
                         ],
                     }),

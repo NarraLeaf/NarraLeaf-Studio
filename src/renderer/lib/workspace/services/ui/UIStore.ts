@@ -7,6 +7,7 @@ import {
     Notification,
     ActionBarItem,
     PanelDefinition,
+    PanelPosition,
     EditorTab,
     Dialog,
     StatusBarItem,
@@ -39,6 +40,8 @@ export interface UIState {
     notifications: Notification[];
     actionBarItems: ActionBarItem[];
     panels: PanelDefinition[];
+    /** User-defined panel ordering per position (panel ids). Overrides the static `order` field. */
+    panelOrder: Record<string, string[]>;
     panelVisibility: Record<string, boolean>;
     editorTabs: EditorTab[];
     activeEditorTabId: string | null;
@@ -66,6 +69,7 @@ export interface UIStateEvents {
     panelRegistered: PanelDefinition;
     panelUnregistered: string; // panel id
     panelVisibilityChanged: { panelId: string; visible: boolean };
+    panelOrderChanged: { position: string; order: string[] };
     
     editorTabOpened: EditorTab;
     editorTabClosed: string; // tab id
@@ -122,6 +126,7 @@ export class UIStore {
             notifications: [],
             actionBarItems: [],
             panels: [],
+            panelOrder: {},
             panelVisibility: {},
             editorTabs: [],
             activeEditorTabId: null,
@@ -235,8 +240,8 @@ export class UIStore {
         // Remove existing panel with same id
         this.state.panels = this.state.panels.filter(p => p.id !== panel.id);
         this.state.panels.push(panel as PanelDefinition<any>);
-        // Sort by order
-        this.state.panels.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
+        // Sort by user-defined order (if any), falling back to the static `order` field
+        this.sortPanels();
         // Set default visibility
         if (panel.defaultVisible !== false && !(panel.id in this.state.panelVisibility)) {
             this.state.panelVisibility[panel.id] = true;
@@ -277,6 +282,59 @@ export class UIStore {
 
     public getPanelVisibility(): Record<string, boolean> {
         return { ...this.state.panelVisibility };
+    }
+
+    /** Fixed grouping of positions so `state.panels` stays partitioned by dock area. */
+    private static readonly POSITION_RANK: Record<string, number> = {
+        [PanelPosition.Left]: 0,
+        [PanelPosition.Right]: 1,
+        [PanelPosition.Bottom]: 2,
+    };
+
+    /**
+     * Sort `state.panels` in place: grouped by position, then by the user-defined order override
+     * for that position (if present), falling back to the static `order` field. Panels not listed
+     * in an override are appended after the listed ones, keeping their `order`-based sequence.
+     */
+    private sortPanels(): void {
+        const rank = (position: string) => UIStore.POSITION_RANK[position] ?? Number.MAX_SAFE_INTEGER;
+        this.state.panels.sort((a, b) => {
+            const ra = rank(a.position);
+            const rb = rank(b.position);
+            if (ra !== rb) {
+                return ra - rb;
+            }
+            const override = this.state.panelOrder[a.position];
+            if (override) {
+                const ia = override.indexOf(a.id);
+                const ib = override.indexOf(b.id);
+                const oa = ia === -1 ? Number.MAX_SAFE_INTEGER : ia;
+                const ob = ib === -1 ? Number.MAX_SAFE_INTEGER : ib;
+                if (oa !== ob) {
+                    return oa - ob;
+                }
+            }
+            return (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER);
+        });
+    }
+
+    /**
+     * Set the user-defined ordering for a dock area (list of panel ids, first shown first).
+     * Reorders the panels and notifies subscribers.
+     */
+    public setPanelOrder(position: PanelPosition, orderedIds: string[]): void {
+        this.state.panelOrder = { ...this.state.panelOrder, [position]: [...orderedIds] };
+        this.sortPanels();
+        this.events.emit("panelOrderChanged", { position, order: [...orderedIds] });
+        this.events.emit("stateChanged", { panels: [...this.state.panels] });
+    }
+
+    public getPanelOrder(): Record<string, string[]> {
+        const copy: Record<string, string[]> = {};
+        for (const [position, ids] of Object.entries(this.state.panelOrder)) {
+            copy[position] = [...ids];
+        }
+        return copy;
     }
 
     // === Editor Tabs ===
@@ -881,6 +939,7 @@ export class UIStore {
             notifications: [],
             actionBarItems: [],
             panels: [],
+            panelOrder: {},
             panelVisibility: {},
             editorTabs: [],
             activeEditorTabId: null,

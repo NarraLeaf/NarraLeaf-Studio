@@ -1,5 +1,6 @@
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
+import type { GameLocalizationBundle } from "./localization";
 import type { UIDocument } from "./ui-editor/document";
 import type { UIGraphDocument } from "./ui-editor/graph";
 import type { UISurfaceId } from "./ui-editor/document";
@@ -92,6 +93,13 @@ export type DevModeBundle = {
     };
     story?: StoryDocument;
     storyLibrary?: DevModeStoryLibrary;
+    /**
+     * Game localization payload (config + per-locale translation tables), assembled
+     * from `.nlproj` `app.localization` + `editor/localization/*.json`. Carried by
+     * the bundle so Dev Mode and the packaged runtime share one channel. Absent
+     * when the project has no localization set up.
+     */
+    localization?: GameLocalizationBundle;
     scripts?: Record<string, unknown>;
     compiled?: Record<string, unknown>;
     meta?: Record<string, unknown>;
