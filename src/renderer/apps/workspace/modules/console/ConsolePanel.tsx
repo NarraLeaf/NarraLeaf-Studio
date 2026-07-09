@@ -3,8 +3,8 @@ import { ListFilter, Terminal, Trash2 } from "lucide-react";
 import { Button } from "@/lib/components/elements";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import {
-    CONSOLE_CHANNELS,
     ConsoleService,
+    type ConsoleChannelDefinition,
     type ConsoleChannelId,
     type ConsoleEntry,
     type ConsoleLineSegment,
@@ -48,10 +48,6 @@ const LEVEL_META: Record<ConsoleLogLevel, {
     },
 };
 
-function isConsoleChannelId(value: unknown): value is ConsoleChannelId {
-    return value === "blueprint" || value === "build";
-}
-
 function isConsoleLogLevel(value: unknown): value is ConsoleLogLevel {
     return LOG_LEVELS.includes(value as ConsoleLogLevel);
 }
@@ -64,11 +60,13 @@ function normalizeVisibleLevels(value: unknown): Set<ConsoleLogLevel> {
     return new Set<ConsoleLogLevel>(levels.length ? levels : [...LOG_LEVELS]);
 }
 
+/** Snapshot every registered channel's buffered entries, keyed by channel id. */
 function readServiceEntries(service: ConsoleService | null): Record<ConsoleChannelId, ConsoleEntry[]> {
-    return {
-        blueprint: service?.getEntries("blueprint") ?? [],
-        build: service?.getEntries("build") ?? [],
-    };
+    const result: Record<ConsoleChannelId, ConsoleEntry[]> = {};
+    for (const channel of service?.getChannels() ?? []) {
+        result[channel.id] = service?.getEntries(channel.id) ?? [];
+    }
+    return result;
 }
 
 function formatTimestamp(timestamp: number): string {
@@ -99,11 +97,12 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
         [context],
     );
 
+    const [channels, setChannels] = useState<readonly ConsoleChannelDefinition[]>(() => consoleService?.getChannels() ?? []);
     const [activeChannel, setActiveChannel] = useState<ConsoleChannelId>("build");
     const [visibleLevels, setVisibleLevels] = useState<Set<ConsoleLogLevel>>(() => new Set(DEFAULT_VISIBLE_LEVELS));
     const [filterMenuOpen, setFilterMenuOpen] = useState(false);
     const [entriesByChannel, setEntriesByChannel] = useState<Record<ConsoleChannelId, ConsoleEntry[]>>(() =>
-        readServiceEntries(null),
+        readServiceEntries(consoleService),
     );
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const filterMenuRef = useRef<HTMLDivElement | null>(null);
@@ -115,7 +114,8 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
         }
 
         const stored = panelStateService.getPanelState<ConsolePanelState>(panelId);
-        if (isConsoleChannelId(stored?.activeChannel)) {
+        if (typeof stored?.activeChannel === "string" && stored.activeChannel.length > 0) {
+            // Validated against the live channel list by the fallback effect below.
             setActiveChannel(stored.activeChannel);
         }
         setVisibleLevels(normalizeVisibleLevels(stored?.visibleLevels));
@@ -137,13 +137,32 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
             return;
         }
 
-        setEntriesByChannel(readServiceEntries(consoleService));
-        return consoleService.onEntriesChanged(() => {
+        const sync = () => {
+            setChannels(consoleService.getChannels());
             setEntriesByChannel(readServiceEntries(consoleService));
-        });
+        };
+        sync();
+        const offEntries = consoleService.onEntriesChanged(sync);
+        const offChannels = consoleService.onChannelsChanged(sync);
+        return () => {
+            offEntries();
+            offChannels();
+        };
     }, [consoleService]);
 
-    const channelEntries = entriesByChannel[activeChannel];
+    // Keep the active tab valid as channels come and go (e.g. the Story tab appears when a story
+    // editor is open and is removed when the last one closes).
+    useEffect(() => {
+        if (channels.length === 0) {
+            return;
+        }
+        if (!channels.some(channel => channel.id === activeChannel)) {
+            setActiveChannel(channels[0].id);
+        }
+    }, [channels, activeChannel]);
+
+    const activeChannelDef = channels.find(channel => channel.id === activeChannel) ?? null;
+    const channelEntries = entriesByChannel[activeChannel] ?? [];
     const visibleLevelKey = useMemo(() => [...visibleLevels].sort().join("|"), [visibleLevels]);
     const visibleEntries = useMemo(
         () => channelEntries.filter(entry => visibleLevels.has(entry.level)),
@@ -192,9 +211,9 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
         <div className="flex h-full min-h-0 flex-col bg-surface text-fg-muted">
             <div className="flex h-9 shrink-0 items-center justify-between border-b border-edge bg-surface-sunken">
                 <div className="flex h-full min-w-0 overflow-x-auto" role="tablist" aria-label="Console channels">
-                    {CONSOLE_CHANNELS.map(channel => {
+                    {channels.map(channel => {
                         const active = activeChannel === channel.id;
-                        const count = entriesByChannel[channel.id].length;
+                        const count = entriesByChannel[channel.id]?.length ?? 0;
                         return (
                             <button
                                 key={channel.id}
@@ -283,7 +302,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                 className={`${visibleEntries.length > 0 ? "nl-selectable-text cursor-text" : "cursor-default select-none"} min-h-0 flex-1 overflow-auto overscroll-contain py-1 font-mono text-2xs leading-relaxed`}
             >
                 {visibleEntries.length === 0 ? (
-                    <ConsoleEmptyState channel={activeChannel} total={channelEntries.length} />
+                    <ConsoleEmptyState label={activeChannelDef?.label ?? "output"} total={channelEntries.length} />
                 ) : (
                     <ConsoleEntryGrid entries={visibleEntries} />
                 )}
@@ -292,8 +311,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
     );
 }
 
-function ConsoleEmptyState({ channel, total }: { channel: ConsoleChannelId; total: number }) {
-    const label = channel === "blueprint" ? "Blueprint" : "Build";
+function ConsoleEmptyState({ label, total }: { label: string; total: number }) {
     return (
         <div className="flex h-full min-h-24 items-center justify-center px-4 text-center text-fg-subtle">
             <div>

@@ -7,6 +7,10 @@ import type { TextAlign, TextVerticalAlign, TextWrapMode } from "../text/types";
 export type ButtonWidgetProps = {
     /** Button label; empty string keeps legacy buttons without visible text until set. */
     label: string;
+    /** Game-localization opt-in: registers the implicit translation unit `ui:<elementId>.label`. */
+    localizable?: boolean;
+    /** Named localization key reference; takes precedence over the implicit unit. */
+    localizationKey?: string;
     fontSize: number;
     color: string;
     fontWeight: "normal" | "bold" | "600";

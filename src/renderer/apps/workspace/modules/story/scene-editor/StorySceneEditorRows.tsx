@@ -401,6 +401,8 @@ export function InsertRow(props: {
     onCancelActionChooser: () => void;
     onChooseCommand: (commandId: ActionCommandId) => void;
     onChooseCharacter: (characterId: string) => void;
+    /** Backspace on the empty slot — dismiss it and step back to the row above. */
+    onBackspaceEmpty: () => void;
 }) {
     const chooserQuery = props.mode.value.slice(1);
     const menuAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -432,6 +434,11 @@ export function InsertRow(props: {
                         }
                     }}
                     onKeyDown={event => {
+                        if (event.key === "Backspace" && props.mode.value === "" && event.currentTarget.selectionStart === 0 && event.currentTarget.selectionEnd === 0) {
+                            event.preventDefault();
+                            props.onBackspaceEmpty();
+                            return;
+                        }
                         if (event.key === "Escape") {
                             event.preventDefault();
                             props.mode.chooser === "action" ? props.onCancelActionChooser() : props.onCommitNarration(false);

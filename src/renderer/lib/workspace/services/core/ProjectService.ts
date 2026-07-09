@@ -4,8 +4,10 @@ import { ProjectDependencyTable, normalizeProjectDependencyTable } from "@shared
 import { basename, extname, join } from "@shared/utils/path";
 import { ProjectConfig, ProjectIconConfig, ProjectIconPlatform, ProjectMetadata, Resolution } from "../../project/project";
 import {
+    LocalizationConfiguration,
     NetworkConfiguration,
     ProjectAppConfiguration,
+    normalizeLocalizationConfiguration,
     normalizeNetworkConfiguration,
 } from "../../project/configuration";
 import { ProjectNameConvention } from "../../project/nameConvention";
@@ -167,6 +169,41 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 app,
             };
         });
+    }
+
+    /**
+     * Read the effective game localization setup, normalized with safe defaults
+     * for projects that predate (or never configured) `app.localization`.
+     */
+    public getLocalizationConfiguration(): LocalizationConfiguration {
+        return normalizeLocalizationConfiguration(this.getProjectConfig().app?.localization);
+    }
+
+    /**
+     * Replace the game localization setup via an updater over the current
+     * normalized value. Used by the Localization panel (language management)
+     * and consumed by the Dev Mode / packaging bundle assembler.
+     */
+    public async updateLocalizationConfiguration(
+        updater: (current: LocalizationConfiguration) => LocalizationConfiguration,
+    ): Promise<LocalizationConfiguration> {
+        let applied: LocalizationConfiguration = normalizeLocalizationConfiguration(undefined);
+        await this.updateProjectConfig(config => {
+            const next = normalizeLocalizationConfiguration(
+                updater(normalizeLocalizationConfiguration(config.app?.localization)),
+            );
+            applied = next;
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                localization: next,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+        return applied;
     }
 
     public async importProjectIcon(platform: ProjectIconPlatform): Promise<{

@@ -2,6 +2,11 @@ import { FsRequestResult } from "@shared/types/os";
 import { FileDetails, FileStat } from "@shared/utils/fs";
 import { Porject, ProjectConfig, ProjectIconConfig, ProjectIconPlatform, ProjectMetadata } from "../project/project";
 import type { NetworkConfiguration } from "../project/configuration";
+import type {
+    LocalizationConfiguration,
+    LocalizationDocument,
+    LocalizationLocaleEntry,
+} from "@shared/types/localization";
 import type { ProjectDependencyResolution, ProjectDependencyTable } from "@shared/types/pluginDependencies";
 import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import { ServiceRegistry } from "./serviceRegistry";
@@ -51,6 +56,7 @@ import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type {
     ConsoleAppendInput,
+    ConsoleChannelDefinition,
     ConsoleChannelId,
     ConsoleEntry,
     ConsoleLogLevel,
@@ -129,7 +135,7 @@ enum Services {
     // Runtime = "runtime",
     // Build = "build",
     // Debug = "debug",
-    // Localization = "localization",
+    Localization = "localization",
     // VersionControl = "versionControl",
     // Plugin = "plugin",
 }
@@ -617,6 +623,8 @@ interface IDevModeService extends IService {
 }
 
 interface IConsoleService extends IService {
+    getChannels(): readonly ConsoleChannelDefinition[];
+    registerChannel(definition: ConsoleChannelDefinition): () => void;
     getEntries(channel: ConsoleChannelId): ConsoleEntry[];
     append(channel: ConsoleChannelId, input: ConsoleAppendInput): ConsoleEntry;
     log(
@@ -631,6 +639,9 @@ interface IConsoleService extends IService {
         entries: ConsoleEntry[];
         reason: "append" | "clear";
         entry?: ConsoleEntry;
+    }) => void): () => void;
+    onChannelsChanged(handler: (event: {
+        channels: readonly ConsoleChannelDefinition[];
     }) => void): () => void;
 }
 
@@ -802,7 +813,23 @@ interface IBuildService extends IService { }
 interface IDebugService extends IService { }
 
 // Helper Services
-interface ILocalizationService extends IService { }
+
+/**
+ * Game localization (player-facing multi-language). Owns the project's
+ * localization configuration and the per-locale translation library.
+ * Unrelated to the Studio UI i18n framework.
+ */
+interface ILocalizationService extends IService {
+    getConfiguration(): LocalizationConfiguration;
+    onConfigChanged(handler: (config: LocalizationConfiguration) => void): () => void;
+    addLocale(entry: LocalizationLocaleEntry): Promise<LocalizationConfiguration>;
+    removeLocale(code: string): Promise<LocalizationConfiguration>;
+    setSourceLocale(code: string): Promise<LocalizationConfiguration>;
+    loadDocument(locale: string): Promise<LocalizationDocument>;
+    getDocumentIfLoaded(locale: string): LocalizationDocument | undefined;
+    onDocumentChanged(handler: (event: { locale: string; document: LocalizationDocument }) => void): () => void;
+    flushPendingChanges(): Promise<void>;
+}
 
 interface IVersionControlService extends IService { }
 

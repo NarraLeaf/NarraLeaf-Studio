@@ -296,6 +296,11 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                         }
                     },
                 },
+                localization: {
+                    getConfig: () => null,
+                    getLocale: async () => "",
+                    setLocale: async () => undefined,
+                },
                 frame: {
                     getParam: () => undefined,
                     emit: async () => undefined,
@@ -398,6 +403,11 @@ function createPageNavigationHostAdapter(
                     get: async () => undefined,
                     set: async () => undefined,
                 },
+                localization: {
+                    getConfig: () => null,
+                    getLocale: async () => "",
+                    setLocale: async () => undefined,
+                },
                 frame: {
                     getParam: () => undefined,
                     emit: async () => undefined,
@@ -486,6 +496,11 @@ function createGameSaveHostAdapter(options: {
                 persistence: {
                     get: async () => undefined,
                     set: async () => undefined,
+                },
+                localization: {
+                    getConfig: () => null,
+                    getLocale: async () => "",
+                    setLocale: async () => undefined,
                 },
                 frame: {
                     getParam: () => undefined,

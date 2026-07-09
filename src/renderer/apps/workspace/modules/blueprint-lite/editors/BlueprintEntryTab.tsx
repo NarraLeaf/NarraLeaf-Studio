@@ -14,6 +14,7 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
+import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
@@ -1382,10 +1383,24 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 });
             }
         }
+        // Named localization keys: pick by source text, key name as context.
+        let localizationKeyOptions: BlueprintInspectorParamSelectOption[] = [];
+        try {
+            const keys = LocalizationService.getInstance().getKeysIfLoaded()?.keys ?? {};
+            localizationKeyOptions = Object.entries(keys)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([name, definition]) => ({
+                    value: name,
+                    label: definition.sourceText.trim() ? `${definition.sourceText} — ${name}` : name,
+                }));
+        } catch {
+            // Outside a workspace context; no key options.
+        }
         const opts: Record<string, BlueprintInspectorParamSelectOption[]> = {
             surfaces: surfaceOptions,
             stories: storyOptions,
             storyScenes: storySceneOptions,
+            localizationKeys: localizationKeyOptions,
             callableFns: listCallableBlueprintFnOptions({
                 blueprintDocument: doc,
                 uiDocument,

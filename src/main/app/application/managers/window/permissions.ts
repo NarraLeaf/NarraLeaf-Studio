@@ -18,6 +18,11 @@ type RuntimeGrantPolicy = {
         mode: FileSystemGrantMode;
         recursive: false;
     };
+    /** Save-dialog picks need a write grant on the chosen destination. */
+    selectSaveFile?: {
+        mode: FileSystemGrantMode;
+        recursive: false;
+    };
     selectDirectory?: {
         mode: FileSystemGrantMode;
         recursive: true;
@@ -60,6 +65,7 @@ const projectFileSystemAccess = ({ window }: WindowPermissionContext): FileSyste
 
 const workspaceImportGrants: RuntimeGrantPolicy = {
     selectFile: { mode: "read", recursive: false },
+    selectSaveFile: { mode: "write", recursive: false },
     selectDirectory: { mode: "read", recursive: true },
     droppedFile: { mode: "read", recursive: false },
 };

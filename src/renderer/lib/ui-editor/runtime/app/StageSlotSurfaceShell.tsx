@@ -194,6 +194,7 @@ export function useStageSlotSurfaceRuntime(input: {
                 );
             },
             widgetRuntimeStore,
+            localizationConfig: bundle.localization ?? null,
         });
     }, [
         core,

@@ -96,13 +96,14 @@ export function StoryScenePreviewPane(props: {
                     </div>
                 ) : null}
                 {showSceneStartHint ? (
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/70 to-transparent px-3 pb-2 pt-6 text-center text-2xs text-fg-muted">
-                        Previewing the scene start — select a row to preview its state.
-                    </div>
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/70 to-transparent px-3 pb-2 pt-6 text-center text-2xs text-fg-muted"></div>
                 ) : null}
             </div>
 
-            {notes.length > 0 ? (
+            {/* Docked (split-pane) keeps the inline diagnostics strip as-is; the picture-in-picture
+                float drops it so problems don't eat the small preview's space — they still land in
+                the bottom console's Story tab, which the preview controller feeds regardless of mode. */}
+            {mode === "dock" && notes.length > 0 ? (
                 <div className="max-h-28 shrink-0 overflow-auto border-t border-edge px-3 py-1.5">
                     {notes.map((note, index) => (
                         <div

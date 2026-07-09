@@ -12,6 +12,7 @@ import {
     BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY,
     BLUEPRINT_GAME_NVL_MODE_STATE_KEY,
 } from "@shared/types/blueprint/hostApi";
+import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/localization";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { normalizeElementEffectValues, type ElementEffectValues } from "@shared/types/ui-editor/effects";
@@ -232,6 +233,14 @@ export type BlueprintHostApiRuntime = {
         get: (key: string) => Promise<unknown>;
         set: (key: string, value: unknown) => Promise<void>;
     };
+    localization: {
+        /** Localization setup of the running game, or null when the project has none. */
+        getConfig: () => GameLocalizationConfigSnapshot | null;
+        /** Effective current locale (stored player choice, else the source locale). */
+        getLocale: () => Promise<string>;
+        /** Persist the player's language choice; callers validate against getConfig(). */
+        setLocale: (code: string) => Promise<void>;
+    };
     frame: {
         getParam: (key: string) => unknown;
         emit: (eventName: string, data: unknown) => Promise<void>;
@@ -265,6 +274,15 @@ export type BlueprintHostApiRuntime = {
         log: (level: string, message: string) => void;
     };
 };
+
+/**
+ * Localization payload of the running game as exposed to blueprint nodes.
+ * Hosts pass the full bundle (locales + translation tables + named keys) so
+ * text-resolution nodes (Get Text / Has Text) can look translations up; a
+ * bare config (no tables) still satisfies the language-management nodes.
+ */
+export type GameLocalizationConfigSnapshot = Pick<GameLocalizationBundle, "sourceLocale" | "locales">
+    & Partial<Pick<GameLocalizationBundle, "tables" | "keys">>;
 
 export type CreateBlueprintHostApiRuntimeOptions = {
     document: UIDocument;
@@ -306,6 +324,8 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     widgetRuntimeStore: WidgetRuntimeStateStore;
     /** Component definition graphs should pass a component-scoped document so Element Host API stays local. */
     componentDefinitionMode?: boolean;
+    /** Game localization setup (from the bundle); absent when the project has none. */
+    localizationConfig?: GameLocalizationConfigSnapshot | null;
 };
 
 function readDocumentElement(document: UIDocument, elementId: string): UIElement | undefined {
@@ -2134,6 +2154,31 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emit({ type: "state.write", scope: "persistence", key });
                 } finally {
                     emitHostCall(emit, "persistence.set", "return");
+                }
+            },
+        },
+        localization: {
+            getConfig: () => options.localizationConfig ?? null,
+            getLocale: async () => {
+                emitHostCall(emit, "localization.getLocale", "call");
+                try {
+                    const config = options.localizationConfig;
+                    const stored = await scope.persistenceGetAsync(LOCALE_STORAGE_KEY);
+                    if (typeof stored === "string" && stored && config?.locales.some(locale => locale.code === stored)) {
+                        return stored;
+                    }
+                    return config?.sourceLocale ?? "";
+                } finally {
+                    emitHostCall(emit, "localization.getLocale", "return");
+                }
+            },
+            setLocale: async (code: string) => {
+                emitHostCall(emit, "localization.setLocale", "call");
+                try {
+                    await scope.persistenceSetAsync(LOCALE_STORAGE_KEY, code);
+                    emit({ type: "state.write", scope: "persistence", key: LOCALE_STORAGE_KEY });
+                } finally {
+                    emitHostCall(emit, "localization.setLocale", "return");
                 }
             },
         },

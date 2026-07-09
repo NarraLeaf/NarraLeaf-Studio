@@ -561,8 +561,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [commitTextEdit, editorMode, focusRoot, rowIndexById, startInsertAfter, visibleRows]);
 
-    // Backspace on an empty line: a dialogue descends a rung to plain narration (keeps the row so the
-    // author can keep typing); any other empty text row is deleted and focus steps back to the line above.
+    // Backspace on an empty line. An empty dialogue drops a rung to a blank insert slot in the same spot —
+    // a completely empty line that can become anything (type narration, "/" for an action, "#" for another
+    // speaker) rather than a committed narration row. Any other empty text row is deleted and focus steps
+    // back to the line above.
     const handleBackspaceAtEmptyStart = useCallback(() => {
         if (editorMode.kind !== "text" || !storyService || !storyId || !sceneId || !scene) {
             return;
@@ -573,10 +575,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
-            recordHistory();
-            storyService.updateBlock(storyId, sceneId, id, { action: "narration", text: { textId: block.payload.text.textId, role: "narration", value: "" } });
-            setEditorMode({ kind: "text", blockId: id, value: "", caret: "start" });
-            return;
+            // Anchor the fresh slot to the previous sibling so it reappears at the dialogue's own level and
+            // position (the continuation flow that creates these always has one). A dialogue that opens its
+            // container has no sibling to anchor to — fall through to the plain delete-and-step-back.
+            const previousSibling = findPreviousSibling(scene, id);
+            if (previousSibling) {
+                recordHistory();
+                storyService.deleteBlock(storyId, sceneId, id);
+                startInsertAfter(previousSibling.id, true);
+                return;
+            }
         }
         // Don't silently delete a container row that still holds children (e.g. an empty menu option).
         if (block.childrenIds.length > 0) {
@@ -603,7 +611,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setEditorMode({ kind: "idle" });
             focusRoot();
         }
-    }, [editorMode, focusRoot, recordHistory, rowIndexById, scene, sceneId, storyId, storyService, visibleRows]);
+    }, [editorMode, focusRoot, recordHistory, rowIndexById, scene, sceneId, startInsertAfter, storyId, storyService, visibleRows]);
 
     // Enter on a selected-but-not-editing row: text rows open for editing (caret at the end); action rows
     // open their inspector; with nothing selected it falls back to a fresh insert slot.
@@ -646,6 +654,31 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const handleInsertValueChange = useCallback((value: string) => {
         setEditorMode(current => current.kind !== "insert" ? current : { ...current, value, chooser: value.startsWith("/") ? "action" : value.startsWith("#") ? "character" : "none" });
     }, []);
+
+    // Backspace on an empty insert slot: dismiss the blank line and step back onto the row above it —
+    // re-entering it for editing when it holds text — so the demote ladder keeps walking upward.
+    const handleInsertBackspaceEmpty = useCallback(() => {
+        if (editorMode.kind !== "insert") {
+            return;
+        }
+        const afterId = editorMode.slot.afterBlockId;
+        const afterBlock = afterId ? scene?.blocks[afterId] : null;
+        if (afterId && afterBlock && isTextEditableBlock(afterBlock)) {
+            const segment = getTextSegment(afterBlock);
+            setActiveBlockId(afterId);
+            setSelectedBlockIds(new Set([afterId]));
+            selectionAnchorRef.current = afterId;
+            setEditorMode({ kind: "text", blockId: afterId, value: segment?.value ?? "", rich: segment?.rich, caret: "end" });
+            return;
+        }
+        if (afterId) {
+            setActiveBlockId(afterId);
+            setSelectedBlockIds(new Set([afterId]));
+            selectionAnchorRef.current = afterId;
+        }
+        setEditorMode({ kind: "idle" });
+        focusRoot();
+    }, [editorMode, focusRoot, scene]);
 
     const chooseCommand = useCallback((commandId: ActionCommandId) => {
         if (editorMode.kind !== "insert") {
@@ -1060,7 +1093,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setDialogueCharacter, commitTextEdit, handleInsertValueChange,
         undoEdit, redoEdit,
         startInsertAfterActive, indentSelection, selectAllRows, moveActiveRowSelection,
-        insertContinuationAfterCurrentTextEdit, commitNarrationFromInsert, chooseCommand, chooseCharacterForInsert,
+        insertContinuationAfterCurrentTextEdit, commitNarrationFromInsert, handleInsertBackspaceEmpty, chooseCommand, chooseCharacterForInsert,
         createActionFromSidebar,
         navigateFromTextEdit, handleBackspaceAtEmptyStart, enterEditOrInspectorForActive,
         extendRowSelection, moveSelectedRows, duplicateSelection, jumpRowSelection, pageRowSelection,

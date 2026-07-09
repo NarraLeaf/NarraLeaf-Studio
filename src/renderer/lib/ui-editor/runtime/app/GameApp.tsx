@@ -9,6 +9,16 @@ import {
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import { type LiveGame, type SavedGame } from "narraleaf-react";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
+import {
+    LOCALE_STORAGE_KEY,
+    characterTranslationUnitId,
+    matchSystemLocale,
+    resolveLocalizedUnitText,
+} from "@shared/types/localization";
+import {
+    GameLocalizationContext,
+    type GameLocalizationRuntime,
+} from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
@@ -117,7 +127,72 @@ export function GameApp(props: GameAppProps): ReactNode {
         onDebugEvent: host.onDebugEvent,
         disposeMessage: host.disposeMessage,
     });
+    // First-launch language pick: when no stored locale is valid for this project,
+    // match the system language against the configured locales and persist it.
+    // The stored value stays authoritative afterwards (player choice wins).
+    useEffect(() => {
+        const localization = bundle.localization;
+        if (!core || !localization) {
+            return;
+        }
+        let cancelled = false;
+        void (async () => {
+            try {
+                const stored = await core.scopeBridge.persistenceGetAsync(LOCALE_STORAGE_KEY);
+                if (cancelled || (typeof stored === "string" && localization.locales.some(locale => locale.code === stored))) {
+                    return;
+                }
+                const candidates = typeof navigator !== "undefined"
+                    ? [...(navigator.languages ?? []), navigator.language]
+                    : [];
+                const matched = matchSystemLocale(localization.locales, candidates);
+                if (!cancelled && matched && matched !== localization.sourceLocale) {
+                    core.scopeBridge.persistenceSet(LOCALE_STORAGE_KEY, matched);
+                }
+            } catch {
+                // Non-fatal: the game falls back to the source language.
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [core, bundle.localization]);
+    // Localized UI text: widget renderers resolve display text through this
+    // context and re-render on language changes (persistence subscription).
+    const gameLocalizationRuntime = useMemo<GameLocalizationRuntime | null>(() => {
+        const localization = bundle.localization;
+        if (!localization || !core) {
+            return null;
+        }
+        return {
+            bundle: localization,
+            getLocale: () => {
+                const stored = core.scopeBridge.persistenceGet(LOCALE_STORAGE_KEY);
+                return typeof stored === "string" && stored ? stored : localization.sourceLocale;
+            },
+            subscribe: listener => core.scopeBridge.subscribePersistence(listener),
+        };
+    }, [bundle.localization, core]);
     const widgetRuntimeStore = useMemo(() => new WidgetRuntimeStateStore(), []);
+    // Localized character nametag: NLR reports the authored (source-language)
+    // name; map it back to its character and translate the `char:<id>` unit for
+    // the current locale. Applied at the single point where the nametag enters
+    // the dialog state, so the ref, global state, and host API all see the
+    // translated name. Like story text, a mid-line language switch applies from
+    // the next spoken line.
+    const translateCharacterName = useCallback((name: string | null): string | null => {
+        const localization = bundle.localization;
+        if (!name || !localization || !core) {
+            return name;
+        }
+        const character = bundle.storyLibrary?.characters.find(entry => entry.name === name);
+        if (!character) {
+            return name;
+        }
+        const stored = core.scopeBridge.persistenceGet(LOCALE_STORAGE_KEY);
+        const locale = typeof stored === "string" && stored ? stored : localization.sourceLocale;
+        return resolveLocalizedUnitText(localization, locale, characterTranslationUnitId(character.id)) ?? name;
+    }, [bundle.localization, bundle.storyLibrary, core]);
     const [widgetPatchesByScope, setWidgetPatchesByScope] = useState<Record<string, Record<string, DevModeWidgetRuntimePatch>>>({});
     const widgetPatchesByScopeRef = useRef(widgetPatchesByScope);
     const navigation = useMemo(() => new NavigationController(), []);
@@ -547,6 +622,17 @@ export function GameApp(props: GameAppProps): ReactNode {
                       set: (key, value) => core.scopeBridge.persistenceSet(key, value),
                   }
                 : undefined,
+            localization: bundle.localization && core
+                ? {
+                      ...bundle.localization,
+                      getLocale: () => {
+                          const stored = core.scopeBridge.persistenceGet(LOCALE_STORAGE_KEY);
+                          return typeof stored === "string" && stored
+                              ? stored
+                              : bundle.localization!.sourceLocale;
+                      },
+                  }
+                : undefined,
         });
         if (compiled.diagnostics.length > 0) {
             for (const diagnostic of compiled.diagnostics) {
@@ -803,6 +889,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 );
             },
             widgetRuntimeStore,
+            localizationConfig: bundle.localization ?? null,
         });
         hostAdapter = createDevModeBlueprintHostAdapter({
             bundle,
@@ -1012,6 +1099,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                         );
                     },
                     widgetRuntimeStore,
+                    localizationConfig: bundle.localization ?? null,
                 });
                 nestedHostAdapter = createDevModeBlueprintHostAdapter({
                     bundle,
@@ -1338,7 +1426,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
                 nlrCharacterPromptTokenRef.current?.cancel();
                 nlrCharacterPromptTokenRef.current = liveGame.onCharacterPrompt(({ character }) => {
-                    const nametag = readNlrCharacterName(character);
+                    const nametag = translateCharacterName(readNlrCharacterName(character));
                     currentDialogNametagRef.current = nametag;
                     core.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
                 });
@@ -1443,9 +1531,9 @@ export function GameApp(props: GameAppProps): ReactNode {
     );
 
     return (
-        <>
+        <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
             {renderFrame({ activeSurface, gameViewport, children: content })}
             {renderOverlays?.({ core, activeSurface, widgetRuntimeStore })}
-        </>
+        </GameLocalizationContext.Provider>
     );
 }

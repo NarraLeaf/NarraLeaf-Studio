@@ -14,8 +14,10 @@ import {
 import { createWorkspaceBlobUrlResolver, type WorkspaceBlobUrlResolver } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
 import { Services, WorkspaceContext } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
+import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import { useStoryPreviewGameUi, type StoryPreviewIssue } from "./useStoryPreviewGameUi";
 import { resolvePreviewTargetBlockId } from "./storyScenePreviewTarget";
+import { STORY_CONSOLE_CHANNEL_ID } from "./storyPreviewConsole";
 
 const RECOMPILE_DEBOUNCE_MS = 300;
 /** Pure row switches (same document, new target) rebuild sooner — they are the hot path. */
@@ -121,6 +123,9 @@ export function useStoryScenePreviewController(input: {
 
     const runIdRef = useRef(0);
     const phaseRef = useRef<StoryScenePreviewPhase>("idle");
+    /** Signatures (`level|message`) of the diagnostics logged to the console on the previous compile,
+     *  so identical recompiles (row switches, edits) don't re-append the same lines every time. */
+    const loggedDiagnosticKeysRef = useRef<Set<string>>(new Set());
     /** The promoted run currently holding the visible frame. */
     const displayRunRef = useRef<PreviewRun | null>(null);
     /** The in-flight run building hidden beneath the display frame. */
@@ -131,14 +136,26 @@ export function useStoryScenePreviewController(input: {
     /** Last rebuild input; a change in target alone is a row switch and debounces shorter. */
     const lastRunInputRef = useRef<{ document: StoryDocument; sceneId: string; targetId: string | null } | null>(null);
 
+    const consoleService = useMemo(
+        () => context?.services.get<ConsoleService>(Services.Console) ?? null,
+        [context],
+    );
+
     const setPhase = useCallback((next: StoryScenePreviewPhase) => {
         phaseRef.current = next;
         setPhaseState(next);
     }, []);
 
+    // Mirror a preview problem to the shared bottom console's "Story" tab. The channel is registered
+    // by the scene editor; appending before it registers is harmless (the entry buffers regardless).
+    const logStoryConsole = useCallback((level: "warning" | "error", message: string, source: string) => {
+        consoleService?.append(STORY_CONSOLE_CHANNEL_ID, { level, message, source });
+    }, [consoleService]);
+
     const pushIssue = useCallback((issue: StoryPreviewIssue) => {
         setIssues(current => [...current.slice(-(MAX_ISSUES - 1)), issue]);
-    }, []);
+        logStoryConsole(issue.level, issue.message, "Preview");
+    }, [logStoryConsole]);
 
     const host = useStoryPreviewGameUi({ context, enabled: open && active, onIssue: pushIssue });
 
@@ -383,6 +400,18 @@ export function useStoryScenePreviewController(input: {
                 return;
             }
             setDiagnostics(compiled.diagnostics);
+            // Forward compile diagnostics to the Story console tab, but only the ones that are new
+            // versus the previous compile — the preview recompiles on every row switch/edit, so
+            // re-appending the whole (usually unchanged) set each time would flood the console.
+            const diagnosticKeys = new Set<string>();
+            for (const diag of compiled.diagnostics) {
+                const key = `${diag.level}|${diag.message}`;
+                diagnosticKeys.add(key);
+                if (!loggedDiagnosticKeysRef.current.has(key)) {
+                    logStoryConsole(diag.level, diag.message, "Compile");
+                }
+            }
+            loggedDiagnosticKeysRef.current = diagnosticKeys;
             const sessionId = `story-preview-${runId}`;
             const previewGame = host.createPreviewGame({
                 sessionId,
@@ -438,6 +467,7 @@ export function useStoryScenePreviewController(input: {
         handleBeforeTarget,
         handleStagePosed,
         host,
+        logStoryConsole,
         open,
         refreshStageLayers,
         resolveAssetUrl,

@@ -24,6 +24,7 @@ import { UIEditorFontFaceService } from "./ui-editor/UIEditorFontFaceService";
 import { BlueprintNodeCatalogService } from "./ui-editor/BlueprintNodeCatalogService";
 import { StoryService } from "./story/StoryService";
 import { ProjectDependencyService } from "./core/ProjectDependencyService";
+import { LocalizationService } from "./localization/LocalizationService";
 
 export class ServiceRegistry {
     private services: Record<Services, Service> = {
@@ -51,6 +52,7 @@ export class ServiceRegistry {
         [Services.UIEditorFontFace]: UIEditorFontFaceService.getInstance(),
         [Services.BlueprintNodeCatalog]: BlueprintNodeCatalogService.getInstance(),
         [Services.ProjectDependency]: ProjectDependencyService.getInstance(),
+        [Services.Localization]: LocalizationService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {

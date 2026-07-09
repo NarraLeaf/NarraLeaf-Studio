@@ -1,7 +1,7 @@
 import React from "react";
 import { useRegistry } from "../../registry";
 import { PanelPosition } from "../../registry/types";
-import { SidebarPanelDropIcon } from "./SidebarPanelDropIcon";
+import { SidebarPanelRail } from "./SidebarPanelRail";
 
 interface LeftSidebarSelectorProps {
     visible: boolean;
@@ -23,7 +23,7 @@ export function LeftSidebarSelector({
     onSelectPanel,
     onActivatePanelForDrop,
 }: LeftSidebarSelectorProps) {
-    const { getPanelsByPosition } = useRegistry();
+    const { getPanelsByPosition, reorderPanels } = useRegistry();
     const panels = getPanelsByPosition(PanelPosition.Left);
 
     const handlePanelClick = (panelId: string) => {
@@ -44,16 +44,14 @@ export function LeftSidebarSelector({
             data-workspace-sidebar-rail=""
             className="bg-surface-sunken border-r border-edge flex flex-col items-center py-2 px-1 gap-1"
         >
-            {panels.map((panel) => (
-                <SidebarPanelDropIcon
-                    key={panel.id}
-                    panel={panel}
-                    active={activeId === panel.id}
-                    sidebarVisible={visible}
-                    onPanelClick={() => handlePanelClick(panel.id)}
-                    onActivateForDrop={() => onActivatePanelForDrop?.(panel.id)}
-                />
-            ))}
+            <SidebarPanelRail
+                panels={panels}
+                activeId={activeId}
+                sidebarVisible={visible}
+                onPanelClick={handlePanelClick}
+                onActivateForDrop={onActivatePanelForDrop}
+                onReorder={(orderedIds) => reorderPanels(PanelPosition.Left, orderedIds)}
+            />
         </div>
     );
 }

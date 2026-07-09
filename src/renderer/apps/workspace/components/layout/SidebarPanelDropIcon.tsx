@@ -1,7 +1,21 @@
+import type { CSSProperties } from "react";
+import type { DraggableAttributes } from "@dnd-kit/core";
 import { useAssetDropTarget } from "@/apps/workspace/dnd/useAssetDropTarget";
 import { useWorkspace } from "@/apps/workspace/context";
 import type { PanelDefinition } from "@/apps/workspace/registry/types";
 import { setWorkspaceSelectionToPrimaryAsset } from "@/apps/workspace/modules/assets/dnd/openDraggedAssetsInEditor";
+
+/**
+ * Drag-to-reorder wiring supplied by the sortable rail. When present, the icon becomes a
+ * `@dnd-kit/sortable` item; when absent the icon renders as a plain (non-draggable) button.
+ */
+export interface SidebarPanelSortable {
+    setNodeRef: (element: HTMLElement | null) => void;
+    style: CSSProperties;
+    attributes: DraggableAttributes;
+    listeners: Record<string, unknown> | undefined;
+    isDragging: boolean;
+}
 
 interface SidebarPanelDropIconProps {
     panel: PanelDefinition;
@@ -10,10 +24,13 @@ interface SidebarPanelDropIconProps {
     onPanelClick: () => void;
     /** Show sidebar, select panel, and move workspace focus (for drag-drop). */
     onActivateForDrop: () => void;
+    /** Optional sortable bindings from the enclosing rail (enables drag-to-reorder). */
+    sortable?: SidebarPanelSortable;
 }
 
 /**
  * Sidebar / bottom bar panel icon that also accepts asset drops from the assets panel.
+ * Optionally participates in drag-to-reorder when the enclosing rail provides `sortable`.
  */
 export function SidebarPanelDropIcon({
     panel,
@@ -21,6 +38,7 @@ export function SidebarPanelDropIcon({
     sidebarVisible,
     onPanelClick,
     onActivateForDrop,
+    sortable,
 }: SidebarPanelDropIconProps) {
     const { context } = useWorkspace();
 
@@ -38,7 +56,11 @@ export function SidebarPanelDropIcon({
     return (
         <button
             type="button"
+            ref={sortable?.setNodeRef}
+            style={sortable?.style}
             {...dropTargetProps}
+            {...sortable?.attributes}
+            {...sortable?.listeners}
             className={`
                 w-10 h-10 rounded-md flex items-center justify-center transition-colors cursor-default
                 ${
@@ -46,6 +68,7 @@ export function SidebarPanelDropIcon({
                         ? "bg-fill-strong text-white"
                         : "text-fg-muted hover:bg-fill hover:text-white"
                 }
+                ${sortable?.isDragging ? "opacity-50 ring-2 ring-primary/60" : ""}
                 ${overlayClassName}
             `}
             onClick={onPanelClick}

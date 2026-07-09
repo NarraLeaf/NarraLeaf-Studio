@@ -16,6 +16,7 @@ import { fnBlueprintNodes } from "./fnNodes";
 import { frameBlueprintNodes } from "./frameNodes";
 import { gameBlueprintNodes } from "./gameNodes";
 import { listBlueprintNodes } from "./listNodes";
+import { localizationBlueprintNodes } from "./localizationNodes";
 import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { mathBlueprintNodes } from "./mathNodes";
 import { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
@@ -37,6 +38,7 @@ export { fnBlueprintNodes } from "./fnNodes";
 export { frameBlueprintNodes } from "./frameNodes";
 export { gameBlueprintNodes } from "./gameNodes";
 export { listBlueprintNodes } from "./listNodes";
+export { localizationBlueprintNodes } from "./localizationNodes";
 export { localVariableBlueprintNodes } from "./localVariableNodes";
 export { mathBlueprintNodes } from "./mathNodes";
 export { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
@@ -62,6 +64,7 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...listBlueprintNodes,
     ...elementBlueprintNodes,
     ...localVariableBlueprintNodes,
+    ...localizationBlueprintNodes,
     ...persistentVariableBlueprintNodes,
     ...storyVariableBlueprintNodes,
     ...mathBlueprintNodes,

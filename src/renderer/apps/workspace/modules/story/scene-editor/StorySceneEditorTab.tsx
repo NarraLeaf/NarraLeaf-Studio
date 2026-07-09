@@ -7,6 +7,7 @@ import type { EditorComponentProps } from "../../types";
 import { PanelPosition } from "../../../registry/types";
 import { Services } from "@/lib/workspace/services/services";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { StoryDocument, StoryScene, StorySceneUpdate } from "@shared/types/story";
 import type { Asset } from "@/lib/workspace/services/assets/types";
@@ -37,6 +38,7 @@ import { ResizableHandle } from "@/apps/workspace/components/ui/ResizableHandle"
 import { StoryScenePreviewPane } from "./preview/StoryScenePreviewPane";
 import { StoryScenePreviewFloat } from "./preview/StoryScenePreviewFloat";
 import { useStoryScenePreviewController } from "./preview/useStoryScenePreviewController";
+import { STORY_CONSOLE_CHANNEL } from "./preview/storyPreviewConsole";
 import {
     createDefaultStoryPreviewFloatRect,
     DEFAULT_STORY_SCENE_PREVIEW_PANE_STATE,
@@ -732,6 +734,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         return (width - nextWidth) - delta;
     }, [panelStateService]);
 
+    // Register the "Story" console channel while this scene editor is mounted, so the shared bottom
+    // console shows a Story tab that the preview writes its diagnostics/warnings to. Ref-counted in
+    // ConsoleService: several kept-alive scene tabs share one channel, removed only when the last
+    // story editor closes. Not gated on `active` — the tab stays across keep-alive switches.
+    useEffect(() => {
+        if (!editor.context) {
+            return;
+        }
+        const consoleService = editor.context.services.get<ConsoleService>(Services.Console);
+        return consoleService.registerChannel(STORY_CONSOLE_CHANNEL);
+    }, [editor.context]);
+
     const preview = useStoryScenePreviewController({
         context: editor.context,
         document: editor.document,
@@ -877,6 +891,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         onCancelActionChooser={() => editor.commitNarrationFromInsert(false)}
                                         onChooseCommand={editor.chooseCommand}
                                         onChooseCharacter={editor.chooseCharacterForInsert}
+                                        onBackspaceEmpty={editor.handleInsertBackspaceEmpty}
                                     />
                                 ) : null}
                             </div>
@@ -893,6 +908,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         onCancelActionChooser={() => editor.commitNarrationFromInsert(false)}
                         onChooseCommand={editor.chooseCommand}
                         onChooseCharacter={editor.chooseCharacterForInsert}
+                        onBackspaceEmpty={editor.handleInsertBackspaceEmpty}
                     />
                 ) : isInsertingAfterLastRow ? null : (
                     <button
