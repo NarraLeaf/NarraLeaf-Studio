@@ -1,3 +1,10 @@
+import type { LocalizationConfiguration } from "@shared/types/localization";
+
+export {
+    DEFAULT_LOCALIZATION_CONFIGURATION,
+    normalizeLocalizationConfiguration,
+} from "@shared/types/localization";
+export type { LocalizationConfiguration, LocalizationLocaleEntry } from "@shared/types/localization";
 
 // Declared as object-literal `type` aliases (not interfaces) so they carry an
 // implicit string index signature and remain assignable to the loose
@@ -11,6 +18,8 @@ export type NetworkConfiguration = {
 
 export type ProjectAppConfiguration = {
     network: NetworkConfiguration;
+    /** Game localization setup (see @shared/types/localization); absent until configured. */
+    localization?: LocalizationConfiguration;
 };
 
 /**

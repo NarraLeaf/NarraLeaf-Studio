@@ -62,6 +62,9 @@ import type {
 } from "@shared/types/story";
 import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { GameLocalizationBundle } from "@shared/types/localization";
+import { resolveLocaleChain } from "@shared/types/localization";
+import { parseTranslatedText } from "@shared/utils/localizationText";
 import {
     boolProp,
     getCharacterStageObjectName,
@@ -95,6 +98,44 @@ export type StoryPersistenceBridge = {
 
 /** Single NLR Storable namespace holding all Story "saved" variables. */
 const SAVED_PERSISTENT_NAMESPACE = "__nlr_story_saved__";
+
+/**
+ * Game localization input: the bundle payload (locales + translation tables)
+ * plus a synchronous current-locale getter (host persistence snapshot). Text
+ * segments with translations compile to dynamic NLR Words that re-resolve on
+ * every render, so switching the language applies immediately — no recompile.
+ */
+export type StoryLocalizationRuntime = GameLocalizationBundle & {
+    getLocale: () => string;
+};
+
+/** Compile-scoped resolver over {@link StoryLocalizationRuntime} with precomputed fallback chains. */
+type SceneLocalizationResolver = {
+    hasTranslation: (textId: string) => boolean;
+    /** Translated text for the current locale, or null to render the source-language prompt. */
+    resolve: (textId: string) => string | null;
+};
+
+function createSceneLocalizationResolver(input: StoryLocalizationRuntime): SceneLocalizationResolver {
+    const chains = new Map<string, string[]>();
+    for (const locale of input.locales) {
+        chains.set(locale.code, resolveLocaleChain(input, locale.code));
+    }
+    return {
+        hasTranslation: textId => Object.values(input.tables).some(table => Boolean(table[textId])),
+        resolve: textId => {
+            const locale = input.getLocale();
+            const chain = chains.get(locale) ?? resolveLocaleChain(input, locale);
+            for (const code of chain) {
+                const target = input.tables[code]?.[textId];
+                if (target) {
+                    return target;
+                }
+            }
+            return null;
+        },
+    };
+}
 
 export type NlrStoryCompileDiagnostic = {
     level: "warning" | "error";
@@ -187,6 +228,8 @@ type SceneCompileContext = {
     persistence?: StoryPersistenceBridge;
     /** Blueprint document for compiling story-action blueprints referenced by this scene. */
     blueprintDocument?: BlueprintDocument;
+    /** Game localization resolver; absent when the project has no localization or the host passes none. */
+    localization?: SceneLocalizationResolver;
     /** Fn declarations shared across all story-action blueprints in this scene. */
     sceneFnCatalog: StoryActionFnCatalog;
     images: Map<string, Image>;
@@ -212,6 +255,8 @@ type CompileInput = {
     blueprintDocument?: BlueprintDocument;
     /** App-level persistent bridge (shared with UI blueprints); from the Dev Mode scope-store bridge. */
     persistence?: StoryPersistenceBridge;
+    /** Game localization (bundle payload + current-locale getter); see {@link StoryLocalizationRuntime}. */
+    localization?: StoryLocalizationRuntime;
 };
 
 const EMPTY_IMAGE_SRC = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'></svg>";
@@ -270,6 +315,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         savedDefaults[saved.storageKey] = saved.defaultValue ?? null;
     }
     const savedPersistent = nlrStory.createPersistent(SAVED_PERSISTENT_NAMESPACE, savedDefaults);
+    const localization = input.localization ? createSceneLocalizationResolver(input.localization) : undefined;
 
     for (const scene of Object.values(input.document.scenes)) {
         const nlrScene = allScenes[scene.id];
@@ -289,6 +335,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             savedPersistent,
             persistence: input.persistence,
             blueprintDocument: input.blueprintDocument,
+            localization,
             sceneFnCatalog,
             images: new Map(),
             texts: new Map(),
@@ -731,7 +778,7 @@ async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryB
         if (!segment.value.trim() && !segmentHasInterpolation(segment)) {
             return [];
         }
-        return [recordStatement(ctx, Narrator.say(buildSentencePrompt(segment, ctx, block.id) as any), block, segment.textId)];
+        return [recordStatement(ctx, Narrator.say(buildLocalizedSentencePrompt(ctx, segment, block.id) as any), block, segment.textId)];
     }
 
     if (block.payload.action === "dialogue") {
@@ -751,7 +798,7 @@ async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryB
             config.pause = block.payload.pauseAfter;
         }
         const sayConfig = Object.keys(config).length > 0 ? (config as any) : undefined;
-        return [recordStatement(ctx, character.say(buildSentencePrompt(block.payload.text, ctx, block.id) as any, sayConfig), block, block.payload.text.textId)];
+        return [recordStatement(ctx, character.say(buildLocalizedSentencePrompt(ctx, block.payload.text, block.id) as any, sayConfig), block, block.payload.text.textId)];
     }
 
     return [];
@@ -759,10 +806,23 @@ async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryB
 
 /** Build an NLR sentence prompt from a text segment: a plain string, or Word/Pause tokens. */
 function buildSentencePrompt(segment: StoryTextSegment, ctx: SceneCompileContext, blockId: string): string | unknown[] {
+    return buildSentenceParts(segment, ctx, blockId).prompt;
+}
+
+/**
+ * Build the sentence prompt and, alongside it, the compiled interpolation Words in
+ * segment order — the `{n}` placeholder targets when a translation renders instead.
+ */
+function buildSentenceParts(
+    segment: StoryTextSegment,
+    ctx: SceneCompileContext,
+    blockId: string,
+): { prompt: string | unknown[]; interpolationWords: unknown[] } {
     if (!segment.rich || segment.rich.length === 0) {
-        return segment.value;
+        return { prompt: segment.value, interpolationWords: [] };
     }
     const prompt: unknown[] = [];
+    const interpolationWords: unknown[] = [];
     for (const run of segment.rich) {
         if ("pause" in run) {
             prompt.push(run.pause === true ? new Pause() : Pause.wait(run.pause));
@@ -770,6 +830,9 @@ function buildSentencePrompt(segment: StoryTextSegment, ctx: SceneCompileContext
         }
         if ("interpolation" in run) {
             const word = buildInterpolationWord(ctx, run.interpolation, blockId, run.marks);
+            // Keep placeholder indices aligned with the source serialization even
+            // when a broken interpolation compiles to nothing.
+            interpolationWords.push(word ?? "");
             if (word != null) {
                 prompt.push(word);
             }
@@ -780,7 +843,34 @@ function buildSentencePrompt(segment: StoryTextSegment, ctx: SceneCompileContext
         }
         prompt.push(buildWord(run.text, run.marks));
     }
-    return prompt.length > 0 ? prompt : segment.value;
+    return { prompt: prompt.length > 0 ? prompt : segment.value, interpolationWords };
+}
+
+/**
+ * Localization-aware variant of {@link buildSentencePrompt}. When the segment has
+ * at least one translation, the whole line compiles to a single dynamic Word that
+ * re-resolves per render: the current locale's translation (with `{n}` placeholders
+ * mapped back to the source line's interpolation Words), or the original
+ * source-language prompt when no translation applies. Untranslated segments keep
+ * their plain compiled form — zero overhead.
+ */
+function buildLocalizedSentencePrompt(ctx: SceneCompileContext, segment: StoryTextSegment, blockId: string): string | unknown[] {
+    const { prompt, interpolationWords } = buildSentenceParts(segment, ctx, blockId);
+    const localization = ctx.localization;
+    if (!localization || !localization.hasTranslation(segment.textId)) {
+        return prompt;
+    }
+    const textId = segment.textId;
+    const resolveDynamic = () => {
+        const target = localization.resolve(textId);
+        if (target === null) {
+            return prompt as never;
+        }
+        return parseTranslatedText(target).map(part =>
+            part.kind === "text" ? part.text : (interpolationWords[part.index] ?? ""),
+        ) as never;
+    };
+    return [new Word((resolveDynamic as unknown) as any)];
 }
 
 /** True when a segment carries an inline interpolation run (so an empty plain value is intentional). */
@@ -1192,13 +1282,19 @@ async function compileChoice(ctx: SceneCompileContext, block: Extract<StoryBlock
         return [];
     }
 
-    let chain: any = Menu.prompt(block.payload.prompt?.value ?? null);
+    const promptSegment = block.payload.prompt;
+    let chain: any = Menu.prompt(
+        promptSegment ? (buildLocalizedSentencePrompt(ctx, promptSegment, block.id) as any) : null,
+    );
     for (const option of choiceBlocks) {
         if (option.payload.action !== "choiceOption") {
             continue;
         }
+        const optionSegment = option.payload.text;
         chain = chain.choose({
-            prompt: option.payload.text.value || "Option",
+            prompt: optionSegment.value || segmentHasInterpolation(optionSegment)
+                ? (buildLocalizedSentencePrompt(ctx, optionSegment, option.id) as any)
+                : "Option",
             action: await compileBlockList(ctx, option.childrenIds) as any,
             config: {
                 hidden: conditionToLambda(ctx, option.payload.hiddenWhen, option.id),

@@ -49,6 +49,12 @@ export const ProjectNameConvention = {
     EditorStoryAnimations: ["editor", "story", "animations/"],
     EditorStoryAnimationIndex: ["editor", "story", "animations", "index.json"],
     EditorStoryAnimationDocument: (animationId: string) => ["editor", "story", "animations", `${animationId}.json`],
+    // Game localization translation library (one document per locale).
+    // Locale codes are validated against a conservative alphabet (see
+    // isValidLocaleCode in @shared/types/localization) before touching disk.
+    EditorLocalization: ["editor", "localization/"],
+    EditorLocalizationDocument: (locale: string) => ["editor", "localization", `${locale}.json`],
+    EditorLocalizationKeys: ["editor", "localization", "keys.json"],
 } as const;
 
 /**

@@ -32,6 +32,8 @@ import { AppEventToken } from "./app";
 export interface RendererPrivilegedInterface {
     fs: {
         selectFile(actor: PrivilegedActor, filters: string[], multiple: boolean): Promise<RequestStatus<FsRequestResult<string[]>>>;
+        /** Native save dialog; resolves to the chosen path, or null when cancelled. */
+        selectSaveFile(actor: PrivilegedActor, defaultFileName: string, filters: string[]): Promise<RequestStatus<FsRequestResult<string | null>>>;
         stat(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileStat>>>;
         list(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileStat[]>>>;
         details(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileDetails>>>;

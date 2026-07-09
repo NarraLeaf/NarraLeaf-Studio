@@ -908,3 +908,186 @@ describe("compileStudioStoryToNlr", () => {
         }
     });
 });
+
+describe("compileStudioStoryToNlr localization", () => {
+    /** Sentence of a compiled say action; its `.text` is the NLR word array. */
+    function getSaySentence(compiled: Awaited<ReturnType<typeof compileStudioStoryToNlr>>, blockId: string): any {
+        const binding = compiled.actionIdBindings.find(entry => entry.blockId === blockId);
+        expect(binding, `say binding for ${blockId}`).toBeTruthy();
+        const content = (binding!.action as any).contentNode?.getContent?.();
+        const sentence = Array.isArray(content) ? content.find((item: any) => item?.text) : content;
+        expect(sentence?.text, `sentence of ${blockId}`).toBeTruthy();
+        return sentence;
+    }
+
+    /** Flatten a DynamicWordResult into plain text, resolving nested dynamic words. */
+    function renderDynamicResult(result: unknown, scriptCtx: unknown = {}): string {
+        const parts = Array.isArray(result) ? result : [result];
+        return parts.map(part => {
+            if (typeof part === "string") {
+                return part;
+            }
+            const inner = (part as any)?.text;
+            if (typeof inner === "function") {
+                return renderDynamicResult(inner(scriptCtx), scriptCtx);
+            }
+            return typeof inner === "string" ? inner : "";
+        }).join("");
+    }
+
+    const localizationSetup = (getLocale: () => string) => ({
+        sourceLocale: "zh-CN",
+        locales: [
+            { code: "zh-CN", displayName: "简体中文" },
+            { code: "en", displayName: "English" },
+            { code: "yue", displayName: "粵語", fallback: "en" },
+        ],
+        tables: {
+            en: { "text-say": "Hello there." },
+        },
+        getLocale,
+    });
+
+    it("renders the translation for the current locale and re-resolves after a switch", async () => {
+        let locale = "zh-CN";
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say: narrationBlock("say", "text-say", "你好。") }, ["say"]),
+            sceneId: "scene-1",
+            localization: localizationSetup(() => locale),
+        });
+        expect(compiled.diagnostics).toEqual([]);
+
+        const words = getSaySentence(compiled, "say").text as any[];
+        expect(words).toHaveLength(1);
+        const dynamic = words[0].text;
+        expect(typeof dynamic).toBe("function");
+
+        expect(renderDynamicResult(dynamic({}))).toBe("你好。");
+        locale = "en";
+        expect(renderDynamicResult(dynamic({}))).toBe("Hello there.");
+        // Unknown stored locale falls back to the source language.
+        locale = "fr";
+        expect(renderDynamicResult(dynamic({}))).toBe("你好。");
+        // Fallback chain: yue has no table, falls through to en.
+        locale = "yue";
+        expect(renderDynamicResult(dynamic({}))).toBe("Hello there.");
+    });
+
+    it("keeps untranslated segments as plain compiled prompts (no dynamic wrapper)", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say: narrationBlock("say", "text-other", "没有翻译的行。") }, ["say"]),
+            sceneId: "scene-1",
+            localization: localizationSetup(() => "en"),
+        });
+        const words = getSaySentence(compiled, "say").text as any[];
+        expect(words.every(word => typeof word.text !== "function")).toBe(true);
+        expect(renderDynamicResult(words.map(word => word.text))).toBe("没有翻译的行。");
+    });
+
+    it("maps {n} placeholders in translations back to the source interpolation words", async () => {
+        let locale = "en";
+        const say: StoryBlock = {
+            id: "say",
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "narration",
+                text: {
+                    textId: "text-interp",
+                    value: "你好，！",
+                    role: "narration",
+                    rich: [
+                        { text: "你好，" },
+                        { interpolation: { kind: "variable", target: { scope: "persistent", storageKey: "playerName" } } },
+                        { text: "！" },
+                    ],
+                },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say }, ["say"]),
+            sceneId: "scene-1",
+            persistence: {
+                get: key => (key === "playerName" ? "Alice" : undefined),
+                set: () => undefined,
+            },
+            localization: {
+                sourceLocale: "zh-CN",
+                locales: [
+                    { code: "zh-CN", displayName: "简体中文" },
+                    { code: "en", displayName: "English" },
+                ],
+                tables: {
+                    en: { "text-interp": "Hi, {0}! Welcome." },
+                },
+                getLocale: () => locale,
+            },
+        });
+        expect(compiled.diagnostics).toEqual([]);
+
+        const words = getSaySentence(compiled, "say").text as any[];
+        const dynamic = words[0].text;
+        expect(renderDynamicResult(dynamic({}))).toBe("Hi, Alice! Welcome.");
+        locale = "zh-CN";
+        expect(renderDynamicResult(dynamic({}))).toBe("你好，Alice！");
+    });
+
+    it("localizes choice prompts and option texts", async () => {
+        const optionChild = narrationBlock("option-child", "text-option-child", "留下了。");
+        optionChild.parentId = "option";
+        const option: StoryBlock = {
+            id: "option",
+            kind: "nodeAction",
+            parentId: "choice",
+            childrenIds: ["option-child"],
+            payload: {
+                action: "choiceOption",
+                text: { textId: "text-option", value: "留下", role: "choiceText" },
+            },
+        };
+        const choice: StoryBlock = {
+            id: "choice",
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: ["option"],
+            payload: {
+                action: "choice",
+                prompt: { textId: "text-prompt", value: "怎么办？", role: "choicePrompt" },
+            },
+        };
+        let locale = "en";
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ choice, option, "option-child": optionChild }, ["choice"]),
+            sceneId: "scene-1",
+            localization: {
+                sourceLocale: "zh-CN",
+                locales: [
+                    { code: "zh-CN", displayName: "简体中文" },
+                    { code: "en", displayName: "English" },
+                ],
+                tables: {
+                    en: { "text-prompt": "What now?", "text-option": "Stay" },
+                },
+                getLocale: () => locale,
+            },
+        });
+        expect(compiled.diagnostics).toEqual([]);
+
+        // The Menu chain is stored as a raw element on the scene until NLR
+        // constructs the scene root, so introspect it directly.
+        const menuElement = ((compiled.scene as any).actions as any[])
+            .flat(9)
+            .find(item => item?.choices);
+        expect(menuElement, "menu element on scene actions").toBeTruthy();
+        const promptWords = menuElement.prompt?.text as any[];
+        expect(renderDynamicResult(promptWords[0].text({}))).toBe("What now?");
+        const choiceEntries = menuElement.choices as any[];
+        expect(choiceEntries).toHaveLength(1);
+        const optionWords = choiceEntries[0].prompt?.text as any[];
+        expect(renderDynamicResult(optionWords[0].text({}))).toBe("Stay");
+        locale = "zh-CN";
+        expect(renderDynamicResult(promptWords[0].text({}))).toBe("怎么办？");
+        expect(renderDynamicResult(optionWords[0].text({}))).toBe("留下");
+    });
+});

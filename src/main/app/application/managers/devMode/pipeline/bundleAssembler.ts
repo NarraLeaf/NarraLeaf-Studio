@@ -3,6 +3,12 @@ import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBluep
 import { parseSharedBlueprintAssetJson } from "@shared/blueprint/parseSharedBlueprintAsset";
 import type { SharedBlueprintAsset } from "@shared/types/blueprint/document";
 import type { DevModeBundle, DevModeCharacterSummary, DevModeStoryLibrary } from "@shared/types/devMode";
+import type { GameLocalizationBundle } from "@shared/types/localization";
+import {
+    normalizeLocalizationConfiguration,
+    normalizeLocalizationDocument,
+    normalizeLocalizationKeysDocument,
+} from "@shared/types/localization";
 import type { StoryAnimationAsset, StoryAnimationIndex, StoryDocument, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
@@ -29,6 +35,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const sharedBlueprints = await loadSharedBlueprints(context.projectPath);
     const projectIdentifier = await readProjectIdentifier(context.projectPath);
     const storyLibrary = await loadStoryLibrary(context.projectPath);
+    const localization = await loadGameLocalization(context.projectPath);
     return {
         bundleId: context.bundleId,
         revision: context.revision,
@@ -40,6 +47,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
             sharedBlueprints,
         },
         storyLibrary,
+        localization,
         compiled: context.compiled,
         blueprintCompiledScripts: context.blueprintCompiledScripts,
         blueprintScriptsCompileOk: context.blueprintScriptsCompileOk ?? true,
@@ -194,7 +202,7 @@ async function loadCharacterSummaries(projectPath: string): Promise<DevModeChara
     return mapCharacterStoreEntriesToSummaries(characters);
 }
 
-async function readProjectIdentifier(projectPath: string): Promise<string | undefined> {
+async function readProjectConfigRecord(projectPath: string): Promise<Record<string, unknown> | undefined> {
     try {
         const entriesResult = await Fs.dirEntries(projectPath);
         if (!entriesResult.ok) {
@@ -214,15 +222,82 @@ async function readProjectIdentifier(projectPath: string): Promise<string | unde
             if (!result.ok) {
                 return undefined;
             }
-            const id = decodeProjectConfig(result.data).identifier;
-            return typeof id === "string" && id.trim() ? id.trim() : undefined;
+            return decodeProjectConfig(result.data) as unknown as Record<string, unknown>;
         }
-        const config = await readJsonFile<Record<string, unknown>>(configPath);
-        const id = config.identifier;
-        return typeof id === "string" && id.trim() ? id.trim() : undefined;
+        return await readJsonFile<Record<string, unknown>>(configPath);
     } catch {
         return undefined;
     }
+}
+
+async function readProjectIdentifier(projectPath: string): Promise<string | undefined> {
+    const config = await readProjectConfigRecord(projectPath);
+    const id = config?.identifier;
+    return typeof id === "string" && id.trim() ? id.trim() : undefined;
+}
+
+/**
+ * Load the game localization payload: config from `.nlproj` `app.localization`
+ * plus per-locale translation tables from `editor/localization/<code>.json`.
+ * Broken or missing files degrade silently — localization must never block a
+ * Dev Mode start or a pack. Returns undefined when the project has no setup.
+ * Exported for tests.
+ */
+export async function loadGameLocalization(projectPath: string): Promise<GameLocalizationBundle | undefined> {
+    const config = await readProjectConfigRecord(projectPath);
+    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+    const localization = normalizeLocalizationConfiguration(app?.localization);
+    if (!localization.sourceLocale || localization.locales.length === 0) {
+        return undefined;
+    }
+    const tables: Record<string, Record<string, string>> = {};
+    for (const locale of localization.locales) {
+        if (locale.code === localization.sourceLocale) {
+            continue;
+        }
+        let raw: unknown;
+        try {
+            raw = await readOptionalJsonFile<unknown>(
+                path.join(projectPath, "editor", "localization", `${locale.code}.json`),
+            );
+        } catch {
+            continue;
+        }
+        if (!raw) {
+            continue;
+        }
+        const document = normalizeLocalizationDocument(raw, locale.code);
+        const table: Record<string, string> = {};
+        for (const [unitId, unit] of Object.entries(document.units)) {
+            if (unit.target) {
+                table[unitId] = unit.target;
+            }
+        }
+        if (Object.keys(table).length > 0) {
+            tables[locale.code] = table;
+        }
+    }
+    let keys: Record<string, string> | undefined;
+    try {
+        const rawKeys = await readOptionalJsonFile<unknown>(
+            path.join(projectPath, "editor", "localization", "keys.json"),
+        );
+        if (rawKeys) {
+            const keysDocument = normalizeLocalizationKeysDocument(rawKeys);
+            const entries = Object.entries(keysDocument.keys);
+            if (entries.length > 0) {
+                keys = Object.fromEntries(entries.map(([name, definition]) => [name, definition.sourceText]));
+            }
+        }
+    } catch {
+        // Broken keys file degrades to no named keys.
+    }
+    return {
+        sourceLocale: localization.sourceLocale,
+        locales: localization.locales,
+        tables,
+        ...(keys ? { keys } : {}),
+    };
 }
 
 function resolveAssetContentPath(projectPath: string, assetId: string): string | null {

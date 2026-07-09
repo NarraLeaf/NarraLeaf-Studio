@@ -1,7 +1,7 @@
 import React from "react";
 import { useRegistry } from "../../registry";
 import { PanelPosition } from "../../registry/types";
-import { SidebarPanelDropIcon } from "./SidebarPanelDropIcon";
+import { SidebarPanelRail } from "./SidebarPanelRail";
 
 interface BottomPanelSelectorProps {
     visible: boolean;
@@ -22,7 +22,7 @@ export function BottomPanelSelector({
     onSelectPanel,
     onActivatePanelForDrop,
 }: BottomPanelSelectorProps) {
-    const { getPanelsByPosition } = useRegistry();
+    const { getPanelsByPosition, reorderPanels } = useRegistry();
     const panels = getPanelsByPosition(PanelPosition.Bottom);
 
     const handlePanelClick = (panelId: string) => {
@@ -42,16 +42,14 @@ export function BottomPanelSelector({
 
     return (
         <div className="bg-surface-sunken border-t border-edge flex flex-col items-center py-2 px-1 gap-1">
-            {panels.map((panel) => (
-                <SidebarPanelDropIcon
-                    key={panel.id}
-                    panel={panel}
-                    active={activeId === panel.id}
-                    sidebarVisible={visible}
-                    onPanelClick={() => handlePanelClick(panel.id)}
-                    onActivateForDrop={() => onActivatePanelForDrop?.(panel.id)}
-                />
-            ))}
+            <SidebarPanelRail
+                panels={panels}
+                activeId={activeId}
+                sidebarVisible={visible}
+                onPanelClick={handlePanelClick}
+                onActivateForDrop={onActivatePanelForDrop}
+                onReorder={(orderedIds) => reorderPanels(PanelPosition.Bottom, orderedIds)}
+            />
         </div>
     );
 }
