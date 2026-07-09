@@ -6,7 +6,11 @@ import {
     type NlrStoryCompileDiagnostic,
 } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
-import type { NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
+import {
+    waitForPaintFrames,
+    waitForStageVisualReadyWithTimeout,
+    type NlrStageSession,
+} from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import { createWorkspaceBlobUrlResolver, type WorkspaceBlobUrlResolver } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
 import { Services, WorkspaceContext } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
@@ -14,6 +18,8 @@ import { useStoryPreviewGameUi, type StoryPreviewIssue } from "./useStoryPreview
 import { resolvePreviewTargetBlockId } from "./storyScenePreviewTarget";
 
 const RECOMPILE_DEBOUNCE_MS = 300;
+/** Pure row switches (same document, new target) rebuild sooner — they are the hot path. */
+const ROW_SWITCH_DEBOUNCE_MS = 150;
 /** Pre-posed state mounts within a few frames; anything longer means the marker never fired. */
 const STATE_SETTLE_TIMEOUT_MS = 5_000;
 const MAX_ISSUES = 20;
@@ -33,12 +39,23 @@ export type StoryScenePreviewStageContext = {
     phase: StoryScenePreviewPhase;
 };
 
+/**
+ * One stage buffer for the pane to render. The pane stacks the array in order (later entries on
+ * top) and wires `setRootElement` on each wrapper so the controller can await paint-readiness of
+ * the hidden buffer before revealing it.
+ */
+export type StoryScenePreviewStageLayer = {
+    session: NlrStageSession;
+    setRootElement: (element: HTMLDivElement | null) => void;
+};
+
 export type StoryScenePreviewController = {
     phase: StoryScenePreviewPhase;
     errorMessage: string | null;
     diagnostics: NlrStoryCompileDiagnostic[];
     issues: StoryPreviewIssue[];
-    session: NlrStageSession | null;
+    /** Stage buffers, bottom-to-top: at most [incoming (hidden beneath), current frame (on top)]. */
+    stageLayers: StoryScenePreviewStageLayer[];
     designSize: { width: number; height: number };
     targetBlockId: string | null;
     /** Phase-2 seam: the live stage at the previewed row (motion editor prefill). */
@@ -49,11 +66,39 @@ export type StoryScenePreviewController = {
     onStageError: (error: Error, sessionId: string) => void;
 };
 
+/** Everything one compile run owns; the display run keeps the visible frame, the pending run builds hidden. */
+type PreviewRun = {
+    runId: number;
+    session: NlrStageSession;
+    /** Stable per-run object the pane keys its stage wrapper on. */
+    layer: StoryScenePreviewStageLayer;
+    liveGame: LiveGame | null;
+    wireLiveGame: (liveGame: LiveGame) => () => void;
+    wireDispose: (() => void) | null;
+    /**
+     * Releases the compiled story's reveal gate (a `Control.sleep` between the posed stage and the
+     * target's own action). Only ever resolved at promotion — superseded runs are disposed instead,
+     * which aborts the sleeping timeline.
+     */
+    resolveReveal: () => void;
+    /** The pane's wrapper element for this buffer; promotion awaits its visual readiness. */
+    rootElement: HTMLDivElement | null;
+    posed: boolean;
+    arrived: boolean;
+    targetBlockId: string | null;
+};
+
 /**
  * Drives the story preview stage. The Studio computes the settled stage state at the selected row
  * (computeStoryStageSnapshot) and compiles it into a "state player" story whose elements mount
  * pre-posed; the target row's own action then plays once on that stage and the preview holds the
  * resulting frame. The shell never fast-forwards — mounting IS the state.
+ *
+ * Rebuilds are double-buffered: the new session mounts *beneath* the currently visible frame,
+ * poses itself, and is only revealed (old buffer unmounted, reveal gate released) once its images
+ * have decoded and painted. Row switches therefore never flash black or show half-loaded content —
+ * the previous frame simply holds until the next one is pixel-ready, and the target row's own
+ * action plays entirely on the visible stage.
  */
 export function useStoryScenePreviewController(input: {
     context: WorkspaceContext | null;
@@ -72,24 +117,19 @@ export function useStoryScenePreviewController(input: {
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [diagnostics, setDiagnostics] = useState<NlrStoryCompileDiagnostic[]>([]);
     const [issues, setIssues] = useState<StoryPreviewIssue[]>([]);
-    const [session, setSession] = useState<NlrStageSession | null>(null);
+    const [stageLayers, setStageLayers] = useState<StoryScenePreviewStageLayer[]>([]);
 
     const runIdRef = useRef(0);
-    /** The run that produced the currently mounted session; detects late onReady from superseded runs. */
-    const sessionRunIdRef = useRef(0);
     const phaseRef = useRef<StoryScenePreviewPhase>("idle");
-    const sessionRef = useRef<NlrStageSession | null>(null);
-    const liveGameRef = useRef<LiveGame | null>(null);
-    const liveGameSessionIdRef = useRef<string | null>(null);
-    /** Retired LiveGame awaiting disposal at the next session swap (its Player keeps the last frame until then). */
-    const pendingDisposeRef = useRef<LiveGame | null>(null);
-    const wireLiveGameRef = useRef<((liveGame: LiveGame) => () => void) | null>(null);
-    const wireDisposeRef = useRef<(() => void) | null>(null);
-    const arrivedRef = useRef(false);
-    const targetBlockIdRef = useRef<string | null>(null);
+    /** The promoted run currently holding the visible frame. */
+    const displayRunRef = useRef<PreviewRun | null>(null);
+    /** The in-flight run building hidden beneath the display frame. */
+    const pendingRunRef = useRef<PreviewRun | null>(null);
     const settleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const blobResolverRef = useRef<WorkspaceBlobUrlResolver | null>(null);
+    /** Last rebuild input; a change in target alone is a row switch and debounces shorter. */
+    const lastRunInputRef = useRef<{ document: StoryDocument; sceneId: string; targetId: string | null } | null>(null);
 
     const setPhase = useCallback((next: StoryScenePreviewPhase) => {
         phaseRef.current = next;
@@ -158,83 +198,145 @@ export function useStoryScenePreviewController(input: {
         }
     }, []);
 
-    // Flush the pending retired LiveGame. Called synchronously right before the session swap
-    // (its Player is still mounted, so the reset can abort everything cleanly), in the same task
-    // as setSession — React commits both in one paint, so the old frame never flashes empty.
-    const flushPendingDispose = useCallback(() => {
-        const pending = pendingDisposeRef.current;
-        pendingDisposeRef.current = null;
-        disposeLiveGame(pending);
+    // Dispose a run's session-scoped wiring and game. The reveal gate is deliberately left
+    // unresolved: disposal aborts the sleeping timeline, whereas resolving it would let the
+    // compiled story race the teardown.
+    const disposeRunObject = useCallback((run: PreviewRun | null) => {
+        if (!run) {
+            return;
+        }
+        run.wireDispose?.();
+        run.wireDispose = null;
+        disposeLiveGame(run.liveGame);
+        run.liveGame = null;
     }, [disposeLiveGame]);
 
-    const disposeRun = useCallback(() => {
-        clearDriveTimers();
-        wireDisposeRef.current?.();
-        wireDisposeRef.current = null;
-        // Keep the retiring LiveGame alive until the next session swap so the previous frame
-        // stays visible during the recompile; it is disposed in flushPendingDispose.
-        if (liveGameRef.current) {
-            if (pendingDisposeRef.current && pendingDisposeRef.current !== liveGameRef.current) {
-                disposeLiveGame(pendingDisposeRef.current);
-            }
-            pendingDisposeRef.current = liveGameRef.current;
+    /** Rebuild the pane's stage stack from the run refs: pending beneath, display on top. */
+    const refreshStageLayers = useCallback(() => {
+        const layers: StoryScenePreviewStageLayer[] = [];
+        if (pendingRunRef.current) {
+            layers.push(pendingRunRef.current.layer);
         }
-        liveGameRef.current = null;
-        liveGameSessionIdRef.current = null;
-        arrivedRef.current = false;
-    }, [clearDriveTimers, disposeLiveGame]);
+        if (displayRunRef.current) {
+            layers.push(displayRunRef.current.layer);
+        }
+        setStageLayers(layers);
+    }, []);
+
+    const findRunBySessionId = useCallback((sessionId: string): PreviewRun | null => {
+        if (pendingRunRef.current?.session.id === sessionId) {
+            return pendingRunRef.current;
+        }
+        if (displayRunRef.current?.session.id === sessionId) {
+            return displayRunRef.current;
+        }
+        return null;
+    }, []);
 
     const failRun = useCallback((runId: number, message: string) => {
         if (runId !== runIdRef.current) {
             return;
         }
         clearDriveTimers();
+        // Only the hidden buffer is torn down; a failed rebuild keeps the last good frame visible
+        // beneath the error overlay.
+        const pending = pendingRunRef.current;
+        if (pending && pending.runId === runId) {
+            pendingRunRef.current = null;
+            disposeRunObject(pending);
+            refreshStageLayers();
+        }
         setErrorMessage(message);
         setPhase("error");
-    }, [clearDriveTimers, setPhase]);
+    }, [clearDriveTimers, disposeRunObject, refreshStageLayers, setPhase]);
 
-    const beginPlayback = useCallback((runId: number, liveGame: LiveGame) => {
+    // Promote the posed pending run: wait until its hidden buffer is pixel-ready (images decoded
+    // and painted beneath the display frame), then swap the buffers in one commit and release the
+    // reveal gate so the target's own action plays on the now-visible stage.
+    const promoteRun = useCallback(async (run: PreviewRun) => {
+        const root = run.rootElement;
+        if (root) {
+            await waitForStageVisualReadyWithTimeout(root);
+        } else {
+            await waitForPaintFrames(2);
+        }
+        if (run.runId !== runIdRef.current || pendingRunRef.current !== run) {
+            // Superseded while waiting; the supersede path owns the cleanup.
+            return;
+        }
+        const retiring = displayRunRef.current;
+        displayRunRef.current = run;
+        pendingRunRef.current = null;
+        // Dispose the retiring run in the same task as the swap: its Player is still mounted, so
+        // the reset aborts cleanly, and React commits the removal and the reveal in one paint.
+        disposeRunObject(retiring);
+        refreshStageLayers();
+        run.resolveReveal();
+    }, [disposeRunObject, refreshStageLayers]);
+
+    const handleStagePosed = useCallback((runId: number) => {
         if (runId !== runIdRef.current) {
             return;
         }
-        clearDriveTimers();
-        arrivedRef.current = false;
-        setPhase("starting");
-        try {
-            liveGame.newGame();
-        } catch (error) {
-            failRun(runId, error instanceof Error ? error.message : String(error));
+        const run = pendingRunRef.current;
+        if (!run || run.runId !== runId || run.posed) {
             return;
         }
-        // The compiled story is pure state (instant seeds + injection script + target); the
-        // before-marker fires within a few frames. A miss means a compile/mount defect.
+        run.posed = true;
+        void promoteRun(run);
+    }, [promoteRun]);
+
+    const handleBeforeTarget = useCallback((runId: number) => {
+        if (runId !== runIdRef.current) {
+            return;
+        }
+        const run = displayRunRef.current?.runId === runId
+            ? displayRunRef.current
+            : pendingRunRef.current?.runId === runId ? pendingRunRef.current : null;
+        if (!run || run.arrived) {
+            return;
+        }
+        run.arrived = true;
+        clearDriveTimers();
+        // The target action (if any) plays once after this marker and the frame holds there.
+        setPhase("settled");
+    }, [clearDriveTimers, setPhase]);
+
+    const beginPlayback = useCallback((run: PreviewRun) => {
+        if (run.runId !== runIdRef.current || !run.liveGame) {
+            return;
+        }
+        clearDriveTimers();
+        run.posed = false;
+        run.arrived = false;
+        setPhase("starting");
+        try {
+            run.liveGame.newGame();
+        } catch (error) {
+            failRun(run.runId, error instanceof Error ? error.message : String(error));
+            return;
+        }
+        // The compiled story is pure state (instant seeds + injection script + gate + target); the
+        // before-marker fires within the reveal wait. A miss means a compile/mount defect.
         settleTimeoutRef.current = setTimeout(() => {
-            if (!arrivedRef.current) {
-                failRun(runId, "Preview stage did not settle in time.");
+            if (!run.arrived) {
+                failRun(run.runId, "Preview stage did not settle in time.");
             }
         }, STATE_SETTLE_TIMEOUT_MS);
     }, [clearDriveTimers, failRun, setPhase]);
 
-    const handleBeforeTarget = useCallback((runId: number) => {
-        if (runId !== runIdRef.current || arrivedRef.current) {
-            return;
-        }
-        arrivedRef.current = true;
-        if (settleTimeoutRef.current !== null) {
-            clearTimeout(settleTimeoutRef.current);
-            settleTimeoutRef.current = null;
-        }
-        // The target action (if any) plays once after this marker and the frame holds there.
-        setPhase("settled");
-    }, [setPhase]);
-
     const startRun = useCallback(async () => {
         const runId = ++runIdRef.current;
-        disposeRun();
+        clearDriveTimers();
+        // Supersede any in-flight hidden rebuild; the visible frame is untouched.
+        const superseded = pendingRunRef.current;
+        pendingRunRef.current = null;
+        disposeRunObject(superseded);
         if (!open || !active || !host.ready || !context || !document || !scene || !sceneId) {
-            flushPendingDispose();
-            sessionRef.current = null;
-            setSession(null);
+            const display = displayRunRef.current;
+            displayRunRef.current = null;
+            disposeRunObject(display);
+            refreshStageLayers();
             setPhase("idle");
             setErrorMessage(null);
             return;
@@ -249,7 +351,6 @@ export function useStoryScenePreviewController(input: {
                 return;
             }
             const targetBlockId = resolvedTargetId;
-            targetBlockIdRef.current = targetBlockId;
             const snapshot = computeStoryStageSnapshot({
                 document,
                 sceneId,
@@ -259,6 +360,10 @@ export function useStoryScenePreviewController(input: {
             if (runId !== runIdRef.current) {
                 return;
             }
+            let resolveReveal: () => void = () => undefined;
+            const revealGate = new Promise<void>(resolve => {
+                resolveReveal = resolve;
+            });
             const compiled = await compileStagePreviewToNlr({
                 document,
                 sceneId,
@@ -269,6 +374,8 @@ export function useStoryScenePreviewController(input: {
                 resolveAssetUrl,
                 blueprintDocument: host.blueprintDocument,
                 persistence: host.persistence,
+                onStagePosed: () => handleStagePosed(runId),
+                revealGate,
                 onBeforeTarget: () => handleBeforeTarget(runId),
                 onAfterTarget: () => undefined,
             });
@@ -280,15 +387,15 @@ export function useStoryScenePreviewController(input: {
             const previewGame = host.createPreviewGame({
                 sessionId,
                 requireLiveGame: operation => {
-                    const liveGame = liveGameRef.current;
-                    if (!liveGame || liveGameSessionIdRef.current !== sessionId) {
+                    const liveGame = findRunBySessionId(sessionId)?.liveGame ?? null;
+                    if (!liveGame) {
                         throw new Error(`${operation}: game runtime is not available`);
                     }
                     return liveGame;
                 },
-                getLiveGame: () => liveGameRef.current,
+                getLiveGame: () => findRunBySessionId(sessionId)?.liveGame ?? null,
             });
-            const nextSession: NlrStageSession = {
+            const session: NlrStageSession = {
                 id: sessionId,
                 game: previewGame.game,
                 compiled,
@@ -296,26 +403,43 @@ export function useStoryScenePreviewController(input: {
                 height: host.designSize.height,
                 onStageNode: previewGame.onStageNode,
             };
-            wireDisposeRef.current = null;
-            wireLiveGameRef.current = previewGame.wireLiveGame;
-            flushPendingDispose();
-            sessionRef.current = nextSession;
-            sessionRunIdRef.current = runId;
+            const run: PreviewRun = {
+                runId,
+                session,
+                layer: {
+                    session,
+                    setRootElement: element => {
+                        run.rootElement = element;
+                    },
+                },
+                liveGame: null,
+                wireLiveGame: previewGame.wireLiveGame,
+                wireDispose: null,
+                resolveReveal,
+                rootElement: null,
+                posed: false,
+                arrived: false,
+                targetBlockId,
+            };
+            pendingRunRef.current = run;
             setPhase("mounting");
-            setSession(nextSession);
+            refreshStageLayers();
         } catch (error) {
             failRun(runId, error instanceof Error ? error.message : String(error));
         }
     }, [
         active,
+        clearDriveTimers,
         context,
-        disposeRun,
+        disposeRunObject,
         document,
         failRun,
-        flushPendingDispose,
+        findRunBySessionId,
         handleBeforeTarget,
+        handleStagePosed,
         host,
         open,
+        refreshStageLayers,
         resolveAssetUrl,
         resolvedTargetId,
         scene,
@@ -326,6 +450,16 @@ export function useStoryScenePreviewController(input: {
     const startRunRef = useRef(startRun);
     startRunRef.current = startRun;
 
+    const disposeAllRuns = useCallback(() => {
+        clearDriveTimers();
+        const pending = pendingRunRef.current;
+        const display = displayRunRef.current;
+        pendingRunRef.current = null;
+        displayRunRef.current = null;
+        disposeRunObject(pending);
+        disposeRunObject(display);
+    }, [clearDriveTimers, disposeRunObject]);
+
     // Debounced (re)build on any relevant change; immediate teardown when hidden/closed.
     useEffect(() => {
         if (debounceTimerRef.current !== null) {
@@ -334,55 +468,50 @@ export function useStoryScenePreviewController(input: {
         }
         if (!open || !active) {
             runIdRef.current += 1;
-            disposeRun();
-            flushPendingDispose();
-            sessionRef.current = null;
-            setSession(null);
+            lastRunInputRef.current = null;
+            disposeAllRuns();
+            refreshStageLayers();
             setPhase("idle");
             return;
+        }
+        const previousInput = lastRunInputRef.current;
+        const rowSwitchOnly = previousInput !== null
+            && document !== null && sceneId !== null
+            && previousInput.document === document
+            && previousInput.sceneId === sceneId
+            && previousInput.targetId !== resolvedTargetId;
+        if (document && sceneId) {
+            lastRunInputRef.current = { document, sceneId, targetId: resolvedTargetId };
         }
         debounceTimerRef.current = setTimeout(() => {
             debounceTimerRef.current = null;
             void startRunRef.current();
-        }, RECOMPILE_DEBOUNCE_MS);
+        }, rowSwitchOnly ? ROW_SWITCH_DEBOUNCE_MS : RECOMPILE_DEBOUNCE_MS);
         return () => {
             if (debounceTimerRef.current !== null) {
                 clearTimeout(debounceTimerRef.current);
                 debounceTimerRef.current = null;
             }
         };
-    }, [open, active, host.ready, document, sceneId, resolvedTargetId, disposeRun, flushPendingDispose, setPhase]);
+    }, [open, active, host.ready, document, sceneId, resolvedTargetId, disposeAllRuns, refreshStageLayers, setPhase]);
 
     // Full teardown on unmount.
     useEffect(() => () => {
         runIdRef.current += 1;
-        disposeRun();
-        flushPendingDispose();
-    }, [disposeRun, flushPendingDispose]);
+        disposeAllRuns();
+    }, [disposeAllRuns]);
 
     const handleLiveGameReady = useCallback((sessionId: string, liveGame: LiveGame) => {
-        const currentSession = sessionRef.current;
-        if (!currentSession || currentSession.id !== sessionId) {
+        const run = findRunBySessionId(sessionId);
+        if (!run) {
             // A session that was replaced before it became ready: retire its game immediately.
             disposeLiveGame(liveGame);
             return;
         }
-        if (runIdRef.current !== sessionRunIdRef.current) {
-            // A newer run is compiling; this session is about to be replaced. Starting playback
-            // now would race the swap — queue the game for disposal at the swap instead.
-            if (pendingDisposeRef.current && pendingDisposeRef.current !== liveGame) {
-                disposeLiveGame(pendingDisposeRef.current);
-            }
-            pendingDisposeRef.current = liveGame;
-            return;
-        }
-        const runId = runIdRef.current;
         // Idempotent against StrictMode double-mount: rewire and restart the drive.
-        clearDriveTimers();
-        wireDisposeRef.current?.();
-        liveGameRef.current = liveGame;
-        liveGameSessionIdRef.current = sessionId;
-        wireDisposeRef.current = wireLiveGameRef.current ? wireLiveGameRef.current(liveGame) : null;
+        run.wireDispose?.();
+        run.liveGame = liveGame;
+        run.wireDispose = run.wireLiveGame(liveGame);
         try {
             const preference = liveGame.game.preference;
             preference.setPreference("globalVolume", 0);
@@ -391,30 +520,41 @@ export function useStoryScenePreviewController(input: {
         } catch {
             // Preference names are stable across NLR versions; a failure here is non-fatal.
         }
-        beginPlayback(runId, liveGame);
-    }, [beginPlayback, clearDriveTimers, disposeLiveGame]);
+        if (run === pendingRunRef.current) {
+            beginPlayback(run);
+        } else {
+            // The display run remounted (StrictMode): replay the compiled state to restore the
+            // frame. Its markers are idempotent and its reveal gate is already resolved.
+            try {
+                liveGame.newGame();
+            } catch (error) {
+                failRun(run.runId, error instanceof Error ? error.message : String(error));
+            }
+        }
+    }, [beginPlayback, disposeLiveGame, failRun, findRunBySessionId]);
 
     const handleStageError = useCallback((error: Error, sessionId: string) => {
-        if (sessionRef.current?.id !== sessionId) {
-            // Teardown noise from a replaced session (aborted preloads, cancelled animations)
-            // must not fail the run that superseded it.
+        const run = findRunBySessionId(sessionId);
+        if (!run || (run === displayRunRef.current && pendingRunRef.current !== null)) {
+            // Teardown noise from a replaced session, or a stale frame kept only as the backdrop
+            // while the next state builds — neither may fail the current run.
             pushIssue({ level: "warning", message: `Previous preview session: ${error.message}` });
             return;
         }
         failRun(runIdRef.current, error.message);
-    }, [failRun, pushIssue]);
+    }, [failRun, findRunBySessionId, pushIssue]);
 
     const getStageContext = useCallback((): StoryScenePreviewStageContext | null => {
-        const currentSession = sessionRef.current;
-        const liveGame = liveGameRef.current;
-        if (!currentSession || !liveGame) {
+        const run = displayRunRef.current;
+        if (!run || !run.liveGame) {
             return null;
         }
         return {
-            liveGame,
-            compiled: currentSession.compiled,
-            targetBlockId: targetBlockIdRef.current,
-            phase: phaseRef.current,
+            liveGame: run.liveGame,
+            compiled: run.session.compiled,
+            targetBlockId: run.targetBlockId,
+            // While a newer run builds hidden, the visible stage is still the settled old frame.
+            phase: run.arrived ? "settled" : phaseRef.current,
         };
     }, []);
 
@@ -423,7 +563,7 @@ export function useStoryScenePreviewController(input: {
         errorMessage,
         diagnostics,
         issues,
-        session,
+        stageLayers,
         designSize: host.designSize,
         targetBlockId: resolvedTargetId,
         getStageContext,

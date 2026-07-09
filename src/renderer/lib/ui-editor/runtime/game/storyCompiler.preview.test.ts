@@ -36,7 +36,12 @@ function block(id: string, kind: StoryBlock["kind"], payload: unknown, parentId:
 const say = (id: string, value = "Text", parentId: string | null = null) =>
     block(id, "nodeAction", { action: "narration", text: { textId: `${id}-text`, value, role: "narration" } }, parentId);
 
-async function compilePreview(document: StoryDocument, targetBlockId: string | null, resolveAssetUrl?: (assetId: string) => string) {
+async function compilePreview(
+    document: StoryDocument,
+    targetBlockId: string | null,
+    resolveAssetUrl?: (assetId: string) => string,
+    gate?: { onStagePosed: () => void; revealGate: Promise<void> },
+) {
     const snapshot = computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId });
     return compileStagePreviewToNlr({
         document,
@@ -44,6 +49,8 @@ async function compilePreview(document: StoryDocument, targetBlockId: string | n
         snapshot,
         targetBlockId,
         resolveAssetUrl: resolveAssetUrl ?? (assetId => `nlr://${assetId}`),
+        onStagePosed: gate?.onStagePosed,
+        revealGate: gate?.revealGate,
         onBeforeTarget: () => {},
         onAfterTarget: () => {},
     });
@@ -110,6 +117,28 @@ describe("compileStagePreviewToNlr", () => {
         expect(types[1]).toEqual(["script:action"]);
         expect(types[2].some(type => type?.includes("say") || type?.includes("character"))).toBe(true);
         expect(types[3]).toEqual(["script:action"]);
+    });
+
+    it("inserts the posed marker and reveal gate between the pose and the before-marker", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            enter: block("enter", "action", { action: "character", operation: "enter", characterId: "char-alice", assetId: "asset-alice" }),
+            target: say("target"),
+        };
+        const document = baseDocument(blocks, ["enter", "target"]);
+        const compiled = await compilePreview(document, "target", undefined, {
+            onStagePosed: () => {},
+            revealGate: new Promise<void>(() => {}),
+        });
+
+        const types = sceneStatementTypes(compiled.scene);
+        // [injection script, posed-marker, reveal gate (control:sleep), before-marker, target say, after-marker]
+        expect(types).toHaveLength(6);
+        expect(types[0]).toEqual(["script:action"]);
+        expect(types[1]).toEqual(["script:action"]);
+        expect(types[2]).toEqual(["control:sleep"]);
+        expect(types[3]).toEqual(["script:action"]);
+        expect(types[4].some(type => type?.includes("say") || type?.includes("character"))).toBe(true);
+        expect(types[5]).toEqual(["script:action"]);
     });
 
     it("compiles a state-only preview (null target) with markers around nothing", async () => {

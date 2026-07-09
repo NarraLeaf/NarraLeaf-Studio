@@ -50,6 +50,8 @@ export function StoryBlockRow(props: {
     active: boolean;
     collapsed: boolean;
     editing: boolean;
+    /** Where the caret lands when this row opens for editing (arrow-navigation into it). */
+    editInitialCaret?: "start" | "end";
     textInputRef: RefObject<RichTextInputHandle | null>;
     inspectorOpen: boolean;
     onSelect: (event: MouseEvent) => void;
@@ -60,7 +62,12 @@ export function StoryBlockRow(props: {
     onEditRichChange: (value: string, runs: StoryRichRun[]) => void;
     onCommitTextEdit: () => void;
     onCancelTextEdit: () => void;
-    onInsertDialogueAfterCurrent: () => void;
+    /** Enter while editing: commit and open a new row that continues the same kind (dialogue keeps speaker). */
+    onContinue: () => void;
+    /** Caret left the line's top/bottom/edge — move focus to the adjacent story row. */
+    onArrowOut: (direction: "up" | "down" | "left" | "right") => void;
+    /** Backspace on an empty line: demote dialogue → narration, or delete the row and step back. */
+    onBackspaceAtEmptyStart: () => void;
     onOpenInspector: () => void;
     onCloseInspector: () => void;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
@@ -143,10 +150,13 @@ export function StoryBlockRow(props: {
                     {editing && textSegment ? (
                         <TextEditBox
                             editorRef={textInputRef}
+                            initialCaret={props.editInitialCaret}
                             onEditRichChange={props.onEditRichChange}
                             onCommitTextEdit={props.onCommitTextEdit}
                             onCancelTextEdit={props.onCancelTextEdit}
-                            onInsertDialogueAfterCurrent={props.onInsertDialogueAfterCurrent}
+                            onContinue={props.onContinue}
+                            onArrowOut={props.onArrowOut}
+                            onBackspaceAtEmptyStart={props.onBackspaceAtEmptyStart}
                             onInsertAfter={props.onInsertAfter}
                             block={block}
                             scene={scene}
@@ -197,10 +207,13 @@ function editorPlaceholder(block: StoryBlock): string {
 
 function TextEditBox(props: {
     editorRef: RefObject<RichTextInputHandle | null>;
+    initialCaret?: "start" | "end";
     onEditRichChange: (value: string, runs: StoryRichRun[]) => void;
     onCommitTextEdit: () => void;
     onCancelTextEdit: () => void;
-    onInsertDialogueAfterCurrent: () => void;
+    onContinue: () => void;
+    onArrowOut: (direction: "up" | "down" | "left" | "right") => void;
+    onBackspaceAtEmptyStart: () => void;
     onInsertAfter: () => void;
     block: StoryBlock;
     scene: StoryScene;
@@ -314,14 +327,17 @@ function TextEditBox(props: {
             <RichTextInput
                 ref={props.editorRef}
                 initialRuns={initialRuns}
+                initialCaret={props.initialCaret}
                 className="min-h-[28px] flex-1 whitespace-pre-wrap break-words bg-transparent px-2 py-1 text-fg outline-none empty:before:italic empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]"
                 style={textStyle}
                 placeholder={editorPlaceholder(props.block)}
                 onChange={props.onEditRichChange}
                 onBlur={handleBlur}
                 onCancel={props.onCancelTextEdit}
-                onEnter={() => { props.onCommitTextEdit(); props.onInsertAfter(); }}
-                onShiftEnter={dialoguePayload ? props.onInsertDialogueAfterCurrent : undefined}
+                onEnter={props.onContinue}
+                onModEnter={() => { props.onCommitTextEdit(); props.onInsertAfter(); }}
+                onArrowOut={props.onArrowOut}
+                onBackspaceAtEmptyStart={props.onBackspaceAtEmptyStart}
                 onPauseClick={openPause}
                 onInterpolationClick={openInterp}
                 resolveInterpolationLabel={resolveInterpolationLabel}

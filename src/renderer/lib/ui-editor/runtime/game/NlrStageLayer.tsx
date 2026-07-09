@@ -27,7 +27,7 @@ function nextAnimationFrame(): Promise<void> {
     return new Promise(resolve => requestAnimationFrame(() => resolve()));
 }
 
-async function waitForPaintFrames(count: number): Promise<void> {
+export async function waitForPaintFrames(count: number): Promise<void> {
     for (let i = 0; i < count; i += 1) {
         await nextAnimationFrame();
     }
@@ -101,7 +101,12 @@ async function waitForStageVisualReady(root: HTMLElement): Promise<void> {
     await waitForPaintFrames(2);
 }
 
-async function waitForStageVisualReadyWithTimeout(root: HTMLElement): Promise<void> {
+/**
+ * Resolve once every image inside `root` (elements and CSS backgrounds) has loaded and decoded and
+ * the result has been painted, bounded by a timeout. Hosts double-buffering stage sessions use this
+ * on the hidden buffer before revealing it, so the swap never shows half-loaded content.
+ */
+export async function waitForStageVisualReadyWithTimeout(root: HTMLElement): Promise<void> {
     await Promise.race([
         waitForStageVisualReady(root),
         new Promise<void>(resolve => {
