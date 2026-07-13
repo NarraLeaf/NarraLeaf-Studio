@@ -6,6 +6,7 @@ import {
     Box,
     Bug,
     Database,
+    History as HistoryIcon,
     MousePointer2,
     Map as MapIcon,
     Route,
@@ -23,6 +24,7 @@ import {
     filterBlueprintAddNodeEntries,
 } from "./BlueprintAddNodeMenuModel";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
+import { useTranslation } from "@/lib/i18n";
 
 const MENU_W = 440;
 const MENU_MAX_H = 520;
@@ -66,6 +68,8 @@ function getCategoryVisual(categoryId: string): CategoryVisual {
             return { icon: Box, color: "#b9c47a" };
         case "Navigation":
             return { icon: MapIcon, color: "#7ec7c1" };
+        case "Backlog":
+            return { icon: HistoryIcon, color: "#c7a98f" };
         case "Variables":
             return { icon: Variable, color: "#8fb3d9" };
         case "Widget":
@@ -88,6 +92,7 @@ export function BlueprintAddNodeMenu({
     onClose,
     onPickEntry,
 }: Props) {
+    const { t } = useTranslation();
     const [query, setQuery] = useState("");
     const [activeCategoryId, setActiveCategoryId] = useState(BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID);
     const [activeFlatIndex, setActiveFlatIndex] = useState(-1);
@@ -283,7 +288,7 @@ export function BlueprintAddNodeMenu({
             <button
                 type="button"
                 className="nl-window-content-layer z-[100] cursor-default bg-transparent"
-                aria-label="Close add node menu"
+                aria-label={t("blueprint.addNode.close")}
                 onClick={onClose}
             />
             <div
@@ -296,7 +301,7 @@ export function BlueprintAddNodeMenu({
                     <SearchBox
                         value={query}
                         onChange={setQuery}
-                        placeholder="Search nodes"
+                        placeholder={t("blueprint.addNode.searchPlaceholder")}
                         className="w-full"
                         inputRef={inputRef}
                         inputProps={{
@@ -348,13 +353,13 @@ export function BlueprintAddNodeMenu({
                     id="bp-add-node-list"
                     ref={listRef}
                     role="listbox"
-                    aria-label="Node types"
+                    aria-label={t("blueprint.addNode.listLabel")}
                     className="min-h-0 flex-1 overflow-y-auto p-2"
                     style={{ maxHeight: listMaxHeight }}
                 >
                     {filteredEntries.length === 0 ? (
                         <div className="rounded-md border border-edge bg-fill-subtle px-3 py-3 text-sm text-fg-subtle">
-                            No nodes found.
+                            {t("blueprint.addNode.empty")}
                         </div>
                     ) : (
                         filteredEntries.map((entry, index) => (
@@ -384,6 +389,7 @@ function BlueprintAddNodeRow(props: {
     onPick: (entry: PaletteEntry) => void;
     onHover: (flatIndex: number) => void;
 }) {
+    const { t } = useTranslation();
     const visual = getCategoryVisual(props.entry.category);
     const Icon = visual.icon;
     const magicRef = props.entry.magicElementRef;
@@ -393,7 +399,7 @@ function BlueprintAddNodeRow(props: {
     const title = [
         props.entry.displayName,
         props.entry.type,
-        magicRef ? `Target: ${magicRef.label} (${magicRef.elementType})` : "",
+        magicRef ? t("blueprint.addNode.targetTooltip", { label: magicRef.label, type: magicRef.elementType }) : "",
         props.entry.keywords?.length ? props.entry.keywords.join(", ") : "",
     ].filter(Boolean).join("\n");
 

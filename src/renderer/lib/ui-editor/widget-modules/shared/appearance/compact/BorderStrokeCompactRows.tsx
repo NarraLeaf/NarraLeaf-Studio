@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "@/lib/i18n";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { IconButtonSegGroup } from "@/apps/workspace/modules/properties/framework/fields/IconButtonSegGroup";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
@@ -68,6 +69,7 @@ export function BorderStrokeCompactRows({
     moreMenu,
     moreMenuAriaLabel,
 }: BorderStrokeCompactRowsProps) {
+    const { t } = useTranslation();
     const [sidesExpanded, setSidesExpanded] = useState(false);
 
     useEffect(() => {
@@ -123,8 +125,8 @@ export function BorderStrokeCompactRows({
                 </div>
                 <button
                     type="button"
-                    title="Border sides"
-                    aria-label="Expand border sides"
+                    title={t("widgetAppearance.border.sidesTitle")}
+                    aria-label={t("widgetAppearance.border.sidesExpandAria")}
                     aria-pressed={sidesExpanded}
                     onClick={toggleSidesExpanded}
                     className={controlButtonClass(sidesExpanded)}

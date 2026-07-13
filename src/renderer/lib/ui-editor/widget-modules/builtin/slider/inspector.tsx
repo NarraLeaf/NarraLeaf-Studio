@@ -13,6 +13,7 @@ import { createInitialContainerAppearance } from "@/lib/ui-editor/widget-modules
 import { CompactModuleCard } from "@/lib/ui-editor/widget-modules/shared/appearance/compact/CompactModuleCard";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
+import { i18nStore, useTranslation } from "@/lib/i18n";
 import { getSliderProps, patchSliderProps } from "./helpers";
 
 const SliderBlueprintValueField = createBlueprintValueField({
@@ -107,7 +108,9 @@ function OrientationButton({
     active: boolean;
     onClick: () => void;
 }) {
+    const { t } = useTranslation();
     const Icon = orientation === "horizontal" ? SlidersHorizontal : SlidersVertical;
+    const label = orientation === "horizontal" ? t("widgets.horizontal") : t("widgets.vertical");
     return (
         <button
             type="button"
@@ -116,8 +119,8 @@ function OrientationButton({
                     ? "border-cyan-500/50 bg-cyan-500/20 text-cyan-100"
                     : "border-edge bg-fill-subtle hover:bg-fill"
             }`}
-            title={orientation === "horizontal" ? "Horizontal" : "Vertical"}
-            aria-label={orientation === "horizontal" ? "Horizontal" : "Vertical"}
+            title={label}
+            aria-label={label}
             aria-pressed={active}
             onClick={onClick}
         >
@@ -127,26 +130,27 @@ function OrientationButton({
 }
 
 function SliderValueField(props: CustomFieldProps<UIInspectorData>) {
+    const { t } = useTranslation();
     const current = getLiveSliderProps(props.data);
     const range = normalizeSliderRange(current);
     return (
-        <CompactModuleCard title="Value">
+        <CompactModuleCard title={t("widgets.slider.value")}>
             <SliderBlueprintValueField {...props} />
             <div className="mt-2 flex flex-wrap gap-2 min-w-0">
                 <SliderNumberControl
-                    label="Min"
+                    label={t("widgets.slider.min")}
                     value={range.min}
                     draftResetKey={`${props.data.element.id}-min`}
                     onFiniteNumber={min => patchSlider(props.data, { min })}
                 />
                 <SliderNumberControl
-                    label="Max"
+                    label={t("widgets.slider.max")}
                     value={range.max}
                     draftResetKey={`${props.data.element.id}-max`}
                     onFiniteNumber={max => patchSlider(props.data, { max })}
                 />
                 <SliderNumberControl
-                    label="Step"
+                    label={t("widgets.slider.step")}
                     value={range.step}
                     min={0}
                     draftResetKey={`${props.data.element.id}-step`}
@@ -154,7 +158,7 @@ function SliderValueField(props: CustomFieldProps<UIInspectorData>) {
                 />
             </div>
             <div className="mt-2 flex items-center justify-between gap-2">
-                <FieldLabel>Direction</FieldLabel>
+                <FieldLabel>{t("widgets.direction")}</FieldLabel>
                 <div className="flex shrink-0 items-center">
                     <OrientationButton
                         orientation="horizontal"
@@ -199,6 +203,7 @@ function sliderPartContainerProps(kind: "track" | "handle"): Record<string, unkn
 }
 
 function SliderPartsField(props: CustomFieldProps<UIInspectorData>) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { documentService, element, surfaceId } = props.data;
     const document = documentService.getDocument();
@@ -265,7 +270,7 @@ function SliderPartsField(props: CustomFieldProps<UIInspectorData>) {
     };
 
     return (
-        <CompactModuleCard title="Parts">
+        <CompactModuleCard title={t("widgets.slider.parts")}>
             <div className="grid grid-cols-2 gap-2">
                 <Button
                     type="button"
@@ -274,7 +279,7 @@ function SliderPartsField(props: CustomFieldProps<UIInspectorData>) {
                     disabled={!trackExists}
                     onClick={() => selectPart(current.trackElementId)}
                 >
-                    Track
+                    {t("widgets.slider.track")}
                 </Button>
                 <Button
                     type="button"
@@ -283,7 +288,7 @@ function SliderPartsField(props: CustomFieldProps<UIInspectorData>) {
                     disabled={!handleExists}
                     onClick={() => selectPart(current.handleElementId)}
                 >
-                    Handle
+                    {t("widgets.slider.handle")}
                 </Button>
             </div>
             {!trackExists || !handleExists ? (
@@ -295,7 +300,7 @@ function SliderPartsField(props: CustomFieldProps<UIInspectorData>) {
                     className="h-8 text-xs"
                     onClick={repairParts}
                 >
-                    Repair parts
+                    {t("widgets.slider.repairParts")}
                 </Button>
             ) : null}
         </CompactModuleCard>
@@ -304,15 +309,16 @@ function SliderPartsField(props: CustomFieldProps<UIInspectorData>) {
 
 export function createSliderInspector(ctx: InspectorContext) {
     type D = UIInspectorData;
+    const { t } = i18nStore.getTranslator();
     const { element } = ctx;
     return createPropertyEditorSchema<D>({
         id: `ui-inspector:nl.slider:${element.id}`,
-        title: element.name ?? "Slider",
+        title: element.name ?? t("widgets.slider.title"),
         fields: [],
         tabs: [
             {
                 id: "properties",
-                title: "Properties",
+                title: t("widgets.tabs.properties"),
                 fields: [
                     defineField<D, any>({
                         id: "slider.value",
@@ -328,12 +334,12 @@ export function createSliderInspector(ctx: InspectorContext) {
             },
             {
                 id: "interaction",
-                title: "Interaction",
+                title: t("widgets.tabs.interaction"),
                 fields: [
                     defineField<D, any>({
                         id: "interaction.blueprint.readonly",
                         type: "custom",
-                        label: "Control blueprint",
+                        label: t("widgets.blueprint.controlLabel"),
                         component: ReadonlyBlueprintSection,
                     }),
                 ],

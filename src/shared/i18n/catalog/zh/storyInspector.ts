@@ -1,0 +1,362 @@
+import type { LocaleNamespace } from "../types";
+
+export const storyInspector = {
+    closeEditor: "关闭编辑器",
+    noEditableFields: "此动作暂无可编辑的字段。",
+    textId: "文本 ID",
+    advanced: "高级",
+    advancedParams: "高级参数",
+    noVariablesDeclared: "尚未声明变量",
+    unassigned: "未指定",
+
+    section: {
+        timing: "时机",
+        conditions: "条件",
+        appearance: "外观",
+        blueprint: "蓝图",
+        effect: "效果",
+        transform: "变换",
+        transition: "转场",
+    },
+
+    field: {
+        operation: "操作",
+        value: "值",
+        valueJson: "值（JSON）",
+        scope: "作用域",
+        variable: "变量",
+        mode: "模式",
+        durationMs: "时长（毫秒）",
+        holdMs: "保持（毫秒）",
+        easing: "缓动",
+        color: "颜色",
+        opacity: "不透明度",
+        center: "中心",
+        fromRadius: "起始半径",
+        toRadius: "结束半径",
+        direction: "方向",
+        reverse: "反向",
+        feather: "羽化 %",
+        orientation: "朝向",
+        slats: "百叶数",
+        pattern: "样式",
+        kind: "类型",
+        effect: "效果",
+        character: "角色",
+        layer: "图层",
+        muted: "静音",
+    },
+
+    motionTarget: {
+        image: "图片",
+        text: "文本",
+        layer: "图层",
+        character: "角色",
+        displayable: "可显示对象",
+    },
+
+    variableScope: {
+        scene: "场景",
+        saved: "存档",
+        persistent: "持久化",
+    },
+
+    transformPreset: {
+        left: "左",
+        center: "居中",
+        right: "右",
+        fadeIn: "淡入",
+        fadeOut: "淡出",
+        slideLeft: "向左滑动",
+        slideRight: "向右滑动",
+        slideUp: "向上滑动",
+        slideDown: "向下滑动",
+        zoom: "缩放",
+        scale: "比例",
+        rotate: "旋转",
+        opacity: "不透明度",
+        darken: "变暗",
+        circleReveal: "圆形展开",
+        circleClose: "圆形收拢",
+        slideReveal: "滑动揭示",
+    },
+
+    easing: {
+        default: "默认",
+        linear: "线性",
+        easeIn: "缓入",
+        easeOut: "缓出",
+        easeInOut: "缓入缓出",
+        circIn: "圆形缓入",
+        circOut: "圆形缓出",
+        circInOut: "圆形缓入缓出",
+        backIn: "回弹缓入",
+        backOut: "回弹缓出",
+        backInOut: "回弹缓入缓出",
+        anticipate: "预备",
+    },
+
+    transition: {
+        dissolve: "溶解",
+        blurDissolve: "模糊溶解",
+        fadeIn: "淡入",
+        maskCircle: "圆形遮罩",
+        softIris: "柔和光圈",
+        maskWipe: "滑动揭示",
+        softWipe: "柔和擦除",
+        blinds: "百叶",
+        slide: "推移",
+        throughColor: "过色",
+        startX: "起始 X",
+        startY: "起始 Y",
+        blurPx: "模糊（像素）",
+        holdPct: "保持 %",
+    },
+
+    transitionHint: {
+        dissolve: "从上一张图片交叉淡化到新图片。",
+        blurDissolve: "交叉淡化并伴随模糊——营造梦境般的闪回／梦境溶解效果。",
+        fadeIn: "从起始位置偏移处将新图片淡入。",
+        maskCircle: "由动画遮罩半径驱动的圆形展开／收拢。",
+        softIris: "带羽化的圆形展开——圆形遮罩的柔边版本。",
+        maskWipe: "硬边定向揭示——新图片被一条扫过的直边逐渐揭开（无羽化）。",
+        softWipe: "带羽化的定向擦除——新图片以柔和渐变边缘逐渐显现。",
+        blinds: "百叶揭示——叶片逐渐变宽以露出新图片。",
+        slide: "推移——新图片从一侧滑入，同时旧图片向外滑出。",
+        throughColor: "先用纯色（按所选样式）覆盖画面，保持一段时间，再在新图片上揭开——目标只在颜色保持之后出现。可实现淡入黑／白、透黑柔和擦除、百叶黑场保持、圆形收黑以及闪白（保持为 0）等效果。",
+    },
+
+    wipeDirection: {
+        left: "左",
+        right: "右",
+        top: "上",
+        bottom: "下",
+    },
+
+    blindsOrientation: {
+        horizontal: "水平",
+        vertical: "垂直",
+    },
+
+    throughColorPattern: {
+        plain: "纯色（淡化）",
+        linear: "柔和边缘",
+        blinds: "百叶",
+        iris: "光圈",
+    },
+
+    imageOperation: {
+        create: "创建／更新",
+        setSource: "设置来源",
+    },
+
+    displayableOperation: {
+        transform: "变换",
+        mask: "遮罩",
+        clearMask: "清除遮罩",
+        clip: "裁剪路径",
+        clearClip: "清除裁剪",
+        filter: "滤镜",
+        clearFilter: "清除滤镜",
+        darken: "变暗",
+        circleReveal: "圆形展开",
+        circleClose: "圆形收拢",
+        wipe: "滑动揭示",
+    },
+
+    displayableEffectHint: {
+        mask: "将一张图片资源作为 CSS 遮罩应用。",
+        clearMask: "移除当前遮罩。",
+        clip: "应用 CSS clip-path 裁剪。",
+        clearClip: "移除当前裁剪路径。",
+        filter: "应用 CSS 滤镜（例如 blur(4px) grayscale(1)）。",
+        clearFilter: "移除当前滤镜。",
+        darken: "在 0..1 之间淡化一层暗色叠加（仅限图片／角色目标）。",
+        circleReveal: "通过动画遮罩实现圆形展开。",
+        circleClose: "通过动画遮罩实现圆形收拢。",
+        wipe: "通过动画 clip-path 实现硬边定向揭示（无羽化）。",
+    },
+
+    textOperation: {
+        create: "创建／更新",
+        setText: "设置文本",
+        setFontSize: "设置字号",
+        setFontColor: "设置字体颜色",
+    },
+
+    layerOperation: {
+        setZIndex: "设置层级",
+    },
+
+    videoOperation: {
+        play: "播放",
+    },
+
+    audioOperation: {
+        setBgm: "设置背景音乐",
+        playSound: "播放音效",
+        stopSound: "停止音效",
+        pauseSound: "暂停音效",
+        resumeSound: "恢复音效",
+        setVolume: "设置音量",
+        setRate: "设置倍速",
+        muteSound: "静音／取消静音",
+    },
+
+    screenEffectOption: {
+        blink: "闪烁",
+        vignette: "暗角",
+    },
+
+    waitMode: {
+        duration: "时长",
+        click: "点击",
+    },
+
+    branch: {
+        if: "如果",
+        elseIf: "否则如果",
+        else: "否则",
+    },
+
+    narration: {
+        editHint: "双击该行以编辑旁白文本。",
+    },
+
+    dialogue: {
+        pauseAfter: "本行后暂停",
+        pauseMs: "暂停毫秒（可选）",
+    },
+
+    choice: {
+        prompt: "提示语",
+    },
+
+    choiceOption: {
+        optionText: "选项文本",
+        hiddenWhen: "隐藏条件",
+        disabledWhen: "禁用条件",
+        hint: "保持某个条件为空即可始终显示／启用该选项。",
+    },
+
+    jump: {
+        targetScene: "目标场景",
+    },
+
+    note: {
+        label: "备注",
+    },
+
+    blueprint: {
+        storyActionTitle: "故事动作",
+    },
+
+    audio: {
+        soundName: "音效名称",
+        bgmAsset: "背景音乐资源",
+        soundAsset: "音效资源",
+        fadeMs: "淡入淡出（毫秒）",
+        volume: "音量",
+        rate: "倍速",
+        loop: "循环",
+    },
+
+    image: {
+        imageName: "图片名称",
+        imageAsset: "图片资源",
+        autoFit: "自动适配",
+    },
+
+    text: {
+        textName: "文本名称",
+        fontSize: "字号",
+        fontColor: "字体颜色",
+        text: "文本",
+    },
+
+    layer: {
+        layerName: "图层名称",
+        zIndex: "层级",
+    },
+
+    video: {
+        videoName: "视频名称",
+        videoAsset: "视频资源",
+    },
+
+    nvl: {
+        hint: "子行将在 NLR 的 NVL 模式下运行。下方的变换会在 NVL 图层进入时对其进行动画。",
+        motionLabel: "NVL 进入动画",
+    },
+
+    character: {
+        stageName: "舞台名称",
+        chooseHint: "先选择一个角色，再挑选其外观。",
+        overrideImage: "覆盖图片",
+    },
+
+    asset: {
+        missing: "资源缺失",
+        none: "无资源",
+        clear: "清除资源",
+        selectTitle: "选择{label}",
+    },
+
+    displayableEffect: {
+        maskImage: "遮罩图片",
+        clipPath: "裁剪路径",
+        cssFilter: "CSS 滤镜",
+        darkness: "暗度 0-1",
+    },
+
+    transform: {
+        presetMode: "预设",
+        motionMode: "动效",
+        preset: "预设",
+        zoom: "缩放",
+        xOffset: "X 偏移",
+        yOffset: "Y 偏移",
+        params: "参数",
+    },
+
+    background: {
+        image: "图片",
+        color: "颜色",
+        missing: "图片缺失",
+        none: "无图片",
+        change: "更换",
+        select: "选择",
+        clearImage: "清除图片",
+        assetError: "无法解析图片资源：{error}",
+        selectImageTitle: "选择背景图片",
+    },
+
+    control: {
+        conditionContainer: "条件容器。在其下添加条件分支作为子项。",
+        control: "控制",
+        sequence: "顺序",
+        parallel: "全部并行",
+        race: "任一竞速",
+        repeat: "重复",
+        mode: {
+            do: "执行",
+            doAsync: "异步执行",
+            all: "全部",
+            allAsync: "全部异步",
+            any: "任一",
+        },
+        times: "次数",
+        branch: "分支",
+        elseHint: "当前面的分支都不匹配时，运行 else 分支。",
+    },
+
+    condition: {
+        legacyExpression: "旧版表达式条件会保留在文档中，但不属于 NLR 动作界面的一部分。",
+        clear: "清除条件",
+    },
+
+    code: {
+        language: "语言",
+        source: "源码",
+    },
+} satisfies LocaleNamespace<"storyInspector">;

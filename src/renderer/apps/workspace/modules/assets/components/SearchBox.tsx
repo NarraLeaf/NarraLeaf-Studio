@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, forwardRef } from "react";
 import { Search, X } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 
 interface SearchBoxProps {
     value: string;
@@ -19,8 +20,10 @@ interface SearchBoxProps {
  * Search box component for asset panel
  */
 export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
-    ({ value, onChange, placeholder = "Search", className = "", variant = "default", onBlur, inputRef, inputProps }, ref) => {
+    ({ value, onChange, placeholder, className = "", variant = "default", onBlur, inputRef, inputProps }, ref) => {
+        const { t } = useTranslation();
         const [isFocused, setIsFocused] = useState(false);
+        const resolvedPlaceholder = placeholder ?? t("common.search");
 
         const handleClear = useCallback(() => {
             onChange("");
@@ -59,7 +62,7 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
                     onFocus={handleInputFocus}
                     onBlur={handleInputBlur}
                     onKeyDown={handleKeyDown}
-                    placeholder={placeholder}
+                    placeholder={resolvedPlaceholder}
                     autoFocus
                     className={`bg-transparent text-sm text-fg-muted placeholder-fg-subtle outline-none w-full ${className}`}
                 />
@@ -85,7 +88,7 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
                         onFocus={handleInputFocus}
                         onBlur={handleInputBlur}
                         onKeyDown={handleKeyDown}
-                        placeholder={placeholder}
+                        placeholder={resolvedPlaceholder}
                         className="flex-1 bg-transparent text-sm text-fg-muted placeholder-fg-subtle outline-none"
                     />
                     {value && (
@@ -93,8 +96,8 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
                             type="button"
                             onClick={handleClear}
                             className="p-0.5 rounded hover:bg-fill text-fg-muted hover:text-fg-muted transition-colors"
-                            title="Clear search"
-                            aria-label="Clear search"
+                            title={t("assets.clearSearch")}
+                            aria-label={t("assets.clearSearch")}
                         >
                             <X className="w-3 h-3" />
                         </button>

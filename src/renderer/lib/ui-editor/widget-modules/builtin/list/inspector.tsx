@@ -21,6 +21,7 @@ import { StaticEffectsSection } from "@/lib/ui-editor/widget-modules/shared/effe
 import { createInitialContainerAppearance } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { CompactModuleCard } from "@/lib/ui-editor/widget-modules/shared/appearance/compact/CompactModuleCard";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
+import { i18nStore, useTranslation } from "@/lib/i18n";
 import type {
     UIListItemsBinding,
     UIListScrollbarPartStyle,
@@ -60,24 +61,6 @@ function scrollbarPartContainerProps(style: UIListScrollbarPartStyle): Record<st
 }
 
 const LIST_SPACING_MAX_PX = 512;
-
-const directionOptions = [
-    { value: "vertical", label: "Vertical" },
-    { value: "horizontal", label: "Horizontal" },
-];
-
-const scrollbarSideOptions = [
-    { value: "right", label: "Right" },
-    { value: "left", label: "Left" },
-    { value: "bottom", label: "Bottom" },
-    { value: "top", label: "Top" },
-];
-
-const scrollbarVisibilityOptions = [
-    { value: "auto", label: "Auto" },
-    { value: "always", label: "Always" },
-    { value: "hidden", label: "Hidden" },
-];
 
 function clampListSpacingPx(value: number, max = LIST_SPACING_MAX_PX): number {
     return Math.max(0, Math.min(max, value));
@@ -192,6 +175,7 @@ function ListContentPaddingEditor({
     draftResetKey: string;
     onPatch: (partial: Partial<ListWidgetProps>) => void;
 }) {
+    const { t } = useTranslation();
     const [sidesOpen, setSidesOpen] = useState(false);
     const [popoverPos, setPopoverPos] = useState({ left: 0, top: 0, width: 280 });
     const anchorRef = useRef<HTMLDivElement | null>(null);
@@ -318,10 +302,10 @@ function ListContentPaddingEditor({
     }, [closeSides, sidesOpen]);
 
     const sides = [
-        { key: "contentPaddingTop" as const, label: "Top" },
-        { key: "contentPaddingRight" as const, label: "Right" },
-        { key: "contentPaddingBottom" as const, label: "Bottom" },
-        { key: "contentPaddingLeft" as const, label: "Left" },
+        { key: "contentPaddingTop" as const, label: t("widgets.sides.top") },
+        { key: "contentPaddingRight" as const, label: t("widgets.sides.right") },
+        { key: "contentPaddingBottom" as const, label: t("widgets.sides.bottom") },
+        { key: "contentPaddingLeft" as const, label: t("widgets.sides.left") },
     ];
 
     const popover =
@@ -330,7 +314,7 @@ function ListContentPaddingEditor({
                   <div
                       ref={panelRef}
                       role="dialog"
-                      aria-label="Content padding per side"
+                      aria-label={t("widgets.list.contentPaddingDialog")}
                       className="fixed z-[70] rounded-lg border border-edge bg-[#17181c] p-3 shadow-2xl"
                       style={{
                           left: popoverPos.left,
@@ -340,7 +324,7 @@ function ListContentPaddingEditor({
                       }}
                       onMouseDown={event => event.stopPropagation()}
                   >
-                      <p className="mb-2 text-xs font-medium text-fg-muted">Per side (px)</p>
+                      <p className="mb-2 text-xs font-medium text-fg-muted">{t("widgets.perSidePx")}</p>
                       <div className="grid grid-cols-2 gap-2 min-w-0">
                           {sides.map(({ key, label }) => (
                               <div key={key} className="flex min-w-0 flex-col gap-1">
@@ -354,8 +338,8 @@ function ListContentPaddingEditor({
                                       min={0}
                                       max={LIST_SPACING_MAX_PX}
                                       unit="px"
-                                      aria-label={`Content padding ${label}`}
-                                      title={`Content padding ${label}`}
+                                      aria-label={t("widgets.list.contentPaddingSide", { side: label })}
+                                      title={t("widgets.list.contentPaddingSide", { side: label })}
                                       className="w-full min-w-0"
                                       selectAllOnFocus
                                   />
@@ -370,7 +354,7 @@ function ListContentPaddingEditor({
     return (
         <>
             <div ref={anchorRef} className="flex min-w-0 w-full flex-col gap-1 self-start">
-                <FieldLabel>Content padding</FieldLabel>
+                <FieldLabel>{t("widgets.list.contentPadding")}</FieldLabel>
                 <div className="flex min-w-0 flex-nowrap items-stretch gap-2">
                     <div className="min-w-0 flex-1">
                         <NumericDraftEnhancedInput
@@ -383,8 +367,8 @@ function ListContentPaddingEditor({
                             max={LIST_SPACING_MAX_PX}
                             unit="px"
                             placeholder={uniformPlaceholder}
-                            aria-label="Content padding on all sides"
-                            title="Content padding on all sides"
+                            aria-label={t("widgets.list.contentPaddingAll")}
+                            title={t("widgets.list.contentPaddingAll")}
                             className="w-full min-w-0"
                             selectAllOnFocus
                         />
@@ -394,9 +378,9 @@ function ListContentPaddingEditor({
                         onClick={() => setSidesOpen(open => !open)}
                         aria-expanded={sidesOpen}
                         aria-haspopup="dialog"
-                        aria-label={sidesOpen ? "Close per-side content padding" : "Edit per-side content padding"}
+                        aria-label={sidesOpen ? t("widgets.list.contentPaddingPerSideClose") : t("widgets.list.contentPaddingPerSideEdit")}
                         className={controlButtonClass(sidesOpen)}
-                        title="Per-side content padding"
+                        title={t("widgets.list.contentPaddingPerSide")}
                     >
                         {sidesOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </button>
@@ -408,6 +392,7 @@ function ListContentPaddingEditor({
 }
 
 function ScrollbarCustomizeField(props: CustomFieldProps<UIInspectorData>) {
+    const { t } = useTranslation();
     const { element, documentService, surfaceId } = props.data;
     const document = documentService.getDocument();
     const live = document.elements[element.id] ?? element;
@@ -472,15 +457,15 @@ function ScrollbarCustomizeField(props: CustomFieldProps<UIInspectorData>) {
                 disabled={hasAuthoredParts}
                 onClick={createParts}
             >
-                {hasAuthoredParts ? "Scrollbar parts created" : "Customize scrollbar"}
+                {hasAuthoredParts ? t("widgets.list.scrollbarPartsCreated") : t("widgets.list.customizeScrollbar")}
             </Button>
             {hasAuthoredParts ? (
                 <p className="text-2xs leading-snug text-fg-subtle">
-                    Track and thumb are authored elements in the list outline. Select them to edit their appearance.
+                    {t("widgets.list.scrollbarPartsAuthoredHint")}
                 </p>
             ) : (
                 <p className="text-2xs leading-snug text-fg-subtle">
-                    Creates authored track and thumb elements without changing the item template.
+                    {t("widgets.list.scrollbarCustomizeHint")}
                 </p>
             )}
         </div>
@@ -533,22 +518,27 @@ function ListToggleControl({
 }
 
 function ListLayoutField(props: CustomFieldProps<UIInspectorData>) {
+    const { t } = useTranslation();
     const current = getLiveListProps(props.data);
     const patch = (partial: Partial<ListWidgetProps>) => patchListProps(props.data, partial);
     const draftResetKey = props.data.element.id;
+    const directionOptions = [
+        { value: "vertical", label: t("widgets.vertical") },
+        { value: "horizontal", label: t("widgets.horizontal") },
+    ];
 
     return (
         <div className="space-y-2 min-w-0">
-            <CompactModuleCard title="Flow">
+            <CompactModuleCard title={t("widgets.list.flow")}>
                 <div className="flex flex-wrap gap-2 min-w-0">
                     <ListSelectControl
-                        label="Direction"
+                        label={t("widgets.direction")}
                         value={current.repeatDirection}
                         options={directionOptions}
                         onChange={value => patch({ repeatDirection: value as ListDirection })}
                     />
                     <ListNumberControl
-                        label="Gap"
+                        label={t("widgets.gap")}
                         value={current.itemGap}
                         draftResetKey={`${draftResetKey}-item-gap`}
                         onFiniteNumber={value => patch({ itemGap: clampListSpacingPx(value, 128) })}
@@ -564,7 +554,7 @@ function ListLayoutField(props: CustomFieldProps<UIInspectorData>) {
                 </div>
                 <div className="mt-2">
                     <ListToggleControl
-                        label="Drag content to scroll"
+                        label={t("widgets.list.dragToScroll")}
                         checked={current.dragContentScroll}
                         onChange={dragContentScroll => patch({ dragContentScroll })}
                     />
@@ -575,22 +565,27 @@ function ListLayoutField(props: CustomFieldProps<UIInspectorData>) {
 }
 
 function ListTemplateField(props: CustomFieldProps<UIInspectorData>) {
+    const { t } = useTranslation();
     const current = getLiveListProps(props.data);
     const patch = (partial: Partial<ListWidgetProps>) => patchListProps(props.data, partial);
     const draftResetKey = props.data.element.id;
+    const directionOptions = [
+        { value: "vertical", label: t("widgets.vertical") },
+        { value: "horizontal", label: t("widgets.horizontal") },
+    ];
 
     return (
         <div className="space-y-2 min-w-0">
-            <CompactModuleCard title="Cell content">
+            <CompactModuleCard title={t("widgets.list.cellContent")}>
                 <div className="flex flex-wrap gap-2 min-w-0">
                     <ListSelectControl
-                        label="Direction"
+                        label={t("widgets.direction")}
                         value={current.templateDirection}
                         options={directionOptions}
                         onChange={value => patch({ templateDirection: value as ListDirection })}
                     />
                     <ListNumberControl
-                        label="Gap"
+                        label={t("widgets.gap")}
                         value={current.templateGap}
                         draftResetKey={`${draftResetKey}-template-gap`}
                         onFiniteNumber={value => patch({ templateGap: clampListSpacingPx(value, 128) })}
@@ -603,6 +598,7 @@ function ListTemplateField(props: CustomFieldProps<UIInspectorData>) {
 }
 
 function ListScrollbarField(props: CustomFieldProps<UIInspectorData>) {
+    const { t } = useTranslation();
     const current = getLiveListProps(props.data);
     const scrollbar = current.scrollbar;
     const authored = hasAuthoredScrollbarParts(props.data);
@@ -610,24 +606,35 @@ function ListScrollbarField(props: CustomFieldProps<UIInspectorData>) {
         patchListScrollbarProps(props.data, partial);
     };
     const draftResetKey = props.data.element.id;
+    const scrollbarSideOptions = [
+        { value: "right", label: t("widgets.sides.right") },
+        { value: "left", label: t("widgets.sides.left") },
+        { value: "bottom", label: t("widgets.sides.bottom") },
+        { value: "top", label: t("widgets.sides.top") },
+    ];
+    const scrollbarVisibilityOptions = [
+        { value: "auto", label: t("widgets.list.visibilityAuto") },
+        { value: "always", label: t("widgets.list.visibilityAlways") },
+        { value: "hidden", label: t("widgets.list.visibilityHidden") },
+    ];
 
     return (
         <div className="space-y-2 min-w-0">
-            <CompactModuleCard title="Behavior">
+            <CompactModuleCard title={t("widgets.list.behavior")}>
                 <ListToggleControl
-                    label="Enabled"
+                    label={t("widgets.list.enabled")}
                     checked={scrollbar.enabled}
                     onChange={enabled => patchScrollbar({ enabled })}
                 />
                 <div className="mt-2 flex flex-wrap gap-2 min-w-0">
                     <ListSelectControl
-                        label="Side"
+                        label={t("widgets.list.side")}
                         value={scrollbar.side}
                         options={scrollbarSideOptions}
                         onChange={value => patchScrollbar({ side: value as UIListScrollbarProps["side"] })}
                     />
                     <ListSelectControl
-                        label="Visibility"
+                        label={t("widgets.list.visibility")}
                         value={scrollbar.visibility}
                         options={scrollbarVisibilityOptions}
                         onChange={value => patchScrollbar({ visibility: value as UIListScrollbarProps["visibility"] })}
@@ -635,10 +642,10 @@ function ListScrollbarField(props: CustomFieldProps<UIInspectorData>) {
                 </div>
             </CompactModuleCard>
 
-            <CompactModuleCard title={authored ? "Content reserve" : "Default metrics"}>
+            <CompactModuleCard title={authored ? t("widgets.list.contentReserve") : t("widgets.list.defaultMetrics")}>
                 {authored ? (
                     <ListNumberControl
-                        label="Inset"
+                        label={t("widgets.list.inset")}
                         value={scrollbar.contentInset}
                         draftResetKey={`${draftResetKey}-scrollbar-inset`}
                         onFiniteNumber={value => patchScrollbar({ contentInset: clampListSpacingPx(value, 64) })}
@@ -647,7 +654,7 @@ function ListScrollbarField(props: CustomFieldProps<UIInspectorData>) {
                 ) : (
                     <div className="flex flex-wrap gap-2 min-w-0">
                         <ListNumberControl
-                            label="Thickness"
+                            label={t("widgets.list.thickness")}
                             value={scrollbar.thickness}
                             draftResetKey={`${draftResetKey}-scrollbar-thickness`}
                             onFiniteNumber={value => patchScrollbar({ thickness: clampListMetricPx(value, 2, 64) })}
@@ -655,14 +662,14 @@ function ListScrollbarField(props: CustomFieldProps<UIInspectorData>) {
                             max={64}
                         />
                         <ListNumberControl
-                            label="Inset"
+                            label={t("widgets.list.inset")}
                             value={scrollbar.contentInset}
                             draftResetKey={`${draftResetKey}-scrollbar-inset`}
                             onFiniteNumber={value => patchScrollbar({ contentInset: clampListSpacingPx(value, 64) })}
                             max={64}
                         />
                         <ListNumberControl
-                            label="Min thumb"
+                            label={t("widgets.list.minThumb")}
                             value={scrollbar.minThumbLength}
                             draftResetKey={`${draftResetKey}-scrollbar-min-thumb`}
                             onFiniteNumber={value => patchScrollbar({ minThumbLength: clampListMetricPx(value, 8, 256) })}
@@ -701,6 +708,7 @@ function ListEffectsField(props: CustomFieldProps<UIInspectorData>) {
 
 export function createListInspector(ctx: InspectorContext) {
     type D = UIInspectorData;
+    const { t } = i18nStore.getTranslator();
     const { element, documentService } = ctx;
 
     const patch = (partial: Partial<ListWidgetProps>) => {
@@ -743,28 +751,28 @@ export function createListInspector(ctx: InspectorContext) {
 
     return createPropertyEditorSchema<D>({
         id: `ui-inspector:nl.list:${element.id}`,
-        title: element.name ?? "List",
+        title: element.name ?? t("widgets.list.title"),
         fields: [],
         tabs: [
             {
                 id: "properties",
-                title: "Properties",
+                title: t("widgets.tabs.properties"),
                 fields: [
                     defineField<D, any>({
                         id: "section.preview",
                         type: "section",
-                        title: "Preview",
+                        title: t("widgets.list.sectionPreview"),
                         collapsible: true,
                         defaultCollapsed: false,
                         fields: [
                             defineField<D, any>({
                                 id: "list.itemsBindingScope",
                                 type: "select",
-                                label: "Runtime items",
+                                label: t("widgets.list.runtimeItems"),
                                 options: [
-                                    { value: "none", label: "Preview only" },
-                                    { value: "surfaceState", label: "Page state array" },
-                                    { value: "globalState", label: "App state array" },
+                                    { value: "none", label: t("widgets.list.runtimePreviewOnly") },
+                                    { value: "surfaceState", label: t("widgets.list.runtimePageState") },
+                                    { value: "globalState", label: t("widgets.list.runtimeAppState") },
                                 ],
                                 getValue: (d: D) => getLiveListProps(d).itemsBinding?.kind ?? "none",
                                 setValue: (_d: D, v: string | number) => {
@@ -778,8 +786,8 @@ export function createListInspector(ctx: InspectorContext) {
                             defineField<D, any>({
                                 id: "list.itemsBindingKey",
                                 type: "text",
-                                label: "State key",
-                                placeholder: "choices",
+                                label: t("widgets.list.stateKey"),
+                                placeholder: t("widgets.list.stateKeyPlaceholder"),
                                 hidden: (d: D) => getLiveListProps(d).itemsBinding == null,
                                 getValue: (d: D) => getLiveListProps(d).itemsBinding?.key ?? "",
                                 setValue: (_d: D, v: string) => patchItemsBinding({ key: v }),
@@ -789,7 +797,7 @@ export function createListInspector(ctx: InspectorContext) {
                                 type: "inlineRow",
                                 gap: 8,
                                 wrap: false,
-                                label: "Preview count",
+                                label: t("widgets.list.previewCount"),
                                 items: [
                                     {
                                         id: "list.previewCountInput",
@@ -824,7 +832,7 @@ export function createListInspector(ctx: InspectorContext) {
                     defineField<D, any>({
                         id: "section.list",
                         type: "section",
-                        title: "Layout",
+                        title: t("widgets.list.sectionLayout"),
                         fields: [
                             defineField<D, any>({
                                 id: "list.layout.compact",
@@ -836,7 +844,7 @@ export function createListInspector(ctx: InspectorContext) {
                     defineField<D, any>({
                         id: "section.template",
                         type: "section",
-                        title: "Item template",
+                        title: t("widgets.list.sectionTemplate"),
                         fields: [
                             defineField<D, any>({
                                 id: "list.template.compact",
@@ -848,7 +856,7 @@ export function createListInspector(ctx: InspectorContext) {
                     defineField<D, any>({
                         id: "section.scrollbar",
                         type: "section",
-                        title: "Scrollbar",
+                        title: t("widgets.list.sectionScrollbar"),
                         collapsible: true,
                         defaultCollapsed: false,
                         fields: [
@@ -860,7 +868,7 @@ export function createListInspector(ctx: InspectorContext) {
                             defineField<D, any>({
                                 id: "list.scrollbar.trackColor",
                                 type: "colorPicker",
-                                label: "Track color",
+                                label: t("widgets.list.trackColor"),
                                 displayMode: "icon-hex",
                                 allowOpacity: false,
                                 hidden: hasAuthoredScrollbarParts,
@@ -870,7 +878,7 @@ export function createListInspector(ctx: InspectorContext) {
                             defineField<D, any>({
                                 id: "list.scrollbar.trackImage",
                                 type: "imageFill",
-                                label: "Track image",
+                                label: t("widgets.list.trackImage"),
                                 hidden: hasAuthoredScrollbarParts,
                                 getValue: (d: D) => getLiveListProps(d).scrollbar.trackStyle.imageFill ?? undefined,
                                 setValue: (_d: D, value: ImageFill) => patchScrollbarPart("trackStyle", { imageFill: value, fillType: "image" }),
@@ -878,7 +886,7 @@ export function createListInspector(ctx: InspectorContext) {
                             defineField<D, any>({
                                 id: "list.scrollbar.thumbColor",
                                 type: "colorPicker",
-                                label: "Thumb color",
+                                label: t("widgets.list.thumbColor"),
                                 displayMode: "icon-hex",
                                 allowOpacity: false,
                                 hidden: hasAuthoredScrollbarParts,
@@ -888,7 +896,7 @@ export function createListInspector(ctx: InspectorContext) {
                             defineField<D, any>({
                                 id: "list.scrollbar.thumbImage",
                                 type: "imageFill",
-                                label: "Thumb image",
+                                label: t("widgets.list.thumbImage"),
                                 hidden: hasAuthoredScrollbarParts,
                                 getValue: (d: D) => getLiveListProps(d).scrollbar.thumbStyle.imageFill ?? undefined,
                                 setValue: (_d: D, value: ImageFill) => patchScrollbarPart("thumbStyle", { imageFill: value, fillType: "image" }),
@@ -903,7 +911,7 @@ export function createListInspector(ctx: InspectorContext) {
                     defineField<D, any>({
                         id: "section.effects",
                         type: "section",
-                        title: "Effects",
+                        title: t("widgets.list.sectionEffects"),
                         collapsible: true,
                         defaultCollapsed: true,
                         fields: [
@@ -918,12 +926,12 @@ export function createListInspector(ctx: InspectorContext) {
             },
             {
                 id: "interaction",
-                title: "Interaction",
+                title: t("widgets.tabs.interaction"),
                 fields: [
                     defineField<D, any>({
                         id: "interaction.blueprint.readonly",
                         type: "custom",
-                        label: "Control blueprint",
+                        label: t("widgets.blueprint.controlLabel"),
                         component: ReadonlyBlueprintSection,
                     }),
                 ],

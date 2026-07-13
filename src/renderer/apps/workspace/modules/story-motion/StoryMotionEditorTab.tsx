@@ -28,6 +28,7 @@ import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { Button } from "@/lib/components/elements/Button";
 import { Select, type SelectOption } from "@/lib/components/elements/Select";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
+import { useTranslation } from "@/lib/i18n";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import {
     STORY_MOTION_KEYFRAME_SELECTION_TYPE,
@@ -101,6 +102,7 @@ export function createStoryMotionEditorTab(payload: StoryMotionEditorPayload): E
 }
 
 export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabComponentProps<StoryMotionEditorPayload>) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const storyService = useMemo(
         () => context && isInitialized ? context.services.get<StoryService>(Services.Story) : null,
@@ -196,7 +198,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
             const entry = index.animations.find(item => item.id === payload.animationId);
             if (!entry) {
                 setAsset(null);
-                setLoadError("Motion asset was deleted.");
+                setLoadError(t("motion.editor.assetDeleted"));
                 const selection = uiService?.getStore().getSelection();
                 if (
                     selection?.type === STORY_MOTION_KEYFRAME_SELECTION_TYPE
@@ -225,7 +227,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
             disposed = true;
             unsubscribe();
         };
-    }, [payload?.animationId, storyService, uiService]);
+    }, [payload?.animationId, storyService, uiService, t]);
 
     useEffect(() => {
         if (!storyService || !payload?.actionContext?.storyId) {
@@ -1073,7 +1075,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
     if (!asset) {
         return (
             <div className="flex h-full items-center justify-center bg-[#101114] text-sm text-fg-muted">
-                {loadError ?? "Loading motion asset..."}
+                {loadError ?? t("motion.editor.loading")}
             </div>
         );
     }
@@ -1090,7 +1092,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                 <div className="min-w-0 flex-[0_1_320px] truncate text-sm font-medium text-fg" title={asset.name}>
                     {asset.name}
                 </div>
-                <button className={ICON_BUTTON_CLASS} type="button" onClick={togglePlayback} title={playing ? "Pause" : "Play"}>
+                <button className={ICON_BUTTON_CLASS} type="button" onClick={togglePlayback} title={playing ? t("motion.editor.pause") : t("motion.editor.play")}>
                     {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                 </button>
                 <input
@@ -1180,14 +1182,14 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
 
                     <div className="h-64 shrink-0 border-t border-edge bg-[#0f1013]">
                         <div className="flex h-12 items-center gap-3 border-b border-edge px-3">
-                            <div className="w-[168px] text-xs font-medium text-fg-muted">Animated properties</div>
+                            <div className="w-[168px] text-xs font-medium text-fg-muted">{t("motion.editor.animatedProperties")}</div>
                             <Select
                                 className="w-44"
                                 size="md"
                                 options={addPropertyOptions}
                                 value={selectedAddProperty}
                                 onChange={value => setSelectedAddProperty(value as StoryAnimationTrackProperty)}
-                                placeholder="Add property"
+                                placeholder={t("motion.editor.addProperty")}
                                 disabled={addPropertyOptions.length === 0}
                                 portalMenu
                                 menuZIndex={80}
@@ -1201,7 +1203,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                 className="shrink-0"
                             >
                                 <Plus className="h-3.5 w-3.5" />
-                                Add property
+                                {t("motion.editor.addProperty")}
                             </Button>
                         </div>
                         <div ref={timelineScrollRef} className="h-[calc(100%-48px)] overflow-auto overscroll-contain" onWheel={handleTimelineWheel}>
@@ -1214,7 +1216,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                 }}
                             >
                                 <div className="sticky left-0 top-0 z-40 flex h-8 items-center border-r border-b border-edge bg-[#0f1013] px-3 text-xs font-medium text-fg-muted">
-                                    Property
+                                    {t("motion.property")}
                                 </div>
                                 <div className="sticky top-0 z-30 h-8 border-b border-edge bg-[#0f1013]" onPointerDown={startPlayheadDrag}>
                                     {buildTicks(pxPerMs, timelineWidth, timelineViewport, STORY_MOTION_FPS).map(tick => (
@@ -1238,8 +1240,8 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                                     addKeyframeAtTime(track, playheadMs);
                                                 }}
                                                 onPointerDown={event => event.stopPropagation()}
-                                                title="Add keyframe at playhead"
-                                                aria-label={`Add ${getStoryMotionPropertyMeta(track.property).label} keyframe at playhead`}
+                                                title={t("motion.editor.addKeyframeAtPlayhead")}
+                                                aria-label={t("motion.editor.addKeyframeAria", { property: getStoryMotionPropertyMeta(track.property).label })}
                                             >
                                                 <Diamond className="h-3.5 w-3.5" />
                                             </button>
@@ -1251,8 +1253,8 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                                     deleteTrack(track);
                                                 }}
                                                 onPointerDown={event => event.stopPropagation()}
-                                                title="Delete track"
-                                                aria-label={`Delete ${getStoryMotionPropertyMeta(track.property).label} track`}
+                                                title={t("motion.editor.deleteTrack")}
+                                                aria-label={t("motion.editor.deleteTrackAria", { property: getStoryMotionPropertyMeta(track.property).label })}
                                             >
                                                 <Trash2 className="h-3.5 w-3.5" />
                                             </button>

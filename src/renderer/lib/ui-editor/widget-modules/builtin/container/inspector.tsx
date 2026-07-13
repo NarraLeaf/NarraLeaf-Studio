@@ -8,6 +8,7 @@ import {
     isUsableAppearanceModel,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
+import { i18nStore } from "@/lib/i18n";
 import { getContainerProps } from "./helpers";
 import { buildContainerLayoutLeadingFields } from "./inspectorLayoutFields";
 
@@ -51,25 +52,26 @@ function ContainerAppearanceField(props: CustomFieldProps<UIInspectorData>) {
 
 export function createContainerInspector(ctx: InspectorContext) {
     type D = UIInspectorData;
+    const { t } = i18nStore.getTranslator();
     const { element } = ctx;
 
     return createPropertyEditorSchema<D>({
         id: `ui-inspector:nl.container:${element.id}`,
-        title: element.name ?? "Container",
+        title: element.name ?? t("widgets.container.title"),
         fields: [],
         tabs: [
             {
                 id: "properties",
-                title: "Properties",
+                title: t("widgets.tabs.properties"),
                 fields: [
                     ...(buildContainerLayoutLeadingFields(ctx) as ReturnType<typeof defineField<D, any>>[]),
                     defineField<D, any>({
                         id: "section.appearanceAuthoring",
                         type: "section",
-                        title: "Appearance",
+                        title: t("widgets.appearance.title"),
                         collapsible: true,
                         defaultCollapsed: true,
-                        helpText: "Compact modules with per-module state overrides (header menu: add or remove).",
+                        helpText: t("widgets.appearance.modulesHelp"),
                         fields: [
                             defineField<D, any>({
                                 id: "container.appearance.panel",
@@ -82,12 +84,12 @@ export function createContainerInspector(ctx: InspectorContext) {
             },
             {
                 id: "interaction",
-                title: "Interaction",
+                title: t("widgets.tabs.interaction"),
                 fields: [
                     defineField<D, any>({
                         id: "interaction.blueprint.readonly",
                         type: "custom",
-                        label: "Control blueprint",
+                        label: t("widgets.blueprint.controlLabel"),
                         component: ReadonlyBlueprintSection,
                     }),
                 ],

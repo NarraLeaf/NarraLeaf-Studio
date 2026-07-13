@@ -4,11 +4,13 @@ import { useWorkspace } from "../../context";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
+import { useTranslation } from "@/lib/i18n";
 
 /**
  * Individual dialog component
  */
 function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => void }) {
+    const { t } = useTranslation();
     const dialogRef = useRef<HTMLDivElement | null>(null);
     const defaultButtonRef = useRef<HTMLButtonElement | null>(null);
     const defaultButtonIndex = dialog.buttons?.findIndex(button => button.primary && !button.disabled) ?? -1;
@@ -84,7 +86,7 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
                         <button
                             onClick={onClose}
                             className="p-1 rounded hover:bg-fill transition-colors"
-                            aria-label="Close"
+                            aria-label={t("common.close")}
                         >
                             <svg className="w-5 h-5 text-fg-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

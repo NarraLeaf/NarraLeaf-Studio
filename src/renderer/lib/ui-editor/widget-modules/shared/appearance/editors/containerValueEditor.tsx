@@ -1,4 +1,5 @@
 import { Droplets, Eye, EyeOff, Maximize2, Square } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import type { ImageFillFieldDefinition } from "@/apps/workspace/modules/properties/framework/types";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
@@ -40,6 +41,7 @@ export function ContainerAppearanceValueEditor({
     inspectorData,
     onSaving,
 }: ContainerValueEditorProps) {
+    const { t } = useTranslation();
     const rl = getRectangleLikeProps(inspectorData.element);
 
     switch (fieldKey) {
@@ -96,9 +98,9 @@ export function ContainerAppearanceValueEditor({
                     onClick={() => onChange(!b)}
                     aria-pressed={b}
                     className={controlButtonClass(b)}
-                    title="Link corner radii"
+                    title={t("widgetAppearance.corners.linkTitle")}
                 >
-                    <span className="text-2xs font-medium px-1">Link</span>
+                    <span className="text-2xs font-medium px-1">{t("widgetAppearance.corners.link")}</span>
                 </button>
             );
         }
@@ -109,7 +111,7 @@ export function ContainerAppearanceValueEditor({
                     type="button"
                     onClick={() => onChange(!b)}
                     aria-pressed={b}
-                    aria-label="Toggle corner breakdown"
+                    aria-label={t("widgetAppearance.corners.toggleBreakdownAria")}
                     className={controlButtonClass(b)}
                 >
                     <Maximize2 className="w-4 h-4" />
@@ -166,7 +168,7 @@ export function ContainerAppearanceValueEditor({
                     className="w-full min-w-0 rounded-lg border border-edge bg-transparent px-2 py-1.5 text-xs text-fg"
                     value={v}
                     onChange={e => onChange(e.target.value)}
-                    placeholder="URL or asset ref"
+                    placeholder={t("widgetAppearance.fields.imageUrlPlaceholder")}
                 />
             );
         }
@@ -176,10 +178,10 @@ export function ContainerAppearanceValueEditor({
                 <Select
                     value={v}
                     options={[
-                        { value: "cover", label: "Cover" },
-                        { value: "contain", label: "Contain" },
-                        { value: "stretch", label: "Stretch" },
-                        { value: "tile", label: "Tile" },
+                        { value: "cover", label: t("widgetAppearance.fills.cover") },
+                        { value: "contain", label: t("widgetAppearance.fills.contain") },
+                        { value: "stretch", label: t("widgetAppearance.fills.stretch") },
+                        { value: "tile", label: t("widgetAppearance.fills.tile") },
                     ]}
                     fullWidth
                     onChange={next => onChange(String(next))}
@@ -190,7 +192,7 @@ export function ContainerAppearanceValueEditor({
             const fillField: ImageFillFieldDefinition<UIInspectorData> = {
                 type: "imageFill",
                 id: "appearance.container.imageFill",
-                label: "Image fill",
+                label: t("widgetAppearance.fields.imageFill"),
                 getValue: () => {
                     if (value && typeof value === "object" && "mode" in (value as object)) {
                         return value as ImageFill;
@@ -219,7 +221,7 @@ export function ContainerAppearanceValueEditor({
                     type="button"
                     onClick={() => onChange(!visible)}
                     aria-pressed={visible}
-                    aria-label="Toggle fill visibility"
+                    aria-label={t("widgetAppearance.background.toggleFillVisibilityAria")}
                     className={controlButtonClass(visible)}
                 >
                     {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
@@ -254,7 +256,7 @@ export function ContainerAppearanceValueEditor({
                     type="button"
                     onClick={() => onChange(!visible)}
                     aria-pressed={visible}
-                    aria-label="Toggle border visibility"
+                    aria-label={t("widgetAppearance.border.toggleVisibilityAria")}
                     className={controlButtonClass(visible)}
                 >
                     {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
@@ -303,7 +305,7 @@ export function ContainerAppearanceValueEditor({
                 return (
                     <div className="space-y-1 min-w-0">
                         <p className="text-xs text-fg-subtle leading-snug">
-                            Multiple sides — use the compact Border panel to edit.
+                            {t("widgetAppearance.border.multipleSidesHint")}
                         </p>
                         <span className="text-xs font-mono text-fg-muted break-all">{v}</span>
                     </div>

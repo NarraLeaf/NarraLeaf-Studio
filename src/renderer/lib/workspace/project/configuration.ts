@@ -16,10 +16,17 @@ export type NetworkConfiguration = {
     allowRemoteScript: boolean;
 };
 
+export type SecurityConfiguration = {
+    /** When true, packaged and previewed builds protect game assets and data. */
+    encryptAssets: boolean;
+};
+
 export type ProjectAppConfiguration = {
     network: NetworkConfiguration;
     /** Game localization setup (see @shared/types/localization); absent until configured. */
     localization?: LocalizationConfiguration;
+    /** Asset-protection policy applied at pack time; absent until configured. */
+    security?: SecurityConfiguration;
 };
 
 /**
@@ -50,5 +57,26 @@ export function normalizeNetworkConfiguration(value: unknown): NetworkConfigurat
         allowRemoteScript: typeof record.allowRemoteScript === "boolean"
             ? record.allowRemoteScript
             : DEFAULT_NETWORK_CONFIGURATION.allowRemoteScript,
+    };
+}
+
+/**
+ * Asset protection is off by default: projects that never configured it (and all
+ * projects created before this feature) ship in the clear.
+ */
+export const DEFAULT_SECURITY_CONFIGURATION: SecurityConfiguration = {
+    encryptAssets: false,
+};
+
+/** Coerce an unknown persisted value into a complete SecurityConfiguration. */
+export function normalizeSecurityConfiguration(value: unknown): SecurityConfiguration {
+    if (!value || typeof value !== "object") {
+        return { ...DEFAULT_SECURITY_CONFIGURATION };
+    }
+    const record = value as Record<string, unknown>;
+    return {
+        encryptAssets: typeof record.encryptAssets === "boolean"
+            ? record.encryptAssets
+            : DEFAULT_SECURITY_CONFIGURATION.encryptAssets,
     };
 }

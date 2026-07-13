@@ -9,6 +9,7 @@ import type {
     StoryDocument,
     StoryTransformRef,
 } from "@shared/types/story";
+import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { Services } from "@/lib/workspace/services/services";
@@ -29,6 +30,7 @@ import {
     getStoryMotionDurationMs,
     getStoryMotionPropertyMeta,
     sampleStoryMotionPreview,
+    type StoryMotionTemplateName,
 } from "./storyMotionTimeline";
 
 const WINDOW_TITLEBAR_HEIGHT = 40;
@@ -40,6 +42,13 @@ const PREVIEW_FRAME_MS = 1000 / 30;
 
 const ICON_BUTTON_CLASS = controlButtonClass();
 const TOOL_BUTTON_CLASS = "inline-flex h-8 items-center gap-1.5 rounded border border-edge bg-fill-subtle px-2 text-xs text-fg hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
+
+const STORY_MOTION_TEMPLATE_KEYS = {
+    "Fade in + slide": "fadeInSlide",
+    "Center pop": "centerPop",
+    "Look around": "lookAround",
+    "Flash": "flash",
+} as const satisfies Record<StoryMotionTemplateName, string>;
 
 function clamp(value: number, min: number, max: number): number {
     return Math.min(Math.max(value, min), max);
@@ -53,10 +62,6 @@ export function motionSummary(asset: StoryAnimationAsset): string {
         .map(track => getStoryMotionPropertyMeta(track.property).label)
         .join(", ");
     return `${durationMs}ms${labels ? ` / ${labels}${tracks.length > 3 ? "..." : ""}` : ""}`;
-}
-
-function formatTargetKind(kind: StoryDisplayableTargetKind): string {
-    return kind[0].toUpperCase() + kind.slice(1);
 }
 
 /**
@@ -73,6 +78,7 @@ export function MotionSelector(props: {
     onClose: () => void;
     onSelect: (animationId: string) => void;
 }) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const storyService = useMemo(
@@ -93,8 +99,11 @@ export function MotionSelector(props: {
     const hoverTimer = useRef<number | null>(null);
 
     const templateOptions = useMemo(
-        () => STORY_MOTION_TEMPLATES.map(option => ({ value: option, label: option })),
-        [],
+        () => STORY_MOTION_TEMPLATES.map(option => ({
+            value: option,
+            label: t(`motion.templates.${STORY_MOTION_TEMPLATE_KEYS[option]}`),
+        })),
+        [t],
     );
 
     useEffect(() => {
@@ -236,7 +245,7 @@ export function MotionSelector(props: {
                         className="flex-1"
                         value={query}
                         onChange={setQuery}
-                        placeholder="Search story motions"
+                        placeholder={t("motion.searchStoryMotions")}
                         leftIcon={<Search className="h-3.5 w-3.5 text-fg-subtle" />}
                     />
                     <Select
@@ -250,13 +259,13 @@ export function MotionSelector(props: {
                     />
                     <button className={TOOL_BUTTON_CLASS} type="button" onClick={createAndBind} disabled={!storyService}>
                         <Plus className="h-3.5 w-3.5" />
-                        New
+                        {t("common.new")}
                     </button>
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto p-1">
                     {filteredAssets.length === 0 ? (
                         <div className="p-6 text-center text-xs text-fg-subtle">
-                            No {formatTargetKind(props.targetKind).toLowerCase()} motions yet. Use “New” to create one.
+                            {t("motion.selector.emptyKind", { kind: t(`motion.targetKind.${props.targetKind}`).toLowerCase() })}
                         </div>
                     ) : filteredAssets.map(asset => {
                         const selected = props.value === asset.id;
@@ -280,14 +289,14 @@ export function MotionSelector(props: {
                                     </span>
                                     <span className="min-w-0 flex-1">
                                         <span className="block truncate text-xs font-medium text-fg">{asset.name}</span>
-                                        <span className="block truncate text-2xs text-fg-subtle">{formatTargetKind(asset.targetKind)}</span>
+                                        <span className="block truncate text-2xs text-fg-subtle">{t(`motion.targetKind.${asset.targetKind}`)}</span>
                                     </span>
                                 </button>
                                 <button
                                     type="button"
                                     className={`${ICON_BUTTON_CLASS} opacity-0 group-hover:opacity-100`}
                                     onClick={() => openEditor(asset.id)}
-                                    title="Edit motion"
+                                    title={t("motion.editMotion")}
                                 >
                                     <Edit3 className="h-3.5 w-3.5" />
                                 </button>
@@ -326,6 +335,7 @@ function MotionHoverPreview(props: {
     actionContext: StoryMotionActionContext;
     fallbackKind: StoryDisplayableTargetKind;
 }) {
+    const { t } = useTranslation();
     const [asset, setAsset] = useState<StoryAnimationAsset | null>(null);
     const [timeMs, setTimeMs] = useState(0);
 
@@ -380,9 +390,9 @@ function MotionHoverPreview(props: {
         sceneId: props.actionContext.sceneId,
         blockId: props.actionContext.blockId,
         fallbackKind: asset?.targetKind ?? props.fallbackKind,
-        fallbackLabel: asset?.name ?? "Motion",
+        fallbackLabel: asset?.name ?? t("motion.fallbackLabel"),
         previewAssetId: asset?.previewAssetId,
-    }), [document, props.actionContext, props.fallbackKind, asset]);
+    }), [document, props.actionContext, props.fallbackKind, asset, t]);
     const { url: backgroundUrl } = useAssetObjectUrl(asset?.previewBackgroundAssetId ?? null);
 
     const scale = Math.min(PREVIEW_BOX.width / stageSize.width, PREVIEW_BOX.height / stageSize.height);
@@ -415,7 +425,7 @@ function MotionHoverPreview(props: {
                     </div>
                 </div>
             ) : (
-                <div className="grid h-full w-full place-items-center text-xs text-fg-subtle">Loading preview…</div>
+                <div className="grid h-full w-full place-items-center text-xs text-fg-subtle">{t("motion.selector.loadingPreview")}</div>
             )}
         </div>
     );
@@ -432,6 +442,7 @@ export function MotionField(props: {
     actionContext: StoryMotionActionContext;
     onChange: (value: StoryTransformRef | undefined) => void;
 }) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const storyService = useMemo(
@@ -480,16 +491,16 @@ export function MotionField(props: {
             >
                 <Spline className="h-3.5 w-3.5 shrink-0 text-primary" />
                 <span className={["truncate", animationId ? "" : "italic text-fg-subtle"].join(" ")}>
-                    {asset?.name ?? (animationId ? "Motion asset" : "Choose motion…")}
+                    {asset?.name ?? (animationId ? t("motion.field.motionAsset") : t("motion.field.choosePlaceholder"))}
                 </span>
                 {asset ? <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{motionSummary(asset)}</span> : null}
             </button>
             {animationId ? (
                 <>
-                    <button type="button" className={ICON_BUTTON_CLASS} onClick={openEditor} title="Edit motion">
+                    <button type="button" className={ICON_BUTTON_CLASS} onClick={openEditor} title={t("motion.editMotion")}>
                         <Edit3 className="h-4 w-4" />
                     </button>
-                    <button type="button" className={ICON_BUTTON_CLASS} onClick={clear} title="Clear motion">
+                    <button type="button" className={ICON_BUTTON_CLASS} onClick={clear} title={t("motion.clearMotion")}>
                         <X className="h-4 w-4" />
                     </button>
                 </>

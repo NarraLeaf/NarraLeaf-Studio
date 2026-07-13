@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { Select } from "@/lib/components/elements/Select";
+import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { useWorkspace } from "@/apps/workspace/context";
@@ -14,14 +15,6 @@ import type { ImageFillFieldDefinition } from "../types";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { computeCoverCropPlacement } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
-
-const MODE_OPTIONS: { value: ImageFillMode; label: string }[] = [
-    { value: "cover", label: "Cover" },
-    { value: "contain", label: "Contain" },
-    { value: "stretch", label: "Stretch" },
-    { value: "crop", label: "Crop" },
-    { value: "tile", label: "Tile" },
-];
 
 const PANEL_WIDTH = 360;
 const PANEL_SPACING = 12;
@@ -44,7 +37,18 @@ export function ImageFillField<TData extends UIInspectorData>({
     data,
     onSaving,
 }: ImageFillFieldProps<TData>) {
+    const { t } = useTranslation();
     const { context } = useWorkspace();
+    const MODE_OPTIONS = useMemo<{ value: ImageFillMode; label: string }[]>(
+        () => [
+            { value: "cover", label: t("properties.imageFill.mode.cover") },
+            { value: "contain", label: t("properties.imageFill.mode.contain") },
+            { value: "stretch", label: t("properties.imageFill.mode.stretch") },
+            { value: "crop", label: t("properties.imageFill.mode.crop") },
+            { value: "tile", label: t("properties.imageFill.mode.tile") },
+        ],
+        [t],
+    );
     const stateService =
         context?.services.get<UIEditorStateService>(Services.UIEditorState) ?? null;
     const selection = stateService?.getSelection();
@@ -71,7 +75,7 @@ export function ImageFillField<TData extends UIInspectorData>({
             return MODE_OPTIONS;
         }
         return MODE_OPTIONS.filter(option => allowedModes.includes(option.value));
-    }, [allowedModes]);
+    }, [allowedModes, MODE_OPTIONS]);
 
     const { url, metadata, loading, error: assetResolveError } = useAssetObjectUrl(normalizedFill.assetId ?? null);
     const [isOpen, setIsOpen] = useState(false);
@@ -254,8 +258,8 @@ export function ImageFillField<TData extends UIInspectorData>({
             normalizedFill.mode,
         [modeOptionsForUi, normalizedFill.mode],
     );
-    const panelTitle = field.label?.trim() ? field.label : "Image Fill";
-    const previewLabel = normalizedFill.assetId ? "Image selected" : "No image";
+    const panelTitle = field.label?.trim() ? field.label : t("properties.imageFill.title");
+    const previewLabel = normalizedFill.assetId ? t("properties.imageFill.imageSelected") : t("properties.imageFill.noImage");
 
     const togglePanel = useCallback(() => {
         setIsOpen(true);
@@ -294,7 +298,7 @@ export function ImageFillField<TData extends UIInspectorData>({
                               type="button"
                               onClick={() => setIsOpen(false)}
                               className="p-1 rounded-full hover:bg-fill"
-                              aria-label="Close image fill editor"
+                              aria-label={t("properties.imageFill.close")}
                           >
                               <X className="w-4 h-4" />
                           </button>
@@ -302,7 +306,7 @@ export function ImageFillField<TData extends UIInspectorData>({
 
                       <div className="space-y-3">
                           <div>
-                              <span className="text-xs text-fg-muted tracking-widest">Mode</span>
+                              <span className="text-xs text-fg-muted tracking-widest">{t("properties.imageFill.modeLabel")}</span>
                               <Select
                                   options={modeOptionsForUi.map(option => ({ value: option.value, label: option.label }))}
                                   value={normalizedFill.mode}
@@ -310,12 +314,12 @@ export function ImageFillField<TData extends UIInspectorData>({
                                   fullWidth
                                   size="md"
                                   className="mt-1"
-                                  placeholder="Select mode"
+                                  placeholder={t("properties.imageFill.selectMode")}
                               />
                           </div>
 
                           <div>
-                              <span className="text-xs text-fg-muted tracking-widest">Preview</span>
+                              <span className="text-xs text-fg-muted tracking-widest">{t("properties.preview")}</span>
                               <button
                                   ref={previewRef}
                                   type="button"
@@ -325,23 +329,23 @@ export function ImageFillField<TData extends UIInspectorData>({
                                   {url ? (
                                       <img
                                           src={url}
-                                          alt="Fill preview"
+                                          alt={t("properties.imageFill.previewAlt")}
                                           className="absolute inset-0 h-full w-full object-cover"
                                           draggable={false}
                                       />
                                   ) : (
                                       <div className="flex h-full w-full flex-col items-center justify-center text-xs text-fg-subtle">
-                                          <span className="font-semibold">Select an image</span>
-                                          <span>Asset browser opens on click</span>
+                                          <span className="font-semibold">{t("properties.imageFill.selectImage")}</span>
+                                          <span>{t("properties.imageFill.selectHint")}</span>
                                       </div>
                                   )}
                                   {loading && (
                                       <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-xs text-fg">
-                                          Loading…
+                                          {t("common.loading")}
                                       </div>
                                   )}
                                   <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 text-2xs tracking-[0.3em] text-white transition hover:opacity-100">
-                                      Change image
+                                      {t("properties.imageFill.changeImage")}
                                   </div>
                               </button>
                               <div className="mt-2 flex items-center justify-between text-xs text-fg-muted">
@@ -374,7 +378,7 @@ export function ImageFillField<TData extends UIInspectorData>({
                         {url ? (
                             <img
                                 src={url}
-                                alt="Fill preview"
+                                alt={t("properties.imageFill.previewAlt")}
                                 className="h-28 w-full rounded-lg object-cover"
                                 draggable={false}
                             />
@@ -385,14 +389,13 @@ export function ImageFillField<TData extends UIInspectorData>({
                             <span>{previewLabel}</span>
                             <span className="tracking-[0.2em]">{panelModeLabel}</span>
                         </div>
-                        <div className="text-2xs text-fg-subtle">Click to open editor</div>
+                        <div className="text-2xs text-fg-subtle">{t("properties.imageFill.openEditor")}</div>
                     </div>
                 </button>
             </FieldLayout>
             {normalizedFill.assetId && assetResolveError ? (
                 <p className="mt-1 text-2xs text-amber-400/90 leading-snug">
-                    Static check: image asset could not be resolved ({assetResolveError}). Preview may be wrong until the
-                    asset exists; verify in Dev Mode.
+                    {t("properties.imageFill.resolveError", { error: assetResolveError })}
                 </p>
             ) : null}
 
@@ -405,7 +408,7 @@ export function ImageFillField<TData extends UIInspectorData>({
                 onConfirm={handleSelectImage}
                 selectedIds={normalizedFill.assetId ? [normalizedFill.assetId] : []}
                 anchorRef={previewRef}
-                title="Select Fill Image"
+                title={t("properties.imageFill.selectFillImage")}
                 multiple={false}
             />
         </>

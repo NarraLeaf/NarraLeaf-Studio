@@ -6,6 +6,7 @@ import {
 } from "@shared/types/blueprint/variableTypes";
 import { Input, InputGroup } from "@/lib/components/elements/Input";
 import { Select, type SelectOption } from "@/lib/components/elements/Select";
+import { useTranslation } from "@/lib/i18n";
 
 export type BlueprintVariableDialogValue = {
     name: string;
@@ -32,6 +33,7 @@ export function BlueprintVariableDialogContent({
     existingNames = [],
     onChange,
 }: Props) {
+    const { t } = useTranslation();
     const [name, setName] = useState(defaultName);
     const [valueType, setValueType] = useState(defaultValueType);
 
@@ -43,9 +45,9 @@ export function BlueprintVariableDialogContent({
     const trimmedName = name.trim();
     const nameError =
         trimmedName.length === 0
-            ? "Name is required"
+            ? t("blueprint.validation.nameRequired")
             : normalizedExistingNames.has(trimmedName.toLowerCase())
-              ? "A variable with this name already exists"
+              ? t("blueprint.validation.nameExists")
               : undefined;
     const valid = !nameError && BLUEPRINT_VARIABLE_TYPE_OPTIONS.some(option => option.value === valueType);
 
@@ -60,7 +62,7 @@ export function BlueprintVariableDialogContent({
 
     return (
         <div className="space-y-4">
-            <InputGroup label="Name" required error={nameError}>
+            <InputGroup label={t("common.name")} required error={nameError}>
                 <Input
                     value={name}
                     onChange={event => setName(event.target.value)}
@@ -69,13 +71,13 @@ export function BlueprintVariableDialogContent({
                     autoFocus
                 />
             </InputGroup>
-            <InputGroup label="Data type" required>
+            <InputGroup label={t("blueprint.dialog.dataType")} required>
                 <Select
                     fullWidth
                     options={BLUEPRINT_VARIABLE_SELECT_OPTIONS}
                     value={valueType}
                     onChange={value => setValueType(String(value))}
-                    placeholder="Select data type"
+                    placeholder={t("blueprint.dialog.selectDataType")}
                     portalMenu
                 />
             </InputGroup>

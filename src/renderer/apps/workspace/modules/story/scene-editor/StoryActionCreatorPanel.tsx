@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Star } from "lucide-react";
 import type { PanelComponentProps } from "../../types";
+import { useTranslation } from "@/lib/i18n";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
@@ -30,6 +31,7 @@ type SidebarCategory = ActionCommandCategory | {
 };
 
 export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryActionCreatorPanelPayload>) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const settingsService = useMemo(
         () => context && isInitialized ? context.services.get<GlobalSettingsService>(Services.GlobalSettings) : null,
@@ -67,9 +69,9 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
     }, [persistStarredIds]);
 
     const categories = useMemo<SidebarCategory[]>(() => [
-        { id: STARRED_CATEGORY_ID, label: "Starred", icon: Star, iconColor: "#c8b06e" },
+        { id: STARRED_CATEGORY_ID, label: t("story.actionCreator.starred"), icon: Star, iconColor: "#c8b06e" },
         ...ACTION_COMMAND_CATEGORIES,
-    ], []);
+    ], [t]);
 
     const allCommands = useMemo<PaletteActionCommand[]>(() => [
         ...ACTION_COMMANDS,
@@ -101,7 +103,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                 <SearchBox
                     value={query}
                     onChange={setQuery}
-                    placeholder="Search actions"
+                    placeholder={t("story.actionCreator.searchPlaceholder")}
                     className="w-full"
                 />
                 <div
@@ -140,7 +142,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
             <div className="min-h-0 flex-1 overflow-auto p-2">
                 {filteredCommands.length === 0 ? (
                     <div className="rounded-md border border-edge bg-fill-subtle px-3 py-3 text-sm text-fg-subtle">
-                        No action found.
+                        {t("story.actionCreator.noActions")}
                     </div>
                 ) : (
                     <div className="grid gap-1">
@@ -166,6 +168,7 @@ function ActionCreatorRow(props: {
     onToggleStarred: (commandId: string) => void;
     onCreate: (commandId: string) => void;
 }) {
+    const { t } = useTranslation();
     const category = getActionCommandCategory(props.command.category);
     const Icon = props.command.icon;
     return (
@@ -189,7 +192,7 @@ function ActionCreatorRow(props: {
                     "mr-1 grid h-7 w-7 shrink-0 place-items-center rounded text-fg-subtle transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50",
                     props.starred ? "opacity-100 text-[#c8b06e]" : "opacity-0 hover:text-[#c8b06e] group-hover:opacity-100",
                 ].join(" ")}
-                title={props.starred ? "Remove from starred" : "Add to starred"}
+                title={props.starred ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")}
                 onClick={() => props.onToggleStarred(props.command.id)}
             >
                 <Star className="h-3.5 w-3.5" fill={props.starred ? "currentColor" : "none"} />

@@ -1,3 +1,4 @@
+import { useTranslation } from "@/lib/i18n";
 import { Progress } from "@/lib/components/elements";
 import { CheckCircle } from "lucide-react";
 import { StepConfig, WizardStep } from "../types";
@@ -14,6 +15,7 @@ interface WizardHeaderProps {
  * Header component for the project wizard showing progress and step navigation
  */
 export function WizardHeader({ steps, currentStep }: WizardHeaderProps) {
+    const { t } = useTranslation();
     const currentStepIndex = steps.findIndex(step => step.key === currentStep);
     const progress = ((currentStepIndex + 1) / steps.length) * 100;
 
@@ -21,9 +23,9 @@ export function WizardHeader({ steps, currentStep }: WizardHeaderProps) {
         <div className="p-6 border-b border-edge">
             <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                    <h1 className="text-xl font-semibold text-fg">Create New Project</h1>
+                    <h1 className="text-xl font-semibold text-fg">{t("wizard.header.title")}</h1>
                     <span className="text-sm text-fg-muted">
-                        Step {currentStepIndex + 1} of {steps.length}
+                        {t("wizard.header.stepIndicator", { current: currentStepIndex + 1, total: steps.length })}
                     </span>
                 </div>
 

@@ -16,6 +16,7 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
+    BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
     BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
@@ -157,7 +158,7 @@ function areUIBehaviorSnapshotsEqual(a: UIBehaviorSnapshot, b: UIBehaviorSnapsho
 
 function createValueGraphIr(input: {
     headNodeType: string;
-    valueType: UIElementValueBindingValueType;
+    valueType: UIElementValueBindingValueType | "boolean";
     literalValue: unknown;
     generateId: () => string;
 }): BlueprintGraphIr {
@@ -175,7 +176,9 @@ function createValueGraphIr(input: {
             ? BLUEPRINT_NODE_TYPE_LITERAL_JSON
             : input.valueType === "float"
               ? BLUEPRINT_NODE_TYPE_LITERAL_FLOAT
-              : BLUEPRINT_NODE_TYPE_LITERAL_STRING;
+              : input.valueType === "boolean"
+                ? BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN
+                : BLUEPRINT_NODE_TYPE_LITERAL_STRING;
     const literal: BlueprintGraphNode = {
         id: literalId,
         type: literalType,
@@ -208,7 +211,10 @@ function createValueGraphIr(input: {
     };
 }
 
-function normalizeBlueprintValueLiteral(value: unknown, valueType: UIElementValueBindingValueType): unknown {
+function normalizeBlueprintValueLiteral(value: unknown, valueType: UIElementValueBindingValueType | "boolean"): unknown {
+    if (valueType === "boolean") {
+        return value === true || value === "true";
+    }
     if (valueType === "string") {
         return value == null ? "" : String(value);
     }
@@ -582,7 +588,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
      * Ensure the implicit Story Action Blueprint exists for a story action. Self-referential owner:
      * the owner key equals the blueprint id. Seeds a single "On Call" event graph. Returns the id.
      */
-    public ensureStoryActionBlueprint(input?: { blueprintId?: string; displayName?: string; mode?: "action" | "value" }): string {
+    public ensureStoryActionBlueprint(input?: { blueprintId?: string; displayName?: string; mode?: "action" | "value" | "condition" }): string {
         const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
         const id = input?.blueprintId || uuid.generate();
         const key = storyActionOwnerKey(id);
@@ -593,20 +599,30 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 outId = active;
                 return;
             }
+            const defaultName =
+                input?.mode === "value" ? "Story Value" : input?.mode === "condition" ? "Story Condition" : "Story Action";
             const blueprint = createMainBlueprint({
                 id,
-                name: input?.displayName ?? (input?.mode === "value" ? "Story Value" : "Story Action"),
+                name: input?.displayName ?? defaultName,
                 owner: { kind: "storyAction", blueprintId: id, ...(input?.mode ? { mode: input.mode } : {}) },
             });
             if (blueprint.program.kind === "graph") {
-                // Value mode (inline interpolation) opens ready to return a value: On Call → Return Value
-                // ← "" string literal. Action mode (a story action block) runs for side effects, so it
-                // only needs the On Call head.
+                // Value mode (inline interpolation) opens ready to return a string: On Call → Return Value
+                // ← "" literal. Condition mode returns a boolean: On Call → Return Value ← `false` literal
+                // (type-checked to boolean while authoring). Action mode runs for side effects, so it only
+                // needs the On Call head.
                 const graph = input?.mode === "value"
                     ? createValueGraphIr({
                           headNodeType: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
                           valueType: "string",
                           literalValue: "",
+                          generateId: () => uuid.generate(),
+                      })
+                    : input?.mode === "condition"
+                    ? createValueGraphIr({
+                          headNodeType: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
+                          valueType: "boolean",
+                          literalValue: false,
                           generateId: () => uuid.generate(),
                       })
                     : (() => {

@@ -210,6 +210,8 @@ export function useStoryPreviewGameUi(input: {
             getSavePreview: async () => null,
             isInGame: () => true,
             quitGame: notAvailable("Quit Game"),
+            // The snapshot preview has no window-sized viewport to clamp; output resolution is a no-op.
+            setOutputResolutionInGame: async () => undefined,
             ...liveGameCallbacks,
             setWidgetPatchesByScope,
             widgetPatchesByScopeRef,

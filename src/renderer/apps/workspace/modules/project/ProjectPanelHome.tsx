@@ -1,4 +1,6 @@
+import { useMemo } from "react";
 import { ChevronRight, Image as ImageIcon, Info, Puzzle, SlidersHorizontal, type LucideIcon } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { InteractiveCard } from "@/lib/components/elements";
 import type { ProjectConfig } from "@/lib/workspace/project/project";
 
@@ -11,32 +13,31 @@ export type ProjectNavItem = {
     icon: LucideIcon;
 };
 
-export const PROJECT_NAV_ITEMS: ProjectNavItem[] = [
-    {
-        id: "details",
-        title: "Details",
-        description: "Name, identifier, and metadata",
-        icon: Info,
-    },
-    {
-        id: "assets",
-        title: "Assets",
-        description: "Application icons for each platform",
-        icon: ImageIcon,
-    },
-    {
-        id: "dependencies",
-        title: "Dependencies",
-        description: "Plugins this project relies on",
-        icon: Puzzle,
-    },
-    {
-        id: "settings",
-        title: "Settings",
-        description: "Networking and packaging behavior",
-        icon: SlidersHorizontal,
-    },
-];
+const PROJECT_NAV_ICONS: Record<ProjectSectionId, LucideIcon> = {
+    details: Info,
+    assets: ImageIcon,
+    dependencies: Puzzle,
+    settings: SlidersHorizontal,
+};
+
+const PROJECT_NAV_ORDER: ProjectSectionId[] = ["details", "assets", "dependencies", "settings"];
+
+/**
+ * The project navigation rows, with localized title/description. Shared by the
+ * overview list and the parent panel (which resolves the active sub-page).
+ */
+export function useProjectNavItems(): ProjectNavItem[] {
+    const { t } = useTranslation();
+    return useMemo(
+        () => PROJECT_NAV_ORDER.map(id => ({
+            id,
+            title: t(`project.nav.${id}.title`),
+            description: t(`project.nav.${id}.description`),
+            icon: PROJECT_NAV_ICONS[id],
+        })),
+        [t],
+    );
+}
 
 /**
  * Project overview: a compact identity header plus a list of setting sections.
@@ -49,11 +50,13 @@ export function ProjectPanelHome({
     config: ProjectConfig | null;
     onOpen: (section: ProjectSectionId) => void;
 }) {
+    const { t } = useTranslation();
+    const navItems = useProjectNavItems();
     return (
         <div className="flex h-full min-h-0 flex-col bg-[#101114] text-fg">
             <div className="border-b border-edge p-3">
                 <div className="truncate text-sm font-semibold text-fg">
-                    {config?.name?.trim() || "Untitled project"}
+                    {config?.name?.trim() || t("project.home.untitledProject")}
                 </div>
                 {config?.identifier?.trim() ? (
                     <div className="mt-0.5 truncate text-2xs text-fg-subtle">{config.identifier}</div>
@@ -62,7 +65,7 @@ export function ProjectPanelHome({
 
             <div className="min-h-0 flex-1 overflow-auto p-3">
                 <div className="grid gap-2">
-                    {PROJECT_NAV_ITEMS.map(item => {
+                    {navItems.map(item => {
                         const ItemIcon = item.icon;
                         return (
                             <InteractiveCard

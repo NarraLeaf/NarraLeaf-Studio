@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Type } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { PropertyEditorProps } from "./PropertyEditorBase";
 import { BasePropertyEditor } from "./BasePropertyEditor";
 import { AssetType, AssetData } from "@/lib/workspace/services/assets/assetTypes";
@@ -12,6 +13,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
  * Allows editing name, tags, and description for font assets
  */
 export function FontPropertyEditor({ asset, onChange }: PropertyEditorProps<AssetType.Font>) {
+    const { t } = useTranslation();
     const { context } = useWorkspace();
     const [fontData, setFontData] = useState<AssetData<AssetType.Font> | null>(null);
 
@@ -42,7 +44,7 @@ export function FontPropertyEditor({ asset, onChange }: PropertyEditorProps<Asse
                 <div className="bg-surface-raised rounded-md p-3 border border-edge">
                     <div className="flex items-center gap-2 mb-2">
                         <Type className="w-4 h-4 text-fg-muted" />
-                        <span className="text-sm font-medium text-fg-muted">Font Preview</span>
+                        <span className="text-sm font-medium text-fg-muted">{t("properties.asset.font.preview")}</span>
                     </div>
                     <div className="flex items-center justify-center bg-surface rounded p-3">
                         <div
@@ -53,7 +55,7 @@ export function FontPropertyEditor({ asset, onChange }: PropertyEditorProps<Asse
                                 fontWeight: fontData.metadata.weight || 'normal'
                             }}
                         >
-                            {fontData.metadata.family || 'Sample Text'}
+                            {fontData.metadata.family || t("properties.asset.font.sampleText")}
                             <br />
                             <span className="text-xs text-fg-subtle">Aa Bb Cc 123</span>
                         </div>
@@ -65,37 +67,37 @@ export function FontPropertyEditor({ asset, onChange }: PropertyEditorProps<Asse
             {fontData && (
                 <div>
                     <label className="block text-xs font-medium text-fg-muted mb-1">
-                        Font Information
+                        {t("properties.asset.font.info")}
                     </label>
                     <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-1">
                         {fontData.metadata.family && (
                             <div className="flex justify-between text-xs">
-                                <span className="text-fg-muted">Family:</span>
+                                <span className="text-fg-muted">{t("properties.asset.info.family")}:</span>
                                 <span className="text-fg-muted">{fontData.metadata.family}</span>
                             </div>
                         )}
                         {fontData.metadata.style && (
                             <div className="flex justify-between text-xs">
-                                <span className="text-fg-muted">Style:</span>
+                                <span className="text-fg-muted">{t("properties.asset.info.style")}:</span>
                                 <span className="text-fg-muted">{fontData.metadata.style}</span>
                             </div>
                         )}
                         {fontData.metadata.weight && (
                             <div className="flex justify-between text-xs">
-                                <span className="text-fg-muted">Weight:</span>
+                                <span className="text-fg-muted">{t("properties.asset.info.weight")}:</span>
                                 <span className="text-fg-muted">{fontData.metadata.weight}</span>
                             </div>
                         )}
                         <div className="flex justify-between text-xs">
-                            <span className="text-fg-muted">Format:</span>
+                            <span className="text-fg-muted">{t("properties.asset.info.format")}:</span>
                             <span className="text-fg-muted">{fontData.metadata.format.toUpperCase()}</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-fg-muted">Size:</span>
+                            <span className="text-fg-muted">{t("properties.asset.info.size")}:</span>
                             <span className="text-fg-muted">{(fontData.metadata.size / 1024).toFixed(1)} KB</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-fg-muted">Hash:</span>
+                            <span className="text-fg-muted">{t("properties.asset.info.hash")}:</span>
                             <span className="text-fg-muted font-mono text-2xs">{asset.hash.slice(0, 16)}...</span>
                         </div>
                     </div>

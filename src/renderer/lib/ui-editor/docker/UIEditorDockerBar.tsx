@@ -22,6 +22,7 @@ import { DeferredNumberInput } from "@/lib/components/inputs/DeferredNumberInput
 import { Select } from "@/lib/components/elements/Select";
 import { Component, MoreHorizontal, Search, X } from "lucide-react";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
+import { useTranslation } from "@/lib/i18n";
 
 // Props
 type UIEditorDockerBarProps = {
@@ -48,6 +49,7 @@ function PaletteDockerBar({
     onSelectType: (type: string) => void;
     onOpenComponents?: () => void;
 }) {
+    const { t } = useTranslation();
     const overflowButtonRef = useRef<HTMLButtonElement | null>(null);
     const overflowMenuRef = useRef<HTMLDivElement | null>(null);
     const [overflowOpen, setOverflowOpen] = useState(false);
@@ -168,7 +170,7 @@ function PaletteDockerBar({
                                 ? "bg-primary/20 text-white"
                                 : "text-fg-muted hover:bg-fill hover:text-white"
                         }`}
-                        title={`Insert ${mod.displayName}`}
+                        title={t("widgetChrome.docker.insert", { name: mod.displayName })}
                         onClick={() => selectType(mod.type)}
                         onPointerDown={stopPointerPropagation}
                         onMouseDown={stopPointerPropagation}
@@ -188,7 +190,7 @@ function PaletteDockerBar({
                                 ? "bg-primary/20 text-white"
                                 : "text-fg-muted hover:bg-fill hover:text-white"
                         }`}
-                        title="Open Component Library"
+                        title={t("widgetChrome.docker.openComponentLibrary")}
                         onClick={() => {
                             onOpenComponents?.();
                             closeOverflow();
@@ -197,7 +199,7 @@ function PaletteDockerBar({
                         onMouseDown={stopPointerPropagation}
                     >
                         <Component className="h-3.5 w-3.5 shrink-0" />
-                        <span className="min-w-0 flex-1 truncate">Components</span>
+                        <span className="min-w-0 flex-1 truncate">{t("widgetChrome.docker.components")}</span>
                     </button>
                 </>
             ) : null}
@@ -222,7 +224,7 @@ function PaletteDockerBar({
                         onClick={() => selectType(mod.type)}
                         onPointerDown={stopPointerPropagation}
                         onMouseDown={stopPointerPropagation}
-                        title={isActive ? `Drawing ${mod.displayName} - drag on canvas to create` : `Insert ${mod.displayName}`}
+                        title={isActive ? t("widgetChrome.docker.drawing", { name: mod.displayName }) : t("widgetChrome.docker.insert", { name: mod.displayName })}
                     >
                         <Icon className="w-3.5 h-3.5" />
                         {/* <span>{mod.displayName}</span> */}
@@ -242,8 +244,8 @@ function PaletteDockerBar({
                         onClick={() => setOverflowOpen(open => !open)}
                         onPointerDown={stopPointerPropagation}
                         onMouseDown={stopPointerPropagation}
-                        title="More insert elements"
-                        aria-label="More insert elements"
+                        title={t("widgetChrome.docker.moreInsertElements")}
+                        aria-label={t("widgetChrome.docker.moreInsertElements")}
                         aria-haspopup="menu"
                         aria-expanded={overflowOpen}
                     >
@@ -524,9 +526,10 @@ function ElementDockerBar({
 }
 
 function MultiSelectDockerBar({ items }: { items: DockerBarItem[] }) {
+    const { t } = useTranslation();
     return (
         <div className="flex items-center gap-1">
-            <span className="text-2xs text-fg-subtle font-medium mr-1 select-none">Multiple</span>
+            <span className="text-2xs text-fg-subtle font-medium mr-1 select-none">{t("widgetChrome.docker.multiple")}</span>
             <div className="w-px h-5 bg-fill mx-0.5" />
             {items.map((item) => (
                 <DockerItemRenderer key={`multi-${item.id}`} item={item} />
@@ -609,6 +612,7 @@ function ComponentsLibraryModal({
     onSelectComponent: (componentId: string) => void;
     onClose: () => void;
 }) {
+    const { t } = useTranslation();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const searchRef = useRef<HTMLInputElement | null>(null);
     const [query, setQuery] = useState("");
@@ -680,7 +684,7 @@ function ComponentsLibraryModal({
                         tabIndex={-1}
                         role="dialog"
                         aria-modal="true"
-                        aria-label="Component Library"
+                        aria-label={t("widgetChrome.docker.componentLibrary")}
                         className="relative flex h-[min(760px,calc(100%-3rem))] w-[min(1100px,calc(100%-3rem))] flex-col overflow-hidden rounded-lg border border-edge bg-surface-overlay shadow-2xl"
                         initial={{ opacity: 0, scale: 0.96, y: 10 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -692,7 +696,7 @@ function ComponentsLibraryModal({
                         <div className="flex h-14 shrink-0 items-center gap-3 border-b border-edge px-6">
                             <Component className="h-4 w-4 text-fg-muted" />
                             <div className="min-w-0 flex-1">
-                                <div className="text-sm font-semibold text-white">Component Library</div>
+                                <div className="text-sm font-semibold text-white">{t("widgetChrome.docker.componentLibrary")}</div>
                             </div>
                             <div className="relative w-72 max-w-[40vw]">
                                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-subtle" />
@@ -700,7 +704,7 @@ function ComponentsLibraryModal({
                                     ref={searchRef}
                                     value={query}
                                     onChange={event => setQuery(event.target.value)}
-                                    placeholder="Search components"
+                                    placeholder={t("widgetChrome.docker.searchComponents")}
                                     className="h-8 w-full rounded-md border border-edge bg-fill-subtle pl-8 pr-2 text-xs text-fg outline-none focus:border-primary/60"
                                 />
                             </div>
@@ -708,8 +712,8 @@ function ComponentsLibraryModal({
                                 type="button"
                                 className="grid h-8 w-8 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-white"
                                 onClick={onClose}
-                                title="Close"
-                                aria-label="Close"
+                                title={t("common.close")}
+                                aria-label={t("common.close")}
                             >
                                 <X className="h-4 w-4" />
                             </button>
@@ -717,7 +721,7 @@ function ComponentsLibraryModal({
                         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
                             {filtered.length === 0 ? (
                                 <div className="flex h-full items-center justify-center text-sm text-fg-subtle">
-                                    {components.length === 0 ? "No components in this project." : "No matching components."}
+                                    {components.length === 0 ? t("widgetChrome.docker.noComponents") : t("widgetChrome.docker.noMatchingComponents")}
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
@@ -771,6 +775,7 @@ export function UIEditorDockerBar({
     runtimeBridge,
     enableComponents = true,
 }: UIEditorDockerBarProps) {
+    const { t } = useTranslation();
     const surface = useMemo(() => {
         return documentService.getDocument().surfaces.find(candidate => candidate.id === surfaceId);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -938,7 +943,7 @@ export function UIEditorDockerBar({
                     ) : showElementDocker ? (
                         <ElementDockerBar
                             items={dockerItems}
-                            moduleName={selectedModule?.displayName ?? "Element"}
+                            moduleName={selectedModule?.displayName ?? t("widgetChrome.docker.element")}
                         />
                     ) : (
                         <PaletteDockerBar

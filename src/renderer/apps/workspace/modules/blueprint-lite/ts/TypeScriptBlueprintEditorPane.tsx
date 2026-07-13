@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "@/lib/i18n";
 
 type Props = {
     code: string;
@@ -10,6 +11,7 @@ type Props = {
  * TypeScript Blueprint source editor (Monaco deferred; textarea matches Studio dark chrome).
  */
 export function TypeScriptBlueprintEditorPane({ code, onChange, debounceMs = 400 }: Props) {
+    const { t } = useTranslation();
     const [draft, setDraft] = useState(code);
 
     useEffect(() => {
@@ -36,8 +38,8 @@ export function TypeScriptBlueprintEditorPane({ code, onChange, debounceMs = 400
                 spellCheck={false}
                 value={draft}
                 onChange={onInput}
-                title='Allowed import: "narraleaf-studio"'
-                aria-label="TypeScript blueprint source"
+                title={t("blueprint.tsPane.importHint")}
+                aria-label={t("blueprint.tsPane.sourceLabel")}
             />
         </div>
     );

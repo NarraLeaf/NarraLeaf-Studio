@@ -4,16 +4,10 @@ import type { StoryCharacterVariantSelection } from "@shared/types/story";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { CharacterForm, CharacterVariantGroup } from "@/lib/workspace/services/character/types";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { useTranslation } from "@/lib/i18n";
 
 const COLUMN = "flex w-40 shrink-0 flex-col gap-1";
 const CARD = "flex items-center gap-2 rounded-md border p-1.5 text-left text-xs transition-colors";
-
-function groupLabel(name: string): string {
-    return name === "__default__" ? "Appearance" : name;
-}
-function variantLabel(name: string): string {
-    return name === "__default__" ? "Default" : name;
-}
 
 /** Real groups, or a synthetic single group when the form only has ungrouped variant assets. */
 function groupsOf(form: CharacterForm): CharacterVariantGroup[] {
@@ -94,6 +88,9 @@ export function CharacterAppearancePicker(props: {
     variants: StoryCharacterVariantSelection | undefined;
     onChange: (next: { formName: string | undefined; variants: StoryCharacterVariantSelection | undefined }) => void;
 }) {
+    const { t } = useTranslation();
+    const groupLabel = (name: string): string => (name === "__default__" ? t("story.appearance.appearance") : name);
+    const variantLabel = (name: string): string => (name === "__default__" ? t("story.appearance.default") : name);
     const forms = props.character.profile.appearance.getForms();
     const defaultFormName = props.character.profile.getDefaultForm();
     const selectedForm = useMemo(
@@ -139,13 +136,13 @@ export function CharacterAppearancePicker(props: {
     };
 
     if (forms.length === 0) {
-        return <div className="rounded-md border border-dashed border-edge bg-black/10 p-3 text-xs text-fg-subtle">This character has no forms defined.</div>;
+        return <div className="rounded-md border border-dashed border-edge bg-black/10 p-3 text-xs text-fg-subtle">{t("story.appearance.noForms")}</div>;
     }
 
     return (
         <div ref={scrollRef} className="flex gap-3 overflow-x-auto rounded-lg border border-edge bg-black/20 p-2">
             <div className={COLUMN}>
-                <div className="px-1 text-2xs font-medium tracking-wide text-fg-subtle">Form</div>
+                <div className="px-1 text-2xs font-medium tracking-wide text-fg-subtle">{t("story.appearance.form")}</div>
                 {forms.map(form => {
                     const active = form.name === selectedForm?.name;
                     return (
@@ -165,7 +162,7 @@ export function CharacterAppearancePicker(props: {
 
             {selectedForm ? (
                 <div className={COLUMN}>
-                    <div className="px-1 text-2xs font-medium tracking-wide text-fg-subtle">Appearance</div>
+                    <div className="px-1 text-2xs font-medium tracking-wide text-fg-subtle">{t("story.appearance.appearance")}</div>
                     {groups.map(group => {
                         const active = group.name === activeGroup;
                         const currentVariant = selectionMap[group.name] ?? group.defaultVariant ?? group.variants[0]?.name;
@@ -210,7 +207,7 @@ export function CharacterAppearancePicker(props: {
 
             {selectedForm && selectedVariant ? (
                 <div className="flex w-44 shrink-0 flex-col gap-1">
-                    <div className="px-1 text-2xs font-medium tracking-wide text-fg-subtle">Preview</div>
+                    <div className="px-1 text-2xs font-medium tracking-wide text-fg-subtle">{t("story.appearance.preview")}</div>
                     <div className="grid min-h-[8rem] flex-1 place-items-center rounded-md border border-edge bg-surface p-2">
                         <Thumb assetId={variantAssetId(selectedForm, selectedVariant)} className="max-h-40 w-full" alt={selectedVariant} />
                     </div>

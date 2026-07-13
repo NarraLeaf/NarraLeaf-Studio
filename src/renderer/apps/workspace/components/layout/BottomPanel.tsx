@@ -7,6 +7,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui";
 import { SidebarPanelStack } from "./SidebarPanelStack";
+import { useTranslation } from "@/lib/i18n";
 
 interface BottomPanelProps {
     panelId: string;
@@ -20,6 +21,7 @@ interface BottomPanelProps {
  * Manages focus state and visual focus indicator
  */
 export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
+    const { t } = useTranslation();
     const { panels } = useRegistry();
     const { context } = useWorkspace();
     const bottomPanels = panels.filter((p) => p.position === PanelPosition.Bottom);
@@ -74,8 +76,8 @@ export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
                 <button
                     onClick={onClose}
                     className="w-6 h-6 rounded flex items-center justify-center text-fg-muted hover:bg-fill hover:text-white transition-colors cursor-default"
-                    aria-label="Close panel"
-                    title="Close panel"
+                    aria-label={t("workspace.shell.closePanel")}
+                    title={t("workspace.shell.closePanel")}
                 >
                     <X className="w-4 h-4" />
                 </button>

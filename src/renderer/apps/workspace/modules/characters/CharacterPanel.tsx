@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
 import { ContextMenu, ContextMenuDef, ContextMenuItemDef } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
+import { useTranslation } from "@/lib/i18n";
 import { SearchBox } from "../assets/components/SearchBox";
 import { FilterSystem, FilterConfig, ActiveFilter } from "../assets/components/FilterSystem";
 import { PanelComponentProps } from "../types";
@@ -36,6 +37,7 @@ interface CharacterPanelState {
 }
 
 export function CharacterPanel({ panelId }: PanelComponentProps) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { focusedCharacterId, handleCharacterClick, setFocusToPanel } = useCharacterFocus({ context, panelId });
 
@@ -201,13 +203,13 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         return [
             {
                 id: "tags",
-                label: "Tags",
+                label: t("characters.panel.filterTags"),
                 icon: <Tag className="w-4 h-4" />,
                 options: tagOptions,
                 multiSelect: true,
             },
         ];
-    }, [characterItems, normalizeTag, filterRefreshKey]);
+    }, [characterItems, normalizeTag, filterRefreshKey, t]);
 
     const handleFilterOpen = useCallback(() => {
         // Force refresh to reflect latest tag updates when opening dropdown
@@ -282,11 +284,11 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
     const handleCreateCharacter = useCallback(async (groupId?: string) => {
         if (!characterService || !inputDialog) return;
         const name = await inputDialog.show({
-            title: "New Character",
-            placeholder: "Enter character name",
+            title: t("characters.panel.newCharacter"),
+            placeholder: t("characters.panel.namePlaceholder"),
             required: true,
             maxLength: 100,
-            description: "Create a new character profile",
+            description: t("characters.panel.newCharacterDescription"),
         });
         if (!name) return;
         const character = characterService.createCharacter(name);
@@ -295,13 +297,13 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         }
         loadCharacters();
         closeMenu();
-    }, [characterService, inputDialog, loadCharacters, closeMenu]);
+    }, [characterService, inputDialog, loadCharacters, closeMenu, t]);
 
     const handleCreateGroup = useCallback(async () => {
         if (!characterService || !inputDialog) return;
         const name = await inputDialog.show({
-            title: "New Group",
-            placeholder: "Enter group name",
+            title: t("characters.panel.newGroup"),
+            placeholder: t("characters.panel.groupNamePlaceholder"),
             required: true,
             maxLength: 100,
         });
@@ -309,7 +311,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         characterService.createGroup(name);
         loadCharacters();
         closeMenu();
-    }, [characterService, inputDialog, loadCharacters, closeMenu]);
+    }, [characterService, inputDialog, loadCharacters, closeMenu, t]);
 
     const handleRenameCharacter = useCallback(async (item: CharacterItem) => {
         if (!characterService || !inputDialog) return;
@@ -323,7 +325,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
     const handleDeleteCharacter = useCallback(async (item: CharacterItem) => {
         if (!characterService || !context) return;
         const uiService = context.services.get<UIService>(Services.UI);
-        const confirmed = await uiService.showConfirm(`Delete character "${item.name}"?`, "This action cannot be undone.");
+        const confirmed = await uiService.showConfirm(t("characters.panel.deleteCharacterConfirm", { name: item.name }), t("characters.panel.deleteCharacterDetail"));
         if (!confirmed) return;
         const removed = characterService.deleteCharacter(item.id);
         if (removed) {
@@ -360,7 +362,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
             loadCharacters();
         }
         closeMenu();
-    }, [characterService, context, loadCharacters, closeMenu]);
+    }, [characterService, context, loadCharacters, closeMenu, t]);
 
     const handleAssignToGroup = useCallback((characterId: string, targetGroupId?: string) => {
         if (!characterService) return;
@@ -381,12 +383,12 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
     const handleDeleteGroup = useCallback(async (group: CharacterGroup) => {
         if (!characterService || !context) return;
         const uiService = context.services.get<UIService>(Services.UI);
-        const confirmed = await uiService.showConfirm(`Delete group "${group.name}"?`, "Characters in this group will be unassigned.");
+        const confirmed = await uiService.showConfirm(t("characters.panel.deleteGroupConfirm", { name: group.name }), t("characters.panel.deleteGroupDetail"));
         if (!confirmed) return;
         characterService.deleteGroup(group.id);
         loadCharacters();
         closeMenu();
-    }, [characterService, context, loadCharacters, closeMenu]);
+    }, [characterService, context, loadCharacters, closeMenu, t]);
 
     const buildContextMenu = useCallback((target: MenuTarget): ContextMenuDef => {
         if (target.type === "character") {
@@ -395,7 +397,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
             const moveItems: ContextMenuItemDef[] = [
                 {
                     id: "move-none",
-                    label: "Move to Ungrouped",
+                    label: t("characters.panel.moveToUngrouped"),
                     disabled: !profile.groupId,
                     onClick: () => handleAssignToGroup(profile.id),
                 },
@@ -410,18 +412,18 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
             return [
                 {
                     id: "rename-character",
-                    label: "Rename",
+                    label: t("common.rename"),
                     onClick: () => item && handleRenameCharacter(item),
                 },
                 {
                     id: "move-character",
-                    label: "Move to Group",
+                    label: t("characters.panel.moveToGroup"),
                     submenu: moveItems,
                 },
                 { separator: true, id: "character-separator" },
                 {
                     id: "delete-character",
-                    label: "Delete",
+                    label: t("common.delete"),
                     onClick: () => item && handleDeleteCharacter(item),
                 },
             ];
@@ -431,18 +433,18 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
             return [
                 {
                     id: "create-character-in-group",
-                    label: "Add Character",
+                    label: t("characters.panel.addCharacter"),
                     onClick: () => handleCreateCharacter(target.group.id),
                 },
                 {
                     id: "rename-group",
-                    label: "Rename Group",
+                    label: t("characters.panel.renameGroup"),
                     onClick: () => handleRenameGroup(target.group),
                 },
                 { separator: true, id: "group-sep" },
                 {
                     id: "delete-group",
-                    label: "Delete Group",
+                    label: t("characters.panel.deleteGroup"),
                     onClick: () => handleDeleteGroup(target.group),
                 },
             ];
@@ -451,21 +453,21 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         return [
             {
                 id: "panel-new-character",
-                label: "New Character",
+                label: t("characters.panel.newCharacter"),
                 onClick: () => handleCreateCharacter(),
             },
             {
                 id: "panel-new-group",
-                label: "New Group",
+                label: t("characters.panel.newGroup"),
                 onClick: () => handleCreateGroup(),
             },
             {
                 id: "panel-refresh",
-                label: "Refresh",
+                label: t("common.refresh"),
                 onClick: loadCharacters,
             },
         ];
-    }, [filteredCharacters, groups, handleAssignToGroup, handleCreateCharacter, handleCreateGroup, handleDeleteCharacter, handleDeleteGroup, handleRenameCharacter, handleRenameGroup, loadCharacters]);
+    }, [filteredCharacters, groups, handleAssignToGroup, handleCreateCharacter, handleCreateGroup, handleDeleteCharacter, handleDeleteGroup, handleRenameCharacter, handleRenameGroup, loadCharacters, t]);
 
     const handleMenuOpen = useCallback((event: React.MouseEvent, target: MenuTarget) => {
         event.preventDefault();
@@ -504,13 +506,13 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                 <button
                     className="p-1 rounded hover:bg-fill text-fg-muted opacity-0 group-hover:opacity-100"
                     onClick={(event) => { event.stopPropagation(); handleMenuOpen(event, { type: "character", character: item.source }); }}
-                    title="Actions"
+                    title={t("characters.panel.rowActions")}
                 >
                     <MoreVertical className="w-4 h-4" />
                 </button>
             </div>
         );
-    }, [focusedCharacterId, handleCharacterClick, handleMenuOpen, thumbnails]);
+    }, [focusedCharacterId, handleCharacterClick, handleMenuOpen, thumbnails, t]);
 
     const hasNoData = !loading && filteredCharacters.length === 0 && groups.length === 0;
 
@@ -520,21 +522,21 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                 <SearchBox
                     value={searchQuery}
                     onChange={setSearchQuery}
-                    placeholder="Search characters..."
+                    placeholder={t("characters.panel.searchPlaceholder")}
                     className="w-full"
                 />
                 <div className="flex items-center gap-2">
                     <button
                         onClick={(event) => { event.stopPropagation(); handleCreateCharacter(); }}
                         className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors"
-                        title="Add Character"
+                        title={t("characters.panel.addCharacter")}
                     >
                         <UserPlus className="w-4 h-4" />
                     </button>
                     <button
                         onClick={(event) => { event.stopPropagation(); handleCreateGroup(); }}
                         className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-edge-strong bg-fill-subtle text-white hover:bg-fill transition-colors"
-                        title="Add Group"
+                        title={t("characters.panel.addGroup")}
                     >
                         <FolderPlus className="w-4 h-4" />
                     </button>
@@ -551,7 +553,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     <button
                         onClick={loadCharacters}
                         className="p-2 rounded hover:bg-fill text-fg-muted"
-                        title="Refresh"
+                        title={t("common.refresh")}
                     >
                         <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                     </button>
@@ -562,17 +564,17 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                 {loading ? (
                     <div className="p-4 flex items-center gap-2 text-fg-muted">
                         <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Loading characters...</span>
+                        <span>{t("characters.panel.loading")}</span>
                     </div>
                 ) : hasNoData ? (
-                    <div className="p-4 text-sm text-fg-muted">No characters match your filters.</div>
+                    <div className="p-4 text-sm text-fg-muted">{t("characters.panel.empty")}</div>
                 ) : (
                     <div className="divide-y divide-edge">
                         {ungroupedCharacters.length > 0 && (
                             <div>
                                 <div className="px-3 py-2 text-xs text-fg-muted flex items-center gap-2 border-b border-edge">
                                     <Users className="w-4 h-4" />
-                                    <span>Ungrouped</span>
+                                    <span>{t("characters.panel.ungrouped")}</span>
                                     <span className="text-fg-subtle">({ungroupedCharacters.length})</span>
                                 </div>
                                 <div className="divide-y divide-edge-subtle">
@@ -607,14 +609,14 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                                                             handleCreateCharacter(group.id);
                                                         }}
                                                         className="inline-flex items-center justify-center p-1.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors"
-                                                        title="Add character"
+                                                        title={t("characters.panel.addCharacter")}
                                                     >
                                                         <UserPlus className="w-3 h-3" />
                                                     </button>
                                                     <button
                                                         onClick={(event) => handleMenuOpen(event, { type: "group", group })}
                                                         className="p-1 rounded hover:bg-fill"
-                                                        title="Group actions"
+                                                        title={t("characters.panel.groupActions")}
                                                     >
                                                         <MoreVertical className="w-3 h-3" />
                                                     </button>
@@ -624,7 +626,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                                             focusable={false}
                                         >
                                             {members.length === 0 ? (
-                                                <div className="px-3 py-2 text-xs text-fg-subtle">No characters in this group.</div>
+                                                <div className="px-3 py-2 text-xs text-fg-subtle">{t("characters.panel.groupEmpty")}</div>
                                             ) : (
                                                 <div className="divide-y divide-edge-subtle">
                                                     {members.map(renderCharacterRow)}

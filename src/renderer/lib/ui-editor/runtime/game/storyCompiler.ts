@@ -159,7 +159,7 @@ type NlrChainLike = {
     getActions: () => NlrAction[];
 };
 export type StoryAssetKind = "image" | "audio" | "video" | "font" | "other";
-type NlrCondition = Lambda<boolean> | (() => boolean);
+type NlrCondition = Lambda<boolean> | ((ctx: ScriptCtx) => boolean);
 
 /** Name-keyed NLR elements a compiled scene created; lets hosts look up live objects (e.g. a preview's transform target). */
 export type CompiledSceneElements = {
@@ -1879,6 +1879,24 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
     if (condition.kind === "expression") {
         diagnostic(ctx, "warning", blockId, "Expression condition was skipped because raw script is outside the NLR Story action surface.");
         return falseCondition;
+    }
+    if (condition.kind === "blueprint") {
+        if (!ctx.blueprintDocument) {
+            diagnostic(ctx, "warning", blockId, "Blueprint condition needs the project blueprint document; condition evaluates false.");
+            return falseCondition;
+        }
+        // The condition blueprint's "On Call" graph is synchronous (async nodes disallowed while
+        // authoring), so its boolean Return Value can be evaluated inline every time the branch is
+        // tested. NLR hands the condition lambda a ScriptCtx (LambdaHandler), the same ctx the inline
+        // interpolation words receive.
+        const input = buildStoryActionScriptInput(ctx, condition.blueprintId, message => diagnostic(ctx, "warning", blockId, message));
+        return (scriptCtx: ScriptCtx) => {
+            try {
+                return Boolean(evaluateStoryActionBlueprintValueSync(input, scriptCtx));
+            } catch {
+                return false;
+            }
+        };
     }
     const target = condition.target;
     if (target.scope === "persistent") {

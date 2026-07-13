@@ -2,6 +2,7 @@ import type { MutableRefObject, ReactNode } from "react";
 import { Game, KeyBindingType, type LiveGame } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type {
+    BlueprintGameHistoryEntry,
     BlueprintGameNotification,
     BlueprintGamePreferenceKey,
     BlueprintGamePreferenceValue,
@@ -116,6 +117,8 @@ export type LiveGameUiCallbackDeps = {
 export type LiveGameUiCallbacks = Pick<GameUiSlotHostOptions,
     | "getCurrentNametag"
     | "getNotificationsInGame"
+    | "getHistoryInGame"
+    | "restoreHistoryInGame"
     | "getChoiceCountInGame"
     | "isNvlModeInGame"
     | "selectChoiceInGame"
@@ -158,6 +161,36 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
                 const record = entry as Record<string, unknown>;
                 return [{ id: String(record.id ?? ""), message: String(record.message ?? "") }];
             });
+        },
+
+        getHistoryInGame: (): BlueprintGameHistoryEntry[] => {
+            const raw = getLiveGame()?.getHistory?.();
+            if (!Array.isArray(raw)) {
+                return [];
+            }
+            return raw.flatMap(entry => {
+                if (!entry || typeof entry !== "object") {
+                    return [];
+                }
+                const record = entry as Record<string, unknown>;
+                const element = (record.element ?? {}) as Record<string, unknown>;
+                const isMenu = element.type === "menu";
+                const text = element.text == null ? "" : String(element.text);
+                return [{
+                    id: String(record.token ?? ""),
+                    type: isMenu ? "menu" : "say",
+                    text,
+                    character: !isMenu && element.character != null ? String(element.character) : null,
+                    voice: !isMenu && element.voice != null ? String(element.voice) : null,
+                    selected: isMenu && element.selected != null ? String(element.selected) : null,
+                    isPending: record.isPending === true,
+                }];
+            });
+        },
+
+        restoreHistoryInGame: async (id?: string): Promise<void> => {
+            const token = String(id ?? "").trim();
+            requireLiveGame("Restore From History").undo(token ? token : undefined);
         },
 
         getChoiceCountInGame: (): number => {

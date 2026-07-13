@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ArrowLeft } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 
 /**
  * Chrome for a project sub-page: a back header (title + optional description)
@@ -17,6 +18,7 @@ export function ProjectSubPage({
     onBack: () => void;
     children: ReactNode;
 }) {
+    const { t } = useTranslation();
     return (
         <div className="flex h-full min-h-0 flex-col bg-[#101114] text-fg">
             <div className="flex items-center gap-2 border-b border-edge p-2">
@@ -24,8 +26,8 @@ export function ProjectSubPage({
                     type="button"
                     onClick={onBack}
                     className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-fg-muted transition-colors hover:bg-fill hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
-                    aria-label="Back to project overview"
-                    title="Back"
+                    aria-label={t("project.subPage.backAria")}
+                    title={t("common.back")}
                 >
                     <ArrowLeft className="h-4 w-4" />
                 </button>

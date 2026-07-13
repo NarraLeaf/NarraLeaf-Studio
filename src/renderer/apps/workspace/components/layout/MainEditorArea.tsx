@@ -4,12 +4,14 @@ import { EditorGroup as EditorGroupType, EditorSplit } from "../../registry/type
 import { EditorGroup } from "./EditorGroup";
 import { MainEditorEmptyDropZone } from "./MainEditorEmptyDropZone";
 import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
+import { useTranslation } from "@/lib/i18n";
 
 /**
  * Main editor area component
  * Renders editor groups with tab support and split view
  */
 export function MainEditorArea() {
+    const { t } = useTranslation();
     const { editorLayout } = useRegistry();
 
     const renderLayout = (layout: EditorGroupType | EditorSplit): React.ReactNode => {
@@ -48,14 +50,14 @@ export function MainEditorArea() {
     // Empty state when no tabs are open
     if ("tabs" in editorLayout && editorLayout.tabs.length === 0) {
         return (
-            <WorkspacePanelErrorBoundary regionLabel="Main editor" isolationKey="main-editor-empty">
+            <WorkspacePanelErrorBoundary regionLabel={t("workspace.shell.mainEditorRegion")} isolationKey="main-editor-empty">
                 <MainEditorEmptyDropZone groupId={editorLayout.id} />
             </WorkspacePanelErrorBoundary>
         );
     }
 
     return (
-        <WorkspacePanelErrorBoundary regionLabel="Main editor" isolationKey="main-editor-layout">
+        <WorkspacePanelErrorBoundary regionLabel={t("workspace.shell.mainEditorRegion")} isolationKey="main-editor-layout">
             <div className="h-full bg-surface">{renderLayout(editorLayout)}</div>
         </WorkspacePanelErrorBoundary>
     );

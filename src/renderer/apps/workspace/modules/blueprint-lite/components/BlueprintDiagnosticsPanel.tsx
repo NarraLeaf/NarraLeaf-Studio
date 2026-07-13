@@ -1,4 +1,5 @@
 import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
+import { useTranslation } from "@/lib/i18n";
 
 type Props = {
     diagnostics: BlueprintGraphEditorDiagnostic[];
@@ -6,6 +7,7 @@ type Props = {
 };
 
 export function BlueprintDiagnosticsPanel({ diagnostics, onPick }: Props) {
+    const { t } = useTranslation();
     const errors = diagnostics.filter(d => d.severity === "error");
     const warnings = diagnostics.filter(d => d.severity === "warning");
     const infos = diagnostics.filter(d => d.severity === "info");
@@ -13,7 +15,7 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick }: Props) {
     if (diagnostics.length === 0) {
         return (
             <div className="shrink-0 border-t border-edge bg-surface-sunken px-3 py-1.5 text-2xs text-fg-subtle">
-                No diagnostics.
+                {t("blueprint.diagnostics.empty")}
             </div>
         );
     }
@@ -43,7 +45,11 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick }: Props) {
     return (
         <div className="max-h-32 shrink-0 overflow-y-auto border-t border-edge bg-surface-sunken px-2 py-1.5">
             <p className="mb-1 px-1 text-2xs tracking-wide text-fg-subtle">
-                Messages · {errors.length}E · {warnings.length}W · {infos.length}I
+                {t("blueprint.diagnostics.summary", {
+                    errors: errors.length,
+                    warnings: warnings.length,
+                    infos: infos.length,
+                })}
             </p>
             <div className="space-y-0.5">
                 {errors.map((d, i) => (

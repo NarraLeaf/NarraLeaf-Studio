@@ -5,6 +5,7 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
 import { ASSET_TYPE_ICONS, ASSET_TYPE_LABELS } from "../constants";
+import { useTranslation } from "@/lib/i18n";
 
 interface AssetsListViewProps {
     dropTargetId: string | null;
@@ -31,6 +32,7 @@ export function AssetsListView({
     onOpenChange,
     disableAnimation,
 }: AssetsListViewProps) {
+    const { t } = useTranslation();
     const { filteredAssets, filteredGroups, draggedItem } = useAssetsPanelContext();
 
     const hasAnyItems = useMemo(() => Object.values(filteredAssets).some(list => list.length > 0) || Object.values(filteredGroups).some(list => list.length > 0), [filteredAssets, filteredGroups]);
@@ -59,7 +61,7 @@ export function AssetsListView({
                                             handleImport(type);
                                         }}
                                         className="p-1 hover:text-primary"
-                                        title="Import"
+                                        title={t("common.import")}
                                     >
                                         <Upload className="w-3 h-3" />
                                     </button>
@@ -69,7 +71,7 @@ export function AssetsListView({
                                             handleImportRemote(type);
                                         }}
                                         className="p-1 hover:text-primary"
-                                        title="Import Remote"
+                                        title={t("assets.importRemote")}
                                     >
                                         <Link className="w-3 h-3" />
                                     </button>
@@ -79,7 +81,7 @@ export function AssetsListView({
                                             handleCreateGroup(type);
                                         }}
                                         className="p-1 hover:text-primary"
-                                        title="New Group"
+                                        title={t("assets.menu.newGroup")}
                                     >
                                         <FolderPlus className="w-3 h-3" />
                                     </button>
@@ -104,7 +106,7 @@ export function AssetsListView({
                             onContextMenu={(e) => e.preventDefault()}
                         >
                             {typeAssets.length === 0 && typeGroups.length === 0 ? (
-                                <div className="p-4 text-center text-xs text-fg-subtle">No {ASSET_TYPE_LABELS[type].toLowerCase()} yet</div>
+                                <div className="p-4 text-center text-xs text-fg-subtle">{t("assets.emptyType", { label: ASSET_TYPE_LABELS[type].toLowerCase() })}</div>
                             ) : (
                                 <div className="py-1">
                                     {typeGroups.filter(g => !g.parentGroupId).map(group => <GroupItem key={group.id} group={group} type={type} level={0} />)}
@@ -116,7 +118,7 @@ export function AssetsListView({
                 );
             })}
             {!hasAnyItems && (
-                <div className="px-3 py-4 text-center text-xs text-fg-subtle">No assets matched the current filters.</div>
+                <div className="px-3 py-4 text-center text-xs text-fg-subtle">{t("assets.list.emptyFiltered")}</div>
             )}
         </Accordion>
     );

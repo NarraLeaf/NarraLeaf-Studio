@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, FileText, MoreVertical, Plus, RefreshCw, Star } from "lucide-react";
 import type { StoryDocument, StoryId, StoryLibraryEntry, StoryScene } from "@shared/types/story";
+import { useTranslation } from "@/lib/i18n";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
@@ -40,6 +41,7 @@ function filterStoryChapterOpenItems(ids: string[], document: StoryDocument): st
 }
 
 export function StoryPanel({ panelId }: PanelComponentProps) {
+    const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const [stories, setStories] = useState<StoryLibraryEntry[]>([]);
@@ -233,8 +235,8 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             return;
         }
         const name = await inputDialog.show({
-            title: "New Story",
-            placeholder: "Enter story name",
+            title: t("story.panel.newStory"),
+            placeholder: t("story.panel.newStoryPlaceholder"),
             required: true,
             maxLength: 120,
         });
@@ -244,7 +246,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         const entry = storyService.createStory(name);
         setSelectedStoryId(entry.id);
         refreshLibrary();
-    }, [inputDialog, refreshLibrary, storyService]);
+    }, [inputDialog, refreshLibrary, storyService, t]);
 
     const handleRenameStory = useCallback(async (entry: StoryLibraryEntry) => {
         if (!storyService || !inputDialog) {
@@ -263,15 +265,15 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             return;
         }
         const confirmed = await uiService.showConfirm(
-            `Delete story "${entry.name}"?`,
-            "This removes the story document from the project. This action cannot be undone.",
+            t("story.panel.deleteStoryConfirm", { name: entry.name }),
+            t("story.panel.deleteStoryDetail"),
         );
         if (!confirmed) {
             return;
         }
         storyService.deleteStory(entry.id);
         refreshLibrary();
-    }, [refreshLibrary, storyService, uiService]);
+    }, [refreshLibrary, storyService, uiService, t]);
 
     const handleSetDefaultStory = useCallback((entry: StoryLibraryEntry) => {
         if (!storyService) {
@@ -286,13 +288,13 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         return [
             {
                 id: "set-default-story",
-                label: "Set Default",
+                label: t("story.panel.setDefault"),
                 disabled: isDefault,
                 onClick: () => handleSetDefaultStory(entry),
             },
             {
                 id: "rename-story",
-                label: "Rename",
+                label: t("common.rename"),
                 onClick: () => {
                     void handleRenameStory(entry);
                 },
@@ -300,13 +302,13 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             { id: "story-actions-separator", separator: true },
             {
                 id: "delete-story",
-                label: "Delete",
+                label: t("common.delete"),
                 onClick: () => {
                     void handleDeleteStory(entry);
                 },
             },
         ];
-    }, [defaultStoryId, handleDeleteStory, handleRenameStory, handleSetDefaultStory]);
+    }, [defaultStoryId, handleDeleteStory, handleRenameStory, handleSetDefaultStory, t]);
 
     const handleOpenStoryMenu = useCallback((event: React.MouseEvent, entry: StoryLibraryEntry) => {
         event.stopPropagation();
@@ -319,8 +321,8 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             return;
         }
         const name = await inputDialog.show({
-            title: "New Chapter",
-            placeholder: "Enter chapter name",
+            title: t("story.panel.newChapter"),
+            placeholder: t("story.panel.newChapterPlaceholder"),
             required: true,
             maxLength: 120,
         });
@@ -328,15 +330,15 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             return;
         }
         storyService.createChapter(selectedStoryId, name);
-    }, [inputDialog, selectedStoryId, storyService]);
+    }, [inputDialog, selectedStoryId, storyService, t]);
 
     const handleCreateScene = useCallback(async (chapterId?: string) => {
         if (!storyService || !inputDialog || !selectedStoryId) {
             return;
         }
         const name = await inputDialog.show({
-            title: "New Scene",
-            placeholder: "Enter scene name",
+            title: t("story.panel.newSceneTitle"),
+            placeholder: t("story.panel.newScenePlaceholder"),
             required: true,
             maxLength: 120,
         });
@@ -344,7 +346,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             return;
         }
         storyService.createScene(selectedStoryId, { chapterId, name });
-    }, [inputDialog, selectedStoryId, storyService]);
+    }, [inputDialog, selectedStoryId, storyService, t]);
 
     const handleRenameScene = useCallback(async (scene: StoryScene) => {
         if (!storyService || !inputDialog || !selectedStoryId) {
@@ -362,14 +364,14 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             return;
         }
         const confirmed = await uiService.showConfirm(
-            `Delete scene "${scene.name}"?`,
-            "This removes the scene and its blocks from the story document. This action cannot be undone.",
+            t("story.panel.deleteSceneConfirm", { name: scene.name }),
+            t("story.panel.deleteSceneDetail"),
         );
         if (!confirmed) {
             return;
         }
         storyService.deleteScene(selectedStoryId, scene.id);
-    }, [selectedStoryId, storyService, uiService]);
+    }, [selectedStoryId, storyService, uiService, t]);
 
     const handleSetEntryScene = useCallback((scene: StoryScene) => {
         if (!storyService || !selectedStoryId) {
@@ -393,32 +395,32 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         return [
             {
                 id: "open-scene",
-                label: "Open",
+                label: t("common.open"),
                 onClick: () => handleOpenScene(scene.id, scene.name),
             },
             {
                 id: "set-entry-scene",
-                label: "Set as Entry Scene",
+                label: t("story.panel.setEntryScene"),
                 disabled: isEntry,
                 onClick: () => handleSetEntryScene(scene),
             },
             { id: "scene-actions-separator", separator: true },
             {
                 id: "rename-scene",
-                label: "Rename",
+                label: t("common.rename"),
                 onClick: () => {
                     void handleRenameScene(scene);
                 },
             },
             {
                 id: "delete-scene",
-                label: "Delete",
+                label: t("common.delete"),
                 onClick: () => {
                     void handleDeleteScene(scene);
                 },
             },
         ];
-    }, [document?.entrySceneId, handleDeleteScene, handleOpenScene, handleRenameScene, handleSetEntryScene]);
+    }, [document?.entrySceneId, handleDeleteScene, handleOpenScene, handleRenameScene, handleSetEntryScene, t]);
 
     const handleOpenSceneMenu = useCallback((event: React.MouseEvent, scene: StoryScene) => {
         event.preventDefault();
@@ -454,14 +456,14 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 >
                     <AccordionItem
                         id="stories"
-                        title={`Stories (${stories.length})`}
+                        title={t("story.panel.storiesCount", { count: stories.length })}
                         className="!border-b-0"
                         actions={
                             <>
                                 <button
                                     type="button"
                                     className="p-1 hover:text-primary"
-                                    title="Refresh"
+                                    title={t("common.refresh")}
                                     onClick={refreshLibrary}
                                 >
                                     <RefreshCw className="h-3 w-3" />
@@ -469,7 +471,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                 <button
                                     type="button"
                                     className="p-1 hover:text-primary"
-                                    title="New Story"
+                                    title={t("story.panel.newStory")}
                                     onClick={() => {
                                         void handleCreateStory();
                                     }}
@@ -480,7 +482,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                         }
                     >
                         {stories.length === 0 ? (
-                            <div className="px-3 py-4 text-center text-xs text-fg-subtle">No stories in this project.</div>
+                            <div className="px-3 py-4 text-center text-xs text-fg-subtle">{t("story.panel.emptyStories")}</div>
                         ) : (
                             <div className="py-1">
                                 {stories.map(entry => {
@@ -504,7 +506,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                             <button
                                                 type="button"
                                                 className="rounded p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-white group-hover/story:opacity-100"
-                                                title="Story actions"
+                                                title={t("story.panel.storyActions")}
                                                 onClick={event => handleOpenStoryMenu(event, entry)}
                                             >
                                                 <MoreVertical className="h-3.5 w-3.5" />
@@ -521,7 +523,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                             id="outline"
                             title={
                                 <span className="flex min-w-0 items-center gap-2">
-                                    <span className="truncate">Outline</span>
+                                    <span className="truncate">{t("story.panel.outline")}</span>
                                     <span className="truncate text-xs text-fg-subtle">{selectedEntry.name}</span>
                                 </span>
                             }
@@ -530,7 +532,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                 <button
                                     type="button"
                                     className="p-1 hover:text-primary"
-                                    title="New Chapter"
+                                    title={t("story.panel.newChapter")}
                                     onClick={handleCreateChapter}
                                 >
                                     <Plus className="h-3 w-3" />
@@ -540,7 +542,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                             {loadingDocument ? (
                                 <div className="flex items-center gap-2 px-3 py-3 text-sm text-fg-muted">
                                     <RefreshCw className="h-4 w-4 animate-spin" />
-                                    Loading story...
+                                    {t("story.panel.loadingStory")}
                                 </div>
                             ) : document ? (
                                 <Accordion
@@ -556,13 +558,13 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                             key={chapter.id}
                                             id={chapter.id}
                                             level={1}
-                                            title={`${chapter.name} (${chapter.sceneIds.length})`}
+                                            title={t("story.panel.chapterTitle", { name: chapter.name, count: chapter.sceneIds.length })}
                                             className="!border-b-0"
                                             actions={
                                                 <button
                                                     type="button"
                                                     className="p-1 hover:text-primary"
-                                                    title="New Scene in Chapter"
+                                                    title={t("story.panel.newSceneInChapter")}
                                                     onClick={() => handleCreateScene(chapter.id)}
                                                 >
                                                     <Plus className="h-3 w-3" />
@@ -572,7 +574,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                             contentClassName="py-1"
                                         >
                                             {chapter.sceneIds.length === 0 ? (
-                                                <div className="px-8 py-2 text-xs text-fg-subtle">No scenes.</div>
+                                                <div className="px-8 py-2 text-xs text-fg-subtle">{t("story.panel.emptyScenes")}</div>
                                             ) : (
                                                 chapter.sceneIds.map(sceneId => {
                                                     const scene = document.scenes[sceneId];
@@ -598,12 +600,12 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                                 <div className="flex min-w-0 items-center gap-2">
                                                                     <span className="min-w-0 flex-1 truncate text-sm text-fg">{scene.name}</span>
                                                                 </div>
-                                                                <div className="truncate text-2xs text-fg-subtle">{lineCount} lines</div>
+                                                                <div className="truncate text-2xs text-fg-subtle">{tn("story.panel.lineCount", lineCount)}</div>
                                                             </div>
                                                             <button
                                                                 type="button"
                                                                 className="rounded p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-white group-hover/scene:opacity-100"
-                                                                title="Scene actions"
+                                                                title={t("story.panel.sceneActions")}
                                                                 onClick={event => handleOpenSceneMenu(event, scene)}
                                                             >
                                                                 <MoreVertical className="h-3.5 w-3.5" />
@@ -616,7 +618,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                     ))}
                                 </Accordion>
                             ) : (
-                                <div className="px-3 py-3 text-sm text-fg-muted">Story document unavailable.</div>
+                                <div className="px-3 py-3 text-sm text-fg-muted">{t("story.panel.documentUnavailable")}</div>
                             )}
                         </AccordionItem>
                     ) : null}

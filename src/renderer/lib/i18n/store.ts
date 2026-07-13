@@ -1,4 +1,13 @@
-import { createTranslator, DEFAULT_LOCALE, Locale, LOCALE_META, Translator } from "@shared/i18n";
+import {
+    createTranslator,
+    DEFAULT_LOCALE,
+    InterpolationParams,
+    Locale,
+    LOCALE_META,
+    PluralKey,
+    TranslationKey,
+    Translator,
+} from "@shared/i18n";
 
 /**
  * A tiny external store holding the active locale + its translator for one
@@ -48,3 +57,21 @@ export const i18nStore = {
 
 // Reflect the default locale onto the document before the first paint.
 applyDocumentLocale(currentLocale);
+
+/**
+ * Imperative translation for non-React code — service notifications, event
+ * handler closures, and `.ts` helpers that cannot call the `useTranslation`
+ * hook. Reads the window's current locale at call time, so fire-and-forget
+ * text (toasts, dialogs, thrown messages that surface to the user) is localized.
+ *
+ * For text that stays mounted and must re-localize on a live language switch,
+ * use the `useTranslation` hook instead — an imperative call is a snapshot.
+ */
+export function translate(key: TranslationKey, params?: InterpolationParams): string {
+    return translator.t(key, params);
+}
+
+/** Imperative plural translation. See {@link translate}. */
+export function translateN(base: PluralKey, count: number, params?: InterpolationParams): string {
+    return translator.tn(base, count, params);
+}

@@ -1,4 +1,5 @@
 import { Droplets, Eye, EyeOff, Square } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import type { ColorValue, ImageFillFieldDefinition } from "@/apps/workspace/modules/properties/framework/types";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { ImageFillField } from "@/apps/workspace/modules/properties/framework/fields/ImageFillField";
@@ -32,6 +33,7 @@ export function ButtonAppearanceValueEditor({
     inspectorData,
     onSaving,
 }: ButtonValueEditorProps) {
+    const { t } = useTranslation();
     switch (fieldKey) {
         case "backgroundColor": {
             const raw = typeof value === "string" ? value : String(value ?? "");
@@ -63,7 +65,7 @@ export function ButtonAppearanceValueEditor({
                     type="button"
                     onClick={() => onChange(!visible)}
                     aria-pressed={visible}
-                    aria-label="Toggle background visibility"
+                    aria-label={t("widgetAppearance.background.toggleVisibilityAria")}
                     className={controlButtonClass(visible)}
                 >
                     {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
@@ -99,7 +101,7 @@ export function ButtonAppearanceValueEditor({
                     className="w-full min-w-0 rounded-lg border border-edge bg-transparent px-2 py-1.5 text-xs text-fg"
                     value={v}
                     onChange={e => onChange(e.target.value)}
-                    placeholder="URL or asset ref (legacy)"
+                    placeholder={t("widgetAppearance.fields.imageUrlPlaceholderLegacy")}
                 />
             );
         }
@@ -109,10 +111,10 @@ export function ButtonAppearanceValueEditor({
                 <Select
                     value={v}
                     options={[
-                        { value: "cover", label: "Cover" },
-                        { value: "contain", label: "Contain" },
-                        { value: "stretch", label: "Stretch" },
-                        { value: "tile", label: "Tile" },
+                        { value: "cover", label: t("widgetAppearance.fills.cover") },
+                        { value: "contain", label: t("widgetAppearance.fills.contain") },
+                        { value: "stretch", label: t("widgetAppearance.fills.stretch") },
+                        { value: "tile", label: t("widgetAppearance.fills.tile") },
                     ]}
                     fullWidth
                     onChange={next => onChange(String(next))}
@@ -121,13 +123,13 @@ export function ButtonAppearanceValueEditor({
         }
         case "imageFill": {
             if (!inspectorData || !onSaving) {
-                return <span className="text-xs text-fg-subtle">Image fill requires inspector context</span>;
+                return <span className="text-xs text-fg-subtle">{t("widgetAppearance.fields.imageFillNeedsContext")}</span>;
             }
             const baseline = buttonPropsToImageFillBaseline(getButtonProps(inspectorData.element));
             const fillField: ImageFillFieldDefinition<UIInspectorData> = {
                 type: "imageFill",
                 id: "appearance.button.imageFill",
-                label: "Image fill",
+                label: t("widgetAppearance.fields.imageFill"),
                 getValue: () => {
                     if (value && typeof value === "object" && "mode" in (value as object)) {
                         return value as ImageFill;
@@ -180,9 +182,9 @@ export function ButtonAppearanceValueEditor({
                 <Select
                     value={v === "solid" || v === "dashed" || v === "none" ? v : "none"}
                     options={[
-                        { value: "none", label: "None" },
-                        { value: "solid", label: "Solid" },
-                        { value: "dashed", label: "Dashed" },
+                        { value: "none", label: t("common.none") },
+                        { value: "solid", label: t("widgetAppearance.border.styleSolid") },
+                        { value: "dashed", label: t("widgetAppearance.border.styleDashed") },
                     ]}
                     fullWidth
                     onChange={next => onChange(String(next))}
@@ -199,7 +201,7 @@ export function ButtonAppearanceValueEditor({
                         onChange={e => onChange(e.target.checked)}
                         className="rounded border-edge-strong"
                     />
-                    Clip
+                    {t("widgetAppearance.spacing.clip")}
                 </label>
             );
         }

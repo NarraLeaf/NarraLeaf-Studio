@@ -8,6 +8,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ActionDefinition, useRegistry } from "../../../registry";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
+import { useTranslation } from "@/lib/i18n";
 
 interface AudioPreviewPayload {
     asset: Asset<AssetType.Audio>;
@@ -27,6 +28,7 @@ function formatDuration(seconds: number): string {
  * Displays audio with playback controls and metadata
  */
 export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentProps<AudioPreviewPayload>) {
+    const { t, tn } = useTranslation();
     const { context } = useWorkspace();
     const [audioData, setAudioData] = useState<AssetData<AssetType.Audio> | null>(null);
     const [loading, setLoading] = useState(true);
@@ -49,7 +51,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
         const playAction: ActionDefinition = {
             id: `${namespace}:${groupId}-play`,
             icon: <Play className="w-4 h-4" />,
-            label: "Play",
+            label: t("assets.audio.play"),
             shortcut: "Space",
             onClick: () => {
                 const el = audioRef.current;
@@ -64,12 +66,12 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
 
         registerActionGroup({
             id: groupId,
-            label: "Playback",
+            label: t("assets.audio.playback"),
             actions: [playAction],
         });
 
         return () => unregisterActionGroup(groupId);
-    }, [registerActionGroup, unregisterActionGroup, tabId]);
+    }, [registerActionGroup, unregisterActionGroup, tabId, t]);
 
     const asset = payload?.asset;
 
@@ -92,7 +94,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                 const result = await assetsService.fetch(asset);
 
                 if (!result.success) {
-                    setError(result.error || "Failed to load audio");
+                    setError(result.error || t("assets.audio.loadError"));
                     return;
                 }
 
@@ -187,7 +189,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
             <div className="h-full flex items-center justify-center bg-surface">
                 <div className="flex items-center gap-2 text-fg-muted">
                     <RefreshCw className="w-5 h-5 animate-spin" />
-                    <span>Loading audio...</span>
+                    <span>{t("assets.audio.loading")}</span>
                 </div>
             </div>
         );
@@ -199,7 +201,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                 <div className="flex items-start gap-2 text-red-400 bg-red-500/10 rounded-md p-4 max-w-md">
                     <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
                     <div>
-                        <p className="font-medium">Failed to load audio</p>
+                        <p className="font-medium">{t("assets.audio.loadError")}</p>
                         <p className="text-sm mt-1 text-red-300">{error}</p>
                     </div>
                 </div>
@@ -225,7 +227,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                         {metadata.sampleRate} Hz
                     </span>
                     <span className="text-sm text-fg-muted">
-                        {metadata.channels} channel{metadata.channels > 1 ? "s" : ""}
+                        {tn("assets.audio.channelCount", metadata.channels)}
                     </span>
                     <span className="text-sm text-fg-muted">
                         {metadata.format.toUpperCase()}
@@ -238,7 +240,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                 <button
                     onClick={handlePlayPause}
                     className="p-2 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors"
-                    title={isPlaying ? "Pause" : "Play"}
+                    title={isPlaying ? t("assets.audio.pause") : t("assets.audio.play")}
                 >
                     {isPlaying ? (
                         <Pause className="w-5 h-5" />
@@ -265,7 +267,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                         <button
                             onClick={handlePlayPause}
                             className="p-2 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors"
-                            title={isPlaying ? "Pause" : "Play"}
+                            title={isPlaying ? t("assets.audio.pause") : t("assets.audio.play")}
                         >
                             {isPlaying ? (
                                 <Pause className="w-4 h-4" />
@@ -284,7 +286,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                             value={Math.min(currentTime, duration || 0)}
                             onChange={(event) => handleSeek(Number(event.target.value))}
                             className="flex-1 h-1 rounded bg-fill accent-white/70"
-                            aria-label="Seek"
+                            aria-label={t("assets.audio.seek")}
                         />
                         <span className="text-xs text-fg-muted w-12">
                             {formatDuration(duration)}
@@ -292,7 +294,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                         <button
                             onClick={toggleMute}
                             className="p-2 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors"
-                            title={isMuted ? "Unmute" : "Mute"}
+                            title={isMuted ? t("assets.audio.unmute") : t("assets.audio.mute")}
                         >
                             {isMuted || volume === 0 ? (
                                 <VolumeX className="w-4 h-4" />
@@ -314,7 +316,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                                 }
                             }}
                             className="w-24 h-1 rounded bg-fill accent-white/70"
-                            aria-label="Volume"
+                            aria-label={t("assets.audio.volume")}
                         />
                     </div>
                 </div>

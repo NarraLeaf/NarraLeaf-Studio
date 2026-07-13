@@ -9,6 +9,7 @@ import { Services } from "@/lib/workspace/services/services";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { parseComponentEditorSurfaceId } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
+import { useTranslation } from "@/lib/i18n";
 
 export type BlueprintValueFieldConfig = {
     propPath: string;
@@ -27,6 +28,7 @@ export type BlueprintValueFieldConfig = {
 
 export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
     function BlueprintValueField(props: CustomFieldProps<UIInspectorData>) {
+        const { t } = useTranslation();
         const { context, isInitialized } = useWorkspace();
         const openBlueprint = useOpenBlueprintTarget();
         const blueprintRevision = useBlueprintDocumentRevision();
@@ -85,7 +87,7 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
                             <GitBranch className="h-4 w-4 shrink-0 text-cyan-300" />
                             <div className="min-w-0 flex-1">
                                 <div className="truncate text-xs font-medium text-fg">
-                                    {blueprint?.name ?? "Blueprint Value"}
+                                    {blueprint?.name ?? t("widgetChrome.blueprint.blueprintValue")}
                                 </div>
                                 <div className="truncate font-mono text-2xs text-fg-subtle">
                                     {config.valueLabel}
@@ -96,8 +98,8 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
                                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-edge bg-fill-subtle text-fg hover:bg-fill disabled:opacity-40"
                                 disabled={!surfaceId}
                                 onClick={() => openValueBlueprint(binding.blueprintId)}
-                                aria-label="Open Blueprint Value"
-                                title="Open"
+                                aria-label={t("widgetChrome.blueprint.openBlueprintValue")}
+                                title={t("common.open")}
                             >
                                 <ExternalLink className="h-3.5 w-3.5" />
                             </button>
@@ -109,7 +111,7 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
                         onClick={() => props.data.documentService.clearElementBlueprintValueBinding(live.id, config.propPath)}
                     >
                         <Pencil className="h-3.5 w-3.5" />
-                        {config.clearLabel ?? "Literal"}
+                        {config.clearLabel ?? t("widgetChrome.blueprint.literal")}
                     </button>
                 </div>
             );
@@ -137,10 +139,10 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
                     className="inline-flex items-center gap-1.5 rounded border border-cyan-500/30 bg-cyan-500/10 px-2 py-1 text-xs text-cyan-100 hover:bg-cyan-500/20 disabled:cursor-default disabled:opacity-40"
                     disabled={!surfaceId || isComponentEditorSurface}
                     onClick={createBinding}
-                    title={isComponentEditorSurface ? "Blueprint Value for components is not available yet" : undefined}
+                    title={isComponentEditorSurface ? t("widgetChrome.blueprint.componentsUnavailable") : undefined}
                 >
                     <GitBranch className="h-3.5 w-3.5" />
-                    {config.createLabel ?? "Blueprint Value"}
+                    {config.createLabel ?? t("widgetChrome.blueprint.blueprintValue")}
                 </button>
             </div>
         );

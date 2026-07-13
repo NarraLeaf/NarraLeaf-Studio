@@ -1,5 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import { CharacterForm } from "@/lib/workspace/services/character/types";
+import { useTranslation } from "@/lib/i18n";
 import { AlertCircle, RefreshCw, ZoomIn, ZoomOut } from "lucide-react";
 import { AssetView } from "./types";
 import {
@@ -24,12 +25,13 @@ function VariantPreview({
     loading: boolean;
     error: string | null;
 }) {
+    const { t } = useTranslation();
     if (loading) {
         return (
             <div className="h-full flex items-center justify-center bg-surface">
                 <div className="flex items-center gap-2 text-fg-muted">
                     <RefreshCw className="w-5 h-5 animate-spin" />
-                    <span>Loading preview...</span>
+                    <span>{t("characters.preview.loading")}</span>
                 </div>
             </div>
         );
@@ -41,7 +43,7 @@ function VariantPreview({
                 <div className="flex items-start gap-2 text-red-400 bg-red-500/10 rounded-md p-4 max-w-md">
                     <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
                     <div>
-                        <p className="font-medium">Preview failed</p>
+                        <p className="font-medium">{t("characters.preview.failed")}</p>
                         <p className="text-sm mt-1 text-red-300">{error}</p>
                     </div>
                 </div>
@@ -52,7 +54,7 @@ function VariantPreview({
     if (!view?.url) {
         return (
             <div className="h-full flex items-center justify-center bg-surface text-fg-subtle">
-                Select a variant with an image to preview
+                {t("characters.preview.placeholder")}
             </div>
         );
     }
@@ -65,19 +67,19 @@ function VariantPreview({
                 <div className="flex items-center gap-4 text-xs text-fg-muted">
                     {view.metadata ? (
                         <>
-                            <span>{size ? `${size.width} x ${size.height}` : "No size"}</span>
+                            <span>{size ? `${size.width} x ${size.height}` : t("characters.preview.noSize")}</span>
                             <span className="text-fg-muted">{view.metadata.format.toUpperCase()}</span>
                             <span className="text-fg-muted">{(view.metadata.size / 1024).toFixed(1)} KB</span>
                         </>
                     ) : (
-                        <span className="text-fg-muted">{size ? `${size.width} x ${size.height}` : "No metadata"}</span>
+                        <span className="text-fg-muted">{size ? `${size.width} x ${size.height}` : t("characters.preview.noMetadata")}</span>
                     )}
                 </div>
                 <div className="flex items-center gap-2">
                     <button
                         className="p-1 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors"
                         onClick={controls.zoomOut}
-                        title="Zoom Out"
+                        title={t("characters.preview.zoomOut")}
                     >
                         <ZoomOut className="w-4 h-4" />
                     </button>
@@ -85,14 +87,14 @@ function VariantPreview({
                     <button
                         className="p-1 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors"
                         onClick={controls.zoomIn}
-                        title="Zoom In"
+                        title={t("characters.preview.zoomIn")}
                     >
                         <ZoomIn className="w-4 h-4" />
                     </button>
                     <button
                         className="p-1 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors ml-2"
                         onClick={controls.resetView}
-                        title="Reset View"
+                        title={t("characters.preview.resetView")}
                     >
                         <RefreshCw className="w-4 h-4" />
                     </button>
@@ -104,7 +106,7 @@ function VariantPreview({
     return (
         <ImagePixelPreview
             src={view.url}
-            alt="Variant preview"
+            alt={t("characters.preview.alt")}
             initialSize={view.metadata ? { width: view.metadata.width, height: view.metadata.height } : null}
             resetKey={view.url}
             renderToolbar={renderToolbar}
@@ -119,17 +121,18 @@ export function PreviewPanel({
     previewLoading,
     previewError,
 }: PreviewPanelProps) {
+    const { t } = useTranslation();
     const label = useMemo(() => {
-        if (!activeForm) return "Preview";
-        return `Current form: ${activeForm.name}`;
-    }, [activeForm]);
+        if (!activeForm) return t("characters.preview.title");
+        return t("characters.preview.currentForm", { name: activeForm.name });
+    }, [activeForm, t]);
 
     return (
         <div className="flex flex-col">
             <div className="px-4 py-2 border-b border-edge flex items-center gap-3">
-                <span className="text-sm font-semibold">Preview</span>
+                <span className="text-sm font-semibold">{t("characters.preview.title")}</span>
                 <span className="text-xs text-fg-subtle">{label}</span>
-                {previewVariant && <span className="text-xs text-fg-muted">Variant: {previewVariant}</span>}
+                {previewVariant && <span className="text-xs text-fg-muted">{t("characters.preview.variant", { name: previewVariant })}</span>}
             </div>
             <VariantPreview view={previewAsset} loading={previewLoading} error={previewError} />
         </div>

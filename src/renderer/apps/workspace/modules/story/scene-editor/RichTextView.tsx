@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { Braces, Pause } from "lucide-react";
 import type { StoryDocument, StorySceneId, StoryTextMarks, StoryTextSegment } from "@shared/types/story";
+import { useTranslation } from "@/lib/i18n";
 import { resolveInterpolationName } from "./storyInterpolation";
 
 function markStyle(marks: StoryTextMarks | undefined): CSSProperties | undefined {
@@ -29,6 +30,7 @@ export function RichTextView(props: {
     document?: StoryDocument;
     sceneId?: StorySceneId;
 }) {
+    const { t } = useTranslation();
     const { segment } = props;
     if (!segment.rich || segment.rich.length === 0) {
         return <span className={props.className}>{segment.value}</span>;
@@ -42,7 +44,7 @@ export function RichTextView(props: {
                 }
                 if ("pause" in run) {
                     return (
-                        <span key={index} className={PAUSE_CHIP} title={run.pause === true ? "Pause — waits for a click" : `Pause — ${run.pause}ms`}>
+                        <span key={index} className={PAUSE_CHIP} title={run.pause === true ? t("story.richText.pauseClick") : t("story.richText.pauseMs", { ms: run.pause })}>
                             <Pause className="h-2.5 w-2.5" />
                             {run.pause === true ? null : <span>{run.pause}ms</span>}
                         </span>
@@ -50,11 +52,11 @@ export function RichTextView(props: {
                 }
                 const label = props.document && props.sceneId
                     ? resolveInterpolationName(props.document, props.sceneId, [], run.interpolation)
-                    : "value";
+                    : t("story.richText.valueFallback");
                 // Marks style the value text only — never the chip background.
                 const labelStyle = markStyle(run.marks);
                 return (
-                    <span key={index} className={INTERP_CHIP} title={`Inserted value: ${label}`}>
+                    <span key={index} className={INTERP_CHIP} title={t("story.richText.insertedValue", { name: label })}>
                         <Braces className="h-2.5 w-2.5" />
                         <span style={labelStyle}>{label}</span>
                     </span>
