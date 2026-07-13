@@ -132,7 +132,7 @@ describe("game runtime artifact compiler", () => {
             name: "Sample Plugin",
             version: "1.0.0",
             entries: { runtime: "runtime.js" },
-            contributes: { blueprintNodes: ["acme.sample-plugin.node"] },
+            contributes: { blueprintNodes: ["acme.sample-plugin.node"], widgets: [] },
             permissions: [],
         };
         const result = await compileGameRuntimePreviewArtifact({

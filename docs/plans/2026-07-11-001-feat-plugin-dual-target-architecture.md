@@ -130,6 +130,13 @@ my-plugin/
 - `project/docs/runtime-api.md`：`narraleaf-studio/runtime`（RuntimePluginApp）完整参考 + 故事级运行时模式。
 - `plugin.md` 收敛为系统协议文档，新增执行环境矩阵；`create-plugin.md` 收敛为创建手册，API 参考改为指针；移除旧 registry 时代的内部 service 接口列表。
 
+### 第 6 期（最终收尾）：插件 widget 游戏渲染面 + slash chooser ✅（2026-07-12 完成）
+
+- **插件 widget 游戏渲染面**：调查确认游戏渲染走 `ElementRendererRegistry`（纯 render 函数，刻意与编辑器 widget module 分离，内建 widget 各有 runtime-only renderer）。落地与蓝图节点同构：runtime entry 经 `game.widgets.register({ type, render })` 注册渲染器，loader 收集后并入宿主注册表（内建类型永远优先、跨插件冲突抛错、`contributes.widgets` 声明强制）。`render` 签名与 studio 侧 `UIWidgetModule.render` 一致，共享模块单一来源。
+- **React host externals 进游戏环境**：runtime plugin loader 在 `__NLS_RUNTIME_PLUGIN_MODULE__` 上暴露 `externals`（react / react-dom / jsx-runtime / jsx-dev-runtime）；React shim 源码统一到 `pluginRuntimeApiModule.ts`，从任一宿主全局解析——同一份 shim 服务 workspace、Dev Mode 窗口与独立 runtime（新增 `nlgame://plugin-api/react*.js` + import map）。`react-dom/client` 刻意不给游戏环境（插件不得自建 React root）。
+- **contributes.widgets**：manifest 校验、双侧注册强制、pack 静态校验（`usedBy.widget` ↔ 打包提供方 ↔ 声明清单）全部与 blueprintNodes 对称。
+- **slash chooser**：插入行 `/` 快捷输入与 Action Creator palette 共用 `useStoryPluginActionCommands()`，插件动作两处可用（chooser 支持 initialText 传入 `createBlock`）。
+
 ## 关键设计决策记录
 
 1. **runtime loader 放在 `@/lib/ui-editor/runtime/plugins/`**：这是唯一同时被 Dev Mode 窗口（Studio renderer bundle）和独立 runtime bundle（`build-runtime.js` 白名单前缀 `@/lib/ui-editor/`）可达的位置。

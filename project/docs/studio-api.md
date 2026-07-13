@@ -246,7 +246,9 @@ app.services.widgets.list();
 app.services.widgets.has(type);
 ```
 
-`UIWidgetModule` 定义 UI 编辑器控件：`type`（插件 ID 前缀）、`displayName`、`icon`、`createDefaultElement`、`render`、可选的 inspector/docker bar/context menu 工厂。完整类型见 `src/renderer/lib/ui-editor/widget-modules`。注意：插件 widget 目前只覆盖编辑面；游戏渲染面的插件 widget 属于后续阶段（见 plugin.md 执行环境矩阵）。
+`UIWidgetModule` 定义 UI 编辑器控件：`type`（插件 ID 前缀，且必须在 manifest `contributes.widgets` 中声明）、`displayName`、`icon`、`createDefaultElement`、`render`、可选的 inspector/docker bar/context menu 工厂。完整类型见 `src/renderer/lib/ui-editor/widget-modules`。
+
+游戏渲染面由 runtime entry 提供：`app.game.widgets.register({ type, render })`（见 [runtime-api.md](./runtime-api.md)）。`render` 签名与 `UIWidgetModule.render` 一致，推荐放进共享模块由两个 entry 复用。
 
 ## app.services.blueprintNodes
 

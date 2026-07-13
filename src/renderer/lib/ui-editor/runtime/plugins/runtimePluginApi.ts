@@ -8,9 +8,11 @@
  * (see project/build/build-runtime.js allowedPrefixes).
  */
 
+import type { ReactElement } from "react";
 import type { PluginIdentity } from "@shared/types/pluginPermissions";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import type { BehaviorNodeDefinition } from "../../behavior-graph/BehaviorNodeRegistry";
+import type { ElementRendererProps } from "../ElementRendererRegistry";
 
 export type RuntimePluginLogLevel = "info" | "warning" | "error";
 
@@ -25,6 +27,17 @@ export type RuntimeBlueprintNodeDef = {
     execute: BehaviorNodeDefinition["execute"];
 };
 
+/**
+ * Runtime-side widget binding: the game-facing render function for a widget
+ * element type. Receives the same props the host passes built-in element
+ * renderers, so a plugin can reuse its studio widget module's render function
+ * from a shared module.
+ */
+export type RuntimeWidgetRendererDef = {
+    type: string;
+    render: (props: ElementRendererProps) => ReactElement | null;
+};
+
 export type RuntimePluginApp = {
     plugin: PluginIdentity;
     manifest: NormalizedPluginManifestV2;
@@ -32,6 +45,10 @@ export type RuntimePluginApp = {
         blueprintNodes: {
             register(def: RuntimeBlueprintNodeDef): void;
             registerMany(defs: RuntimeBlueprintNodeDef[]): void;
+        };
+        widgets: {
+            register(def: RuntimeWidgetRendererDef): void;
+            registerMany(defs: RuntimeWidgetRendererDef[]): void;
         };
         log(level: RuntimePluginLogLevel, message: string): void;
     };
