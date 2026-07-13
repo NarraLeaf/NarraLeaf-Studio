@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
+import type { PluralKey, TranslationKey, Translator } from "@shared/i18n";
 import type {
     DependencyKind,
     DependencyResolutionEntry,
@@ -11,18 +13,25 @@ import type {
 } from "@shared/types/pluginDependencies";
 import type { ProjectSectionProps } from "./types";
 
-const STATUS_STYLES: Record<DependencyStatus, { label: string; dot: string; text: string }> = {
-    satisfied: { label: "Ready", dot: "bg-emerald-400", text: "text-emerald-300" },
-    outdated: { label: "Outdated", dot: "bg-amber-400", text: "text-amber-300" },
-    missing: { label: "Missing", dot: "bg-rose-400", text: "text-rose-300" },
-    incompatible: { label: "Incompatible", dot: "bg-rose-400", text: "text-rose-300" },
+const STATUS_STYLES: Record<DependencyStatus, { dot: string; text: string }> = {
+    satisfied: { dot: "bg-emerald-400", text: "text-emerald-300" },
+    outdated: { dot: "bg-amber-400", text: "text-amber-300" },
+    missing: { dot: "bg-rose-400", text: "text-rose-300" },
+    incompatible: { dot: "bg-rose-400", text: "text-rose-300" },
 };
 
-const KIND_LABELS: Record<DependencyKind, [singular: string, plural: string]> = {
-    blueprintNode: ["node", "nodes"],
-    widget: ["widget", "widgets"],
-    storage: ["store", "stores"],
-    storyAction: ["action", "actions"],
+const STATUS_LABEL_KEYS: Record<DependencyStatus, TranslationKey> = {
+    satisfied: "project.dependencies.status.ready",
+    outdated: "project.dependencies.status.outdated",
+    missing: "project.dependencies.status.missing",
+    incompatible: "project.dependencies.status.incompatible",
+};
+
+const USAGE_KEYS: Record<DependencyKind, PluralKey> = {
+    blueprintNode: "project.dependencies.usage.blueprintNode",
+    widget: "project.dependencies.usage.widget",
+    storage: "project.dependencies.usage.storage",
+    storyAction: "project.dependencies.usage.storyAction",
 };
 
 /**
@@ -32,6 +41,7 @@ const KIND_LABELS: Record<DependencyKind, [singular: string, plural: string]> = 
  * table from current usage and persists it.
  */
 export function ProjectDependenciesSection(_props: ProjectSectionProps) {
+    const { t } = useTranslation();
     const { context } = useWorkspace();
     const service = useMemo(
         () => context?.services.get<ProjectDependencyService>(Services.ProjectDependency) ?? null,
@@ -85,7 +95,7 @@ export function ProjectDependenciesSection(_props: ProjectSectionProps) {
                     className="flex shrink-0 items-center gap-1.5 rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs font-medium text-fg-muted transition hover:bg-fill disabled:opacity-50"
                 >
                     <RefreshCw className={`h-3.5 w-3.5 ${busy ? "animate-spin" : ""}`} />
-                    Rescan
+                    {t("project.dependencies.rescan")}
                 </button>
             </div>
 
@@ -95,7 +105,7 @@ export function ProjectDependenciesSection(_props: ProjectSectionProps) {
 
             {entries.length === 0 ? (
                 <div className="rounded-md border border-edge bg-white/[0.025] p-4 text-center text-2xs text-fg-subtle">
-                    {busy ? "Scanning project…" : "No plugin dependencies — this project uses only built-in Studio features."}
+                    {busy ? t("project.dependencies.scanning") : t("project.dependencies.empty")}
                 </div>
             ) : (
                 <div className="grid gap-2">
@@ -109,6 +119,7 @@ export function ProjectDependenciesSection(_props: ProjectSectionProps) {
 }
 
 function OverallBanner({ overall }: { overall: "warnings" | "blocked" }) {
+    const { t } = useTranslation();
     const blocked = overall === "blocked";
     return (
         <div
@@ -119,24 +130,25 @@ function OverallBanner({ overall }: { overall: "warnings" | "blocked" }) {
             }`}
         >
             {blocked
-                ? "One or more plugins are disabled for this project because their installed version is incompatible. Update or reinstall them to restore full functionality."
-                : "Some dependencies need attention — a plugin is outdated or a soft dependency is unavailable."}
+                ? t("project.dependencies.banner.blocked")
+                : t("project.dependencies.banner.warnings")}
         </div>
     );
 }
 
 function DependencyRow({ entry }: { entry: DependencyResolutionEntry }) {
+    const { t, tn } = useTranslation();
     const { dependency, installedVersion, status, suppressed } = entry;
     const style = STATUS_STYLES[status];
-    const usage = summarizeUsage(dependency.usedBy);
+    const usage = summarizeUsage(dependency.usedBy, tn);
     const needsAttention = suppressed || status !== "satisfied";
 
     const meta = [
-        `Requires ${dependency.authoredVersion}`,
-        `Installed ${installedVersion ?? "not installed"}`,
-        dependency.builtIn ? "Built-in" : null,
+        t("project.dependencies.meta.requires", { version: dependency.authoredVersion }),
+        t("project.dependencies.meta.installed", { version: installedVersion ?? t("project.dependencies.meta.notInstalled") }),
+        dependency.builtIn ? t("project.dependencies.meta.builtIn") : null,
         usage,
-        !dependency.hard ? "data only" : null,
+        !dependency.hard ? t("project.dependencies.meta.dataOnly") : null,
     ].filter(Boolean).join("  ·  ");
 
     return (
@@ -150,7 +162,7 @@ function DependencyRow({ entry }: { entry: DependencyResolutionEntry }) {
                 </div>
                 {needsAttention ? (
                     <span className={`shrink-0 text-2xs font-medium ${style.text}`}>
-                        {suppressed ? "Disabled" : style.label}
+                        {suppressed ? t("project.dependencies.status.disabled") : t(STATUS_LABEL_KEYS[status])}
                     </span>
                 ) : null}
             </div>
@@ -163,13 +175,15 @@ function DependencyRow({ entry }: { entry: DependencyResolutionEntry }) {
     );
 }
 
-function summarizeUsage(usedBy: Partial<Record<DependencyKind, string[]>>): string | null {
+function summarizeUsage(
+    usedBy: Partial<Record<DependencyKind, string[]>>,
+    tn: Translator["tn"],
+): string | null {
     const parts: string[] = [];
     for (const kind of Object.keys(usedBy) as DependencyKind[]) {
         const count = usedBy[kind]?.length ?? 0;
         if (count > 0) {
-            const [singular, plural] = KIND_LABELS[kind];
-            parts.push(`${count} ${count === 1 ? singular : plural}`);
+            parts.push(tn(USAGE_KEYS[kind], count));
         }
     }
     return parts.length > 0 ? parts.join(", ") : null;

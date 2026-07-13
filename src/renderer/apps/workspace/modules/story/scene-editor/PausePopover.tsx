@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Trash2 } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 
 const MODE_BTN = "h-7 px-2.5 text-xs transition-colors";
 
@@ -15,6 +16,7 @@ export function PausePopover(props: {
     onRemove: () => void;
     onClose: () => void;
 }) {
+    const { t } = useTranslation();
     const isWait = props.value !== true;
     const ms = typeof props.value === "number" ? props.value : 300;
     const panelRef = useRef<HTMLDivElement | null>(null);
@@ -53,21 +55,21 @@ export function PausePopover(props: {
             style={{ top, left: Math.max(8, left) }}
             onMouseDown={event => event.stopPropagation()}
         >
-                <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">Pause</div>
+                <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">{t("story.pause.title")}</div>
                 <div className="mb-2 inline-flex overflow-hidden rounded-md border border-edge bg-[#101216]">
                     <button
                         type="button"
                         className={[MODE_BTN, !isWait ? "bg-primary/20 text-primary" : "text-fg-muted hover:bg-fill-subtle"].join(" ")}
                         onClick={() => props.onChange(true)}
                     >
-                        Click to proceed
+                        {t("story.pause.clickToProceed")}
                     </button>
                     <button
                         type="button"
                         className={[MODE_BTN, "border-l border-edge", isWait ? "bg-primary/20 text-primary" : "text-fg-muted hover:bg-fill-subtle"].join(" ")}
                         onClick={() => props.onChange(ms)}
                     >
-                        Wait for
+                        {t("story.pause.waitFor")}
                     </button>
                 </div>
                 {isWait ? (
@@ -80,10 +82,10 @@ export function PausePopover(props: {
                             className="h-8 w-24 rounded-md border border-edge bg-surface-raised px-2 text-sm text-fg outline-none focus:border-primary/50"
                             onChange={event => props.onChange(Math.max(0, Math.round(Number(event.target.value) || 0)))}
                         />
-                        <span className="text-xs text-fg-muted">ms</span>
+                        <span className="text-xs text-fg-muted">{t("story.pause.ms")}</span>
                     </div>
                 ) : (
-                    <div className="text-2xs text-fg-subtle">Waits until the player clicks to continue.</div>
+                    <div className="text-2xs text-fg-subtle">{t("story.pause.clickHint")}</div>
                 )}
                 <button
                     type="button"
@@ -91,7 +93,7 @@ export function PausePopover(props: {
                     onClick={props.onRemove}
                 >
                     <Trash2 className="h-3 w-3" />
-                    Remove pause
+                    {t("story.pause.remove")}
                 </button>
         </div>,
         document.body,

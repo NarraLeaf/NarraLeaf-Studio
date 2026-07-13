@@ -3,11 +3,13 @@ import { Notification, NotificationType } from "@/lib/workspace/services/ui/type
 import { useWorkspace } from "../../context";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
+import { useTranslation } from "@/lib/i18n";
 
 /**
  * Individual notification item
  */
 function NotificationItem({ notification, onClose }: { notification: Notification; onClose: () => void }) {
+    const { t } = useTranslation();
     // Icon based on type
     const getIcon = () => {
         switch (notification.type) {
@@ -97,7 +99,7 @@ function NotificationItem({ notification, onClose }: { notification: Notificatio
                 <button
                     onClick={onClose}
                     className="flex-shrink-0 p-1 rounded hover:bg-fill transition-colors"
-                    aria-label="Close"
+                    aria-label={t("common.close")}
                 >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

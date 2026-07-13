@@ -7,6 +7,7 @@
  */
 
 import { useMemo } from "react";
+import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
@@ -24,7 +25,15 @@ export function StoryActionBlueprintPreviewCard(props: {
     onOpen: () => void;
     /** Preview height; defaults to the standard entry height. */
     heightClassName?: string;
+    /**
+     * "mini" (default): compact abstract preview for inline value entries. "detailed": a larger card
+     * that renders real node titles + pins — used by the condition entry so the graph is readable.
+     */
+    variant?: "mini" | "detailed";
+    /** Accessible label; defaults to the story-action wording. */
+    ariaLabel?: string;
 }) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const blueprintRevision = useBlueprintDocumentRevision();
     const localBp =
@@ -42,9 +51,9 @@ export function StoryActionBlueprintPreviewCard(props: {
                 type="button"
                 className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
                 onClick={props.onOpen}
-                aria-label={props.blueprintId ? "Open story action blueprint" : "Create story action blueprint"}
+                aria-label={props.ariaLabel ?? (props.blueprintId ? t("story.blueprintCard.openAria") : t("story.blueprintCard.createAria"))}
             >
-                <BlueprintLayerPreview model={previewModel} heightClassName={props.heightClassName} />
+                <BlueprintLayerPreview model={previewModel} heightClassName={props.heightClassName} variant={props.variant ?? "mini"} />
             </button>
         </div>
     );

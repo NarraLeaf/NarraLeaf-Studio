@@ -7,6 +7,12 @@ import {
     GAME_RUNTIME_PROTOCOL,
     type GameRuntimePackV1,
 } from "@shared/types/gameRuntime";
+import {
+    createRuntimeReader,
+    isProtectedPayload,
+    RUNTIME_SUPPORT_FILENAME,
+    type RuntimeReader,
+} from "@narraleaf/encryption/runtime";
 import { getMimeType } from "@shared/utils/fs";
 import {
     PLUGIN_REACT_MODULE_SOURCES,
@@ -26,9 +32,51 @@ const appDir = __dirname;
 const packPath = path.join(appDir, "pack.json");
 const userDataDir = path.resolve(appDir, "..", "userData");
 
+/**
+ * Build-time placeholder. The compiler substitutes the real value when asset
+ * protection is on and leaves it untouched (and unused) otherwise. Must match
+ * RUNTIME_KEY_PLACEHOLDER in @narraleaf/encryption.
+ */
+const PACK_KEY = "__NLS_ENC_KEY_PLACEHOLDER__";
+
+/** Node inspector / Chromium remote-debugging switches refused in production. */
+const DEBUG_SWITCHES = [
+    "remote-debugging-port",
+    "remote-debugging-pipe",
+    "inspect",
+    "inspect-brk",
+    "inspect-port",
+    "inspect-publish-uid",
+];
+
 let packPromise: Promise<GameRuntimePackV1> | null = null;
 let mainWindow: BrowserWindow | null = null;
 let controlServer: WebSocketServer | null = null;
+let runtimeReader: RuntimeReader | null = null;
+
+/**
+ * Return pack bytes in usable form: protected input is handled by the codec,
+ * unprotected input passes through untouched. The codec is loaded lazily, so
+ * unprotected packs never touch it.
+ */
+function decryptIfNeeded(data: Buffer): Buffer {
+    if (!isProtectedPayload(data)) {
+        return data;
+    }
+    if (!runtimeReader) {
+        runtimeReader = createRuntimeReader(path.join(appDir, RUNTIME_SUPPORT_FILENAME));
+    }
+    return runtimeReader.decrypt(data, PACK_KEY);
+}
+
+/** Whether the process was started with an inspector / remote-debugging switch. */
+function hasDebuggingSwitch(): boolean {
+    if (DEBUG_SWITCHES.some(name => app.commandLine.hasSwitch(name))) {
+        return true;
+    }
+    const pattern = /^--(remote-debugging-(port|pipe)|inspect(-brk|-port|-publish-uid)?)(=|$)/;
+    return [...process.argv, ...process.execArgv].some(arg => pattern.test(arg));
+}
 
 protocol.registerSchemesAsPrivileged([
     {
@@ -46,6 +94,11 @@ app.setPath("userData", userDataDir);
 
 void app.whenReady().then(async () => {
     const pack = await readPack();
+    if (pack.mode === "production" && hasDebuggingSwitch()) {
+        // Refuse to run a production game under an attached debugger/CDP.
+        app.quit();
+        return;
+    }
     const allowHttp = pack.network?.allowHttp === true;
     applyRuntimeAppIdentity(pack);
     registerRuntimeProtocol(allowHttp);
@@ -69,7 +122,8 @@ app.on("before-quit", () => {
 
 async function readPack(): Promise<GameRuntimePackV1> {
     if (!packPromise) {
-        packPromise = fs.readFile(packPath, "utf-8").then(raw => JSON.parse(raw) as GameRuntimePackV1);
+        packPromise = fs.readFile(packPath).then(raw =>
+            JSON.parse(decryptIfNeeded(raw).toString("utf-8")) as GameRuntimePackV1);
     }
     return packPromise;
 }
@@ -77,6 +131,10 @@ async function readPack(): Promise<GameRuntimePackV1> {
 function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     const size = resolveInitialWindowSize(pack);
     const icon = createProjectIcon(pack);
+    // Production disables DevTools outright: with devTools:false Electron ignores
+    // any openDevTools call and the menu/keyboard toggles become no-ops, so there
+    // is no in-app path to the inspector (the startup switch guard covers CDP).
+    const devToolsEnabled = pack.mode !== "production";
     const win = new BrowserWindow({
         title: pack.project.name,
         width: size.width,
@@ -90,6 +148,7 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         webPreferences: {
             preload: path.join(appDir, "preload.js"),
             contextIsolation: true,
+            devTools: devToolsEnabled,
         },
     });
     win.setTitle(pack.project.name);
@@ -98,15 +157,17 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             mainWindow = null;
         }
     });
-    win.webContents.on("before-input-event", (_event, input) => {
-        if (input.type === "keyUp" && input.key === "F12") {
-            if (win.webContents.isDevToolsOpened()) {
-                win.webContents.closeDevTools();
-            } else {
-                win.webContents.openDevTools({ mode: "detach" });
+    if (devToolsEnabled) {
+        win.webContents.on("before-input-event", (_event, input) => {
+            if (input.type === "keyUp" && input.key === "F12") {
+                if (win.webContents.isDevToolsOpened()) {
+                    win.webContents.closeDevTools();
+                } else {
+                    win.webContents.openDevTools({ mode: "detach" });
+                }
             }
-        }
-    });
+        });
+    }
     return win;
 }
 
@@ -193,7 +254,7 @@ function registerRuntimeProtocol(allowHttp: boolean): void {
 }
 
 async function serveFile(filePath: string, contentType = getMimeType(filePath)): Promise<Response> {
-    const data = await fs.readFile(filePath);
+    const data = decryptIfNeeded(await fs.readFile(filePath));
     return new Response(new Uint8Array(data), {
         status: 200,
         headers: {

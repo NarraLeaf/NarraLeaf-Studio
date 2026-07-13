@@ -31,6 +31,7 @@ import {
     summarizeEffectKind,
 } from "./effectAuthoringRegistry";
 import { BLEND_MODE_SELECT_OPTIONS } from "./effectBlendOptions";
+import { useTranslation } from "@/lib/i18n";
 
 const PANEL_WIDTH = 280;
 const PANEL_GAP = 8;
@@ -54,6 +55,7 @@ function ShadowStoredFields({
     slot: ShadowSlotKind;
     draftResetKey: string;
 }) {
+    const { t } = useTranslation();
     if (value.storage === "css") {
         return (
             <div className="space-y-2">
@@ -78,7 +80,7 @@ function ShadowStoredFields({
                         });
                     }}
                 >
-                    Structured
+                    {t("widgetChrome.effects.structured")}
                 </button>
             </div>
         );
@@ -90,7 +92,7 @@ function ShadowStoredFields({
     return (
         <div className="grid grid-cols-2 gap-2 min-w-0">
             <div className="min-w-0">
-                <span className="text-2xs font-medium text-fg-subtle block mb-0.5">X</span>
+                <span className="text-2xs font-medium text-fg-subtle block mb-0.5">{t("widgetChrome.effects.shadowOffsetX")}</span>
                 <NumericDraftEnhancedInput
                     popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                     committedDisplay={String(L.offsetX)}
@@ -102,7 +104,7 @@ function ShadowStoredFields({
                 />
             </div>
             <div className="min-w-0">
-                <span className="text-2xs font-medium text-fg-subtle block mb-0.5">Y</span>
+                <span className="text-2xs font-medium text-fg-subtle block mb-0.5">{t("widgetChrome.effects.shadowOffsetY")}</span>
                 <NumericDraftEnhancedInput
                     popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                     committedDisplay={String(L.offsetY)}
@@ -114,7 +116,7 @@ function ShadowStoredFields({
                 />
             </div>
             <div className="min-w-0">
-                <span className="text-2xs font-medium text-fg-subtle block mb-0.5">Blur</span>
+                <span className="text-2xs font-medium text-fg-subtle block mb-0.5">{t("widgetChrome.effects.shadowBlur")}</span>
                 <NumericDraftEnhancedInput
                     popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                     committedDisplay={String(Math.max(0, L.blur))}
@@ -128,7 +130,7 @@ function ShadowStoredFields({
                 />
             </div>
             <div className="min-w-0">
-                <span className="text-2xs font-medium text-fg-subtle block mb-0.5">Spread</span>
+                <span className="text-2xs font-medium text-fg-subtle block mb-0.5">{t("widgetChrome.effects.shadowSpread")}</span>
                 <NumericDraftEnhancedInput
                     popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                     committedDisplay={String(L.spread)}
@@ -146,7 +148,7 @@ function ShadowStoredFields({
                     allowOpacity
                     onChange={cv => commitLayer({ ...L, color: colorValueToCss(cv) })}
                 />
-                <span className="text-2xs text-fg-subtle truncate">Color</span>
+                <span className="text-2xs text-fg-subtle truncate">{t("widgetChrome.effects.color")}</span>
             </div>
             <div className="col-span-2">
                 <button
@@ -159,7 +161,7 @@ function ShadowStoredFields({
                         })
                     }
                 >
-                    Custom CSS
+                    {t("widgetChrome.effects.customCss")}
                 </button>
             </div>
         </div>
@@ -175,6 +177,7 @@ function FilterStoredFields({
     onChange: (next: EffectFilterStored) => void;
     draftResetKey: string;
 }) {
+    const { t } = useTranslation();
     if (value.storage === "css") {
         return (
             <div className="space-y-2">
@@ -196,7 +199,7 @@ function FilterStoredFields({
                         }
                     }}
                 >
-                    Preset mode
+                    {t("widgetChrome.effects.presetMode")}
                 </button>
             </div>
         );
@@ -244,7 +247,7 @@ function FilterStoredFields({
                     })
                 }
             >
-                Custom CSS
+                {t("widgetChrome.effects.customCss")}
             </button>
         </div>
     );
@@ -488,6 +491,7 @@ export function EffectsStackEditor({
     draftResetKey,
     renderTrailingOnRow,
 }: EffectsStackEditorProps) {
+    const { t } = useTranslation();
     const rootRef = useRef<HTMLDivElement>(null);
     const [openKind, setOpenKind] = useState<VisualEffectKind | null>(null);
     const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
@@ -523,7 +527,7 @@ export function EffectsStackEditor({
             <div className="flex gap-1.5 items-stretch min-w-0">
                 <div className="flex-1 min-w-0">
                     <Select
-                        placeholder="Add effect"
+                        placeholder={t("widgetChrome.effects.addEffect")}
                         value={pendingAdd ?? undefined}
                         options={addOptions}
                         fullWidth
@@ -539,7 +543,7 @@ export function EffectsStackEditor({
                     variant="ghost"
                     size="md"
                     className="shrink-0 self-stretch px-3"
-                    aria-label="Add effect"
+                    aria-label={t("widgetChrome.effects.addEffect")}
                     disabled={!pendingAdd || addOptions.length === 0}
                     onClick={addSelected}
                 >
@@ -559,7 +563,7 @@ export function EffectsStackEditor({
                         <button
                             type="button"
                             className={ROW_BTN}
-                            aria-label="Edit effect"
+                            aria-label={t("widgetChrome.effects.editEffect")}
                             onClick={e => {
                                 const next = openKind === kind ? null : kind;
                                 setOpenKind(next);
@@ -572,7 +576,7 @@ export function EffectsStackEditor({
                         <button
                             type="button"
                             className={ROW_BTN}
-                            aria-label="Remove effect"
+                            aria-label={t("widgetChrome.effects.removeEffect")}
                             onClick={() => removeKind(kind)}
                         >
                             <Trash2 className="w-4 h-4" />

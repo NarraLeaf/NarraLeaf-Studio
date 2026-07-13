@@ -7,6 +7,7 @@ import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
+import { useTranslation } from "@/lib/i18n";
 
 type ComponentLibraryPanelProps = {
     documentService: UIDocumentService | null;
@@ -72,6 +73,7 @@ export function ComponentLibraryPanel({
     uiService,
     onOpenComponent,
 }: ComponentLibraryPanelProps) {
+    const { t, tn } = useTranslation();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const [open, setOpen] = useState(true);
     const [components, setComponents] = useState<UIComponentDefinition[]>([]);
@@ -154,10 +156,10 @@ export function ComponentLibraryPanel({
         if (!documentService) {
             return;
         }
-        const suggestedName = `Component ${components.length + 1}`;
+        const suggestedName = t("uiEditor.naming.component", { index: components.length + 1 });
         const name = inputDialog
             ? await inputDialog.show({
-                  title: "Create Component",
+                  title: t("uiEditor.componentLibrary.createComponentTitle"),
                   initialValue: suggestedName,
                   required: true,
                   maxLength: 100,
@@ -168,7 +170,7 @@ export function ComponentLibraryPanel({
         }
         const component = documentService.createEmptyComponent(name);
         onOpenComponent(component);
-    }, [components.length, documentService, inputDialog, onOpenComponent]);
+    }, [components.length, documentService, inputDialog, onOpenComponent, t]);
 
     const handleRename = useCallback(async (component: UIComponentDefinition) => {
         if (!documentService || !inputDialog) {
@@ -199,8 +201,8 @@ export function ComponentLibraryPanel({
         );
         if (usageCount > 0 && uiService) {
             const confirmed = await uiService.showConfirm(
-                "Delete referenced components?",
-                `${usageCount} linked instance${usageCount === 1 ? "" : "s"} will show as missing until unlinked or replaced.`,
+                t("uiEditor.componentLibrary.deleteReferencedTitle"),
+                tn("uiEditor.componentLibrary.deleteReferencedDetail", usageCount),
             );
             if (!confirmed) {
                 return;
@@ -212,7 +214,7 @@ export function ComponentLibraryPanel({
             componentIds.forEach(id => next.delete(id));
             return next;
         });
-    }, [documentService, uiService]);
+    }, [documentService, uiService, t, tn]);
 
     const openContextMenu = useCallback(
         (
@@ -229,7 +231,7 @@ export function ComponentLibraryPanel({
             const items: ContextMenuDef = [
                 {
                     id: "open",
-                    label: "Open",
+                    label: t("common.open"),
                     onClick: () => {
                         hideMenu();
                         onOpenComponent(component);
@@ -237,7 +239,7 @@ export function ComponentLibraryPanel({
                 },
                 {
                     id: "rename",
-                    label: "Rename...",
+                    label: t("uiEditor.componentLibrary.rename"),
                     disabled: activeIds.length !== 1,
                     onClick: () => {
                         hideMenu();
@@ -246,7 +248,7 @@ export function ComponentLibraryPanel({
                 },
                 {
                     id: "duplicate",
-                    label: activeIds.length > 1 ? "Duplicate selected" : "Duplicate",
+                    label: activeIds.length > 1 ? t("uiEditor.componentLibrary.duplicateSelected") : t("common.duplicate"),
                     onClick: () => {
                         hideMenu();
                         handleDuplicate(activeIds);
@@ -255,7 +257,7 @@ export function ComponentLibraryPanel({
                 { id: "sep", separator: true },
                 {
                     id: "delete",
-                    label: activeIds.length > 1 ? "Delete selected" : "Delete",
+                    label: activeIds.length > 1 ? t("uiEditor.componentLibrary.deleteSelected") : t("common.delete"),
                     onClick: () => {
                         hideMenu();
                         void handleDelete(activeIds);
@@ -265,7 +267,7 @@ export function ComponentLibraryPanel({
             setMenuItems(items);
             showMenu(event);
         },
-        [handleDelete, handleDuplicate, handleRename, hideMenu, onOpenComponent, selectedIds, showMenu],
+        [handleDelete, handleDuplicate, handleRename, hideMenu, onOpenComponent, selectedIds, showMenu, t],
     );
 
     const selectedCount = selectedIds.size;
@@ -289,7 +291,7 @@ export function ComponentLibraryPanel({
             >
                 <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "" : "-rotate-90"}`} />
                 <Component className="h-3.5 w-3.5" />
-                <span className="min-w-0 flex-1">Component Library</span>
+                <span className="min-w-0 flex-1">{t("uiEditor.componentLibrary.title")}</span>
                 <span className="text-2xs font-normal text-fg-subtle">{components.length}</span>
             </button>
             {open ? (
@@ -300,7 +302,7 @@ export function ComponentLibraryPanel({
                             <input
                                 value={query}
                                 onChange={event => setQuery(event.target.value)}
-                                placeholder="Search"
+                                placeholder={t("common.search")}
                                 className="h-8 w-full rounded-md border border-edge bg-fill-subtle pl-8 pr-2 text-xs text-fg outline-none focus:border-primary/60"
                             />
                         </div>
@@ -308,8 +310,8 @@ export function ComponentLibraryPanel({
                             type="button"
                             className="grid h-8 w-8 place-items-center rounded-md border border-edge text-fg-muted hover:bg-fill hover:text-white"
                             onClick={() => void handleCreate()}
-                            title="Create component"
-                            aria-label="Create component"
+                            title={t("uiEditor.componentLibrary.createComponent")}
+                            aria-label={t("uiEditor.componentLibrary.createComponent")}
                         >
                             <Plus className="h-4 w-4" />
                         </button>
@@ -317,13 +319,13 @@ export function ComponentLibraryPanel({
 
                     {selectedCount > 0 ? (
                         <div className="flex items-center gap-1 rounded-md border border-edge bg-fill-subtle p-1">
-                            <span className="min-w-0 flex-1 px-1 text-2xs text-fg-muted">{selectedCount} selected</span>
+                            <span className="min-w-0 flex-1 px-1 text-2xs text-fg-muted">{t("uiEditor.componentLibrary.selectedCount", { count: selectedCount })}</span>
                             <button
                                 type="button"
                                 className="grid h-7 w-7 place-items-center rounded text-fg-muted hover:bg-fill hover:text-white"
                                 onClick={() => handleDuplicate([...selectedIds])}
-                                title="Duplicate selected"
-                                aria-label="Duplicate selected"
+                                title={t("uiEditor.componentLibrary.duplicateSelected")}
+                                aria-label={t("uiEditor.componentLibrary.duplicateSelected")}
                             >
                                 <Copy className="h-3.5 w-3.5" />
                             </button>
@@ -331,8 +333,8 @@ export function ComponentLibraryPanel({
                                 type="button"
                                 className="grid h-7 w-7 place-items-center rounded text-red-300 hover:bg-red-500/15 hover:text-red-100"
                                 onClick={() => void handleDelete([...selectedIds])}
-                                title="Delete selected"
-                                aria-label="Delete selected"
+                                title={t("uiEditor.componentLibrary.deleteSelected")}
+                                aria-label={t("uiEditor.componentLibrary.deleteSelected")}
                             >
                                 <Trash2 className="h-3.5 w-3.5" />
                             </button>
@@ -342,7 +344,7 @@ export function ComponentLibraryPanel({
                     <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
                         {filteredComponents.length === 0 ? (
                             <div className="rounded-md border border-dashed border-edge px-3 py-4 text-center text-xs text-fg-subtle">
-                                {components.length === 0 ? "Create a component or add selected elements from the canvas." : "No matches."}
+                                {components.length === 0 ? t("uiEditor.componentLibrary.emptyCreate") : t("uiEditor.componentLibrary.noMatches")}
                             </div>
                         ) : (
                             filteredComponents.map(component => {
@@ -382,7 +384,7 @@ export function ComponentLibraryPanel({
                                                 onChange={() => toggleSelected(component.id)}
                                                 onClick={event => event.stopPropagation()}
                                                 className="h-3.5 w-3.5 accent-primary"
-                                                aria-label={`Select ${component.name}`}
+                                                aria-label={t("uiEditor.componentLibrary.selectComponent", { name: component.name })}
                                             />
                                             <div
                                                 className="min-w-0 flex-1 truncate text-left text-xs font-medium text-fg"
@@ -397,8 +399,8 @@ export function ComponentLibraryPanel({
                                                     event.stopPropagation();
                                                     void handleRename(component);
                                                 }}
-                                                title="Rename"
-                                                aria-label="Rename"
+                                                title={t("common.rename")}
+                                                aria-label={t("common.rename")}
                                             >
                                                 <Edit3 className="h-3.5 w-3.5" />
                                             </button>
@@ -406,8 +408,8 @@ export function ComponentLibraryPanel({
                                                 type="button"
                                                 className="grid h-6 w-6 place-items-center rounded text-fg-muted hover:bg-fill hover:text-white"
                                                 onClick={event => openContextMenu(event, component, { selectComponent: false })}
-                                                title="Component actions"
-                                                aria-label="Component actions"
+                                                title={t("uiEditor.componentLibrary.componentActions")}
+                                                aria-label={t("uiEditor.componentLibrary.componentActions")}
                                             >
                                                 <MoreVertical className="h-3.5 w-3.5" />
                                             </button>
@@ -418,7 +420,7 @@ export function ComponentLibraryPanel({
                                             {Math.round(component.previewMeta?.height ?? root?.layout.height ?? 0)}
                                             {documentService ? (
                                                 <span className="ml-2">
-                                                    {documentService.getComponentUsageCount(component.id)} refs
+                                                    {t("uiEditor.componentLibrary.refs", { count: documentService.getComponentUsageCount(component.id) })}
                                                 </span>
                                             ) : null}
                                         </div>

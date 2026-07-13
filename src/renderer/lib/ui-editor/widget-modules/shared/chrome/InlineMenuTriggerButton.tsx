@@ -3,6 +3,7 @@ import { MoreHorizontal } from "lucide-react";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { ContextMenu } from "@/lib/components/elements/ContextMenu";
 import { controlButtonClass } from "./constants";
+import { useTranslation } from "@/lib/i18n";
 
 /** `control` = bordered square (default). `iconGhost` = borderless icon-only for compact rows. */
 export type InlineMenuTriggerButtonStyle = "control" | "iconGhost";
@@ -26,12 +27,14 @@ const ICON_GHOST_TRIGGER_BASE =
  */
 export function InlineMenuTriggerButton({
     menu,
-    ariaLabel = "More options",
+    ariaLabel,
     className = "",
     icon,
     buttonStyle = "control",
     menuIconsEnabled = false,
 }: InlineMenuTriggerButtonProps) {
+    const { t } = useTranslation();
+    const resolvedAriaLabel = ariaLabel ?? t("widgetChrome.chrome.moreOptions");
     const [visible, setVisible] = useState(false);
     const [position, setPosition] = useState({ x: 0, y: 0 });
     const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -81,7 +84,7 @@ export function InlineMenuTriggerButton({
                 ref={buttonRef}
                 type="button"
                 onClick={visible ? closeMenu : openMenu}
-                aria-label={ariaLabel}
+                aria-label={resolvedAriaLabel}
                 className={
                     buttonStyle === "iconGhost"
                         ? `${ICON_GHOST_TRIGGER_BASE} ${className}`.trim()

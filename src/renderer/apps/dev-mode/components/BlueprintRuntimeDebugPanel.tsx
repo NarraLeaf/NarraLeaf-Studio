@@ -5,6 +5,7 @@ import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/docum
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { getInterface } from "@/lib/app/bridge";
+import { useTranslation } from "@/lib/i18n";
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
@@ -15,12 +16,6 @@ export type BlueprintOutputLogLevel = "error" | "warning" | "log" | "verbose";
 
 const OUTPUT_LOG_LEVELS: BlueprintOutputLogLevel[] = ["error", "warning", "log", "verbose"];
 const DEFAULT_OUTPUT_LOG_LEVELS = new Set<BlueprintOutputLogLevel>(["error", "warning", "log"]);
-const OUTPUT_LOG_LEVEL_LABEL: Record<BlueprintOutputLogLevel, string> = {
-    error: "Error",
-    warning: "Warning",
-    log: "Log",
-    verbose: "Verbose",
-};
 
 type BlueprintRuntimeDebugPanelProps = {
     debug: DebugBridge;
@@ -44,6 +39,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         projectPath,
         className,
     } = props;
+    const { t } = useTranslation();
     const [tab, setTab] = useState<DebugTabId>("output");
     const [events, setEvents] = useState<BlueprintDebugEvent[]>(() => debug.snapshot());
     const [outputLogLevels, setOutputLogLevels] = useState<Set<BlueprintOutputLogLevel>>(
@@ -134,6 +130,13 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         return filterBlueprintDebugEventsByLogLevel(events, outputLogLevels);
     }, [events, outputLogLevels]);
 
+    const outputLogLevelLabel = useMemo<Record<BlueprintOutputLogLevel, string>>(() => ({
+        error: t("common.error"),
+        warning: t("common.warning"),
+        log: t("devMode.output.level.log"),
+        verbose: t("devMode.output.level.verbose"),
+    }), [t]);
+
     const toggleExpanded = useCallback((id: string) => {
         setExpandedBp(prev => {
             const next = new Set(prev);
@@ -163,17 +166,17 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
             setStudioHint(null);
             const payload = buildStudioOpenPayload(bp, projectPath);
             if (!payload) {
-                setStudioHint("This blueprint cannot be opened from preview.");
+                setStudioHint(t("devMode.blueprints.cannotOpen"));
                 return;
             }
             const result = await getInterface().devMode.openBlueprintInWorkspace(payload);
             if (!result.success) {
-                setStudioHint(result.error ?? "Unable to open blueprint.");
+                setStudioHint(result.error ?? t("devMode.blueprints.openFailed"));
                 return;
             }
             setStudioHint(null);
         },
-        [projectPath],
+        [projectPath, t],
     );
 
     const rootClass = ["flex h-full min-h-0 shrink-0 flex-col border-l border-edge bg-[#0d0f11] text-2xs text-fg-muted", className]
@@ -182,13 +185,13 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
 
     return (
         <div className={rootClass}>
-            <div className="shrink-0 border-b border-edge px-2 py-1.5 text-xs font-medium text-fg">Blueprint DevTools</div>
-            <div className="flex shrink-0 border-b border-edge bg-surface-sunken" role="tablist" aria-label="Debug panels">
+            <div className="shrink-0 border-b border-edge px-2 py-1.5 text-xs font-medium text-fg">{t("devMode.devtools.title")}</div>
+            <div className="flex shrink-0 border-b border-edge bg-surface-sunken" role="tablist" aria-label={t("devMode.devtools.panelsAria")}>
                 {(
                     [
-                        ["blueprints", "Blueprints"],
-                        ["output", "Output"],
-                        ["scope", "Scope"],
+                        ["blueprints", t("devMode.tabs.blueprints")],
+                        ["output", t("devMode.tabs.output")],
+                        ["scope", t("devMode.tabs.scope")],
                     ] as const
                 ).map(([id, label]) => {
                     const active = tab === id;
@@ -220,7 +223,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                     <div className="min-h-0 flex-1 overflow-auto p-2">
                         {studioHint ? <p className="mb-2 text-2xs text-amber-400/90">{studioHint}</p> : null}
                         {blueprintsList.length === 0 ? (
-                            <p className="text-2xs text-fg-subtle">No blueprints</p>
+                            <p className="text-2xs text-fg-subtle">{t("devMode.blueprints.empty")}</p>
                         ) : (
                             <ul className="space-y-0.5">
                                 {blueprintsList.map(bp => {
@@ -253,7 +256,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                                                     className="shrink-0 rounded border border-edge px-1.5 py-0.5 text-2xs text-fg-muted hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
                                                     onClick={() => void openInStudio(bp)}
                                                 >
-                                                    Workspace
+                                                    {t("devMode.blueprints.openWorkspace")}
                                                 </button>
                                             </div>
                                             {expanded ? (
@@ -283,7 +286,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                                     aria-expanded={logLevelMenuOpen}
                                     onClick={() => setLogLevelMenuOpen(prev => !prev)}
                                 >
-                                    Log Level
+                                    {t("devMode.output.logLevel")}
                                     <ChevronDown className="h-3 w-3 text-fg-subtle" />
                                 </button>
                                 {logLevelMenuOpen ? (
@@ -302,7 +305,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                                                     onChange={() => toggleOutputLogLevel(level)}
                                                     className="h-3 w-3 rounded border-edge-strong bg-surface-sunken"
                                                 />
-                                                {OUTPUT_LOG_LEVEL_LABEL[level]}
+                                                {outputLogLevelLabel[level]}
                                             </label>
                                         ))}
                                     </div>
@@ -313,7 +316,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                                 className="rounded border border-edge px-2 py-0.5 text-2xs text-fg-muted hover:bg-fill"
                                 onClick={() => debug.clear()}
                             >
-                                Clear
+                                {t("common.clear")}
                             </button>
                         </div>
                         <div
@@ -321,7 +324,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                             className="nl-selectable-text min-h-0 flex-1 cursor-text overflow-auto overscroll-contain p-2"
                         >
                             {outputLines.length === 0 ? (
-                                <p className="text-2xs text-fg-subtle">No output</p>
+                                <p className="text-2xs text-fg-subtle">{t("devMode.output.empty")}</p>
                             ) : (
                                 <ul className="space-y-1">
                                     {outputLines.map((ev, i) => (
@@ -343,22 +346,22 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
 
                 {tab === "scope" ? (
                     <div className="min-h-0 flex-1 space-y-3 overflow-auto p-2">
-                        <KeyValueBlock title="Surface" entries={surfaceSnap} surfaceId={activeSurfaceId} />
-                        <KeyValueBlock title="Global" entries={globalSnap} />
-                        <KeyValueBlock title="Persistence" entries={persistSnap} />
+                        <KeyValueBlock title={t("devMode.scope.surface")} entries={surfaceSnap} surfaceId={activeSurfaceId} />
+                        <KeyValueBlock title={t("devMode.scope.global")} entries={globalSnap} />
+                        <KeyValueBlock title={t("devMode.scope.persistence")} entries={persistSnap} />
                         <div>
-                            <p className="mb-1 text-2xs tracking-wide text-fg-subtle">Widget</p>
+                            <p className="mb-1 text-2xs tracking-wide text-fg-subtle">{t("devMode.scope.widget")}</p>
                             <ul className="space-y-0.5 text-2xs text-fg-muted">
                                 <li>
-                                    hover ·{" "}
+                                    {t("devMode.scope.hover")} ·{" "}
                                     {widgetSnap.hoverTargetIds.size === 0
                                         ? "-"
                                         : [...widgetSnap.hoverTargetIds].map(id => `${id.slice(0, 6)}…`).join(", ")}
                                 </li>
-                                <li>active · {widgetSnap.activePointerId ?? "-"}</li>
-                                <li>focus · {widgetSnap.focusedId ?? "-"}</li>
+                                <li>{t("devMode.scope.active")} · {widgetSnap.activePointerId ?? "-"}</li>
+                                <li>{t("devMode.scope.focus")} · {widgetSnap.focusedId ?? "-"}</li>
                                 <li className="break-all">
-                                    variants ·{" "}
+                                    {t("devMode.scope.variants")} ·{" "}
                                     {widgetSnap.variantOverrides.size === 0
                                         ? "-"
                                         : [...widgetSnap.variantOverrides.entries()]
@@ -432,6 +435,7 @@ function KeyValueBlock(props: {
     surfaceId?: string;
 }): ReactNode {
     const { title, entries, surfaceId } = props;
+    const { t } = useTranslation();
     const keys = [...entries.keys()].sort();
     return (
         <div>
@@ -440,7 +444,7 @@ function KeyValueBlock(props: {
                 {surfaceId ? <span className="text-fg-subtle"> · {surfaceId.slice(0, 8)}…</span> : null}
             </p>
             {keys.length === 0 ? (
-                <p className="text-2xs text-fg-subtle">None</p>
+                <p className="text-2xs text-fg-subtle">{t("common.none")}</p>
             ) : (
                 <ul className="space-y-0.5">
                     {keys.map(k => (

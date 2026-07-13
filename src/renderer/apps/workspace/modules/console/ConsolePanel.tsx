@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ListFilter, Terminal, Trash2 } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/lib/components/elements";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import {
@@ -22,30 +23,13 @@ type ConsolePanelState = {
 const LOG_LEVELS: readonly ConsoleLogLevel[] = ["error", "warning", "success", "info", "verbose"];
 const DEFAULT_VISIBLE_LEVELS = new Set<ConsoleLogLevel>(["error", "warning", "success", "info"]);
 
-const LEVEL_META: Record<ConsoleLogLevel, {
-    label: string;
-    textClassName: string;
-}> = {
-    error: {
-        label: "Error",
-        textClassName: "text-rose-300/75",
-    },
-    warning: {
-        label: "Warn",
-        textClassName: "text-amber-300/75",
-    },
-    success: {
-        label: "Success",
-        textClassName: "text-emerald-300/75",
-    },
-    info: {
-        label: "Info",
-        textClassName: "text-cyan-300/75",
-    },
-    verbose: {
-        label: "Verbose",
-        textClassName: "text-fg-subtle/80",
-    },
+/** Per-level text colour. Labels are translated via `console.level.<level>`. */
+const LEVEL_TEXT_CLASS: Record<ConsoleLogLevel, string> = {
+    error: "text-rose-300/75",
+    warning: "text-amber-300/75",
+    success: "text-emerald-300/75",
+    info: "text-cyan-300/75",
+    verbose: "text-fg-subtle/80",
 };
 
 function isConsoleLogLevel(value: unknown): value is ConsoleLogLevel {
@@ -87,6 +71,7 @@ function entryText(entry: ConsoleEntry): string {
  * Shows structured build/package and blueprint output from ConsoleService.
  */
 export function ConsolePanel({ panelId }: PanelComponentProps) {
+    const { t } = useTranslation();
     const { context } = useWorkspace();
     const consoleService = useMemo(
         () => context?.services.get<ConsoleService>(Services.Console) ?? null,
@@ -210,7 +195,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
     return (
         <div className="flex h-full min-h-0 flex-col bg-surface text-fg-muted">
             <div className="flex h-9 shrink-0 items-center justify-between border-b border-edge bg-surface-sunken">
-                <div className="flex h-full min-w-0 overflow-x-auto" role="tablist" aria-label="Console channels">
+                <div className="flex h-full min-w-0 overflow-x-auto" role="tablist" aria-label={t("console.channelsAria")}>
                     {channels.map(channel => {
                         const active = activeChannel === channel.id;
                         const count = entriesByChannel[channel.id]?.length ?? 0;
@@ -251,8 +236,8 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                         <button
                             type="button"
                             className="flex h-7 w-7 cursor-default items-center justify-center rounded border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-white"
-                            title="Filter levels"
-                            aria-label="Filter levels"
+                            title={t("console.filterLevels")}
+                            aria-label={t("console.filterLevels")}
                             aria-haspopup="menu"
                             aria-expanded={filterMenuOpen}
                             onClick={() => setFilterMenuOpen(prev => !prev)}
@@ -264,23 +249,20 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                                 role="menu"
                                 className="absolute right-0 top-full z-20 mt-1 w-36 rounded border border-edge bg-[#11141b] p-1 shadow-xl"
                             >
-                                {LOG_LEVELS.map(level => {
-                                    const meta = LEVEL_META[level];
-                                    return (
-                                        <label
-                                            key={level}
-                                            className="flex cursor-default items-center gap-2 rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill"
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                checked={visibleLevels.has(level)}
-                                                onChange={() => toggleLevel(level)}
-                                                className="h-3 w-3 rounded border-edge-strong bg-surface-sunken"
-                                            />
-                                            <span className={meta.textClassName}>{meta.label}</span>
-                                        </label>
-                                    );
-                                })}
+                                {LOG_LEVELS.map(level => (
+                                    <label
+                                        key={level}
+                                        className="flex cursor-default items-center gap-2 rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill"
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={visibleLevels.has(level)}
+                                            onChange={() => toggleLevel(level)}
+                                            className="h-3 w-3 rounded border-edge-strong bg-surface-sunken"
+                                        />
+                                        <span className={LEVEL_TEXT_CLASS[level]}>{t(`console.level.${level}`)}</span>
+                                    </label>
+                                ))}
                             </div>
                         ) : null}
                     </div>
@@ -292,7 +274,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                         onClick={handleClear}
                     >
                         <Trash2 className="h-3.5 w-3.5" />
-                        Clear
+                        {t("common.clear")}
                     </Button>
                 </div>
             </div>
@@ -312,12 +294,13 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
 }
 
 function ConsoleEmptyState({ label, total }: { label: string; total: number }) {
+    const { t } = useTranslation();
     return (
         <div className="flex h-full min-h-24 items-center justify-center px-4 text-center text-fg-subtle">
             <div>
                 <Terminal className="mx-auto mb-2 h-8 w-8 opacity-45" />
                 <p className="text-xs text-fg-muted">
-                    {total > 0 ? "No lines match the current filters" : `No ${label} output yet`}
+                    {total > 0 ? t("console.emptyFiltered") : t("console.emptyChannel", { label })}
                 </p>
             </div>
         </div>
@@ -325,6 +308,7 @@ function ConsoleEmptyState({ label, total }: { label: string; total: number }) {
 }
 
 function ConsoleEntryGrid({ entries }: { entries: ConsoleEntry[] }) {
+    const { t } = useTranslation();
     return (
         <div
             className="grid min-w-full"
@@ -340,18 +324,15 @@ function ConsoleEntryGrid({ entries }: { entries: ConsoleEntry[] }) {
                 </time>
             ))}
 
-            {entries.map((entry, index) => {
-                const level = LEVEL_META[entry.level];
-                return (
-                    <span
-                        key={`${entry.id}:level`}
-                        className={`select-text border-r border-white/[0.04] px-3 py-0.5 hover:bg-white/[0.035] ${level.textClassName}`}
-                        style={{ gridColumn: 2, gridRow: index + 1 }}
-                    >
-                        {level.label}
-                    </span>
-                );
-            })}
+            {entries.map((entry, index) => (
+                <span
+                    key={`${entry.id}:level`}
+                    className={`select-text border-r border-white/[0.04] px-3 py-0.5 hover:bg-white/[0.035] ${LEVEL_TEXT_CLASS[entry.level]}`}
+                    style={{ gridColumn: 2, gridRow: index + 1 }}
+                >
+                    {t(`console.level.${entry.level}`)}
+                </span>
+            ))}
 
             {entries.map((entry, index) => (
                 <div
@@ -368,7 +349,7 @@ function ConsoleEntryGrid({ entries }: { entries: ConsoleEntry[] }) {
                             <ConsoleSegment key={`${entry.id}:${segmentIndex}`} segment={segment} fallbackColor={entry.color} />
                         ))}
                     </span>
-                    {entryText(entry).length === 0 ? <span className="text-fg-subtle">(empty)</span> : null}
+                    {entryText(entry).length === 0 ? <span className="text-fg-subtle">{t("console.entryEmpty")}</span> : null}
                 </div>
             ))}
         </div>

@@ -5,6 +5,7 @@ import { Bold, Braces, ChevronDown, ChevronRight, Italic, Palette, Pause as Paus
 import { ProjectPalette } from "@/apps/workspace/modules/properties/framework/fields/ProjectPalette";
 import { addRecentColor, useRecentColors } from "@/apps/workspace/modules/properties/framework/fields/recentColors";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { useTranslation } from "@/lib/i18n";
 import { useRichToolbarExpanded } from "./storyEditorSessionStore";
 import { defaultInterpolationForKind, getLastInterpolationKind } from "./storyInterpolation";
 import type { ActiveMarks, RichTextInputHandle } from "./RichTextInput";
@@ -39,6 +40,7 @@ export function RichTextToolbar(props: {
     /** Whether any story variable is declared; the interpolation button hints when none exist. */
     hasVariables?: boolean;
 }) {
+    const { t } = useTranslation();
     const [expanded, setExpanded] = useRichToolbarExpanded();
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
     const [palette, setPalette] = useState<{ top: number; left: number } | null>(null);
@@ -151,14 +153,14 @@ export function RichTextToolbar(props: {
             className="flex items-center gap-0.5 rounded-md border border-edge bg-[#16191e] px-1 py-0.5 shadow-lg"
             onMouseDown={keepFocus}
         >
-            <button type="button" className={BTN} onClick={() => setExpanded(false)} title="Collapse rich text tools">
+            <button type="button" className={BTN} onClick={() => setExpanded(false)} title={t("story.richText.collapse")}>
                 <ChevronDown className="h-3.5 w-3.5" />
             </button>
             <div className="mx-0.5 h-4 w-px bg-fill" />
-            <button type="button" className={active.bold ? BTN_ACTIVE : BTN} onClick={() => props.editor.current?.toggleMark("bold")} title="Bold">
+            <button type="button" className={active.bold ? BTN_ACTIVE : BTN} onClick={() => props.editor.current?.toggleMark("bold")} title={t("story.richText.bold")}>
                 <Bold className="h-3.5 w-3.5" />
             </button>
-            <button type="button" className={active.italic ? BTN_ACTIVE : BTN} onClick={() => props.editor.current?.toggleMark("italic")} title="Italic">
+            <button type="button" className={active.italic ? BTN_ACTIVE : BTN} onClick={() => props.editor.current?.toggleMark("italic")} title={t("story.richText.italic")}>
                 <Italic className="h-3.5 w-3.5" />
             </button>
             <div className="mx-0.5 h-4 w-px bg-fill" />
@@ -173,11 +175,11 @@ export function RichTextToolbar(props: {
                         }`}
                         style={{ backgroundColor: color }}
                         onClick={() => applyColor(color)}
-                        title={`Text color ${color}`}
+                        title={t("story.richText.textColor", { color })}
                     />
                 );
             })}
-            <button ref={paletteBtnRef} type="button" className={`${BTN} relative ${palette ? "bg-fill text-white" : ""}`} onClick={() => (palette ? closePalette() : openPalette())} title="More colors — project palette">
+            <button ref={paletteBtnRef} type="button" className={`${BTN} relative ${palette ? "bg-fill text-white" : ""}`} onClick={() => (palette ? closePalette() : openPalette())} title={t("story.richText.moreColors")}>
                 <Palette className="h-3.5 w-3.5" />
                 {active.color ? (
                     <span
@@ -187,14 +189,14 @@ export function RichTextToolbar(props: {
                 ) : null}
             </button>
             <div className="mx-0.5 h-4 w-px bg-fill" />
-            <button type="button" className={BTN} onClick={() => props.editor.current?.insertPause(true)} title="Insert pause (waits for a click)">
+            <button type="button" className={BTN} onClick={() => props.editor.current?.insertPause(true)} title={t("story.richText.insertPause")}>
                 <PauseIcon className="h-3.5 w-3.5" />
             </button>
             <button
                 type="button"
                 className={BTN}
                 onClick={() => props.editor.current?.insertInterpolation(defaultInterpolationForKind(getLastInterpolationKind()))}
-                title={props.hasVariables ? "Insert inline value" : "Insert inline value (variable or blueprint)"}
+                title={props.hasVariables ? t("story.richText.insertValue") : t("story.richText.insertValueHint")}
             >
                 <Braces className="h-3.5 w-3.5" />
             </button>
@@ -206,7 +208,7 @@ export function RichTextToolbar(props: {
             className="inline-flex h-6 items-center gap-1 rounded-md border border-edge bg-[#16191e] px-1.5 text-2xs text-fg-muted shadow transition-colors hover:text-fg"
             onMouseDown={keepFocus}
             onClick={() => setExpanded(true)}
-            title="Rich text tools"
+            title={t("story.richText.tools")}
         >
             <Type className="h-3 w-3" />
             <ChevronRight className="h-3 w-3" />

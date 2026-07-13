@@ -11,6 +11,7 @@ import {
     Upload,
 } from "lucide-react";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
+import { useTranslation } from "@/lib/i18n";
 import { getProjectIconConfig } from "@/lib/workspace/services/core/ProjectService";
 import type { ProjectIconConfig, ProjectIconPlatform } from "@/lib/workspace/project/project";
 import { createProjectIconPreview, type ProjectIconPreview } from "../iconPreview";
@@ -45,6 +46,7 @@ const EMPTY_ICON_STATE: Record<ProjectIconPlatform, IconState> = {
 const ICON_BUTTON_CLASS = controlButtonClass();
 
 export function ProjectAssetsSection({ projectService, uiService, onConfigChange }: ProjectSectionProps) {
+    const { t } = useTranslation();
     const [iconStates, setIconStates] = useState<Record<ProjectIconPlatform, IconState>>(() => cloneIconStates(EMPTY_ICON_STATE));
     const previewUrlsRef = useRef<Record<ProjectIconPlatform, string | null>>({
         macos: null,
@@ -106,7 +108,7 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
                             [option.id]: {
                                 ...previous[option.id],
                                 status: "error",
-                                error: "Icon file missing",
+                                error: t("project.assets.iconMissing"),
                             },
                         }));
                         applyPreview(option.id, null);
@@ -142,7 +144,7 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
         return () => {
             disposed = true;
         };
-    }, [applyPreview, projectService]);
+    }, [applyPreview, projectService, t]);
 
     useEffect(() => {
         return () => {
@@ -182,7 +184,7 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
                     error: null,
                 },
             }));
-            uiService?.showNotification(`${platformLabel(platform)} icon saved.`, "success");
+            uiService?.showNotification(t("project.assets.iconSaved", { platform: platformLabel(platform) }), "success");
         } catch (error) {
             setIconStates(previous => ({
                 ...previous,
@@ -194,7 +196,7 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
             }));
             uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
         }
-    }, [applyPreview, onConfigChange, projectService, uiService]);
+    }, [applyPreview, onConfigChange, projectService, uiService, t]);
 
     return (
         <div className="grid gap-3">
@@ -219,6 +221,7 @@ function ProjectIconCard({
     state: IconState;
     onUpload: () => void;
 }) {
+    const { t } = useTranslation();
     const PlatformIcon = option.icon;
     const busy = state.status === "loading" || state.status === "uploading";
     const dimensions = state.preview?.width && state.preview.height
@@ -240,8 +243,8 @@ function ProjectIconCard({
                     className={ICON_BUTTON_CLASS}
                     onClick={onUpload}
                     disabled={busy}
-                    title={`Upload ${option.label} icon`}
-                    aria-label={`Upload ${option.label} icon`}
+                    title={t("project.assets.uploadIcon", { platform: option.label })}
+                    aria-label={t("project.assets.uploadIcon", { platform: option.label })}
                 >
                     {state.status === "uploading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                 </button>
@@ -250,7 +253,7 @@ function ProjectIconCard({
             <div className="mt-3 flex min-w-0 gap-3">
                 <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-md border border-edge bg-[#17181c]">
                     {state.preview ? (
-                        <img src={state.preview.url} alt={`${option.label} icon`} className="max-h-full max-w-full object-contain" />
+                        <img src={state.preview.url} alt={t("project.assets.iconAlt", { platform: option.label })} className="max-h-full max-w-full object-contain" />
                     ) : busy ? (
                         <Loader2 className="h-5 w-5 animate-spin text-fg-subtle" />
                     ) : (
@@ -269,14 +272,14 @@ function ProjectIconCard({
                         <span className="min-w-0 truncate text-xs text-fg-muted">
                             {state.status === "error"
                                 ? state.error
-                                : state.icon?.sourceName ?? "No icon selected"}
+                                : state.icon?.sourceName ?? t("project.assets.noIcon")}
                         </span>
                     </div>
                     {state.icon ? (
                         <div className="mt-1 min-w-0 truncate text-2xs text-fg-subtle">
                             {[
                                 dimensions,
-                                state.preview?.extractedFromIcns ? "ICNS preview" : null,
+                                state.preview?.extractedFromIcns ? t("project.assets.icnsPreview") : null,
                             ].filter(Boolean).join(" · ")}
                         </div>
                     ) : null}

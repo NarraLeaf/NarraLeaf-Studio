@@ -3,6 +3,8 @@ import type { CSSProperties, MouseEvent, ReactNode } from "react";
 import type { UISurface, UISurfaceKind } from "@shared/types/ui-editor/document";
 import { MoreVertical } from "lucide-react";
 import { DEFAULT_APP_SURFACE_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { useTranslation } from "@/lib/i18n";
+import type { UseTranslation } from "@/lib/i18n";
 
 import { formatStageMountLabel } from "./constants";
 
@@ -84,11 +86,11 @@ function SurfacePreview({ surface, children }: { surface: UISurface; children: R
     );
 }
 
-const getSurfaceTypeLabel = (surface: UISurface): string => {
+const getSurfaceTypeLabel = (surface: UISurface, t: UseTranslation["t"]): string => {
     if (surface.id === MAIN_APP_SURFACE_ID) {
         return DEFAULT_APP_SURFACE_NAME;
     }
-    return surface.kind === "appSurface" ? "Page" : "Game UI";
+    return surface.kind === "appSurface" ? t("uiEditor.surfaceKind.page") : t("uiEditor.surfaceKind.gameUi");
 };
 
 export function SurfaceList({
@@ -99,13 +101,13 @@ export function SurfaceList({
     onSurfaceClick,
     onOpenMenu,
 }: SurfaceListProps) {
+    const { t } = useTranslation();
     if (surfaces.length === 0 && !globalBlueprintCard) {
-        const kindLabel = surfaceKind === "appSurface" ? "pages" : "game UI canvases";
-        const emptyPrimary = `No ${kindLabel} yet.`;
+        const emptyPrimary = surfaceKind === "appSurface" ? t("uiEditor.panel.emptyPages") : t("uiEditor.panel.emptyGameUi");
         const emptySecondary =
             surfaceKind === "appSurface"
-                ? "Use Create Page above. Pages can be opened as full screens and later called as game layers."
-                : "Use Create Game UI above. Game UI is fixed to the project resolution.";
+                ? t("uiEditor.panel.emptyPagesHint")
+                : t("uiEditor.panel.emptyGameUiHint");
 
         return (
             <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2 bg-surface-sunken">
@@ -125,7 +127,9 @@ export function SurfaceList({
                     onClick={globalBlueprintCard.onClick}
                     onContextMenu={event => event.preventDefault()}
                     aria-label={
-                        globalBlueprintCard.canOpen ? "Open global blueprint" : "Global blueprint unavailable"
+                        globalBlueprintCard.canOpen
+                            ? t("uiEditor.panel.openGlobalBlueprint")
+                            : t("uiEditor.panel.globalBlueprintUnavailable")
                     }
                 >
                     <div className="flex items-start gap-2">
@@ -140,7 +144,7 @@ export function SurfaceList({
             ) : null}
             {surfaces.map(surface => {
                 const preview = renderSurfacePreview?.(surface);
-                const typeLabel = getSurfaceTypeLabel(surface);
+                const typeLabel = getSurfaceTypeLabel(surface, t);
                 return (
                     <div
                         key={surface.id}
@@ -165,7 +169,7 @@ export function SurfaceList({
                                 type="button"
                                 className="p-1 rounded hover:bg-fill text-fg-muted opacity-0 group-hover:opacity-100"
                                 onClick={event => onOpenMenu(event, surface)}
-                                title={`${typeLabel} actions`}
+                                title={t("uiEditor.panel.surfaceActions", { label: typeLabel })}
                             >
                                 <MoreVertical className="w-4 h-4" />
                             </button>

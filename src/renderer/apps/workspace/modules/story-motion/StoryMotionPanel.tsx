@@ -8,6 +8,7 @@ import type {
 } from "@shared/types/story";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
+import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { Services } from "@/lib/workspace/services/services";
@@ -45,6 +46,7 @@ import {
     getStoryMotionDurationMs,
     sampleStoryMotionPreview,
     type StoryMotionPreviewState,
+    type StoryMotionTemplateName,
 } from "./storyMotionTimeline";
 import { StoryMotionStagePreview } from "./StoryMotionStagePreview";
 import { resolveStoryMotionPreviewTarget, type StoryMotionPreviewTarget } from "./storyMotionPreviewTarget";
@@ -53,7 +55,15 @@ const ICON_BUTTON_CLASS = controlButtonClass();
 const PREVIEW_LOOP_GAP_MS = 2000;
 const PREVIEW_FRAME_MS = 1000 / STORY_MOTION_FPS;
 
+const STORY_MOTION_TEMPLATE_KEYS = {
+    "Fade in + slide": "fadeInSlide",
+    "Center pop": "centerPop",
+    "Look around": "lookAround",
+    "Flash": "flash",
+} as const satisfies Record<StoryMotionTemplateName, string>;
+
 export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPanelPayload | undefined>) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const { menuState, showMenu, hideMenu } = useContextMenu();
@@ -207,7 +217,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
     const createMenuItems = useMemo<ContextMenuDef>(() => [
         {
             id: "new-motion",
-            label: "New Motion",
+            label: t("motion.panel.newMotion"),
             icon: <Plus className="h-4 w-4" />,
             onClick: () => {
                 void createMotion();
@@ -215,13 +225,13 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
         },
         ...STORY_MOTION_TEMPLATES.map(templateName => ({
             id: `preset-${templateName}`,
-            label: templateName,
+            label: t(`motion.templates.${STORY_MOTION_TEMPLATE_KEYS[templateName]}`),
             icon: <Spline className="h-4 w-4" />,
             onClick: () => {
                 void createMotion(templateName);
             },
         })),
-    ], [createMotion]);
+    ], [createMotion, t]);
 
     const duplicateMotion = useCallback(async () => {
         if (!storyService || !selectedAsset) {
@@ -241,8 +251,8 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
             return;
         }
         const confirmed = await uiService.showConfirm(
-            `Delete motion "${selectedAsset.name}"?`,
-            "This removes the motion asset and closes related editors.",
+            t("motion.panel.deleteConfirm", { name: selectedAsset.name }),
+            t("motion.panel.deleteDetail"),
         );
         if (!confirmed) {
             return;
@@ -253,7 +263,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
         closeStoryMotionEditorTabs(uiService, animationId);
         setSelectedId(null);
         setSelectedAsset(null);
-    }, [selectedAsset, storyService, uiService]);
+    }, [selectedAsset, storyService, uiService, t]);
 
     const commitRename = useCallback(() => {
         if (!storyService || !selectedAsset) {
@@ -375,16 +385,16 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                         className="flex-1"
                         value={query}
                         onChange={setQuery}
-                        placeholder="Search motions"
+                        placeholder={t("motion.panel.searchPlaceholder")}
                         leftIcon={<Search className="h-3.5 w-3.5 text-fg-subtle" />}
                     />
-                    <button className={ICON_BUTTON_CLASS} type="button" onClick={openCreateMenu} title="Create motion" aria-label="Create motion">
+                    <button className={ICON_BUTTON_CLASS} type="button" onClick={openCreateMenu} title={t("motion.panel.createMotion")} aria-label={t("motion.panel.createMotion")}>
                         <Plus className="h-4 w-4" />
                     </button>
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto py-1">
                     {filteredAssets.length === 0 ? (
-                        <div className="px-3 py-4 text-center text-xs text-fg-subtle">No motions.</div>
+                        <div className="px-3 py-4 text-center text-xs text-fg-subtle">{t("motion.panel.empty")}</div>
                     ) : filteredAssets.map(asset => (
                         <button
                             key={asset.id}
@@ -417,7 +427,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                             <section className="rounded-lg border border-edge bg-white/[0.025] p-4">
                                 <div className="grid gap-4">
                                     <label className="grid min-w-0 gap-1.5">
-                                        <span className="text-xs font-medium text-fg-subtle">Name</span>
+                                        <span className="text-xs font-medium text-fg-subtle">{t("common.name")}</span>
                                         <EnhancedInput
                                             className="transition-colors focus-within:ring-0"
                                             value={renameDraft}
@@ -429,26 +439,26 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                             inputClassName="font-medium"
                                         />
                                     </label>
-                                    <SurfaceEditorToolbarButtonGroup aria-label="Motion actions" className="w-full">
+                                    <SurfaceEditorToolbarButtonGroup aria-label={t("motion.panel.motionActions")} className="w-full">
                                         <SurfaceEditorToolbarSegButton
                                             className="!w-auto flex-1 gap-1.5 px-3"
                                             type="button"
                                             onClick={openFullEditor}
-                                            title="Edit motion"
+                                            title={t("motion.editMotion")}
                                         >
                                             <Edit3 className="h-3.5 w-3.5" />
-                                            <span>Edit</span>
+                                            <span>{t("common.edit")}</span>
                                         </SurfaceEditorToolbarSegButton>
-                                        <SurfaceEditorToolbarSegButton type="button" onClick={duplicateMotion} title="Duplicate" aria-label="Duplicate">
+                                        <SurfaceEditorToolbarSegButton type="button" onClick={duplicateMotion} title={t("common.duplicate")} aria-label={t("common.duplicate")}>
                                             <Copy className="h-4 w-4" />
                                         </SurfaceEditorToolbarSegButton>
-                                        <SurfaceEditorToolbarSegButton type="button" onClick={() => void deleteMotion()} title="Delete" aria-label="Delete">
+                                        <SurfaceEditorToolbarSegButton type="button" onClick={() => void deleteMotion()} title={t("common.delete")} aria-label={t("common.delete")}>
                                             <Trash2 className="h-4 w-4" />
                                         </SurfaceEditorToolbarSegButton>
                                     </SurfaceEditorToolbarButtonGroup>
                                     <div className="grid grid-cols-2 gap-3">
                                         <label className="grid min-w-0 gap-1.5">
-                                            <span className="text-xs font-medium text-fg-subtle">Repeat</span>
+                                            <span className="text-xs font-medium text-fg-subtle">{t("motion.panel.repeat")}</span>
                                             <NumericDraftEnhancedInput
                                                 committedDisplay={selectedAsset.config?.repeat ? String(selectedAsset.config.repeat) : ""}
                                                 draftResetKey={selectedAsset.id}
@@ -462,7 +472,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                             />
                                         </label>
                                         <label className="grid min-w-0 gap-1.5">
-                                            <span className="text-xs font-medium text-fg-subtle">Repeat delay ms</span>
+                                            <span className="text-xs font-medium text-fg-subtle">{t("motion.panel.repeatDelayMs")}</span>
                                             <NumericDraftEnhancedInput
                                                 committedDisplay={selectedAsset.config?.repeatDelayMs ? String(selectedAsset.config.repeatDelayMs) : ""}
                                                 draftResetKey={selectedAsset.id}
@@ -485,7 +495,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                         <div className="min-w-0">
                                             <div className="truncate text-xs font-medium text-primary">{descriptor.label}</div>
                                             <div className="mt-1 truncate text-2xs text-fg-muted">
-                                                {actionAnimationId ? `Current action uses ${actionAnimationId}` : "Current action has no motion asset"}
+                                                {actionAnimationId ? t("motion.panel.actionUses", { id: actionAnimationId }) : t("motion.panel.actionNoMotion")}
                                             </div>
                                         </div>
                                         <Button
@@ -496,7 +506,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                             className="h-9 justify-center"
                                         >
                                             <Check className="h-3.5 w-3.5" />
-                                            Bind to action
+                                            {t("motion.panel.bindToAction")}
                                         </Button>
                                     </div>
                                 </section>
@@ -513,18 +523,18 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                 <PreviewAssetSlot
                                     buttonRef={targetPickerButtonRef}
                                     icon={<ImageIcon className="h-3.5 w-3.5 shrink-0 text-fg-muted" />}
-                                    label={imageAssetName(selectedAsset.previewAssetId) ?? "Target"}
+                                    label={imageAssetName(selectedAsset.previewAssetId) ?? t("motion.panel.target")}
                                     hasValue={Boolean(selectedAsset.previewAssetId)}
-                                    title="Preview target image (editor only)"
+                                    title={t("motion.panel.previewTargetTitle")}
                                     onOpen={() => setAssetPickerFor("target")}
                                     onClear={() => setPreviewAsset("previewAssetId", undefined)}
                                 />
                                 <PreviewAssetSlot
                                     buttonRef={backgroundPickerButtonRef}
                                     icon={<Wallpaper className="h-3.5 w-3.5 shrink-0 text-fg-muted" />}
-                                    label={imageAssetName(selectedAsset.previewBackgroundAssetId) ?? "Background"}
+                                    label={imageAssetName(selectedAsset.previewBackgroundAssetId) ?? t("motion.panel.background")}
                                     hasValue={Boolean(selectedAsset.previewBackgroundAssetId)}
-                                    title="Preview background image (editor only)"
+                                    title={t("motion.panel.previewBackgroundTitle")}
                                     onOpen={() => setAssetPickerFor("background")}
                                     onClear={() => setPreviewAsset("previewBackgroundAssetId", undefined)}
                                 />
@@ -536,7 +546,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                     </div>
                 ) : (
                     <div className="flex h-full items-center justify-center text-sm text-fg-subtle">
-                        Select or create a story motion.
+                        {t("motion.panel.selectOrCreate")}
                     </div>
                 )}
             </main>
@@ -550,7 +560,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                         const current = assetPickerFor === "background" ? selectedAsset.previewBackgroundAssetId : selectedAsset.previewAssetId;
                         return current ? [current] : [];
                     })()}
-                    title={assetPickerFor === "background" ? "Preview background" : "Preview target"}
+                    title={assetPickerFor === "background" ? t("motion.panel.previewBackground") : t("motion.panel.previewTarget")}
                     onClose={() => setAssetPickerFor(null)}
                     onConfirm={handlePreviewAssetConfirm}
                 />
@@ -678,6 +688,7 @@ function PreviewAssetSlot(props: {
     onOpen: () => void;
     onClear: () => void;
 }) {
+    const { t } = useTranslation();
     return (
         <div className="flex min-w-0 max-w-56 items-center overflow-hidden rounded border border-edge bg-fill-subtle">
             <button
@@ -695,8 +706,8 @@ function PreviewAssetSlot(props: {
                     type="button"
                     className="grid h-7 w-6 shrink-0 place-items-center border-l border-edge text-fg-subtle hover:bg-red-500/10 hover:text-red-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400/50"
                     onClick={props.onClear}
-                    title="Clear"
-                    aria-label={`Clear ${props.title}`}
+                    title={t("common.clear")}
+                    aria-label={t("motion.panel.clearAria", { name: props.title })}
                 >
                     <X className="h-3 w-3" />
                 </button>

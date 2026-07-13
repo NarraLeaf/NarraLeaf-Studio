@@ -1,3 +1,4 @@
+import { useTranslation } from "@/lib/i18n";
 import { AppLayout } from "@/lib/components/layout";
 import { WizardHeader, WizardNavigation } from "./components";
 import { useProjectWizard } from "./hooks/useProjectWizard";
@@ -12,6 +13,8 @@ import { StepConfig } from "./types";
  * Refactored to use decoupled architecture with services and custom hooks
  */
 export function ProjectWizardApp() {
+    const { t } = useTranslation();
+
     // Use the custom hook for all wizard logic
     const {
         currentStep,
@@ -38,10 +41,10 @@ export function ProjectWizardApp() {
 
     // Step configuration
     const steps: StepConfig[] = [
-        { key: "template", label: "Template", description: "Choose a project template" },
-        { key: "details", label: "Details", description: "Project information" },
-        { key: "settings", label: "Settings", description: "Project configuration" },
-        { key: "review", label: "Review", description: "Review and create" }
+        { key: "template", label: t("wizard.steps.template.label"), description: t("wizard.steps.template.description") },
+        { key: "details", label: t("wizard.steps.details.label"), description: t("wizard.steps.details.description") },
+        { key: "settings", label: t("wizard.steps.settings.label"), description: t("wizard.steps.settings.description") },
+        { key: "review", label: t("wizard.steps.review.label"), description: t("wizard.steps.review.description") }
     ];
 
     /**
@@ -102,7 +105,7 @@ export function ProjectWizardApp() {
     };
 
     return (
-        <AppLayout title="New Project" iconSrc="/favicon.ico">
+        <AppLayout title={t("wizard.appTitle")} iconSrc="/favicon.ico">
             <div className="h-full flex flex-col">
                 {/* Progress Header */}
                 <WizardHeader steps={steps} currentStep={currentStep} />
@@ -122,7 +125,7 @@ export function ProjectWizardApp() {
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <h3 className="text-sm font-medium text-red-200">
-                                        Failed to Create Project
+                                        {t("wizard.error.createFailedTitle")}
                                     </h3>
                                     <p className="text-sm text-red-300 mt-1 break-words">
                                         {creationError}
@@ -131,7 +134,7 @@ export function ProjectWizardApp() {
                                 <button
                                     onClick={clearCreationError}
                                     className="text-red-400 hover:text-red-300 flex-shrink-0"
-                                    aria-label="Close error"
+                                    aria-label={t("wizard.error.closeError")}
                                 >
                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

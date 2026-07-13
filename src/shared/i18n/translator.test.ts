@@ -26,10 +26,12 @@ describe("createTranslator", () => {
     });
 
     it("falls back to the source locale for keys missing in a partial locale", () => {
-        // `ja` only translates a few keys; the rest resolve to English.
-        const { t } = createTranslator("ja");
-        expect(t("launcher.nav.projects")).toBe("プロジェクト"); // translated
-        expect(t("settings.categories.general.label")).toBe("General"); // fallback
+        const { t } = createTranslator("zh");
+        // Chinese has a single plural form, so zh omits the English `.one` form;
+        // resolving it falls back to English.
+        expect(t("launcher.recentCount.one")).toBe("{count} recent project");
+        // A key zh does translate still returns Chinese.
+        expect(t("settings.categories.general.label")).toBe("常规");
     });
 
     it("returns the key itself for an unknown key", () => {

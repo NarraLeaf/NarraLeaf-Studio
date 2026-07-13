@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { useTranslation } from "@/lib/i18n";
 import { useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -42,6 +43,7 @@ export function useAssetsContextMenu({
     handleImportToGroup,
     handleCreateMagicTags,
 }: UseAssetsContextMenuParams) {
+    const { t, tn } = useTranslation();
     const { menuState, showMenu, hideMenu } = useContextMenu();
 
     const showContextMenu = useCallback((event: React.MouseEvent, type: AssetType, item: Asset | AssetGroup | null, isGroup: boolean) => {
@@ -76,7 +78,7 @@ export function useAssetsContextMenu({
                 items.push(
                     {
                         id: "copy-selected",
-                        label: `Copy ${totalItems} item(s)`,
+                        label: tn("assets.menu.copyCount", totalItems),
                         onClick: () => {
                             handleCopy();
                             closeContextMenu();
@@ -84,7 +86,7 @@ export function useAssetsContextMenu({
                     },
                     {
                         id: "cut-selected",
-                        label: `Cut ${totalItems} item(s)`,
+                        label: tn("assets.menu.cutCount", totalItems),
                         onClick: () => {
                             handleCut();
                             closeContextMenu();
@@ -97,7 +99,7 @@ export function useAssetsContextMenu({
             items.push(
                 {
                     id: "delete-selected",
-                    label: `Delete ${selectedItems.size} item(s)`,
+                    label: tn("assets.menu.deleteCount", selectedItems.size),
                     onClick: async () => {
                         await handleDelete();
                         closeContextMenu();
@@ -110,7 +112,7 @@ export function useAssetsContextMenu({
                 items.push({ separator: true as const, id: "sep-magic-tags" });
                 items.push({
                     id: "magic-tags",
-                    label: `Create Tags`,
+                    label: t("assets.magicTag.title"),
                     onClick: async () => {
                         await handleCreateMagicTags();
                         closeContextMenu();
@@ -122,7 +124,7 @@ export function useAssetsContextMenu({
             items.push(
                 {
                     id: "copy",
-                    label: "Copy",
+                    label: t("common.copy"),
                     onClick: () => {
                         handleCopy();
                         closeContextMenu();
@@ -130,7 +132,7 @@ export function useAssetsContextMenu({
                 },
                 {
                     id: "cut",
-                    label: "Cut",
+                    label: t("common.cut"),
                     onClick: () => {
                         handleCut();
                         closeContextMenu();
@@ -146,7 +148,7 @@ export function useAssetsContextMenu({
             }
             items.push({
                 id: 'paste',
-                label: 'Paste',
+                label: t("common.paste"),
                 onClick: async () => {
                     await handlePaste();
                     closeContextMenu();
@@ -162,7 +164,7 @@ export function useAssetsContextMenu({
             items.push(
                 {
                     id: "rename",
-                    label: "Rename",
+                    label: t("common.rename"),
                     onClick: async () => {
                         await handleRename();
                         closeContextMenu();
@@ -170,7 +172,7 @@ export function useAssetsContextMenu({
                 },
                 {
                     id: "delete",
-                    label: "Delete",
+                    label: t("common.delete"),
                     onClick: async () => {
                         await handleDelete();
                         closeContextMenu();
@@ -186,7 +188,7 @@ export function useAssetsContextMenu({
 
         items.push({
             id: "new-group",
-            label: contextMenuTarget.isGroup ? "New Sub-Group" : "New Group",
+            label: contextMenuTarget.isGroup ? t("assets.menu.newSubGroup") : t("assets.menu.newGroup"),
             onClick: async () => {
                 const parentGroupId = contextMenuTarget.item
                     ? (contextMenuTarget.item as AssetGroup).id
@@ -198,7 +200,7 @@ export function useAssetsContextMenu({
 
         items.push({
             id: "import-assets",
-            label: "Import Assets...",
+            label: t("assets.menu.importAssets"),
             onClick: async () => {
                 const groupId = contextMenuTarget.item
                     ? (contextMenuTarget.item as AssetGroup).id
@@ -209,7 +211,7 @@ export function useAssetsContextMenu({
         });
 
         return items;
-    }, [clipboard, closeContextMenu, contextMenuTarget, handleCopy, handleCut, handleDelete, handleImportToGroup, handlePaste, handleRename, handleCreateGroup, isMultiSelectMode, selectedItems]);
+    }, [clipboard, closeContextMenu, contextMenuTarget, handleCopy, handleCut, handleDelete, handleImportToGroup, handlePaste, handleRename, handleCreateGroup, isMultiSelectMode, selectedItems, t, tn]);
 
     return {
         menuState,

@@ -19,6 +19,8 @@ import { UISurfaceEditorTab } from "./editors/UISurfaceEditorTab";
 import { ContextMenu, ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { PanelsTopLeft } from "lucide-react";
 import { createInputDialog } from "@/lib/components/dialogs";
+import { useTranslation } from "@/lib/i18n";
+import type { UseTranslation } from "@/lib/i18n";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { DEFAULT_APP_SURFACE_NAME, DEFAULT_UI_SURFACE_SIZE, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
@@ -92,11 +94,20 @@ function collectSurfaceOwnedEditorTabs(layout: EditorLayout, surfaceId: string):
     return result;
 }
 
+// English-only entity label passed to the (not-yet-localized) rename dialog's `itemType`.
 function getSurfaceIdentityLabel(surface: UISurface): string {
     if (surface.id === MAIN_APP_SURFACE_ID) {
         return DEFAULT_APP_SURFACE_NAME;
     }
     return surface.kind === "appSurface" ? "Page" : "Game UI";
+}
+
+// Localized surface-type label used in confirms, notifications, and context-menu items.
+function getSurfaceDisplayLabel(surface: UISurface, t: UseTranslation["t"]): string {
+    if (surface.id === MAIN_APP_SURFACE_ID) {
+        return DEFAULT_APP_SURFACE_NAME;
+    }
+    return surface.kind === "appSurface" ? t("uiEditor.surfaceKind.page") : t("uiEditor.surfaceKind.gameUi");
 }
 
 function createSurfaceEditorTab(surface: UISurface) {
@@ -112,6 +123,7 @@ function createSurfaceEditorTab(surface: UISurface) {
 }
 
 export function UISurfacesPanel({ panelId }: PanelComponentProps) {
+    const { t } = useTranslation();
     const { context } = useWorkspace();
     const { editorLayout, openEditorTab, closeEditorTabs } = useRegistry();
     const [surfaces, setSurfaces] = useState<UISurface[]>([]);
@@ -272,13 +284,13 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         if (!documentService || !uiService) {
             return;
         }
-        const label = getSurfaceIdentityLabel(surface);
+        const label = getSurfaceDisplayLabel(surface, t);
         const document = documentService.getDocument();
         const root = document.elements[surface.rootElementId];
         const hasChildren = Boolean(root && root.childrenIds.length > 0);
         const confirmed = await uiService.showConfirm(
-            `Delete ${label}?`,
-            hasChildren ? `This will remove all elements in this ${label}.` : undefined
+            t("uiEditor.panel.deleteConfirm", { label }),
+            hasChildren ? t("uiEditor.panel.deleteDetail", { label }) : undefined
         );
         if (!confirmed) {
             return;
@@ -292,7 +304,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         if (remaining.length > 0) {
             handleOpenSurface(remaining[0]);
         }
-    }, [documentService, uiService, editorLayout, handleOpenSurface, closeEditorTabs]);
+    }, [documentService, uiService, editorLayout, handleOpenSurface, closeEditorTabs, t]);
 
     const handleRenameSurface = useCallback(async (surface: UISurface) => {
         if (!documentService || !inputDialog || !uiService) {
@@ -321,29 +333,29 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         }
         const duplicated = documentService.duplicateSurface(surface.id);
         if (!duplicated) {
-            uiService?.showNotification("Page could not be duplicated.", "warning");
+            uiService?.showNotification(t("uiEditor.panel.duplicateFailed"), "warning");
             return;
         }
         void documentService.save(documentService.getDocument()).catch(err => {
             console.warn("[UISurfacesPanel] failed to save duplicated page", err);
         });
         handleOpenSurface(duplicated);
-    }, [documentService, handleOpenSurface, uiService]);
+    }, [documentService, handleOpenSurface, uiService, t]);
 
     const handleOpenMenu = useCallback(
         (event: MouseEvent<HTMLDivElement | HTMLButtonElement>, surface: UISurface) => {
             event.preventDefault();
             event.stopPropagation();
-            const label = getSurfaceIdentityLabel(surface);
+            const label = getSurfaceDisplayLabel(surface, t);
             const items: ContextMenuDef = [
                 {
                     id: "open-surface",
-                    label: `Open ${label}`,
+                    label: t("uiEditor.panel.openSurface", { label }),
                     onClick: () => handleOpenSurface(surface),
                 },
                 {
                     id: "rename-surface",
-                    label: `Rename ${label}`,
+                    label: t("uiEditor.panel.renameSurface", { label }),
                     onClick: () => {
                         void handleRenameSurface(surface);
                     },
@@ -352,7 +364,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             if (surface.kind === "appSurface") {
                 items.push({
                     id: "duplicate-surface",
-                    label: `Duplicate ${label}`,
+                    label: t("uiEditor.panel.duplicateSurface", { label }),
                     onClick: () => {
                         handleDuplicateSurface(surface);
                     },
@@ -366,7 +378,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                     },
                     {
                         id: "delete-surface",
-                        label: `Delete ${label}`,
+                        label: t("uiEditor.panel.deleteSurface", { label }),
                         onClick: () => {
                             void handleDeleteSurface(surface);
                         },
@@ -376,7 +388,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             setMenuItems(items);
             showMenu(event);
         },
-        [showMenu, handleOpenSurface, handleRenameSurface, handleDuplicateSurface, handleDeleteSurface],
+        [showMenu, handleOpenSurface, handleRenameSurface, handleDuplicateSurface, handleDeleteSurface, t],
     );
 
     const promptCreateSurface = useCallback(
@@ -413,8 +425,8 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                     if (!selection.valid) {
                         uiService.showNotification(
                             kind === "appSurface"
-                                ? "Check the page name and size before creating it."
-                                : "Select an available Game UI slot before creating it.",
+                                ? t("uiEditor.panel.pageValidationHint")
+                                : t("uiEditor.panel.gameUiSlotHint"),
                             "warning",
                         );
                         return;
@@ -429,7 +441,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 };
 
                 dialogId = uiService.dialogs.show({
-                    title: kind === "appSurface" ? "Create Page" : "Create Game UI",
+                    title: kind === "appSurface" ? t("uiEditor.panel.createPage") : t("uiEditor.panel.createGameUi"),
                     content: (
                         <CreateSurfaceDialogContent
                             kind={kind}
@@ -449,11 +461,11 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                     width: 420,
                     buttons: [
                         {
-                            label: "Cancel",
+                            label: t("common.cancel"),
                             onClick: handleCancel,
                         },
                         {
-                            label: "Create",
+                            label: t("common.create"),
                             primary: true,
                             onClick: handleConfirm,
                         },
@@ -462,7 +474,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 });
             });
         },
-        [defaultDesignSize, defaultStageSlotId, disabledStageSlotIds, kind, occupiedStageSlotIds, uiService],
+        [defaultDesignSize, defaultStageSlotId, disabledStageSlotIds, kind, occupiedStageSlotIds, uiService, t],
     );
 
     const handleCreateSurface = useCallback(async () => {
@@ -470,13 +482,13 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             return;
         }
         if (kind === "stageSurface" && disabledStageSlotIds.length >= GAME_UI_SLOT_OPTIONS.length) {
-            uiService?.showNotification("All Game UI slots already have a surface. Open an existing Game UI from the list.", "info");
+            uiService?.showNotification(t("uiEditor.panel.allSlotsUsed"), "info");
             return;
         }
         const suggestedName =
             kind === "appSurface"
-                ? `Page ${filteredSurfaces.length + 1}`
-                : `${STAGE_SLOT_LABELS[defaultStageSlotId]} UI`;
+                ? t("uiEditor.naming.page", { index: filteredSurfaces.length + 1 })
+                : t("uiEditor.naming.gameUi", { slot: STAGE_SLOT_LABELS[defaultStageSlotId] });
         const selection = await promptCreateSurface(suggestedName);
         if (!selection) {
             return;
@@ -506,6 +518,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         kind,
         promptCreateSurface,
         uiService,
+        t,
     ]);
 
     const globalBlueprintCard = useMemo<SurfaceListGlobalBlueprintCard | undefined>(() => {
@@ -514,13 +527,13 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         }
         return {
             title: globalOwnerLabel.label,
-            subtitle: "Global",
-            typeLabel: "Blueprint",
+            subtitle: t("uiEditor.panel.globalSubtitle"),
+            typeLabel: t("uiEditor.panel.blueprintType"),
             preview: <BlueprintLayerPreview model={globalBlueprintPreviewModel} heightClassName="h-24" />,
             canOpen: Boolean(globalBlueprintId),
             onClick: handleOpenGlobalBlueprint,
         };
-    }, [globalBlueprintId, globalBlueprintPreviewModel, handleOpenGlobalBlueprint, kind]);
+    }, [globalBlueprintId, globalBlueprintPreviewModel, handleOpenGlobalBlueprint, kind, t]);
 
     return (
         <div className="h-full flex flex-col">
@@ -530,7 +543,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             />
             <SurfaceActions
                 onCreate={handleCreateSurface}
-                createLabel={kind === "appSurface" ? "Create Page" : "Create Game UI"}
+                createLabel={kind === "appSurface" ? t("uiEditor.panel.createPage") : t("uiEditor.panel.createGameUi")}
                 createDisabled={!documentService || !currentKindOption}
             />
             <SurfaceList

@@ -4,6 +4,7 @@ import {
     openAssetPreviewTabsInEditor,
     setWorkspaceSelectionToPrimaryAsset,
 } from "@/apps/workspace/modules/assets/dnd/openDraggedAssetsInEditor";
+import { useTranslation } from "@/lib/i18n";
 
 interface MainEditorEmptyDropZoneProps {
     groupId: string;
@@ -13,6 +14,7 @@ interface MainEditorEmptyDropZoneProps {
  * Empty editor canvas drop target: open asset previews in the default editor group.
  */
 export function MainEditorEmptyDropZone({ groupId }: MainEditorEmptyDropZoneProps) {
+    const { t } = useTranslation();
     const { context } = useWorkspace();
 
     const { dropTargetProps, overlayClassName } = useAssetDropTarget({
@@ -36,7 +38,7 @@ export function MainEditorEmptyDropZone({ groupId }: MainEditorEmptyDropZoneProp
                     <img
                         src="/img/narraleaf-studio/logo-icon-white.png"
                         className="w-64 h-64 mx-auto opacity-5"
-                        alt="NarraLeaf Studio Logo"
+                        alt={t("workspace.shell.logoAlt")}
                     />
                 </div>
 

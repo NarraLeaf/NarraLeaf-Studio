@@ -11,15 +11,16 @@ import type {
 } from "@shared/types/story";
 import { DISPLAYABLE_BUILTIN_META, resolveDisplayableTargetRef } from "@shared/types/story";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { useTranslation } from "@/lib/i18n";
 import { listSceneDisplayableTargets, type SceneDisplayableRef } from "../../story-motion/storyMotionPreviewTarget";
 
 const FIELD_LABEL_CLASS = "block text-xs font-medium text-fg-muted mb-1";
 
-const KIND_META: Record<StoryDisplayableTargetKind, { label: string; icon: LucideIcon }> = {
-    character: { label: "Character", icon: UserRound },
-    image: { label: "Image", icon: ImageIcon },
-    text: { label: "Text", icon: Type },
-    layer: { label: "Layer", icon: Layers },
+const KIND_ICON: Record<StoryDisplayableTargetKind, LucideIcon> = {
+    character: UserRound,
+    image: ImageIcon,
+    text: Type,
+    layer: Layers,
 };
 
 /** Built-in stage singletons offered at the top of every target list, in display order. */
@@ -53,6 +54,7 @@ export function DisplayableTargetField(props: {
     target: StoryDisplayableTargetRef;
     onChange: (target: StoryDisplayableTargetRef) => void;
 }) {
+    const { t } = useTranslation();
     const rootRef = useRef<HTMLDivElement | null>(null);
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState("");
@@ -128,11 +130,11 @@ export function DisplayableTargetField(props: {
     };
 
     const displayKind = selected?.kind ?? resolved.kind ?? target.kind ?? "image";
-    const TriggerIcon = unresolved ? AlertTriangle : KIND_META[displayKind].icon;
+    const TriggerIcon = unresolved ? AlertTriangle : KIND_ICON[displayKind];
 
     return (
         <div ref={rootRef} className="relative">
-            <label className={FIELD_LABEL_CLASS}>{props.label ?? "Target"}</label>
+            <label className={FIELD_LABEL_CLASS}>{props.label ?? t("story.targetField.label")}</label>
             <button
                 type="button"
                 className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-edge bg-surface-raised px-3 text-left text-sm text-fg-muted transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60"
@@ -145,16 +147,16 @@ export function DisplayableTargetField(props: {
                         {unresolved ? (
                             <span
                                 className="shrink-0 rounded bg-amber-400/10 px-1 text-2xs text-amber-300/90"
-                                title="Not created earlier in this scene — pick an existing displayable"
+                                title={t("story.targetField.notOnStageTitle")}
                             >
-                                Not on stage
+                                {t("story.stage.notOnStage")}
                             </span>
                         ) : (
-                            <span className="shrink-0 text-2xs text-fg-subtle">{target.builtin ? "Built-in" : KIND_META[displayKind].label}</span>
+                            <span className="shrink-0 text-2xs text-fg-subtle">{target.builtin ? t("story.stage.builtin") : t(`story.targetField.kind.${displayKind}`)}</span>
                         )}
                     </>
                 ) : (
-                    <span className="truncate italic text-fg-subtle">Select displayable…</span>
+                    <span className="truncate italic text-fg-subtle">{t("story.targetField.placeholder")}</span>
                 )}
                 <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-fg-subtle" />
             </button>
@@ -172,7 +174,7 @@ export function DisplayableTargetField(props: {
                                 autoFocus
                                 value={query}
                                 onChange={event => setQuery(event.target.value)}
-                                placeholder="Search stage displayables"
+                                placeholder={t("story.targetField.search")}
                                 className="w-full bg-transparent text-sm text-fg placeholder:text-fg-subtle focus:outline-none"
                             />
                         </div>
@@ -198,7 +200,7 @@ export function DisplayableTargetField(props: {
                             />
                         ))}
                         {filteredBuiltins.length === 0 && filtered.length === 0 ? (
-                            <div className="px-2 py-3 text-center text-xs text-fg-subtle">No match.</div>
+                            <div className="px-2 py-3 text-center text-xs text-fg-subtle">{t("story.targetField.noMatch")}</div>
                         ) : null}
                     </div>
                 </div>
@@ -213,7 +215,7 @@ function BuiltinTargetRow(props: {
     onChoose: () => void;
 }) {
     const meta = DISPLAYABLE_BUILTIN_META[props.builtin];
-    const Icon = KIND_META[meta.kind].icon;
+    const Icon = KIND_ICON[meta.kind];
     return (
         <button
             type="button"
@@ -242,8 +244,8 @@ function DisplayableOptionRow(props: {
     active: boolean;
     onChoose: () => void;
 }) {
-    const meta = KIND_META[props.option.kind];
-    const Icon = meta.icon;
+    const { t } = useTranslation();
+    const Icon = KIND_ICON[props.option.kind];
     const { url } = useAssetObjectUrl(props.option.assetId);
     const preview = props.option.text ?? "";
 
@@ -268,7 +270,7 @@ function DisplayableOptionRow(props: {
             <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm text-fg">{props.option.name}</span>
                 <span className="block truncate text-2xs text-fg-subtle">
-                    {meta.label}{preview ? ` · ${preview}` : ""}
+                    {t(`story.targetField.kind.${props.option.kind}`)}{preview ? ` · ${preview}` : ""}
                 </span>
             </span>
             {props.active ? <Check className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}

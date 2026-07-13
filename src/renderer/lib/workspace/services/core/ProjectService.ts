@@ -7,8 +7,10 @@ import {
     LocalizationConfiguration,
     NetworkConfiguration,
     ProjectAppConfiguration,
+    SecurityConfiguration,
     normalizeLocalizationConfiguration,
     normalizeNetworkConfiguration,
+    normalizeSecurityConfiguration,
 } from "../../project/configuration";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
@@ -163,6 +165,37 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
             const app: ProjectAppConfiguration = {
                 ...config.app,
                 network,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read the effective asset-protection policy, falling back to the secure
+     * default (off) for projects that predate the `app.security` config.
+     */
+    public getSecurityConfiguration(): SecurityConfiguration {
+        return normalizeSecurityConfiguration(this.getProjectConfig().app?.security);
+    }
+
+    /**
+     * Merge a partial patch into the project asset-protection policy. Used by the
+     * project settings UI ("encrypt assets" toggle) and consumed by the packaging
+     * pipeline to decide whether to encrypt the pack.
+     */
+    public async updateSecurityConfiguration(patch: Partial<SecurityConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const security: SecurityConfiguration = {
+                ...normalizeSecurityConfiguration(config.app?.security),
+                ...patch,
+            };
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                security,
             };
             return {
                 ...config,

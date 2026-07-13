@@ -12,6 +12,7 @@ import {
     type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "@/lib/i18n";
 import { cn } from "../../utils/cn";
 
 export interface EnhancedInputProps
@@ -49,6 +50,7 @@ export function EnhancedInput({
     popoverZIndex,
     ...rest
 }: EnhancedInputProps) {
+    const { t } = useTranslation();
     const [hasFocus, setHasFocus] = useState(false);
     const [isPopoverOpen, setIsPopoverOpen] = useState(false);
     const [containerWidth, setContainerWidth] = useState<number | null>(null);
@@ -326,7 +328,7 @@ export function EnhancedInput({
                             paddingRightClass,
                         )}
                     >
-                        {hasDisplayText ? displayValue : rest.placeholder ?? "Edit value"}
+                        {hasDisplayText ? displayValue : rest.placeholder ?? t("dialogs.input.editValue")}
                     </span>
                     {unit && hasDisplayText && (
                         <span className="absolute right-2 text-xs text-fg-subtle pointer-events-none select-none">

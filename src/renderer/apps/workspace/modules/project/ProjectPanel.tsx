@@ -6,7 +6,7 @@ import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import type { ProjectConfig } from "@/lib/workspace/project/project";
 import type { PanelComponentProps } from "../types";
-import { PROJECT_NAV_ITEMS, ProjectPanelHome, type ProjectSectionId } from "./ProjectPanelHome";
+import { useProjectNavItems, ProjectPanelHome, type ProjectSectionId } from "./ProjectPanelHome";
 import { ProjectSubPage } from "./components/ProjectSubPage";
 import { ProjectDetailsSection } from "./sections/ProjectDetailsSection";
 import { ProjectAssetsSection } from "./sections/ProjectAssetsSection";
@@ -58,8 +58,9 @@ export function ProjectPanel({ panelId }: PanelComponentProps) {
         return () => window.removeEventListener("keydown", onKeyDown);
     }, [activeSection]);
 
+    const navItems = useProjectNavItems();
     const activeItem = activeSection
-        ? PROJECT_NAV_ITEMS.find(item => item.id === activeSection) ?? null
+        ? navItems.find(item => item.id === activeSection) ?? null
         : null;
 
     const sectionProps: ProjectSectionProps | null = useMemo(() => {

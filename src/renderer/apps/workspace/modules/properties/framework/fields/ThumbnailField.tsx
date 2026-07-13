@@ -4,6 +4,7 @@ import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetS
 import { ImageCropper } from "@/apps/workspace/modules/assets/components/ImageCropper";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset } from "@/lib/workspace/services/assets/types";
+import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
@@ -73,6 +74,7 @@ interface ThumbnailFieldProps<TData> {
  * Renders a thumbnail selector with cropping functionality
  */
 function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldProps<TData>) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
     const [selectorOpen, setSelectorOpen] = useState(false);
@@ -193,18 +195,18 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
         async (assets: Asset[]) => {
             const selected = assets[0];
             if (!selected || !assetsService) {
-                setError("Workspace not ready");
+                setError(t("properties.thumbnail.error.workspaceNotReady"));
                 return;
             }
 
             if (selected.type !== AssetType.Image) {
-                setError("Please select an image asset");
+                setError(t("properties.thumbnail.error.selectImage"));
                 return;
             }
 
             const result = await assetsService.fetch<AssetType.Image>(selected as Asset<AssetType.Image>);
             if (!result.success) {
-                setError(result.error || "Failed to load asset");
+                setError(result.error || t("properties.thumbnail.error.loadAsset"));
                 return;
             }
 
@@ -227,7 +229,7 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
             setCropSourceSize({ width, height });
             setCropperOpen(true);
         },
-        [assetsService, cropperImageUrl]
+        [assetsService, cropperImageUrl, t]
     );
 
     const handleClearThumbnail = useCallback(async () => {
@@ -248,14 +250,14 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
             if (serviceAssets) {
                 const result = await serviceAssets.deleteFile(currentId);
                 if (!result.ok) {
-                    setError(result.error?.message || "Failed to delete thumbnail");
+                    setError(result.error?.message || t("properties.thumbnail.error.deleteFailed"));
                 }
             }
         } finally {
             setIsSaving(false);
             onSaving(false);
         }
-    }, [onSaving, serviceAssets, thumbnailUrl]);
+    }, [onSaving, serviceAssets, thumbnailUrl, t]);
 
     const cropImage = useCallback(async (imageUrl: string, selection: CropRect): Promise<Blob> => {
         const { x, y, width, height } = selection;
@@ -299,7 +301,7 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
     const handleCropConfirm = useCallback(
         async (selection: CropRect) => {
             if (!serviceAssets || !croppingAsset || !cropperImageUrl) {
-                setError("Workspace not ready");
+                setError(t("properties.thumbnail.error.workspaceNotReady"));
                 return;
             }
 
@@ -313,20 +315,20 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
                 const arrayBuffer = await blob.arrayBuffer();
                 const writeResult = await serviceAssets.writeFile(new Uint8Array(arrayBuffer));
                 if (!writeResult.ok) {
-                    setError(writeResult.error?.message || "Failed to save thumbnail");
+                    setError(writeResult.error?.message || t("properties.thumbnail.error.saveFailed"));
                     return;
                 }
                 const newId = writeResult.data;
                 await fieldRef.current.setThumbnail(dataRef.current, newId);
                 resetCropper();
             } catch (err) {
-                setError(err instanceof Error ? err.message : "Unknown error");
+                setError(err instanceof Error ? err.message : t("properties.thumbnail.error.unknown"));
             } finally {
                 setIsSaving(false);
                 onSaving(false);
             }
         },
-        [serviceAssets, croppingAsset, cropperImageUrl, cropSourceSize, cropImage, onSaving, resetCropper]
+        [serviceAssets, croppingAsset, cropperImageUrl, cropSourceSize, cropImage, onSaving, resetCropper, t]
     );
 
     const effectiveAnchorRef = field.anchorRef || anchorRef;
@@ -340,7 +342,7 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
             )}
             <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm text-fg">Preview</span>
+                    <span className="text-sm text-fg">{t("properties.preview")}</span>
                     <div className="flex items-center gap-2">
                         {thumbnailId && (
                             <button
@@ -348,7 +350,7 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
                                 onClick={handleClearThumbnail}
                                 disabled={isSaving}
                             >
-                                Clear
+                                {t("common.clear")}
                             </button>
                         )}
                         <button
@@ -357,7 +359,7 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
                             onClick={() => setSelectorOpen(true)}
                             disabled={isSaving}
                         >
-                            Select
+                            {t("properties.select")}
                         </button>
                     </div>
                 </div>
@@ -365,15 +367,15 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
                     {thumbnailUrl ? (
                         <img
                             src={thumbnailUrl}
-                            alt="thumbnail"
+                            alt={t("properties.thumbnail.alt")}
                             className="absolute inset-0 w-full h-full object-cover"
                         />
                     ) : thumbnailId ? (
                         <div className="absolute inset-0 flex items-center justify-center text-fg-muted" />
                     ) : (
                         <div className="absolute inset-0 flex flex-col items-center justify-center space-y-1">
-                            <div>No thumbnail yet</div>
-                            <div className="text-2xs text-fg-subtle">Click Select to choose one</div>
+                            <div>{t("properties.thumbnail.empty")}</div>
+                            <div className="text-2xs text-fg-subtle">{t("properties.thumbnail.emptyHint")}</div>
                         </div>
                     )}
                 </div>
@@ -390,7 +392,7 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
                     void handleSelectThumbnail(assets);
                 }}
                 anchorRef={effectiveAnchorRef as any}
-                title="Select Thumbnail"
+                title={t("properties.thumbnail.selectTitle")}
                 multiple={false}
             />
             <ImageCropper
@@ -399,7 +401,7 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
                 initialSelection={initialCrop}
                 aspectRatio={field.aspectRatio ?? 1}
                 anchorRef={effectiveAnchorRef as any}
-                title="Crop Thumbnail"
+                title={t("properties.thumbnail.cropTitle")}
                 onClose={resetCropper}
                 onConfirm={handleCropConfirm}
                 className={isSaving ? "pointer-events-none opacity-90" : ""}

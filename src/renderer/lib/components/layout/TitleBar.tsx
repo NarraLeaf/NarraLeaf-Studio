@@ -1,4 +1,5 @@
 import { useWindowControls } from "@/lib/app/hooks/useWindowControls";
+import { useTranslation } from "@/lib/i18n";
 import { ErrorBoundary } from "@/lib/app/errorHandling/ErrorBoundary";
 import { isMacPlatform } from "@/lib/app/platform";
 import { Minus, Square, X } from "lucide-react";
@@ -32,6 +33,7 @@ export function TitleBar({
     initialControlAbility,
     windowControlPolicy = WindowControlPolicy.Standard,
 }: TitleBarProps) {
+    const { t } = useTranslation();
     const isMac = isMacPlatform();
     const usesInlineMacControls = isMac && windowControlPolicy === WindowControlPolicy.Standard;
     const hasWindowControls = windowControlPolicy !== WindowControlPolicy.None;
@@ -54,7 +56,7 @@ export function TitleBar({
                     <div className="flex h-full shrink-0 items-center px-4">
                         <img
                             src={iconSrc}
-                            alt="App Icon"
+                            alt={t("dialogs.window.appIcon")}
                             className="w-5 h-5"
                         />
                     </div>
@@ -89,7 +91,7 @@ export function TitleBar({
                     <div className="flex h-full shrink-0 items-center px-4">
                         <img
                             src={iconSrc}
-                            alt="App Icon"
+                            alt={t("dialogs.window.appIcon")}
                             className="w-5 h-5"
                         />
                     </div>
@@ -107,6 +109,7 @@ interface CustomWindowControlsProps {
 }
 
 function CustomWindowControls({ initialAbility }: CustomWindowControlsProps) {
+    const { t } = useTranslation();
     const { isMaximized, ability, minimize, toggleMaximize, close } = useWindowControls(initialAbility);
 
     return (
@@ -115,8 +118,8 @@ function CustomWindowControls({ initialAbility }: CustomWindowControlsProps) {
                 <button
                     onClick={minimize}
                     className="h-10 w-10 grid place-items-center text-fg-muted hover:bg-fill rounded-sm transition-colors cursor-default"
-                    aria-label="Minimize"
-                    title="Minimize"
+                    aria-label={t("dialogs.window.minimize")}
+                    title={t("dialogs.window.minimize")}
                 >
                     <Minus className="w-4 h-4" />
                 </button>
@@ -125,8 +128,8 @@ function CustomWindowControls({ initialAbility }: CustomWindowControlsProps) {
                 <button
                     onClick={toggleMaximize}
                     className="h-10 w-10 grid place-items-center text-fg-muted hover:bg-fill rounded-sm transition-colors cursor-default"
-                    aria-label={isMaximized ? "Restore" : "Maximize"}
-                    title={isMaximized ? "Restore" : "Maximize"}
+                    aria-label={isMaximized ? t("dialogs.window.restore") : t("dialogs.window.maximize")}
+                    title={isMaximized ? t("dialogs.window.restore") : t("dialogs.window.maximize")}
                 >
                     <Square className="w-3 h-3" />
                 </button>
@@ -135,8 +138,8 @@ function CustomWindowControls({ initialAbility }: CustomWindowControlsProps) {
                 <button
                     onClick={close}
                     className="h-10 w-10 grid place-items-center text-fg-muted hover:bg-danger/80 hover:text-white rounded-sm transition-colors cursor-default"
-                    aria-label="Close"
-                    title="Close"
+                    aria-label={t("common.close")}
+                    title={t("common.close")}
                 >
                     <X className="w-4 h-4" />
                 </button>

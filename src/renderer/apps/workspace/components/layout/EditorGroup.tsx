@@ -11,6 +11,7 @@ import { isMacPlatform } from "@/lib/app/platform";
 import { useKeybinding, contextual, whenEditorTabsFocused, useMaxActiveEditors } from "../../hooks";
 import { useEditorGroupAssetDrop } from "./useEditorGroupAssetDrop";
 import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
+import { useTranslation } from "@/lib/i18n";
 
 interface EditorGroupProps {
     group: EditorGroupType;
@@ -22,6 +23,7 @@ interface EditorGroupProps {
  * Manages focus state and visual focus indicator
  */
 export function EditorGroup({ group }: EditorGroupProps) {
+    const { t } = useTranslation();
     const { closeEditorTab, closeEditorTabs, setActiveEditorTab } = useRegistry();
     const { context } = useWorkspace();
     // True when THIS group owns the active editor focus — either the editor body (a tab is
@@ -303,7 +305,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                                         : "opacity-0 group-hover:opacity-100 hover:bg-fill"
                                                 }
                                             `}
-                                            aria-label={`Close ${tab.title}`}
+                                            aria-label={t("workspace.shell.closeTab", { name: String(tab.title) })}
                                         >
                                             <X className="w-3 h-3" />
                                         </button>
@@ -345,7 +347,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
                 })}
                 {!activeTab && (
                     <div className="h-full flex items-center justify-center text-fg-subtle">
-                        <p>No active editor</p>
+                        <p>{t("workspace.shell.noActiveEditor")}</p>
                     </div>
                 )}
             </div>

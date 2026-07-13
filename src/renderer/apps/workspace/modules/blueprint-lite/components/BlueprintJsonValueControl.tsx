@@ -48,26 +48,13 @@ import {
     type JsonValueKind,
 } from "./blueprintJsonValue";
 import type { BlueprintJsonValueSchema } from "@/lib/ui-editor/blueprint-nodes/types";
+import { useTranslation } from "@/lib/i18n";
 
 type Props = {
     value: unknown;
     onChange: (next: JsonValue) => void;
     schema?: BlueprintJsonValueSchema;
 };
-
-const KIND_OPTIONS: SelectOption[] = [
-    { value: "object", label: "Object" },
-    { value: "array", label: "Array" },
-    { value: "string", label: "String" },
-    { value: "number", label: "Number" },
-    { value: "boolean", label: "Boolean" },
-    { value: "null", label: "Null" },
-];
-
-const BOOLEAN_OPTIONS: SelectOption[] = [
-    { value: "true", label: "True" },
-    { value: "false", label: "False" },
-];
 
 const ICON_BUTTON =
     "nodrag !h-5 !w-5 shrink-0 !gap-0 rounded !p-1 text-fg-muted hover:bg-fill-subtle hover:text-fg";
@@ -170,6 +157,7 @@ function JsonObjectKeyInput({
     fieldKey: string;
     commitAtPath: (path: JsonPath, next: JsonValue) => void;
 }) {
+    const { t } = useTranslation();
     const [draft, setDraft] = useState(fieldKey);
 
     useEffect(() => {
@@ -188,7 +176,7 @@ function JsonObjectKeyInput({
             }`}
             type="text"
             value={draft}
-            title={invalid ? "Field names must be non-empty and unique" : "Field name"}
+            title={invalid ? t("blueprint.json.fieldNameInvalid") : t("blueprint.json.fieldName")}
             size="sm"
             onMouseDown={stopFlowNodePointerBubble}
             onPointerDown={stopFlowNodePointerBubble}
@@ -211,6 +199,7 @@ function PrimitiveValueEditor({
     value: JsonValue;
     onChange: (next: JsonValue) => void;
 }) {
+    const { t } = useTranslation();
     if (typeof value === "string") {
         return (
             <Input
@@ -230,7 +219,10 @@ function PrimitiveValueEditor({
     if (typeof value === "boolean") {
         return (
             <JsonEditorSelect
-                options={BOOLEAN_OPTIONS}
+                options={[
+                    { value: "true", label: t("blueprint.json.true") },
+                    { value: "false", label: t("blueprint.json.false") },
+                ]}
                 value={value ? "true" : "false"}
                 size="sm"
                 onChange={next => onChange(String(next) === "true")}
@@ -271,6 +263,18 @@ function JsonTreeRow({
     onRemove?: () => void;
     arrayActions?: ReactNode;
 }) {
+    const { t } = useTranslation();
+    const kindOptions = useMemo<SelectOption[]>(
+        () => [
+            { value: "object", label: t("blueprint.json.object") },
+            { value: "array", label: t("blueprint.json.array") },
+            { value: "string", label: t("blueprint.json.string") },
+            { value: "number", label: t("blueprint.json.number") },
+            { value: "boolean", label: t("blueprint.json.boolean") },
+            { value: "null", label: t("blueprint.json.null") },
+        ],
+        [t],
+    );
     const value = getJsonValueAtPath(root, path) ?? null;
     const kind = getJsonValueKind(value);
     const expandable = kind === "object" || kind === "array";
@@ -350,8 +354,8 @@ function JsonTreeRow({
                 {expandable ? (
                     <Button
                         type="button"
-                        title={isExpanded ? "Collapse" : "Expand"}
-                        aria-label={isExpanded ? "Collapse" : "Expand"}
+                        title={isExpanded ? t("common.collapse") : t("common.expand")}
+                        aria-label={isExpanded ? t("common.collapse") : t("common.expand")}
                         variant="ghost"
                         size="sm"
                         className={ICON_BUTTON}
@@ -376,13 +380,13 @@ function JsonTreeRow({
                     {lockedKind ? (
                         <span
                             className="w-[6.25rem] shrink-0 rounded border border-edge bg-[#0d1014] px-1.5 py-1 text-2xs capitalize tracking-wide text-fg-subtle"
-                            title="Schema field type"
+                            title={t("blueprint.json.schemaFieldType")}
                         >
                             {lockedKind}
                         </span>
                     ) : (
                         <JsonEditorSelect
-                            options={KIND_OPTIONS}
+                            options={kindOptions}
                             value={kind}
                             size="sm"
                             onChange={next => changeKind(String(next) as JsonValueKind)}
@@ -403,8 +407,8 @@ function JsonTreeRow({
                 {canAddChild ? (
                     <Button
                         type="button"
-                        title="Add item"
-                        aria-label="Add item"
+                        title={t("blueprint.json.addItem")}
+                        aria-label={t("blueprint.json.addItem")}
                         variant="ghost"
                         size="sm"
                         className={ICON_BUTTON}
@@ -421,8 +425,8 @@ function JsonTreeRow({
                 {onRemove ? (
                     <Button
                         type="button"
-                        title="Remove"
-                        aria-label="Remove"
+                        title={t("common.remove")}
+                        aria-label={t("common.remove")}
                         variant="ghost"
                         size="sm"
                         className={`${ICON_BUTTON} hover:text-red-200`}
@@ -490,8 +494,8 @@ function JsonTreeRow({
                                   <div className="flex shrink-0 items-center gap-0.5">
                                       <Button
                                           type="button"
-                                          title="Move up"
-                                          aria-label="Move up"
+                                          title={t("common.moveUp")}
+                                          aria-label={t("common.moveUp")}
                                           variant="ghost"
                                           size="sm"
                                           disabled={index === 0}
@@ -507,8 +511,8 @@ function JsonTreeRow({
                                       </Button>
                                       <Button
                                           type="button"
-                                          title="Move down"
-                                          aria-label="Move down"
+                                          title={t("common.moveDown")}
+                                          aria-label={t("common.moveDown")}
                                           variant="ghost"
                                           size="sm"
                                           disabled={index >= value.length - 1}
@@ -609,6 +613,7 @@ function JsonEditorPortal({
     onChange: (next: JsonValue) => void;
     onClose: () => void;
 }) {
+    const { t } = useTranslation();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["$"]));
     const [mode, setMode] = useState<"tree" | "raw">("tree");
@@ -694,15 +699,15 @@ function JsonEditorPortal({
             <JsonEditorScopeContext.Provider value={scopeId}>
                 <div className="mb-2 flex min-w-0 items-center gap-2 border-b border-edge pb-2">
                     <div className="min-w-0 flex-1">
-                        <div className="text-2xs tracking-wide text-fg-subtle">JSON</div>
+                        <div className="text-2xs tracking-wide text-fg-subtle">{t("blueprint.json.label")}</div>
                         <div className="truncate font-mono text-2xs text-fg-muted">
                             {summarizeJsonValue(root)}
                         </div>
                     </div>
                     <Button
                         type="button"
-                        title={mode === "raw" ? "Tree editor" : "Raw JSON"}
-                        aria-label={mode === "raw" ? "Tree editor" : "Raw JSON"}
+                        title={mode === "raw" ? t("blueprint.json.treeEditor") : t("blueprint.json.rawJson")}
+                        aria-label={mode === "raw" ? t("blueprint.json.treeEditor") : t("blueprint.json.rawJson")}
                         variant="ghost"
                         size="sm"
                         className={`${ICON_BUTTON} text-cyan-200 hover:text-cyan-100`}
@@ -744,7 +749,7 @@ function JsonEditorPortal({
                             root={root}
                             path={[]}
                             schema={schema}
-                            label="Root"
+                            label={t("blueprint.json.root")}
                             depth={0}
                             expanded={expanded}
                             setExpanded={setExpanded}
@@ -759,6 +764,7 @@ function JsonEditorPortal({
 }
 
 export function BlueprintJsonValueControl({ value, onChange, schema }: Props) {
+    const { t } = useTranslation();
     const root = useMemo(() => coerceJsonValueToSchema(value, schema), [schema, value]);
     const [open, setOpen] = useState(false);
     const triggerRef = useRef<HTMLDivElement | null>(null);
@@ -779,8 +785,8 @@ export function BlueprintJsonValueControl({ value, onChange, schema }: Props) {
             </div>
             <Button
                 type="button"
-                title="Edit JSON"
-                aria-label="Edit JSON"
+                title={t("blueprint.json.edit")}
+                aria-label={t("blueprint.json.edit")}
                 variant="ghost"
                 size="sm"
                 className="nodrag !h-8 !w-8 shrink-0 !gap-0 rounded border border-edge !p-1.5 text-fg-muted hover:bg-fill-subtle"

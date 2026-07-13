@@ -28,6 +28,7 @@ import {
     isUsableAppearanceModel,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import type { TextAlign, TextVerticalAlign, TextWrapMode } from "@/lib/ui-editor/widget-modules/builtin/text/types";
+import { i18nStore } from "@/lib/i18n";
 import { getButtonProps } from "./helpers";
 import type { ButtonWidgetProps } from "./types";
 
@@ -94,6 +95,7 @@ const ButtonLabelBlueprintValueField = createBlueprintValueField({
 
 export function createButtonInspector(ctx: InspectorContext) {
     type D = UIInspectorData;
+    const { t } = i18nStore.getTranslator();
     const { element, documentService } = ctx;
 
     const patch = (partial: Partial<ButtonWidgetProps>) => {
@@ -105,27 +107,27 @@ export function createButtonInspector(ctx: InspectorContext) {
 
     return createPropertyEditorSchema<D>({
         id: `ui-inspector:nl.button:${element.id}`,
-        title: element.name ?? "Button",
+        title: element.name ?? t("widgets.button.title"),
         fields: [],
         tabs: [
             {
                 id: "properties",
-                title: "Properties",
+                title: t("widgets.tabs.properties"),
                 fields: [
                     defineField<D, any>({
                         id: "section.buttonText",
                         type: "section",
-                        title: "Text",
+                        title: t("widgets.button.sectionText"),
                         fields: [
                             defineField<D, any>({
                                 id: "section.buttonContent",
                                 type: "section",
-                                title: "Content",
+                                title: t("widgets.content"),
                                 fields: [
                                     defineField<D, any>({
                                         id: "button.label",
                                         type: "custom",
-                                        label: "Text",
+                                        label: t("widgets.textLabel"),
                                         component: ButtonLabelBlueprintValueField,
                                     }),
                                 ],
@@ -133,12 +135,12 @@ export function createButtonInspector(ctx: InspectorContext) {
                             defineField<D, any>({
                                 id: "section.buttonTypography",
                                 type: "section",
-                                title: "Typography",
+                                title: t("widgets.typography.title"),
                                 fields: [
                                     defineField<D, any>({
                                         id: "button.fontAsset",
                                         type: "fontAsset",
-                                        label: "Font",
+                                        label: t("widgets.typography.font"),
                                         getValue: (d: D) => getButtonProps(d.element).fontAssetId,
                                         setValue: (_d: D, value: string | null) => {
                                             patch({ fontAssetId: value });
@@ -208,7 +210,7 @@ export function createButtonInspector(ctx: InspectorContext) {
                                                             max={4}
                                                             step={0.05}
                                                             leftIcon={<Baseline className="w-4 h-4 text-fg-muted" />}
-                                                            title="Line height (unitless)"
+                                                            title={t("widgets.typography.lineHeightHint")}
                                                         />
                                                     );
                                                 },
@@ -218,11 +220,11 @@ export function createButtonInspector(ctx: InspectorContext) {
                                     defineField<D, any>({
                                         id: "button.weight",
                                         type: "select",
-                                        label: "Weight",
+                                        label: t("widgets.typography.weight"),
                                         options: [
-                                            { value: "normal", label: "Regular" },
-                                            { value: "600", label: "Semibold" },
-                                            { value: "bold", label: "Bold" },
+                                            { value: "normal", label: t("widgets.typography.regular") },
+                                            { value: "600", label: t("widgets.typography.semibold") },
+                                            { value: "bold", label: t("widgets.typography.bold") },
                                         ],
                                         getValue: (d: D) => getButtonProps(d.element).fontWeight,
                                         setValue: (_d: D, v: string | number) => {
@@ -234,11 +236,11 @@ export function createButtonInspector(ctx: InspectorContext) {
                                     defineField<D, any>({
                                         id: "button.wrapMode",
                                         type: "select",
-                                        label: "Line wrap",
+                                        label: t("widgets.typography.lineWrap"),
                                         options: [
-                                            { value: "word", label: "Words" },
-                                            { value: "character", label: "Characters" },
-                                            { value: "nowrap", label: "No wrap" },
+                                            { value: "word", label: t("widgets.typography.wrapWords") },
+                                            { value: "character", label: t("widgets.typography.wrapCharacters") },
+                                            { value: "nowrap", label: t("widgets.typography.wrapNone") },
                                         ],
                                         getValue: (d: D) => getButtonProps(d.element).textWrapMode,
                                         setValue: (_d: D, v: string | number) => {
@@ -249,16 +251,16 @@ export function createButtonInspector(ctx: InspectorContext) {
                                         id: "button.align",
                                         type: "iconButtonGroup",
                                         mode: "single",
-                                        label: "Alignment",
+                                        label: t("widgets.typography.alignment"),
                                         showLabels: false,
                                         options: [
-                                            { id: "left", icon: <AlignLeft className="w-4 h-4" />, label: "Align left" },
+                                            { id: "left", icon: <AlignLeft className="w-4 h-4" />, label: t("widgets.typography.alignLeft") },
                                             {
                                                 id: "center",
                                                 icon: <AlignCenter className="w-4 h-4" />,
-                                                label: "Align center",
+                                                label: t("widgets.typography.alignCenter"),
                                             },
-                                            { id: "right", icon: <AlignRight className="w-4 h-4" />, label: "Align right" },
+                                            { id: "right", icon: <AlignRight className="w-4 h-4" />, label: t("widgets.typography.alignRight") },
                                         ],
                                         getValue: (d: D) => getButtonProps(d.element).textAlign,
                                         setValue: (_d: D, value: IconButtonSelection) => {
@@ -270,23 +272,23 @@ export function createButtonInspector(ctx: InspectorContext) {
                                         id: "button.verticalAlign",
                                         type: "iconButtonGroup",
                                         mode: "single",
-                                        label: "Vertical alignment",
+                                        label: t("widgets.typography.verticalAlignment"),
                                         showLabels: false,
                                         options: [
                                             {
                                                 id: "start",
                                                 icon: <AlignVerticalJustifyStart className="w-4 h-4" />,
-                                                label: "Align top",
+                                                label: t("widgets.typography.alignTop"),
                                             },
                                             {
                                                 id: "center",
                                                 icon: <AlignVerticalJustifyCenter className="w-4 h-4" />,
-                                                label: "Align middle",
+                                                label: t("widgets.typography.alignMiddle"),
                                             },
                                             {
                                                 id: "end",
                                                 icon: <AlignVerticalJustifyEnd className="w-4 h-4" />,
-                                                label: "Align bottom",
+                                                label: t("widgets.typography.alignBottom"),
                                             },
                                         ],
                                         getValue: (d: D) => getButtonProps(d.element).textVerticalAlign,
@@ -300,7 +302,7 @@ export function createButtonInspector(ctx: InspectorContext) {
                             defineField<D, any>({
                                 id: "section.buttonColor",
                                 type: "section",
-                                title: "Color",
+                                title: t("widgets.button.sectionColor"),
                                 fields: [
                                     defineField<D, any>({
                                         id: "button.colorRow",
@@ -340,10 +342,10 @@ export function createButtonInspector(ctx: InspectorContext) {
                     defineField<D, any>({
                         id: "section.appearanceAuthoring",
                         type: "section",
-                        title: "Appearance",
+                        title: t("widgets.appearance.title"),
                         collapsible: true,
                         defaultCollapsed: true,
-                        helpText: "Compact modules with per-module state overrides (header menu: add or remove).",
+                        helpText: t("widgets.appearance.modulesHelp"),
                         fields: [
                             defineField<D, any>({
                                 id: "button.appearance.panel",
@@ -355,14 +357,14 @@ export function createButtonInspector(ctx: InspectorContext) {
                     defineField<D, any>({
                         id: "section.behavior",
                         type: "section",
-                        title: "Behavior",
+                        title: t("widgets.button.sectionBehavior"),
                         collapsible: true,
                         defaultCollapsed: true,
                         fields: [
                             defineField<D, any>({
                                 id: "button.interactionDisabled",
                                 type: "checkbox",
-                                label: "Interaction disabled",
+                                label: t("widgets.button.interactionDisabled"),
                                 getValue: (d: D) => Boolean(getButtonProps(d.element).interactionDisabled),
                                 setValue: (_d: D, v: boolean) => patch({ interactionDisabled: v }),
                             }),
@@ -371,21 +373,21 @@ export function createButtonInspector(ctx: InspectorContext) {
                     defineField<D, any>({
                         id: "section.localization",
                         type: "section",
-                        title: "Localization",
+                        title: t("widgets.localization.title"),
                         collapsible: true,
                         defaultCollapsed: true,
                         fields: [
                             defineField<D, any>({
                                 id: "button.localizable",
                                 type: "checkbox",
-                                label: "Localize label",
+                                label: t("widgets.button.localizeLabel"),
                                 getValue: (d: D) => Boolean(getButtonProps(d.element).localizable),
                                 setValue: (_d: D, v: boolean) => patch({ localizable: v }),
                             }),
                             defineField<D, any>({
                                 id: "button.localizationKey",
                                 type: "select",
-                                label: "Text key",
+                                label: t("widgets.localization.textKey"),
                                 options: () => listLocalizationKeyOptions(),
                                 getValue: (d: D) => getButtonProps(d.element).localizationKey ?? "",
                                 setValue: (_d: D, v: string | number) => patch({ localizationKey: String(v).trim() || undefined }),
@@ -396,12 +398,12 @@ export function createButtonInspector(ctx: InspectorContext) {
             },
             {
                 id: "interaction",
-                title: "Interaction",
+                title: t("widgets.tabs.interaction"),
                 fields: [
                     defineField<D, any>({
                         id: "interaction.blueprint.readonly",
                         type: "custom",
-                        label: "Control blueprint",
+                        label: t("widgets.blueprint.controlLabel"),
                         component: ReadonlyBlueprintSection,
                     }),
                 ],

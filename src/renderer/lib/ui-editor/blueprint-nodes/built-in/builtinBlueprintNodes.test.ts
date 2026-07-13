@@ -115,6 +115,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_HIDE_DIALOG,
     BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_NEXT,
     BLUEPRINT_NODE_TYPE_GAME_QUIT,
@@ -241,6 +244,7 @@ import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 import { fnBlueprintNodes } from "./fnNodes";
 import { frameBlueprintNodes } from "./frameNodes";
 import { gameBlueprintNodes } from "./gameNodes";
+import { backlogBlueprintNodes } from "./backlogNodes";
 import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 import { resolveDataPinValue } from "./graphParamResolvers";
@@ -316,6 +320,8 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     listSaveIds: async () => [],
                     getSaveMetadata: async () => ({}),
                     getSavePreview: async () => null,
+                    getHistory: async () => [],
+                    restoreHistory: async () => undefined,
                     getNametag: () => null,
                     getNotifications: () => [],
                     getChoiceCount: () => 0,
@@ -327,6 +333,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     hideDialog: async () => undefined,
                     toggleDialogDisplay: async () => undefined,
                     setSentenceSpeed: async () => undefined,
+                    setOutputResolution: async () => undefined,
                     getPreference: () => 0,
                     setPreference: async () => undefined,
                 },
@@ -425,6 +432,8 @@ function createPageNavigationHostAdapter(
                     listSaveIds: async () => [],
                     getSaveMetadata: async () => ({}),
                     getSavePreview: async () => null,
+                    getHistory: async () => [],
+                    restoreHistory: async () => undefined,
                     getNametag: () => null,
                     getNotifications: () => [],
                     getChoiceCount: () => 0,
@@ -436,6 +445,7 @@ function createPageNavigationHostAdapter(
                     hideDialog: async () => undefined,
                     toggleDialogDisplay: async () => undefined,
                     setSentenceSpeed: async () => undefined,
+                    setOutputResolution: async () => undefined,
                     getPreference: () => 0,
                     setPreference: async () => undefined,
                 },
@@ -456,6 +466,8 @@ function createGameSaveHostAdapter(options: {
     listedIds?: string[];
     metadata?: unknown;
     previews?: Record<string, unknown>;
+    history?: Array<Record<string, unknown>>;
+    restoredIds?: Array<string | undefined>;
     nametag?: string | null;
     notifications?: Array<{ id: string; message: string }>;
     choiceCount?: number;
@@ -527,6 +539,10 @@ function createGameSaveHostAdapter(options: {
                     listSaveIds: async () => options.listedIds ?? [],
                     getSaveMetadata: async () => options.metadata ?? {},
                     getSavePreview: async (id: string) => options.previews?.[id] as any ?? null,
+                    getHistory: async () => (options.history ?? []) as any,
+                    restoreHistory: async (id?: string) => {
+                        options.restoredIds?.push(id);
+                    },
                     getNametag: () => options.nametag ?? null,
                     getNotifications: () => options.notifications ?? [],
                     getChoiceCount: () => options.choiceCount ?? 0,
@@ -556,6 +572,7 @@ function createGameSaveHostAdapter(options: {
                     setPreference: async (key, value) => {
                         options.preferenceWrites?.push({ key, value });
                     },
+                    setOutputResolution: async () => undefined,
                 },
                 devtools: {
                     log: () => undefined,
@@ -576,6 +593,7 @@ describe("built-in blueprint nodes", () => {
             ...broadcastBlueprintNodes,
             ...frameBlueprintNodes,
             ...gameBlueprintNodes,
+            ...backlogBlueprintNodes,
             ...controlFlowBlueprintNodes,
             ...dataBlueprintNodes,
             ...elementBlueprintNodes,
@@ -625,6 +643,9 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(true);
         expect(frameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)?.hideInPalette).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_EMIT)).toBe(true);
@@ -1935,6 +1956,119 @@ describe("built-in blueprint nodes", () => {
         expect(localsAfterLoad).not.toHaveProperty("afterLoad");
     });
 
+    it("reads the dialogue backlog and restores the game from a history entry", async () => {
+        registerCoreBlueprintNodes();
+
+        // Get Backlog exposes the entries array and its count to downstream nodes, then continues.
+        const backlogEntries = [
+            { id: "t1", type: "say", text: "Hello", character: "Alice", voice: "v1", selected: null, isPending: false },
+            { id: "t2", type: "menu", text: "Pick one", character: null, voice: null, selected: "Left", isPending: true },
+        ];
+        const localsFromBacklog: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "getBacklog",
+                entries: { main: { start: { nodeId: "backlog", port: "in" } } },
+                nodes: {
+                    backlog: { id: "backlog", type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET, params: {} },
+                    captureEntries: {
+                        id: "captureEntries",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "entries" },
+                    },
+                    captureCount: {
+                        id: "captureCount",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "count" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "backlog", port: "next" }, to: { nodeId: "captureEntries", port: "in" } },
+                    { from: { nodeId: "backlog", port: "entries" }, to: { nodeId: "captureEntries", port: "value" } },
+                    { from: { nodeId: "captureEntries", port: "next" }, to: { nodeId: "captureCount", port: "in" } },
+                    { from: { nodeId: "backlog", port: "count" }, to: { nodeId: "captureCount", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "backlog", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ history: backlogEntries }),
+            blueprintLocals: localsFromBacklog,
+        });
+        expect(localsFromBacklog.entries).toEqual(backlogEntries);
+        expect(localsFromBacklog.count).toBe(2);
+
+        // Restore From History forwards the entry id to the host and continues to `next`.
+        const restoredIds: Array<string | undefined> = [];
+        const localsAfterRestore: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "restoreHistory",
+                entries: { main: { start: { nodeId: "restore", port: "in" } } },
+                nodes: {
+                    restore: {
+                        id: "restore",
+                        type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE,
+                        params: { id: "t2" },
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "afterRestore" },
+                    },
+                    literal: {
+                        id: "literal",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                        params: { value: "continued" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "restore", port: "next" }, to: { nodeId: "after", port: "in" } },
+                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "restore", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ restoredIds }),
+            blueprintLocals: localsAfterRestore,
+        });
+        expect(restoredIds).toEqual(["t2"]);
+        expect(localsAfterRestore.afterRestore).toBe("continued");
+
+        // Undo Last Dialogue restores without an id (undo the most recent entry).
+        const undoneIds: Array<string | undefined> = [];
+        await executeGraph({
+            graph: {
+                id: "undoLast",
+                entries: { main: { start: { nodeId: "undo", port: "in" } } },
+                nodes: {
+                    undo: { id: "undo", type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST, params: {} },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "undo", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ restoredIds: undoneIds }),
+            blueprintLocals: {},
+        });
+        expect(undoneIds).toEqual([undefined]);
+
+        // Restore From History requires a non-empty entry id.
+        await expect(executeGraph({
+            graph: {
+                id: "restoreHistoryMissingId",
+                entries: { main: { start: { nodeId: "restore", port: "in" } } },
+                nodes: {
+                    restore: {
+                        id: "restore",
+                        type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE,
+                        params: { id: "  " },
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "restore", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ restoredIds: [] }),
+            blueprintLocals: {},
+        })).rejects.toThrow(/entry id is required/);
+    });
+
     it("uses class.md palette categories for the new node groups", () => {
         registerCoreBlueprintNodes();
 
@@ -1942,6 +2076,7 @@ describe("built-in blueprint nodes", () => {
         expect(broadcastBlueprintNodes.every(def => def.category === "Events")).toBe(true);
         expect(frameBlueprintNodes.every(def => def.category === "Page")).toBe(true);
         expect(gameBlueprintNodes.every(def => def.category === "Game")).toBe(true);
+        expect(backlogBlueprintNodes.every(def => def.category === "Backlog")).toBe(true);
         const gameReadyHead = eventHeadBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY);
         expect(gameReadyHead?.displayName).toBe("On Game Ready");
         expect(gameReadyHead?.role).toBe("eventHead");

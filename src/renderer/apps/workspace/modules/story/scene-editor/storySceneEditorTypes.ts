@@ -14,6 +14,11 @@ export type VisibleStoryRow = {
 export type InsertSlot = {
     afterBlockId: StoryBlockId | null;
     focusToken: number;
+    /**
+     * Explicit insertion target. When set, the created block is parented here (used by the "add inside
+     * a container" affordances) instead of being placed as a sibling after `afterBlockId`.
+     */
+    target?: StoryBlockTarget;
 };
 
 export type EditorMode =

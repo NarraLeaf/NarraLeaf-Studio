@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 
 type Props = {
     header: ReactNode;
@@ -22,6 +23,7 @@ export function BlueprintEditorLayout({
     onMemberPanelCollapsedChange,
     onMemberPanelFocusContainedChange,
 }: Props) {
+    const { t } = useTranslation();
     const [uncontrolledLeftCollapsed, setUncontrolledLeftCollapsed] = useState(false);
     const memberPanelScrollRef = useRef<HTMLDivElement>(null);
     const isLeftCollapsed = memberPanelCollapsed ?? uncontrolledLeftCollapsed;
@@ -68,12 +70,12 @@ export function BlueprintEditorLayout({
             <div className="relative flex min-h-0 min-w-0 flex-1">
                 <aside className={leftPanelClasses}>
                     <div className="flex shrink-0 items-center justify-between border-b border-edge px-2 py-1.5">
-                        <span className="text-2xs font-medium text-fg-subtle">Blueprint</span>
+                        <span className="text-2xs font-medium text-fg-subtle">{t("blueprint.panelLabel")}</span>
                         <button
                             type="button"
                             className="text-fg-muted transition-colors hover:text-white"
                             onClick={() => setLeftCollapsed(!isLeftCollapsed)}
-                            title={isLeftCollapsed ? "Expand side panel" : "Collapse side panel"}
+                            title={isLeftCollapsed ? t("blueprint.sidePanel.expand") : t("blueprint.sidePanel.collapse")}
                         >
                             {isLeftCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
                         </button>
@@ -87,7 +89,7 @@ export function BlueprintEditorLayout({
                         type="button"
                         className="absolute left-3 top-3 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-edge-strong bg-surface-canvas/85 text-fg-muted hover:text-white focus:outline-none"
                         onClick={() => setLeftCollapsed(false)}
-                        title="Expand side panel"
+                        title={t("blueprint.sidePanel.expand")}
                     >
                         <ChevronDown className="h-4 w-4" />
                     </button>

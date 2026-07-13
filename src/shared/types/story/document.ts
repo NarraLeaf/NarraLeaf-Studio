@@ -461,6 +461,16 @@ export type StoryConditionRef =
           value?: StoryLiteralValue;
       }
     | {
+          /**
+           * Blueprint-backed condition: the boolean is computed by an implicit Story Action Blueprint's
+           * "On Call" graph (owner kind `storyAction`, mode `condition`), mirroring how a blueprint
+           * interpolation evaluates a value. The graph's `Return Value` is typed boolean and coerced
+           * with `Boolean(...)` at evaluation. `blueprintId` is created lazily on first edit.
+           */
+          kind: "blueprint";
+          blueprintId: string;
+      }
+    | {
           kind: "expression";
           source: string;
       };

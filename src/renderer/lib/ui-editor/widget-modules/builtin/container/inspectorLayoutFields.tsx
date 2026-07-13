@@ -30,6 +30,7 @@ import {
     type ContainerWidgetProps,
 } from "@shared/types/ui-editor/container";
 import { ContainerStackPaddingEditor } from "./ContainerStackPaddingEditor";
+import { i18nStore } from "@/lib/i18n";
 import { getContainerProps } from "./helpers";
 
 type D = UIInspectorData;
@@ -39,6 +40,7 @@ function ContainerEmptyChildrenHintField(props: CustomFieldProps<UIInspectorData
 }
 
 export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknown[] {
+    const { t } = i18nStore.getTranslator();
     const { element, documentService } = ctx;
 
     const patch = (partial: Partial<ContainerWidgetProps>) => {
@@ -52,7 +54,7 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
         defineField<D, any>({
             id: "section.containerLayout",
             type: "section",
-            title: "Child layout",
+            title: t("widgets.container.childLayout"),
             collapsible: true,
             defaultCollapsed: false,
             fields: [
@@ -64,11 +66,11 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                 defineField<D, any>({
                     id: "container.layoutKind",
                     type: "select",
-                    label: "Mode",
+                    label: t("widgets.container.mode"),
                     options: [
-                        { value: "free", label: "Free (absolute children)" },
-                        { value: "stack", label: "Stack (flex)" },
-                        { value: "scroll", label: "Scroll" },
+                        { value: "free", label: t("widgets.container.modeFree") },
+                        { value: "stack", label: t("widgets.container.modeStack") },
+                        { value: "scroll", label: t("widgets.container.modeScroll") },
                     ],
                     getValue: (d: D) => getContainerProps(d.element).layoutKind,
                     setValue: (_d: D, v: string | number) => patch({ layoutKind: v as ContainerLayoutKind }),
@@ -76,10 +78,10 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                 defineField<D, any>({
                     id: "container.scrollAxis",
                     type: "select",
-                    label: "Scroll axis",
+                    label: t("widgets.container.scrollAxis"),
                     options: [
-                        { value: "y", label: "Vertical" },
-                        { value: "x", label: "Horizontal" },
+                        { value: "y", label: t("widgets.vertical") },
+                        { value: "x", label: t("widgets.horizontal") },
                     ],
                     visible: (d: D) => getContainerProps(d.element).layoutKind === "scroll",
                     getValue: (d: D) => getContainerProps(d.element).scrollAxis,
@@ -89,15 +91,15 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                     id: "container.stackDirection",
                     type: "iconButtonGroup",
                     mode: "single",
-                    label: "Direction",
+                    label: t("widgets.direction"),
                     showLabels: false,
                     visible: (d: D) => {
                         const k = getContainerProps(d.element).layoutKind;
                         return k === "stack" || k === "scroll";
                     },
                     options: [
-                        { id: "vertical", icon: <Rows2 className="w-4 h-4" />, label: "Vertical stack" },
-                        { id: "horizontal", icon: <Columns2 className="w-4 h-4" />, label: "Horizontal stack" },
+                        { id: "vertical", icon: <Rows2 className="w-4 h-4" />, label: t("widgets.container.verticalStack") },
+                        { id: "horizontal", icon: <Columns2 className="w-4 h-4" />, label: t("widgets.container.horizontalStack") },
                     ],
                     getValue: (d: D) => getContainerProps(d.element).stackDirection,
                     setValue: (_d: D, value: IconButtonSelection) => {
@@ -109,17 +111,17 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                     id: "container.stackAlignItems",
                     type: "iconButtonGroup",
                     mode: "single",
-                    label: "Align (cross axis)",
+                    label: t("widgets.container.alignCross"),
                     showLabels: false,
                     visible: (d: D) => {
                         const k = getContainerProps(d.element).layoutKind;
                         return k === "stack" || k === "scroll";
                     },
                     options: [
-                        { id: "start", icon: <AlignHorizontalJustifyStart className="w-4 h-4" />, label: "Start" },
-                        { id: "center", icon: <AlignHorizontalJustifyCenter className="w-4 h-4" />, label: "Center" },
-                        { id: "end", icon: <AlignHorizontalJustifyEnd className="w-4 h-4" />, label: "End" },
-                        { id: "stretch", icon: <StretchHorizontal className="w-4 h-4" />, label: "Stretch" },
+                        { id: "start", icon: <AlignHorizontalJustifyStart className="w-4 h-4" />, label: t("widgets.container.start") },
+                        { id: "center", icon: <AlignHorizontalJustifyCenter className="w-4 h-4" />, label: t("widgets.container.center") },
+                        { id: "end", icon: <AlignHorizontalJustifyEnd className="w-4 h-4" />, label: t("widgets.container.end") },
+                        { id: "stretch", icon: <StretchHorizontal className="w-4 h-4" />, label: t("widgets.container.stretch") },
                     ],
                     getValue: (d: D) => getContainerProps(d.element).stackAlignItems,
                     setValue: (_d: D, value: IconButtonSelection) => {
@@ -131,18 +133,18 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                     id: "container.stackJustifyContent",
                     type: "iconButtonGroup",
                     mode: "single",
-                    label: "Justify (main axis)",
+                    label: t("widgets.container.justifyMain"),
                     showLabels: false,
                     visible: (d: D) => {
                         const k = getContainerProps(d.element).layoutKind;
                         return k === "stack" || k === "scroll";
                     },
                     options: [
-                        { id: "start", icon: <AlignVerticalJustifyStart className="w-4 h-4" />, label: "Start" },
-                        { id: "center", icon: <AlignVerticalJustifyCenter className="w-4 h-4" />, label: "Center" },
-                        { id: "end", icon: <AlignVerticalJustifyEnd className="w-4 h-4" />, label: "End" },
-                        { id: "space-between", icon: <AlignVerticalSpaceBetween className="w-4 h-4" />, label: "Space between" },
-                        { id: "space-around", icon: <AlignVerticalSpaceAround className="w-4 h-4" />, label: "Space around" },
+                        { id: "start", icon: <AlignVerticalJustifyStart className="w-4 h-4" />, label: t("widgets.container.start") },
+                        { id: "center", icon: <AlignVerticalJustifyCenter className="w-4 h-4" />, label: t("widgets.container.center") },
+                        { id: "end", icon: <AlignVerticalJustifyEnd className="w-4 h-4" />, label: t("widgets.container.end") },
+                        { id: "space-between", icon: <AlignVerticalSpaceBetween className="w-4 h-4" />, label: t("widgets.container.spaceBetween") },
+                        { id: "space-around", icon: <AlignVerticalSpaceAround className="w-4 h-4" />, label: t("widgets.container.spaceAround") },
                     ],
                     getValue: (d: D) => getContainerProps(d.element).stackJustifyContent,
                     setValue: (_d: D, value: IconButtonSelection) => {
@@ -168,7 +170,7 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                                 const current = getContainerProps(data.element);
                                 return (
                                     <div className="flex min-w-0 flex-col gap-1">
-                                        <span className="text-xs font-medium text-fg-muted">Gap</span>
+                                        <span className="text-xs font-medium text-fg-muted">{t("widgets.gap")}</span>
                                         <NumericDraftEnhancedInput
                                             committedDisplay={String(current.stackGap)}
                                             draftResetKey={element.id}
@@ -186,8 +188,8 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                                             min={-CONTAINER_STACK_SPACING_ABS_MAX_PX}
                                             max={CONTAINER_STACK_SPACING_ABS_MAX_PX}
                                             unit="px"
-                                            aria-label="Gap between children"
-                                            title="Gap between children"
+                                            aria-label={t("widgets.container.gapHint")}
+                                            title={t("widgets.container.gapHint")}
                                         />
                                     </div>
                                 );
@@ -213,10 +215,10 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                 defineField<D, any>({
                     id: "container.clipContent",
                     type: "select",
-                    label: "Overflow",
+                    label: t("widgets.container.overflow"),
                     options: [
-                        { value: "hidden", label: "Hidden" },
-                        { value: "visible", label: "Visible" },
+                        { value: "hidden", label: t("widgets.container.overflowHidden") },
+                        { value: "visible", label: t("widgets.container.overflowVisible") },
                     ],
                     getValue: (d: D) => (getContainerProps(d.element).clipContent ? "hidden" : "visible"),
                     setValue: (_d: D, v: string | number) => patch({ clipContent: String(v) === "hidden" }),

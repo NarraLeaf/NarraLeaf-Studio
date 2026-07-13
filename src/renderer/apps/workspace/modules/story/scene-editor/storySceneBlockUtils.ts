@@ -136,6 +136,61 @@ export function isTextEditableBlock(block: StoryBlock): boolean {
     return Boolean(getTextSegment(block));
 }
 
+/**
+ * A block that owns nested children and should render as an accordion container (a titled header +
+ * an indented, collapsible body) rather than a plain action row. Equivalent to `canAcceptChildren`;
+ * kept as a distinct name so rendering intent reads clearly at call sites.
+ */
+export function isContainerBlock(block: StoryBlock | undefined): boolean {
+    return canAcceptChildren(block);
+}
+
+export type StoryContainerRole = "condition" | "branch" | "group" | "menu" | "option" | "nvl";
+
+export type StoryContainerHeaderInfo = {
+    /** Plain-language pill label shown on the accordion header (proper case, no ALL-CAPS). */
+    pill: string;
+    role: StoryContainerRole;
+    /** Branch (if / else-if) headers carry an editable condition; else / others do not. */
+    hasCondition: boolean;
+    /** Repeat groups expose an inline repeat count. */
+    repeatTimes?: number;
+};
+
+/** Header descriptor for a container block — the pill text + which inline editors it exposes. */
+export function getContainerHeaderInfo(block: StoryBlock): StoryContainerHeaderInfo | null {
+    if (block.kind === "control") {
+        const payload = block.payload;
+        if (payload.control === "condition") {
+            return { pill: "Condition", role: "condition", hasCondition: false };
+        }
+        if (payload.control === "conditionBranch") {
+            const pill = payload.branch === "if" ? "If" : payload.branch === "elseIf" ? "Else if" : "Otherwise";
+            return { pill, role: "branch", hasCondition: payload.branch !== "else" };
+        }
+        if (payload.control === "repeat") {
+            return { pill: "Repeat", role: "group", hasCondition: false, repeatTimes: payload.times ?? 1 };
+        }
+        if (payload.control === "parallel") {
+            return { pill: "Run at the same time", role: "group", hasCondition: false };
+        }
+        if (payload.control === "race") {
+            return { pill: "Race — first to finish", role: "group", hasCondition: false };
+        }
+        return { pill: "In order", role: "group", hasCondition: false };
+    }
+    if (block.kind === "action" && block.payload.action === "nvl") {
+        return { pill: "NVL", role: "nvl", hasCondition: false };
+    }
+    if (block.kind === "nodeAction" && block.payload.action === "choice") {
+        return { pill: "Menu", role: "menu", hasCondition: false };
+    }
+    if (block.kind === "nodeAction" && block.payload.action === "choiceOption") {
+        return { pill: "Option", role: "option", hasCondition: false };
+    }
+    return null;
+}
+
 export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typeof FileText; iconColor: string } {
     const withCategory = (label: string, icon: typeof FileText, categoryId: ActionCommandCategoryId) => ({
         label,

@@ -1,12 +1,14 @@
 import { FolderX, LogOut } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
 import { Button, TitleBar } from "@/lib/components";
+import { useTranslation } from "@/lib/i18n";
 
 interface MissingProjectConfigScreenProps {
     projectPath?: string;
 }
 
 export function MissingProjectConfigScreen({ projectPath }: MissingProjectConfigScreenProps) {
+    const { t } = useTranslation();
     const handleOpenLauncher = () => {
         void getInterface().workspace.close();
     };
@@ -19,9 +21,9 @@ export function MissingProjectConfigScreen({ projectPath }: MissingProjectConfig
                     <div className="mx-auto mb-5 grid h-11 w-11 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted">
                         <FolderX className="h-5 w-5" />
                     </div>
-                    <h1 className="text-base font-semibold text-white">This folder is not a NarraLeaf project</h1>
+                    <h1 className="text-base font-semibold text-white">{t("workspace.shell.notAProjectTitle")}</h1>
                     <p className="mt-2 text-sm leading-6 text-fg-muted">
-                        No .nlproj file was found.
+                        {t("workspace.shell.notAProjectDetail")}
                     </p>
                     {projectPath && (
                         <p className="mt-3 truncate text-xs text-fg-subtle" title={projectPath}>
@@ -35,7 +37,7 @@ export function MissingProjectConfigScreen({ projectPath }: MissingProjectConfig
                         className="mt-6 h-9"
                     >
                         <LogOut className="h-4 w-4" />
-                        <span>Open Launcher</span>
+                        <span>{t("workspace.shell.openLauncher")}</span>
                     </Button>
                 </section>
             </main>

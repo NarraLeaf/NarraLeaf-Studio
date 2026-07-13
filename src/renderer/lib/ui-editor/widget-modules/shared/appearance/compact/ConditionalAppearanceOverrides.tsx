@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "@/lib/i18n";
 import type {
     AppearanceRowValue,
     AppearanceValueRow,
@@ -44,6 +45,7 @@ export function ConditionalAppearanceOverrides({
     draftResetKey,
     addRowKeyOptions,
 }: Props) {
+    const { t } = useTranslation();
     const [addTargetKey, setAddTargetKey] = useState<string>(() => addRowKeyOptions[0]?.value ?? "");
 
     const groupsWithExtraRows = useMemo(
@@ -54,15 +56,18 @@ export function ConditionalAppearanceOverrides({
     const hasAny = groupsWithExtraRows.length > 0;
 
     return (
-        <CollapsibleMiniSection title="State overrides (advanced)" defaultCollapsed={!hasAny} subtle={!hasAny}>
+        <CollapsibleMiniSection
+            title={t("widgetAppearance.conditions.overridesTitle")}
+            defaultCollapsed={!hasAny}
+            subtle={!hasAny}
+        >
             <p className="text-2xs text-fg-subtle leading-snug px-0.5">
-                Prefer module headers for single-flag hover/active/disabled/focused overrides. Use this section to inspect
-                rows, tweak compound conditions, or add per-property rows manually. Last matching row wins per property.
+                {t("widgetAppearance.conditions.overridesHint")}
             </p>
 
             <div className="space-y-3 min-w-0">
                 {groupsWithExtraRows.length > 0 ? (
-                    <div className="text-2xs tracking-wide text-fg-subtle px-0.5">Conditional rows</div>
+                    <div className="text-2xs tracking-wide text-fg-subtle px-0.5">{t("widgetAppearance.conditions.conditionalRows")}</div>
                 ) : null}
                 {groupsWithExtraRows.map(group => {
                     const groupKey = group.key;
@@ -135,7 +140,7 @@ export function ConditionalAppearanceOverrides({
                                                 commitVariant(v);
                                             }}
                                         >
-                                            Remove row
+                                            {t("widgetAppearance.conditions.removeRow")}
                                         </button>
                                     </div>
                                 );
@@ -145,14 +150,14 @@ export function ConditionalAppearanceOverrides({
                 })}
 
                 <div className="rounded-md border border-edge-subtle bg-black/15 p-2 space-y-2 min-w-0">
-                    <div className="text-2xs tracking-wide text-fg-subtle">Add row manually</div>
+                    <div className="text-2xs tracking-wide text-fg-subtle">{t("widgetAppearance.conditions.addRowManually")}</div>
                     <p className="text-2xs text-fg-subtle leading-snug">
-                        Adds one conditional row for a single property key (default condition: hovered).
+                        {t("widgetAppearance.conditions.addRowHint")}
                     </p>
                 <div className="flex flex-wrap gap-2 items-end min-w-0 pt-1">
                     <div className="flex-1 min-w-[10rem]">
                         <label className="text-2xs tracking-wide text-fg-subtle block mb-1">
-                            Property
+                            {t("widgetAppearance.conditions.property")}
                         </label>
                         <Select
                             value={addTargetKey}
@@ -176,7 +181,7 @@ export function ConditionalAppearanceOverrides({
                             commitVariant(v);
                         }}
                     >
-                        + Add row
+                        {t("widgetAppearance.conditions.addRow")}
                     </button>
                 </div>
                 </div>

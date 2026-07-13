@@ -1,0 +1,120 @@
+/** `assets` — the asset browser/manager: search, filters, grid/list views,
+ * context menus, import controls, image/audio preview editors, and dialogs. */
+export const assets = {
+    loading: "Loading assets…",
+    loadError: "Failed to load assets",
+    searchPlaceholder: "Search assets…",
+    searchTooltip: "Search assets",
+    closeSearch: "Close search",
+    clearSearch: "Clear search",
+    backToParent: "Back to parent group",
+    importRemote: "Import Remote",
+    noTags: "No tags",
+    preview: "Preview",
+    emptyType: "No {label} yet",
+    itemCount: {
+        one: "{count} item",
+        other: "{count} items",
+    },
+    view: {
+        list: "List view",
+        icons: "Icon view",
+    },
+    filter: {
+        label: "Filters",
+    },
+    actions: {
+        copyTooltip: "Copy selected assets or groups",
+        cutTooltip: "Cut selected assets or groups",
+        pasteTooltip: "Paste assets or groups",
+        deleteTooltip: "Delete selected assets or groups",
+    },
+    search: {
+        noResults: "No matching assets found",
+        matchTag: "Tag: {tag}",
+        resultCount: {
+            one: "{count} result",
+            other: "{count} results",
+        },
+    },
+    list: {
+        emptyFiltered: "No assets matched the current filters.",
+    },
+    iconView: {
+        updating: "Updating…",
+        assetCount: {
+            one: "{count} asset",
+            other: "{count} assets",
+        },
+        tagCount: {
+            one: "+{count} tag",
+            other: "+{count} tags",
+        },
+    },
+    menu: {
+        newGroup: "New Group",
+        newSubGroup: "New Sub-Group",
+        importAssets: "Import Assets…",
+        copyCount: {
+            one: "Copy {count} item",
+            other: "Copy {count} items",
+        },
+        cutCount: {
+            one: "Cut {count} item",
+            other: "Cut {count} items",
+        },
+        deleteCount: {
+            one: "Delete {count} item",
+            other: "Delete {count} items",
+        },
+    },
+    selector: {
+        selectType: "Select {type}",
+        importFromDisk: "Import from disk",
+        noAssets: "No assets match the current filters",
+        selectedCount: "{count} selected",
+        choose: "Choose",
+    },
+    cropper: {
+        title: "Crop Image",
+        reload: "Reload",
+        loadError: "Unable to load image",
+        selection: "Selection: {width}x{height}",
+        waiting: "Waiting for selection…",
+    },
+    magicTag: {
+        title: "Create Tags",
+        detectedDelimiters: "Detected Delimiters",
+        regexPattern: "Regular Expression Pattern",
+        captureGroups: "Capture Groups: {groups}",
+        categoryMapping: "Tag Category Mapping",
+        exampleFilename: "Example Filename: {filename}",
+        categoryPlaceholder: "Tag Category (e.g.: char, emo)",
+        moreFiles: "… and {count} more files",
+        summary: "Will add a total of {tags} tags to {files} files",
+        applying: "Applying…",
+        applyTags: "Apply Tags",
+    },
+    audio: {
+        play: "Play",
+        pause: "Pause",
+        mute: "Mute",
+        unmute: "Unmute",
+        seek: "Seek",
+        volume: "Volume",
+        playback: "Playback",
+        loading: "Loading audio…",
+        loadError: "Failed to load audio",
+        channelCount: {
+            one: "{count} channel",
+            other: "{count} channels",
+        },
+    },
+    image: {
+        loading: "Loading image…",
+        loadError: "Failed to load image",
+        zoomIn: "Zoom In",
+        zoomOut: "Zoom Out",
+        resetView: "Reset View",
+    },
+} as const;

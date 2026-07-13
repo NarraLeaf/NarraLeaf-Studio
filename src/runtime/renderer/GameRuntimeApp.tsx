@@ -8,7 +8,8 @@ import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackgr
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
 import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
 import { GameApp } from "@/lib/ui-editor/runtime/app/GameApp";
-import type { GameAppHost, GameAppSaveStore } from "@/lib/ui-editor/runtime/app/GameAppHost";
+import type { GameAppFrameContext, GameAppHost, GameAppSaveStore } from "@/lib/ui-editor/runtime/app/GameAppHost";
+import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import {
     preloadRuntimePackAssets,
@@ -25,14 +26,6 @@ function findSurface(bundle: DevModeBundle, surfaceId: string | undefined): UISu
     return bundle.ui.uidoc.surfaces.find(surface => surface.kind === "appSurface") ?? bundle.ui.uidoc.surfaces[0] ?? null;
 }
 
-function resolveScale(surface: UISurface | null, width: number, height: number): number {
-    if (!surface || width <= 0 || height <= 0) {
-        return 1;
-    }
-    const scale = Math.min(width / surface.designSize.width, height / surface.designSize.height);
-    return Number.isFinite(scale) && scale > 0 ? scale : 1;
-}
-
 function normalizeError(error: unknown): string {
     if (error instanceof Error) {
         return error.stack || error.message;
@@ -40,25 +33,6 @@ function normalizeError(error: unknown): string {
     return String(error);
 }
 
-function useViewportSize(): { width: number; height: number } {
-    const [size, setSize] = useState(() => ({
-        width: window.innerWidth || 1280,
-        height: window.innerHeight || 720,
-    }));
-
-    useEffect(() => {
-        const update = () => {
-            setSize({
-                width: window.innerWidth || 1280,
-                height: window.innerHeight || 720,
-            });
-        };
-        window.addEventListener("resize", update);
-        return () => window.removeEventListener("resize", update);
-    }, []);
-
-    return size;
-}
 
 function useRuntimePack(): {
     pack: GameRuntimePackV1 | null;
@@ -233,32 +207,9 @@ function useRuntimePlugins(pack: GameRuntimePackV1 | null, rendererRegistry: Ele
     return ready;
 }
 
-function RuntimeViewportFrame(props: {
-    surface: UISurface;
-    scale: number;
-    children?: ReactNode;
-}): ReactNode {
-    const { surface, scale, children } = props;
-    return (
-        <div className="relative h-screen w-screen overflow-hidden bg-black text-white">
-            <div
-                className="absolute left-1/2 top-1/2 overflow-hidden"
-                style={{
-                    width: surface.designSize.width * scale,
-                    height: surface.designSize.height * scale,
-                    transform: "translate(-50%, -50%)",
-                    backgroundColor: getSurfaceBackgroundColor(surface),
-                }}
-            >
-                {children}
-            </div>
-        </div>
-    );
-}
-
 export function GameRuntimeApp() {
     const { pack, error } = useRuntimePack();
-    const viewport = useViewportSize();
+    const [renderScale, setRenderScale] = useState(1);
     const bridge = getGameRuntimeBridge();
     const rendererRegistry = useMemo(() => new ElementRendererRegistry(BuiltinElementRenderers), []);
 
@@ -372,21 +323,21 @@ export function GameRuntimeApp() {
         saveStore,
     ]);
 
-    const getScale = useCallback(
-        (activeSurface: UISurface) => resolveScale(activeSurface, viewport.width, viewport.height),
-        [viewport.height, viewport.width],
-    );
+    const getScale = useCallback(() => renderScale, [renderScale]);
 
     const renderFrame = useCallback(
-        (ctx: { activeSurface: UISurface; children: ReactNode }) => (
-            <RuntimeViewportFrame
-                surface={ctx.activeSurface}
-                scale={resolveScale(ctx.activeSurface, viewport.width, viewport.height)}
+        (ctx: GameAppFrameContext) => (
+            <StageViewportFrame
+                designSize={ctx.activeSurface.designSize}
+                outputResolution={ctx.outputResolution}
+                onRenderScaleChange={setRenderScale}
+                outerClassName="h-screen w-screen bg-black text-white"
+                boxStyle={{ backgroundColor: getSurfaceBackgroundColor(ctx.activeSurface) }}
             >
                 {ctx.children}
-            </RuntimeViewportFrame>
+            </StageViewportFrame>
         ),
-        [viewport.height, viewport.width],
+        [],
     );
 
     const renderPlaceholder = useCallback(() => <RuntimeLoadingScreen />, []);

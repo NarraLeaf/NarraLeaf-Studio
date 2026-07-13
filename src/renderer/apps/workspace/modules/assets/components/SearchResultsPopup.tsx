@@ -1,5 +1,6 @@
 import React, { useMemo, useLayoutEffect, useState } from "react";
 import ReactDOM from "react-dom";
+import { useTranslation } from "@/lib/i18n";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
 import {
@@ -50,6 +51,7 @@ export function SearchResultsPopup({
     anchorRef,
     className = ""
 }: SearchResultsPopupProps) {
+    const { t, tn } = useTranslation();
     const handleResultClick = (result: SearchResult) => {
         onResultClick(result);
         onClose();
@@ -96,7 +98,7 @@ export function SearchResultsPopup({
                 <div className="px-3 py-2 border-b border-edge">
                     <div className="flex items-center justify-between">
                         <span className="text-xs font-medium text-fg-muted">
-                            {results.length} result{results.length !== 1 ? 's' : ''}
+                            {tn("assets.search.resultCount", results.length)}
                         </span>
                         <button
                             onClick={onClose}
@@ -122,7 +124,7 @@ export function SearchResultsPopup({
                         ))
                     ) : (
                         <div className="px-3 py-4 text-center text-fg-subtle text-sm">
-                            No matching assets found
+                            {t("assets.search.noResults")}
                         </div>
                     )}
                 </div>
@@ -139,6 +141,7 @@ interface SearchResultItemProps {
 }
 
 function SearchResultItem({ result, onClick }: SearchResultItemProps) {
+    const { t } = useTranslation();
     const Icon = result.isGroup ? Folder : ASSET_TYPE_ICONS[result.type];
 
     return (
@@ -158,9 +161,9 @@ function SearchResultItem({ result, onClick }: SearchResultItemProps) {
                         </div>
                     )}
                     <div className="text-xs text-fg-subtle">
-                        {result.matchReason === 'name' && 'Name'}
-                        {result.matchReason === 'tag' && `Tag: ${result.matchText}`}
-                        {result.matchReason === 'description' && 'Description'}
+                        {result.matchReason === 'name' && t("common.name")}
+                        {result.matchReason === 'tag' && t("assets.search.matchTag", { tag: result.matchText })}
+                        {result.matchReason === 'description' && t("common.description")}
                     </div>
                 </div>
             </div>

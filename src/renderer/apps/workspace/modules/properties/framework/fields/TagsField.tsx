@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { X, Plus } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { TagsFieldDefinition } from "../types";
 
 interface TagsFieldProps<TData> {
@@ -12,6 +13,7 @@ interface TagsFieldProps<TData> {
  * Renders a tags input field with add/remove functionality
  */
 function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>) {
+    const { t } = useTranslation();
     const currentTags = field.getValue(data);
     const [localTags, setLocalTags] = useState<string[]>(currentTags);
     const [newTag, setNewTag] = useState("");
@@ -102,15 +104,15 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
                                     onClick={() => handleRemoveTag(tag)}
                                     disabled={isDisabled}
                                     className="hover:text-primary cursor-default disabled:opacity-50"
-                                    title="Remove tag"
-                                    aria-label={`Remove tag ${tag}`}
+                                    title={t("properties.tags.remove")}
+                                    aria-label={t("properties.tags.removeAria", { tag })}
                                 >
                                     <X className="w-3 h-3" />
                                 </button>
                             </span>
                         ))
                     ) : (
-                        <span className="text-xs text-fg-subtle">No tags yet</span>
+                        <span className="text-xs text-fg-subtle">{t("properties.tags.empty")}</span>
                     )}
                 </div>
                 <div className="flex gap-1">
@@ -125,7 +127,7 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
                                 handleAddTag();
                             }
                         }}
-                        placeholder={field.addPlaceholder ?? "Add tag..."}
+                        placeholder={field.addPlaceholder ?? t("properties.tags.addPlaceholder")}
                         disabled={isDisabled}
                         className="flex-1 px-3 py-1.5 bg-surface-raised border border-edge rounded-md text-sm text-fg-muted 
                             focus:outline-none focus:border-primary/50 transition-colors
@@ -136,8 +138,8 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
                         disabled={!newTag.trim() || isDisabled}
                         className="px-2 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary rounded-md transition-colors 
                             disabled:opacity-50 disabled:cursor-not-allowed cursor-default"
-                        title="Add tag"
-                        aria-label="Add tag"
+                        title={t("properties.tags.add")}
+                        aria-label={t("properties.tags.add")}
                     >
                         <Plus className="w-4 h-4" />
                     </button>

@@ -16,6 +16,7 @@ import {
     compileGameRuntimePreviewArtifact,
     type GameRuntimeArtifactCompileResult,
 } from "./compiler/gameRuntimeArtifactCompiler";
+import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
 
 type PreviewSession = {
@@ -132,6 +133,10 @@ export class PreviewManager {
             if (pluginSelection.selected.length > 0) {
                 this.emitVerbose(session, `packaging runtime plugin(s): ${pluginSelection.selected.map(source => source.manifest.id).join(", ")}`);
             }
+            const encryptionKey = await this.resolveEncryptionKey(normalizedProjectPath);
+            if (encryptionKey) {
+                this.emitVerbose(session, "asset protection enabled; encrypting pack");
+            }
             const artifact = await compileGameRuntimePreviewArtifact({
                 projectPath: normalizedProjectPath,
                 entry,
@@ -140,6 +145,8 @@ export class PreviewManager {
                 controlPort: session.controlPort,
                 controlToken: session.controlToken,
                 runtimePlugins: pluginSelection.selected,
+                mode: "preview",
+                encryptionKey,
             });
             session.artifact = artifact;
             this.emitVerbose(
@@ -206,6 +213,20 @@ export class PreviewManager {
             available: await this.app.pluginManager.listRuntimePluginPackSources(),
             installed,
         });
+    }
+
+    /**
+     * Resolve the pack key for this project, or undefined when asset protection
+     * is off. Preview runs the same path Production will.
+     */
+    private async resolveEncryptionKey(projectPath: string): Promise<string | undefined> {
+        const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
+        const enabled =
+            (projectConfig?.app as { security?: { encryptAssets?: unknown } } | undefined)?.security?.encryptAssets === true;
+        if (!enabled) {
+            return undefined;
+        }
+        return resolvePackEncryptionKey(this.app.getUserDataDir(), projectPath);
     }
 
     private async stopSession(session: PreviewSession): Promise<void> {

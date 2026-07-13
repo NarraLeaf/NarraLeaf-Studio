@@ -1,0 +1,72 @@
+/** `launcher` — the launcher window (sidebar, projects, plugins, learning). */
+export const launcher = {
+    nav: {
+        projects: "Projects",
+        plugins: "Plugins",
+        learning: "Learning",
+        settings: "Settings",
+    },
+    projects: {
+        title: "Projects",
+        newProject: "New Project",
+        openProject: "Open Project",
+        import: "Import",
+        recentTitle: "Recent Projects",
+        empty: "No recent projects yet.",
+        openFolder: "Open Folder",
+        importProject: "Import Project",
+        openNamed: "Open {name}",
+        removeFromRecent: "Remove from recent",
+        removeNamedFromRecent: "Remove {name} from recent projects",
+        errorCreate: "Failed to create project.",
+        errorOpenFolder: "Failed to open folder.",
+        errorImport: "Failed to import project.",
+    },
+    // Plural example — read with translator.tn("launcher.recentCount", count).
+    recentCount: {
+        one: "{count} recent project",
+        other: "{count} recent projects",
+    },
+    plugins: {
+        installLocal: "Install local plugin",
+        emptyList: "No plugins installed",
+        noneSelected: "No plugin selected",
+        authorize: "Authorize",
+        uninstall: "Uninstall",
+        builtIn: "Built-in",
+        permissions: "Permissions",
+        field: {
+            status: "Status",
+            entries: "Entries",
+            installed: "Installed",
+            updated: "Updated",
+        },
+        status: {
+            enabled: "Enabled",
+            disabled: "Disabled",
+            needsAuthorization: "Needs authorization",
+        },
+        task: {
+            installing: "Installing plugin…",
+            installed: "Plugin installed.",
+            authorizing: "Waiting for authorization…",
+            authorized: "Plugin authorized.",
+            enabling: "Enabling plugin…",
+            disabling: "Disabling plugin…",
+            enabled: "Plugin enabled.",
+            disabled: "Plugin disabled.",
+            uninstalling: "Uninstalling plugin…",
+            uninstalled: "Plugin uninstalled.",
+        },
+        error: {
+            load: "Failed to load plugins",
+            install: "Failed to install plugin",
+            approve: "Failed to approve plugin",
+            update: "Failed to update plugin",
+            uninstall: "Failed to uninstall plugin",
+        },
+    },
+    learning: {
+        placeholder: "Here will show tutorials, documents and examples (placeholder).",
+    },
+} as const;

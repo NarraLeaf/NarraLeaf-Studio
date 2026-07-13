@@ -14,6 +14,12 @@ import {
 } from "@shared/types/gameRuntime";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
+import {
+    encryptBuffer,
+    runtimeSupportPath,
+    RUNTIME_KEY_PLACEHOLDER,
+    RUNTIME_SUPPORT_FILENAME,
+} from "@narraleaf/encryption";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { getMimeType } from "@shared/utils/fs";
@@ -39,6 +45,17 @@ export type GameRuntimeArtifactCompileInput = {
     controlToken: string;
     /** Runtime entries of enabled plugins to ship inside the pack. */
     runtimePlugins?: GameRuntimePluginSource[];
+    /**
+     * Pack build mode. "preview" keeps developer affordances (DevTools);
+     * "production" hardens the runtime. Defaults to "preview".
+     */
+    mode?: "preview" | "production";
+    /**
+     * Opaque pack key for asset protection. When set, packaged output is
+     * protected via @narraleaf/encryption; when absent, output is written
+     * verbatim (protection off).
+     */
+    encryptionKey?: string;
 };
 
 export type GameRuntimeArtifactCompileResult = {
@@ -79,6 +96,11 @@ export async function compileGameRuntimePreviewArtifact(
     await fs.mkdir(assetsDir, { recursive: true });
     await fs.mkdir(userDataDir, { recursive: true });
     await copyRuntimeFiles(input.runtimeDistDir, appDir);
+    if (input.encryptionKey) {
+        // Protection on: prepare the packed runtime and ship its support binary.
+        await embedPackKey(appDir, input.encryptionKey);
+        await fs.copyFile(runtimeSupportPath(), path.join(appDir, RUNTIME_SUPPORT_FILENAME));
+    }
 
     const projectConfig = await readProjectConfig(input.projectPath);
     const blueprintScripts = await compileAllBlueprintScriptsForProject(input.projectPath);
@@ -98,6 +120,7 @@ export async function compileGameRuntimePreviewArtifact(
     const assetManifest = await copyProjectAssets({
         projectPath: input.projectPath,
         assetsDir,
+        encryptionKey: input.encryptionKey,
     });
     const projectIcon = await copyProjectIcon({
         projectPath: input.projectPath,
@@ -107,12 +130,13 @@ export async function compileGameRuntimePreviewArtifact(
     const packPlugins = await copyRuntimePlugins({
         appDir,
         runtimePlugins: input.runtimePlugins ?? [],
+        encryptionKey: input.encryptionKey,
     });
 
     const pack: GameRuntimePackV1 = {
         schemaVersion: GAME_RUNTIME_PACK_SCHEMA_VERSION,
         generatedAt: new Date().toISOString(),
-        mode: "preview",
+        mode: input.mode ?? "preview",
         runtimeVersion: input.runtimeVersion,
         project: {
             name: projectConfig?.name?.trim() || path.basename(input.projectPath) || "NarraLeaf Game",
@@ -139,7 +163,8 @@ export async function compileGameRuntimePreviewArtifact(
     };
 
     const packPath = path.join(appDir, "pack.json");
-    await fs.writeFile(packPath, JSON.stringify(pack), "utf-8");
+    const packJson = Buffer.from(JSON.stringify(pack), "utf-8");
+    await fs.writeFile(packPath, input.encryptionKey ? encryptBuffer(packJson, input.encryptionKey) : packJson);
     await fs.writeFile(
         path.join(appDir, "package.json"),
         JSON.stringify({
@@ -198,9 +223,37 @@ async function copyOptionalFile(sourcePath: string, targetPath: string): Promise
     }
 }
 
+/** Copy a file, protecting it when a key is provided, else a plain copy. */
+async function copyMaybeEncrypt(sourcePath: string, targetPath: string, encryptionKey?: string): Promise<void> {
+    if (!encryptionKey) {
+        await fs.copyFile(sourcePath, targetPath);
+        return;
+    }
+    const data = await fs.readFile(sourcePath);
+    await fs.writeFile(targetPath, encryptBuffer(data, encryptionKey));
+}
+
+/**
+ * Apply the pack key to the packed main.js through @narraleaf/encryption's
+ * marker. Fails loudly if the marker is absent, meaning the runtime was built
+ * without support.
+ */
+async function embedPackKey(appDir: string, encryptionKey: string): Promise<void> {
+    const mainJsPath = path.join(appDir, "main.js");
+    const source = await fs.readFile(mainJsPath, "utf-8");
+    if (!source.includes(RUNTIME_KEY_PLACEHOLDER)) {
+        throw new Error(
+            "Runtime main.js is missing a required marker. Rebuild the runtime (\"yarn build:runtime\").",
+        );
+    }
+    const injected = source.split(RUNTIME_KEY_PLACEHOLDER).join(encryptionKey);
+    await fs.writeFile(mainJsPath, injected, "utf-8");
+}
+
 async function copyProjectAssets(input: {
     projectPath: string;
     assetsDir: string;
+    encryptionKey?: string;
 }): Promise<Record<string, GameRuntimeAssetManifestEntry>> {
     const manifest: Record<string, GameRuntimeAssetManifestEntry> = {};
     for (const type of ASSET_TYPES) {
@@ -214,7 +267,7 @@ async function copyProjectAssets(input: {
             const sourcePath = resolveAssetSourcePath(input.projectPath, normalized);
             const relativePath = path.join("assets", `${normalized.id}.${normalized.ext}`).replace(/\\/g, "/");
             const targetPath = path.join(input.assetsDir, `${normalized.id}.${normalized.ext}`);
-            await fs.copyFile(sourcePath, targetPath).catch(error => {
+            await copyMaybeEncrypt(sourcePath, targetPath, input.encryptionKey).catch(error => {
                 const sourceLabel = normalized.source === "remote" ? "remote cache" : "local asset";
                 throw new Error(
                     `Failed to copy ${sourceLabel} "${normalized.name}" (${normalized.id}) from ${sourcePath}: ` +
@@ -240,13 +293,14 @@ async function copyProjectAssets(input: {
 async function copyRuntimePlugins(input: {
     appDir: string;
     runtimePlugins: GameRuntimePluginSource[];
+    encryptionKey?: string;
 }): Promise<GameRuntimePackPluginEntry[]> {
     const entries: GameRuntimePackPluginEntry[] = [];
     for (const plugin of input.runtimePlugins) {
         const relativePath = path.posix.join("plugins", plugin.manifest.id, ...plugin.entry.split("/"));
         const targetPath = path.join(input.appDir, ...relativePath.split("/"));
         await fs.mkdir(path.dirname(targetPath), { recursive: true });
-        await fs.copyFile(plugin.entryPath, targetPath).catch(error => {
+        await copyMaybeEncrypt(plugin.entryPath, targetPath, input.encryptionKey).catch(error => {
             throw new Error(
                 `Failed to copy runtime entry of plugin "${plugin.manifest.id}" from ${plugin.entryPath}: ` +
                 `${error instanceof Error ? error.message : String(error)}`,

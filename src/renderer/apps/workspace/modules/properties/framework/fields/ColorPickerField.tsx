@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
+import { useTranslation } from "@/lib/i18n";
 import {
     ColorPickerFieldDefinition,
     ColorPickerGroupFieldDefinition,
@@ -240,6 +241,7 @@ export function ColorPickerTrigger({
     onChange,
     onCommit,
 }: ColorPickerTriggerProps) {
+    const { t } = useTranslation();
     const triggerRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const [isOpen, setIsOpen] = useState(false);
@@ -827,7 +829,7 @@ export function ColorPickerTrigger({
 
             <div className="mt-3 space-y-2">
                 <div className="flex items-center justify-between text-xs text-fg-muted">
-                    <span>Hue</span>
+                    <span>{t("properties.color.hue")}</span>
                     <span>{Math.round(colorState.hue)}°</span>
                 </div>
                 <input
@@ -867,7 +869,7 @@ export function ColorPickerTrigger({
             {allowOpacity && (
                 <div className="mt-3 space-y-2">
                     <div className="flex items-center justify-between text-xs text-fg-muted">
-                        <span>Opacity</span>
+                        <span>{t("properties.color.opacity")}</span>
                         <span>{Math.round(colorState.alpha * 100)}%</span>
                     </div>
                     <input

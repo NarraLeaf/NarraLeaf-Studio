@@ -1,4 +1,5 @@
 import { CharacterForm } from "@/lib/workspace/services/character/types";
+import { useTranslation } from "@/lib/i18n";
 import { ChevronLeft, ChevronRight, Image as ImageIcon, MoreVertical, Plus } from "lucide-react";
 import React from "react";
 
@@ -25,17 +26,18 @@ export function FormsPanel({
     collapsed,
     onToggleCollapse,
 }: FormsPanelProps) {
+    const { t, tn } = useTranslation();
     return (
         <div className="border-r border-edge h-full bg-surface">
             <div className={`text-xs text-fg-muted flex items-center justify-between ${collapsed ? "px-1 py-2" : "px-3 py-2"}`}>
-                {!collapsed && <span className="tracking-wide text-2xs text-fg-muted">Forms</span>}
+                {!collapsed && <span className="tracking-wide text-2xs text-fg-muted">{t("characters.formsPanel.title")}</span>}
                 <div className="flex items-center gap-1">
                     {!collapsed && (
                         <button
                             className="p-1 rounded-md text-fg hover:text-white hover:bg-fill transition-colors"
                             onClick={onAddForm}
-                            title="Add form"
-                            aria-label="Add form"
+                            title={t("characters.formsPanel.addForm")}
+                            aria-label={t("characters.formsPanel.addForm")}
                         >
                             <Plus className="w-4 h-4" />
                         </button>
@@ -43,8 +45,8 @@ export function FormsPanel({
                     <button
                         className="p-1 rounded-md text-fg hover:text-white hover:bg-fill transition-colors"
                         onClick={onToggleCollapse}
-                        title={collapsed ? "Expand forms" : "Collapse forms"}
-                        aria-label={collapsed ? "Expand forms" : "Collapse forms"}
+                        title={collapsed ? t("characters.formsPanel.expand") : t("characters.formsPanel.collapse")}
+                        aria-label={collapsed ? t("characters.formsPanel.expand") : t("characters.formsPanel.collapse")}
                     >
                         {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
                     </button>
@@ -75,19 +77,19 @@ export function FormsPanel({
                                     </div>
                                     <div className="flex flex-col min-w-0">
                                         <span className="text-sm truncate">{form.name}</span>
-                                        <span className="text-2xs text-fg-muted truncate">{form.groups.length} groups</span>
+                                        <span className="text-2xs text-fg-muted truncate">{tn("characters.formsPanel.groupCount", form.groups.length)}</span>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     {defaultFormName === form.name && (
                                         <span className="text-2xs text-primary flex items-center gap-1">
-                                            Default
+                                            {t("characters.formsPanel.default")}
                                         </span>
                                     )}
                                     <button
                                         className="p-1 rounded hover:bg-fill"
                                         onClick={(e) => onOpenMenu(e, form)}
-                                        title="Form actions"
+                                        title={t("characters.formsPanel.formActions")}
                                     >
                                         <MoreVertical className="w-4 h-4" />
                                     </button>
@@ -96,12 +98,12 @@ export function FormsPanel({
                         );
                     })}
                     {forms.length === 0 && (
-                        <div className="px-3 py-2 text-sm text-fg-subtle">No forms yet, click + to create one.</div>
+                        <div className="px-3 py-2 text-sm text-fg-subtle">{t("characters.formsPanel.empty")}</div>
                     )}
                 </div>
             ) : (
                 <div className="h-full flex items-center justify-center">
-                    <span className="text-2xs text-fg-subtle rotate-90">Forms</span>
+                    <span className="text-2xs text-fg-subtle rotate-90">{t("characters.formsPanel.title")}</span>
                 </div>
             )}
         </div>

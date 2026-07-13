@@ -3,6 +3,7 @@ import type { CustomFieldProps } from "@/apps/workspace/modules/properties/frame
 import { useBlueprintDocumentRevision } from "@/apps/workspace/modules/blueprint-lite/hooks/useBlueprintDocumentRevision";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { useWorkspace } from "@/apps/workspace/context";
+import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
@@ -14,12 +15,16 @@ import { useReadonlySurfaceBlueprintSummary } from "@/lib/ui-editor/widget-modul
 import type { SceneEditorContext } from "../schemas/sceneSchema";
 
 export function SurfaceBlueprintEntrySection({ data }: CustomFieldProps<SceneEditorContext>) {
+    const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const openBlueprint = useOpenBlueprintTarget();
     const blueprintRevision = useBlueprintDocumentRevision();
     const surfaceId = data.surface.id;
     const summary = useReadonlySurfaceBlueprintSummary(data.documentService, surfaceId);
-    const logicLabel = data.surface.kind === "stageSurface" ? "Game UI Logic" : "Page Logic";
+    const logicLabel =
+        data.surface.kind === "stageSurface"
+            ? t("properties.blueprintEntry.gameUiLogic")
+            : t("properties.blueprintEntry.pageLogic");
     const localBp =
         isInitialized && context ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint) : null;
     const nodeCatalog =
@@ -37,7 +42,10 @@ export function SurfaceBlueprintEntrySection({ data }: CustomFieldProps<SceneEdi
             blueprintId: summary.blueprintId,
             ownerKind: "surfaceMain",
             surfaceId,
-            title: `${logicLabel} - ${data.surface.name || "Interface"}`,
+            title: t("properties.blueprintEntry.title", {
+                logic: logicLabel,
+                name: data.surface.name || t("properties.blueprintEntry.interfaceFallback"),
+            }),
         });
     };
 
@@ -50,13 +58,13 @@ export function SurfaceBlueprintEntrySection({ data }: CustomFieldProps<SceneEdi
                 className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 disabled:cursor-default"
                 disabled={!canOpenEntry}
                 onClick={openEntry}
-                aria-label={canOpenEntry ? "Open surface blueprint" : "No blueprint for this surface"}
+                aria-label={canOpenEntry ? t("properties.blueprintEntry.open") : t("properties.blueprintEntry.noBlueprint")}
             >
                 <BlueprintLayerPreview model={previewModel} />
             </button>
             {summary.brokenBindingCount > 0 ? (
                 <p className="text-2xs text-amber-200/90 rounded border border-amber-500/25 bg-amber-500/10 px-2 py-1.5">
-                    {summary.brokenBindingCount} broken binding{summary.brokenBindingCount === 1 ? "" : "s"}.
+                    {tn("properties.blueprintEntry.brokenBindings", summary.brokenBindingCount)}
                 </p>
             ) : null}
         </div>

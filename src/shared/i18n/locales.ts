@@ -10,7 +10,7 @@
  * no other file needs editing.
  */
 
-export const SUPPORTED_LOCALES = ["en", "zh", "ja"] as const;
+export const SUPPORTED_LOCALES = ["en", "zh"] as const;
 
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
 
@@ -37,7 +37,6 @@ export interface LocaleMeta {
 export const LOCALE_META: Record<Locale, LocaleMeta> = {
     en: { nativeName: "English", englishName: "English", intl: "en-US", dir: "ltr" },
     zh: { nativeName: "中文", englishName: "Chinese (Simplified)", intl: "zh-CN", dir: "ltr" },
-    ja: { nativeName: "日本語", englishName: "Japanese", intl: "ja-JP", dir: "ltr" },
 };
 
 export function isLocale(value: unknown): value is Locale {

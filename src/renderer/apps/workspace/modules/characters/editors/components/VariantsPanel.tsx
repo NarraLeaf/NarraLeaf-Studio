@@ -1,5 +1,6 @@
 import React from "react";
 import { CharacterForm, CharacterVariantGroup } from "@/lib/workspace/services/character/types";
+import { useTranslation } from "@/lib/i18n";
 import { ChevronDown, ChevronLeft, ChevronRight, Image as ImageIcon, ImagePlus, MoreVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import { AssetView } from "./types";
 
@@ -38,6 +39,7 @@ export function VariantsPanel({
     collapsed,
     onToggleCollapse,
 }: VariantsPanelProps) {
+    const { t, tn } = useTranslation();
     const ungroupedVariants = React.useMemo(() => {
         if (!activeForm) return [];
         const defaultGroup = activeForm.groups.find(g => g.name === DEFAULT_GROUP);
@@ -60,12 +62,12 @@ export function VariantsPanel({
                     <button
                         className="p-1 rounded-md text-fg hover:text-white hover:bg-fill transition-colors"
                         onClick={onToggleCollapse}
-                        title={collapsed ? "Expand variants" : "Collapse variants"}
-                        aria-label={collapsed ? "Expand variants" : "Collapse variants"}
+                        title={collapsed ? t("characters.variantsPanel.expand") : t("characters.variantsPanel.collapse")}
+                        aria-label={collapsed ? t("characters.variantsPanel.expand") : t("characters.variantsPanel.collapse")}
                     >
                         {collapsed ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                     </button>
-                    {!collapsed && <span className="tracking-wide text-2xs text-fg-muted">Variants</span>}
+                    {!collapsed && <span className="tracking-wide text-2xs text-fg-muted">{t("characters.variantsPanel.title")}</span>}
                 </div>
                 {!collapsed && (
                     <div className="flex items-center gap-2">
@@ -73,8 +75,8 @@ export function VariantsPanel({
                             className="p-1 rounded-md text-fg hover:text-white hover:bg-fill transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                             onClick={() => activeForm && onAddGroup(activeForm.name)}
                             disabled={!activeForm}
-                            title="Add group"
-                            aria-label="Add group"
+                            title={t("characters.variantsPanel.addGroup")}
+                            aria-label={t("characters.variantsPanel.addGroup")}
                         >
                             <Plus className="w-4 h-4" />
                         </button>
@@ -82,8 +84,8 @@ export function VariantsPanel({
                             className="p-1 rounded-md text-fg hover:text-white hover:bg-fill transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                             onClick={() => activeForm && onAddVariant(activeForm.name)}
                             disabled={!activeForm}
-                            title="Add variant"
-                            aria-label="Add variant"
+                            title={t("characters.variantsPanel.addVariant")}
+                            aria-label={t("characters.variantsPanel.addVariant")}
                         >
                             <ImagePlus className="w-4 h-4" />
                         </button>
@@ -94,7 +96,7 @@ export function VariantsPanel({
                 <div className="p-3 space-y-3 overflow-y-auto">
                     {ungroupedVariants.length > 0 && (
                         <div className="space-y-2">
-                            <div className="text-2xs tracking-wide text-fg-subtle px-1">Ungrouped</div>
+                            <div className="text-2xs tracking-wide text-fg-subtle px-1">{t("characters.variantsPanel.ungrouped")}</div>
                             {ungroupedVariants.map(({ variant, group }) => {
                                 const asset = activeForm?.variantAssets[variant.name]?.data ?? null;
                                 const view = asset ? assetViews[asset.id] : null;
@@ -119,7 +121,7 @@ export function VariantsPanel({
                                                     <span className="text-sm text-white truncate">{variant.name}</span>
                                                     {isDefault && (
                                                         <span className="text-2xs text-primary flex items-center gap-1">
-                                                            Default
+                                                            {t("characters.variantsPanel.default")}
                                                         </span>
                                                     )}
                                                 </div>
@@ -127,15 +129,15 @@ export function VariantsPanel({
                                             <button
                                                 className="p-1.5 rounded-md border border-edge hover:border-edge-strong hover:bg-fill transition-colors"
                                                 onClick={(e) => { e.stopPropagation(); onOpenSelector(activeForm?.name ?? "", variant.name, e.currentTarget); }}
-                                                title="Change image"
-                                                aria-label="Change image"
+                                                title={t("characters.variantsPanel.changeImage")}
+                                                aria-label={t("characters.variantsPanel.changeImage")}
                                             >
                                                 <ImagePlus className="w-3 h-3" />
                                             </button>
                                             <button
                                                 className="p-1 rounded hover:bg-fill"
                                                 onClick={(e) => onOpenVariantMenu(e, activeForm?.name ?? "", group, variant.name)}
-                                                title="Variant actions"
+                                                title={t("characters.variantsPanel.variantActions")}
                                             >
                                                 <MoreVertical className="w-4 h-4" />
                                             </button>
@@ -166,30 +168,30 @@ export function VariantsPanel({
                                     <div className="flex items-center gap-2">
                                         {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                         <span className="text-sm text-white">{group.name}</span>
-                                        <span className="text-2xs text-fg-muted">{group.variants.length} variants</span>
+                                        <span className="text-2xs text-fg-muted">{tn("characters.variantsPanel.variantCount", group.variants.length)}</span>
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <button
                                             className="p-1 rounded-md text-fg hover:text-white hover:bg-fill transition-colors"
                                             onClick={(e) => { e.stopPropagation(); activeForm && onAddVariant(activeForm.name, group.name); }}
-                                            title="Add variant"
-                                            aria-label="Add variant to group"
+                                            title={t("characters.variantsPanel.addVariant")}
+                                            aria-label={t("characters.variantsPanel.addVariantToGroup")}
                                         >
                                             <Plus className="w-4 h-4" />
                                         </button>
                                         <button
                                             className="p-1 rounded-md text-fg hover:text-white hover:bg-fill transition-colors"
                                             onClick={(e) => { e.stopPropagation(); activeForm && onRenameGroup(activeForm.name, group.name); }}
-                                            title="Rename group"
-                                            aria-label="Rename group"
+                                            title={t("characters.variantsPanel.renameGroup")}
+                                            aria-label={t("characters.variantsPanel.renameGroup")}
                                         >
                                             <Pencil className="w-4 h-4" />
                                         </button>
                                         <button
                                             className="p-1.5 rounded-md text-red-400 hover:text-red-300 hover:bg-fill transition-colors"
                                             onClick={(e) => { e.stopPropagation(); activeForm && onDeleteGroup(activeForm.name, group.name); }}
-                                            title="Delete group"
-                                            aria-label="Delete group"
+                                            title={t("characters.variantsPanel.deleteGroup")}
+                                            aria-label={t("characters.variantsPanel.deleteGroup")}
                                         >
                                             <Trash2 className="w-4 h-4" />
                                         </button>
@@ -222,24 +224,24 @@ export function VariantsPanel({
                                                                 <span className="text-sm text-white truncate">{variant.name}</span>
                                                                 {isDefault && (
                                                                     <span className="text-2xs text-primary flex items-center gap-1">
-                                                                        Default
+                                                                        {t("characters.variantsPanel.default")}
                                                                     </span>
                                                                 )}
                                                             </div>
-                                                            <div className="text-2xs text-fg-subtle">Group: {group.name}</div>
+                                                            <div className="text-2xs text-fg-subtle">{t("characters.variantsPanel.groupPrefix", { name: group.name })}</div>
                                                         </div>
                                                         <button
                                                             className="p-1.5 rounded-md border border-edge hover:border-edge-strong hover:bg-fill transition-colors"
                                                             onClick={(e) => { e.stopPropagation(); onOpenSelector(activeForm?.name ?? "", variant.name, e.currentTarget); }}
-                                                            title="Change image"
-                                                            aria-label="Change image"
+                                                            title={t("characters.variantsPanel.changeImage")}
+                                                            aria-label={t("characters.variantsPanel.changeImage")}
                                                         >
                                                             <ImagePlus className="w-3 h-3" />
                                                         </button>
                                                         <button
                                                             className="p-1 rounded hover:bg-fill"
                                                             onClick={(e) => onOpenVariantMenu(e, activeForm?.name ?? "", group, variant.name)}
-                                                            title="Variant actions"
+                                                            title={t("characters.variantsPanel.variantActions")}
                                                         >
                                                             <MoreVertical className="w-4 h-4" />
                                                         </button>
@@ -248,7 +250,7 @@ export function VariantsPanel({
                                             );
                                         })}
                                         {group.variants.length === 0 && (
-                                            <div className="text-xs text-fg-subtle px-2 pb-2">No variants yet, click "+" to add.</div>
+                                            <div className="text-xs text-fg-subtle px-2 pb-2">{t("characters.variantsPanel.groupNoVariants")}</div>
                                         )}
                                     </div>
                                 )}
@@ -256,15 +258,15 @@ export function VariantsPanel({
                         );
                     })}
                     {!activeForm && (
-                        <div className="text-sm text-fg-subtle">Select a form from the left.</div>
+                        <div className="text-sm text-fg-subtle">{t("characters.variantsPanel.selectForm")}</div>
                     )}
                     {activeForm && ungroupedVariants.length === 0 && groupedGroups.length === 0 && (
-                        <div className="text-sm text-fg-subtle">No variants yet, use the buttons above.</div>
+                        <div className="text-sm text-fg-subtle">{t("characters.variantsPanel.noVariants")}</div>
                     )}
                 </div>
             ) : (
                 <div className="h-full flex items-center justify-center">
-                    <span className="text-2xs text-fg-subtle -rotate-90">Variants</span>
+                    <span className="text-2xs text-fg-subtle -rotate-90">{t("characters.variantsPanel.title")}</span>
                 </div>
             )}
         </div>

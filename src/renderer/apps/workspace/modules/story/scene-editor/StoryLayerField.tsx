@@ -6,6 +6,7 @@ import type {
     StorySceneId,
 } from "@shared/types/story";
 import { DEFAULT_LAYER_OPTIONS, resolveStoryLayerRef } from "@shared/types/story";
+import { useTranslation } from "@/lib/i18n";
 import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPreviewTarget";
 import { useAutoMenuPlacement } from "./DisplayableTargetField";
 
@@ -32,6 +33,7 @@ export function StoryLayerField(props: {
     /** Insert a new `layer` create block before this block; returns the new block id (or null). */
     onCreateLayer: () => string | null;
 }) {
+    const { t } = useTranslation();
     const rootRef = useRef<HTMLDivElement | null>(null);
     const [open, setOpen] = useState(false);
 
@@ -84,23 +86,23 @@ export function StoryLayerField(props: {
 
     return (
         <div ref={rootRef} className="relative">
-            <label className={FIELD_LABEL_CLASS}>{props.label ?? "Layer"}</label>
+            <label className={FIELD_LABEL_CLASS}>{props.label ?? t("story.layerField.label")}</label>
             <button
                 type="button"
                 className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-edge bg-surface-raised px-3 text-left text-sm text-fg-muted transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60"
                 onClick={() => setOpen(current => !current)}
             >
                 <TriggerIcon className={["h-3.5 w-3.5 shrink-0", unresolved ? "text-amber-400" : "text-fg-muted"].join(" ")} />
-                <span className="truncate text-fg">{resolved.name || "Displayable layer"}</span>
+                <span className="truncate text-fg">{resolved.name || t("story.layerField.defaultName")}</span>
                 {unresolved ? (
                     <span
                         className="shrink-0 rounded bg-amber-400/10 px-1 text-2xs text-amber-300/90"
-                        title="No layer with this name is declared earlier in this scene — pick an existing layer"
+                        title={t("story.layerField.notOnStageTitle")}
                     >
-                        Not on stage
+                        {t("story.stage.notOnStage")}
                     </span>
                 ) : resolved.kind === "default" ? (
-                    <span className="shrink-0 text-2xs text-fg-subtle">Built-in</span>
+                    <span className="shrink-0 text-2xs text-fg-subtle">{t("story.stage.builtin")}</span>
                 ) : null}
                 <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-fg-subtle" />
             </button>
@@ -129,7 +131,7 @@ export function StoryLayerField(props: {
                                 <LayerRow
                                     key={option.sourceBlockId}
                                     label={option.name}
-                                    hint="Layer"
+                                    hint={t("story.layerField.hint")}
                                     active={selectedCustomId === option.sourceBlockId}
                                     onChoose={() => chooseCustom(option)}
                                 />
@@ -144,7 +146,7 @@ export function StoryLayerField(props: {
                             <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-primary/30 bg-primary/10">
                                 <Plus className="h-3.5 w-3.5" />
                             </span>
-                            <span className="min-w-0 flex-1 truncate">Create new layer</span>
+                            <span className="min-w-0 flex-1 truncate">{t("story.layerField.createNew")}</span>
                         </button>
                     </div>
                 </div>

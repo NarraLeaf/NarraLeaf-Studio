@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, memo, useEffect } from "react";
+import { useTranslation } from "@/lib/i18n";
 import { PropertyEditorSchema, FieldDefinition, PropertyEditorTab } from "./types";
 import { FieldRenderer } from "./fields";
 
@@ -40,6 +41,7 @@ function PropertyEditorInner<TData>({
     onChange,
     className = "",
 }: PropertyEditorProps<TData>) {
+    const { t } = useTranslation();
     const [savingCount, setSavingCount] = useState(0);
     const [activeTabId, setActiveTabId] = useState<string | null>(
         () => schema.defaultTabId ?? schema.tabs?.[0]?.id ?? null
@@ -114,7 +116,7 @@ function PropertyEditorInner<TData>({
                 ))}
 
                 {schema.showSavingIndicator && isSaving && (
-                    <div className="text-xs text-fg-muted text-center">Saving...</div>
+                    <div className="text-xs text-fg-muted text-center">{t("properties.saving")}</div>
                 )}
             </div>
         </div>

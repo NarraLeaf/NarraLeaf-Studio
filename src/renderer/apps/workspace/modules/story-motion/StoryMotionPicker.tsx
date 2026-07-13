@@ -6,6 +6,7 @@ import type {
     StoryDisplayableTargetKind,
     StoryTransformRef,
 } from "@shared/types/story";
+import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { Services } from "@/lib/workspace/services/services";
@@ -21,10 +22,18 @@ import {
     createStoryMotionTemplateTimeline,
     getStoryMotionDurationMs,
     getStoryMotionPropertyMeta,
+    type StoryMotionTemplateName,
 } from "./storyMotionTimeline";
 
 const ICON_BUTTON_CLASS = controlButtonClass();
 const TOOL_BUTTON_CLASS = "inline-flex h-8 items-center gap-1.5 rounded border border-edge bg-fill-subtle px-2 text-xs text-fg hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
+
+const STORY_MOTION_TEMPLATE_KEYS = {
+    "Fade in + slide": "fadeInSlide",
+    "Center pop": "centerPop",
+    "Look around": "lookAround",
+    "Flash": "flash",
+} as const satisfies Record<StoryMotionTemplateName, string>;
 
 export function StoryMotionPicker(props: {
     value: StoryTransformRef | undefined;
@@ -33,6 +42,7 @@ export function StoryMotionPicker(props: {
     actionContext: StoryMotionActionContext;
     onChange: (value: StoryTransformRef | undefined) => void;
 }) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const storyService = useMemo(
@@ -47,8 +57,8 @@ export function StoryMotionPicker(props: {
     const [template, setTemplate] = useState<typeof STORY_MOTION_TEMPLATES[number]>("Fade in + slide");
     const templateOptions = useMemo(() => STORY_MOTION_TEMPLATES.map(option => ({
         value: option,
-        label: option,
-    })), []);
+        label: t(`motion.templates.${STORY_MOTION_TEMPLATE_KEYS[option]}`),
+    })), [t]);
 
     useEffect(() => {
         if (!storyService) {
@@ -130,14 +140,14 @@ export function StoryMotionPicker(props: {
     return (
         <div className="rounded-lg border border-edge bg-white/[0.025] p-2">
             <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="text-xs font-medium text-fg-muted">Story Motion</div>
+                <div className="text-xs font-medium text-fg-muted">{t("motion.storyMotion")}</div>
                 <button
                     type="button"
                     className={TOOL_BUTTON_CLASS}
                     onClick={() => setPickerOpen(value => !value)}
                 >
                     <Spline className="h-3.5 w-3.5" />
-                    {animationId ? "Change" : "Choose"}
+                    {animationId ? t("motion.picker.change") : t("motion.picker.choose")}
                 </button>
             </div>
 
@@ -149,24 +159,24 @@ export function StoryMotionPicker(props: {
                     <div className="min-w-0 flex-1">
                         <div className="truncate text-xs font-medium text-primary">{selectedAsset?.name ?? props.motionLabel}</div>
                         <div className="truncate text-2xs text-fg-muted">
-                            {selectedAsset ? motionSummary(selectedAsset) : `Asset ${animationId}`}
+                            {selectedAsset ? motionSummary(selectedAsset) : t("motion.picker.assetFallback", { id: animationId ?? "" })}
                         </div>
                     </div>
-                    <button className={ICON_BUTTON_CLASS} type="button" onClick={() => openEditor(animationId)} title="Edit motion">
+                    <button className={ICON_BUTTON_CLASS} type="button" onClick={() => openEditor(animationId)} title={t("motion.editMotion")}>
                         <Edit3 className="h-4 w-4" />
                     </button>
                     <button
                         className={ICON_BUTTON_CLASS}
                         type="button"
                         onClick={() => props.onChange({ mode: "preset", preset: "none" })}
-                        title="Clear motion"
+                        title={t("motion.clearMotion")}
                     >
                         <X className="h-4 w-4" />
                     </button>
                 </div>
             ) : (
                 <div className="rounded border border-dashed border-edge bg-black/10 p-3 text-xs text-fg-subtle">
-                    No motion is bound to this action.
+                    {t("motion.picker.noMotionBound")}
                 </div>
             )}
 
@@ -177,7 +187,7 @@ export function StoryMotionPicker(props: {
                             className="flex-1"
                             value={query}
                             onChange={setQuery}
-                            placeholder="Search story motions"
+                            placeholder={t("motion.searchStoryMotions")}
                             leftIcon={<Search className="h-3.5 w-3.5 text-fg-subtle" />}
                         />
                         <Select
@@ -191,12 +201,12 @@ export function StoryMotionPicker(props: {
                         />
                         <button className={TOOL_BUTTON_CLASS} type="button" onClick={createAndBind} disabled={!storyService}>
                             <Plus className="h-3.5 w-3.5" />
-                            Create
+                            {t("common.create")}
                         </button>
                     </div>
                     <div className="mt-2 max-h-56 overflow-auto rounded border border-white/[0.06]">
                         {filteredAssets.length === 0 ? (
-                            <div className="p-4 text-xs text-fg-subtle">No matching story motions.</div>
+                            <div className="p-4 text-xs text-fg-subtle">{t("motion.picker.noMatches")}</div>
                         ) : filteredAssets.map(asset => (
                             <button
                                 key={asset.id}
@@ -212,7 +222,7 @@ export function StoryMotionPicker(props: {
                                 </span>
                                 <span className="min-w-0 flex-1">
                                     <span className="block truncate text-xs font-medium text-fg">{asset.name}</span>
-                                    <span className="block truncate text-2xs text-fg-subtle">Preview: {formatTargetKind(asset.targetKind)}</span>
+                                    <span className="block truncate text-2xs text-fg-subtle">{t("motion.picker.previewKind", { kind: t(`motion.targetKind.${asset.targetKind}`) })}</span>
                                 </span>
                                 {animationId === asset.id ? <Check className="h-4 w-4 text-primary" /> : null}
                             </button>
@@ -232,8 +242,4 @@ function motionSummary(asset: StoryAnimationAsset): string {
         .map(track => getStoryMotionPropertyMeta(track.property).label)
         .join(", ");
     return `${durationMs}ms${labels ? ` / ${labels}${tracks.length > 3 ? "..." : ""}` : ""}`;
-}
-
-function formatTargetKind(kind: StoryDisplayableTargetKind): string {
-    return kind[0].toUpperCase() + kind.slice(1);
 }

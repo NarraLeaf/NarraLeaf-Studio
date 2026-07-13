@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Plus } from "luci
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
 import { useWorkspace } from "@/apps/workspace/context";
+import { useTranslation } from "@/lib/i18n";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
@@ -37,9 +38,13 @@ import {
     describeBlock,
     getBlockBadgeInfo,
     getCharacterName,
+    getContainerHeaderInfo,
     getEmptyTextPlaceholder,
     getTextSegment,
+    isContainerBlock,
+    type StoryContainerHeaderInfo,
 } from "./storySceneBlockUtils";
+import { ConditionPopover } from "./ConditionPopover";
 
 export function StoryBlockRow(props: {
     row: VisibleStoryRow;
@@ -75,9 +80,16 @@ export function StoryBlockRow(props: {
     generateTextId: () => string;
     onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
     onInsertAfter: () => void;
+    /** Insert a fresh child (action / menu option) at the end of this container. */
+    onAddInside: (parentId: StoryBlockId) => void;
+    /** Append an if / else-if / else branch to a condition container. */
+    onAddBranch: (conditionId: StoryBlockId, branch: "if" | "elseIf" | "else") => void;
 }) {
+    const { t } = useTranslation();
     const { row, scene, document, characters, selected, active, collapsed, editing, textInputRef, inspectorOpen } = props;
     const block = row.block;
+    const container = isContainerBlock(block);
+    const containerInfo = container ? getContainerHeaderInfo(block) : null;
     const canFold = block.childrenIds.length > 0 && canAcceptChildren(block);
     const textSegment = getTextSegment(block);
     // Plain narration and studio notes hide their badge icon (but keep its slot, for alignment).
@@ -135,8 +147,8 @@ export function StoryBlockRow(props: {
                     {...listeners}
                     role="button"
                     tabIndex={0}
-                    aria-label="Drag row"
-                    title="Drag row"
+                    aria-label={t("story.rows.dragRow")}
+                    title={t("story.rows.dragRow")}
                     className="flex h-7 w-7 touch-none select-none items-center justify-center rounded text-fg-subtle opacity-0 transition-colors hover:cursor-grab hover:text-primary hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 group-hover:opacity-100"
                     onMouseDown={event => event.stopPropagation()}
                     onClick={event => event.stopPropagation()}
@@ -144,9 +156,28 @@ export function StoryBlockRow(props: {
                     <GripVertical className="pointer-events-none h-4 w-4" />
                 </div>
             </div>
-            <div className="min-w-0 py-1" style={{ paddingLeft: row.depth * 22 }}>
+            <div className="relative min-w-0 py-1">
+                <RailGuides depth={row.depth} highlight={selected || active} />
+                <div style={{ paddingLeft: row.depth * RAIL_STEP }}>
                 <div className="flex min-h-[27px] min-w-0 items-center gap-2">
-                    {hideBadge ? <span className="h-6 w-6 shrink-0" aria-hidden /> : <BlockBadge block={block} characters={characters} />}
+                    {containerInfo ? (
+                        <ContainerPill info={containerInfo} />
+                    ) : hideBadge ? (
+                        <span className="h-6 w-6 shrink-0" aria-hidden />
+                    ) : (
+                        <BlockBadge block={block} characters={characters} />
+                    )}
+                    {containerInfo?.role === "branch" && containerInfo.hasCondition ? (
+                        <ConditionChip
+                            block={block}
+                            scene={scene}
+                            document={document}
+                            onUpdatePayload={props.onUpdatePayload}
+                        />
+                    ) : null}
+                    {containerInfo?.repeatTimes !== undefined ? (
+                        <RepeatTimesField block={block} onUpdatePayload={props.onUpdatePayload} />
+                    ) : null}
                     {editing && textSegment ? (
                         <TextEditBox
                             editorRef={textInputRef}
@@ -164,7 +195,7 @@ export function StoryBlockRow(props: {
                             characters={characters}
                             onSetDialogueCharacter={props.onSetDialogueCharacter}
                         />
-                    ) : (
+                    ) : textSegment || !containerInfo ? (
                         <BlockPreview
                             block={block}
                             scene={scene}
@@ -173,9 +204,21 @@ export function StoryBlockRow(props: {
                             onSetDialogueCharacter={props.onSetDialogueCharacter}
                             onTextDoubleClick={props.onStartTextEdit}
                         />
+                    ) : null}
+                    {containerInfo ? (
+                        <ContainerHeaderAdd info={containerInfo} onAdd={() => props.onAddInside(block.id)} />
+                    ) : (
+                        <RowActions onInsertAfter={props.onInsertAfter} />
                     )}
-                    <RowActions onInsertAfter={props.onInsertAfter} />
                 </div>
+                {containerInfo ? (
+                    <ContainerFooter
+                        block={block}
+                        info={containerInfo}
+                        onAddInside={() => props.onAddInside(block.id)}
+                        onAddBranch={branch => props.onAddBranch(block.id, branch)}
+                    />
+                ) : null}
                 {inspectorOpen ? (
                     <ActionInspector
                         block={block}
@@ -189,19 +232,20 @@ export function StoryBlockRow(props: {
                         onCreateLayer={props.onCreateLayer}
                     />
                 ) : null}
+                </div>
             </div>
         </div>
     );
 }
 
-function editorPlaceholder(block: StoryBlock): string {
+function editorPlaceholder(block: StoryBlock, t: ReturnType<typeof useTranslation>["t"]): string {
     switch (getTextSegment(block)?.role) {
-        case "dialogue": return "Dialogue…";
-        case "narration": return "Narration…";
-        case "choicePrompt": return "Choice prompt…";
-        case "choiceText": return "Option text…";
-        case "note": return "Note…";
-        default: return "Text…";
+        case "dialogue": return t("story.rows.placeholderDialogue");
+        case "narration": return t("story.rows.placeholderNarration");
+        case "choicePrompt": return t("story.rows.placeholderChoicePrompt");
+        case "choiceText": return t("story.rows.placeholderChoiceText");
+        case "note": return t("story.rows.placeholderNote");
+        default: return t("story.rows.placeholderText");
     }
 }
 
@@ -221,6 +265,7 @@ function TextEditBox(props: {
     characters: Character[];
     onSetDialogueCharacter: (characterId: string | undefined) => void;
 }) {
+    const { t } = useTranslation();
     const dialoguePayload = props.block.kind === "nodeAction" && props.block.payload.action === "dialogue"
         ? props.block.payload
         : null;
@@ -330,7 +375,7 @@ function TextEditBox(props: {
                 initialCaret={props.initialCaret}
                 className="min-h-[28px] flex-1 whitespace-pre-wrap break-words bg-transparent px-2 py-1 text-fg outline-none empty:before:italic empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]"
                 style={textStyle}
-                placeholder={editorPlaceholder(props.block)}
+                placeholder={editorPlaceholder(props.block, t)}
                 onChange={props.onEditRichChange}
                 onBlur={handleBlur}
                 onCancel={props.onCancelTextEdit}
@@ -380,15 +425,262 @@ function TextEditBox(props: {
 }
 
 function RowActions(props: { onInsertAfter: () => void }) {
+    const { t } = useTranslation();
     return (
         <div className="pointer-events-none ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
             <button type="button" tabIndex={-1} className="rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill hover:text-primary" onClick={event => {
                 event.stopPropagation();
                 props.onInsertAfter();
             }}>
-                Insert
+                {t("story.rows.insert")}
             </button>
         </div>
+    );
+}
+
+// --- Control-flow container rendering: accordion headers + visual indent rails. ---
+
+/** Indent step (px) per nesting level. Each level draws a vertical guide rail. */
+const RAIL_STEP = 20;
+
+/** Vertical guide rails, one per ancestor nesting level, so nesting reads at a glance. */
+function RailGuides({ depth, highlight }: { depth: number; highlight: boolean }) {
+    if (depth <= 0) {
+        return null;
+    }
+    return (
+        <>
+            {Array.from({ length: depth }).map((_, index) => (
+                <span
+                    key={index}
+                    aria-hidden
+                    className={[
+                        "pointer-events-none absolute inset-y-0 w-px",
+                        highlight && index === depth - 1 ? "bg-primary/40" : "bg-edge",
+                    ].join(" ")}
+                    style={{ left: index * RAIL_STEP + 9 }}
+                />
+            ))}
+        </>
+    );
+}
+
+const CONTAINER_PILL_TONE: Record<StoryContainerHeaderInfo["role"], string> = {
+    condition: "border-[#b2a6c9]/40 bg-[#b2a6c9]/10 text-[#d0c8e0]",
+    branch: "border-[#b2a6c9]/40 bg-[#b2a6c9]/10 text-[#d0c8e0]",
+    group: "border-[#96b8a0]/40 bg-[#96b8a0]/10 text-[#bcd6c2]",
+    menu: "border-[#9bb7d8]/40 bg-[#9bb7d8]/10 text-[#c6d7ee]",
+    option: "border-[#9bb7d8]/40 bg-[#9bb7d8]/10 text-[#c6d7ee]",
+    nvl: "border-edge bg-fill-subtle text-fg-muted",
+};
+
+/** The plain-language label pill that titles a control-flow container header. */
+function ContainerPill({ info }: { info: StoryContainerHeaderInfo }) {
+    return (
+        <span
+            className={[
+                "inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 text-2xs font-medium",
+                CONTAINER_PILL_TONE[info.role],
+            ].join(" ")}
+        >
+            {info.role === "option" ? <span aria-hidden className="text-[10px] leading-none">○</span> : null}
+            {info.pill}
+        </span>
+    );
+}
+
+type StoryT = ReturnType<typeof useTranslation>["t"];
+
+function conditionOperatorLabel(operator: string, t: StoryT): string {
+    switch (operator) {
+        case "isTrue": return t("story.condition.opIsOn");
+        case "isFalse": return t("story.condition.opIsOff");
+        case "equals": return t("story.condition.opEquals");
+        case "notEquals": return t("story.condition.opNotEquals");
+        case "exists": return t("story.condition.opExists");
+        default: return operator;
+    }
+}
+
+/** Compact, user-safe one-line summary of a branch condition (never exposes ids). */
+function conditionSummary(condition: unknown, scene: StoryScene, document: StoryDocument, t: StoryT): string {
+    const value = condition as
+        | { kind: "variable"; target: { scope: string; variableId?: string; storageKey?: string }; operator: string; value?: unknown }
+        | { kind: "blueprint"; blueprintId: string }
+        | { kind: "expression"; source: string }
+        | undefined;
+    if (!value) {
+        return t("story.condition.summarySet");
+    }
+    if (value.kind === "blueprint") {
+        return t("story.condition.summaryGraph");
+    }
+    if (value.kind === "expression") {
+        return value.source || t("story.condition.summaryExpression");
+    }
+    const target = value.target;
+    const name = target.scope === "scene"
+        ? scene.sceneVariables?.[target.variableId ?? ""]?.name ?? t("story.condition.fallbackVariable")
+        : target.scope === "saved"
+          ? document.savedVariables?.[target.variableId ?? ""]?.name ?? t("story.condition.fallbackVariable")
+          : t("story.condition.fallbackPersistent");
+    const operator = conditionOperatorLabel(value.operator, t);
+    const suffix = value.operator === "equals" || value.operator === "notEquals" ? ` ${String(value.value ?? "")}` : "";
+    return `${name} ${operator}${suffix}`.trim();
+}
+
+/** Editable condition chip on a branch header — opens the inline condition popover. */
+function ConditionChip(props: {
+    block: StoryBlock;
+    scene: StoryScene;
+    document: StoryDocument;
+    onUpdatePayload: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    const [anchor, setAnchor] = useState<{ top: number; left: number; bottom: number } | null>(null);
+    const block = props.block;
+    if (block.kind !== "control" || block.payload.control !== "conditionBranch") {
+        return null;
+    }
+    const payload = block.payload;
+    const openPopover = (event: MouseEvent) => {
+        event.stopPropagation();
+        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+        setAnchor({ top: rect.top, left: rect.left, bottom: rect.bottom });
+    };
+    return (
+        <>
+            <button
+                type="button"
+                className="min-w-0 max-w-[240px] truncate rounded border border-edge bg-black/20 px-2 py-0.5 text-xs text-fg-muted transition-colors hover:border-primary/50 hover:text-fg"
+                onClick={openPopover}
+                onMouseDown={event => event.stopPropagation()}
+            >
+                {conditionSummary(payload.condition, props.scene, props.document, t)}
+            </button>
+            {anchor ? (
+                <ConditionPopover
+                    anchor={anchor}
+                    document={props.document}
+                    sceneId={props.scene.id}
+                    value={payload.condition}
+                    onChange={condition => props.onUpdatePayload({ ...payload, condition })}
+                    onClear={() => {
+                        props.onUpdatePayload({ ...payload, condition: undefined });
+                        setAnchor(null);
+                    }}
+                    onClose={() => setAnchor(null)}
+                />
+            ) : null}
+        </>
+    );
+}
+
+/** Inline repeat-count stepper on a repeat group header. */
+function RepeatTimesField(props: { block: StoryBlock; onUpdatePayload: (payload: StoryBlock["payload"]) => void }) {
+    const { t } = useTranslation();
+    const block = props.block;
+    if (block.kind !== "control" || block.payload.control !== "repeat") {
+        return null;
+    }
+    const payload = block.payload;
+    return (
+        <label
+            className="flex shrink-0 items-center gap-1 text-xs text-fg-muted"
+            onClick={event => event.stopPropagation()}
+            onMouseDown={event => event.stopPropagation()}
+        >
+            <input
+                type="number"
+                min={0}
+                value={payload.times ?? 1}
+                onChange={event =>
+                    props.onUpdatePayload({ ...payload, times: Math.max(0, Math.floor(Number(event.target.value) || 0)) })
+                }
+                className="w-14 rounded border border-edge bg-black/20 px-1.5 py-0.5 text-fg outline-none focus:border-primary/50"
+            />
+            <span>{t("story.repeat.times")}</span>
+        </label>
+    );
+}
+
+/** Hover "+ Add" affordance on the right of a non-condition container header (adds a child at the end). */
+function ContainerHeaderAdd(props: { info: StoryContainerHeaderInfo; onAdd: () => void }) {
+    const { t } = useTranslation();
+    if (props.info.role === "condition") {
+        return null;
+    }
+    const label = props.info.role === "menu" ? t("story.container.addOption") : t("story.container.addAction");
+    return (
+        <div className="pointer-events-none ml-auto flex shrink-0 items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+            <button
+                type="button"
+                tabIndex={-1}
+                title={label}
+                className="rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill hover:text-primary"
+                onClick={event => {
+                    event.stopPropagation();
+                    props.onAdd();
+                }}
+            >
+                + {label}
+            </button>
+        </div>
+    );
+}
+
+/** Footer affordances under a container header: empty-body add prompt, and branch management for conditions. */
+function ContainerFooter(props: {
+    block: StoryBlock;
+    info: StoryContainerHeaderInfo;
+    onAddInside: () => void;
+    onAddBranch: (branch: "if" | "elseIf" | "else") => void;
+}) {
+    const { t } = useTranslation();
+    const empty = props.block.childrenIds.length === 0;
+    if (props.info.role === "condition") {
+        return (
+            <div className="mt-1 flex items-center gap-3 text-2xs text-fg-subtle" style={{ paddingLeft: RAIL_STEP }}>
+                <button
+                    type="button"
+                    className="rounded px-1.5 py-0.5 hover:bg-fill hover:text-primary"
+                    onClick={event => {
+                        event.stopPropagation();
+                        props.onAddBranch("elseIf");
+                    }}
+                >
+                    + {t("story.container.elseIf")}
+                </button>
+                <button
+                    type="button"
+                    className="rounded px-1.5 py-0.5 hover:bg-fill hover:text-primary"
+                    onClick={event => {
+                        event.stopPropagation();
+                        props.onAddBranch("else");
+                    }}
+                >
+                    + {t("story.container.elseBranch")}
+                </button>
+            </div>
+        );
+    }
+    if (!empty) {
+        return null;
+    }
+    const label = props.info.role === "menu" ? t("story.container.addOptionInside") : t("story.container.addActionInside");
+    return (
+        <button
+            type="button"
+            className="mt-1 flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs italic text-fg-subtle hover:bg-fill hover:text-fg-muted"
+            style={{ marginLeft: RAIL_STEP }}
+            onClick={event => {
+                event.stopPropagation();
+                props.onAddInside();
+            }}
+        >
+            <Plus className="h-3 w-3" />
+            {label}
+        </button>
     );
 }
 
@@ -404,6 +696,7 @@ export function InsertRow(props: {
     /** Backspace on the empty slot — dismiss it and step back to the row above. */
     onBackspaceEmpty: () => void;
 }) {
+    const { t } = useTranslation();
     const chooserQuery = props.mode.value.slice(1);
     const menuAnchorRef = useRef<HTMLDivElement | null>(null);
     const menuPlacement = useAutoMenuPlacement(menuAnchorRef, props.mode.chooser !== "none", 312);
@@ -430,7 +723,7 @@ export function InsertRow(props: {
                     style={textStyle}
                     rows={1}
                     value={props.mode.value}
-                    placeholder="Type narration, / for actions, # for characters..."
+                    placeholder={t("story.rows.insertPlaceholder")}
                     onChange={event => props.onValueChange(event.target.value)}
                     onBlur={() => {
                         if (props.mode.chooser === "none") {
@@ -654,6 +947,7 @@ function ActionCommandMenu(props: {
     onCancel: () => void;
     placement: PopupPlacement;
 }) {
+    const { t } = useTranslation();
     const activeCategory = props.categories.find(category => category.id === props.activeCategoryId) ?? props.categories[0] ?? null;
     const listRef = useRef<HTMLDivElement | null>(null);
     const categoryListRef = useRef<HTMLDivElement | null>(null);
@@ -690,11 +984,11 @@ function ActionCommandMenu(props: {
         >
             {props.categories.length === 0 ? (
                 <button type="button" className="w-full px-3 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
-                    No action found. 
+                    {t("story.actionCreator.noActions")}
                 </button>
             ) : (
                 <>
-                    <div ref={categoryListRef} className="flex overflow-x-auto border-b border-edge bg-surface" role="tablist" aria-label="Action types">
+                    <div ref={categoryListRef} className="flex overflow-x-auto border-b border-edge bg-surface" role="tablist" aria-label={t("story.rows.actionTypes")}>
                         {props.categories.map(category => {
                             const active = category.id === activeCategory?.id;
                             return (
@@ -719,7 +1013,7 @@ function ActionCommandMenu(props: {
                     <div ref={listRef} className="max-h-64 overflow-auto p-1">
                         {activeCategory && activeCategory.commands.length === 0 ? (
                             <button type="button" className="w-full rounded px-2 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
-                                No {activeCategory.label.toLowerCase()} action found. 
+                                {t("story.rows.noCategoryActionFound", { category: activeCategory.label.toLowerCase() })}
                             </button>
                         ) : activeCategory?.commands.map(command => {
                             const Icon = command.icon;
@@ -794,6 +1088,7 @@ function CharacterPicker(props: {
     onClear: () => void;
     placement: PopupPlacement;
 }) {
+    const { t } = useTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -818,7 +1113,7 @@ function CharacterPicker(props: {
         >
             {props.characters.length === 0 ? (
                 <button type="button" className="w-full rounded px-2 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onClear}>
-                    No character found. 
+                    {t("story.rows.noCharacterFound")}
                 </button>
             ) : (
                 props.characters.map(character => {
@@ -1025,6 +1320,7 @@ function BlockPreview(props: {
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     onTextDoubleClick: () => void;
 }) {
+    const { t } = useTranslation();
     const block = props.block;
     const text = getTextSegment(block);
     const textStyle = useStoryEditorTextStyle();
@@ -1042,7 +1338,7 @@ function BlockPreview(props: {
                     event.stopPropagation();
                     props.onTextDoubleClick();
                 }}>
-                    {hasValue && text ? <RichTextView segment={text} document={props.document} sceneId={props.scene.id} /> : "Double-click to enter dialogue"}
+                    {hasValue && text ? <RichTextView segment={text} document={props.document} sceneId={props.scene.id} /> : t("story.rows.doubleClickDialogue")}
                 </span>
             </div>
         );
@@ -1078,6 +1374,7 @@ function BlockPreview(props: {
 }
 
 function BackgroundBlockPreview({ payload }: { payload: Extract<StoryActionPayload, { action: "setBackground" }> }) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const textStyle = useStoryEditorTextStyle();
     const assetsService = useMemo(
@@ -1086,7 +1383,7 @@ function BackgroundBlockPreview({ payload }: { payload: Extract<StoryActionPaylo
     );
     const asset = payload.assetId ? assetsService?.getAssets()[AssetType.Image]?.[payload.assetId] ?? null : null;
     const { url } = useAssetObjectUrl(payload.assetId ?? null);
-    const label = asset?.name ?? (payload.assetId ? "Missing image" : payload.color || "unassigned");
+    const label = asset?.name ?? (payload.assetId ? t("story.background.missingImage") : payload.color || t("story.background.unassigned"));
     const isColor = !payload.assetId && Boolean(payload.color);
 
     return (
@@ -1113,7 +1410,7 @@ function BackgroundBlockPreview({ payload }: { payload: Extract<StoryActionPaylo
                 />
             ) : null}
             <span className="min-w-0 truncate">
-                Set background <span className={payload.assetId || payload.color ? "text-fg" : "italic text-fg-subtle"}>{label}</span>
+                {t("story.rows.setBackground")} <span className={payload.assetId || payload.color ? "text-fg" : "italic text-fg-subtle"}>{label}</span>
             </span>
         </span>
     );
@@ -1127,6 +1424,7 @@ function DisplayableTransformPreview(props: {
     characters: Character[];
     fallback: string;
 }) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const textStyle = useStoryEditorTextStyle();
     const assetsService = useMemo(
@@ -1185,7 +1483,7 @@ function DisplayableTransformPreview(props: {
                 )}
             </span>
             <span className="min-w-0 truncate">
-                Transform <span className="text-fg">{name}</span>
+                {t("story.rows.transform")} <span className="text-fg">{name}</span>
                 {asset ? <span className="text-fg-subtle"> · {asset.name}</span> : null}
             </span>
         </span>

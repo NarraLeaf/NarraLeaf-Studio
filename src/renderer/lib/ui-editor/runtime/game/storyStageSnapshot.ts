@@ -284,6 +284,12 @@ class SnapshotWalker {
             this.diagnostic(blockId, "Expression condition evaluates false in the preview.");
             return false;
         }
+        if (condition.kind === "blueprint") {
+            // The preview follows the Studio-computed path when available; a blueprint condition that
+            // is not on that path falls back to false rather than running the graph synchronously here.
+            this.diagnostic(blockId, "Blueprint condition evaluates false in the preview.");
+            return false;
+        }
         const target = condition.target;
         let current: StoryLiteralValue | null | undefined;
         if (target.scope === "persistent") {

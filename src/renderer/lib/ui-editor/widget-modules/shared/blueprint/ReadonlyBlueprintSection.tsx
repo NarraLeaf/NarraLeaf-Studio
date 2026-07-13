@@ -11,6 +11,7 @@ import { getOwnerLabel } from "@shared/types/ui-editor/ownerLabels";
 import { BlueprintLayerPreview, resolveFirstBlueprintLayerPreview } from "./BlueprintLayerPreview";
 import { useReadonlyBlueprintSummary } from "./useReadonlyBlueprintSummary";
 import { parseComponentEditorSurfaceId } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
+import { useTranslation } from "@/lib/i18n";
 
 const widgetOwnerLabel = getOwnerLabel("widgetMain");
 
@@ -18,6 +19,7 @@ const widgetOwnerLabel = getOwnerLabel("widgetMain");
  * Shared properties-panel block: single widget blueprint preview + entry to the Blueprint editor.
  */
 export function ReadonlyBlueprintSection({ data }: CustomFieldProps<UIInspectorData>) {
+    const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const surfaceId = data.surfaceId;
     const componentId = parseComponentEditorSurfaceId(surfaceId);
@@ -57,18 +59,18 @@ export function ReadonlyBlueprintSection({ data }: CustomFieldProps<UIInspectorD
                 className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 disabled:cursor-default"
                 disabled={!canOpenEntry}
                 onClick={openEntry}
-                aria-label={canOpenEntry ? "Open control blueprint" : "No blueprint for this control"}
+                aria-label={canOpenEntry ? t("widgetChrome.blueprint.openControlBlueprint") : t("widgetChrome.blueprint.noBlueprintForControl")}
             >
                 <BlueprintLayerPreview model={previewModel} />
             </button>
             {summary.legacyHookCount > 0 ? (
                 <p className="text-2xs text-amber-200/90 rounded border border-amber-500/25 bg-amber-500/10 px-2 py-1.5">
-                    {summary.legacyHookCount} legacy hook{summary.legacyHookCount === 1 ? "" : "s"} in uidoc.
+                    {tn("widgetChrome.blueprint.legacyHookCount", summary.legacyHookCount)}
                 </p>
             ) : null}
             {summary.eventSchemaIssueCount > 0 ? (
                 <p className="text-2xs text-amber-200/90 rounded border border-amber-500/25 bg-amber-500/10 px-2 py-1.5">
-                    Event schema mismatch. See diagnostics in the editor.
+                    {t("widgetChrome.blueprint.eventSchemaMismatch")}
                 </p>
             ) : null}
         </div>

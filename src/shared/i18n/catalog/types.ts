@@ -19,6 +19,14 @@ type Stringify<T> = {
  */
 export type LocaleMessages = DeepPartial<Stringify<Messages>>;
 
+/**
+ * Shape a single translated namespace must satisfy (one file per top-level key,
+ * e.g. `zh/story.ts`). Same subset-of-source rule as {@link LocaleMessages}, but
+ * scoped to one namespace so per-namespace catalog files stay independent and
+ * can be filled in parallel without touching a shared file.
+ */
+export type LocaleNamespace<K extends keyof Messages> = DeepPartial<Stringify<Messages[K]>>;
+
 type Flatten<T, Prefix extends string = ""> = {
     [K in keyof T & string]: T[K] extends string
         ? `${Prefix}${K}`

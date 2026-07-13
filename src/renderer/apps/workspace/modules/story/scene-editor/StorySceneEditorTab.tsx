@@ -3,6 +3,7 @@ import { FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Trash2, Vari
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
+import { useTranslation } from "@/lib/i18n";
 import type { EditorComponentProps } from "../../types";
 import { PanelPosition } from "../../../registry/types";
 import { Services } from "@/lib/workspace/services/services";
@@ -61,6 +62,7 @@ function StorySceneOverviewBlock(props: {
     backgroundAsset: Asset<AssetType.Image> | null;
     onUpdateScene: (patch: StorySceneUpdate) => boolean;
 }) {
+    const { t } = useTranslation();
     const { document, scene, backgroundAsset, onUpdateScene } = props;
     const [nameValue, setNameValue] = useState(scene.name);
     const [descriptionValue, setDescriptionValue] = useState(scene.description ?? "");
@@ -75,12 +77,12 @@ function StorySceneOverviewBlock(props: {
     }, [scene.description, scene.name]);
 
     const commitName = useCallback(() => {
-        const nextName = nameValue.trim() || scene.name || "Untitled Scene";
+        const nextName = nameValue.trim() || scene.name || t("story.sceneEditor.defaultSceneName");
         const changed = onUpdateScene({ name: nextName });
         if (!changed) {
             setNameValue(scene.name);
         }
-    }, [nameValue, onUpdateScene, scene.name]);
+    }, [nameValue, onUpdateScene, scene.name, t]);
 
     const commitDescription = useCallback(() => {
         const nextDescription = descriptionValue.trim();
@@ -103,7 +105,7 @@ function StorySceneOverviewBlock(props: {
         onUpdateScene({ defaultBackgroundAssetId: null });
     }, [onUpdateScene]);
 
-    const backgroundLabel = backgroundAsset?.name ?? (backgroundAssetId ? "Missing image" : "No background");
+    const backgroundLabel = backgroundAsset?.name ?? (backgroundAssetId ? t("story.background.missingImage") : t("story.background.none"));
 
     return (
         <div className="mx-3 mb-3 rounded-lg border border-edge bg-white/[0.025] p-3">
@@ -115,7 +117,7 @@ function StorySceneOverviewBlock(props: {
                     type="button"
                     className="group relative aspect-[16/9] min-h-40 overflow-hidden rounded-md border border-edge bg-[#101216] text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
                     onClick={() => setSelectorOpen(true)}
-                    title={backgroundAssetId ? "Change default background" : "Select default background"}
+                    title={backgroundAssetId ? t("story.sceneEditor.changeBackgroundTitle") : t("story.sceneEditor.selectBackgroundTitle")}
                 >
                     {url ? (
                         <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
@@ -127,13 +129,13 @@ function StorySceneOverviewBlock(props: {
                     )}
                     {loading ? (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-xs text-fg">
-                            Loading...
+                            {t("common.loading")}
                         </div>
                     ) : null}
                     <div className="absolute inset-x-0 bottom-0 flex min-h-9 items-center justify-between gap-2 bg-black/55 px-3 py-2 text-xs text-fg backdrop-blur-sm">
                         <span className="min-w-0 truncate">{backgroundLabel}</span>
                         <span className="shrink-0 text-primary opacity-0 transition-opacity group-hover:opacity-100">
-                            {backgroundAssetId ? "Change" : "Select"}
+                            {backgroundAssetId ? t("story.sceneEditor.change") : t("story.sceneEditor.select")}
                         </span>
                     </div>
                 </button>
@@ -144,10 +146,10 @@ function StorySceneOverviewBlock(props: {
                             <FileText className="h-4 w-4 shrink-0 text-primary" />
                             <div className="min-w-0">
                                 <div className="truncate text-sm font-medium text-white">{document.name}</div>
-                                <div className="truncate text-2xs text-fg-subtle">{scene.runtimeName || "Untitled scene"}</div>
+                                <div className="truncate text-2xs text-fg-subtle">{scene.runtimeName || t("story.sceneEditor.untitledScene")}</div>
                             </div>
                         </div>
-                        <label className={SCENE_FIELD_LABEL_CLASS}>Scene name</label>
+                        <label className={SCENE_FIELD_LABEL_CLASS}>{t("story.sceneEditor.sceneName")}</label>
                         <input
                             className={SCENE_TEXT_FIELD_CLASS}
                             value={nameValue}
@@ -169,13 +171,13 @@ function StorySceneOverviewBlock(props: {
                     </div>
 
                     <div>
-                        <label className={SCENE_FIELD_LABEL_CLASS}>Description</label>
+                        <label className={SCENE_FIELD_LABEL_CLASS}>{t("common.description")}</label>
                         <textarea
                             className={`${SCENE_TEXT_FIELD_CLASS} min-h-20 resize-y leading-relaxed`}
                             value={descriptionValue}
                             rows={3}
                             maxLength={600}
-                            placeholder="No description"
+                            placeholder={t("story.sceneEditor.noDescription")}
                             onChange={event => setDescriptionValue(event.target.value)}
                             onBlur={commitDescription}
                             onKeyDown={event => {
@@ -189,7 +191,7 @@ function StorySceneOverviewBlock(props: {
                     </div>
 
                     <div>
-                        <label className={SCENE_FIELD_LABEL_CLASS}>Default background</label>
+                        <label className={SCENE_FIELD_LABEL_CLASS}>{t("story.sceneEditor.defaultBackground")}</label>
                         <div className="flex gap-2">
                             <button
                                 ref={selectButtonRef}
@@ -206,7 +208,7 @@ function StorySceneOverviewBlock(props: {
                                 type="button"
                                 className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
                                 disabled={!backgroundAssetId}
-                                title="Clear background"
+                                title={t("story.sceneEditor.clearBackground")}
                                 onClick={clearBackground}
                             >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -214,7 +216,7 @@ function StorySceneOverviewBlock(props: {
                         </div>
                         {backgroundAssetId && error ? (
                             <div className="mt-1 text-2xs text-amber-400/90">
-                                Image asset could not be resolved: {error}
+                                {t("story.sceneEditor.backgroundResolveError", { error })}
                             </div>
                         ) : null}
                     </div>
@@ -228,7 +230,7 @@ function StorySceneOverviewBlock(props: {
                 onConfirm={handleSelectBackground}
                 selectedIds={backgroundAssetId ? [backgroundAssetId] : []}
                 anchorRef={selectButtonRef}
-                title="Select Default Background"
+                title={t("story.sceneEditor.selectDefaultBackground")}
                 multiple={false}
             />
         </div>
@@ -236,6 +238,7 @@ function StorySceneOverviewBlock(props: {
 }
 
 export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentProps<StorySceneEditorTabPayload | undefined>) {
+    const { t } = useTranslation();
     const editor = useStorySceneEditorController(tabId, payload);
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -427,7 +430,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         const uiService = editor.context.services.get<UIService>(Services.UI);
         const unregister = uiService.panels.register({
             id: STORY_ACTION_CREATOR_PANEL_ID,
-            title: "Actions",
+            title: t("story.sceneEditor.actionsPanel"),
             icon: <ListPlus className="w-4 h-4" />,
             position: PanelPosition.Right,
             component: StoryActionCreatorPanel,
@@ -443,7 +446,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             uiService.panels.hide(STORY_ACTION_CREATOR_PANEL_ID);
             unregister();
         };
-    }, [active, editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId]);
+    }, [active, editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId, t]);
 
     useEffect(() => {
         if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
@@ -466,7 +469,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         const uiService = editor.context.services.get<UIService>(Services.UI);
         const unregister = uiService.panels.register({
             id: STORY_VARIABLES_PANEL_ID,
-            title: "Story Variables",
+            title: t("story.sceneEditor.variablesPanel"),
             icon: <Variable className="w-4 h-4" />,
             position: PanelPosition.Right,
             component: StoryVariablesPanel,
@@ -482,7 +485,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             uiService.panels.hide(STORY_VARIABLES_PANEL_ID);
             unregister();
         };
-    }, [active, editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId]);
+    }, [active, editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId, t]);
 
     useEffect(() => {
         if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
@@ -759,7 +762,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
         return (
             <div className="flex h-full items-center justify-center p-6 text-sm text-fg-muted">
-                Story scene editor tab is invalid.
+                {t("story.sceneEditor.tabInvalid")}
             </div>
         );
     }
@@ -767,7 +770,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     if (editor.loading) {
         return (
             <div className="flex h-full items-center justify-center p-6 text-sm text-fg-muted">
-                Loading story scene...
+                {t("story.sceneEditor.loadingScene")}
             </div>
         );
     }
@@ -778,7 +781,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     if (!document || !scene) {
         return (
             <div className="flex h-full items-center justify-center p-6 text-sm text-amber-300">
-                Story or scene not found.
+                {t("story.sceneEditor.notFound")}
             </div>
         );
     }
@@ -880,6 +883,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     generateTextId={() => editor.uuidService?.generate() ?? crypto.randomUUID()}
                                     onCreateLayer={beforeBlockId => editor.createLayerBeforeBlock(beforeBlockId)}
                                     onInsertAfter={() => editor.startInsertAfter(row.block.id, true)}
+                                    onAddInside={parentId => editor.addInsideContainer(parentId)}
+                                    onAddBranch={(conditionId, branch) => editor.addConditionBranch(conditionId, branch)}
                                 />
                                 {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && editor.editorMode.slot.afterBlockId === row.block.id ? (
                                     <InsertRow
@@ -917,7 +922,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         onClick={() => editor.startInsertAfter(null, true)}
                     >
                         <Plus className="h-4 w-4 text-primary" />
-                        Click or type to add a row...
+                        {t("story.sceneEditor.addRow")}
                     </button>
                 )}
                 {/* Always keep roughly one screen (minus a row) of empty scroll space below the
@@ -930,10 +935,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 type="button"
                 className={`absolute bottom-3 right-3 z-[5] flex items-center gap-1.5 rounded-lg border border-edge px-2.5 py-1.5 text-xs shadow-lg transition-colors ${previewOpen ? "bg-primary/20 text-primary" : "bg-surface-sunken text-fg-muted hover:bg-fill"}`}
                 onClick={togglePreview}
-                title={previewOpen ? "Close live preview" : "Open live preview"}
+                title={previewOpen ? t("story.preview.closePreview") : t("story.preview.openPreview")}
             >
                 <MonitorPlay className="h-4 w-4" />
-                Preview
+                {t("story.preview.label")}
             </button>
             </div>
             {previewOpen && previewMode === "dock" ? (

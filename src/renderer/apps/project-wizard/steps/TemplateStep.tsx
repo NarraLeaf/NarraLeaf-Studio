@@ -1,3 +1,4 @@
+import { useTranslation } from "@/lib/i18n";
 import { Card, CardDescription, CardTitle } from "@/lib/components/elements";
 import { useState } from "react";
 import { ProjectData } from "../types";
@@ -12,6 +13,7 @@ interface TemplateStepProps {
  * Template selection step for project wizard
  */
 export function TemplateStep({ projectData, updateProjectData }: TemplateStepProps) {
+    const { t } = useTranslation();
     const [focusedTemplate, setFocusedTemplate] = useState<string | null>(null);
 
     const handleTemplateSelect = (templateId: string) => {
@@ -32,9 +34,9 @@ export function TemplateStep({ projectData, updateProjectData }: TemplateStepPro
         <div className="p-6">
             <div className="space-y-6">
                 <div className="space-y-2">
-                    <h2 className="text-lg font-semibold text-fg">Choose a Project Template</h2>
+                    <h2 className="text-lg font-semibold text-fg">{t("wizard.template.title")}</h2>
                     <p className="text-sm text-fg-muted">
-                        Select a project template to get started quickly with pre-configured structure and settings.
+                        {t("wizard.template.subtitle")}
                     </p>
                 </div>
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { UILayersPanel } from "@/lib/ui-editor/interaction";
 import type { InputDialog } from "@/lib/components/dialogs";
 import type { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
@@ -26,6 +27,7 @@ export function SurfaceOutlinePanel({
     inputDialog,
     allowAddSelectionToComponentLibrary = true,
 }: SurfaceOutlinePanelProps) {
+    const { t } = useTranslation();
     const [isCollapsed, setCollapsedState] = useState(() => stateService?.getOutlinePanelCollapsed() ?? false);
 
     useEffect(() => {
@@ -62,12 +64,12 @@ export function SurfaceOutlinePanel({
         <>
             <div className={panelClasses}>
                 <div className="px-3 py-2 border-b border-edge text-xs text-fg-subtle flex items-center justify-between">
-                    <span>UI Outline</span>
+                    <span>{t("uiEditor.editor.outlineTitle")}</span>
                     <button
                         type="button"
                         className="text-fg-muted hover:text-white transition-colors"
                         onClick={toggleCollapsed}
-                        title={isCollapsed ? "Expand outline panel" : "Collapse outline panel"}
+                        title={isCollapsed ? t("uiEditor.editor.expandOutline") : t("uiEditor.editor.collapseOutline")}
                     >
                         {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
                     </button>
@@ -85,7 +87,7 @@ export function SurfaceOutlinePanel({
                                 allowAddSelectionToComponentLibrary={allowAddSelectionToComponentLibrary}
                             />
                         ) : (
-                            <div className="p-4 text-xs text-fg-subtle">Loading editor services…</div>
+                            <div className="p-4 text-xs text-fg-subtle">{t("uiEditor.editor.loadingServices")}</div>
                         )}
                     </div>
                 )}
@@ -95,7 +97,7 @@ export function SurfaceOutlinePanel({
                     type="button"
                     className="absolute left-3 top-3 z-20 h-10 w-10 flex items-center justify-center rounded-full border border-edge-strong bg-surface-canvas/80 text-fg-muted hover:text-white focus:outline-none"
                     onClick={() => setCollapsed(false)}
-                    title="Expand outline panel"
+                    title={t("uiEditor.editor.expandOutline")}
                 >
                     <ChevronDown className="w-4 h-4" />
                 </button>

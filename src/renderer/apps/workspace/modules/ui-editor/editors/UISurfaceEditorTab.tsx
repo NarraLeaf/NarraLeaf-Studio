@@ -14,6 +14,7 @@ import { MousePointer2, Move, Play, Magnet, ChevronDown, PanelsTopLeft } from "l
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import { ContextMenu, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
+import { useTranslation } from "@/lib/i18n";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
@@ -103,6 +104,7 @@ function findEditorGroupIdByTabId(layout: EditorLayout, tabId: string): string |
 }
 
 export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentProps<{ surfaceId?: string; componentId?: string }>) {
+    const { t } = useTranslation();
     const componentId = payload?.componentId;
     const isComponentEdit = Boolean(componentId);
     const baseSurfaceId = payload?.surfaceId;
@@ -353,12 +355,12 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         if (!el || el.type === "nl.root" || isComponentEditorRootElement(el)) {
             return;
         }
-        void inputDialog.showRenameDialog(el.name ?? el.type ?? "Layer", "layer").then(name => {
+        void inputDialog.showRenameDialog(el.name ?? el.type ?? t("uiEditor.editor.layerFallback"), "layer").then(name => {
             if (name) {
                 documentService.renameElement(pid, name);
             }
         });
-    }, [documentService, inputDialog, stateService, surface]);
+    }, [documentService, inputDialog, stateService, surface, t]);
 
     useUIEditorKeybindings({
         tabId,
@@ -587,7 +589,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     if (!surface) {
         return (
             <div className="h-full flex items-center justify-center text-sm text-fg-subtle">
-                {isComponentEdit ? "Component not found" : "Interface not found"}
+                {isComponentEdit ? t("uiEditor.editor.componentNotFound") : t("uiEditor.editor.interfaceNotFound")}
             </div>
         );
     }
@@ -623,7 +625,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             type="button"
                             className={toolButtonClass(tool.kind === "select")}
                             onClick={handleSelectTool}
-                            title="Select tool"
+                            title={t("uiEditor.editor.selectTool")}
                         >
                             <MousePointer2 className="w-4 h-4" />
                         </button>
@@ -631,16 +633,16 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             type="button"
                             className={toolButtonClass(tool.kind === "pan")}
                             onClick={handlePanTool}
-                            title="Pan the canvas"
+                            title={t("uiEditor.editor.panTool")}
                         >
                             <Move className="w-4 h-4" />
                         </button>
-                        <SurfaceEditorToolbarButtonGroup aria-label="Smart snap">
+                        <SurfaceEditorToolbarButtonGroup aria-label={t("uiEditor.snap.label")}>
                             <SurfaceEditorToolbarSegButton
                                 type="button"
                                 active={smartSnapEnabled}
                                 onClick={handleToggleSmartSnap}
-                                title="Smart snap to guides and neighbors (hold Alt to temporarily disable)"
+                                title={t("uiEditor.snap.tip")}
                                 disabled={!stateService}
                                 aria-pressed={smartSnapEnabled}
                             >
@@ -649,7 +651,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             {stateService ? (
                                 <SurfaceSnapSettingsTrigger stateService={stateService} detail={smartSnapDetail} />
                             ) : (
-                                <SurfaceEditorToolbarSegButton type="button" disabled title="Snap settings" aria-label="Snap settings">
+                                <SurfaceEditorToolbarSegButton type="button" disabled title={t("uiEditor.snap.settings")} aria-label={t("uiEditor.snap.settings")}>
                                     <ChevronDown className="h-4 w-4" />
                                 </SurfaceEditorToolbarSegButton>
                             )}
@@ -659,7 +661,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             type="button"
                             className={toolButtonClass(false)}
                             onClick={handleStartCurrentSurface}
-                            title={isComponentEdit ? "Components are edited as definitions" : "Open this interface in Dev Mode"}
+                            title={isComponentEdit ? t("uiEditor.editor.componentDefinitionHint") : t("uiEditor.editor.openInDevMode")}
                             disabled={!surfaceId || isComponentEdit}
                         >
                             <Play className="w-4 h-4" />
@@ -669,9 +671,9 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                     {activeBindingSession ? (
                         <div className="absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-2 rounded-md border border-cyan-400/30 bg-[#111820]/95 px-3 py-2 text-xs text-fg shadow-lg">
                             <div className="min-w-[220px]">
-                                <div className="font-medium text-cyan-100">Bind Element</div>
+                                <div className="font-medium text-cyan-100">{t("uiEditor.editor.bindElement")}</div>
                                 <div className="max-w-[300px] truncate text-2xs text-fg-muted">
-                                    {bindingSelection ? bindingSelection.label : "Select one element on this Surface"}
+                                    {bindingSelection ? bindingSelection.label : t("uiEditor.editor.bindSelectHint")}
                                 </div>
                             </div>
                             <button
@@ -680,14 +682,14 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                                 disabled={!bindingSelection}
                                 onClick={handleConfirmElementBinding}
                             >
-                                Confirm
+                                {t("common.confirm")}
                             </button>
                             <button
                                 type="button"
                                 className="rounded border border-edge bg-fill-subtle px-2.5 py-1 text-2xs text-fg-muted hover:bg-fill"
                                 onClick={handleCancelElementBinding}
                             >
-                                Cancel
+                                {t("common.cancel")}
                             </button>
                         </div>
                     ) : null}
@@ -700,10 +702,10 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                     >
                         {surfaceLevelDiagnosticMessages.length > 0 ? (
                             <div className="absolute left-64 right-36 top-14 z-20 rounded-md border border-amber-500/35 bg-amber-950/40 px-3 py-2 text-2xs text-amber-100/90">
-                                <span className="font-medium text-amber-200/95">Static checks (editor only): </span>
+                                <span className="font-medium text-amber-200/95">{t("uiEditor.editor.staticChecks")}</span>
                                 <span className="text-amber-100/85">{surfaceLevelDiagnosticMessages.join(" · ")}</span>
                                 <span className="mt-1 block text-2xs text-fg-subtle">
-                                    Open Dev Mode for real execution, node traces, and Host API calls.
+                                    {t("uiEditor.editor.devModeHint")}
                                 </span>
                             </div>
                         ) : null}

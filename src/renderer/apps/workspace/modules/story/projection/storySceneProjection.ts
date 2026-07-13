@@ -274,6 +274,9 @@ function formatCondition(condition: StoryConditionRef | undefined, scene: StoryS
     if (condition.kind === "expression") {
         return condition.source || "<expression>";
     }
+    if (condition.kind === "blueprint") {
+        return "<graph condition>";
+    }
     return `${describeVariableRef(condition.target, scene, document)} ${condition.operator}${condition.value !== undefined ? ` ${String(condition.value)}` : ""}`;
 }
 

@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { MoreHorizontal } from "lucide-react";
 import { ContextMenu } from "@/lib/components/elements/ContextMenu";
+import { useTranslation } from "@/lib/i18n";
 import { MenuTriggerFieldDefinition } from "../types";
 import { FieldLayout } from "./FieldLayout";
 
@@ -15,6 +16,7 @@ export function MenuTriggerField<TData>({
     data: _data,
     onSaving: _onSaving,
 }: MenuTriggerFieldProps<TData>) {
+    const { t } = useTranslation();
     const [visible, setVisible] = useState(false);
     const [position, setPosition] = useState({ x: 0, y: 0 });
     const buttonRef = useRef<HTMLButtonElement>(null);
@@ -45,7 +47,7 @@ export function MenuTriggerField<TData>({
                 type="button"
                 onClick={handleToggle}
                 className="grid h-9 w-9 place-items-center rounded-lg border border-edge bg-transparent text-fg-muted transition hover:bg-fill-subtle focus:outline-none focus:ring-2 focus:ring-primary/50"
-                aria-label={field.buttonAriaLabel ?? "Open menu"}
+                aria-label={field.buttonAriaLabel ?? t("properties.menu.open")}
             >
                 {field.icon ?? <MoreHorizontal className="w-4 h-4" />}
             </button>

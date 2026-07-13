@@ -52,6 +52,7 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { ButtonCursorSelect } from "@/lib/ui-editor/widget-modules/shared/appearance/editors/ButtonCursorSelect";
+import { useTranslation, type UseTranslation } from "@/lib/i18n";
 
 type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
 type BlueprintNodeParamPatch = (
@@ -174,14 +175,16 @@ function ImageAssetPickerCard({
     disabled?: boolean;
     compact?: boolean;
 }) {
+    const { t } = useTranslation();
     const normalized = normalizeBlueprintImageAssetValue(value);
     const assetId = normalized?.assetId ?? null;
     const assetName = useImageAssetDisplayName(assetId);
     const { url, loading, error } = useAssetObjectUrl(assetId);
     const [selectorOpen, setSelectorOpen] = useState(false);
     const anchorRef = useRef<HTMLButtonElement | null>(null);
-    const label = assetId ? assetName ?? "Image" : "Select image";
-    const detail = assetId ? (error ? "Missing image asset" : "ImageAsset") : "No image asset";
+    const label = assetId ? assetName ?? t("blueprint.image.fallback") : t("blueprint.image.select");
+    // "ImageAsset" is the value-type token shown when a valid asset is bound; it stays untranslated.
+    const detail = assetId ? (error ? t("blueprint.image.missing") : "ImageAsset") : t("blueprint.image.none");
     const heightClass = compact ? "h-[58px]" : "h-[82px]";
 
     const handleConfirm = (assets: Asset[]) => {
@@ -204,7 +207,7 @@ function ImageAssetPickerCard({
                     className={`group relative flex w-full min-w-0 overflow-hidden rounded border border-edge bg-surface text-left transition-colors ${
                         disabled ? "cursor-default opacity-80" : "hover:border-cyan-300/35 hover:bg-fill-subtle"
                     } ${heightClass}`}
-                    title={assetId ? `${label} (${assetId})` : "Select image asset"}
+                    title={assetId ? `${label} (${assetId})` : t("blueprint.image.selectAsset")}
                     onClick={e => {
                         e.stopPropagation();
                         if (!disabled) {
@@ -227,7 +230,7 @@ function ImageAssetPickerCard({
                         )}
                         {loading ? (
                             <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-2xs text-fg">
-                                Loading
+                                {t("common.loading")}
                             </div>
                         ) : null}
                     </div>
@@ -245,8 +248,8 @@ function ImageAssetPickerCard({
                     <button
                         type="button"
                         className="absolute right-1 top-1 rounded bg-black/55 p-0.5 text-fg-muted hover:bg-black/80 hover:text-white"
-                        title="Clear image asset"
-                        aria-label="Clear image asset"
+                        title={t("blueprint.image.clear")}
+                        aria-label={t("blueprint.image.clear")}
                         onMouseDown={stopFlowNodePointerBubble}
                         onPointerDown={stopFlowNodePointerBubble}
                         onClick={e => {
@@ -263,7 +266,7 @@ function ImageAssetPickerCard({
                 assetType={AssetType.Image}
                 selectedIds={assetId ? [assetId] : []}
                 anchorRef={anchorRef}
-                title="Select Image Asset"
+                title={t("blueprint.image.selectAssetTitle")}
                 multiple={false}
                 onClose={() => setSelectorOpen(false)}
                 onConfirm={handleConfirm}
@@ -275,7 +278,6 @@ function ImageAssetPickerCard({
 const COMMENT_COLORS: Record<
     string,
     {
-        label: string;
         border: string;
         selectedBorder: string;
         background: string;
@@ -285,7 +287,6 @@ const COMMENT_COLORS: Record<
     }
 > = {
     amber: {
-        label: "Amber",
         border: "rgba(245, 158, 11, 0.55)",
         selectedBorder: "rgba(251, 191, 36, 0.95)",
         background: "rgba(120, 78, 18, 0.28)",
@@ -294,7 +295,6 @@ const COMMENT_COLORS: Record<
         swatch: "#f59e0b",
     },
     cyan: {
-        label: "Cyan",
         border: "rgba(34, 211, 238, 0.55)",
         selectedBorder: "rgba(103, 232, 249, 0.95)",
         background: "rgba(8, 85, 102, 0.28)",
@@ -303,7 +303,6 @@ const COMMENT_COLORS: Record<
         swatch: "#06b6d4",
     },
     violet: {
-        label: "Violet",
         border: "rgba(167, 139, 250, 0.55)",
         selectedBorder: "rgba(196, 181, 253, 0.95)",
         background: "rgba(76, 29, 149, 0.26)",
@@ -312,7 +311,6 @@ const COMMENT_COLORS: Record<
         swatch: "#8b5cf6",
     },
     slate: {
-        label: "Slate",
         border: "rgba(148, 163, 184, 0.5)",
         selectedBorder: "rgba(203, 213, 225, 0.92)",
         background: "rgba(51, 65, 85, 0.32)",
@@ -321,6 +319,22 @@ const COMMENT_COLORS: Record<
         swatch: "#64748b",
     },
 };
+
+/** Localized swatch labels for comment colors, keyed by the same ids as {@link COMMENT_COLORS}. */
+function commentColorLabel(key: string, t: UseTranslation["t"]): string {
+    switch (key) {
+        case "amber":
+            return t("blueprint.comment.color.amber");
+        case "cyan":
+            return t("blueprint.comment.color.cyan");
+        case "violet":
+            return t("blueprint.comment.color.violet");
+        case "slate":
+            return t("blueprint.comment.color.slate");
+        default:
+            return key;
+    }
+}
 
 type CatalogPin = BlueprintNodeEditorCatalogEntry["pins"][number] & { removable?: boolean };
 
@@ -378,6 +392,7 @@ function DynamicPinLabelInput({
     labels: Record<string, string>;
     onPatchNodeParam: (nodeId: string, key: string, value: unknown) => void;
 }) {
+    const { t } = useTranslation();
     const committed = labels[pin.id] ?? pinLabelOnly(pin);
     const [draft, setDraft] = useState(committed);
 
@@ -401,7 +416,7 @@ function DynamicPinLabelInput({
             type="text"
             value={draft}
             size="sm"
-            title={isInvalid ? "Field names must be non-empty and unique" : "JSON object field name"}
+            title={isInvalid ? t("blueprint.json.fieldNameInvalid") : t("blueprint.pin.jsonFieldName")}
             onMouseDown={stopFlowNodePointerBubble}
             onPointerDown={stopFlowNodePointerBubble}
             onChange={e => {
@@ -597,6 +612,7 @@ function InputPinRow({
     dynamicTypeValues?: Record<string, string>;
     dynamicTypeOptions?: readonly string[];
 }) {
+    const { t } = useTranslation();
     const typeEditor =
         removable && dynamicTypeParamKey && dynamicTypeOptions?.length && onPatchNodeParam ? (
             <DynamicPinTypeSelect
@@ -661,8 +677,8 @@ function InputPinRow({
                     {removable && onRemovePin ? (
                         <Button
                             type="button"
-                            title="Remove input pin"
-                            aria-label="Remove input pin"
+                            title={t("blueprint.pin.removeInput")}
+                            aria-label={t("blueprint.pin.removeInput")}
                             variant="ghost"
                             size="sm"
                             className={`${CARD_ICON_BUTTON} text-fg-subtle`}
@@ -687,8 +703,8 @@ function InputPinRow({
                     />
                     <Button
                         type="button"
-                        title="Show input pin"
-                        aria-label="Show input pin"
+                        title={t("blueprint.pin.showInput")}
+                        aria-label={t("blueprint.pin.showInput")}
                         variant="ghost"
                         size="sm"
                         className={CARD_ICON_BUTTON}
@@ -739,8 +755,8 @@ function InputPinRow({
                     {removable && onRemovePin ? (
                         <Button
                             type="button"
-                            title="Remove input pin"
-                            aria-label="Remove input pin"
+                            title={t("blueprint.pin.removeInput")}
+                            aria-label={t("blueprint.pin.removeInput")}
                             variant="ghost"
                             size="sm"
                             className={`${CARD_ICON_BUTTON} text-fg-subtle`}
@@ -759,8 +775,8 @@ function InputPinRow({
                     {canInlineLiteral && selected ? (
                         <Button
                             type="button"
-                            title="Edit value on card"
-                            aria-label="Edit value on card"
+                            title={t("blueprint.pin.editValue")}
+                            aria-label={t("blueprint.pin.editValue")}
                             variant="ghost"
                             size="sm"
                             className={`${CARD_ICON_BUTTON} opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100`}
@@ -805,6 +821,7 @@ function OutputPinRow({
     dynamicTypeValues?: Record<string, string>;
     dynamicTypeOptions?: readonly string[];
 }) {
+    const { t } = useTranslation();
     const handleClass = semantic === "exec" ? EXEC_HANDLE_CLASS : DATA_HANDLE_CLASS;
     const editable = Boolean(removable && nodeId && onPatchNodeParam);
     if (editable && nodeId && onPatchNodeParam) {
@@ -814,8 +831,8 @@ function OutputPinRow({
                 {onRemovePin ? (
                     <Button
                         type="button"
-                        title="Remove output pin"
-                        aria-label="Remove output pin"
+                        title={t("blueprint.pin.removeOutput")}
+                        aria-label={t("blueprint.pin.removeOutput")}
                         variant="ghost"
                         size="sm"
                         className={`${CARD_ICON_BUTTON} text-fg-subtle`}
@@ -908,6 +925,7 @@ function KeyboardBindingCardControl({
     value: unknown;
     onChange: (value: string | undefined) => void;
 }) {
+    const { t } = useTranslation();
     const rootRef = useRef<HTMLDivElement | null>(null);
     const [listening, setListening] = useState(false);
     const [preview, setPreview] = useState("");
@@ -994,9 +1012,9 @@ function KeyboardBindingCardControl({
             {listening ? (
                 <div className="absolute bottom-full left-0 z-[60] mb-1 w-full rounded border border-cyan-300/35 bg-[#0b1016] px-2 py-1.5 text-left shadow-lg ring-1 ring-black/35">
                     <div className="truncate font-mono text-2xs text-cyan-100">
-                        {preview || "Press a key"}
+                        {preview || t("blueprint.keyboard.pressKey")}
                     </div>
-                    <div className="mt-0.5 truncate text-2xs text-fg-muted">Any key or combo</div>
+                    <div className="mt-0.5 truncate text-2xs text-fg-muted">{t("blueprint.keyboard.anyCombo")}</div>
                 </div>
             ) : null}
             <button
@@ -1006,8 +1024,8 @@ function KeyboardBindingCardControl({
                         ? "border-cyan-300/45 bg-cyan-400/10 text-cyan-100"
                         : "border-edge bg-[#111418] text-fg hover:border-cyan-300/35 hover:bg-fill-subtle"
                 } ${displayValue ? "pr-7" : ""}`}
-                title={displayValue ? `Bound to ${displayValue}` : "Bind keyboard"}
-                aria-label={displayValue ? `Bound to ${displayValue}` : "Bind keyboard"}
+                title={displayValue ? t("blueprint.keyboard.boundTo", { key: displayValue }) : t("blueprint.keyboard.bind")}
+                aria-label={displayValue ? t("blueprint.keyboard.boundTo", { key: displayValue }) : t("blueprint.keyboard.bind")}
                 aria-pressed={listening}
                 onMouseDown={stopFlowNodePointerBubble}
                 onPointerDown={stopFlowNodePointerBubble}
@@ -1020,15 +1038,15 @@ function KeyboardBindingCardControl({
             >
                 <KeyboardIcon className="h-3.5 w-3.5 shrink-0 text-cyan-300/80" aria-hidden />
                 <span className={`min-w-0 flex-1 truncate font-mono text-2xs ${displayValue ? "" : "text-fg-subtle"}`}>
-                    {displayValue || "Unbound"}
+                    {displayValue || t("blueprint.keyboard.unbound")}
                 </span>
             </button>
             {displayValue ? (
                 <button
                     type="button"
                     className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-fg-subtle hover:bg-fill hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50"
-                    title="Clear binding"
-                    aria-label="Clear binding"
+                    title={t("blueprint.keyboard.clear")}
+                    aria-label={t("blueprint.keyboard.clear")}
                     onMouseDown={event => {
                         event.stopPropagation();
                         event.preventDefault();
@@ -1228,67 +1246,81 @@ function InspectorParamOnCard({
     );
 }
 
-const DISPLAYABLE_ANIMATE_PROPERTY_OPTIONS: SelectOption[] = [
-    { value: "opacity", label: "Opacity" },
-    { value: "offsetX", label: "Offset X" },
-    { value: "offsetY", label: "Offset Y" },
-    { value: "x", label: "X" },
-    { value: "y", label: "Y" },
-    { value: "scale", label: "Scale" },
-    { value: "rotation", label: "Rotation" },
-];
+function buildDisplayableAnimatePropertyOptions(t: UseTranslation["t"]): SelectOption[] {
+    return [
+        { value: "opacity", label: t("blueprint.displayable.property.opacity") },
+        { value: "offsetX", label: t("blueprint.displayable.property.offsetX") },
+        { value: "offsetY", label: t("blueprint.displayable.property.offsetY") },
+        { value: "x", label: t("blueprint.displayable.property.x") },
+        { value: "y", label: t("blueprint.displayable.property.y") },
+        { value: "scale", label: t("blueprint.displayable.property.scale") },
+        { value: "rotation", label: t("blueprint.displayable.property.rotation") },
+    ];
+}
 
-const DISPLAYABLE_ANIMATE_EASING_OPTIONS: SelectOption[] = [
-    { value: "linear", label: "Linear" },
-    { value: "easeIn", label: "Ease In" },
-    { value: "easeOut", label: "Ease Out" },
-    { value: "easeInOut", label: "Ease In Out" },
-    { value: "circIn", label: "Circ In" },
-    { value: "circOut", label: "Circ Out" },
-    { value: "circInOut", label: "Circ In Out" },
-];
+function buildDisplayableAnimateEasingOptions(t: UseTranslation["t"]): SelectOption[] {
+    return [
+        { value: "linear", label: t("blueprint.displayable.easing.linear") },
+        { value: "easeIn", label: t("blueprint.displayable.easing.easeIn") },
+        { value: "easeOut", label: t("blueprint.displayable.easing.easeOut") },
+        { value: "easeInOut", label: t("blueprint.displayable.easing.easeInOut") },
+        { value: "circIn", label: t("blueprint.displayable.easing.circIn") },
+        { value: "circOut", label: t("blueprint.displayable.easing.circOut") },
+        { value: "circInOut", label: t("blueprint.displayable.easing.circInOut") },
+    ];
+}
 
-const DISPLAYABLE_ANIMATE_AFTER_OPTIONS: SelectOption[] = [
-    { value: "hold", label: "Hold" },
-    { value: "reset", label: "Reset" },
-];
+function buildDisplayableAnimateAfterOptions(t: UseTranslation["t"]): SelectOption[] {
+    return [
+        { value: "hold", label: t("blueprint.displayable.after.hold") },
+        { value: "reset", label: t("common.reset") },
+    ];
+}
 
-const DISPLAYABLE_GET_PROPERTY_OPTIONS: SelectOption[] = [
-    { value: "position", label: "Position" },
-    { value: "size", label: "Size" },
-    { value: "bounds", label: "Bounds" },
-    { value: "x", label: "X" },
-    { value: "y", label: "Y" },
-    { value: "offsetX", label: "Offset X" },
-    { value: "offsetY", label: "Offset Y" },
-    { value: "width", label: "Width" },
-    { value: "height", label: "Height" },
-    { value: "rotation", label: "Rotation" },
-    { value: "opacity", label: "Opacity" },
-    { value: "visible", label: "Visible" },
-];
+function buildDisplayableGetPropertyOptions(t: UseTranslation["t"]): SelectOption[] {
+    return [
+        { value: "position", label: t("blueprint.displayable.property.position") },
+        { value: "size", label: t("blueprint.displayable.property.size") },
+        { value: "bounds", label: t("blueprint.displayable.property.bounds") },
+        { value: "x", label: t("blueprint.displayable.property.x") },
+        { value: "y", label: t("blueprint.displayable.property.y") },
+        { value: "offsetX", label: t("blueprint.displayable.property.offsetX") },
+        { value: "offsetY", label: t("blueprint.displayable.property.offsetY") },
+        { value: "width", label: t("blueprint.displayable.property.width") },
+        { value: "height", label: t("blueprint.displayable.property.height") },
+        { value: "rotation", label: t("blueprint.displayable.property.rotation") },
+        { value: "opacity", label: t("blueprint.displayable.property.opacity") },
+        { value: "visible", label: t("blueprint.displayable.property.visible") },
+    ];
+}
 
-const DISPLAYABLE_SET_PROPERTY_OPTIONS: SelectOption[] = [
-    { value: "x", label: "X" },
-    { value: "y", label: "Y" },
-    { value: "offsetX", label: "Offset X" },
-    { value: "offsetY", label: "Offset Y" },
-    { value: "width", label: "Width" },
-    { value: "height", label: "Height" },
-    { value: "rotation", label: "Rotation" },
-    { value: "opacity", label: "Opacity" },
-    { value: "visible", label: "Visible" },
-];
+function buildDisplayableSetPropertyOptions(t: UseTranslation["t"]): SelectOption[] {
+    return [
+        { value: "x", label: t("blueprint.displayable.property.x") },
+        { value: "y", label: t("blueprint.displayable.property.y") },
+        { value: "offsetX", label: t("blueprint.displayable.property.offsetX") },
+        { value: "offsetY", label: t("blueprint.displayable.property.offsetY") },
+        { value: "width", label: t("blueprint.displayable.property.width") },
+        { value: "height", label: t("blueprint.displayable.property.height") },
+        { value: "rotation", label: t("blueprint.displayable.property.rotation") },
+        { value: "opacity", label: t("blueprint.displayable.property.opacity") },
+        { value: "visible", label: t("blueprint.displayable.property.visible") },
+    ];
+}
 
-const DISPLAYABLE_VISIBLE_OPTIONS: SelectOption[] = [
-    { value: "true", label: "Visible" },
-    { value: "false", label: "Hidden" },
-];
+function buildDisplayableVisibleOptions(t: UseTranslation["t"]): SelectOption[] {
+    return [
+        { value: "true", label: t("blueprint.displayable.visibleState.visible") },
+        { value: "false", label: t("blueprint.displayable.visibleState.hidden") },
+    ];
+}
 
-const DISPLAYABLE_SET_VARIANT_WAIT_OPTIONS: SelectOption[] = [
-    { value: "continue", label: "No" },
-    { value: "wait", label: "Yes" },
-];
+function buildDisplayableSetVariantWaitOptions(t: UseTranslation["t"]): SelectOption[] {
+    return [
+        { value: "continue", label: t("common.no") },
+        { value: "wait", label: t("common.yes") },
+    ];
+}
 
 function numericParam(params: Record<string, unknown>, key: string, fallback: number): string {
     const value = params[key];
@@ -1498,6 +1530,8 @@ function DisplayableGetPropertyCard({
     params: Record<string, unknown>;
     onPatchNodeParam: BlueprintNodeParamPatch;
 }) {
+    const { t } = useTranslation();
+    const propertyOptions = useMemo(() => buildDisplayableGetPropertyOptions(t), [t]);
     const property = typeof params.property === "string" ? params.property : "position";
     return (
         <div
@@ -1505,11 +1539,11 @@ function DisplayableGetPropertyCard({
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
-            <CardFieldLabel>Property</CardFieldLabel>
+            <CardFieldLabel>{t("blueprint.displayable.propertyLabel")}</CardFieldLabel>
             <Select
                 fullWidth
                 size="sm"
-                options={DISPLAYABLE_GET_PROPERTY_OPTIONS}
+                options={propertyOptions}
                 value={property}
                 onChange={value => onPatchNodeParam(nodeId, "property", String(value) || "position")}
                 portalMenu
@@ -1530,6 +1564,9 @@ function DisplayableSetPropertyCard({
     valueWired: boolean;
     onPatchNodeParam: BlueprintNodeParamPatch;
 }) {
+    const { t } = useTranslation();
+    const propertyOptions = useMemo(() => buildDisplayableSetPropertyOptions(t), [t]);
+    const visibleOptions = useMemo(() => buildDisplayableVisibleOptions(t), [t]);
     const property = typeof params.property === "string" ? params.property : "opacity";
     const isVisible = property === "visible";
     const isOpacity = property === "opacity";
@@ -1569,23 +1606,23 @@ function DisplayableSetPropertyCard({
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
-            <CardFieldLabel>Property</CardFieldLabel>
+            <CardFieldLabel>{t("blueprint.displayable.propertyLabel")}</CardFieldLabel>
             <Select
                 fullWidth
                 size="sm"
-                options={DISPLAYABLE_SET_PROPERTY_OPTIONS}
+                options={propertyOptions}
                 value={property}
                 onChange={onChangeProperty}
                 portalMenu
                 menuPlacement="below"
             />
             <div className="mt-1.5">
-                <CardFieldLabel>Value</CardFieldLabel>
+                <CardFieldLabel>{t("blueprint.displayable.valueLabel")}</CardFieldLabel>
                 {isVisible ? (
                     <Select
                         fullWidth
                         size="sm"
-                        options={DISPLAYABLE_VISIBLE_OPTIONS}
+                        options={visibleOptions}
                         value={booleanParam(params, "value", true)}
                         disabled={valueWired}
                         onChange={value => onPatchNodeParam(nodeId, "value", value === "true")}
@@ -1608,7 +1645,7 @@ function DisplayableSetPropertyCard({
                                   )
                         }
                         unit={valueUnit}
-                        ariaLabel="Displayable property value"
+                        ariaLabel={t("blueprint.displayable.valueAria")}
                         disabled={valueWired}
                         onCommit={patchNumber}
                     />
@@ -1631,6 +1668,8 @@ function DisplayableSetVariantCard({
     elementTarget: boolean;
     targetVariants?: BlueprintFlowNodeData["displayableTargetVariants"];
 }) {
+    const { t } = useTranslation();
+    const waitOptions = useMemo(() => buildDisplayableSetVariantWaitOptions(t), [t]);
     const variantId = typeof params.variantId === "string" ? params.variantId : "";
     const waitForTransition = params.waitForTransition === "wait" || params.waitForTransition === true
         ? "wait"
@@ -1646,12 +1685,12 @@ function DisplayableSetVariantCard({
             ? targetVariants.supported
                 ? options.length > 0
                     ? targetVariants.targetLabel
-                    : "Target has no variants"
-                : "Target does not support variants"
+                    : t("blueprint.displayable.variant.noVariants")
+                : t("blueprint.displayable.variant.unsupported")
             : elementTarget
-              ? "Connect an Element ref to preview variants"
-              : "Current widget variants unavailable")
-    ) || "Variant target unavailable";
+              ? t("blueprint.displayable.variant.connectElement")
+              : t("blueprint.displayable.variant.widgetUnavailable"))
+    ) || t("blueprint.displayable.variant.unavailable");
     const disabled = !targetVariants?.supported || options.length === 0;
     const selectOptions: SelectOption[] = disabled
         ? [{ value: "", label: message, disabled: true }]
@@ -1663,24 +1702,24 @@ function DisplayableSetVariantCard({
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
-            <CardFieldLabel>Variant</CardFieldLabel>
+            <CardFieldLabel>{t("blueprint.displayable.variantLabel")}</CardFieldLabel>
             <Select
                 fullWidth
                 size="sm"
                 options={selectOptions}
                 value={disabled ? "" : selectedValue}
-                placeholder="Select variant"
+                placeholder={t("blueprint.displayable.selectVariant")}
                 disabled={disabled}
                 onChange={value => onPatchNodeParam(nodeId, "variantId", String(value))}
                 portalMenu
                 menuPlacement="below"
             />
             <div className="mt-1.5">
-                <CardFieldLabel>Wait For Animation</CardFieldLabel>
+                <CardFieldLabel>{t("blueprint.displayable.waitForAnimation")}</CardFieldLabel>
                 <Select
                     fullWidth
                     size="sm"
-                    options={DISPLAYABLE_SET_VARIANT_WAIT_OPTIONS}
+                    options={waitOptions}
                     value={waitForTransition}
                     onChange={value => onPatchNodeParam(nodeId, "waitForTransition", String(value) || "continue")}
                     portalMenu
@@ -1710,6 +1749,10 @@ function DisplayableAnimatePropertyCard({
     params: Record<string, unknown>;
     onPatchNodeParam: BlueprintNodeParamPatch;
 }) {
+    const { t } = useTranslation();
+    const propertyOptions = useMemo(() => buildDisplayableAnimatePropertyOptions(t), [t]);
+    const easingOptions = useMemo(() => buildDisplayableAnimateEasingOptions(t), [t]);
+    const afterOptions = useMemo(() => buildDisplayableAnimateAfterOptions(t), [t]);
     const property = typeof params.property === "string" ? params.property : "opacity";
     const easing = typeof params.easing === "string" ? params.easing : "easeOut";
     const after = typeof params.after === "string" ? params.after : "hold";
@@ -1742,11 +1785,11 @@ function DisplayableAnimatePropertyCard({
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
             <div>
-                <CardFieldLabel>Property</CardFieldLabel>
+                <CardFieldLabel>{t("blueprint.displayable.propertyLabel")}</CardFieldLabel>
                 <Select
                     fullWidth
                     size="sm"
-                    options={DISPLAYABLE_ANIMATE_PROPERTY_OPTIONS}
+                    options={propertyOptions}
                     value={property}
                     onChange={value => onPatchNodeParam(nodeId, "property", String(value) || "opacity")}
                     portalMenu
@@ -1755,7 +1798,7 @@ function DisplayableAnimatePropertyCard({
             </div>
             <div className="mt-1.5 grid grid-cols-2 gap-1.5">
                 <div>
-                    <CardFieldLabel>From</CardFieldLabel>
+                    <CardFieldLabel>{t("blueprint.displayable.from")}</CardFieldLabel>
                     <CardNumberInput
                         value={
                             isLegacyAbsolutePositionFromDefault
@@ -1763,45 +1806,45 @@ function DisplayableAnimatePropertyCard({
                                 : optionalNumericParam(params, "from")
                         }
                         unit={valueUnit}
-                        ariaLabel="Animation start value"
+                        ariaLabel={t("blueprint.displayable.animationStart")}
                         onCommit={raw => patchOptionalNumber("from", raw)}
                     />
                 </div>
                 <div>
-                    <CardFieldLabel>To</CardFieldLabel>
+                    <CardFieldLabel>{t("blueprint.displayable.to")}</CardFieldLabel>
                     <CardNumberInput
                         value={numericParam(params, "to", toFallback)}
                         unit={valueUnit}
-                        ariaLabel="Animation target value"
+                        ariaLabel={t("blueprint.displayable.animationTarget")}
                         onCommit={raw => patchNumber("to", raw, toFallback)}
                     />
                 </div>
                 <div>
-                    <CardFieldLabel>Duration</CardFieldLabel>
+                    <CardFieldLabel>{t("blueprint.displayable.duration")}</CardFieldLabel>
                     <CardNumberInput
                         value={numericParam(params, "duration", 0.3)}
                         unit="s"
-                        ariaLabel="Animation duration"
+                        ariaLabel={t("blueprint.displayable.animationDuration")}
                         onCommit={raw => patchNumber("duration", raw, 0.3)}
                     />
                 </div>
                 <div>
-                    <CardFieldLabel>Delay</CardFieldLabel>
+                    <CardFieldLabel>{t("blueprint.displayable.delay")}</CardFieldLabel>
                     <CardNumberInput
                         value={numericParam(params, "delay", 0)}
                         unit="s"
-                        ariaLabel="Animation delay"
+                        ariaLabel={t("blueprint.displayable.animationDelay")}
                         onCommit={raw => patchNumber("delay", raw, 0)}
                     />
                 </div>
             </div>
             <div className="mt-1.5 grid grid-cols-2 gap-1.5">
                 <div>
-                    <CardFieldLabel>Easing</CardFieldLabel>
+                    <CardFieldLabel>{t("blueprint.displayable.easingLabel")}</CardFieldLabel>
                     <Select
                         fullWidth
                         size="sm"
-                        options={DISPLAYABLE_ANIMATE_EASING_OPTIONS}
+                        options={easingOptions}
                         value={easing}
                         onChange={value => onPatchNodeParam(nodeId, "easing", String(value) || "easeOut")}
                         portalMenu
@@ -1809,11 +1852,11 @@ function DisplayableAnimatePropertyCard({
                     />
                 </div>
                 <div>
-                    <CardFieldLabel>After</CardFieldLabel>
+                    <CardFieldLabel>{t("blueprint.displayable.afterLabel")}</CardFieldLabel>
                     <Select
                         fullWidth
                         size="sm"
-                        options={DISPLAYABLE_ANIMATE_AFTER_OPTIONS}
+                        options={afterOptions}
                         value={after}
                         onChange={value => onPatchNodeParam(nodeId, "after", String(value) || "hold")}
                         portalMenu
@@ -1850,6 +1893,7 @@ function BlueprintCommentNodeCard({
     selected?: boolean;
     onPatchNodeParam?: BlueprintNodeParamPatch;
 }) {
+    const { t } = useTranslation();
     const { getZoom } = useReactFlow();
     const colorKey = typeof params.color === "string" && COMMENT_COLORS[params.color] ? params.color : "amber";
     const color = COMMENT_COLORS[colorKey] ?? COMMENT_COLORS.amber;
@@ -1945,8 +1989,8 @@ function BlueprintCommentNodeCard({
                                 key === colorKey ? "border-white/85" : "border-edge-strong"
                             }`}
                             style={{ background: item.swatch }}
-                            title={item.label}
-                            aria-label={item.label}
+                            title={commentColorLabel(key, t)}
+                            aria-label={commentColorLabel(key, t)}
                             onClick={e => {
                                 e.stopPropagation();
                                 onPatchNodeParam?.(nodeId, "color", key);
@@ -1960,8 +2004,8 @@ function BlueprintCommentNodeCard({
                                 ? "border-slate-300 bg-slate-400/30"
                                 : "border-slate-500 bg-transparent"
                         }`}
-                        title={backgroundEnabled ? "Background layer on" : "Background layer off"}
-                        aria-label={backgroundEnabled ? "Send comment behind nodes" : "Restore normal comment layer"}
+                        title={backgroundEnabled ? t("blueprint.comment.backgroundOn") : t("blueprint.comment.backgroundOff")}
+                        aria-label={backgroundEnabled ? t("blueprint.comment.sendBehind") : t("blueprint.comment.restoreLayer")}
                         aria-pressed={backgroundEnabled}
                         onClick={e => {
                             e.stopPropagation();
@@ -1985,7 +2029,7 @@ function BlueprintCommentNodeCard({
             />
             <div
                 className="nodrag absolute bottom-1 right-1 h-4 w-4 cursor-nwse-resize rounded-sm border border-edge-strong bg-black/20"
-                title="Resize comment"
+                title={t("blueprint.comment.resize")}
                 onPointerDown={startResize}
             >
                 <div className="absolute bottom-1 right-1 h-2 w-2 border-b border-r border-white/50" />
@@ -2011,10 +2055,11 @@ function BlueprintElementLiteralNodeCard({
     elementPreview?: BlueprintFlowNodeData["elementPreview"];
     onBindElementLiteral?: (nodeId: string) => void;
 }) {
+    const { t } = useTranslation();
     const elementId = typeof params.elementId === "string" ? params.elementId : "";
     const elementType = typeof params.elementType === "string" ? params.elementType : "";
-    const boundLabel = elementPreview?.name || (elementId ? elementId : "Select element");
-    const typeLabel = elementPreview?.type || elementType || "Unbound";
+    const boundLabel = elementPreview?.name || (elementId ? elementId : t("blueprint.element.select"));
+    const typeLabel = elementPreview?.type || elementType || t("blueprint.element.unbound");
     const outputPins = catalog.pins.filter(p => p.kind === "output");
     return (
         <div
@@ -2038,7 +2083,7 @@ function BlueprintElementLiteralNodeCard({
                 <button
                     type="button"
                     className="nodrag block w-full overflow-hidden rounded border border-edge bg-black/20 p-1.5 text-left transition-colors hover:border-cyan-300/35 hover:bg-fill-subtle focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50"
-                    aria-label={elementPreview ? `Select element ${boundLabel}` : "Select element"}
+                    aria-label={elementPreview ? t("blueprint.element.selectNamed", { name: boundLabel }) : t("blueprint.element.select")}
                     onMouseDown={stopFlowNodePointerBubble}
                     onPointerDown={stopFlowNodePointerBubble}
                     onClick={e => {
@@ -2050,7 +2095,7 @@ function BlueprintElementLiteralNodeCard({
                         elementPreview.preview
                     ) : (
                         <div className="flex h-[72px] w-full items-center justify-center rounded-sm border border-dashed border-edge bg-[#0d1117] text-2xs text-fg-muted">
-                            Select element
+                            {t("blueprint.element.select")}
                         </div>
                     )}
                 </button>
@@ -2121,6 +2166,7 @@ function BlueprintImageAssetLiteralNodeCard({
 }
 
 export function BlueprintFlowNode({ data, selected }: NodeProps) {
+    const { t } = useTranslation();
     const {
         catalog,
         nodeId,
@@ -2244,11 +2290,11 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
     const addPinButton = (
         <Button
             type="button"
-            title={catalog.dynamicInputPinAddLabel ?? "Add input pin"}
+            title={catalog.dynamicInputPinAddLabel ?? t("blueprint.pin.addInput")}
             className="nodrag mt-0.5 flex w-full items-center justify-center rounded border border-dashed border-edge !py-0.5 text-fg-subtle hover:border-edge-strong hover:bg-fill-subtle hover:text-fg-muted"
             variant="ghost"
             size="sm"
-            aria-label={catalog.dynamicInputPinAddLabel ?? "Add input pin"}
+            aria-label={catalog.dynamicInputPinAddLabel ?? t("blueprint.pin.addInput")}
             onMouseDown={stopFlowNodePointerBubble}
             onPointerDown={stopFlowNodePointerBubble}
             onClick={e => {

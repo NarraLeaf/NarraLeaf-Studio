@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import type { SmartSnapDetailSettings } from "@/lib/ui-editor/snapping/types";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { SurfaceEditorToolbarSegButton, SurfaceEditorToolbarSegSlot } from "./SurfaceEditorToolbarButtonGroup";
@@ -51,6 +52,7 @@ function computeSnapSettingsPanelClientPosition(trigger: DOMRect, panel: DOMRect
  * Dropdown trigger + panel for per-category smart snap toggles (project settings).
  */
 export function SurfaceSnapSettingsTrigger({ stateService, detail }: Props) {
+    const { t } = useTranslation();
     const [open, setOpen] = useState(false);
     const [adjusted, setAdjusted] = useState({ x: 0, y: 0 });
     const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -142,7 +144,7 @@ export function SurfaceSnapSettingsTrigger({ stateService, detail }: Props) {
                 onMouseDown={e => e.stopPropagation()}
             >
                 <div className="border-b border-edge px-3 pb-2 text-2xs font-medium tracking-wide text-fg-subtle">
-                    Snap targets
+                    {t("uiEditor.snap.targets")}
                 </div>
                 <div className="pt-1">
                     <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-fg hover:bg-fill-subtle">
@@ -152,7 +154,7 @@ export function SurfaceSnapSettingsTrigger({ stateService, detail }: Props) {
                             checked={detail.snapCanvasLayout}
                             onChange={() => patch({ snapCanvasLayout: !stateService.getSmartSnapDetailSettings().snapCanvasLayout })}
                         />
-                        <span>Canvas layout (edges &amp; center)</span>
+                        <span>{t("uiEditor.snap.canvasLayout")}</span>
                     </label>
                     <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-fg hover:bg-fill-subtle">
                         <input
@@ -161,7 +163,7 @@ export function SurfaceSnapSettingsTrigger({ stateService, detail }: Props) {
                             checked={detail.snapElementBorder}
                             onChange={() => patch({ snapElementBorder: !stateService.getSmartSnapDetailSettings().snapElementBorder })}
                         />
-                        <span>Element borders (edge to edge)</span>
+                        <span>{t("uiEditor.snap.elementBorders")}</span>
                     </label>
                     <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-fg hover:bg-fill-subtle">
                         <input
@@ -170,7 +172,7 @@ export function SurfaceSnapSettingsTrigger({ stateService, detail }: Props) {
                             checked={detail.snapElementLayout}
                             onChange={() => patch({ snapElementLayout: !stateService.getSmartSnapDetailSettings().snapElementLayout })}
                         />
-                        <span>Element layout (centers)</span>
+                        <span>{t("uiEditor.snap.elementLayout")}</span>
                     </label>
                 </div>
             </div>,
@@ -185,7 +187,7 @@ export function SurfaceSnapSettingsTrigger({ stateService, detail }: Props) {
                     type="button"
                     active={open}
                     onClick={toggle}
-                    title="Snap settings"
+                    title={t("uiEditor.snap.settings")}
                     aria-expanded={open}
                     aria-haspopup="dialog"
                 >

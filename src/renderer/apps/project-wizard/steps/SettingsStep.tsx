@@ -1,3 +1,4 @@
+import { useTranslation } from "@/lib/i18n";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/lib/components/elements";
 import { Input, InputGroup } from "@/lib/components/elements";
 import { Select } from "@/lib/components/elements";
@@ -33,34 +34,35 @@ export function SettingsStep({
     onSelectDirectory,
     isSelectingDirectory
 }: SettingsStepProps) {
+    const { t } = useTranslation();
     return (
         <div className="p-6">
             <div className="space-y-6">
                 <div className="space-y-2">
-                    <h2 className="text-lg font-semibold text-fg">Project Settings</h2>
+                    <h2 className="text-lg font-semibold text-fg">{t("wizard.settings.title")}</h2>
                     <p className="text-sm text-fg-muted">
-                        Configure project location, backup, and version control settings.
+                        {t("wizard.settings.subtitle")}
                     </p>
                 </div>
 
                 <div className="grid gap-6 max-w-2xl">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Location</CardTitle>
+                            <CardTitle>{t("wizard.fields.location")}</CardTitle>
                             <CardDescription>
-                                Choose where to save your project.
+                                {t("wizard.settings.location.description")}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <InputGroup
-                                label="Project Location"
+                                label={t("wizard.settings.projectLocation")}
                                 required
                                 error={validationErrors.location || validationErrors.directory}
                             >
                                 <div className="space-y-1">
                                     <div className="relative">
                                         <Input
-                                            placeholder="Enter project location..."
+                                            placeholder={t("wizard.settings.projectLocationPlaceholder")}
                                             value={projectData.location}
                                             onChange={async (e) => await onLocationChange(e.target.value)}
                                             onBlur={onLocationBlur}
@@ -77,13 +79,13 @@ export function SettingsStep({
                                         </button>
                                     </div>
                                     {isValidatingDirectory && (
-                                        <p className="text-sm text-fg-muted">Validating directory...</p>
+                                        <p className="text-sm text-fg-muted">{t("wizard.settings.validatingDirectory")}</p>
                                     )}
 
                                     {/* Show informational message when directory doesn't exist */}
                                     {directoryValidation && !directoryValidation.exists && !validationErrors.directory && (
                                         <div className="text-xs text-primary mt-1">
-                                            ✓ This directory will be created automatically when you create the project
+                                            ✓ {t("wizard.settings.directoryWillBeCreated")}
                                         </div>
                                     )}
                                 </div>
@@ -93,18 +95,18 @@ export function SettingsStep({
 
                     <Card>
                         <CardHeader>
-                            <CardTitle>Version Control</CardTitle>
+                            <CardTitle>{t("wizard.fields.versionControl")}</CardTitle>
                             <CardDescription>
-                                Set up version control for your project.
+                                {t("wizard.settings.versionControl.description")}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <InputGroup label="Version Control System">
+                            <InputGroup label={t("wizard.settings.versionControlSystem")}>
                                 <Select
                                     options={versionControlOptions}
                                     value={projectData.versionControl || "git"}
                                     onChange={(value) => updateProjectData({ versionControl: String(value) })}
-                                    placeholder="Select version control..."
+                                    placeholder={t("wizard.settings.versionControlPlaceholder")}
                                 />
                             </InputGroup>
                         </CardContent>

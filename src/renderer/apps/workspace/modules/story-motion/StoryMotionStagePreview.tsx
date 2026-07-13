@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { RotateCw } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import type { StoryMotionPreviewState } from "./storyMotionTimeline";
 import type { StoryMotionPreviewTarget } from "./storyMotionPreviewTarget";
@@ -18,6 +19,7 @@ export function StoryMotionStagePreview(props: {
     allowOverflow?: boolean;
     canvasScale?: number;
 }) {
+    const { t } = useTranslation();
     const { url } = useAssetObjectUrl(props.target.assetId ?? null);
     const interactive = props.interactive ?? true;
     const fixedStage = props.stageSize && props.stageSize.width > 0 && props.stageSize.height > 0;
@@ -89,7 +91,7 @@ export function StoryMotionStagePreview(props: {
             <div className={`${fixedStage ? "absolute inset-0" : "absolute inset-6"} rounded border border-edge bg-[linear-gradient(90deg,rgba(255,255,255,.04)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px)] bg-[length:32px_32px]`} />
             {showLabel ? (
                 <div className={`${fixedStage ? "left-2 top-2" : "left-6 top-6"} absolute rounded border border-edge bg-black/30 px-2 py-1 text-2xs text-fg-muted`}>
-                    Stage preview
+                    {t("motion.preview.stageLabel")}
                 </div>
             ) : null}
             <div
@@ -111,25 +113,25 @@ export function StoryMotionStagePreview(props: {
                             className="absolute -right-2 -bottom-2 h-4 w-4 cursor-nwse-resize rounded border border-white/70 bg-primary"
                             style={{ transform: `scale(${handleInvX}, ${handleInvY})`, transformOrigin: "center" }}
                             onPointerDown={event => props.onPointerDrag(event, "zoom")}
-                            title="Drag to zoom"
+                            title={t("motion.preview.dragZoom")}
                         />
                         <div
                             className="absolute -right-2 top-1/2 h-4 w-2.5 cursor-ew-resize rounded-sm border border-white/70 bg-[#1b1d22]"
                             style={{ transform: `translateY(-50%) scale(${handleInvX}, ${handleInvY})`, transformOrigin: "center" }}
                             onPointerDown={event => props.onPointerDrag(event, "scaleX")}
-                            title="Drag to scale X"
+                            title={t("motion.preview.dragScaleX")}
                         />
                         <div
                             className="absolute -bottom-2 left-1/2 h-2.5 w-4 cursor-ns-resize rounded-sm border border-white/70 bg-[#1b1d22]"
                             style={{ transform: `translateX(-50%) scale(${handleInvX}, ${handleInvY})`, transformOrigin: "center" }}
                             onPointerDown={event => props.onPointerDrag(event, "scaleY")}
-                            title="Drag to scale Y"
+                            title={t("motion.preview.dragScaleY")}
                         />
                         <div
                             className="absolute -top-7 left-1/2 grid h-5 w-5 cursor-ew-resize place-items-center rounded-full border border-white/50 bg-[#1b1d22] text-fg"
                             style={{ transform: `translateX(-50%) scale(${handleInvX}, ${handleInvY})`, transformOrigin: "center" }}
                             onPointerDown={event => props.onPointerDrag(event, "rotation")}
-                            title="Drag to rotate"
+                            title={t("motion.preview.dragRotate")}
                         >
                             <RotateCw className="h-3 w-3" />
                         </div>

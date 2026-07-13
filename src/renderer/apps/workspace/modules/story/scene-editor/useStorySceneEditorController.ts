@@ -29,7 +29,7 @@ import { getStoryEditorViewState, patchStoryEditorViewState } from "./storyEdito
 import { cloneSerializedBlock, insertSerializedClone, serializeBlockSubtree } from "./storySceneClipboard";
 import { richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
-import type { EditorMode } from "./storySceneEditorTypes";
+import type { EditorMode, StoryBlockTarget } from "./storySceneEditorTypes";
 import { useStorySceneClipboardHandlers } from "./useStorySceneClipboardHandlers";
 
 const STORY_EDITOR_HISTORY_LIMIT = 100;
@@ -440,14 +440,15 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         return block;
     }, [document, uuidService]);
 
-    const insertBlock = useCallback((block: StoryBlock, afterBlockId: StoryBlockId | null, openInspector = false, options?: { recordHistory?: boolean }) => {
+    const insertBlock = useCallback((block: StoryBlock, afterBlockId: StoryBlockId | null, openInspector = false, options?: { recordHistory?: boolean; target?: StoryBlockTarget }) => {
         if (!storyService || !storyId || !sceneId || !scene) {
             return;
         }
         if (options?.recordHistory !== false) {
             recordHistory();
         }
-        storyService.insertBlock(storyId, sceneId, block, getInsertionTargetAfter(scene, afterBlockId));
+        // An explicit target ("add inside a container") overrides the default sibling-after placement.
+        storyService.insertBlock(storyId, sceneId, block, options?.target ?? getInsertionTargetAfter(scene, afterBlockId));
         setActiveBlockId(block.id);
         setSelectedBlockIds(new Set([block.id]));
         setStatusText(`Inserted ${describeBlock(block, characters, scene, document?.scenes)}.`);
@@ -483,6 +484,114 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             window.requestAnimationFrame(() => insertInputRef.current?.focus());
         }
     }, []);
+
+    /** Expand a collapsed container so a just-added child / insert slot is actually visible. */
+    const ensureExpanded = useCallback((blockId: StoryBlockId) => {
+        setCollapsedBlockIds(prev => {
+            if (!prev.has(blockId)) {
+                return prev;
+            }
+            const next = new Set(prev);
+            next.delete(blockId);
+            return next;
+        });
+    }, []);
+
+    // Open an insert slot that parents the new block at the END of `parentId` (the "add action inside a
+    // container" affordance). The slot renders after the container's last visible child (or, when empty,
+    // right under the container header), and commits into `parentId` via the slot target.
+    const startInsertInside = useCallback((parentId: StoryBlockId) => {
+        if (!scene) {
+            return;
+        }
+        const parent = scene.blocks[parentId];
+        if (!parent) {
+            return;
+        }
+        ensureExpanded(parentId);
+        const lastChildId = parent.childrenIds[parent.childrenIds.length - 1] ?? null;
+        setEditorMode({
+            kind: "insert",
+            slot: { afterBlockId: lastChildId ?? parentId, focusToken: Date.now(), target: { parentId, beforeBlockId: null } },
+            value: "",
+            chooser: "none",
+        });
+        setActiveBlockId(parentId);
+        window.requestAnimationFrame(() => insertInputRef.current?.focus());
+    }, [ensureExpanded, scene]);
+
+    // Append a menu option to a choice container and open it for text entry.
+    const addMenuOption = useCallback((choiceId: StoryBlockId) => {
+        if (!scene) {
+            return;
+        }
+        const parent = scene.blocks[choiceId];
+        if (!parent) {
+            return;
+        }
+        const block = createBlock("choiceOption");
+        if (!block) {
+            return;
+        }
+        ensureExpanded(choiceId);
+        insertBlock(block, null, false, { target: { parentId: choiceId, beforeBlockId: null } });
+        setEditorMode({ kind: "text", blockId: block.id, value: "" });
+    }, [createBlock, ensureExpanded, insertBlock, scene]);
+
+    // Append an if / else-if / else branch to a condition container. "else" is unique and always last;
+    // "else if" is inserted before an existing else (or at the end).
+    const addConditionBranch = useCallback((conditionId: StoryBlockId, branch: "if" | "elseIf" | "else") => {
+        if (!scene) {
+            return;
+        }
+        const parent = scene.blocks[conditionId];
+        if (!parent) {
+            return;
+        }
+        const branchBlocks = parent.childrenIds
+            .map(id => scene.blocks[id])
+            .filter((child): child is Extract<StoryBlock, { kind: "control" }> =>
+                child?.kind === "control" && child.payload.control === "conditionBranch");
+        const elseBranch = branchBlocks.find(child =>
+            child.payload.control === "conditionBranch" && child.payload.branch === "else");
+        if (branch === "else" && elseBranch) {
+            return;
+        }
+        const block = createBlock("conditionBranch");
+        if (!block || block.kind !== "control" || block.payload.control !== "conditionBranch") {
+            return;
+        }
+        block.payload.branch = branch;
+        const beforeBlockId = branch === "else" ? null : elseBranch?.id ?? null;
+        ensureExpanded(conditionId);
+        insertBlock(block, null, false, { target: { parentId: conditionId, beforeBlockId } });
+    }, [createBlock, ensureExpanded, insertBlock, scene]);
+
+    // Dispatch the container header "+ Add" affordance: a menu adds an option directly; anything else
+    // opens an insert slot inside so the author picks the action.
+    const addInsideContainer = useCallback((parentId: StoryBlockId) => {
+        const block = scene?.blocks[parentId];
+        if (block?.kind === "nodeAction" && block.payload.action === "choice") {
+            addMenuOption(parentId);
+            return;
+        }
+        startInsertInside(parentId);
+    }, [addMenuOption, scene, startInsertInside]);
+
+    // Seed a freshly-created container with its default child so the author gets a usable structure in
+    // one step (Condition → an `if` branch; Menu → one option), inside the same undo entry as the parent.
+    const scaffoldContainer = useCallback((block: StoryBlock) => {
+        if (!storyService || !storyId || !sceneId || !uuidService) {
+            return;
+        }
+        if (block.kind === "control" && block.payload.control === "condition") {
+            const branch = createBlockForCommand("conditionBranch", () => uuidService.generate());
+            storyService.insertBlock(storyId, sceneId, branch, { parentId: block.id, beforeBlockId: null });
+        } else if (block.kind === "nodeAction" && block.payload.action === "choice") {
+            const option = createBlockForCommand("choiceOption", () => uuidService.generate());
+            storyService.insertBlock(storyId, sceneId, option, { parentId: block.id, beforeBlockId: null });
+        }
+    }, [sceneId, storyId, storyService, uuidService]);
 
     // Enter while editing a text row: commit and open a new row that continues the same kind — narration
     // begets narration, a dialogue keeps its speaker, a menu option adds a sibling option. Kinds without a
@@ -645,7 +754,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!block) {
             return;
         }
-        insertBlock(block, editorMode.slot.afterBlockId);
+        insertBlock(block, editorMode.slot.afterBlockId, false, { target: editorMode.slot.target });
         if (focusNext) {
             startInsertAfter(block.id, true);
         }
@@ -718,11 +827,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (editorMode.kind !== "insert") {
             return;
         }
+        const target = editorMode.slot.target;
         const initialText = editorMode.value.replace(/^\/\S*\s?/, "");
         if (!isActionCommandId(commandId)) {
             const block = createPluginActionBlock(commandId, initialText);
             if (block) {
-                insertBlock(block, editorMode.slot.afterBlockId, true);
+                insertBlock(block, editorMode.slot.afterBlockId, true, { target });
             }
             return;
         }
@@ -730,19 +840,21 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!block) {
             return;
         }
-        insertBlock(block, editorMode.slot.afterBlockId, isInspectorFirstCommand(commandId));
+        insertBlock(block, editorMode.slot.afterBlockId, isInspectorFirstCommand(commandId), { target });
+        scaffoldContainer(block);
         if (!isInspectorFirstCommand(commandId) && isTextEditableBlock(block)) {
             setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
         }
-    }, [createBlock, createPluginActionBlock, editorMode, insertBlock]);
+    }, [createBlock, createPluginActionBlock, editorMode, insertBlock, scaffoldContainer]);
 
     const chooseCharacterForInsert = useCallback((characterId: string) => {
         if (editorMode.kind !== "insert") {
             return;
         }
+        const target = editorMode.slot.target;
         const block = createBlock("dialogue", editorMode.value.replace(/^#\s*/, ""), characterId);
         if (block) {
-            insertBlock(block, editorMode.slot.afterBlockId);
+            insertBlock(block, editorMode.slot.afterBlockId, false, { target });
             setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
         }
     }, [createBlock, editorMode, insertBlock]);
@@ -1143,7 +1255,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         undoEdit, redoEdit,
         startInsertAfterActive, indentSelection, selectAllRows, moveActiveRowSelection,
         insertContinuationAfterCurrentTextEdit, commitNarrationFromInsert, handleInsertBackspaceEmpty, chooseCommand, chooseCharacterForInsert,
-        createActionFromSidebar,
+        createActionFromSidebar, addInsideContainer, addConditionBranch,
         navigateFromTextEdit, handleBackspaceAtEmptyStart, enterEditOrInspectorForActive,
         extendRowSelection, moveSelectedRows, duplicateSelection, jumpRowSelection, pageRowSelection,
         moveDraggedBlockAfter, moveDraggedBlockToSortablePosition, startDraggingBlock, endDraggingBlock,

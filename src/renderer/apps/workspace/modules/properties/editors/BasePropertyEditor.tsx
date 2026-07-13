@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { X, Plus } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { PropertyEditorProps } from "./PropertyEditorBase";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { useWorkspace } from "../../../context";
@@ -15,6 +16,7 @@ export interface BasePropertyEditorProps<T extends AssetType> extends PropertyEd
 }
 
 export function BasePropertyEditor<T extends AssetType>({ asset, onChange, children }: BasePropertyEditorProps<T>) {
+    const { t } = useTranslation();
     const { context } = useWorkspace();
     const [name, setName] = useState(asset.name);
     const [tags, setTags] = useState<string[]>(asset.tags);
@@ -104,7 +106,7 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
             {/* Name */}
             <div>
                 <label className="block text-xs font-medium text-fg-muted mb-1">
-                    Name
+                    {t("common.name")}
                 </label>
                 <input
                     type="text"
@@ -119,7 +121,7 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
             {/* Tags */}
             <div>
                 <label className="block text-xs font-medium text-fg-muted mb-1">
-                    Tags
+                    {t("properties.tags.label")}
                 </label>
                 <div className="flex flex-wrap gap-1 mb-2">
                     {tags.map((tag) => (
@@ -150,7 +152,7 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
                                 handleAddTag();
                             }
                         }}
-                        placeholder="Add tag..."
+                        placeholder={t("properties.tags.addPlaceholder")}
                         className="flex-1 px-3 py-1.5 bg-surface-raised border border-edge rounded-md text-sm text-fg-muted focus:outline-none focus:border-primary/50 transition-colors"
                         disabled={saving}
                     />
@@ -167,7 +169,7 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
             {/* Description */}
             <div>
                 <label className="block text-xs font-medium text-fg-muted mb-1">
-                    Description
+                    {t("common.description")}
                 </label>
                 <textarea
                     value={description}
@@ -175,14 +177,14 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
                     onBlur={handleDescriptionBlur}
                     rows={4}
                     className="w-full px-3 py-2 bg-surface-raised border border-edge rounded-md text-sm text-fg-muted focus:outline-none focus:border-primary/50 transition-colors resize-none"
-                    placeholder="Enter description..."
+                    placeholder={t("properties.asset.descriptionPlaceholder")}
                     disabled={saving}
                 />
             </div>
 
             {saving && (
                 <div className="text-xs text-fg-muted text-center">
-                    Saving...
+                    {t("properties.saving")}
                 </div>
             )}
         </div>

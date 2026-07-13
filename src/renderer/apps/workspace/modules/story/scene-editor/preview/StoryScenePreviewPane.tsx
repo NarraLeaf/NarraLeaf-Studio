@@ -1,6 +1,7 @@
 import { Loader2, MonitorPlay, PanelRight, PictureInPicture2, X } from "lucide-react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { NlrStageLayer } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
+import { useTranslation } from "@/lib/i18n";
 import type { StoryScenePreviewController } from "./useStoryScenePreviewController";
 import type { StoryScenePreviewPaneMode } from "./storyScenePreviewSessionStore";
 
@@ -21,6 +22,7 @@ export function StoryScenePreviewPane(props: {
     onToggleFloat?: () => void;
     onHeaderPointerDown?: (event: ReactPointerEvent) => void;
 }) {
+    const { t } = useTranslation();
     const { controller, onClose, mode = "dock", onToggleFloat, onHeaderPointerDown } = props;
     const busy = controller.phase === "compiling" || controller.phase === "mounting" || controller.phase === "starting";
     const showSceneStartHint = controller.stageLayers.length > 0 && controller.targetBlockId === null && !busy && controller.phase !== "error";
@@ -36,7 +38,7 @@ export function StoryScenePreviewPane(props: {
                 onPointerDown={onHeaderPointerDown}
             >
                 <MonitorPlay className="h-4 w-4 shrink-0 text-primary" />
-                <span className="truncate text-xs font-medium text-fg">Live Preview</span>
+                <span className="truncate text-xs font-medium text-fg">{t("story.preview.title")}</span>
                 {/* Refreshes keep the previous frame visible; the spinner is the only indicator. */}
                 {busy ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-fg-subtle" /> : null}
                 <div className="flex-1" />
@@ -47,7 +49,7 @@ export function StoryScenePreviewPane(props: {
                         // Keep header clicks on controls from starting a window drag.
                         onPointerDown={event => event.stopPropagation()}
                         onClick={onToggleFloat}
-                        title={mode === "float" ? "Dock to sidebar" : "Picture-in-picture"}
+                        title={mode === "float" ? t("story.preview.dock") : t("story.preview.pip")}
                     >
                         {mode === "float"
                             ? <PanelRight className="h-3.5 w-3.5" />
@@ -59,7 +61,7 @@ export function StoryScenePreviewPane(props: {
                     className="rounded p-1 text-fg-muted hover:bg-fill hover:text-fg"
                     onPointerDown={event => event.stopPropagation()}
                     onClick={onClose}
-                    title="Close live preview"
+                    title={t("story.preview.closePreview")}
                 >
                     <X className="h-3.5 w-3.5" />
                 </button>
@@ -84,13 +86,13 @@ export function StoryScenePreviewPane(props: {
                 ))}
                 {controller.stageLayers.length === 0 && controller.phase === "idle" ? (
                     <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs text-fg-subtle">
-                        Select a story row to preview its stage state.
+                        {t("story.preview.selectRow")}
                     </div>
                 ) : null}
                 {controller.phase === "error" ? (
                     <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/70 p-4">
                         <div className="max-w-full text-center">
-                            <div className="text-xs font-medium text-red-400">Preview failed</div>
+                            <div className="text-xs font-medium text-red-400">{t("story.preview.failed")}</div>
                             <div className="mt-1 break-words text-2xs text-fg-muted">{controller.errorMessage}</div>
                         </div>
                     </div>

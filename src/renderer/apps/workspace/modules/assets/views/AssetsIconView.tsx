@@ -7,6 +7,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
 import { ASSET_TYPE_ICONS, ASSET_TYPE_LABELS } from "../constants";
 import { useWorkspace } from "../../../context";
+import { useTranslation } from "@/lib/i18n";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 
 interface AssetsIconViewProps {
@@ -36,6 +37,7 @@ export function AssetsIconView({
     groupPathIds,
     onGroupPathChange,
 }: AssetsIconViewProps) {
+    const { t, tn } = useTranslation();
     const {
         groups,
         filteredAssets,
@@ -169,7 +171,7 @@ export function AssetsIconView({
                     <button
                         onClick={handleBack}
                         className="p-1 rounded hover:bg-fill"
-                        title="Back to parent group"
+                        title={t("assets.backToParent")}
                     >
                         <ChevronLeft className="w-4 h-4" />
                     </button>
@@ -206,12 +208,12 @@ export function AssetsIconView({
                                     <TypeIcon className="w-5 h-5 text-fg" />
                                     <div>
                                         <p className="text-sm font-medium">{ASSET_TYPE_LABELS[type]}</p>
-                                        <p className="text-xs text-fg-subtle">{typeAssets.length} assets</p>
+                                        <p className="text-xs text-fg-subtle">{tn("assets.iconView.assetCount", typeAssets.length)}</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1">
                                     {actionLoading ? (
-                                        <span className="text-xs text-fg-muted">Updating...</span>
+                                        <span className="text-xs text-fg-muted">{t("assets.iconView.updating")}</span>
                                     ) : (
                                         <>
                                             <button
@@ -220,7 +222,7 @@ export function AssetsIconView({
                                                     handleImport(type);
                                                 }}
                                                 className="p-1 rounded hover:bg-fill"
-                                                title="Import"
+                                                title={t("common.import")}
                                             >
                                                 <Upload className="w-4 h-4" />
                                             </button>
@@ -230,7 +232,7 @@ export function AssetsIconView({
                                                     handleImportRemote(type);
                                                 }}
                                                 className="p-1 rounded hover:bg-fill"
-                                                title="Import Remote"
+                                                title={t("assets.importRemote")}
                                             >
                                                 <Link className="w-4 h-4" />
                                             </button>
@@ -240,7 +242,7 @@ export function AssetsIconView({
                                                     handleCreateGroup(type);
                                                 }}
                                                 className="p-1 rounded hover:bg-fill"
-                                                title="New Group"
+                                                title={t("assets.menu.newGroup")}
                                             >
                                                 <FolderPlus className="w-4 h-4" />
                                             </button>
@@ -284,7 +286,7 @@ export function AssetsIconView({
                                 </div>
                             ) : (
                                 <div className="mt-4 text-center text-xs text-fg-subtle">
-                                    No {ASSET_TYPE_LABELS[type].toLowerCase()} yet.
+                                    {t("assets.emptyType", { label: ASSET_TYPE_LABELS[type].toLowerCase() })}
                                 </div>
                             )}
                         </section>
@@ -306,6 +308,7 @@ function GroupIconTile({
     childCount: number;
     onNavigate?: () => void;
 }) {
+    const { tn } = useTranslation();
     const {
         selectedItems,
         clipboard,
@@ -370,7 +373,7 @@ function GroupIconTile({
                 <FolderPlus className="w-4 h-4 text-primary" />
                 <span className="truncate">{group.name}</span>
             </div>
-            <span className="text-xs text-fg-subtle">{childCount} items</span>
+            <span className="text-xs text-fg-subtle">{tn("assets.itemCount", childCount)}</span>
         </div>
     );
 }
@@ -381,6 +384,7 @@ function AssetIconTile({
     thumbnailUrl,
     requestThumbnail,
 }: { asset: Asset; type: AssetType; thumbnailUrl?: string; requestThumbnail: (asset: Asset) => Promise<string | undefined> }) {
+    const { t, tn } = useTranslation();
     const {
         selectedItems,
         handleItemSelect,
@@ -428,10 +432,10 @@ function AssetIconTile({
             </div>
             <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{asset.name}</p>
-                <p className="text-xs text-fg-subtle">{asset.tags.length > 0 ? "+" + asset.tags.length + " tags" : "No tags"}</p>
+                <p className="text-xs text-fg-subtle">{asset.tags.length > 0 ? tn("assets.iconView.tagCount", asset.tags.length) : t("assets.noTags")}</p>
             </div>
             {clipboard?.type === "cut" && clipboard.assets.some((a) => a.id === asset.id) && (
-                <span className="text-xs text-fg-muted">Cut</span>
+                <span className="text-xs text-fg-muted">{t("common.cut")}</span>
             )}
         </div>
     );

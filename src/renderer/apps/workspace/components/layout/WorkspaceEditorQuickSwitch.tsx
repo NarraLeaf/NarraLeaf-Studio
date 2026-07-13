@@ -13,6 +13,7 @@ import {
     type EditorQuickSwitchCandidate,
 } from "./editorQuickSwitchModel";
 import type { EditorLayout } from "../../registry/types";
+import { useTranslation } from "@/lib/i18n";
 
 interface QuickSwitchState {
     open: boolean;
@@ -33,6 +34,7 @@ function wrapIndex(index: number, length: number): number {
 }
 
 export function WorkspaceEditorQuickSwitch() {
+    const { t } = useTranslation();
     const { context } = useWorkspace();
     const { editorLayout, setActiveEditorTab } = useRegistry();
     const [state, setState] = useState<QuickSwitchState>(CLOSED_STATE);
@@ -266,7 +268,7 @@ export function WorkspaceEditorQuickSwitch() {
             <div
                 className="w-[min(560px,calc(100vw-32px))] max-h-[min(480px,70vh)] overflow-hidden rounded-md border border-edge bg-[#171a21]/95 shadow-2xl backdrop-blur-sm pointer-events-auto"
                 role="listbox"
-                aria-label="Editor tabs"
+                aria-label={t("workspace.shell.editorTabsLabel")}
             >
                 <div className="max-h-[inherit] overflow-y-auto py-1">
                     {state.candidates.map((candidate, index) => {

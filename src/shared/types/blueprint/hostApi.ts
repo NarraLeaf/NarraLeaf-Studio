@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 18 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 20 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -285,6 +285,22 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             input: { id: "" },
             output: null,
         },
+        getHistory: {
+            capabilityId: "game.getHistory",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: [],
+        },
+        restoreHistory: {
+            capabilityId: "game.restoreHistory",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { id: "" },
+            output: null,
+        },
         getNametag: {
             capabilityId: "game.getNametag",
             purity: "pure",
@@ -387,6 +403,14 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { key: "", value: null },
+            output: null,
+        },
+        setOutputResolution: {
+            capabilityId: "game.setOutputResolution",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { width: 0, height: 0 },
             output: null,
         },
     },

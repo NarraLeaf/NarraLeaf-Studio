@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { HelpCircle, Plus, Trash2, Variable } from "lucide-react";
 import type { PanelComponentProps } from "../types";
+import { useTranslation } from "@/lib/i18n";
 import { Select, type SelectOption } from "@/lib/components/elements";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
@@ -20,13 +21,6 @@ import type {
     StoryVariableValueType,
 } from "@shared/types/story";
 import type { StoryVariablesPanelPayload } from "./storyVariablesPanelId";
-
-const VALUE_TYPE_OPTIONS: SelectOption[] = [
-    { value: "boolean", label: "Boolean" },
-    { value: "number", label: "Number" },
-    { value: "string", label: "String" },
-    { value: "json", label: "JSON" },
-];
 
 const INPUT_CLASS =
     "h-7 min-w-0 flex-1 rounded border border-edge bg-surface-raised px-2 text-xs text-fg outline-none focus:border-primary/50";
@@ -69,16 +63,26 @@ function VariableRowEditor(props: {
     onDefault: (value: StoryLiteralValue) => void;
     onDelete: () => void;
 }) {
+    const { t } = useTranslation();
+    const valueTypeOptions: SelectOption[] = useMemo(
+        () => [
+            { value: "boolean", label: t("storyVars.valueType.boolean") },
+            { value: "number", label: t("storyVars.valueType.number") },
+            { value: "string", label: t("storyVars.valueType.string") },
+            { value: "json", label: t("storyVars.valueType.json") },
+        ],
+        [t],
+    );
     return (
         <div className="flex items-center gap-1.5">
             <input
                 className={INPUT_CLASS}
                 value={props.row.name}
                 onChange={event => props.onRename(event.target.value)}
-                aria-label="Variable name"
+                aria-label={t("storyVars.row.nameAria")}
             />
             <Select
-                options={VALUE_TYPE_OPTIONS}
+                options={valueTypeOptions}
                 value={props.row.valueType}
                 onChange={value => props.onRetype(String(value) as StoryVariableValueType)}
                 size="sm"
@@ -88,15 +92,15 @@ function VariableRowEditor(props: {
             <input
                 className={INPUT_CLASS}
                 value={formatDefault(props.row.defaultValue, props.row.valueType)}
-                placeholder="default"
+                placeholder={t("storyVars.row.defaultPlaceholder")}
                 onChange={event => props.onDefault(parseDefault(event.target.value, props.row.valueType))}
-                aria-label="Default value"
+                aria-label={t("storyVars.row.defaultAria")}
             />
             <button
                 type="button"
                 className="flex h-7 w-7 items-center justify-center rounded text-fg-subtle hover:bg-fill hover:text-red-300"
                 onClick={props.onDelete}
-                title="Delete variable"
+                title={t("storyVars.row.delete")}
             >
                 <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -129,6 +133,7 @@ function HintPopover(props: { text: string }) {
 }
 
 function SectionHeader(props: { title: string; hint: string; onAdd?: () => void }) {
+    const { t } = useTranslation();
     return (
         <div className="flex items-center justify-between">
             <div className="flex min-w-0 items-center gap-1">
@@ -141,7 +146,7 @@ function SectionHeader(props: { title: string; hint: string; onAdd?: () => void 
                     className="flex h-6 items-center gap-1 rounded border border-edge px-2 text-2xs text-fg-muted hover:border-primary/50 hover:text-white"
                     onClick={props.onAdd}
                 >
-                    <Plus className="h-3 w-3" /> Add
+                    <Plus className="h-3 w-3" /> {t("common.add")}
                 </button>
             ) : null}
         </div>
@@ -149,6 +154,7 @@ function SectionHeader(props: { title: string; hint: string; onAdd?: () => void 
 }
 
 export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariablesPanelPayload>) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const storyId = payload?.storyId;
     const sceneId = payload?.sceneId;
@@ -219,7 +225,7 @@ export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariab
         return (
             <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-xs text-fg-subtle">
                 <Variable className="h-5 w-5" />
-                Open a story scene to manage its variables.
+                {t("storyVars.empty")}
             </div>
         );
     }
@@ -227,10 +233,10 @@ export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariab
     return (
         <div className="flex flex-col gap-4 overflow-y-auto p-3">
             <div className="flex flex-col gap-2">
-                <SectionHeader title="Scene variables" hint="Per scene; kept in the save file." onAdd={addScene} />
+                <SectionHeader title={t("storyVars.scene.title")} hint={t("storyVars.scene.hint")} onAdd={addScene} />
                 <div className="flex flex-col gap-1.5">
                     {sceneRows.length === 0 ? (
-                        <div className="text-2xs text-fg-subtle">No scene variables yet.</div>
+                        <div className="text-2xs text-fg-subtle">{t("storyVars.scene.empty")}</div>
                     ) : (
                         sceneRows.map(row => (
                             <VariableRowEditor
@@ -250,10 +256,10 @@ export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariab
             </div>
 
             <div className="flex flex-col gap-2">
-                <SectionHeader title="Saved variables" hint="Per save file; must be serializable." onAdd={addSaved} />
+                <SectionHeader title={t("storyVars.saved.title")} hint={t("storyVars.saved.hint")} onAdd={addSaved} />
                 <div className="flex flex-col gap-1.5">
                     {savedRows.length === 0 ? (
-                        <div className="text-2xs text-fg-subtle">No saved variables yet.</div>
+                        <div className="text-2xs text-fg-subtle">{t("storyVars.saved.empty")}</div>
                     ) : (
                         savedRows.map(row => (
                             <VariableRowEditor
@@ -273,10 +279,10 @@ export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariab
             </div>
 
             <div className="flex flex-col gap-2">
-                <SectionHeader title="Persistent variables" hint="App-level; shared with blueprints." />
+                <SectionHeader title={t("storyVars.persistent.title")} hint={t("storyVars.persistent.hint")} />
                 <div className="flex flex-col gap-1.5">
                     {persistent.length === 0 ? (
-                        <div className="text-2xs text-fg-subtle">No persistent variables. Add them in the blueprint editor.</div>
+                        <div className="text-2xs text-fg-subtle">{t("storyVars.persistent.empty")}</div>
                     ) : (
                         persistent.map(variable => (
                             <div key={variable.name} className="flex items-center justify-between rounded border border-edge-subtle px-2 py-1 text-xs text-fg-muted">

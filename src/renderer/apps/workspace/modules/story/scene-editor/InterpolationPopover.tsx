@@ -7,13 +7,9 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
+import { useTranslation } from "@/lib/i18n";
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
 import { rememberInterpolationKind, type StoryVariableOption } from "./storyInterpolation";
-
-const KIND_OPTIONS: SelectOption[] = [
-    { value: "variable", label: "Variable" },
-    { value: "blueprint", label: "Blueprint" },
-];
 
 const MENU_Z = 80;
 
@@ -31,9 +27,14 @@ export function InterpolationPopover(props: {
     /** Commit the in-progress text edit — called before navigating to the blueprint editor. */
     onCommitTextEdit?: () => void;
 }) {
+    const { t } = useTranslation();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const { context, isInitialized } = useWorkspace();
     const openBlueprint = useOpenBlueprintTarget();
+    const kindOptions: SelectOption[] = useMemo(() => [
+        { value: "variable", label: t("story.interpolation.kindVariable") },
+        { value: "blueprint", label: t("story.interpolation.kindBlueprint") },
+    ], [t]);
     const blueprintService = useMemo(
         () => (context && isInitialized ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint) : null),
         [context, isInitialized],
@@ -115,12 +116,12 @@ export function InterpolationPopover(props: {
         // Persist the (possibly just-created) binding before navigating to the blueprint editor —
         // otherwise the uncommitted id is dropped and the entry shows "No blueprint" on return.
         props.onCommitTextEdit?.();
-        openBlueprint({ blueprintId: id, ownerKind: "storyAction", title: "Story Value" });
+        openBlueprint({ blueprintId: id, ownerKind: "storyAction", title: t("story.interpolation.storyValueTitle") });
     };
 
     const variableOptions: SelectOption[] = allVariables.length
         ? allVariables.map(option => ({ value: option.key, label: option.name, secondaryLabel: option.valueType }))
-        : [{ value: "", label: "No variables declared" }];
+        : [{ value: "", label: t("story.interpolation.noVariables") }];
 
     const top = Math.min(props.anchor.bottom + 6, window.innerHeight - 200);
     const left = Math.min(props.anchor.left, window.innerWidth - 256);
@@ -132,15 +133,15 @@ export function InterpolationPopover(props: {
             style={{ top, left: Math.max(8, left) }}
             onMouseDown={event => event.stopPropagation()}
         >
-            <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">Insert value</div>
+            <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">{t("story.interpolation.title")}</div>
             <div className="flex flex-col gap-1.5">
-                <Select options={KIND_OPTIONS} value={kind} onChange={value => setKind(String(value))} size="sm" fullWidth portalMenu menuZIndex={MENU_Z} menuDataAttributes={{ "data-select-menu": "true" }} />
+                <Select options={kindOptions} value={kind} onChange={value => setKind(String(value))} size="sm" fullWidth portalMenu menuZIndex={MENU_Z} menuDataAttributes={{ "data-select-menu": "true" }} />
                 {kind === "variable" ? (
                     <Select
                         options={variableOptions}
                         value={currentVariableKey}
                         onChange={value => setVariableByKey(String(value))}
-                        placeholder="Select a variable…"
+                        placeholder={t("story.interpolation.selectVariable")}
                         size="sm"
                         fullWidth
                         portalMenu
@@ -161,7 +162,7 @@ export function InterpolationPopover(props: {
                 onClick={props.onRemove}
             >
                 <Trash2 className="h-3 w-3" />
-                Remove
+                {t("common.remove")}
             </button>
         </div>,
         document.body,

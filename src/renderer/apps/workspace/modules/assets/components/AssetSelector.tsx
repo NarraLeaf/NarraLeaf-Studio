@@ -21,6 +21,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { Services } from "@/lib/workspace/services/services";
 import { useWorkspace } from "../../../context";
+import { useTranslation } from "@/lib/i18n";
 import { SearchBox } from "./SearchBox";
 import { FilterSystem } from "./FilterSystem";
 import { useAssetData } from "../state/useAssetData";
@@ -106,6 +107,7 @@ export function AssetSelector({
     onClose,
     onConfirm,
 }: AssetSelectorProps) {
+    const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { assets, groups, loading, hasLoaded, error, loadAssets } = useAssetData({ context, isInitialized });
     const { filterConfigs, activeFilters, setActiveFilters, handleFilterOpen, filteredAssets, filteredGroups } = useAssetFilters({ assets, groups });
@@ -497,7 +499,7 @@ export function AssetSelector({
                 <div className="flex-1 min-w-0">
                     <div className="text-sm truncate">{asset.name}</div>
                     <div className="text-2xs text-fg-subtle truncate">
-                        {asset.tags?.length ? asset.tags.join(", ") : "No tags"}
+                        {asset.tags?.length ? asset.tags.join(", ") : t("assets.noTags")}
                     </div>
                 </div>
                 {isSelected && <Check className="w-4 h-4 text-primary flex-shrink-0" />}
@@ -596,7 +598,7 @@ export function AssetSelector({
     }
 
     const Icon = ASSET_TYPE_ICONS[assetType];
-    const headerLabel = title ?? `Select ${ASSET_TYPE_LABELS[assetType]}`;
+    const headerLabel = title ?? t("assets.selector.selectType", { type: ASSET_TYPE_LABELS[assetType] });
 
     const panel = (
         <div
@@ -619,7 +621,7 @@ export function AssetSelector({
                         <div className="flex flex-col">
                             <span className="text-sm font-semibold">{headerLabel}</span>
                             <span className="text-xs text-fg-muted">
-                                {virtualAssetCount > 0 ? `${typeAssets.length + virtualAssetCount} items` : `${typeAssets.length} items`}
+                                {virtualAssetCount > 0 ? tn("assets.itemCount", typeAssets.length + virtualAssetCount) : tn("assets.itemCount", typeAssets.length)}
                             </span>
                         </div>
                     </div>
@@ -628,14 +630,14 @@ export function AssetSelector({
                             onClick={handleImportAssets}
                             disabled={loading}
                             className="p-1 rounded hover:bg-fill disabled:opacity-50"
-                            title="Import from disk"
+                            title={t("assets.selector.importFromDisk")}
                         >
                             <FolderOpen className="w-4 h-4" />
                         </button>
                         <button
                             onClick={onClose}
                             className="p-1 rounded hover:bg-fill"
-                            title="Close"
+                            title={t("common.close")}
                         >
                             <X className="w-4 h-4" />
                         </button>
@@ -643,7 +645,7 @@ export function AssetSelector({
                 </div>
 
                 <div className="p-4 space-y-3 border-b border-edge">
-                    <SearchBox value={searchQuery} onChange={setSearchQuery} placeholder="Search assets..." />
+                    <SearchBox value={searchQuery} onChange={setSearchQuery} placeholder={t("assets.searchPlaceholder")} />
                     <FilterSystem
                         filters={filterConfigs}
                         activeFilters={activeFilters}
@@ -655,19 +657,19 @@ export function AssetSelector({
                 {loading && !hasLoaded ? (
                     <div className="flex items-center justify-center py-8 text-fg-muted gap-2">
                         <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Loading assets...</span>
+                        <span>{t("assets.loading")}</span>
                     </div>
                 ) : error ? (
                     <div className="flex items-start gap-2 px-4 py-6 text-red-400">
                         <AlertCircle className="w-4 h-4 mt-0.5" />
                         <div className="text-sm">
-                            <div>Failed to load assets</div>
+                            <div>{t("assets.loadError")}</div>
                             <div className="text-xs text-red-300/80">{error}</div>
                         </div>
                     </div>
                 ) : displayedAssets.length === 0 && !hasVisibleVirtualAssets ? (
                     <div className="px-4 py-8 text-center text-sm text-fg-subtle">
-                        No assets match the current filters
+                        {t("assets.selector.noAssets")}
                     </div>
                 ) : (
                     <div className="flex-1 overflow-y-auto px-2 py-3 space-y-2">
@@ -697,13 +699,13 @@ export function AssetSelector({
                 {multiple && (
                     <div className="px-4 py-3 border-t border-edge flex items-center justify-between bg-black/20">
                         <div className="text-xs text-fg-muted">
-                            {selection.size} selected
+                            {t("assets.selector.selectedCount", { count: selection.size })}
                             {selection.size > 0 && (
                                 <button
                                     onClick={() => setSelection(new Set())}
                                     className="ml-2 text-red-400 hover:text-red-300"
                                 >
-                                    Clear
+                                    {t("common.clear")}
                                 </button>
                             )}
                         </div>
@@ -712,14 +714,14 @@ export function AssetSelector({
                                 onClick={onClose}
                                 className="px-3 py-1.5 text-sm rounded-md bg-fill-subtle hover:bg-fill text-fg"
                             >
-                                Cancel
+                                {t("common.cancel")}
                             </button>
                             <button
                                 onClick={handleConfirm}
                                 disabled={selection.size === 0}
                                 className="px-3 py-1.5 text-sm rounded-md bg-primary text-white hover:bg-primary/90 disabled:opacity-60"
                             >
-                                Choose
+                                {t("assets.selector.choose")}
                             </button>
                         </div>
                     </div>

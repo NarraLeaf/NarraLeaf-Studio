@@ -184,7 +184,7 @@ function broadcastReload(target = 'all') {
         platform: 'node',
         bundle: true,
         format: 'cjs',
-        external: ['electron'],
+        external: ['electron', '@narraleaf/encryption'],
         sourcemap: true,
         target: ['node18'],
     }, () => {

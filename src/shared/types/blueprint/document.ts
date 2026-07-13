@@ -26,12 +26,18 @@ export type BlueprintOwnerRef =
      *     and may use async ("latent") nodes.
      *  - "value": an inline text interpolation; the graph's Return Value is rendered inline and is
      *     therefore evaluated synchronously, so async nodes are disallowed while authoring.
+     *  - "condition": a control-flow condition (if / else-if); the graph's Return Value is a boolean
+     *     evaluated synchronously each time the branch is tested. Async nodes are disallowed and the
+     *     return is type-checked to boolean while authoring.
      */
-    | { kind: "storyAction"; blueprintId: string; mode?: "action" | "value" };
+    | { kind: "storyAction"; blueprintId: string; mode?: "action" | "value" | "condition" };
 
-/** True for inline story value blueprints, whose "On Call" graph must be synchronous (no async nodes). */
+/**
+ * True for synchronous story blueprints whose "On Call" graph must be evaluated inline with no async
+ * nodes — both inline value interpolations and control-flow conditions.
+ */
 export function isStorySyncValueOwner(owner: BlueprintOwnerRef | undefined): boolean {
-    return owner?.kind === "storyAction" && owner.mode === "value";
+    return owner?.kind === "storyAction" && (owner.mode === "value" || owner.mode === "condition");
 }
 
 export type BlueprintFrontendKind = "visual" | "typescript";
