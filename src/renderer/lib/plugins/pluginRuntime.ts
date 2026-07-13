@@ -202,6 +202,15 @@ function assertDeclaredBlueprintNode(descriptor: WorkspacePluginDescriptor, type
     }
 }
 
+function assertDeclaredWidget(descriptor: WorkspacePluginDescriptor, type: string): void {
+    if (!descriptor.manifest.contributes.widgets.includes(type)) {
+        throw new Error(
+            `Widget type is not declared in manifest contributes.widgets: ${type}. ` +
+            "Declare it so Studio can statically validate projects that use it.",
+        );
+    }
+}
+
 export function createPluginApp(
     ctx: WorkspaceContext,
     descriptor: WorkspacePluginDescriptor,
@@ -334,6 +343,7 @@ export function createPluginApp(
             },
             widgets: {
                 register: module => {
+                    assertDeclaredWidget(descriptor, module.type);
                     widgetModuleRegistry.register(module, { ownerPluginId: descriptor.plugin.id });
                     track(() => {
                         if (widgetModuleRegistry.get(module.type) === module) {
@@ -342,6 +352,9 @@ export function createPluginApp(
                     });
                 },
                 registerMany: modules => {
+                    for (const module of modules) {
+                        assertDeclaredWidget(descriptor, module.type);
+                    }
                     for (const module of modules) {
                         widgetModuleRegistry.register(module, { ownerPluginId: descriptor.plugin.id });
                         track(() => {

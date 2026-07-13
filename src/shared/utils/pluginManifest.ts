@@ -75,42 +75,53 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
     return { ok: true, manifest };
 }
 
+const CONTRIBUTES_KEYS = ["blueprintNodes", "widgets"] as const;
+
+const CONTRIBUTES_KIND_LABEL: Record<(typeof CONTRIBUTES_KEYS)[number], string> = {
+    blueprintNodes: "blueprint node",
+    widgets: "widget",
+};
+
 function validateContributes(value: unknown, pluginId: string): Required<PluginContributes> | string {
+    const empty: Required<PluginContributes> = { blueprintNodes: [], widgets: [] };
     if (value === undefined) {
-        return { blueprintNodes: [] };
+        return empty;
     }
     if (!isRecord(value)) {
         return "Plugin contributes must be an object";
     }
 
-    const unknownKeys = Object.keys(value).filter(key => key !== "blueprintNodes");
+    const unknownKeys = Object.keys(value).filter(key => !CONTRIBUTES_KEYS.includes(key as (typeof CONTRIBUTES_KEYS)[number]));
     if (unknownKeys.length > 0) {
         return `Unsupported plugin contributes key(s): ${unknownKeys.join(", ")}`;
     }
 
-    const rawNodes = value.blueprintNodes;
-    if (rawNodes === undefined) {
-        return { blueprintNodes: [] };
-    }
-    if (!Array.isArray(rawNodes)) {
-        return "Plugin contributes.blueprintNodes must be an array of node type strings";
+    const result = empty;
+    for (const key of CONTRIBUTES_KEYS) {
+        const raw = value[key];
+        if (raw === undefined) {
+            continue;
+        }
+        if (!Array.isArray(raw)) {
+            return `Plugin contributes.${key} must be an array of type strings`;
+        }
+        const types: string[] = [];
+        for (const item of raw) {
+            const type = typeof item === "string" ? item.trim() : "";
+            if (!type) {
+                return `Plugin contributes.${key} entries must be non-empty strings`;
+            }
+            if (!type.startsWith(`${pluginId}.`)) {
+                return `Contributed ${CONTRIBUTES_KIND_LABEL[key]} type must be prefixed with the plugin id: ${type}`;
+            }
+            if (!types.includes(type)) {
+                types.push(type);
+            }
+        }
+        result[key] = types;
     }
 
-    const blueprintNodes: string[] = [];
-    for (const raw of rawNodes) {
-        const type = typeof raw === "string" ? raw.trim() : "";
-        if (!type) {
-            return "Plugin contributes.blueprintNodes entries must be non-empty strings";
-        }
-        if (!type.startsWith(`${pluginId}.`)) {
-            return `Contributed blueprint node type must be prefixed with the plugin id: ${type}`;
-        }
-        if (!blueprintNodes.includes(type)) {
-            blueprintNodes.push(type);
-        }
-    }
-
-    return { blueprintNodes };
+    return result;
 }
 
 function validateEntries(value: unknown): PluginManifestEntries | string {

@@ -5,9 +5,9 @@
  * The project dependency table (machine-derived, embedded in the .nlproj
  * manifest) is the authority on what the project actually uses. Packing rule:
  * hard dependencies ship; enabled-but-unused plugins do not. Validation rule:
- * every blueprint node type the project uses must have a shipping plugin that
- * declares it in manifest contributes.blueprintNodes — otherwise the pack
- * build fails instead of the node silently failing on a player's machine.
+ * every blueprint node / widget type the project uses must have a shipping
+ * plugin that declares it in manifest contributes — otherwise the pack build
+ * fails instead of the node/widget silently failing on a player's machine.
  */
 
 import type { ProjectDependencyTable } from "@shared/types/pluginDependencies";
@@ -55,46 +55,66 @@ export function selectRuntimePluginsForPack(input: {
         if (!dependency.hard) {
             continue; // soft (data-only) dependencies have no runtime role
         }
-        const usedNodes = dependency.usedBy.blueprintNode ?? [];
+        const requirements = [
+            {
+                kindLabel: "blueprint node(s)",
+                used: dependency.usedBy.blueprintNode ?? [],
+                declaredOf: (source: GameRuntimePluginSource) => source.manifest.contributes.blueprintNodes,
+                contributesKey: "contributes.blueprintNodes",
+            },
+            {
+                kindLabel: "widget(s)",
+                used: dependency.usedBy.widget ?? [],
+                declaredOf: (source: GameRuntimePluginSource) => source.manifest.contributes.widgets,
+                contributesKey: "contributes.widgets",
+            },
+        ].filter(requirement => requirement.used.length > 0);
         const source = availableById.get(dependency.id);
         const entry = statusById.get(dependency.id);
 
         if (entry?.suppressed) {
-            if (usedNodes.length > 0) {
+            for (const requirement of requirements) {
                 const detail = entry.status === "missing"
                     ? "is not installed"
                     : `is installed at incompatible version ${entry.installedVersion} (project authored against ${dependency.authoredVersion})`;
                 errors.push(
-                    `Plugin "${dependency.id}" provides blueprint node(s) used by this project ` +
-                    `(${usedNodes.join(", ")}) but ${detail}.`,
+                    `Plugin "${dependency.id}" provides ${requirement.kindLabel} used by this project ` +
+                    `(${requirement.used.join(", ")}) but ${detail}.`,
                 );
             }
             continue;
         }
 
-        if (usedNodes.length > 0) {
+        if (requirements.length > 0) {
             if (!source) {
-                errors.push(
-                    `Plugin "${dependency.id}" provides blueprint node(s) used by this project ` +
-                    `(${usedNodes.join(", ")}) but has no enabled runtime entry to package.`,
-                );
+                for (const requirement of requirements) {
+                    errors.push(
+                        `Plugin "${dependency.id}" provides ${requirement.kindLabel} used by this project ` +
+                        `(${requirement.used.join(", ")}) but has no enabled runtime entry to package.`,
+                    );
+                }
                 continue;
             }
-            const declared = new Set(source.manifest.contributes.blueprintNodes);
-            const missing = usedNodes.filter(type => !declared.has(type));
-            if (missing.length > 0) {
-                errors.push(
-                    `Plugin "${dependency.id}" does not declare runtime support for blueprint node(s): ` +
-                    `${missing.join(", ")} (add them to manifest contributes.blueprintNodes).`,
-                );
-                continue;
+            let valid = true;
+            for (const requirement of requirements) {
+                const declared = new Set(requirement.declaredOf(source));
+                const missing = requirement.used.filter(type => !declared.has(type));
+                if (missing.length > 0) {
+                    valid = false;
+                    errors.push(
+                        `Plugin "${dependency.id}" does not declare runtime support for ${requirement.kindLabel}: ` +
+                        `${missing.join(", ")} (add them to manifest ${requirement.contributesKey}).`,
+                    );
+                }
             }
-            selected.push(source);
+            if (valid) {
+                selected.push(source);
+            }
             continue;
         }
 
-        // Hard dependency without recorded node usage (e.g. widgets). Ship its
-        // runtime entry when present — harmless and forward-compatible.
+        // Hard dependency without recorded node/widget usage. Ship its runtime
+        // entry when present — harmless and forward-compatible.
         if (source) {
             selected.push(source);
         }

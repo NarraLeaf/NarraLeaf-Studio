@@ -11,7 +11,7 @@ runtime entry 在所有游戏执行环境加载，且在游戏 boot（NLR 挂载
 | Dev Mode 窗口 | IPC `plugin.runtimeList`（enabled + 声明 runtime entry − 项目依赖 suppression） |
 | Preview / Production | pack `plugins` 段（编译时按项目依赖表挑选并复制） |
 
-它是游戏代码：没有 React、没有 Studio services、没有 `app.privileged`。网络访问由 pack 网络策略统一管控。
+它是游戏代码：没有 Studio services、没有 `app.privileged`。网络访问由 pack 网络策略统一管控。宿主提供 React host externals（`react`、`react-dom`、`react/jsx-runtime`、`react/jsx-dev-runtime`）供 widget 渲染器使用；`react-dom/client` 刻意不提供——插件不得在游戏内挂载自己的 React root。
 
 ## 入口约定
 
@@ -41,6 +41,10 @@ type RuntimePluginApp = {
       register(def: RuntimeBlueprintNodeDef): void;
       registerMany(defs: RuntimeBlueprintNodeDef[]): void;
     };
+    widgets: {
+      register(def: RuntimeWidgetRendererDef): void;
+      registerMany(defs: RuntimeWidgetRendererDef[]): void;
+    };
     log(level: "info" | "warning" | "error", message: string): void;
   };
 };
@@ -49,6 +53,11 @@ type RuntimeBlueprintNodeDef = {
   type: string;
   displayName?: string;
   execute: BlueprintNodeExecuteFn;
+};
+
+type RuntimeWidgetRendererDef = {
+  type: string;
+  render: (props: ElementRendererProps) => ReactElement | null;
 };
 ```
 
@@ -73,6 +82,26 @@ execute: async ctx => {
 
 `ctx` 是共享行为图解释器的 `BehaviorNodeExecutionContext`：`params`（inspector 参数值）、`blueprintLocals`、`eventPayload`、`signal`（中断）、`trace` 等。执行语义（isLatent、回滚清理）由宿主的 blueprint 运行时统一处理。
 
+### game.widgets
+
+注册插件 widget 元素类型的游戏侧渲染器。宿主把它并入游戏的 `ElementRendererRegistry`（与内建 `nl.*` 渲染器同一注册表），当项目的 UI 文档中出现该 widget 元素时由宿主渲染。
+
+- `type` 必须以插件 ID 为前缀，且必须在 manifest `contributes.widgets` 中声明。
+- `render` 接收与内建元素渲染器相同的 `ElementRendererProps`（element/surface/document/hostAdapter/renderChildren/renderSurface/runtimeData 等）——与 studio 侧 `UIWidgetModule.render` 的签名一致，插件可以把 render 函数放进共享模块，两个 entry 复用同一实现。
+- 内建类型永远优先；跨插件同名注册抛错。
+- 渲染器使用 JSX 时，构建时把 `react`、`react/jsx-runtime` 作为 external，游戏环境经 import map 提供宿主 React 实例。
+
+```tsx
+import { defineRuntimePlugin } from "narraleaf-studio/runtime";
+import { BadgeRenderer } from "./badge";   // 与 studio widget module 共享
+
+export default defineRuntimePlugin({
+  setup(app) {
+    app.game.widgets.register({ type: `${app.plugin.id}.badge`, render: BadgeRenderer });
+  },
+});
+```
+
 ### game.log
 
 写入宿主日志，自动带 `[plugin:{id}]` 前缀。Dev Mode 输出到窗口 console；Preview/Production 经 runtime bridge 输出到游戏进程日志。
@@ -89,8 +118,9 @@ studio entry 可以额外注册 palette 动作（`app.services.story.actions`，
 
 ## 限制
 
-- 当前 API 面：`blueprintNodes` + `log`。transform 字段、transition 预设等扩展点等待核心先建立对应的预设系统（见设计文档决策记录）。
-- runtime entry 必须自包含（单文件 ESM），不能在运行时 import 插件包内其他文件。
+- 当前 API 面：`blueprintNodes` + `widgets` + `log`。transform 字段、transition 预设等扩展点等待核心先建立对应的预设系统（见设计文档决策记录）。
+- runtime entry 必须自包含（单文件 ESM），不能在运行时 import 插件包内其他文件；React 相关包与 `narraleaf-studio/runtime` 除外（host external）。
+- `react-dom/client` 不可用：插件不得在游戏内挂载自己的 React root。
 - 无 cleanup、无跨插件依赖排序。
 
 ## 关键实现文件

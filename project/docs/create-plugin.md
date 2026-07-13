@@ -81,7 +81,7 @@ Manifest 字段：
 | `publisher` | `string` | 可选。 |
 | `description` | `string` | 可选。 |
 | `entries` | `{ studio?: string; runtime?: string }` | 至少声明一个 target；每个值必须是包内相对路径。未知 key 会被拒绝。 |
-| `contributes` | `{ blueprintNodes?: string[] }` | 插件提供的蓝图节点 type 声明（必须以插件 ID 为前缀）。注册未声明的节点会抛错；打包时 Studio 用它静态校验项目用到的节点是否有运行时提供方。省略等同空数组。 |
+| `contributes` | `{ blueprintNodes?: string[]; widgets?: string[] }` | 插件提供的蓝图节点 / widget type 声明（必须以插件 ID 为前缀）。注册未声明的类型会抛错；打包时 Studio 用它静态校验项目用到的类型是否有运行时提供方。省略等同空数组。 |
 | `permissions` | `PluginInstallPermission[]` | 可选，默认 `[]`。仅作用于 studio 入口。 |
 
 entry 不能是绝对路径，不能包含 `..`、`.`、空字节、`?` 或 `#`。声明的入口文件必须实际存在。
@@ -167,16 +167,18 @@ Promise<() => void | Promise<void>>
 
 ## runtime.js（runtime entry）
 
-runtime 入口在 Dev Mode 窗口、Preview 和打包后的游戏中执行，用于注册蓝图节点的 `execute` 绑定。它没有 UI、没有 Studio services、没有特权能力；`setup` 返回值被忽略（游戏环境没有卸载生命周期）。
+runtime 入口在 Dev Mode 窗口、Preview 和打包后的游戏中执行，用于注册蓝图节点的 `execute` 绑定和插件 widget 的游戏渲染器。它没有 Studio services、没有特权能力；`setup` 返回值被忽略（游戏环境没有卸载生命周期）。
 
 ```ts
 import { defineRuntimePlugin } from "narraleaf-studio/runtime";
 import { createNodes } from "./nodes";
+import { BadgeRenderer } from "./badge";
 
 export default defineRuntimePlugin({
   setup(app) {
     app.game.blueprintNodes.registerMany(createNodes());
-    app.game.log("info", "runtime nodes registered");
+    app.game.widgets.register({ type: `${app.plugin.id}.badge`, render: BadgeRenderer });
+    app.game.log("info", "runtime bindings registered");
   },
 });
 ```
@@ -296,7 +298,8 @@ export default definePlugin({
 | `import` 失败 | 入口不是 ESM，或打包后仍有未被处理的外部依赖。 |
 | `definePlugin` 不可用 | 插件不在 workspace plugin runtime 中运行，或导入名不是 `narraleaf-studio/plugin`。 |
 | `defineRuntimePlugin` 不可用 | 代码不在游戏执行环境（Dev Mode/Preview/Production）中运行，或导入名不是 `narraleaf-studio/runtime`。 |
-| 蓝图节点注册抛错 | node type 没有以插件 ID 为前缀，或没有在 manifest `contributes.blueprintNodes` 中声明。 |
-| Preview 启动报 "Plugin validation failed" | 项目蓝图用到的插件节点缺运行时提供方：插件被禁用/未安装、没有 `entries.runtime`、版本与项目记录不兼容，或该 type 未列入 `contributes.blueprintNodes`。 |
+| 蓝图节点/widget 注册抛错 | type 没有以插件 ID 为前缀，或没有在 manifest `contributes.blueprintNodes` / `contributes.widgets` 中声明。 |
+| Preview 启动报 "Plugin validation failed" | 项目用到的插件节点/widget 缺运行时提供方：插件被禁用/未安装、没有 `entries.runtime`、版本与项目记录不兼容，或该 type 未列入 `contributes`。 |
+| widget 在编辑器可见但游戏中不渲染 | runtime 入口没有 `app.game.widgets.register` 该类型的渲染器。 |
 | 文件操作被拒绝 | manifest 权限路径、mode、recursive 或插件版本授权不匹配。 |
 | action/panel/widget 覆盖内建项 | 贡献 ID 没有用插件 ID 前缀。 |

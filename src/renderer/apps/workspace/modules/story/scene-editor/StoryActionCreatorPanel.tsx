@@ -3,18 +3,17 @@ import { Star } from "lucide-react";
 import type { PanelComponentProps } from "../../types";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
 import { useWorkspace } from "@/apps/workspace/context";
-import { Services, type StoryPluginActionRegistration } from "@/lib/workspace/services/services";
+import { Services } from "@/lib/workspace/services/services";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
-import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import {
     ACTION_COMMAND_CATEGORIES,
     ACTION_COMMANDS,
     actionCommandMatchesQuery,
     getActionCommandCategory,
-    pluginActionToPaletteCommand,
     type ActionCommandCategory,
     type PaletteActionCommand,
 } from "./storyActionCommands";
+import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import {
     dispatchStoryActionCreateRequest,
     type StoryActionCreatorPanelPayload,
@@ -36,22 +35,10 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
         () => context && isInitialized ? context.services.get<GlobalSettingsService>(Services.GlobalSettings) : null,
         [context, isInitialized],
     );
-    const storyService = useMemo(
-        () => context && isInitialized ? context.services.get<StoryService>(Services.Story) : null,
-        [context, isInitialized],
-    );
     const [query, setQuery] = useState("");
     const [activeCategoryId, setActiveCategoryId] = useState<SidebarCategory["id"]>("all");
     const [starredIds, setStarredIds] = useState<Set<string>>(() => new Set());
-    const [pluginActions, setPluginActions] = useState<StoryPluginActionRegistration[]>([]);
-
-    useEffect(() => {
-        if (!storyService) {
-            return;
-        }
-        setPluginActions(storyService.listPluginActions());
-        return storyService.onPluginActionsChanged(setPluginActions);
-    }, [storyService]);
+    const pluginCommands = useStoryPluginActionCommands();
 
     useEffect(() => {
         if (!settingsService) {
@@ -86,8 +73,8 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
 
     const allCommands = useMemo<PaletteActionCommand[]>(() => [
         ...ACTION_COMMANDS,
-        ...pluginActions.map(pluginActionToPaletteCommand),
-    ], [pluginActions]);
+        ...pluginCommands,
+    ], [pluginCommands]);
 
     const filteredCommands = useMemo(() => {
         return allCommands.filter(command => {

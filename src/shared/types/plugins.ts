@@ -19,14 +19,16 @@ export type PluginManifestEntries = {
 
 /**
  * Declarative contribution manifest. Lets Studio validate a project statically
- * (without executing plugin code): every plugin blueprint node type used by a
- * project's documents must be declared here by the plugin that provides its
- * runtime execute binding. Registration APIs enforce consistency at load time:
- * registering an undeclared type is an error on both targets.
+ * (without executing plugin code): every plugin blueprint node / widget type
+ * used by a project's documents must be declared here by the plugin that
+ * provides its runtime binding. Registration APIs enforce consistency at load
+ * time: registering an undeclared type is an error on both targets.
  */
 export type PluginContributes = {
     /** Blueprint node types this plugin provides (editor def + runtime execute). */
     blueprintNodes?: string[];
+    /** Widget element types this plugin provides (editor module + runtime renderer). */
+    widgets?: string[];
 };
 
 export type PluginManifestV2 = Omit<PluginIdentity, "id" | "name" | "version"> & Required<Pick<PluginIdentity, "id" | "name" | "version">> & {

@@ -8,7 +8,10 @@ import {
     type GameRuntimePackV1,
 } from "@shared/types/gameRuntime";
 import { getMimeType } from "@shared/utils/fs";
-import { PLUGIN_RUNTIME_API_MODULE_SOURCE } from "@shared/utils/pluginRuntimeApiModule";
+import {
+    PLUGIN_REACT_MODULE_SOURCES,
+    PLUGIN_RUNTIME_API_MODULE_SOURCE,
+} from "@shared/utils/pluginRuntimeApiModule";
 import {
     resolveRuntimeAssetPath,
     resolveRuntimeStaticPath,
@@ -162,9 +165,12 @@ function registerRuntimeProtocol(allowHttp: boolean): void {
                 return serveFile(packPath, "application/json");
             }
             if (url.hostname === "plugin-api") {
-                const pathname = decodeURIComponent(url.pathname).replace(/^\/+/, "");
-                if (pathname === "runtime.js") {
-                    return new Response(PLUGIN_RUNTIME_API_MODULE_SOURCE, {
+                const pathname = `/${decodeURIComponent(url.pathname).replace(/^\/+/, "")}`;
+                const source = pathname === "/runtime.js"
+                    ? PLUGIN_RUNTIME_API_MODULE_SOURCE
+                    : PLUGIN_REACT_MODULE_SOURCES[pathname];
+                if (source) {
+                    return new Response(source, {
                         status: 200,
                         headers: {
                             "Content-Type": "text/javascript",

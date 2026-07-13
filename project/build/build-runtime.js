@@ -24,7 +24,11 @@ function runtimeHtml() {
     <script type="importmap">
     {
         "imports": {
-            "narraleaf-studio/runtime": "nlgame://plugin-api/runtime.js"
+            "narraleaf-studio/runtime": "nlgame://plugin-api/runtime.js",
+            "react": "nlgame://plugin-api/react.js",
+            "react-dom": "nlgame://plugin-api/react-dom.js",
+            "react/jsx-runtime": "nlgame://plugin-api/react-jsx-runtime.js",
+            "react/jsx-dev-runtime": "nlgame://plugin-api/react-jsx-dev-runtime.js"
         }
     }
     </script>

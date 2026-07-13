@@ -680,37 +680,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         focusRoot();
     }, [editorMode, focusRoot, scene]);
 
-    const chooseCommand = useCallback((commandId: ActionCommandId) => {
-        if (editorMode.kind !== "insert") {
-            return;
-        }
-        const block = createBlock(commandId, editorMode.value.replace(/^\/\S*\s?/, ""));
-        if (!block) {
-            return;
-        }
-        insertBlock(block, editorMode.slot.afterBlockId, isInspectorFirstCommand(commandId));
-        if (!isInspectorFirstCommand(commandId) && isTextEditableBlock(block)) {
-            setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
-        }
-    }, [createBlock, editorMode, insertBlock]);
-
-    const chooseCharacterForInsert = useCallback((characterId: string) => {
-        if (editorMode.kind !== "insert") {
-            return;
-        }
-        const block = createBlock("dialogue", editorMode.value.replace(/^#\s*/, ""), characterId);
-        if (block) {
-            insertBlock(block, editorMode.slot.afterBlockId);
-            setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
-        }
-    }, [createBlock, editorMode, insertBlock]);
-
     /**
      * Build a block from a plugin-registered story action. The registration's
      * createBlock output is normalized defensively (fresh tree linkage) so a
      * misbehaving plugin cannot corrupt the scene's block graph.
      */
-    const createPluginActionBlock = useCallback((actionId: string): StoryBlock | null => {
+    const createPluginActionBlock = useCallback((actionId: string, initialText?: string): StoryBlock | null => {
         if (!storyService || !uuidService) {
             return null;
         }
@@ -720,7 +695,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return null;
         }
         try {
-            const block = registration.createBlock({ generateId: () => uuidService.generate() });
+            const block = registration.createBlock({
+                generateId: () => uuidService.generate(),
+                ...(initialText?.trim() ? { initialText } : {}),
+            });
             if (!block || typeof block !== "object" || typeof block.id !== "string" || !block.id.trim() || typeof block.kind !== "string") {
                 throw new Error("createBlock must return a story block");
             }
@@ -735,6 +713,39 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return null;
         }
     }, [storyService, uiService, uuidService]);
+
+    const chooseCommand = useCallback((commandId: string) => {
+        if (editorMode.kind !== "insert") {
+            return;
+        }
+        const initialText = editorMode.value.replace(/^\/\S*\s?/, "");
+        if (!isActionCommandId(commandId)) {
+            const block = createPluginActionBlock(commandId, initialText);
+            if (block) {
+                insertBlock(block, editorMode.slot.afterBlockId, true);
+            }
+            return;
+        }
+        const block = createBlock(commandId, initialText);
+        if (!block) {
+            return;
+        }
+        insertBlock(block, editorMode.slot.afterBlockId, isInspectorFirstCommand(commandId));
+        if (!isInspectorFirstCommand(commandId) && isTextEditableBlock(block)) {
+            setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
+        }
+    }, [createBlock, createPluginActionBlock, editorMode, insertBlock]);
+
+    const chooseCharacterForInsert = useCallback((characterId: string) => {
+        if (editorMode.kind !== "insert") {
+            return;
+        }
+        const block = createBlock("dialogue", editorMode.value.replace(/^#\s*/, ""), characterId);
+        if (block) {
+            insertBlock(block, editorMode.slot.afterBlockId);
+            setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
+        }
+    }, [createBlock, editorMode, insertBlock]);
 
     const createActionFromSidebar = useCallback((commandId: string) => {
         if (!isActionCommandId(commandId)) {

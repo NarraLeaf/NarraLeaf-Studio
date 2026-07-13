@@ -16,11 +16,11 @@ import {
     ACTION_COMMANDS,
     actionCommandMatchesQuery,
     getActionCommandCategory,
-    type ActionCommand,
     type ActionCommandCategory,
     type ActionCommandCategoryId,
-    type ActionCommandId,
+    type PaletteActionCommand,
 } from "./storyActionCommands";
+import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import { ActionInspector } from "./StorySceneActionInspector";
 import { RichTextInput, type ActiveMarks, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle } from "./RichTextInput";
 import { RichTextToolbar } from "./RichTextToolbar";
@@ -399,7 +399,7 @@ export function InsertRow(props: {
     onValueChange: (value: string) => void;
     onCommitNarration: (focusNext: boolean) => void;
     onCancelActionChooser: () => void;
-    onChooseCommand: (commandId: ActionCommandId) => void;
+    onChooseCommand: (commandId: string) => void;
     onChooseCharacter: (characterId: string) => void;
     /** Backspace on the empty slot — dismiss it and step back to the row above. */
     onBackspaceEmpty: () => void;
@@ -407,7 +407,11 @@ export function InsertRow(props: {
     const chooserQuery = props.mode.value.slice(1);
     const menuAnchorRef = useRef<HTMLDivElement | null>(null);
     const menuPlacement = useAutoMenuPlacement(menuAnchorRef, props.mode.chooser !== "none", 312);
-    const actionOptions = useMemo(() => getActionCommandOptions(chooserQuery), [chooserQuery]);
+    const pluginCommands = useStoryPluginActionCommands();
+    const actionOptions = useMemo<PaletteActionCommand[]>(() => [
+        ...getActionCommandOptions(chooserQuery),
+        ...pluginCommands.filter(command => actionCommandMatchesQuery(command, chooserQuery)),
+    ], [chooserQuery, pluginCommands]);
     const characterOptions = useMemo(() => getCharacterOptions(props.characters, chooserQuery), [props.characters, chooserQuery]);
     const actionMenu = useActionCommandMenuState(actionOptions);
     const characterMenu = useCharacterPickerState(characterOptions);
@@ -525,7 +529,7 @@ function getCharacterOptions(characters: Character[], query: string) {
 }
 
 type VisibleActionCommandCategory = ActionCommandCategory & {
-    commands: ActionCommand[];
+    commands: PaletteActionCommand[];
 };
 
 type PopupPlacement = "above" | "below";
@@ -565,7 +569,7 @@ function getPopupPlacementClass(placement: PopupPlacement): string {
     return placement === "above" ? "bottom-full mb-1" : "top-full mt-1";
 }
 
-function useActionCommandMenuState(options: ActionCommand[]) {
+function useActionCommandMenuState(options: PaletteActionCommand[]) {
     const visibleCategories = useMemo<VisibleActionCommandCategory[]>(() => {
         return ACTION_COMMAND_CATEGORIES.map(category => ({
             ...category,
@@ -575,7 +579,7 @@ function useActionCommandMenuState(options: ActionCommand[]) {
         }));
     }, [options]);
     const [activeCategoryId, setActiveCategoryId] = useState<ActionCommandCategoryId>("all");
-    const [activeCommandId, setActiveCommandId] = useState<ActionCommandId | null>(null);
+    const [activeCommandId, setActiveCommandId] = useState<string | null>(null);
 
     const activeCategory = visibleCategories.find(category => category.id === activeCategoryId) ?? visibleCategories[0] ?? null;
     const activeCommand = activeCategory?.commands.find(command => command.id === activeCommandId) ?? activeCategory?.commands[0] ?? null;
@@ -605,7 +609,7 @@ function useActionCommandMenuState(options: ActionCommand[]) {
         setActiveCommandId(category.commands[0]?.id ?? null);
     };
 
-    const selectCommand = (commandId: ActionCommandId) => {
+    const selectCommand = (commandId: string) => {
         setActiveCommandId(commandId);
     };
 
@@ -643,10 +647,10 @@ function useActionCommandMenuState(options: ActionCommand[]) {
 function ActionCommandMenu(props: {
     categories: VisibleActionCommandCategory[];
     activeCategoryId: ActionCommandCategoryId;
-    activeCommandId: ActionCommandId | null;
+    activeCommandId: string | null;
     onSelectCategory: (categoryId: ActionCommandCategoryId) => void;
-    onHighlightCommand: (commandId: ActionCommandId) => void;
-    onChoose: (commandId: ActionCommandId) => void;
+    onHighlightCommand: (commandId: string) => void;
+    onChoose: (commandId: string) => void;
     onCancel: () => void;
     placement: PopupPlacement;
 }) {

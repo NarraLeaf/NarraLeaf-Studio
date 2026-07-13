@@ -339,9 +339,9 @@ export function DevModeContent(props: DevModeContentProps) {
     }, []);
 
     // Runtime plugin entries must be registered before the game boots so
-    // plugin blueprint nodes resolve at execution time. Failed plugins are
-    // logged and skipped; they never block the game.
-    const runtimePlugins = useDevModeRuntimePlugins();
+    // plugin blueprint nodes and widget renderers resolve at execution time.
+    // Failed plugins are logged and skipped; they never block the game.
+    const runtimePlugins = useDevModeRuntimePlugins(rendererRegistry);
 
     const host = useMemo<GameAppHost | null>(() => {
         if (!bundle || !surface) {
