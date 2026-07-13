@@ -1,16 +1,21 @@
 import type { PluginInstallPermission } from "../types/pluginPermissions";
 import {
     PluginManifestVersion,
-    type NormalizedPluginManifestV1,
-    type PluginManifestV1,
+    type NormalizedPluginManifestV2,
+    type PluginContributes,
+    type PluginManifestEntries,
+    type PluginManifestV2,
 } from "../types/plugins";
 
 export type PluginManifestValidationResult =
-    | { ok: true; manifest: NormalizedPluginManifestV1 }
+    | { ok: true; manifest: NormalizedPluginManifestV2 }
     | { ok: false; error: string };
 
 const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)+$/;
 const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+
+export const PLUGIN_ENTRY_TARGETS = ["studio", "runtime"] as const;
+export type PluginEntryTarget = (typeof PLUGIN_ENTRY_TARGETS)[number];
 
 export function validatePluginManifest(value: unknown): PluginManifestValidationResult {
     if (!isRecord(value)) {
@@ -36,9 +41,14 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
         return invalid("Plugin version must use semver format, for example 1.0.0");
     }
 
-    const entry = readString(value, "entry") || "main.js";
-    if (!isSafeRelativeEntry(entry)) {
-        return invalid("Plugin entry must be a relative file path inside the plugin package");
+    const entries = validateEntries(value.entries);
+    if (typeof entries === "string") {
+        return invalid(entries);
+    }
+
+    const contributes = validateContributes(value.contributes, id);
+    if (typeof contributes === "string") {
+        return invalid(contributes);
     }
 
     const description = readOptionalString(value, "description");
@@ -50,18 +60,87 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
         return invalid(permissions);
     }
 
-    const manifest: NormalizedPluginManifestV1 = {
+    const manifest: NormalizedPluginManifestV2 = {
         manifestVersion: PluginManifestVersion,
         id,
         name,
         version,
-        entry,
+        entries,
+        contributes,
         permissions,
         ...(description ? { description } : {}),
         ...(publisher ? { publisher } : {}),
     };
 
     return { ok: true, manifest };
+}
+
+function validateContributes(value: unknown, pluginId: string): Required<PluginContributes> | string {
+    if (value === undefined) {
+        return { blueprintNodes: [] };
+    }
+    if (!isRecord(value)) {
+        return "Plugin contributes must be an object";
+    }
+
+    const unknownKeys = Object.keys(value).filter(key => key !== "blueprintNodes");
+    if (unknownKeys.length > 0) {
+        return `Unsupported plugin contributes key(s): ${unknownKeys.join(", ")}`;
+    }
+
+    const rawNodes = value.blueprintNodes;
+    if (rawNodes === undefined) {
+        return { blueprintNodes: [] };
+    }
+    if (!Array.isArray(rawNodes)) {
+        return "Plugin contributes.blueprintNodes must be an array of node type strings";
+    }
+
+    const blueprintNodes: string[] = [];
+    for (const raw of rawNodes) {
+        const type = typeof raw === "string" ? raw.trim() : "";
+        if (!type) {
+            return "Plugin contributes.blueprintNodes entries must be non-empty strings";
+        }
+        if (!type.startsWith(`${pluginId}.`)) {
+            return `Contributed blueprint node type must be prefixed with the plugin id: ${type}`;
+        }
+        if (!blueprintNodes.includes(type)) {
+            blueprintNodes.push(type);
+        }
+    }
+
+    return { blueprintNodes };
+}
+
+function validateEntries(value: unknown): PluginManifestEntries | string {
+    if (!isRecord(value)) {
+        return "Plugin entries must be an object declaring at least one of: studio, runtime";
+    }
+
+    const unknownKeys = Object.keys(value).filter(key => !PLUGIN_ENTRY_TARGETS.includes(key as PluginEntryTarget));
+    if (unknownKeys.length > 0) {
+        return `Unsupported plugin entry target(s): ${unknownKeys.join(", ")}`;
+    }
+
+    const entries: PluginManifestEntries = {};
+    for (const target of PLUGIN_ENTRY_TARGETS) {
+        const raw = value[target];
+        if (raw === undefined) {
+            continue;
+        }
+        const entry = typeof raw === "string" ? raw.trim() : "";
+        if (!entry || !isSafeRelativeEntry(entry)) {
+            return `Plugin ${target} entry must be a relative file path inside the plugin package`;
+        }
+        entries[target] = entry;
+    }
+
+    if (!entries.studio && !entries.runtime) {
+        return "Plugin entries must declare at least one of: studio, runtime";
+    }
+
+    return entries;
 }
 
 export function isSafeRelativeEntry(entry: string): boolean {
@@ -123,7 +202,7 @@ function readString(record: Record<string, unknown>, key: string): string | null
     return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function readOptionalString(record: Record<string, unknown>, key: keyof PluginManifestV1): string | undefined {
+function readOptionalString(record: Record<string, unknown>, key: keyof PluginManifestV2): string | undefined {
     return readString(record, key) ?? undefined;
 }
 

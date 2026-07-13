@@ -230,7 +230,14 @@ function PluginDetails({ plugin }: { plugin: PluginListItem }) {
 
             <div className="space-y-1 text-sm text-fg-muted">
                 <InfoLine label="Status" value={statusText(plugin.status)} />
-                <InfoLine label="Entry" value={plugin.manifest.entry} mono />
+                <InfoLine
+                    label="Entries"
+                    value={(["studio", "runtime"] as const)
+                        .filter(target => plugin.manifest.entries[target])
+                        .map(target => `${target}: ${plugin.manifest.entries[target]}`)
+                        .join("  ·  ")}
+                    mono
+                />
                 <InfoLine label="Installed" value={new Date(plugin.installedAt).toLocaleString()} />
                 <InfoLine label="Updated" value={new Date(plugin.updatedAt).toLocaleString()} />
             </div>

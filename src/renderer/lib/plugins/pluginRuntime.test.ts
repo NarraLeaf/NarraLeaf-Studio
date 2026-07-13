@@ -56,7 +56,15 @@ describe("exposePluginModule", () => {
 describe("createPluginApp disposal", () => {
     const descriptor = {
         plugin: { id: "test-plugin", version: "1.0.0" },
-        manifest: { manifestVersion: 1, id: "test-plugin", name: "Test", version: "1.0.0", entry: "main.js", permissions: [] },
+        manifest: {
+            manifestVersion: 2,
+            id: "test-plugin",
+            name: "Test",
+            version: "1.0.0",
+            entries: { studio: "main.js" },
+            contributes: { blueprintNodes: ["test-plugin.node"] },
+            permissions: [],
+        },
         entryUrl: "app://plugins/test-plugin/main.js",
     } as unknown as WorkspacePluginDescriptor;
 
@@ -93,18 +101,23 @@ describe("createPluginApp disposal", () => {
             registerDynamicSelectOptionsSource: vi.fn(() => dynamicSourceDisposer),
             notifyDynamicSelectOptionsChanged: vi.fn(),
         };
+        const storyActionDisposer = vi.fn(() => calls.push("storyActionDisposer"));
+        const storyService = {
+            registerPluginAction: vi.fn(() => storyActionDisposer),
+        };
         const services = new Map<Services, unknown>([
             [Services.UI, uiService],
             [Services.Assets, { getAssets: vi.fn(() => ({})), fetch: vi.fn() }],
             [Services.ServiceAssets, { readStore: vi.fn(), writeStore: vi.fn() }],
             [Services.BlueprintNodeCatalog, blueprintNodesService],
+            [Services.Story, storyService],
         ]);
         const ctx = {
             services: {
                 get: (service: Services) => services.get(service),
             },
         } as unknown as WorkspaceContext;
-        return { ctx, calls, store, uiService, panelDisposer, keybindingDisposer, dynamicSourceDisposer };
+        return { ctx, calls, store, uiService, panelDisposer, keybindingDisposer, dynamicSourceDisposer, storyService, storyActionDisposer, blueprintNodesService };
     }
 
     afterEach(() => {
@@ -149,6 +162,39 @@ describe("createPluginApp disposal", () => {
         // Second dispose is a no-op.
         dispose();
         expect(panelDisposer).toHaveBeenCalledTimes(1);
+    });
+
+    it("registers prefixed story actions and reclaims them on dispose", () => {
+        const { ctx, storyService, storyActionDisposer } = createFakeContext();
+        const { app, dispose } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
+
+        app.services.story.actions.register({
+            id: "test-plugin.insert-thing",
+            label: "Insert Thing",
+            createBlock: () => ({ id: "b1", kind: "note", parentId: null, childrenIds: [], payload: { text: { value: "" } } }) as any,
+        });
+        expect(storyService.registerPluginAction).toHaveBeenCalledTimes(1);
+
+        expect(() => app.services.story.actions.register({
+            id: "other.insert-thing",
+            label: "Bad",
+            createBlock: () => ({}) as any,
+        })).toThrow(/prefixed with plugin id/);
+
+        dispose();
+        expect(storyActionDisposer).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects blueprint node registrations not declared in manifest contributes", () => {
+        const { ctx, blueprintNodesService } = createFakeContext();
+        const { app } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
+
+        expect(() => app.services.blueprintNodes.register({ type: "test-plugin.undeclared" } as any))
+            .toThrow(/contributes\.blueprintNodes/);
+        expect(blueprintNodesService.register).not.toHaveBeenCalled();
+
+        app.services.blueprintNodes.register({ type: "test-plugin.node" } as any);
+        expect(blueprintNodesService.register).toHaveBeenCalledTimes(1);
     });
 
     it("keeps disposing after one disposer throws", () => {

@@ -9,7 +9,7 @@ import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { StorySceneEditorTabPayload } from "./storySceneEditorTabId";
-import { createBlockForCommand, isInspectorFirstCommand, type ActionCommandId } from "./storyActionCommands";
+import { createBlockForCommand, isActionCommandId, isInspectorFirstCommand, type ActionCommandId } from "./storyActionCommands";
 import {
     buildVisibleRows,
     canAcceptChildren,
@@ -705,7 +705,45 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [createBlock, editorMode, insertBlock]);
 
-    const createActionFromSidebar = useCallback((commandId: ActionCommandId) => {
+    /**
+     * Build a block from a plugin-registered story action. The registration's
+     * createBlock output is normalized defensively (fresh tree linkage) so a
+     * misbehaving plugin cannot corrupt the scene's block graph.
+     */
+    const createPluginActionBlock = useCallback((actionId: string): StoryBlock | null => {
+        if (!storyService || !uuidService) {
+            return null;
+        }
+        const registration = storyService.getPluginAction(actionId);
+        if (!registration) {
+            uiService?.notifications.warning(`Story action is not available: ${actionId}`);
+            return null;
+        }
+        try {
+            const block = registration.createBlock({ generateId: () => uuidService.generate() });
+            if (!block || typeof block !== "object" || typeof block.id !== "string" || !block.id.trim() || typeof block.kind !== "string") {
+                throw new Error("createBlock must return a story block");
+            }
+            return {
+                ...block,
+                parentId: null,
+                childrenIds: Array.isArray(block.childrenIds) ? block.childrenIds : [],
+            };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            uiService?.notifications.error(`Story action failed: ${registration.label} (${message})`);
+            return null;
+        }
+    }, [storyService, uiService, uuidService]);
+
+    const createActionFromSidebar = useCallback((commandId: string) => {
+        if (!isActionCommandId(commandId)) {
+            const block = createPluginActionBlock(commandId);
+            if (block) {
+                insertBlock(block, activeBlockId, true);
+            }
+            return;
+        }
         const block = createBlock(commandId, "");
         if (!block) {
             return;
@@ -714,7 +752,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!isInspectorFirstCommand(commandId) && isTextEditableBlock(block)) {
             setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
         }
-    }, [activeBlockId, createBlock, insertBlock]);
+    }, [activeBlockId, createBlock, createPluginActionBlock, insertBlock]);
 
     const setDialogueCharacter = useCallback((block: StoryBlock, characterId: string | undefined) => {
         if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
