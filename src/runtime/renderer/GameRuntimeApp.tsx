@@ -192,7 +192,7 @@ function useRuntimePackPreload(input: {
  * game boots. A failing plugin never blocks the game; errors go to the
  * runtime log. loadRuntimePlugins is idempotent per plugin id+version+entry.
  */
-function useRuntimePlugins(pack: GameRuntimePackV1 | null): boolean {
+function useRuntimePlugins(pack: GameRuntimePackV1 | null, rendererRegistry: ElementRendererRegistry): boolean {
     const [ready, setReady] = useState(false);
 
     useEffect(() => {
@@ -220,7 +220,7 @@ function useRuntimePlugins(pack: GameRuntimePackV1 | null): boolean {
             manifest: entry.manifest,
             entryUrl: `nlgame://runtime/${entry.entryRelativePath}`,
         }));
-        void loadRuntimePlugins(descriptors, { log }).finally(() => {
+        void loadRuntimePlugins(descriptors, { log, elementRenderers: rendererRegistry }).finally(() => {
             if (!disposed) {
                 setReady(true);
             }
@@ -228,7 +228,7 @@ function useRuntimePlugins(pack: GameRuntimePackV1 | null): boolean {
         return () => {
             disposed = true;
         };
-    }, [pack]);
+    }, [pack, rendererRegistry]);
 
     return ready;
 }
@@ -265,7 +265,7 @@ export function GameRuntimeApp() {
     const entrySurfaceId = pack?.entry.surfaceId ?? undefined;
     const entrySurface = pack ? findSurface(pack.bundle, entrySurfaceId) : null;
     const preload = useRuntimePackPreload({ pack, firstSurface: entrySurface });
-    const pluginsReady = useRuntimePlugins(pack);
+    const pluginsReady = useRuntimePlugins(pack, rendererRegistry);
     const runtimeReady = preload.ready && pluginsReady;
 
     const persistenceAdapter = useMemo(() => {

@@ -4,21 +4,21 @@ import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import { selectRuntimePluginsForPack } from "./selectRuntimePlugins";
 import type { GameRuntimePluginSource } from "./compiler/gameRuntimeArtifactCompiler";
 
-function manifest(id: string, version: string, blueprintNodes: string[] = []): NormalizedPluginManifestV2 {
+function manifest(id: string, version: string, blueprintNodes: string[] = [], widgets: string[] = []): NormalizedPluginManifestV2 {
     return {
         manifestVersion: 2,
         id,
         name: id,
         version,
         entries: { runtime: "runtime.js" },
-        contributes: { blueprintNodes },
+        contributes: { blueprintNodes, widgets },
         permissions: [],
     };
 }
 
-function source(id: string, version: string, blueprintNodes: string[] = []): GameRuntimePluginSource {
+function source(id: string, version: string, blueprintNodes: string[] = [], widgets: string[] = []): GameRuntimePluginSource {
     return {
-        manifest: manifest(id, version, blueprintNodes),
+        manifest: manifest(id, version, blueprintNodes, widgets),
         entry: "runtime.js",
         entryPath: `/plugins/${id}/runtime.js`,
     };
@@ -138,7 +138,24 @@ describe("selectRuntimePluginsForPack", () => {
         expect(selection.selected).toEqual([]);
     });
 
-    it("ships hard widget-only dependencies when a runtime entry exists", () => {
+    it("ships hard widget dependencies whose renderers are declared", () => {
+        const selection = selectRuntimePluginsForPack({
+            dependencies: table([{
+                id: "acme.widgets",
+                builtIn: false,
+                authoredVersion: "1.0.0",
+                hard: true,
+                usedBy: { widget: ["acme.widgets.badge"] },
+            }]),
+            available: [source("acme.widgets", "1.0.0", [], ["acme.widgets.badge"])],
+            installed: [{ id: "acme.widgets", version: "1.0.0", enabled: true }],
+        });
+
+        expect(selection.errors).toEqual([]);
+        expect(selection.selected.map(item => item.manifest.id)).toEqual(["acme.widgets"]);
+    });
+
+    it("fails when used widgets are not declared in contributes", () => {
         const selection = selectRuntimePluginsForPack({
             dependencies: table([{
                 id: "acme.widgets",
@@ -151,7 +168,26 @@ describe("selectRuntimePluginsForPack", () => {
             installed: [{ id: "acme.widgets", version: "1.0.0", enabled: true }],
         });
 
+        expect(selection.errors).toHaveLength(1);
+        expect(selection.errors[0]).toContain("acme.widgets.badge");
+        expect(selection.errors[0]).toContain("contributes.widgets");
+        expect(selection.selected).toEqual([]);
+    });
+
+    it("ships hard dependencies with no recorded node or widget usage", () => {
+        const selection = selectRuntimePluginsForPack({
+            dependencies: table([{
+                id: "acme.misc",
+                builtIn: false,
+                authoredVersion: "1.0.0",
+                hard: true,
+                usedBy: {},
+            }]),
+            available: [source("acme.misc", "1.0.0")],
+            installed: [{ id: "acme.misc", version: "1.0.0", enabled: true }],
+        });
+
         expect(selection.errors).toEqual([]);
-        expect(selection.selected.map(item => item.manifest.id)).toEqual(["acme.widgets"]);
+        expect(selection.selected.map(item => item.manifest.id)).toEqual(["acme.misc"]);
     });
 });

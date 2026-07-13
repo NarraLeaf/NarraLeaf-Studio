@@ -83,6 +83,41 @@ describe("validatePluginManifest", () => {
         });
     });
 
+    it("normalizes contributed widget types", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+            contributes: {
+                widgets: ["acme.sample-plugin.badge"],
+            },
+        });
+
+        expect(result).toMatchObject({
+            ok: true,
+            manifest: {
+                contributes: { blueprintNodes: [], widgets: ["acme.sample-plugin.badge"] },
+            },
+        });
+
+        const invalid = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+            contributes: {
+                widgets: ["other.badge"],
+            },
+        });
+        expect(invalid).toMatchObject({
+            ok: false,
+            error: expect.stringContaining("prefixed with the plugin id"),
+        });
+    });
+
     it("rejects contributed node types without the plugin id prefix", () => {
         const result = validatePluginManifest({
             manifestVersion: 2,

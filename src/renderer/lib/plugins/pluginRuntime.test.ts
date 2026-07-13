@@ -62,7 +62,7 @@ describe("createPluginApp disposal", () => {
             name: "Test",
             version: "1.0.0",
             entries: { studio: "main.js" },
-            contributes: { blueprintNodes: ["test-plugin.node"] },
+            contributes: { blueprintNodes: ["test-plugin.node"], widgets: ["test-plugin.widget"] },
             permissions: [],
         },
         entryUrl: "app://plugins/test-plugin/main.js",
@@ -121,7 +121,7 @@ describe("createPluginApp disposal", () => {
     }
 
     afterEach(() => {
-        widgetModuleRegistry.unregister("test-widget");
+        widgetModuleRegistry.unregister("test-plugin.widget");
     });
 
     it("reclaims panel, action, group, keybinding, widget, and dynamic-source registrations in reverse order", () => {
@@ -132,11 +132,11 @@ describe("createPluginApp disposal", () => {
         app.services.ui.actions.register({ id: "a1" } as any);
         app.services.ui.actions.registerGroup({ id: "g1" } as any);
         app.services.ui.keybindings.register({ id: "k1" } as any);
-        const widget = { type: "test-widget" } as unknown as UIWidgetModule;
+        const widget = { type: "test-plugin.widget" } as unknown as UIWidgetModule;
         app.services.widgets.register(widget);
         app.services.blueprintNodes.registerDynamicSelectOptionsSource("s1", () => []);
 
-        expect(widgetModuleRegistry.get("test-widget")).toBe(widget);
+        expect(widgetModuleRegistry.get("test-plugin.widget")).toBe(widget);
 
         dispose();
 
@@ -145,7 +145,7 @@ describe("createPluginApp disposal", () => {
         expect(store.unregisterActionGroup).toHaveBeenCalledWith("g1");
         expect(keybindingDisposer).toHaveBeenCalledTimes(1);
         expect(dynamicSourceDisposer).toHaveBeenCalledTimes(1);
-        expect(widgetModuleRegistry.has("test-widget")).toBe(false);
+        expect(widgetModuleRegistry.has("test-plugin.widget")).toBe(false);
 
         // Reverse registration order: dynamic source disposed first, panel last.
         const disposalOrder = calls.filter(c =>
@@ -197,6 +197,15 @@ describe("createPluginApp disposal", () => {
         expect(blueprintNodesService.register).toHaveBeenCalledTimes(1);
     });
 
+    it("rejects widget registrations not declared in manifest contributes", () => {
+        const { ctx } = createFakeContext();
+        const { app } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
+
+        expect(() => app.services.widgets.register({ type: "test-plugin.undeclared-widget" } as unknown as UIWidgetModule))
+            .toThrow(/contributes\.widgets/);
+        expect(widgetModuleRegistry.has("test-plugin.undeclared-widget")).toBe(false);
+    });
+
     it("keeps disposing after one disposer throws", () => {
         const { ctx, uiService, panelDisposer } = createFakeContext();
         const { app, dispose } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
@@ -216,14 +225,14 @@ describe("createPluginApp disposal", () => {
         const { ctx } = createFakeContext();
         const { app, dispose } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
 
-        const widget = { type: "test-widget" } as unknown as UIWidgetModule;
-        const replacement = { type: "test-widget" } as unknown as UIWidgetModule;
+        const widget = { type: "test-plugin.widget" } as unknown as UIWidgetModule;
+        const replacement = { type: "test-plugin.widget" } as unknown as UIWidgetModule;
         app.services.widgets.register(widget);
         widgetModuleRegistry.register(replacement);
 
         dispose();
 
         // The replacement (not owned by the plugin) must survive.
-        expect(widgetModuleRegistry.get("test-widget")).toBe(replacement);
+        expect(widgetModuleRegistry.get("test-plugin.widget")).toBe(replacement);
     });
 });
