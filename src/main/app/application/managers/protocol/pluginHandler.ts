@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 import { getMimeType } from "@shared/utils/fs";
+import { PLUGIN_RUNTIME_API_MODULE_SOURCE } from "@shared/utils/pluginRuntimeApiModule";
 import type { PluginManager } from "../pluginManager";
 import type { ProtocolHandler, ProtocolResponse, ProtocolScheme } from "./types";
 
@@ -124,6 +125,7 @@ export const jsxDEV = runtime.jsxDEV;
 
 const PLUGIN_API_MODULES: Record<string, string> = {
     "/plugin.js": PLUGIN_API_MODULE,
+    "/runtime.js": PLUGIN_RUNTIME_API_MODULE_SOURCE,
     "/react.js": PLUGIN_REACT_MODULE,
     "/react-dom.js": PLUGIN_REACT_DOM_MODULE,
     "/react-dom-client.js": PLUGIN_REACT_DOM_CLIENT_MODULE,

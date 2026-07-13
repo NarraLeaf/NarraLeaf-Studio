@@ -7,17 +7,28 @@ import {
     GAME_RUNTIME_PACK_SCHEMA_VERSION,
     type GameRuntimeAssetManifestEntry,
     type GameRuntimeLaunchEntry,
+    type GameRuntimePackPluginEntry,
     type GameRuntimePackV1,
     type GameRuntimeProjectIcon,
     type GameRuntimeProjectIconPlatform,
 } from "@shared/types/gameRuntime";
-import { decodeProjectConfig, findProjectConfigFileName, type ProjectConfigData } from "@shared/utils/nlproj";
+import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
+import type { ProjectConfigData } from "@shared/utils/nlproj";
+import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { getMimeType } from "@shared/utils/fs";
 
 const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "other"] as const;
 const REQUIRED_RUNTIME_FILES = ["main.js", "preload.js", "renderer.js", "renderer.css", "index.html"] as const;
 const OPTIONAL_RUNTIME_FILES = ["main.js.map", "preload.js.map", "renderer.js.map", "renderer.css.map"] as const;
+
+export type GameRuntimePluginSource = {
+    manifest: NormalizedPluginManifestV2;
+    /** Manifest-declared runtime entry, normalized to forward slashes. */
+    entry: string;
+    /** Absolute path of the built runtime entry file inside the install dir. */
+    entryPath: string;
+};
 
 export type GameRuntimeArtifactCompileInput = {
     projectPath: string;
@@ -26,6 +37,8 @@ export type GameRuntimeArtifactCompileInput = {
     runtimeVersion: string;
     controlPort: number;
     controlToken: string;
+    /** Runtime entries of enabled plugins to ship inside the pack. */
+    runtimePlugins?: GameRuntimePluginSource[];
 };
 
 export type GameRuntimeArtifactCompileResult = {
@@ -91,6 +104,10 @@ export async function compileGameRuntimePreviewArtifact(
         appDir,
         projectConfig,
     });
+    const packPlugins = await copyRuntimePlugins({
+        appDir,
+        runtimePlugins: input.runtimePlugins ?? [],
+    });
 
     const pack: GameRuntimePackV1 = {
         schemaVersion: GAME_RUNTIME_PACK_SCHEMA_VERSION,
@@ -109,6 +126,7 @@ export async function compileGameRuntimePreviewArtifact(
         assets: {
             items: assetManifest,
         },
+        plugins: packPlugins,
         network: {
             // Secure default: HTTP is only permitted when the project explicitly
             // opts in via app.network.allowHttp. Mirrors normalizeNetworkConfiguration.
@@ -217,6 +235,29 @@ async function copyProjectAssets(input: {
         }
     }
     return manifest;
+}
+
+async function copyRuntimePlugins(input: {
+    appDir: string;
+    runtimePlugins: GameRuntimePluginSource[];
+}): Promise<GameRuntimePackPluginEntry[]> {
+    const entries: GameRuntimePackPluginEntry[] = [];
+    for (const plugin of input.runtimePlugins) {
+        const relativePath = path.posix.join("plugins", plugin.manifest.id, ...plugin.entry.split("/"));
+        const targetPath = path.join(input.appDir, ...relativePath.split("/"));
+        await fs.mkdir(path.dirname(targetPath), { recursive: true });
+        await fs.copyFile(plugin.entryPath, targetPath).catch(error => {
+            throw new Error(
+                `Failed to copy runtime entry of plugin "${plugin.manifest.id}" from ${plugin.entryPath}: ` +
+                `${error instanceof Error ? error.message : String(error)}`,
+            );
+        });
+        entries.push({
+            manifest: plugin.manifest,
+            entryRelativePath: relativePath,
+        });
+    }
+    return entries;
 }
 
 async function copyProjectIcon(input: {
@@ -341,20 +382,7 @@ function normalizeExtension(rawExt: string | undefined, name: string, type: stri
 }
 
 async function readProjectConfig(projectPath: string): Promise<ProjectConfigData | null> {
-    const entries = await fs.readdir(projectPath, { withFileTypes: true });
-    const configFileName = findProjectConfigFileName(entries.map(entry => ({
-        name: path.parse(entry.name).name,
-        ext: path.extname(entry.name) || null,
-        type: entry.isFile() ? "file" : entry.isDirectory() ? "directory" : "other",
-    })));
-    if (!configFileName) {
-        return null;
-    }
-    const configPath = path.join(projectPath, configFileName);
-    if (configFileName.endsWith(".nlproj")) {
-        return decodeProjectConfig(await fs.readFile(configPath));
-    }
-    return readJson<ProjectConfigData>(configPath);
+    return readProjectConfigFromDir(projectPath);
 }
 
 async function readOptionalJson<T>(filePath: string): Promise<T | null> {

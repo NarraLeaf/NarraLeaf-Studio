@@ -295,6 +295,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.pluginRevoke, { pluginId }),
         getWorkspacePlugins: () =>
             ipcClient.invoke(IPCEventType.pluginWorkspaceList, {}),
+        getRuntimePlugins: () =>
+            ipcClient.invoke(IPCEventType.pluginRuntimeList, {}),
         reportLoadError: (pluginId: string, error: string | null) =>
             ipcClient.invoke(IPCEventType.pluginReportLoadError, { pluginId, error }),
     },

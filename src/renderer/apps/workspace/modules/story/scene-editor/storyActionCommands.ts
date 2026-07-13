@@ -110,6 +110,32 @@ export type ActionCommand = {
     aliases?: string[];
 };
 
+/**
+ * A palette command from any source: built-in ({@link ActionCommand}) or a
+ * plugin story action (namespaced string id). Structurally identical to
+ * ActionCommand except the id is not restricted to the built-in union.
+ */
+export type PaletteActionCommand = Omit<ActionCommand, "id"> & { id: string };
+
+export function isActionCommandId(value: string): value is ActionCommandId {
+    return ACTION_COMMANDS.some(command => command.id === value);
+}
+
+/** Project a plugin story action registration onto the palette command shape. */
+export function pluginActionToPaletteCommand(registration: {
+    id: string;
+    label: string;
+    detail?: string;
+}): PaletteActionCommand {
+    return {
+        id: registration.id,
+        category: "plugin",
+        label: registration.label,
+        detail: registration.detail ?? "Plugin story action",
+        icon: Puzzle,
+    };
+}
+
 export const ACTION_COMMAND_CATEGORIES: ActionCommandCategory[] = [
     { id: "all", label: "All", icon: Settings2, iconColor: "#a8adb5" },
     { id: "character", label: "Character", icon: UserRound, iconColor: "var(--narraleaf-accent, #40a8c4)" },
@@ -184,7 +210,7 @@ export const ACTION_COMMANDS: ActionCommand[] = [
  * in the sidebar search box it arrives as "//". Either way we match aliases exclusively so the alias
  * lands directly on its command instead of every action whose label/detail happens to contain "/".
  */
-export function actionCommandMatchesQuery(command: ActionCommand, rawQuery: string): boolean {
+export function actionCommandMatchesQuery(command: PaletteActionCommand, rawQuery: string): boolean {
     const query = rawQuery.trim().toLowerCase();
     if (!query) {
         return true;
