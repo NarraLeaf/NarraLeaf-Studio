@@ -9,6 +9,7 @@ import {
     getBuiltinEditorFontDisplayName,
 } from "@/lib/ui-editor/fonts/builtinVirtualEditorFonts";
 import { useWorkspace } from "@/apps/workspace/context";
+import { useTranslation } from "@/lib/i18n";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
@@ -31,6 +32,7 @@ export function FontAssetField<TData extends UIInspectorData>({
     data,
     onSaving,
 }: FontAssetFieldProps<TData>) {
+    const { t } = useTranslation();
     const { context } = useWorkspace();
     const assetsService = useMemo(() => {
         if (!context) {
@@ -59,7 +61,7 @@ export function FontAssetField<TData extends UIInspectorData>({
         return assetsService.getAssets()[AssetType.Font]?.[assetId]?.name ?? null;
     }, [assetId, assetsService]);
 
-    const previewLabel = assetId ? assetName ?? "Font" : "No font";
+    const previewLabel = assetId ? assetName ?? t("properties.fontAsset.fallbackName") : t("properties.fontAsset.none");
 
     const applyAssetId = useCallback(
         (next: string | null) => {
@@ -104,13 +106,13 @@ export function FontAssetField<TData extends UIInspectorData>({
                 >
                     <div className="flex items-center gap-2 text-xs text-fg-muted tracking-widest">
                         <Type className="h-3.5 w-3.5 shrink-0" />
-                        <span>Preview</span>
+                        <span>{t("properties.preview")}</span>
                     </div>
                     <div
                         className="mt-2 text-sm text-fg truncate"
                         style={cssFamily ? { fontFamily: cssFamily } : undefined}
                     >
-                        {fontLoading ? "Loading…" : "Aa Bb Cc 123"}
+                        {fontLoading ? t("common.loading") : "Aa Bb Cc 123"}
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-2 text-xs text-fg-muted">
                         <span className="truncate">{previewLabel}</span>
@@ -120,19 +122,19 @@ export function FontAssetField<TData extends UIInspectorData>({
                                 onClick={handleClear}
                                 className="shrink-0 rounded px-2 py-0.5 text-2xs tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted"
                             >
-                                Clear
+                                {t("common.clear")}
                             </button>
                         ) : null}
                     </div>
                     <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl bg-black/40 opacity-0 text-2xs tracking-[0.3em] text-white transition hover:opacity-100">
-                        Choose font
+                        {t("properties.fontAsset.choose")}
                     </div>
                 </button>
             </FieldLayout>
 
             {assetId && fontError ? (
                 <p className="mt-1 text-2xs text-amber-400/90 leading-snug">
-                    Font could not be loaded ({fontError}). Preview may fall back until the asset is valid.
+                    {t("properties.fontAsset.loadError", { error: fontError })}
                 </p>
             ) : null}
 
@@ -145,7 +147,7 @@ export function FontAssetField<TData extends UIInspectorData>({
                 onConfirm={handleConfirm}
                 selectedIds={assetId ? [assetId] : []}
                 anchorRef={previewRef}
-                title="Select Font"
+                title={t("properties.fontAsset.select")}
                 multiple={false}
             />
         </>

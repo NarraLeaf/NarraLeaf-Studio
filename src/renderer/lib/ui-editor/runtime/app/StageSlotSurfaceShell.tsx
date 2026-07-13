@@ -19,6 +19,7 @@ import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/W
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import {
     createDevModeBlueprintHostApi,
+    type BlueprintGameHistoryEntry,
     type BlueprintGameNotification,
     type BlueprintGamePreferenceKey,
     type BlueprintGamePreferenceValue,
@@ -58,6 +59,8 @@ export type GameUiSlotHostOptions = {
     listSaveIds: () => Promise<string[]>;
     getSaveMetadata: (id: string) => Promise<unknown>;
     getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
+    getHistoryInGame: () => BlueprintGameHistoryEntry[];
+    restoreHistoryInGame: (id?: string) => Promise<void>;
     getCurrentNametag: () => string | null;
     getNotificationsInGame: () => BlueprintGameNotification[];
     getChoiceCountInGame: () => number;
@@ -73,6 +76,7 @@ export type GameUiSlotHostOptions = {
     setSentenceSpeedInGame: (cps: number) => Promise<void>;
     getGamePreferenceInGame: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
     setGamePreferenceInGame: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void>;
+    setOutputResolutionInGame: (width: number, height: number) => Promise<void>;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -161,6 +165,8 @@ export function useStageSlotSurfaceRuntime(input: {
             onListSaveIds: options.listSaveIds,
             onGetSaveMetadata: options.getSaveMetadata,
             onGetSavePreview: options.getSavePreview,
+            onGetHistory: options.getHistoryInGame,
+            onRestoreHistory: options.restoreHistoryInGame,
             onGetNametag: options.getCurrentNametag,
             onGetNotifications: options.getNotificationsInGame,
             onGetChoiceCount: options.getChoiceCountInGame,
@@ -177,6 +183,7 @@ export function useStageSlotSurfaceRuntime(input: {
             onSetSentenceSpeed: options.setSentenceSpeedInGame,
             onGetGamePreference: options.getGamePreferenceInGame,
             onSetGamePreference: options.setGamePreferenceInGame,
+            onSetOutputResolution: options.setOutputResolutionInGame,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,

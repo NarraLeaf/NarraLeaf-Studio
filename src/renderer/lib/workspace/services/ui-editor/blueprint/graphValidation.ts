@@ -139,6 +139,25 @@ function collectBlueprintEventHooks(element: UIElement): BlueprintEventHook[] {
     return out;
 }
 
+/**
+ * Owners whose "On Call" graph produces a value via a Return Value node: widget value bindings and
+ * synchronous story blueprints (inline value interpolations + control-flow conditions).
+ */
+function isBlueprintValueGraphOwner(owner: BlueprintOwnerRef | undefined): boolean {
+    if (!owner) {
+        return false;
+    }
+    if (owner.kind === "widgetValue") {
+        return true;
+    }
+    return owner.kind === "storyAction" && (owner.mode === "value" || owner.mode === "condition");
+}
+
+/** True for a story condition blueprint whose Return Value must be typed boolean. */
+function isStoryConditionOwner(owner: BlueprintOwnerRef | undefined): boolean {
+    return owner?.kind === "storyAction" && owner.mode === "condition";
+}
+
 function buildNodeValidationPaletteContext(ctx: {
     graphKind: "event" | "function";
     blueprintOwner?: BlueprintOwnerRef;
@@ -157,7 +176,7 @@ function buildNodeValidationPaletteContext(ctx: {
         widgetElementType: ctx.widgetElementType,
         widgetBlueprintEvents: ctx.widgetBlueprintEvents,
         widgetEventLayerSlots: ctx.layerUiSlots,
-        isBlueprintValueGraph: ctx.isBlueprintValueGraph ?? ctx.blueprintOwner.kind === "widgetValue",
+        isBlueprintValueGraph: ctx.isBlueprintValueGraph ?? isBlueprintValueGraphOwner(ctx.blueprintOwner),
         isSyncOnlyGraph: isStorySyncValueOwner(ctx.blueprintOwner),
         isComponentDefinitionGraph: ctx.isComponentDefinitionGraph,
         hasEventHead: false,
@@ -705,7 +724,70 @@ export function validateBlueprintGraphIr(
 
     validateBlueprintFnRules(ir, ctx, out);
 
+    if (ctx.graphKind === "event" && isStoryConditionOwner(ctx.blueprintOwner)) {
+        validateStoryConditionReturnType(ir, ctx, out);
+    }
+
     return out;
+}
+
+/**
+ * Story condition blueprints (`storyAction` owner, `condition` mode) must feed a boolean into their
+ * Return Value node. Any concretely-typed non-boolean source is a type error; an unwired Return Value
+ * is a warning (nothing to evaluate). `any`/unknown source types are left alone — they coerce fine.
+ */
+function validateStoryConditionReturnType(
+    ir: BlueprintGraphIr,
+    ctx: {
+        graphKind: "event" | "function";
+        graphId: string;
+        variableValueTypes?: readonly BlueprintVariableTypeOption[];
+        persistentVariableValueTypes?: readonly BlueprintVariableTypeOption[];
+    },
+    out: BlueprintGraphEditorDiagnostic[],
+): void {
+    const nodes = ir.nodes ?? {};
+    const edges = ir.edges ?? [];
+    const variableTypeContext = {
+        memberVariables: ctx.variableValueTypes,
+        persistentVariables: ctx.persistentVariableValueTypes,
+    };
+    for (const [nodeId, node] of Object.entries(nodes)) {
+        const entry = resolveBlueprintNodeEditorCatalogEntryForNode(node.type, node.params);
+        if (entry.role !== "valueReturn") {
+            continue;
+        }
+        const valueEdge = edges.find(edge => edge.to.nodeId === nodeId && edge.to.port === "value");
+        if (!valueEdge) {
+            out.push({
+                severity: "warning",
+                code: "condition.return_missing",
+                message: "Condition should return a boolean value.",
+                target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId },
+            });
+            continue;
+        }
+        const sourceNode = nodes[valueEdge.from.nodeId];
+        if (!sourceNode) {
+            continue;
+        }
+        const sourceParams = withInferredBlueprintVariableValueTypeParam(
+            sourceNode.type,
+            sourceNode.params,
+            variableTypeContext,
+        );
+        const sourceEntry = resolveBlueprintNodeEditorCatalogEntryForNode(sourceNode.type, sourceParams);
+        const outPin = sourceEntry.pins.find(pin => pin.id === valueEdge.from.port && pin.kind === "output");
+        const valueType = outPin?.valueType;
+        if (valueType && valueType !== "boolean" && valueType !== "any") {
+            out.push({
+                severity: "error",
+                code: "condition.return_not_boolean",
+                message: `Condition must return a boolean, but this returns ${valueType}.`,
+                target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId },
+            });
+        }
+    }
 }
 
 export function validateBlueprintBindingsForBlueprint(doc: BlueprintDocument, blueprintId: string): BlueprintGraphEditorDiagnostic[] {
@@ -798,7 +880,7 @@ export function validateBlueprintDocumentGraphs(
                 widgetElementType: options?.widgetElement?.type,
                 widgetBlueprintEvents: options?.widgetBlueprintEvents,
                 blueprintOwner: bp.owner,
-                isBlueprintValueGraph: bp.owner.kind === "widgetValue",
+                isBlueprintValueGraph: isBlueprintValueGraphOwner(bp.owner),
                 isComponentDefinitionGraph: options?.isComponentDefinitionGraph,
                 blueprintDocument: doc,
             }),
@@ -817,7 +899,7 @@ export function validateBlueprintDocumentGraphs(
                 widgetElementType: options?.widgetElement?.type,
                 widgetBlueprintEvents: options?.widgetBlueprintEvents,
                 blueprintOwner: bp.owner,
-                isBlueprintValueGraph: bp.owner.kind === "widgetValue",
+                isBlueprintValueGraph: isBlueprintValueGraphOwner(bp.owner),
                 isComponentDefinitionGraph: options?.isComponentDefinitionGraph,
             }),
         );

@@ -11,6 +11,7 @@ import type {
 } from "@shared/types/story";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { PropertyEditor, createPropertyEditorSchema, defineField } from "../properties/framework";
 import type { FieldDefinition, PropertyEditorSchema } from "../properties/framework/types";
 import {
@@ -49,6 +50,7 @@ export function StoryMotionKeyframeProperties(props: {
     uiService: UIService;
 }) {
     const { selection, storyService, uiService } = props;
+    const { t } = useTranslation();
     const [asset, setAsset] = useState<StoryAnimationAsset | null>(null);
 
     const clearSelection = useCallback(() => {
@@ -139,14 +141,14 @@ export function StoryMotionKeyframeProperties(props: {
     }, [clearSelection, selection.animationId, storyService]);
 
     const schema = useMemo(
-        () => createStoryMotionKeyframeSchema(updateKeyframe, deleteKeyframe),
-        [deleteKeyframe, updateKeyframe],
+        () => createStoryMotionKeyframeSchema(t, updateKeyframe, deleteKeyframe),
+        [deleteKeyframe, t, updateKeyframe],
     );
 
     if (!asset || !selected) {
         return (
             <div className="flex h-full items-center justify-center p-4 text-center text-xs text-fg-subtle">
-                Loading keyframe...
+                {t("motion.keyframe.loading")}
             </div>
         );
     }
@@ -164,6 +166,7 @@ export function StoryMotionKeyframeProperties(props: {
 }
 
 function createStoryMotionKeyframeSchema(
+    t: UseTranslation["t"],
     updateKeyframe: (updater: (keyframe: StoryAnimationKeyframe, track: StoryAnimationTrack) => StoryAnimationKeyframe) => void,
     deleteKeyframe: (data: StoryMotionKeyframeInspectorData) => void,
 ): PropertyEditorSchema<StoryMotionKeyframeInspectorData> {
@@ -176,16 +179,16 @@ function createStoryMotionKeyframeSchema(
                 items: data => {
                     const meta = getStoryMotionPropertyMeta(data.track.property);
                     return [
-                        { label: "Motion", getValue: () => data.asset.name },
-                        { label: "Property", getValue: () => meta.label },
-                        { label: "Time", getValue: () => formatStoryMotionTime(data.keyframe.timeMs) },
+                        { label: t("motion.keyframe.motionLabel"), getValue: () => data.asset.name },
+                        { label: t("motion.property"), getValue: () => meta.label },
+                        { label: t("motion.keyframe.time"), getValue: () => formatStoryMotionTime(data.keyframe.timeMs) },
                     ];
                 },
             }),
             defineField<StoryMotionKeyframeInspectorData, FieldDefinition<StoryMotionKeyframeInspectorData>>({
                 id: "timeMs",
                 type: "number",
-                label: "Time ms",
+                label: t("motion.keyframe.timeMs"),
                 min: 0,
                 max: STORY_MOTION_MAX_DURATION_MS,
                 step: 1,
@@ -200,11 +203,11 @@ function createStoryMotionKeyframeSchema(
             defineField<StoryMotionKeyframeInspectorData, FieldDefinition<StoryMotionKeyframeInspectorData>>({
                 id: "easing",
                 type: "select",
-                label: "Easing",
+                label: t("motion.keyframe.easing"),
                 options: [
-                    { value: "", label: "Default" },
+                    { value: "", label: t("motion.keyframe.easingDefault") },
                     ...STORY_MOTION_EASING_OPTIONS,
-                    { value: CUSTOM_EASING_OPTION, label: "Custom" },
+                    { value: CUSTOM_EASING_OPTION, label: t("motion.keyframe.easingCustom") },
                 ],
                 getValue: data => {
                     const easing = data.keyframe.easing ?? "";
@@ -240,7 +243,7 @@ function createStoryMotionKeyframeSchema(
             defineField<StoryMotionKeyframeInspectorData, FieldDefinition<StoryMotionKeyframeInspectorData>>({
                 id: "value",
                 type: "section",
-                title: "Value",
+                title: t("motion.keyframe.value"),
                 fields: [
                     defineField<StoryMotionKeyframeInspectorData, FieldDefinition<StoryMotionKeyframeInspectorData>>({
                         id: "position",
@@ -248,16 +251,16 @@ function createStoryMotionKeyframeSchema(
                         hidden: data => getStoryMotionPropertyMeta(data.track.property).valueKind !== "position",
                         wrap: true,
                         inputs: [
-                            positionInput(updateKeyframe, "xalign", "X align", 0.5, 0.01),
-                            positionInput(updateKeyframe, "yalign", "Y align", 0.55, 0.01),
-                            positionInput(updateKeyframe, "xoffset", "X offset", 0, 1),
-                            positionInput(updateKeyframe, "yoffset", "Y offset", 0, 1),
+                            positionInput(updateKeyframe, "xalign", t("motion.keyframe.xAlign"), 0.5, 0.01),
+                            positionInput(updateKeyframe, "yalign", t("motion.keyframe.yAlign"), 0.55, 0.01),
+                            positionInput(updateKeyframe, "xoffset", t("motion.keyframe.xOffset"), 0, 1),
+                            positionInput(updateKeyframe, "yoffset", t("motion.keyframe.yOffset"), 0, 1),
                         ],
                     }),
                     defineField<StoryMotionKeyframeInspectorData, FieldDefinition<StoryMotionKeyframeInspectorData>>({
                         id: "number",
                         type: "number",
-                        label: "Value",
+                        label: t("motion.keyframe.value"),
                         step: 0.01,
                         hidden: data => getStoryMotionPropertyMeta(data.track.property).valueKind !== "number",
                         getValue: data => typeof data.keyframe.value === "number" ? data.keyframe.value : 0,
@@ -271,7 +274,7 @@ function createStoryMotionKeyframeSchema(
                     defineField<StoryMotionKeyframeInspectorData, FieldDefinition<StoryMotionKeyframeInspectorData>>({
                         id: "text",
                         type: "text",
-                        label: "Value",
+                        label: t("motion.keyframe.value"),
                         hidden: data => getStoryMotionPropertyMeta(data.track.property).valueKind !== "text",
                         getValue: data => typeof data.keyframe.value === "string" ? data.keyframe.value : "",
                         setValue: (_data, value) => {
@@ -287,15 +290,15 @@ function createStoryMotionKeyframeSchema(
                 id: "delete",
                 type: "custom",
                 component: ({ data }) => (
-                    <SurfaceEditorToolbarButtonGroup aria-label="Keyframe actions" className="w-full">
+                    <SurfaceEditorToolbarButtonGroup aria-label={t("motion.keyframe.keyframeActions")} className="w-full">
                         <SurfaceEditorToolbarSegButton
                             type="button"
                             className="!w-auto flex-1 gap-2 px-3 !text-fg-muted hover:!bg-red-500/10 hover:!text-red-100 focus-visible:!ring-red-400/40"
                             onClick={() => deleteKeyframe(data)}
-                            title="Delete keyframe"
+                            title={t("motion.keyframe.deleteKeyframe")}
                         >
                             <Trash2 className="h-4 w-4" />
-                            <span>Delete keyframe</span>
+                            <span>{t("motion.keyframe.deleteKeyframe")}</span>
                         </SurfaceEditorToolbarSegButton>
                     </SurfaceEditorToolbarButtonGroup>
                 ),

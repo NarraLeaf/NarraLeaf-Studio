@@ -231,6 +231,15 @@ function createScriptExecutionContext(input: {
                     input.debug.emit({ type: "function.return", functionId: "game.getSavePreview" });
                     return null;
                 },
+                getHistory: async () => {
+                    input.debug.emit({ type: "function.call", functionId: "game.getHistory" });
+                    input.debug.emit({ type: "function.return", functionId: "game.getHistory" });
+                    return [];
+                },
+                restoreHistory: async (_id?: string) => {
+                    input.debug.emit({ type: "function.call", functionId: "game.restoreHistory" });
+                    input.debug.emit({ type: "function.return", functionId: "game.restoreHistory" });
+                },
                 getNametag: () => {
                     input.debug.emit({ type: "function.call", functionId: "game.getNametag" });
                     input.debug.emit({ type: "function.return", functionId: "game.getNametag" });
@@ -259,6 +268,10 @@ function createScriptExecutionContext(input: {
                 setSentenceSpeed: async (_cps: number) => {
                     input.debug.emit({ type: "function.call", functionId: "game.setSentenceSpeed" });
                     input.debug.emit({ type: "function.return", functionId: "game.setSentenceSpeed" });
+                },
+                setOutputResolution: async (_width: number, _height: number) => {
+                    input.debug.emit({ type: "function.call", functionId: "game.setOutputResolution" });
+                    input.debug.emit({ type: "function.return", functionId: "game.setOutputResolution" });
                 },
                 getPreference: (key: BlueprintGamePreferenceKey): BlueprintGamePreferenceValue => {
                     input.debug.emit({ type: "function.call", functionId: "game.getPreference" });

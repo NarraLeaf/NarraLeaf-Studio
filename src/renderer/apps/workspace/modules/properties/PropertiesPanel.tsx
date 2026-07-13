@@ -12,6 +12,8 @@ import {
     Settings,
 } from "lucide-react";
 import { PanelComponentProps } from "../types";
+import { useTranslation } from "@/lib/i18n";
+import type { Translator } from "@shared/i18n";
 import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -59,9 +61,13 @@ import {
     type StoryMotionKeyframeSelection,
 } from "../story-motion/storyMotionTypes";
 
+/** Translator function, threaded into module-scope schema builders (they run outside React). */
+type TranslateFn = Translator["t"];
+
 function createLayoutInspectorSchema(
     elements: UIElement[],
     documentService: UIDocumentService,
+    t: TranslateFn,
     surfaceId?: string,
     options: { linkedOnly?: boolean } = {},
 ): PropertyEditorSchema<UIInspectorData> {
@@ -137,7 +143,7 @@ function createLayoutInspectorSchema(
                             leftIcon={<ArrowLeftRight className="w-4 h-4 text-fg-muted" />}
                             className="w-full min-w-0"
                             selectAllOnFocus
-                            aria-label="Width"
+                            aria-label={t("properties.layout.width")}
                         />
                     );
                 },
@@ -166,7 +172,7 @@ function createLayoutInspectorSchema(
                             leftIcon={<ArrowUpDown className="w-4 h-4 text-fg-muted" />}
                             className="w-full min-w-0"
                             selectAllOnFocus
-                            aria-label="Height"
+                            aria-label={t("properties.layout.height")}
                         />
                     );
                 },
@@ -199,8 +205,8 @@ function createLayoutInspectorSchema(
                             type="button"
                             onClick={toggle}
                             aria-pressed={pressed}
-                            aria-label={pressed ? "Unlock aspect ratio" : "Lock aspect ratio"}
-                            title={pressed ? "Unlock aspect ratio" : "Lock aspect ratio"}
+                            aria-label={pressed ? t("properties.layout.unlockAspect") : t("properties.layout.lockAspect")}
+                            title={pressed ? t("properties.layout.unlockAspect") : t("properties.layout.lockAspect")}
                             className={controlButtonClass(pressed)}
                         >
                             <Link className="w-4 h-4" />
@@ -212,7 +218,7 @@ function createLayoutInspectorSchema(
         return defineField<UIInspectorData, any>({
             id: "layout.size",
             type: "inlineRow",
-            label: "Size",
+            label: t("properties.layout.size"),
             gap: 8,
             wrap: false,
             items,
@@ -243,7 +249,7 @@ function createLayoutInspectorSchema(
         defineField<UIInspectorData, any>({
             id: "layout.position",
             type: "inputGroup",
-            label: "Position",
+            label: t("properties.layout.position"),
             gap: 8,
             wrap: false,
             inputs: [
@@ -291,7 +297,7 @@ function createLayoutInspectorSchema(
         defineField<UIInspectorData, any>({
             id: "layout.rotation",
             type: "inlineRow",
-            label: "Rotation",
+            label: t("properties.layout.rotation"),
             gap: 8,
             wrap: false,
             items: [
@@ -346,7 +352,7 @@ function createLayoutInspectorSchema(
                             <button
                                 type="button"
                                 onClick={reset}
-                                aria-label="Reset rotation"
+                                aria-label={t("properties.layout.resetRotation")}
                                 disabled={rotationValue === 0}
                                 className={controlButtonClass(rotationValue !== 0)}
                             >
@@ -364,7 +370,7 @@ function createLayoutInspectorSchema(
         fields.push(defineField<UIInspectorData, any>({
             id: "layout.visibility",
             type: "inlineRow",
-            label: "Appearance",
+            label: t("properties.layout.appearance"),
             gap: 8,
             wrap: false,
             items: [
@@ -426,7 +432,7 @@ function createLayoutInspectorSchema(
                                 onClick={toggleVisibility}
                                 className="grid h-9 w-9 place-items-center rounded-lg border border-edge bg-transparent text-fg-muted transition hover:bg-fill-subtle focus:outline-none focus:ring-2 focus:ring-primary/50"
                                 aria-pressed={visible}
-                                aria-label="Toggle visibility"
+                                aria-label={t("properties.layout.toggleVisibility")}
                             >
                                 {visible ? (
                                     <Eye className="w-4 h-4" />
@@ -447,7 +453,7 @@ function createLayoutInspectorSchema(
 
     return createPropertyEditorSchema<UIInspectorData>({
         id: `ui-layout-${primaryId}`,
-        title: "Layout",
+        title: t("properties.layout.title"),
         fields,
     });
 }
@@ -455,10 +461,11 @@ function createLayoutInspectorSchema(
 function mergeInspectorWithLayoutSchema(
     layoutSchema: PropertyEditorSchema<UIInspectorData>,
     inspectorSchema: PropertyEditorSchema<UIInspectorData>,
-    element: UIElement
+    element: UIElement,
+    t: TranslateFn,
 ): PropertyEditorSchema<UIInspectorData> {
     const layoutFields = layoutSchema.fields ?? [];
-    const baseTitle = inspectorSchema.title ?? element.name ?? "UI Element";
+    const baseTitle = inspectorSchema.title ?? element.name ?? t("properties.layout.uiElement");
     const baseId = `ui-element:${element.id}`;
 
     if (inspectorSchema.tabs && inspectorSchema.tabs.length > 0) {
@@ -495,6 +502,7 @@ function mergeInspectorWithLayoutSchema(
 }
 
 function LinkedComponentInfoField({ data }: { data: UIInspectorData }) {
+    const { t } = useTranslation();
     const link = getUIComponentLink(data.element);
     const component = link ? data.documentService.getComponent(link.componentId) : null;
     if (!link) {
@@ -502,9 +510,9 @@ function LinkedComponentInfoField({ data }: { data: UIInspectorData }) {
     }
     return (
         <div className="rounded-md border border-cyan-400/20 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-50">
-            <div className="font-medium">{component?.name ?? "Missing component"}</div>
+            <div className="font-medium">{component?.name ?? t("properties.linkedComponent.missing")}</div>
             <div className="mt-1 text-2xs leading-snug text-cyan-100/70">
-                Linked instance. Only position, size, and rotation can be changed before unlinking.
+                {t("properties.linkedComponent.info")}
             </div>
         </div>
     );
@@ -513,10 +521,11 @@ function LinkedComponentInfoField({ data }: { data: UIInspectorData }) {
 function createLinkedComponentInspectorSchema(
     layoutSchema: PropertyEditorSchema<UIInspectorData>,
     element: UIElement,
+    t: TranslateFn,
 ): PropertyEditorSchema<UIInspectorData> {
     return createPropertyEditorSchema<UIInspectorData>({
         id: `ui-linked-component:${element.id}`,
-        title: element.name ?? "Linked Component",
+        title: element.name ?? t("properties.layout.linkedComponent"),
         fields: [
             ...(layoutSchema.fields ?? []),
             defineField<UIInspectorData, any>({
@@ -534,6 +543,7 @@ function createLinkedComponentInspectorSchema(
  * Shows properties/inspector for the selected item based on active editor
  */
 export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const [activeAsset, setActiveAsset] = useState<Asset | null>(null);
     const [activeCharacter, setActiveCharacter] = useState<Character | null>(null);
@@ -618,20 +628,20 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     }, [activeSceneSurface, documentService, documentVersion]);
 
     const panelTitle = storyMotionSelection
-        ? "Motion Keyframe"
+        ? t("properties.panel.motionKeyframe")
         : activeSceneSurface
         ? activeSceneSurface.name
         : activeCharacter
         ? activeCharacter.profile.getProfile().name
         : activeAsset
         ? activeAsset.name
-        : "Properties";
+        : t("properties.panel.title");
     const panelSubtitle = storyMotionSelection
-        ? "Story Motion"
+        ? t("properties.panel.storyMotion")
         : activeSceneSurface
-        ? "Scene"
+        ? t("properties.panel.scene")
         : activeCharacter
-        ? "Character"
+        ? t("properties.panel.character")
         : activeAsset?.type;
 
     // Listen to selection changes
@@ -689,6 +699,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         const layoutSchema = createLayoutInspectorSchema(
             elements,
             inspectorDocumentService,
+            t,
             deferredUiSelection.surfaceId,
             { linkedOnly: linkedLayoutOnly },
         );
@@ -697,14 +708,14 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             if (isLinkedUIComponentElement(element)) {
                 return (
                     <PropertyEditor
-                        schema={createLinkedComponentInspectorSchema(layoutSchema, element)}
+                        schema={createLinkedComponentInspectorSchema(layoutSchema, element, t)}
                         data={{ element, elements, documentService: inspectorDocumentService, surfaceId: deferredUiSelection.surfaceId }}
                     />
                 );
             }
             const inspectorSchema = getElementInspector(element, inspectorDocumentService);
             const combinedSchema = inspectorSchema
-                ? mergeInspectorWithLayoutSchema(layoutSchema, inspectorSchema, element)
+                ? mergeInspectorWithLayoutSchema(layoutSchema, inspectorSchema, element, t)
                 : layoutSchema;
             return (
                 <PropertyEditor
@@ -720,7 +731,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                 data={{ element: elements[0], elements, documentService: inspectorDocumentService, surfaceId: deferredUiSelection.surfaceId }}
             />
         );
-    }, [deferredUiSelection, documentService, deferredDocumentVersion, documentVersion]);
+    }, [deferredUiSelection, documentService, deferredDocumentVersion, documentVersion, t]);
 
     const selectUiCanvasElement = useCallback(
         (surfaceId: string, elementId: string) => {
@@ -755,7 +766,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         const surfaceId = deferredUiSelection.surfaceId;
         return (
             <div className="shrink-0 border-b border-amber-500/25 bg-amber-950/30 px-3 py-2 text-2xs text-amber-100/90">
-                <span className="font-medium text-amber-200/95">Static checks</span>
+                <span className="font-medium text-amber-200/95">{t("properties.diagnostics.title")}</span>
                 <ul className="mt-1 list-none space-y-1 pl-0">
                     {picked.map(d => (
                         <li key={d.id} className="leading-snug">
@@ -766,7 +777,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                                     onClick={() => selectUiCanvasElement(surfaceId, d.elementId!)}
                                 >
                                     {d.message}
-                                    <span className="ml-1 text-2xs text-cyan-300/80">→ select on canvas</span>
+                                    <span className="ml-1 text-2xs text-cyan-300/80">{t("properties.diagnostics.selectOnCanvas")}</span>
                                 </button>
                             ) : (
                                 <span className="text-amber-100/90">{d.message}</span>
@@ -775,8 +786,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                     ))}
                 </ul>
                 <span className="mt-2 block text-2xs leading-snug text-fg-subtle">
-                    Graph structure and binding issues: open the Blueprint editor tab from the Blueprint section. Live
-                    execution, node enter/exit, and Host API traces appear in Dev Mode only.
+                    {t("properties.diagnostics.help")}
                 </span>
             </div>
         );
@@ -787,6 +797,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         deferredDocumentVersion,
         deferredGraphVersion,
         selectUiCanvasElement,
+        t,
     ]);
 
     // Load asset metadata when asset changes
@@ -945,8 +956,8 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     // Get asset schema
     const assetSchema = useMemo(() => {
         if (!activeAsset) return null;
-        return getAssetPropertySchema(activeAsset.type);
-    }, [activeAsset?.type]);
+        return getAssetPropertySchema(activeAsset.type, t);
+    }, [activeAsset?.type, t]);
 
     // Render appropriate property editor
     const renderPropertyEditor = () => {
@@ -976,8 +987,8 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                 <div className="flex-1 flex items-center justify-center p-4">
                     <div className="text-center text-fg-subtle py-8">
                         <Settings className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p className="text-sm">No item selected</p>
-                        <p className="text-xs mt-1">Select an item to view its properties</p>
+                        <p className="text-sm">{t("properties.panel.noSelection")}</p>
+                        <p className="text-xs mt-1">{t("properties.panel.noSelectionHint")}</p>
                     </div>
                 </div>
             );

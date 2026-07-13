@@ -31,6 +31,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SET_BGM_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_SET_GAME_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_SET_GLOBAL_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_SET_OUTPUT_RESOLUTION,
     BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_ENABLED,
@@ -89,6 +90,22 @@ const sentenceCpsIn: BlueprintNodePinDef = {
     semantic: "data",
     valueType: "float",
     label: "CPS",
+    allowInlineLiteral: true,
+};
+const outputWidthIn: BlueprintNodePinDef = {
+    id: "width",
+    kind: "input",
+    semantic: "data",
+    valueType: "float",
+    label: "Width",
+    allowInlineLiteral: true,
+};
+const outputHeightIn: BlueprintNodePinDef = {
+    id: "height",
+    kind: "input",
+    semantic: "data",
+    valueType: "float",
+    label: "Height",
     allowInlineLiteral: true,
 };
 const GRAPH_KINDS = ["event", "macro"] as const;
@@ -352,6 +369,24 @@ function resolveSentenceCps(ctx: Parameters<NonNullable<BlueprintNodeDef["execut
         throw new BlueprintGraphExecutionError("CPS must be a positive number", ctx.node.id);
     }
     return cps;
+}
+
+function resolveOutputDimension(
+    ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0],
+    portId: "width" | "height",
+): number {
+    const value = resolveDataPinValue(ctx.graph, ctx.node.id, portId, ctx.params, ctx.blueprintLocals, 0, {
+        hostAdapter: ctx.hostAdapter,
+        eventPayload: ctx.eventPayload,
+        listItemScope: ctx.listItemScope,
+        instanceKey: ctx.instanceKey,
+        executionOwner: ctx.executionOwner,
+    });
+    const num = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(num) || num <= 0) {
+        throw new BlueprintGraphExecutionError(`Output resolution ${portId} must be a positive number`, ctx.node.id);
+    }
+    return num;
 }
 
 function resolvePreferenceValue(
@@ -769,6 +804,22 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         pins: [execIn, execNext, sentenceCpsIn],
         async execute(ctx) {
             await requireHostApi(ctx).game.setSentenceSpeed(resolveSentenceCps(ctx));
+            return { nextPort: "next" };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_SET_OUTPUT_RESOLUTION,
+        displayName: "Set Output Resolution",
+        category: "Game",
+        keywords: ["game", "output", "resolution", "render", "quality", "clarity", "size", "viewport", "downsample", "nlr"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext, outputWidthIn, outputHeightIn],
+        async execute(ctx) {
+            const width = resolveOutputDimension(ctx, "width");
+            const height = resolveOutputDimension(ctx, "height");
+            await requireHostApi(ctx).game.setOutputResolution(width, height);
             return { nextPort: "next" };
         },
     },

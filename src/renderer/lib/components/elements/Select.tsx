@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Check } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { Button } from "./Button";
 import { cn } from "../../utils/cn";
 
@@ -60,7 +61,7 @@ export function Select({
     options,
     value,
     onChange,
-    placeholder = "Please select...",
+    placeholder,
     disabled = false,
     size = "md",
     variant = "default",
@@ -73,6 +74,8 @@ export function Select({
     menuDataAttributes,
     menuZIndex,
 }: SelectProps) {
+    const { t } = useTranslation();
+    const resolvedPlaceholder = placeholder ?? t("dialogs.select.placeholder");
     const [isOpen, setIsOpen] = useState(false);
     const selectRef = useRef<HTMLDivElement>(null);
     const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -297,7 +300,7 @@ export function Select({
                         <span className="shrink-0 text-fg-muted">{selectedOption.icon}</span>
                     ) : null}
                     <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-                        <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
+                        <span className="truncate">{selectedOption ? selectedOption.label : resolvedPlaceholder}</span>
                         {selectedOption?.secondaryLabel ? (
                             <span className="shrink-0 text-2xs text-fg-subtle">
                                 {selectedOption.secondaryLabel}
@@ -326,7 +329,7 @@ export function Combobox({
     options,
     value,
     onChange,
-    placeholder = "Search or select...",
+    placeholder,
     disabled = false,
     size = "md",
     variant = "default",
@@ -336,6 +339,8 @@ export function Combobox({
 }: SelectProps & {
     filterOptions?: boolean;
 }) {
+    const { t } = useTranslation();
+    const resolvedPlaceholder = placeholder ?? t("dialogs.select.searchPlaceholder");
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [filteredOptions, setFilteredOptions] = useState(options);
@@ -431,7 +436,7 @@ export function Combobox({
                     value={isOpen ? searchTerm : displayValue}
                     onChange={handleInputChange}
                     onFocus={() => !disabled && setIsOpen(true)}
-                    placeholder={placeholder}
+                    placeholder={resolvedPlaceholder}
                     disabled={disabled}
                     className={cn(
                         "w-full bg-transparent text-fg placeholder-fg-subtle",

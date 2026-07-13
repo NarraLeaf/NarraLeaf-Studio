@@ -8,6 +8,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui";
 import { blurSidebarRailFocusIfLeavingRail } from "./blurSidebarRailFocus";
 import { SidebarPanelStack } from "./SidebarPanelStack";
+import { useTranslation } from "@/lib/i18n";
 
 interface RightSidebarProps {
     panelId: string;
@@ -21,6 +22,7 @@ interface RightSidebarProps {
  * Manages focus state and visual focus indicator
  */
 export function RightSidebar({ panelId, onClose, width }: RightSidebarProps) {
+    const { t } = useTranslation();
     const { panels } = useRegistry();
     const { context } = useWorkspace();
     const rightPanels = panels.filter((p) => p.position === PanelPosition.Right);
@@ -75,8 +77,8 @@ export function RightSidebar({ panelId, onClose, width }: RightSidebarProps) {
                 <button
                     onClick={onClose}
                     className="w-6 h-6 rounded flex items-center justify-center text-fg-muted hover:bg-fill hover:text-white transition-colors cursor-default"
-                    aria-label="Close panel"
-                    title="Close panel"
+                    aria-label={t("workspace.shell.closePanel")}
+                    title={t("workspace.shell.closePanel")}
                 >
                     <X className="w-4 h-4" />
                 </button>

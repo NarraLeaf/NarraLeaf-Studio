@@ -1,4 +1,5 @@
 import { Sparkles } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { EditorComponentProps } from "../types";
 
 /**
@@ -6,6 +7,7 @@ import { EditorComponentProps } from "../types";
  * Displays a welcome screen with quick actions and getting started guide
  */
 export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
+    const { t } = useTranslation();
     return (
         <div className="h-full overflow-auto bg-surface">
             <div className="max-w-4xl mx-auto py-12 px-6">
@@ -13,36 +15,36 @@ export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
                 <div className="text-center mb-12">
                     <div className="flex items-center justify-center gap-3 mb-4">
                         <Sparkles className="w-12 h-12 text-primary" />
-                        <h1 className="text-4xl font-bold text-white">NarraLeaf Studio</h1>
+                        <h1 className="text-4xl font-bold text-white">{t("common.appName")}</h1>
                     </div>
                     <p className="text-lg text-fg-muted">
-                        All-in-one IDE for NarraLeaf Projects.
+                        {t("welcome.tagline")}
                     </p>
                 </div>
 
                 {/* Getting Started */}
                 <div className="bg-surface-sunken rounded-lg p-6 border border-edge">
-                    <h2 className="text-xl font-semibold text-white mb-4">Getting Started</h2>
+                    <h2 className="text-xl font-semibold text-white mb-4">{t("welcome.gettingStarted.title")}</h2>
                     <div className="space-y-4">
                         <GettingStartedStep
                             number={1}
-                            title="Explore the Workspace"
-                            description="The left sidebar contains the asset manager and other panels. The right side can add property inspectors and other tools."
+                            title={t("welcome.gettingStarted.step1.title")}
+                            description={t("welcome.gettingStarted.step1.description")}
                         />
                         <GettingStartedStep
                             number={2}
-                            title="Manage Assets"
-                            description="Import images, audio, video, etc. into the Assets panel."
+                            title={t("welcome.gettingStarted.step2.title")}
+                            description={t("welcome.gettingStarted.step2.description")}
                         />
                         <GettingStartedStep
                             number={3}
-                            title="Create Story"
-                            description="Create game scenes and dialogs using the story editor. "
+                            title={t("welcome.gettingStarted.step3.title")}
+                            description={t("welcome.gettingStarted.step3.description")}
                         />
                         <GettingStartedStep
                             number={4}
-                            title="Test Run"
-                            description="Click the run button to preview the game effect, and debug and modify as needed."
+                            title={t("welcome.gettingStarted.step4.title")}
+                            description={t("welcome.gettingStarted.step4.description")}
                         />
                     </div>
                 </div>

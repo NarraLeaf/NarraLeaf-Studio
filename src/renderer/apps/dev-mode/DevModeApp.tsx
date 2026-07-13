@@ -1,8 +1,10 @@
 import { AppLayout } from "@/lib/components/layout";
+import { useTranslation } from "@/lib/i18n";
 import { DevModeContent } from "./components/DevModeContent";
 import { useDevModePayload } from "./hooks/useDevModePayload";
 
 export function DevModeApp() {
+    const { t } = useTranslation();
     const {
         bundle,
         projectPath,
@@ -16,7 +18,7 @@ export function DevModeApp() {
     } = useDevModePayload();
 
     return (
-        <AppLayout title="Dev Mode" iconSrc="/favicon.ico">
+        <AppLayout title={t("devMode.title")} iconSrc="/favicon.ico">
             <div className="h-full w-full min-h-0 bg-surface overflow-hidden">
                 <DevModeContent
                     bundle={bundle}

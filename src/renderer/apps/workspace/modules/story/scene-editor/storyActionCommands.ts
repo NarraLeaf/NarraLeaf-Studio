@@ -31,6 +31,10 @@ export type ActionCommandId =
     | "choiceOption"
     | "condition"
     | "conditionBranch"
+    | "repeat"
+    | "parallel"
+    | "race"
+    | "sequence"
     | "background"
     | "characterEnter"
     | "characterMove"
@@ -161,12 +165,14 @@ export const ACTION_COMMANDS: ActionCommand[] = [
     { id: "characterExit", category: "character", label: "Character exit", detail: "Hide a character image", icon: EyeOff, nlrCapability: "Displayable.hide" },
     { id: "background", category: "scene", label: "Background", detail: "Scene.setBackground asset or color", icon: Image, nlrCapability: "Scene.setBackground" },
     { id: "jump", category: "scene", label: "Jump scene", detail: "Scene.jumpTo another scene", icon: Route, nlrCapability: "Scene.jumpTo" },
-    { id: "choice", category: "control", label: "Menu choice", detail: "Menu.prompt choice container", icon: Route, nlrCapability: "Menu.prompt" },
-    { id: "choiceOption", category: "control", label: "Menu option", detail: "Menu.choose option", icon: Route, nlrCapability: "Menu.choose" },
-    { id: "condition", category: "control", label: "Condition", detail: "Condition.If branch container", icon: Settings2, nlrCapability: "Condition.If" },
-    { id: "conditionBranch", category: "control", label: "Condition branch", detail: "If / else-if / else branch", icon: Settings2, nlrCapability: "Condition.ElseIf/Else" },
-    { id: "waitDuration", category: "control", label: "Wait duration", detail: "Control.sleep milliseconds", icon: Clock, nlrCapability: "Control.sleep" },
-    { id: "waitClick", category: "control", label: "Wait click", detail: "Control.waitForClick", icon: Clock, nlrCapability: "Control.waitForClick" },
+    { id: "choice", category: "control", label: "Menu", detail: "Let the player choose between options", icon: Route, nlrCapability: "Menu.prompt" },
+    { id: "condition", category: "control", label: "Condition (if…)", detail: "Run actions only when a condition is met", icon: Settings2, nlrCapability: "Condition.If" },
+    { id: "repeat", category: "control", label: "Repeat", detail: "Run the enclosed actions a number of times", icon: Settings2, nlrCapability: "Control.repeat" },
+    { id: "parallel", category: "control", label: "Run at the same time", detail: "Run all enclosed actions together", icon: Settings2, nlrCapability: "Control.all" },
+    { id: "race", category: "control", label: "Race — first to finish", detail: "Run all, continue when the first finishes", icon: Settings2, nlrCapability: "Control.any" },
+    { id: "sequence", category: "control", label: "In order", detail: "Run the enclosed actions one after another", icon: Settings2, nlrCapability: "Control.do" },
+    { id: "waitDuration", category: "control", label: "Wait duration", detail: "Pause for a number of milliseconds", icon: Clock, nlrCapability: "Control.sleep" },
+    { id: "waitClick", category: "control", label: "Wait for click", detail: "Pause until the player clicks", icon: Clock, nlrCapability: "Control.waitForClick" },
     { id: "setVariable", category: "data", label: "Set variable", detail: "Scene local or Story persistent value", icon: Variable, nlrCapability: "Persistent.set" },
     { id: "executeScript", category: "data", label: "Execute Script", detail: "Run a Story Action Blueprint", icon: Puzzle, nlrCapability: "Script.execute" },
     { id: "imageCreate", category: "image", label: "Image", detail: "Create or update a named stage image", icon: Image, nlrCapability: "Image" },
@@ -248,6 +254,14 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
             return { ...base, kind: "control", payload: { control: "condition" } };
         case "conditionBranch":
             return { ...base, kind: "control", payload: { control: "conditionBranch", branch: "if" } };
+        case "repeat":
+            return { ...base, kind: "control", payload: { control: "repeat", times: 2 } };
+        case "parallel":
+            return { ...base, kind: "control", payload: { control: "parallel", mode: "all" } };
+        case "race":
+            return { ...base, kind: "control", payload: { control: "race", mode: "any" } };
+        case "sequence":
+            return { ...base, kind: "control", payload: { control: "sequence", mode: "do" } };
         case "background":
             return { ...base, kind: "action", payload: { action: "setBackground" } };
         case "characterEnter":

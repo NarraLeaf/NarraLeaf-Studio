@@ -74,5 +74,11 @@ export type GameAppOverlayContext = {
 export type GameAppFrameContext = {
     activeSurface: UISurface;
     gameViewport: { width: number; height: number } | null;
+    /**
+     * Runtime output (render) resolution set via the `Set Output Resolution` blueprint node, or
+     * `null` for native rendering. Shares the design aspect ratio (mismatches are rejected before
+     * they reach here). Hosts lay the stage out at this fixed size and CSS-upscale it to fit.
+     */
+    outputResolution: { width: number; height: number } | null;
     children: ReactNode;
 };

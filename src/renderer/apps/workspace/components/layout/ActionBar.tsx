@@ -12,6 +12,7 @@ import type { DevModeStatus } from "@shared/types/devMode";
 import type { PreviewStatus } from "@shared/types/gameRuntime";
 import { getActionGroupItems, getVisibleActionMenuItems, isActionVisible } from "../ui/actionMenuModel";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "../../modules/actions/runtimeActionStatus";
+import { useTranslation } from "@/lib/i18n";
 
 interface ActionBarProps {
     hiddenGroupIds?: string[];
@@ -23,6 +24,7 @@ interface ActionBarProps {
  * Filters actions based on focus context and when conditions
  */
 export function ActionBar({ hiddenGroupIds = [] }: ActionBarProps) {
+    const { t } = useTranslation();
     const { actions, actionGroups } = useRegistry();
     const { workspace, context } = useWorkspace();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
@@ -110,8 +112,8 @@ export function ActionBar({ hiddenGroupIds = [] }: ActionBarProps) {
                         : "text-fg-muted hover:bg-fill hover:text-white";
                 const title = isRuntimeActionActive
                     ? isDevModeAction
-                        ? "Stop Dev Mode"
-                        : "Stop Preview"
+                        ? t("workspace.shell.stopDevMode")
+                        : t("workspace.shell.stopPreview")
                     : action.tooltip || action.label;
 
                 return (

@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { X } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { cn } from "../../utils/cn";
 
 /** Footer action buttons — same classes as DialogContainer (workspace input / info dialogs). */
@@ -56,6 +57,7 @@ export function Modal({
     footer,
     className = "",
 }: ModalProps) {
+    const { t } = useTranslation();
     useEffect(() => {
         const handleEscape = (e: KeyboardEvent) => {
             if (closeOnEscape && e.key === "Escape") {
@@ -107,7 +109,7 @@ export function Modal({
                                 type="button"
                                 onClick={onClose}
                                 className="p-1 rounded-md hover:bg-fill transition-colors ml-auto"
-                                aria-label="Close modal"
+                                aria-label={t("dialogs.modal.close")}
                             >
                                 <X className="w-5 h-5 text-fg-muted" strokeWidth={2} />
                             </button>
@@ -138,10 +140,10 @@ export function ConfirmModal({
     isOpen,
     onClose,
     onConfirm,
-    title = "Confirm action",
+    title,
     message,
-    confirmText = "Confirm",
-    cancelText = "Cancel",
+    confirmText,
+    cancelText,
     variant = "danger",
     isLoading = false,
 }: {
@@ -155,11 +157,15 @@ export function ConfirmModal({
     variant?: "primary" | "danger";
     isLoading?: boolean;
 }) {
+    const { t } = useTranslation();
+    const resolvedTitle = title ?? t("dialogs.modal.confirmTitle");
+    const resolvedConfirmText = confirmText ?? t("common.confirm");
+    const resolvedCancelText = cancelText ?? t("common.cancel");
     return (
         <Modal
             isOpen={isOpen}
             onClose={onClose}
-            title={title}
+            title={resolvedTitle}
             size="sm"
             footer={
                 <div className="flex items-center gap-2">
@@ -169,7 +175,7 @@ export function ConfirmModal({
                         onClick={onClose}
                         disabled={isLoading}
                     >
-                        {cancelText}
+                        {resolvedCancelText}
                     </button>
                     <button
                         type="button"
@@ -180,7 +186,7 @@ export function ConfirmModal({
                         onClick={onConfirm}
                         disabled={isLoading}
                     >
-                        {confirmText}
+                        {resolvedConfirmText}
                     </button>
                 </div>
             }
@@ -196,9 +202,9 @@ export function ConfirmModal({
 export function AlertModal({
     isOpen,
     onClose,
-    title = "Notice",
+    title,
     message,
-    confirmText = "OK",
+    confirmText,
 }: {
     isOpen: boolean;
     onClose: () => void;
@@ -206,11 +212,14 @@ export function AlertModal({
     message: string;
     confirmText?: string;
 }) {
+    const { t } = useTranslation();
+    const resolvedTitle = title ?? t("dialogs.modal.alertTitle");
+    const resolvedConfirmText = confirmText ?? t("common.ok");
     return (
         <Modal
             isOpen={isOpen}
             onClose={onClose}
-            title={title}
+            title={resolvedTitle}
             size="sm"
             footer={
                 <button
@@ -218,7 +227,7 @@ export function AlertModal({
                     className={dialogFooterButtonClass({ variant: "primary" })}
                     onClick={onClose}
                 >
-                    {confirmText}
+                    {resolvedConfirmText}
                 </button>
             }
         >

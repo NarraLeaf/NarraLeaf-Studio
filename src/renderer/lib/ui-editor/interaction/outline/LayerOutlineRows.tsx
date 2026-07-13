@@ -5,6 +5,7 @@ import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { uiElementTypeAcceptsChildren } from "@shared/types/ui-editor/document";
 import { DEFAULT_UI_ROOT_NAME } from "@shared/constants/ui-editor";
 import { getOutlineVisualChildren } from "@/lib/ui-editor/interaction/outline/outlineDropGeometry";
+import { useTranslation } from "@/lib/i18n";
 
 export const OUTLINE_ROOT_WIDGET_TYPE = "nl.root";
 const ROW_LEFT_PADDING = 6;
@@ -72,6 +73,7 @@ export function OutlineRow({
     onToggleVisible,
     onStartRename,
 }: OutlineRowBase & { element: UIElement; depth: number }) {
+    const { t } = useTranslation();
     const { attributes, listeners, setActivatorNodeRef, setNodeRef, isDragging } = useDraggable({
         id: element.id,
     });
@@ -131,7 +133,7 @@ export function OutlineRow({
                     type="button"
                     className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-subtle transition-colors hover:bg-fill-subtle hover:text-white disabled:pointer-events-none disabled:opacity-25"
                     disabled={!hasChildren}
-                    aria-label={expanded ? "Collapse" : "Expand"}
+                    aria-label={expanded ? t("common.collapse") : t("common.expand")}
                     onClick={e => {
                         e.stopPropagation();
                         if (!hasChildren) {
@@ -154,7 +156,7 @@ export function OutlineRow({
                     type="button"
                     ref={setActivatorNodeRef}
                     className="flex h-5 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded text-fg-subtle/70 opacity-60 transition hover:text-white hover:opacity-100 active:cursor-grabbing group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100"
-                    aria-label="Drag to reorder"
+                    aria-label={t("widgetChrome.outline.dragToReorder")}
                     {...attributes}
                     {...listeners}
                 >
@@ -190,7 +192,7 @@ export function OutlineRow({
                     className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-subtle transition hover:bg-fill-subtle hover:text-white disabled:pointer-events-none disabled:opacity-25 ${
                         visible ? "opacity-0 group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100" : "opacity-100"
                     }`}
-                    aria-label={visible ? "Hide" : "Show"}
+                    aria-label={visible ? t("common.hide") : t("common.show")}
                     disabled={element.type === OUTLINE_ROOT_WIDGET_TYPE}
                     onClick={e => onToggleVisible(element, e)}
                 >

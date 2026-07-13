@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, Lock } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { TextArea } from "@/lib/components/elements";
 import type { ProjectMetadata } from "@/lib/workspace/project/project";
@@ -8,17 +9,18 @@ import type { ProjectSectionProps } from "./types";
 type MetadataTextKey = "version" | "author" | "website" | "description";
 
 export function ProjectDetailsSection({ projectService, uiService, config, onConfigChange }: ProjectSectionProps) {
+    const { t } = useTranslation();
     const metadata = config.metadata ?? {};
 
     const commitName = useCallback(async (value: string) => {
         const nextName = value.trim();
         if (!nextName) {
-            uiService?.showNotification("Application name is required.", "warning");
+            uiService?.showNotification(t("project.details.nameRequired"), "warning");
             throw new Error("empty-name");
         }
         const next = await projectService.updateProjectName(nextName);
         onConfigChange(next);
-    }, [onConfigChange, projectService, uiService]);
+    }, [onConfigChange, projectService, uiService, t]);
 
     const commitMetadata = useCallback(async (key: MetadataTextKey, value: string) => {
         const next = await projectService.updateProjectMetadata({ [key]: value } as Partial<ProjectMetadata>);
@@ -28,22 +30,22 @@ export function ProjectDetailsSection({ projectService, uiService, config, onCon
     return (
         <div className="grid gap-4">
             <DetailField
-                label="Application Name"
+                label={t("project.details.nameLabel")}
                 initialValue={config.name ?? ""}
                 required
-                placeholder="Application name"
+                placeholder={t("project.details.namePlaceholder")}
                 onCommit={commitName}
                 onError={message => uiService?.showNotification(message, "error")}
             />
 
             <ReadOnlyField
-                label="Identifier"
+                label={t("project.details.identifierLabel")}
                 value={config.identifier ?? ""}
-                helper="Set when the project was created and used for packaging."
+                helper={t("project.details.identifierHelper")}
             />
 
             <DetailField
-                label="Version"
+                label={t("project.details.versionLabel")}
                 initialValue={metadata.version ?? ""}
                 placeholder="1.0.0"
                 onCommit={value => commitMetadata("version", value)}
@@ -51,15 +53,15 @@ export function ProjectDetailsSection({ projectService, uiService, config, onCon
             />
 
             <DetailField
-                label="Author"
+                label={t("project.details.authorLabel")}
                 initialValue={metadata.author ?? ""}
-                placeholder="Author, organization, or email"
+                placeholder={t("project.details.authorPlaceholder")}
                 onCommit={value => commitMetadata("author", value)}
                 onError={message => uiService?.showNotification(message, "error")}
             />
 
             <DetailField
-                label="Website"
+                label={t("project.details.websiteLabel")}
                 initialValue={metadata.website ?? ""}
                 placeholder="https://example.com"
                 onCommit={value => commitMetadata("website", value)}
@@ -67,9 +69,9 @@ export function ProjectDetailsSection({ projectService, uiService, config, onCon
             />
 
             <DetailField
-                label="Description"
+                label={t("common.description")}
                 initialValue={metadata.description ?? ""}
-                placeholder="Describe your project..."
+                placeholder={t("project.details.descriptionPlaceholder")}
                 multiline
                 onCommit={value => commitMetadata("description", value)}
                 onError={message => uiService?.showNotification(message, "error")}
@@ -100,6 +102,7 @@ function DetailField({
     required?: boolean;
     multiline?: boolean;
 }) {
+    const { t } = useTranslation();
     const [draft, setDraft] = useState(initialValue);
     const [saving, setSaving] = useState(false);
 
@@ -130,7 +133,7 @@ function DetailField({
         <label className="grid gap-1.5">
             <div className="flex items-center gap-1.5">
                 <span className="text-xs font-medium text-fg-subtle">{label}</span>
-                {required ? <span className="text-2xs text-fg-subtle">Required</span> : null}
+                {required ? <span className="text-2xs text-fg-subtle">{t("project.details.required")}</span> : null}
                 {saving ? <Loader2 className="h-3 w-3 animate-spin text-fg-subtle" /> : null}
             </div>
             {multiline ? (

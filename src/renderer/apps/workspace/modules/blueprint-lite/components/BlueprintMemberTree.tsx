@@ -17,6 +17,8 @@ import { createInputDialog } from "@/lib/components/dialogs";
 import { GLOBAL_MAIN_OWNER_KEY } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import { BlueprintVariableDialogContent, type BlueprintVariableDialogValue } from "./BlueprintVariableDialogContent";
 import { ChevronDown, ChevronRight, Plus, Save, Trash2 } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
+import type { UseTranslation } from "@/lib/i18n";
 
 const FIELD_INPUT =
     "w-full rounded-md border border-edge-strong bg-fill-subtle px-2 py-1 text-2xs text-fg outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/30";
@@ -132,6 +134,7 @@ function BlueprintVariableRow({
     scopeLabel: string;
     accentClass: string;
 }) {
+    const { t } = useTranslation();
     const [draftName, setDraftName] = useState(v.name);
 
     useEffect(() => {
@@ -139,13 +142,13 @@ function BlueprintVariableRow({
     }, [v.id, v.name]);
 
     const commitName = useCallback(() => {
-        const t = draftName.trim();
-        if (!t) {
+        const next = draftName.trim();
+        if (!next) {
             setDraftName(v.name);
             return;
         }
-        if (t !== v.name) {
-            localBp.renameBlueprintVariable(blueprintId, v.id, t);
+        if (next !== v.name) {
+            localBp.renameBlueprintVariable(blueprintId, v.id, next);
         }
     }, [blueprintId, draftName, localBp, v.id, v.name]);
 
@@ -162,8 +165,8 @@ function BlueprintVariableRow({
                 </div>
                 <button
                     type="button"
-                    title={`Delete variable "${v.name}"`}
-                    aria-label={`Delete variable ${v.name}`}
+                    title={t("blueprint.memberTree.deleteVariableLabel", { name: v.name })}
+                    aria-label={t("blueprint.memberTree.deleteVariableLabel", { name: v.name })}
                     className="-m-0.5 rounded p-1 text-red-400/90 opacity-0 transition-opacity hover:bg-red-500/15 hover:text-red-300 group-hover:opacity-100"
                     onClick={() => {
                         if (!uiService) {
@@ -171,8 +174,8 @@ function BlueprintVariableRow({
                         }
                         void (async () => {
                             const ok = await uiService.showConfirm(
-                                `Delete variable "${v.name}"?`,
-                                "Nodes that referenced this variable will lose their selection. This cannot be undone.",
+                                t("blueprint.memberTree.deleteVariableConfirm", { name: v.name }),
+                                t("blueprint.memberTree.deleteVariableDetail"),
                             );
                             if (ok) {
                                 localBp.deleteBlueprintVariable(blueprintId, v.id);
@@ -201,7 +204,7 @@ function BlueprintVariableRow({
                 }}
             />
             <div>
-                <div className="mb-0.5 text-2xs text-fg-subtle">Default</div>
+                <div className="mb-0.5 text-2xs text-fg-subtle">{t("blueprint.memberTree.default")}</div>
                 <BlueprintLiteralValueControl
                     variant="inspector"
                     value={v.defaultValue ?? null}
@@ -225,6 +228,7 @@ function BlueprintPersistentVariableRow({
     localBp: LocalBlueprintService;
     uiService: UIService | null;
 }) {
+    const { t } = useTranslation();
     const [draftName, setDraftName] = useState(v.name);
 
     useEffect(() => {
@@ -232,13 +236,13 @@ function BlueprintPersistentVariableRow({
     }, [v.id, v.name]);
 
     const commitName = useCallback(() => {
-        const t = draftName.trim();
-        if (!t) {
+        const next = draftName.trim();
+        if (!next) {
             setDraftName(v.name);
             return;
         }
-        if (t !== v.name) {
-            localBp.renamePersistentVariable(historyBlueprintId, v.id, t);
+        if (next !== v.name) {
+            localBp.renamePersistentVariable(historyBlueprintId, v.id, next);
         }
     }, [draftName, historyBlueprintId, localBp, v.id, v.name]);
 
@@ -246,12 +250,12 @@ function BlueprintPersistentVariableRow({
         <div className="group rounded border border-edge bg-[#0d0f12] px-2 py-1.5 space-y-1.5">
             <div className="flex items-center justify-between gap-1">
                 <label htmlFor={`persistent-variable-name-${v.id}`} className="text-2xs font-medium text-fg-subtle">
-                    Name
+                    {t("common.name")}
                 </label>
                 <button
                     type="button"
-                    title={`Delete persistent variable "${v.name}"`}
-                    aria-label={`Delete persistent variable ${v.name}`}
+                    title={t("blueprint.memberTree.deletePersistentVariableLabel", { name: v.name })}
+                    aria-label={t("blueprint.memberTree.deletePersistentVariableLabel", { name: v.name })}
                     className="-m-0.5 rounded p-1 text-red-400/90 opacity-0 transition-opacity hover:bg-red-500/15 hover:text-red-300 group-hover:opacity-100"
                     onClick={() => {
                         if (!uiService) {
@@ -259,8 +263,8 @@ function BlueprintPersistentVariableRow({
                         }
                         void (async () => {
                             const ok = await uiService.showConfirm(
-                                `Delete persistent variable "${v.name}"?`,
-                                "Nodes that referenced this persistent variable will lose their selection. Saved player data for this key is not deleted.",
+                                t("blueprint.memberTree.deletePersistentVariableConfirm", { name: v.name }),
+                                t("blueprint.memberTree.deletePersistentVariableDetail"),
                             );
                             if (ok) {
                                 localBp.deletePersistentVariable(historyBlueprintId, v.id);
@@ -290,7 +294,7 @@ function BlueprintPersistentVariableRow({
                 }}
             />
             <div>
-                <div className="mb-0.5 text-2xs text-fg-subtle">Default</div>
+                <div className="mb-0.5 text-2xs text-fg-subtle">{t("blueprint.memberTree.default")}</div>
                 <BlueprintLiteralValueControl
                     variant="inspector"
                     value={v.defaultValue ?? null}
@@ -315,12 +319,15 @@ function sortedPersistentVariables(variables: Record<string, BlueprintPersistent
     return Object.values(variables ?? {}).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function buildVariableGroups(input: {
-    pageBlueprint?: Blueprint;
-    pageBlueprintId?: string;
-    globalBlueprint?: Blueprint;
-    globalBlueprintId?: string;
-}): VariableGroup[] {
+function buildVariableGroups(
+    input: {
+        pageBlueprint?: Blueprint;
+        pageBlueprintId?: string;
+        globalBlueprint?: Blueprint;
+        globalBlueprintId?: string;
+    },
+    t: UseTranslation["t"],
+): VariableGroup[] {
     const groups: VariableGroup[] = [];
     const used = new Set<string>();
 
@@ -336,13 +343,13 @@ function buildVariableGroups(input: {
         input.pageBlueprint && input.pageBlueprintId
             ? {
                   key: "page",
-                  label: "Page variables",
-                  scopeLabel: "Page",
+                  label: t("blueprint.memberTree.pageVariables"),
+                  scopeLabel: t("blueprint.memberTree.pageScope"),
                   blueprintId: input.pageBlueprintId,
                   blueprint: input.pageBlueprint,
                   defaultOpen: false,
                   accentClass: "text-sky-200/80",
-                  emptyText: "No page variables.",
+                  emptyText: t("blueprint.memberTree.pageEmpty"),
               }
             : null,
     );
@@ -351,13 +358,13 @@ function buildVariableGroups(input: {
         input.globalBlueprint && input.globalBlueprintId
             ? {
                   key: "global",
-                  label: "Global variables",
-                  scopeLabel: "Global",
+                  label: t("blueprint.memberTree.globalVariables"),
+                  scopeLabel: t("blueprint.memberTree.globalScope"),
                   blueprintId: input.globalBlueprintId,
                   blueprint: input.globalBlueprint,
                   defaultOpen: false,
                   accentClass: "text-violet-200/80",
-                  emptyText: "No global variables.",
+                  emptyText: t("blueprint.memberTree.globalEmpty"),
               }
             : null,
     );
@@ -379,6 +386,7 @@ export function BlueprintMemberTree({
     onAddLayer,
     onDeleteLayer,
 }: Props) {
+    const { t } = useTranslation();
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuLayerId, setMenuLayerId] = useState<string | null>(null);
     const { context, isInitialized } = useWorkspace();
@@ -406,8 +414,9 @@ export function BlueprintMemberTree({
                 let dialogId: string | null = null;
                 let settled = false;
                 const existingNames = sortedVariables(group.blueprint).map(v => v.name);
+                const defaultVariableName = t("blueprint.memberTree.defaultVariableName");
                 const selection: BlueprintVariableDialogValue = {
-                    name: "Variable",
+                    name: defaultVariableName,
                     valueType: "string",
                     defaultValue: "",
                     valid: true,
@@ -430,7 +439,7 @@ export function BlueprintMemberTree({
 
                 const handleConfirm = () => {
                     if (!selection.valid) {
-                        uiService.showNotification("Check the variable name and data type before creating it.", "warning");
+                        uiService.showNotification(t("blueprint.memberTree.createVariableInvalid"), "warning");
                         return;
                     }
                     safeResolve({ ...selection });
@@ -443,10 +452,10 @@ export function BlueprintMemberTree({
                 };
 
                 dialogId = uiService.dialogs.show({
-                    title: `Create ${group.scopeLabel} variable`,
+                    title: t("blueprint.memberTree.createVariableTitle", { scope: group.scopeLabel }),
                     content: (
                         <BlueprintVariableDialogContent
-                            defaultName="Variable"
+                            defaultName={defaultVariableName}
                             existingNames={existingNames}
                             onChange={value => {
                                 selection.name = value.name;
@@ -460,11 +469,11 @@ export function BlueprintMemberTree({
                     width: 420,
                     buttons: [
                         {
-                            label: "Cancel",
+                            label: t("common.cancel"),
                             onClick: handleCancel,
                         },
                         {
-                            label: "Create",
+                            label: t("common.create"),
                             primary: true,
                             onClick: handleConfirm,
                         },
@@ -473,7 +482,7 @@ export function BlueprintMemberTree({
                 });
             });
         },
-        [uiService],
+        [uiService, t],
     );
 
     const promptCreatePersistentVariable = useCallback(
@@ -484,8 +493,9 @@ export function BlueprintMemberTree({
             return new Promise(resolve => {
                 let dialogId: string | null = null;
                 let settled = false;
+                const defaultPersistentName = t("blueprint.memberTree.defaultPersistentName");
                 const selection: BlueprintVariableDialogValue = {
-                    name: "Persistent",
+                    name: defaultPersistentName,
                     valueType: "string",
                     defaultValue: "",
                     valid: true,
@@ -508,7 +518,7 @@ export function BlueprintMemberTree({
 
                 const handleConfirm = () => {
                     if (!selection.valid) {
-                        uiService.showNotification("Check the persistent variable name and data type before creating it.", "warning");
+                        uiService.showNotification(t("blueprint.memberTree.createPersistentInvalid"), "warning");
                         return;
                     }
                     safeResolve({ ...selection });
@@ -521,10 +531,12 @@ export function BlueprintMemberTree({
                 };
 
                 dialogId = uiService.dialogs.show({
-                    title: "Create Persistent variable",
+                    title: t("blueprint.memberTree.createVariableTitle", {
+                        scope: t("blueprint.memberTree.persistentScope"),
+                    }),
                     content: (
                         <BlueprintVariableDialogContent
-                            defaultName="Persistent"
+                            defaultName={defaultPersistentName}
                             existingNames={existingNames}
                             onChange={value => {
                                 selection.name = value.name;
@@ -538,11 +550,11 @@ export function BlueprintMemberTree({
                     width: 420,
                     buttons: [
                         {
-                            label: "Cancel",
+                            label: t("common.cancel"),
                             onClick: handleCancel,
                         },
                         {
-                            label: "Create",
+                            label: t("common.create"),
                             primary: true,
                             onClick: handleConfirm,
                         },
@@ -551,7 +563,7 @@ export function BlueprintMemberTree({
                 });
             });
         },
-        [uiService],
+        [uiService, t],
     );
 
     const handleCreateVariable = useCallback(
@@ -585,7 +597,7 @@ export function BlueprintMemberTree({
     }, [blueprintId, localBp, onVariableGroupOpenChange, promptCreatePersistentVariable]);
 
     if (blueprint.program.kind !== "graph") {
-        return <p className="text-xs text-fg-subtle">Not a graph blueprint.</p>;
+        return <p className="text-xs text-fg-subtle">{t("blueprint.memberTree.notGraph")}</p>;
     }
 
     const blueprintDocument = localBp.getBlueprintDocument();
@@ -604,12 +616,15 @@ export function BlueprintMemberTree({
 
     const variableGroups = useMemo(
         () =>
-            buildVariableGroups({
-                pageBlueprint,
-                pageBlueprintId,
-                globalBlueprint,
-                globalBlueprintId,
-            }),
+            buildVariableGroups(
+                {
+                    pageBlueprint,
+                    pageBlueprintId,
+                    globalBlueprint,
+                    globalBlueprintId,
+                },
+                t,
+            ),
         [
             blueprint,
             blueprintDocumentRevision,
@@ -618,6 +633,7 @@ export function BlueprintMemberTree({
             globalBlueprintId,
             pageBlueprint,
             pageBlueprintId,
+            t,
         ],
     );
     const sortedPersistentList = useMemo(
@@ -634,7 +650,7 @@ export function BlueprintMemberTree({
         return [
             {
                 id: "rename",
-                label: "Rename layer...",
+                label: t("blueprint.memberTree.renameLayer"),
                 onClick: () => {
                     const id = menuLayerId;
                     hideMenu();
@@ -645,8 +661,8 @@ export function BlueprintMemberTree({
                     const cur = events[id]?.name ?? id;
                     void inputDialog
                         .show({
-                            title: "Rename layer",
-                            placeholder: "Layer name",
+                            title: t("blueprint.memberTree.renameLayerTitle"),
+                            placeholder: t("blueprint.memberTree.layerNamePlaceholder"),
                             initialValue: cur,
                             required: true,
                             maxLength: 120,
@@ -660,7 +676,7 @@ export function BlueprintMemberTree({
             },
             {
                 id: "delete",
-                label: "Delete layer...",
+                label: t("blueprint.memberTree.deleteLayer"),
                 onClick: () => {
                     const id = menuLayerId;
                     hideMenu();
@@ -670,8 +686,8 @@ export function BlueprintMemberTree({
                     }
                     void (async () => {
                         const ok = await uiService.showConfirm(
-                            "Delete this layer?",
-                            "Linked UI events will be cleared.",
+                            t("blueprint.memberTree.deleteLayerConfirm"),
+                            t("blueprint.memberTree.deleteLayerDetail"),
                         );
                         if (ok) {
                             onDeleteLayer(id);
@@ -680,20 +696,20 @@ export function BlueprintMemberTree({
                 },
             },
         ];
-    }, [blueprintId, events, hideMenu, inputDialog, localBp, menuLayerId, onDeleteLayer, uiService]);
+    }, [blueprintId, events, hideMenu, inputDialog, localBp, menuLayerId, onDeleteLayer, uiService, t]);
 
     return (
         <div className="flex h-full min-h-0 flex-col gap-4 text-xs text-fg-muted">
             <section className="shrink-0">
                 <div className="mb-1 flex items-center justify-between text-2xs font-medium text-fg-subtle">
-                    <span>Layers</span>
+                    <span>{t("blueprint.memberTree.layers")}</span>
                     <button
                         type="button"
                         className="inline-flex items-center gap-1 text-cyan-400/90 hover:text-cyan-300"
                         onClick={() => void onAddLayer()}
                     >
                         <Plus className="h-3 w-3" />
-                        New
+                        {t("common.new")}
                     </button>
                 </div>
                 <ul className="space-y-0.5">
@@ -717,11 +733,11 @@ export function BlueprintMemberTree({
                                             showMenu(e);
                                         }}
                                     >
-                                        {events[id]?.name ?? "Unnamed event"}
+                                        {events[id]?.name ?? t("blueprint.memberTree.unnamedEvent")}
                                         {errors > 0 ? (
-                                            <span className="ml-1 text-red-400">- {errors} err</span>
+                                            <span className="ml-1 text-red-400">{t("blueprint.memberTree.errorBadge", { count: errors })}</span>
                                         ) : warnings > 0 ? (
-                                            <span className="ml-1 text-amber-400">- {warnings} warn</span>
+                                            <span className="ml-1 text-amber-400">{t("blueprint.memberTree.warningBadge", { count: warnings })}</span>
                                         ) : null}
                                     </button>
                                 </li>
@@ -748,7 +764,7 @@ export function BlueprintMemberTree({
                                     onClick={() => void handleCreateVariable(group)}
                                 >
                                     <Plus className="h-3 w-3" />
-                                    New
+                                    {t("common.new")}
                                 </button>
                             }
                         >
@@ -771,7 +787,7 @@ export function BlueprintMemberTree({
                 })}
 
                 <CollapsibleSection
-                    title="Persistent variables"
+                    title={t("blueprint.memberTree.persistentVariables")}
                     titleIcon={<Save className="h-3 w-3 shrink-0 text-current" aria-hidden />}
                     defaultOpen={false}
                     open={variableGroupOpenState?.persistent ?? false}
@@ -788,7 +804,7 @@ export function BlueprintMemberTree({
                     }
                 >
                     <div className="space-y-2">
-                        {sortedPersistentList.length === 0 ? <p className="text-fg-subtle">No persistent variables.</p> : null}
+                        {sortedPersistentList.length === 0 ? <p className="text-fg-subtle">{t("blueprint.memberTree.persistentEmpty")}</p> : null}
                         {sortedPersistentList.map(v => (
                             <BlueprintPersistentVariableRow
                                 key={v.id}

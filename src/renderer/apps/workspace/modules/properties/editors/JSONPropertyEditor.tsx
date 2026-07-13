@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { FileJson } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { PropertyEditorProps } from "./PropertyEditorBase";
 import { BasePropertyEditor } from "./BasePropertyEditor";
 import { AssetType, AssetData } from "@/lib/workspace/services/assets/assetTypes";
@@ -12,6 +13,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
  * Allows editing name, tags, and description for JSON assets
  */
 export function JSONPropertyEditor({ asset, onChange }: PropertyEditorProps<AssetType.JSON>) {
+    const { t } = useTranslation();
     const { context } = useWorkspace();
     const [jsonData, setJsonData] = useState<AssetData<AssetType.JSON> | null>(null);
 
@@ -50,11 +52,13 @@ export function JSONPropertyEditor({ asset, onChange }: PropertyEditorProps<Asse
                 <div className="bg-surface-raised rounded-md p-3 border border-edge">
                     <div className="flex items-center gap-2 mb-2">
                         <FileJson className="w-4 h-4 text-fg-muted" />
-                        <span className="text-sm font-medium text-fg-muted">JSON Structure</span>
+                        <span className="text-sm font-medium text-fg-muted">{t("properties.asset.json.preview")}</span>
                     </div>
                     <div className="flex items-center justify-center bg-surface rounded p-2">
                         <div className="text-xs text-fg-subtle text-center">
-                            {jsonData.metadata.schema ? `Schema: ${jsonData.metadata.schema}` : 'No schema'}
+                            {jsonData.metadata.schema
+                                ? t("properties.asset.json.schemaValue", { schema: jsonData.metadata.schema })
+                                : t("properties.asset.json.noSchema")}
                         </div>
                     </div>
                 </div>
@@ -64,21 +68,21 @@ export function JSONPropertyEditor({ asset, onChange }: PropertyEditorProps<Asse
             {jsonData && (
                 <div>
                     <label className="block text-xs font-medium text-fg-muted mb-1">
-                        JSON Information
+                        {t("properties.asset.json.info")}
                     </label>
                     <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-1">
                         {jsonData.metadata.schema && (
                             <div className="flex justify-between text-xs">
-                                <span className="text-fg-muted">Schema:</span>
+                                <span className="text-fg-muted">{t("properties.asset.info.schema")}:</span>
                                 <span className="text-fg-muted">{jsonData.metadata.schema}</span>
                             </div>
                         )}
                         <div className="flex justify-between text-xs">
-                            <span className="text-fg-muted">Size:</span>
+                            <span className="text-fg-muted">{t("properties.asset.info.size")}:</span>
                             <span className="text-fg-muted">{(jsonData.metadata.size / 1024).toFixed(1)} KB</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-fg-muted">Hash:</span>
+                            <span className="text-fg-muted">{t("properties.asset.info.hash")}:</span>
                             <span className="text-fg-muted font-mono text-2xs">{asset.hash.slice(0, 16)}...</span>
                         </div>
                     </div>

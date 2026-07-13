@@ -7,4 +7,4 @@
 export { initI18n } from "./bootstrap";
 export { useTranslation } from "./useTranslation";
 export type { UseTranslation } from "./useTranslation";
-export { i18nStore } from "./store";
+export { i18nStore, translate, translateN } from "./store";

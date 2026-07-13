@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Check } from "lucide-react";
-import { FixedAspectRatioContainer } from "narraleaf-react";
+import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import type { DevModeBundle } from "@shared/types/devMode";
@@ -9,6 +9,7 @@ import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import type { DevModeSaveProjectRef } from "@shared/types/devModeSave";
 import { getInterface } from "@/lib/app/bridge";
+import { useTranslation } from "@/lib/i18n";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { BlueprintRuntimeDebugPanel } from "./BlueprintRuntimeDebugPanel";
@@ -39,6 +40,7 @@ function SessionErrorBanner(props: {
     onDismissSessionError: () => void;
 }): ReactNode {
     const { sessionError, onDismissSessionError } = props;
+    const { t } = useTranslation();
     if (!sessionError) {
         return null;
     }
@@ -53,7 +55,7 @@ function SessionErrorBanner(props: {
                     className="shrink-0 rounded border border-red-700/80 px-2 py-0.5 text-2xs text-red-100 hover:bg-red-900/50"
                     onClick={onDismissSessionError}
                 >
-                    Dismiss
+                    {t("devMode.dismiss")}
                 </button>
             </div>
         </div>
@@ -70,6 +72,7 @@ function DevModeDebugOverlay(props: {
     projectPath: string | null;
 }) {
     const { core, bundle, uidoc, activeSurfaceId, widgetRuntimeStore, projectPath } = props;
+    const { t } = useTranslation();
     const [devtoolsMenuOpen, setDevtoolsMenuOpen] = useState(false);
     const [blueprintPanelOpen, setBlueprintPanelOpen] = useState(false);
     const devtoolsFabRef = useRef<HTMLButtonElement>(null);
@@ -119,7 +122,7 @@ function DevModeDebugOverlay(props: {
                     <motion.div
                         key="blueprint-devtools"
                         role="complementary"
-                        aria-label="Blueprint DevTools"
+                        aria-label={t("devMode.devtools.title")}
                         className="pointer-events-auto absolute inset-y-0 right-0 z-30 flex w-[min(100%,380px)] max-w-full flex-col overflow-hidden border-l border-edge bg-[#0d0f11] shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
                         initial={{ x: "100%" }}
                         animate={{ x: 0 }}
@@ -147,7 +150,7 @@ function DevModeDebugOverlay(props: {
                             <div
                                 ref={devtoolsMenuRef}
                                 role="menu"
-                                aria-label="Preview debug tools"
+                                aria-label={t("devMode.devtools.menuAria")}
                                 className="absolute bottom-full left-0 z-10 mb-2 w-[min(15rem,calc(100vw-1.5rem))] rounded-md border border-edge bg-surface-sunken py-1 shadow-lg"
                             >
                                 <button
@@ -172,7 +175,7 @@ function DevModeDebugOverlay(props: {
                                             <Check className="h-3.5 w-3.5 text-primary" />
                                         ) : null}
                                     </span>
-                                    <span className="min-w-0 flex-1 truncate">Blueprint DevTools</span>
+                                    <span className="min-w-0 flex-1 truncate">{t("devMode.devtools.title")}</span>
                                 </button>
                             </div>
                         ) : null}
@@ -180,7 +183,7 @@ function DevModeDebugOverlay(props: {
                             ref={devtoolsFabRef}
                             type="button"
                             className="pointer-events-auto flex h-11 w-11 shrink-0 cursor-default items-center justify-center rounded-full border border-edge bg-surface-sunken shadow-md outline-none ring-white/20 transition-colors duration-150 hover:border-white/22 hover:bg-[#151a24] hover:shadow-lg focus-visible:ring-2"
-                            aria-label={devtoolsMenuOpen ? "Close preview debug tools menu" : "Open preview debug tools menu"}
+                            aria-label={devtoolsMenuOpen ? t("devMode.devtools.closeMenu") : t("devMode.devtools.openMenu")}
                             aria-expanded={devtoolsMenuOpen}
                             aria-haspopup="menu"
                             onClick={() => setDevtoolsMenuOpen(prev => !prev)}
@@ -195,6 +198,7 @@ function DevModeDebugOverlay(props: {
 }
 
 export function DevModeContent(props: DevModeContentProps) {
+    const { t } = useTranslation();
     const {
         bundle,
         projectPath,
@@ -384,15 +388,13 @@ export function DevModeContent(props: DevModeContentProps) {
         return (
             <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
                 <div className="min-h-0 min-w-0 flex-1">
-                    <FixedAspectRatioContainer
-                        aspectRatio={viewportSize.width / viewportSize.height}
-                        baseWidth={viewportSize.width}
-                        className="overflow-hidden"
-                        debounceMs={0}
-                        onUpdate={handleAspectUpdate}
+                    <StageViewportFrame
+                        designSize={viewportSize}
+                        outputResolution={ctx.outputResolution}
+                        onRenderScaleChange={value => handleAspectUpdate({ scale: value })}
                     >
                         {ctx.children}
-                    </FixedAspectRatioContainer>
+                    </StageViewportFrame>
                 </div>
             </div>
         );
@@ -400,9 +402,9 @@ export function DevModeContent(props: DevModeContentProps) {
 
     const renderPlaceholder = useCallback(() => (
         <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
-            Surface not available
+            {t("devMode.surfaceUnavailable")}
         </div>
-    ), []);
+    ), [t]);
 
     const renderOverlays = useCallback((ctx: GameAppOverlayContext) => {
         if (!ctx.core || !ctx.activeSurface || !bundle) {
@@ -425,7 +427,7 @@ export function DevModeContent(props: DevModeContentProps) {
             <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
                 <SessionErrorBanner sessionError={sessionError} onDismissSessionError={onDismissSessionError} />
                 <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
-                    Waiting for Dev Mode payload...
+                    {t("devMode.waitingPayload")}
                 </div>
             </div>
         );
@@ -436,7 +438,7 @@ export function DevModeContent(props: DevModeContentProps) {
             <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
                 <SessionErrorBanner sessionError={sessionError} onDismissSessionError={onDismissSessionError} />
                 <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
-                    Surface not found: {surfaceId}
+                    {t("devMode.surfaceNotFound", { surfaceId })}
                 </div>
             </div>
         );

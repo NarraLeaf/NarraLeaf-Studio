@@ -671,10 +671,10 @@ function cloneElementRenderSnapshot(element: UIElement): UIElement {
     };
 }
 
-function ComponentInstancePlaceholder({ label }: { label: string }) {
+function ComponentInstancePlaceholder({ message }: { message: string }) {
     return (
         <div className="flex h-full w-full items-center justify-center border border-dashed border-edge-strong bg-black/20 px-3 text-center text-xs text-fg-muted">
-            {label}
+            {message}
         </div>
     );
 }
@@ -701,14 +701,14 @@ function renderLinkedComponentInstanceContent(input: {
     }
     const component = input.document.components?.find(item => item.id === link.componentId);
     if (!component) {
-        return <ComponentInstancePlaceholder label="Missing component" />;
+        return <ComponentInstancePlaceholder message="Missing component" />;
     }
     if (input.componentPath.includes(component.id)) {
-        return <ComponentInstancePlaceholder label="Component loop blocked" />;
+        return <ComponentInstancePlaceholder message="Component loop blocked" />;
     }
     const root = component.elements[component.rootElementId];
     if (!root) {
-        return <ComponentInstancePlaceholder label="Component root missing" />;
+        return <ComponentInstancePlaceholder message="Component root missing" />;
     }
 
     const rootWidth = Math.max(1, Math.abs(root.layout.width));

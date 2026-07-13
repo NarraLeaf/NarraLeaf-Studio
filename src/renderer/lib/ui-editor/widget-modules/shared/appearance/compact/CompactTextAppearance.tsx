@@ -14,6 +14,7 @@ import type {
     TextAppearancePropertyKey,
 } from "@shared/types/ui-editor/appearance";
 import { getSupportedEffectKindsForWidgetType } from "@shared/types/ui-editor/effects";
+import { useTranslation } from "@/lib/i18n";
 import type { FontAssetFieldDefinition } from "@/apps/workspace/modules/properties/framework/types";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
@@ -77,6 +78,7 @@ export function CompactTextAppearance({
     setTextMotionVisible,
     motionFieldsConfigured,
 }: Props) {
+    const { t } = useTranslation();
     const typographyMode = textModuleModes.typography;
     const transformMode = textModuleModes.transform;
     const effectsMode = textModuleModes.effects;
@@ -115,7 +117,7 @@ export function CompactTextAppearance({
     const fontField: FontAssetFieldDefinition<UIInspectorData> = {
         id: "compact.text.fontAssetId",
         type: "fontAsset",
-        label: "Font",
+        label: t("widgetAppearance.typography.font"),
         getValue: () => {
             const value = getTypography("fontAssetId");
             return typeof value === "string" ? value : null;
@@ -131,7 +133,7 @@ export function CompactTextAppearance({
     return (
         <div className="space-y-3 min-w-0">
             <CompactModuleCard
-                title="Typography"
+                title={t("widgetAppearance.typography.title")}
                 headerHoverAction={
                     <ModuleMotionMenuButton
                         enabled={typographyMotionVisible}
@@ -208,9 +210,13 @@ export function CompactTextAppearance({
                     <button
                         type="button"
                         className={segButtonClass(fontStyle === "italic")}
-                        aria-label={fontStyle === "italic" ? "Disable italic" : "Enable italic"}
+                        aria-label={
+                            fontStyle === "italic"
+                                ? t("widgetAppearance.typography.disableItalic")
+                                : t("widgetAppearance.typography.enableItalic")
+                        }
                         aria-pressed={fontStyle === "italic"}
-                        title="Italic"
+                        title={t("widgetAppearance.typography.italic")}
                         onClick={() => patchTypography("fontStyle", fontStyle === "italic" ? "normal" : "italic")}
                     >
                         <Italic className="h-4 w-4" />
@@ -219,13 +225,13 @@ export function CompactTextAppearance({
 
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-end min-w-0">
                     <div className="min-w-0">
-                        <span className="mb-1 block text-xs font-medium text-fg-muted">Weight</span>
+                        <span className="mb-1 block text-xs font-medium text-fg-muted">{t("widgetAppearance.typography.weight")}</span>
                         <Select
                             value={fontWeight}
                             options={[
-                                { value: "normal", label: "Regular" },
-                                { value: "600", label: "Semibold" },
-                                { value: "bold", label: "Bold" },
+                                { value: "normal", label: t("widgetAppearance.typography.weightRegular") },
+                                { value: "600", label: t("widgetAppearance.typography.weightSemibold") },
+                                { value: "bold", label: t("widgetAppearance.typography.weightBold") },
                             ]}
                             fullWidth
                             onChange={next => patchTypography("fontWeight", String(next))}
@@ -251,7 +257,7 @@ export function CompactTextAppearance({
             </CompactModuleCard>
 
             <CompactModuleCard
-                title="Transform"
+                title={t("widgetAppearance.transform.title")}
                 headerHoverAction={
                     <ModuleMotionMenuButton
                         enabled={transformMotionVisible}
@@ -271,7 +277,7 @@ export function CompactTextAppearance({
             >
                 <div className="flex flex-wrap gap-2 min-w-0">
                     <div className="flex min-w-[6rem] flex-1 flex-col gap-1">
-                        <span className="text-xs font-medium text-fg-muted">X offset</span>
+                        <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.xOffset")}</span>
                         <div className="flex items-center gap-1 min-w-0">
                             <NumericDraftEnhancedInput
                                 committedDisplay={String(readFiniteNumber(getTransform("transformOffsetX"), 0))}
@@ -295,7 +301,7 @@ export function CompactTextAppearance({
                         </div>
                     </div>
                     <div className="flex min-w-[6rem] flex-1 flex-col gap-1">
-                        <span className="text-xs font-medium text-fg-muted">Y offset</span>
+                        <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.yOffset")}</span>
                         <div className="flex items-center gap-1 min-w-0">
                             <NumericDraftEnhancedInput
                                 committedDisplay={String(readFiniteNumber(getTransform("transformOffsetY"), 0))}
@@ -321,7 +327,7 @@ export function CompactTextAppearance({
                 </div>
 
                 <div className="mt-2 flex min-w-0 flex-col gap-1">
-                    <span className="text-xs font-medium text-fg-muted">Zoom</span>
+                    <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.zoom")}</span>
                     <div className="flex items-center gap-1 min-w-0">
                         <NumericDraftEnhancedInput
                             committedDisplay={formatPercentDisplay(readFiniteNumber(getTransform("transformScale"), 1))}
@@ -350,7 +356,7 @@ export function CompactTextAppearance({
                 </div>
 
                 <div className="mt-2 flex min-w-0 flex-col gap-1">
-                    <span className="text-xs font-medium text-fg-muted">Rotation</span>
+                    <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.rotation")}</span>
                     <div className="flex items-center gap-1 min-w-0">
                         <NumericDraftEnhancedInput
                             committedDisplay={String(readFiniteNumber(getTransform("transformRotation"), 0))}
@@ -374,7 +380,7 @@ export function CompactTextAppearance({
                 </div>
 
                 <div className="mt-2 flex min-w-0 flex-col gap-1">
-                    <span className="text-xs font-medium text-fg-muted">Opacity</span>
+                    <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.opacity")}</span>
                     <div className="flex items-center gap-1 min-w-0">
                         <NumericDraftEnhancedInput
                             committedDisplay={formatPercentDisplay(

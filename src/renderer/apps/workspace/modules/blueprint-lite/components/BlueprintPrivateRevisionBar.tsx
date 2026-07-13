@@ -1,6 +1,7 @@
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { ownerRefToIndexKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import type { Blueprint } from "@shared/types/blueprint/document";
+import { useTranslation } from "@/lib/i18n";
 
 type Props = {
     blueprint: Blueprint;
@@ -13,9 +14,10 @@ type Props = {
  * Lists private blueprint revisions for the same owner slot and supports active switch + new sibling.
  */
 export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevision }: Props) {
+    const { t } = useTranslation();
     if (blueprint.owner.kind === "sharedAsset") {
         return (
-            <p className="text-2xs text-fg-subtle">One revision per shared asset.</p>
+            <p className="text-2xs text-fg-subtle">{t("blueprint.revisions.sharedAssetSingle")}</p>
         );
     }
 
@@ -27,7 +29,7 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
 
     return (
         <div className="space-y-2 text-2xs text-fg-muted">
-            <p className="text-2xs tracking-wide text-fg-subtle">Revisions</p>
+            <p className="text-2xs tracking-wide text-fg-subtle">{t("blueprint.revisions.title")}</p>
             <ul className="space-y-1">
                 {ids.map(id => {
                     const b = doc.blueprints[id];
@@ -44,7 +46,7 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                                     }
                                 }}
                             >
-                                {b?.name ?? id} {active ? "· active" : ""}
+                                {b?.name ?? id} {active ? t("blueprint.revisions.active") : ""}
                             </button>
                         </li>
                     );
@@ -60,7 +62,7 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                             onReopenRevision?.(newId);
                         }}
                     >
-                        New TypeScript revision
+                        {t("blueprint.revisions.newTypeScript")}
                     </button>
                 ) : null}
                 <button
@@ -71,7 +73,7 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                         onReopenRevision?.(newId);
                     }}
                 >
-                    New Visual revision
+                    {t("blueprint.revisions.newVisual")}
                 </button>
             </div>
         </div>
