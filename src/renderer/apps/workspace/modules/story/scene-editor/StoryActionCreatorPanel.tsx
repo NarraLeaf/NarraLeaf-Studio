@@ -3,16 +3,17 @@ import { Star } from "lucide-react";
 import type { PanelComponentProps } from "../../types";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
 import { useWorkspace } from "@/apps/workspace/context";
-import { Services } from "@/lib/workspace/services/services";
+import { Services, type StoryPluginActionRegistration } from "@/lib/workspace/services/services";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
+import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import {
     ACTION_COMMAND_CATEGORIES,
     ACTION_COMMANDS,
     actionCommandMatchesQuery,
     getActionCommandCategory,
-    type ActionCommand,
+    pluginActionToPaletteCommand,
     type ActionCommandCategory,
-    type ActionCommandId,
+    type PaletteActionCommand,
 } from "./storyActionCommands";
 import {
     dispatchStoryActionCreateRequest,
@@ -35,19 +36,32 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
         () => context && isInitialized ? context.services.get<GlobalSettingsService>(Services.GlobalSettings) : null,
         [context, isInitialized],
     );
+    const storyService = useMemo(
+        () => context && isInitialized ? context.services.get<StoryService>(Services.Story) : null,
+        [context, isInitialized],
+    );
     const [query, setQuery] = useState("");
     const [activeCategoryId, setActiveCategoryId] = useState<SidebarCategory["id"]>("all");
-    const [starredIds, setStarredIds] = useState<Set<ActionCommandId>>(() => new Set());
+    const [starredIds, setStarredIds] = useState<Set<string>>(() => new Set());
+    const [pluginActions, setPluginActions] = useState<StoryPluginActionRegistration[]>([]);
+
+    useEffect(() => {
+        if (!storyService) {
+            return;
+        }
+        setPluginActions(storyService.listPluginActions());
+        return storyService.onPluginActionsChanged(setPluginActions);
+    }, [storyService]);
 
     useEffect(() => {
         if (!settingsService) {
             return;
         }
         const stored = settingsService.getSync<string[]>(FAVORITES_SETTING_KEY, []) ?? [];
-        setStarredIds(new Set(stored.filter(isActionCommandId)));
+        setStarredIds(new Set(stored.filter(id => typeof id === "string")));
     }, [settingsService]);
 
-    const persistStarredIds = useCallback((next: Set<ActionCommandId>) => {
+    const persistStarredIds = useCallback((next: Set<string>) => {
         if (!settingsService) {
             return;
         }
@@ -56,7 +70,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
         });
     }, [settingsService]);
 
-    const toggleStarred = useCallback((commandId: ActionCommandId) => {
+    const toggleStarred = useCallback((commandId: string) => {
         setStarredIds(previous => {
             const next = new Set(previous);
             next.has(commandId) ? next.delete(commandId) : next.add(commandId);
@@ -70,8 +84,13 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
         ...ACTION_COMMAND_CATEGORIES,
     ], []);
 
+    const allCommands = useMemo<PaletteActionCommand[]>(() => [
+        ...ACTION_COMMANDS,
+        ...pluginActions.map(pluginActionToPaletteCommand),
+    ], [pluginActions]);
+
     const filteredCommands = useMemo(() => {
-        return ACTION_COMMANDS.filter(command => {
+        return allCommands.filter(command => {
             if (activeCategoryId === STARRED_CATEGORY_ID && !starredIds.has(command.id)) {
                 return false;
             }
@@ -80,9 +99,9 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
             }
             return actionCommandMatchesQuery(command, query);
         });
-    }, [activeCategoryId, query, starredIds]);
+    }, [activeCategoryId, allCommands, query, starredIds]);
 
-    const createAction = useCallback((commandId: ActionCommandId) => {
+    const createAction = useCallback((commandId: string) => {
         if (!payload?.tabId) {
             return;
         }
@@ -155,10 +174,10 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
 }
 
 function ActionCreatorRow(props: {
-    command: ActionCommand;
+    command: PaletteActionCommand;
     starred: boolean;
-    onToggleStarred: (commandId: ActionCommandId) => void;
-    onCreate: (commandId: ActionCommandId) => void;
+    onToggleStarred: (commandId: string) => void;
+    onCreate: (commandId: string) => void;
 }) {
     const category = getActionCommandCategory(props.command.category);
     const Icon = props.command.icon;
@@ -192,6 +211,3 @@ function ActionCreatorRow(props: {
     );
 }
 
-function isActionCommandId(value: string): value is ActionCommandId {
-    return ACTION_COMMANDS.some(command => command.id === value);
-}

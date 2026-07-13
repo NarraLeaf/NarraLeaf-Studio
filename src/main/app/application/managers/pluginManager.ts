@@ -3,12 +3,13 @@ import path from "path";
 import { UserDataNamespace, AppHost, AppProtocol } from "@shared/types/constants";
 import type { PluginPermissionGrantResult, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import {
-    type NormalizedPluginManifestV1,
+    type NormalizedPluginManifestV2,
     type PluginApproveResult,
     type PluginInstallRecord,
     type PluginInstallResult,
     type PluginInstallSource,
     type PluginListItem,
+    type RuntimePluginDescriptor,
     type WorkspacePluginDescriptor,
 } from "@shared/types/plugins";
 import { PersistentState } from "@shared/utils/persistentState";
@@ -26,7 +27,7 @@ type PluginManagerOptions = {
 
 type BuiltInPluginSource = {
     sourcePath: string;
-    manifest: NormalizedPluginManifestV1;
+    manifest: NormalizedPluginManifestV2;
 };
 
 const DEFAULT_STATE: PluginRegistryState = {
@@ -65,9 +66,40 @@ export class PluginManager {
     }
 
     public async listWorkspacePlugins(): Promise<WorkspacePluginDescriptor[]> {
+        return this.listTargetPlugins("studio");
+    }
+
+    public async listRuntimePlugins(): Promise<RuntimePluginDescriptor[]> {
+        return this.listTargetPlugins("runtime");
+    }
+
+    /**
+     * Enabled plugins with a runtime entry, resolved to the absolute entry
+     * file inside the install directory. Used by the game pack compiler to
+     * copy plugin runtime code into preview/production artifacts.
+     */
+    public async listRuntimePluginPackSources(): Promise<Array<{
+        manifest: NormalizedPluginManifestV2;
+        entry: string;
+        entryPath: string;
+    }>> {
+        await this.initialize();
+        return Object.values(this.getRecords())
+            .filter(record => this.toListItem(record).status === "enabled" && record.manifest.entries.runtime)
+            .map(record => {
+                const entry = record.manifest.entries.runtime!.replace(/\\/g, "/");
+                return {
+                    manifest: record.manifest,
+                    entry,
+                    entryPath: path.resolve(record.installPath, ...entry.split("/")),
+                };
+            });
+    }
+
+    private async listTargetPlugins(target: "studio" | "runtime"): Promise<WorkspacePluginDescriptor[]> {
         const plugins = await this.listPlugins();
         return plugins
-            .filter(plugin => plugin.status === "enabled")
+            .filter(plugin => plugin.status === "enabled" && plugin.manifest.entries[target])
             .map(plugin => ({
                 plugin: {
                     id: plugin.manifest.id,
@@ -76,7 +108,7 @@ export class PluginManager {
                     publisher: plugin.manifest.publisher,
                 },
                 manifest: plugin.manifest,
-                entryUrl: this.getPluginEntryUrl(plugin.manifest),
+                entryUrl: this.getPluginEntryUrl(plugin.manifest, plugin.manifest.entries[target]!),
             }));
     }
 
@@ -221,7 +253,10 @@ export class PluginManager {
             return null;
         }
         const requestedEntry = entrySegments.join("/");
-        if (requestedEntry !== record.manifest.entry.replace(/\\/g, "/")) {
+        const declaredEntries = [record.manifest.entries.studio, record.manifest.entries.runtime]
+            .filter((entry): entry is string => Boolean(entry))
+            .map(entry => entry.replace(/\\/g, "/"));
+        if (!declaredEntries.includes(requestedEntry)) {
             return null;
         }
         const target = path.resolve(record.installPath, ...entrySegments);
@@ -338,7 +373,7 @@ export class PluginManager {
     }
 
     private grantBuiltInManifestPermissions(
-        manifest: NormalizedPluginManifestV1,
+        manifest: NormalizedPluginManifestV2,
         sourcePath: string,
     ): void {
         const requestId = `builtin-install:${manifest.id}:${manifest.version}`;
@@ -363,7 +398,7 @@ export class PluginManager {
         });
     }
 
-    private async readManifest(pluginDir: string): Promise<NormalizedPluginManifestV1> {
+    private async readManifest(pluginDir: string): Promise<NormalizedPluginManifestV2> {
         const manifestPath = path.join(pluginDir, "manifest.json");
         const raw = await fs.readFile(manifestPath, "utf-8");
         const parsed = JSON.parse(raw);
@@ -371,20 +406,25 @@ export class PluginManager {
         if (!result.ok) {
             throw new Error(result.error);
         }
-        const entryPath = path.resolve(pluginDir, ...result.manifest.entry.split(/[\\/]+/));
         const root = path.resolve(pluginDir);
-        if (!this.isSameOrChild(entryPath, root)) {
-            throw new Error("Plugin entry must stay inside the plugin package");
-        }
-        const entryStat = await fs.stat(entryPath);
-        if (!entryStat.isFile()) {
-            throw new Error(`Plugin entry file not found: ${result.manifest.entry}`);
+        for (const [target, entry] of Object.entries(result.manifest.entries)) {
+            if (!entry) {
+                continue;
+            }
+            const entryPath = path.resolve(pluginDir, ...entry.split(/[\\/]+/));
+            if (!this.isSameOrChild(entryPath, root)) {
+                throw new Error(`Plugin ${target} entry must stay inside the plugin package`);
+            }
+            const entryStat = await fs.stat(entryPath).catch(() => null);
+            if (!entryStat?.isFile()) {
+                throw new Error(`Plugin ${target} entry file not found: ${entry}`);
+            }
         }
         return result.manifest;
     }
 
-    private getPluginEntryUrl(manifest: NormalizedPluginManifestV1): string {
-        const encodedEntry = manifest.entry
+    private getPluginEntryUrl(manifest: NormalizedPluginManifestV2, entry: string): string {
+        const encodedEntry = entry
             .split(/[\\/]+/)
             .map(segment => encodeURIComponent(segment))
             .join("/");

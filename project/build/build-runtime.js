@@ -21,6 +21,13 @@ function runtimeHtml() {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NarraLeaf Game</title>
+    <script type="importmap">
+    {
+        "imports": {
+            "narraleaf-studio/runtime": "nlgame://plugin-api/runtime.js"
+        }
+    }
+    </script>
     <link rel="stylesheet" href="nlgame://runtime/renderer.css" />
 </head>
 <body>

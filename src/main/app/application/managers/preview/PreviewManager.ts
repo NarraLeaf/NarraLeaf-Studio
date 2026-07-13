@@ -11,10 +11,12 @@ import { WindowAppType } from "@shared/types/window";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import type { DevModeConsoleLogPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
+import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import {
     compileGameRuntimePreviewArtifact,
     type GameRuntimeArtifactCompileResult,
 } from "./compiler/gameRuntimeArtifactCompiler";
+import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
 
 type PreviewSession = {
     id: string;
@@ -117,6 +119,19 @@ export class PreviewManager {
             this.emitVerbose(session, `launch requested: ${this.describeEntry(entry)}`);
             session.status = "compiling";
             this.emitVerbose(session, "artifact compile started");
+            const pluginSelection = await this.selectRuntimePlugins(normalizedProjectPath);
+            if (pluginSelection.errors.length > 0) {
+                throw new Error(`Plugin validation failed:\n${pluginSelection.errors.join("\n")}`);
+            }
+            if (pluginSelection.fallbackAll && pluginSelection.selected.length > 0) {
+                this.emitVerbose(session, "project has no plugin dependency table; packaging every enabled runtime plugin");
+            }
+            if (pluginSelection.skippedPluginIds.length > 0) {
+                this.emitVerbose(session, `runtime plugins not packaged (unused by this project): ${pluginSelection.skippedPluginIds.join(", ")}`);
+            }
+            if (pluginSelection.selected.length > 0) {
+                this.emitVerbose(session, `packaging runtime plugin(s): ${pluginSelection.selected.map(source => source.manifest.id).join(", ")}`);
+            }
             const artifact = await compileGameRuntimePreviewArtifact({
                 projectPath: normalizedProjectPath,
                 entry,
@@ -124,6 +139,7 @@ export class PreviewManager {
                 runtimeVersion: this.readRuntimeVersion(),
                 controlPort: session.controlPort,
                 controlToken: session.controlToken,
+                runtimePlugins: pluginSelection.selected,
             });
             session.artifact = artifact;
             this.emitVerbose(
@@ -171,6 +187,25 @@ export class PreviewManager {
             });
             return "error";
         }
+    }
+
+    /**
+     * Resolve which plugin runtime entries ship with this project's pack: the
+     * project dependency table drives selection; static blueprint-node
+     * validation turns a would-be silent runtime failure into a launch error.
+     */
+    private async selectRuntimePlugins(projectPath: string): Promise<RuntimePluginPackSelection> {
+        const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
+        const installed = (await this.app.pluginManager.listPlugins()).map(plugin => ({
+            id: plugin.pluginId,
+            version: plugin.manifest.version,
+            enabled: plugin.enabled,
+        }));
+        return selectRuntimePluginsForPack({
+            dependencies: projectConfig?.dependencies,
+            available: await this.app.pluginManager.listRuntimePluginPackSources(),
+            installed,
+        });
     }
 
     private async stopSession(session: PreviewSession): Promise<void> {

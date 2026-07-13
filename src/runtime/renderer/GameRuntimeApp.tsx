@@ -9,6 +9,7 @@ import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
 import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
 import { GameApp } from "@/lib/ui-editor/runtime/app/GameApp";
 import type { GameAppHost, GameAppSaveStore } from "@/lib/ui-editor/runtime/app/GameAppHost";
+import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import {
     preloadRuntimePackAssets,
     type RuntimeSurfacePreloadResult,
@@ -186,6 +187,52 @@ function useRuntimePackPreload(input: {
     };
 }
 
+/**
+ * Loads the runtime entries of plugins shipped inside the pack before the
+ * game boots. A failing plugin never blocks the game; errors go to the
+ * runtime log. loadRuntimePlugins is idempotent per plugin id+version+entry.
+ */
+function useRuntimePlugins(pack: GameRuntimePackV1 | null): boolean {
+    const [ready, setReady] = useState(false);
+
+    useEffect(() => {
+        if (!pack) {
+            setReady(false);
+            return;
+        }
+        const plugins = pack.plugins ?? [];
+        if (plugins.length === 0) {
+            setReady(true);
+            return;
+        }
+        let disposed = false;
+        const bridge = getGameRuntimeBridge();
+        const log = (level: "info" | "warning" | "error", message: string) => {
+            bridge?.log(level, message);
+        };
+        const descriptors = plugins.map(entry => ({
+            plugin: {
+                id: entry.manifest.id,
+                name: entry.manifest.name,
+                version: entry.manifest.version,
+                publisher: entry.manifest.publisher,
+            },
+            manifest: entry.manifest,
+            entryUrl: `nlgame://runtime/${entry.entryRelativePath}`,
+        }));
+        void loadRuntimePlugins(descriptors, { log }).finally(() => {
+            if (!disposed) {
+                setReady(true);
+            }
+        });
+        return () => {
+            disposed = true;
+        };
+    }, [pack]);
+
+    return ready;
+}
+
 function RuntimeViewportFrame(props: {
     surface: UISurface;
     scale: number;
@@ -218,7 +265,8 @@ export function GameRuntimeApp() {
     const entrySurfaceId = pack?.entry.surfaceId ?? undefined;
     const entrySurface = pack ? findSurface(pack.bundle, entrySurfaceId) : null;
     const preload = useRuntimePackPreload({ pack, firstSurface: entrySurface });
-    const runtimeReady = preload.ready;
+    const pluginsReady = useRuntimePlugins(pack);
+    const runtimeReady = preload.ready && pluginsReady;
 
     const persistenceAdapter = useMemo(() => {
         if (!bridge) {

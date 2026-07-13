@@ -1,9 +1,10 @@
 import type { DevModeBundle } from "./devMode";
 import type { DevModeSaveRecord } from "./devModeSave";
+import type { NormalizedPluginManifestV2 } from "./plugins";
 import type { StoryId } from "./story";
 import type { UISurfaceId } from "./ui-editor/document";
 
-export const GAME_RUNTIME_PACK_SCHEMA_VERSION = 1 as const;
+export const GAME_RUNTIME_PACK_SCHEMA_VERSION = 2 as const;
 export const GAME_RUNTIME_BRIDGE_KEY = "__NLS_GAME_RUNTIME__" as const;
 export const GAME_RUNTIME_PROTOCOL = "nlgame" as const;
 
@@ -52,6 +53,17 @@ export type GameRuntimeProjectIcon = {
     mediaType?: string;
 };
 
+/**
+ * A plugin runtime entry shipped inside the pack. The full normalized
+ * manifest is embedded so game environments can construct the same
+ * RuntimePluginApp identity that Dev Mode builds from the install registry.
+ */
+export type GameRuntimePackPluginEntry = {
+    manifest: NormalizedPluginManifestV2;
+    /** Path of the plugin's prebundled runtime ESM entry relative to the app dir, e.g. plugins/{id}/runtime.js. */
+    entryRelativePath: string;
+};
+
 export type GameRuntimePackV1 = {
     schemaVersion: typeof GAME_RUNTIME_PACK_SCHEMA_VERSION;
     generatedAt: string;
@@ -69,6 +81,8 @@ export type GameRuntimePackV1 = {
     assets: {
         items: Record<string, GameRuntimeAssetManifestEntry>;
     };
+    /** Runtime entries of the plugins packaged with this game. */
+    plugins: GameRuntimePackPluginEntry[];
     /**
      * Network policy for the packaged/previewed game. Absent on packs produced
      * before this field existed — the runtime treats a missing value as the

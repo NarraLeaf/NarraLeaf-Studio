@@ -99,6 +99,46 @@ describe("PluginManager", () => {
         await expect(manager.resolvePluginEntryFile(new URL("app://plugins/acme.sample-plugin/1.0.0/manifest.json"))).resolves.toBeNull();
     });
 
+    it("lists runtime descriptors separately and resolves both declared entries", async () => {
+        await writePluginPackage(sourceDir, "1.0.0", { studio: "main.js", runtime: "runtime.js" });
+        const manager = new PluginManager(tempDir, permissionManager as any);
+        await manager.installFromDirectory(sourceDir);
+        await manager.approvePlugin("acme.sample-plugin", {
+            requestId: "install",
+            pluginId: "acme.sample-plugin",
+            kind: "install",
+            approved: true,
+            persistence: "permanent",
+        });
+
+        const [workspaceDescriptor] = await manager.listWorkspacePlugins();
+        expect(workspaceDescriptor.entryUrl).toContain("app://plugins/acme.sample-plugin/1.0.0/main.js");
+
+        const [runtimeDescriptor] = await manager.listRuntimePlugins();
+        expect(runtimeDescriptor.entryUrl).toContain("app://plugins/acme.sample-plugin/1.0.0/runtime.js");
+
+        await expect(manager.resolvePluginEntryFile(new URL(runtimeDescriptor.entryUrl))).resolves.toBe(
+            path.join(tempDir, "plugins", "acme.sample-plugin", "runtime.js"),
+        );
+    });
+
+    it("excludes runtime-only plugins from the workspace list", async () => {
+        await writePluginPackage(sourceDir, "1.0.0", { runtime: "runtime.js" });
+        const manager = new PluginManager(tempDir, permissionManager as any);
+        await manager.installFromDirectory(sourceDir);
+        await manager.approvePlugin("acme.sample-plugin", {
+            requestId: "install",
+            pluginId: "acme.sample-plugin",
+            kind: "install",
+            approved: true,
+            persistence: "permanent",
+        });
+
+        await expect(manager.listWorkspacePlugins()).resolves.toEqual([]);
+        const runtimePlugins = await manager.listRuntimePlugins();
+        expect(runtimePlugins).toHaveLength(1);
+    });
+
     it("requires authorization again when the installed manifest version changes", async () => {
         const manager = new PluginManager(tempDir, permissionManager as any);
         await manager.installFromDirectory(sourceDir);
@@ -169,16 +209,22 @@ describe("PluginManager", () => {
     });
 });
 
-async function writePluginPackage(dir: string, version: string): Promise<void> {
+async function writePluginPackage(
+    dir: string,
+    version: string,
+    entries: Record<string, string> = { studio: "main.js" },
+): Promise<void> {
     await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(path.join(dir, "main.js"), "export default {};\n", "utf-8");
+    for (const entry of Object.values(entries)) {
+        await fs.writeFile(path.join(dir, entry), "export default {};\n", "utf-8");
+    }
     await fs.writeFile(path.join(dir, "manifest.json"), JSON.stringify({
-        manifestVersion: 1,
+        manifestVersion: 2,
         id: "acme.sample-plugin",
         name: "Sample Plugin",
         version,
         description: "Test plugin",
-        entry: "main.js",
+        entries,
         permissions: [
             {
                 kind: "api",

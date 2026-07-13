@@ -19,6 +19,7 @@ import type {
     GameAppOverlayContext,
     GameAppSaveStore,
 } from "@/lib/ui-editor/runtime/app/GameAppHost";
+import { useDevModeRuntimePlugins } from "../hooks/useDevModeRuntimePlugins";
 import { resolveDevModeViewportSize } from "./devModeViewport";
 
 type DevModeContentProps = {
@@ -337,6 +338,11 @@ export function DevModeContent(props: DevModeContentProps) {
         }
     }, []);
 
+    // Runtime plugin entries must be registered before the game boots so
+    // plugin blueprint nodes resolve at execution time. Failed plugins are
+    // logged and skipped; they never block the game.
+    const runtimePlugins = useDevModeRuntimePlugins();
+
     const host = useMemo<GameAppHost | null>(() => {
         if (!bundle || !surface) {
             return null;
@@ -346,7 +352,7 @@ export function DevModeContent(props: DevModeContentProps) {
             bundle,
             sessionKey: `${bundle.bundleId}:${bundle.revision}:${surface.id}`,
             entrySurfaceId: surface.id,
-            ready: true,
+            ready: runtimePlugins.ready,
             bootAction: { kind: "surface" },
             persistenceAdapter,
             onDebugEvent,
@@ -363,6 +369,7 @@ export function DevModeContent(props: DevModeContentProps) {
         persistenceAdapter,
         quitApplication,
         resolveStoryAssetUrl,
+        runtimePlugins.ready,
         saveStore,
         surface,
     ]);

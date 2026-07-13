@@ -4,7 +4,6 @@
  */
 
 import { allBuiltinBlueprintNodes } from "./built-in";
-import { registerBuiltinPluginRuntimeNodes } from "./built-in/builtinPluginRuntimeNodes";
 import { blueprintNodeRegistry } from "./BlueprintNodeRegistry";
 import { defineBlueprintNode } from "./defineBlueprintNode";
 
@@ -14,5 +13,4 @@ export function registerCoreBlueprintNodes(): void {
             defineBlueprintNode(def);
         }
     }
-    registerBuiltinPluginRuntimeNodes();
 }

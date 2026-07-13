@@ -6,9 +6,12 @@ import type {
     PluginApproveResult,
     PluginInstallResult,
     PluginListItem,
+    RuntimePluginDescriptor,
     WorkspacePluginDescriptor,
 } from "@shared/types/plugins";
 import { WindowAppType, WindowCloseResults } from "@shared/types/window";
+import { resolveDependencies } from "@shared/utils/resolveDependencies";
+import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
 import { authorizeActorCapabilityRequest } from "../actorAuthorization";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
@@ -137,6 +140,52 @@ export class PluginWorkspaceListHandler extends IPCHandler<IPCEventType.pluginWo
             return this.failed("Workspace plugins can only be requested by workspace windows");
         }
         return this.success({ plugins: await window.app.pluginManager.listWorkspacePlugins() });
+    }
+}
+
+export class PluginRuntimeListHandler extends IPCHandler<IPCEventType.pluginRuntimeList> {
+    readonly name = IPCEventType.pluginRuntimeList;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<{ plugins: RuntimePluginDescriptor[] }>> {
+        if (window.getWindowType() !== WindowAppType.DevMode) {
+            return this.failed("Runtime plugins can only be requested by Dev Mode windows");
+        }
+        const plugins = await window.app.pluginManager.listRuntimePlugins();
+        return this.success({ plugins: await this.filterSuppressed(window, plugins) });
+    }
+
+    /**
+     * Mirror the workspace's per-project dependency suppression: a plugin whose
+     * installed version is incompatible with what the project was authored
+     * against must not execute in that project's Dev Mode session either.
+     * Resolution failures never block the session — suppression is best-effort.
+     */
+    private async filterSuppressed(
+        window: AppWindow,
+        plugins: RuntimePluginDescriptor[],
+    ): Promise<RuntimePluginDescriptor[]> {
+        const projectPath = (window.getProps() as { projectPath?: unknown }).projectPath;
+        if (typeof projectPath !== "string" || !projectPath.trim()) {
+            return plugins;
+        }
+        try {
+            const projectConfig = await readProjectConfigFromDir(projectPath);
+            const table = projectConfig?.dependencies;
+            if (!table || table.plugins.length === 0) {
+                return plugins;
+            }
+            const installed = (await window.app.pluginManager.listPlugins()).map(plugin => ({
+                id: plugin.pluginId,
+                version: plugin.manifest.version,
+                enabled: plugin.enabled,
+            }));
+            const suppressed = new Set(resolveDependencies(table, installed).suppressedPluginIds);
+            return plugins.filter(descriptor => !suppressed.has(descriptor.plugin.id));
+        } catch (error) {
+            console.warn("[PluginRuntimeListHandler] dependency suppression skipped:", error);
+            return plugins;
+        }
     }
 }
 

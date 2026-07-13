@@ -182,6 +182,7 @@ function makePack(): GameRuntimePackV1 {
                 },
             },
         },
+        plugins: [],
     };
 }
 

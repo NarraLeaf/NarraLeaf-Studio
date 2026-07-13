@@ -8,6 +8,7 @@ import {
     type GameRuntimePackV1,
 } from "@shared/types/gameRuntime";
 import { getMimeType } from "@shared/utils/fs";
+import { PLUGIN_RUNTIME_API_MODULE_SOURCE } from "@shared/utils/pluginRuntimeApiModule";
 import {
     resolveRuntimeAssetPath,
     resolveRuntimeStaticPath,
@@ -159,6 +160,19 @@ function registerRuntimeProtocol(allowHttp: boolean): void {
             }
             if (url.hostname === "pack") {
                 return serveFile(packPath, "application/json");
+            }
+            if (url.hostname === "plugin-api") {
+                const pathname = decodeURIComponent(url.pathname).replace(/^\/+/, "");
+                if (pathname === "runtime.js") {
+                    return new Response(PLUGIN_RUNTIME_API_MODULE_SOURCE, {
+                        status: 200,
+                        headers: {
+                            "Content-Type": "text/javascript",
+                            "Cache-Control": "no-store",
+                        },
+                    });
+                }
+                return new Response("Not found", { status: 404 });
             }
             if (url.hostname === "asset") {
                 const assetId = decodeURIComponent(url.pathname.replace(/^\/+/, ""));

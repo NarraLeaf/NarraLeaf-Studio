@@ -41,6 +41,7 @@ import {
     PluginListHandler,
     PluginReportLoadErrorHandler,
     PluginRevokeHandler,
+    PluginRuntimeListHandler,
     PluginSetEnabledHandler,
     PluginUninstallHandler,
     PluginWorkspaceListHandler,
@@ -132,6 +133,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new PluginUninstallHandler(),
         new PluginRevokeHandler(),
         new PluginWorkspaceListHandler(),
+        new PluginRuntimeListHandler(),
         new PluginReportLoadErrorHandler(),
 
         // Actor-aware privileged facade handlers

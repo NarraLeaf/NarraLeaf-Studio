@@ -14,6 +14,7 @@ import type {
     PluginApproveResult,
     PluginInstallResult,
     PluginListItem,
+    RuntimePluginDescriptor,
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type {
@@ -131,6 +132,7 @@ export enum IPCEventType {
     pluginUninstall = "plugin.uninstall",
     pluginRevoke = "plugin.revoke",
     pluginWorkspaceList = "plugin.workspaceList",
+    pluginRuntimeList = "plugin.runtimeList",
     pluginReportLoadError = "plugin.reportLoadError",
 
     privilegedFsCall = "privileged.fs.call",
@@ -933,6 +935,14 @@ export type IPCPluginManagerEvents = {
         data: {},
         response: {
             plugins: WorkspacePluginDescriptor[];
+        };
+    };
+    [IPCEventType.pluginRuntimeList]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            plugins: RuntimePluginDescriptor[];
         };
     };
     [IPCEventType.pluginReportLoadError]: {

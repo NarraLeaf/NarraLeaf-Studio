@@ -16,6 +16,7 @@ import {
     type PluginCleanup,
 } from "@/plugin";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
+import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
@@ -186,6 +187,21 @@ export function exposePluginModule(): void {
     });
 }
 
+/**
+ * Blueprint node registrations must match the manifest's declarative
+ * contributes list: the static project validation (pack compile) trusts
+ * contributes to know which plugin provides a node's runtime execute, so an
+ * undeclared registration would silently break packaged games.
+ */
+function assertDeclaredBlueprintNode(descriptor: WorkspacePluginDescriptor, type: string): void {
+    if (!descriptor.manifest.contributes.blueprintNodes.includes(type)) {
+        throw new Error(
+            `Blueprint node type is not declared in manifest contributes.blueprintNodes: ${type}. ` +
+            "Declare it so Studio can statically validate projects that use it.",
+        );
+    }
+}
+
 export function createPluginApp(
     ctx: WorkspaceContext,
     descriptor: WorkspacePluginDescriptor,
@@ -195,6 +211,7 @@ export function createPluginApp(
     const assets = ctx.services.get<AssetsService>(Services.Assets);
     const storage = ctx.services.get<ServiceAssetsService>(Services.ServiceAssets);
     const blueprintNodes = ctx.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
+    const story = ctx.services.get<StoryService>(Services.Story);
 
     // Every registration a plugin makes through this app object is recorded
     // so the host can reclaim it on unload, even if the plugin's own cleanup
@@ -338,19 +355,40 @@ export function createPluginApp(
                 list: () => widgetModuleRegistry.list(),
                 has: type => widgetModuleRegistry.has(type),
             },
+            story: {
+                actions: {
+                    register: registration => {
+                        const actionId = registration.id?.trim() ?? "";
+                        if (!actionId.startsWith(`${descriptor.plugin.id}.`)) {
+                            throw new Error(`Story action id must be prefixed with plugin id: ${descriptor.plugin.id}`);
+                        }
+                        const disposer = story.registerPluginAction(registration);
+                        track(disposer);
+                        return disposer;
+                    },
+                },
+            },
             blueprintNodes: {
                 // Node defs are deliberately not auto-removed on unload: the
                 // catalog enforces per-plugin ownership with replaceExisting
                 // semantics, and removing defs would break open documents
                 // that reference them.
-                register: def => blueprintNodes.register(def, {
-                    ownerPluginId: descriptor.plugin.id,
-                    replaceExisting: true,
-                }),
-                registerMany: defs => blueprintNodes.registerMany(defs, {
-                    ownerPluginId: descriptor.plugin.id,
-                    replaceExisting: true,
-                }),
+                register: def => {
+                    assertDeclaredBlueprintNode(descriptor, def.type);
+                    blueprintNodes.register(def, {
+                        ownerPluginId: descriptor.plugin.id,
+                        replaceExisting: true,
+                    });
+                },
+                registerMany: defs => {
+                    for (const def of defs) {
+                        assertDeclaredBlueprintNode(descriptor, def.type);
+                    }
+                    blueprintNodes.registerMany(defs, {
+                        ownerPluginId: descriptor.plugin.id,
+                        replaceExisting: true,
+                    });
+                },
                 registerDynamicSelectOptionsSource: (sourceId, provider) => {
                     const disposer = blueprintNodes.registerDynamicSelectOptionsSource(sourceId, provider, {
                         ownerPluginId: descriptor.plugin.id,

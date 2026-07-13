@@ -21,6 +21,7 @@ import type {
     PluginApproveResult,
     PluginInstallResult,
     PluginListItem,
+    RuntimePluginDescriptor,
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type {
@@ -232,6 +233,7 @@ export interface RendererPreloadedInterface {
         uninstall(pluginId: string): Promise<RequestStatus<void>>;
         revoke(pluginId: string): Promise<RequestStatus<PluginListItem>>;
         getWorkspacePlugins(): Promise<RequestStatus<{ plugins: WorkspacePluginDescriptor[] }>>;
+        getRuntimePlugins(): Promise<RequestStatus<{ plugins: RuntimePluginDescriptor[] }>>;
         reportLoadError(pluginId: string, error: string | null): Promise<RequestStatus<PluginListItem>>;
     };
 
