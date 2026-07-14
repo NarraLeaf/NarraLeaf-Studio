@@ -29,13 +29,15 @@ export class ProtocolManager implements IProtocolManager {
     private startHandling(): void {
         // Setup protocol handler
         protocol.handle(AppProtocol, async (request) => {
-            this.app.logger.info("[Host] Requesting URL caught", request.url);
+            // Debug level: this fires for every asset fetch, which is hot-path
+            // noise once the engine starts streaming scene assets.
+            this.app.logger.debug("[Host] Requesting URL caught", request.url);
 
             const url = new URL(request.url);
             const handler = this.getHandler(url);
 
             if (!handler) {
-                this.app.logger.info("[Host] 404 No handler found for URL", request.url);
+                this.app.logger.warn("[Host] 404 No handler found for URL", request.url);
                 return new Response(null, {
                     status: 404,
                     headers: new Headers()
