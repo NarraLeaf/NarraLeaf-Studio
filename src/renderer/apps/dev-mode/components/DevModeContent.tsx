@@ -390,7 +390,6 @@ export function DevModeContent(props: DevModeContentProps) {
                 <div className="min-h-0 min-w-0 flex-1">
                     <StageViewportFrame
                         designSize={viewportSize}
-                        outputResolution={ctx.outputResolution}
                         onRenderScaleChange={value => handleAspectUpdate({ scale: value })}
                     >
                         {ctx.children}

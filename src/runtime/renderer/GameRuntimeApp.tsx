@@ -329,9 +329,11 @@ export function GameRuntimeApp() {
         (ctx: GameAppFrameContext) => (
             <StageViewportFrame
                 designSize={ctx.activeSurface.designSize}
-                outputResolution={ctx.outputResolution}
                 onRenderScaleChange={setRenderScale}
-                outerClassName="h-screen w-screen bg-black text-white"
+                outerClassName="bg-black text-white"
+                // Viewport units, not 100%: the runtime's #root has no fixed height, so height:100%
+                // would collapse to content height and shrink the stage (breaking downsampling).
+                outerStyle={{ width: "100vw", height: "100vh" }}
                 boxStyle={{ backgroundColor: getSurfaceBackgroundColor(ctx.activeSurface) }}
             >
                 {ctx.children}

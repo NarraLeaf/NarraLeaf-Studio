@@ -203,9 +203,6 @@ export function GameApp(props: GameAppProps): ReactNode {
     const [nlrSession, setNlrSession] = useState<NlrStageSession | null>(null);
     const [nlrPreloadDone, setNlrPreloadDone] = useState(false);
     const [gameStageVisible, setGameStageVisible] = useState(false);
-    // Runtime output (render) resolution set via the Set Output Resolution blueprint node. null =
-    // native. Resets per session (see the nav-reset effect and quitGame).
-    const [outputResolution, setOutputResolution] = useState<{ width: number; height: number } | null>(null);
     const [studioPageHiddenForGame, setStudioPageHiddenForGame] = useState(false);
     const [gameHiddenNavKeys, setGameHiddenNavKeys] = useState<Set<string>>(() => new Set());
     const navEntrySeqRef = useRef(0);
@@ -294,7 +291,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         studioPageHiddenForGameRef.current = false;
         setStudioPageHiddenForGame(false);
         setGameStageVisible(false);
-        setOutputResolution(null);
         // Reset the NLR boot preload for this session. This runs on mount and on every
         // bundle/entry-surface change, and its deps are stable per session, so it does NOT
         // thrash on ordinary re-renders. Crucially it re-runs on the React.StrictMode
@@ -480,28 +476,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrDialogVirtualClickTargetRef.current = target;
     }, []);
 
-    // Runtime output-resolution control (Set Output Resolution blueprint node). The stage lays out at
-    // this fixed pixel size and the host frame CSS-upscales it to fill the window (true downsample /
-    // supersample). Aspect must match the active surface's design size — a mismatch would silently
-    // distort or letterbox, so we reject it with a diagnostic instead of applying it.
-    const setOutputResolutionInGame = useCallback(async (width: number, height: number): Promise<void> => {
-        const design = activeSurface?.designSize;
-        if (design && design.width > 0 && design.height > 0) {
-            const designRatio = design.width / design.height;
-            const targetRatio = width / height;
-            if (Math.abs(targetRatio - designRatio) / designRatio > 0.01) {
-                host.log(
-                    "error",
-                    `Set Output Resolution: ${width}×${height} (ratio ${targetRatio.toFixed(3)}) does not match the ` +
-                    `design ratio ${design.width}×${design.height} (${designRatio.toFixed(3)}); ignoring. ` +
-                    `Output resolution must keep the design aspect ratio.`,
-                );
-                return;
-            }
-        }
-        setOutputResolution({ width, height });
-    }, [activeSurface, host]);
-
     const requireActiveLiveGame = useCallback((operation: string): LiveGame => {
         if (!nlrSession?.id || nlrLiveGameSessionIdRef.current !== nlrSession.id || !nlrLiveGameRef.current) {
             throw new Error(`${operation}: game runtime is not available`);
@@ -554,7 +528,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         choiceRuntimeRef.current = null;
         clearCurrentDialogNametag();
         setGameStageVisible(false);
-        setOutputResolution(null);
         await openSurface(targetSurfaceId, undefined, { presentation: "appPage" });
         setNlrSession(null);
         clearGameHiddenStudioPages();
@@ -726,7 +699,6 @@ export function GameApp(props: GameAppProps): ReactNode {
             setSentenceSpeedInGame,
             getGamePreferenceInGame,
             setGamePreferenceInGame,
-            setOutputResolutionInGame,
             setWidgetPatchesByScope,
             widgetPatchesByScopeRef,
             widgetRuntimeStore,
@@ -796,7 +768,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         setNlrDialogVirtualClickTarget,
         setSentenceSpeedInGame,
         setGamePreferenceInGame,
-        setOutputResolutionInGame,
         showDialogInGame,
         skipInGame,
         toggleDialogDisplayInGame,
@@ -909,7 +880,6 @@ export function GameApp(props: GameAppProps): ReactNode {
             onSetSentenceSpeed: setSentenceSpeedInGame,
             onGetGamePreference: getGamePreferenceInGame,
             onSetGamePreference: setGamePreferenceInGame,
-            onSetOutputResolution: setOutputResolutionInGame,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
@@ -978,7 +948,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         selectChoiceInGame,
         setSentenceSpeedInGame,
         setGamePreferenceInGame,
-        setOutputResolutionInGame,
         setWidgetPatchesByScope,
         showDialogInGame,
         skipInGame,
@@ -1125,7 +1094,6 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onSetSentenceSpeed: setSentenceSpeedInGame,
                     onGetGamePreference: getGamePreferenceInGame,
                     onSetGamePreference: setGamePreferenceInGame,
-                    onSetOutputResolution: setOutputResolutionInGame,
                     onWidgetPatch: (elementId, patch) => {
                         applyWidgetRuntimePatch({
                             setWidgetPatchesByScope,
@@ -1224,7 +1192,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         selectChoiceInGame,
         setSentenceSpeedInGame,
         setGamePreferenceInGame,
-        setOutputResolutionInGame,
         showDialogInGame,
         skipInGame,
         startStoryInGame,
@@ -1443,7 +1410,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     if (!host.ready || !core || !hostAdapterBundle) {
         return (
             <>
-                {renderFrame({ activeSurface, gameViewport, outputResolution, children: null })}
+                {renderFrame({ activeSurface, gameViewport, children: null })}
                 {renderOverlays?.({ core, activeSurface, widgetRuntimeStore })}
             </>
         );
@@ -1579,7 +1546,7 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     return (
         <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
-            {renderFrame({ activeSurface, gameViewport, outputResolution, children: content })}
+            {renderFrame({ activeSurface, gameViewport, children: content })}
             {renderOverlays?.({ core, activeSurface, widgetRuntimeStore })}
         </GameLocalizationContext.Provider>
     );

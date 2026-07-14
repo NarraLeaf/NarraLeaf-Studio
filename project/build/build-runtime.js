@@ -187,5 +187,26 @@ function runtimeAliasPlugin() {
 
     fs.writeFileSync(path.join(runtimeOutDir, 'index.html'), runtimeHtml(), 'utf-8');
 
+    copyRuntimeSupportSidecar(runtimeOutDir);
+
     console.log('[build-runtime] Runtime built successfully.');
 })();
+
+// The bundled runtime main.js reaches for a sibling support module through a
+// require the bundler cannot inline (the specifier is computed, not a literal),
+// so that module is neither embedded in main.js nor emitted. It must sit next to
+// main.js at runtime; copyRuntimeFiles() then carries it into every packed app.
+// Emitted for every pack because the require runs eagerly at startup; the module
+// itself is inert until the runtime asks it to do work.
+function copyRuntimeSupportSidecar(runtimeOutDir) {
+    const SIDECAR = 'native.js';
+    const packageRuntimeDir = path.dirname(require.resolve('@narraleaf/encryption/runtime'));
+    const source = path.join(packageRuntimeDir, SIDECAR);
+    if (!fs.existsSync(source)) {
+        throw new Error(
+            `[build-runtime] Missing runtime support file "${SIDECAR}" from @narraleaf/encryption. ` +
+            `Reinstall dependencies so the packaged runtime can boot.`,
+        );
+    }
+    fs.copyFileSync(source, path.join(runtimeOutDir, SIDECAR));
+}

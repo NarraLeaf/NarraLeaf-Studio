@@ -272,12 +272,6 @@ export type BlueprintHostApiRuntime = {
         setSentenceSpeed: (cps: number) => Promise<void>;
         getPreference: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
         setPreference: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void>;
-        /**
-         * Set the runtime output (render) resolution — the fixed pixel size the stage rasterizes at
-         * before being upscaled to fill the window. `width:height` must match the design aspect
-         * ratio; a mismatch is reported as a diagnostic and ignored (never applied silently).
-         */
-        setOutputResolution: (width: number, height: number) => Promise<void>;
     };
     devtools: {
         log: (level: string, message: string) => void;
@@ -326,7 +320,6 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onSetSentenceSpeed?: (cps: number) => Promise<void> | void;
     onGetGamePreference?: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
     onSetGamePreference?: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void> | void;
-    onSetOutputResolution?: (width: number, height: number) => Promise<void> | void;
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
     onCloseLayer: () => void | Promise<void>;
@@ -1335,7 +1328,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onSetSentenceSpeed,
         onGetGamePreference,
         onSetGamePreference,
-        onSetOutputResolution,
         emit,
         onOpenSurface,
         onCloseLayer,
@@ -2555,25 +2547,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("setSentenceSpeed: game runtime is not available");
                     }
                     await onSetSentenceSpeed(safeCps);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            setOutputResolution: async (width: number, height: number) => {
-                const cap = "game.setOutputResolution";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const w = Number(width);
-                    const h = Number(height);
-                    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
-                        throw new Error("setOutputResolution: width and height must be positive numbers");
-                    }
-                    if (!onSetOutputResolution) {
-                        throw new Error("setOutputResolution: game runtime is not available");
-                    }
-                    // Aspect-ratio consistency vs. the design size is validated by the host (it owns
-                    // the active surface's design size) and surfaced as a diagnostic there.
-                    await onSetOutputResolution(w, h);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
