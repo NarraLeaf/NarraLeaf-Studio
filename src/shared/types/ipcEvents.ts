@@ -91,6 +91,7 @@ export enum IPCEventType {
     workspaceClose = "workspace.close",
     workspaceExportProjectPackage = "workspace.projectPackage.export",
     workspaceImportProjectPackage = "workspace.projectPackage.import",
+    workspaceExportConsoleLogs = "workspace.console.exportLogs",
     workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
     workspaceBlueprintNavigateFromPreview = "workspace.blueprint.navigateFromPreview",
@@ -594,6 +595,19 @@ export type IPCWorkspaceEvents = {
             projectPath?: string;
             projectName?: string;
             fileCount?: number;
+            byteLength?: number;
+        };
+    };
+    [IPCEventType.workspaceExportConsoleLogs]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            defaultFileName: string;
+            content: string;
+        },
+        response: {
+            canceled: boolean;
+            filePath?: string;
             byteLength?: number;
         };
     };

@@ -15,7 +15,7 @@ import {
 import type { AppearanceModel, AppearanceRowValue, TextAppearancePropertyKey } from "@shared/types/ui-editor/appearance";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
-import { listLocalizationKeyOptions } from "@/lib/ui-editor/widget-modules/shared/localizationKeyOptions";
+import { createLocalizationKeyField } from "@/lib/ui-editor/widget-modules/shared/LocalizationKeyField";
 import type {
   CustomFieldProps,
   IconButtonSelection,
@@ -124,6 +124,14 @@ function TextAppearanceField(props: CustomFieldProps<UIInspectorData>) {
   );
 }
 
+const TextLocalizationKeyField = createLocalizationKeyField({
+  getKey: element => getTextProps(element).localizationKey ?? "",
+  setKey: (data, value) => {
+    const live = data.documentService.getDocument().elements[data.element.id] ?? data.element;
+    data.documentService.updateElementProps(live.id, { localizationKey: value });
+  },
+});
+
 const TextBlueprintValueField = createBlueprintValueField({
   propPath: "text",
   valueType: "string",
@@ -204,11 +212,9 @@ export function createTextInspector(ctx: InspectorContext) {
               }),
               defineField<D, any>({
                 id: "text.localizationKey",
-                type: "select",
+                type: "custom",
                 label: t("widgets.localization.textKey"),
-                options: () => listLocalizationKeyOptions(),
-                getValue: (d: D) => getTextProps(d.element).localizationKey ?? "",
-                setValue: (_d: D, value: string | number) => patchProps({ localizationKey: String(value).trim() || undefined }),
+                component: TextLocalizationKeyField,
               }),
             ],
           }),
