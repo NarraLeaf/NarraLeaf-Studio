@@ -1,5 +1,5 @@
 /**
- * Backlog (dialogue history) blueprint nodes for interface blueprints.
+ * Dialogue history (backlog) blueprint nodes, grouped under the "Game" category.
  *
  * These are UI-blueprint nodes (event / macro graphs on a Page or Widget), NOT story-action
  * blueprints: a backlog screen reads the running game's dialogue history and can rewind the game
@@ -68,9 +68,9 @@ function resolveHistoryEntryId(ctx: Parameters<NonNullable<BlueprintNodeDef["exe
 export const backlogBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET,
-        displayName: "Get Backlog",
-        category: "Backlog",
-        keywords: ["backlog", "history", "log", "dialog", "dialogue", "say", "menu", "entries", "game", "nlr"],
+        displayName: "Get History",
+        category: "Game",
+        keywords: ["history", "backlog", "log", "dialog", "dialogue", "say", "menu", "entries", "game", "nlr"],
         graphKinds: [...BACKLOG_GRAPH_KINDS],
         isPure: false,
         isLatent: true,
@@ -89,8 +89,8 @@ export const backlogBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE,
         displayName: "Restore From History",
-        category: "Backlog",
-        keywords: ["backlog", "history", "restore", "jump", "rewind", "undo", "go back", "entry", "id", "game", "nlr"],
+        category: "Game",
+        keywords: ["history", "backlog", "restore", "jump", "rewind", "undo", "go back", "entry", "id", "game", "nlr"],
         graphKinds: [...BACKLOG_GRAPH_KINDS],
         isPure: false,
         isLatent: true,
@@ -102,9 +102,9 @@ export const backlogBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST,
-        displayName: "Undo Last Dialogue",
-        category: "Backlog",
-        keywords: ["backlog", "history", "undo", "back", "rewind", "previous", "last", "dialog", "dialogue", "game", "nlr"],
+        displayName: "Undo Last History Entry",
+        category: "Game",
+        keywords: ["history", "backlog", "undo", "back", "rewind", "previous", "last", "dialog", "dialogue", "game", "nlr"],
         graphKinds: [...BACKLOG_GRAPH_KINDS],
         isPure: false,
         isLatent: true,

@@ -333,7 +333,6 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     hideDialog: async () => undefined,
                     toggleDialogDisplay: async () => undefined,
                     setSentenceSpeed: async () => undefined,
-                    setOutputResolution: async () => undefined,
                     getPreference: () => 0,
                     setPreference: async () => undefined,
                 },
@@ -445,7 +444,6 @@ function createPageNavigationHostAdapter(
                     hideDialog: async () => undefined,
                     toggleDialogDisplay: async () => undefined,
                     setSentenceSpeed: async () => undefined,
-                    setOutputResolution: async () => undefined,
                     getPreference: () => 0,
                     setPreference: async () => undefined,
                 },
@@ -572,7 +570,6 @@ function createGameSaveHostAdapter(options: {
                     setPreference: async (key, value) => {
                         options.preferenceWrites?.push({ key, value });
                     },
-                    setOutputResolution: async () => undefined,
                 },
                 devtools: {
                     log: () => undefined,
@@ -1959,7 +1956,7 @@ describe("built-in blueprint nodes", () => {
     it("reads the dialogue backlog and restores the game from a history entry", async () => {
         registerCoreBlueprintNodes();
 
-        // Get Backlog exposes the entries array and its count to downstream nodes, then continues.
+        // Get History exposes the entries array and its count to downstream nodes, then continues.
         const backlogEntries = [
             { id: "t1", type: "say", text: "Hello", character: "Alice", voice: "v1", selected: null, isPending: false },
             { id: "t2", type: "menu", text: "Pick one", character: null, voice: null, selected: "Left", isPending: true },
@@ -2076,7 +2073,8 @@ describe("built-in blueprint nodes", () => {
         expect(broadcastBlueprintNodes.every(def => def.category === "Events")).toBe(true);
         expect(frameBlueprintNodes.every(def => def.category === "Page")).toBe(true);
         expect(gameBlueprintNodes.every(def => def.category === "Game")).toBe(true);
-        expect(backlogBlueprintNodes.every(def => def.category === "Backlog")).toBe(true);
+        // Backlog / dialogue-history nodes live under the shared "Game" category.
+        expect(backlogBlueprintNodes.every(def => def.category === "Game")).toBe(true);
         const gameReadyHead = eventHeadBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY);
         expect(gameReadyHead?.displayName).toBe("On Game Ready");
         expect(gameReadyHead?.role).toBe("eventHead");

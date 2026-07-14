@@ -122,7 +122,6 @@ export class AppGlobalStateGetHandler extends IPCHandler<IPCEventType.appGlobalS
     readonly type = IPCMessageType.request;
 
     public handle(window: AppWindow, data: IPCEvents[IPCEventType.appGlobalStateGet]["data"]) {
-        window.app.logger.debug(`Getting global state key: ${data.key}, raw: ${JSON.stringify(window.app.globalState.raw())}`);
         return this.success({ value: window.app.globalState.get(data.key) });
     }
 }

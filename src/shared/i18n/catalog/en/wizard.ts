@@ -36,7 +36,7 @@ export const wizard = {
         license: "License",
         location: "Location",
         versionControl: "Version Control",
-        resolution: "Resolution",
+        resolution: "Stage Size",
         appId: "App ID",
     },
     template: {
@@ -65,9 +65,9 @@ export const wizard = {
         customLicense: "Custom License",
         customLicensePlaceholder: "Enter custom license…",
         descriptionPlaceholder: "Describe your project…",
-        resolutionPlaceholder: "Select resolution…",
+        resolutionPlaceholder: "Select stage size…",
         requiredFieldsTitle: "Required Fields",
-        requiredFieldsMessage: "Please fill in the required fields: Project Name, App ID, and Resolution.",
+        requiredFieldsMessage: "Please fill in the required fields: Project Name, App ID, and Stage Size.",
     },
     settings: {
         title: "Project Settings",
