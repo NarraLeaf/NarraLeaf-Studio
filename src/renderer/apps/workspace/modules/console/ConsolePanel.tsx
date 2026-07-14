@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ListFilter, Terminal, Trash2 } from "lucide-react";
+import { Download, ListFilter, Terminal, Trash2 } from "lucide-react";
 import type { TranslationKey } from "@shared/i18n";
+import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/lib/components/elements";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
+import { UIService } from "@/lib/workspace/services/core/UIService";
 import {
     ConsoleService,
     type ConsoleChannelDefinition,
@@ -89,6 +91,42 @@ function entryText(entry: ConsoleEntry): string {
     return entry.segments.map(segment => segment.text).join("");
 }
 
+/** `YYYY-MM-DD HH:MM:SS`, used inside the exported log body. */
+function formatExportTimestamp(timestamp: number): string {
+    const date = new Date(timestamp);
+    const pad = (value: number) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+/**
+ * Serialize a channel's buffered entries to plain text for export. Every entry is included
+ * regardless of the panel's level filter; cleared entries are already gone from the buffer.
+ */
+function buildExportContent(entries: ConsoleEntry[], label: string): string {
+    const header = [
+        `NarraLeaf Studio — ${label} console log`,
+        `Exported: ${formatExportTimestamp(Date.now())}`,
+        `Entries: ${entries.length}`,
+        "",
+    ];
+    const lines = entries.map(entry => {
+        const time = formatExportTimestamp(entry.timestamp);
+        const level = entry.level.toUpperCase().padEnd(7);
+        const source = entry.source ? `[${entry.source}] ` : "";
+        return `[${time}] ${level} ${source}${entryText(entry)}`;
+    });
+    return [...header, ...lines].join("\n") + "\n";
+}
+
+/** Suggested `console-<channel>-<timestamp>.log` filename for the export dialog. */
+function buildExportFileName(channelId: ConsoleChannelId): string {
+    const date = new Date();
+    const pad = (value: number) => String(value).padStart(2, "0");
+    const stamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+    const safeChannel = channelId.replace(/[^a-zA-Z0-9._-]+/g, "-");
+    return `console-${safeChannel}-${stamp}.log`;
+}
+
 /**
  * Console panel component.
  * Shows structured build/package and blueprint output from ConsoleService.
@@ -102,6 +140,10 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
     );
     const panelStateService = useMemo(
         () => context?.services.get<PanelStateService>(Services.PanelState) ?? null,
+        [context],
+    );
+    const uiService = useMemo(
+        () => context?.services.get<UIService>(Services.UI) ?? null,
         [context],
     );
 
@@ -215,6 +257,35 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
         consoleService?.clear(activeChannel);
     };
 
+    // Export every buffered entry of the active channel, ignoring the level filter. Cleared entries
+    // are already absent from the buffer, so they are naturally excluded.
+    const handleExport = () => {
+        const entries = channelEntries;
+        const label = activeChannelDef ? channelLabel(t, activeChannelDef) : t("console.outputFallback");
+        if (entries.length === 0) {
+            uiService?.showNotification(t("console.exportEmpty", { label }), "info");
+            return;
+        }
+        void (async () => {
+            const content = buildExportContent(entries, label);
+            const defaultFileName = buildExportFileName(activeChannel);
+            uiService?.showNotification(t("console.exportChoosingFolder", { label }), "info");
+
+            const result = await getInterface().workspace.exportConsoleLogs(defaultFileName, content);
+            if (!result.success) {
+                uiService?.showNotification(t("console.exportFailed", { error: result.error ?? "" }), "error");
+                return;
+            }
+            if (result.data.canceled) {
+                return;
+            }
+            uiService?.showNotification(
+                t("console.exportSuccess", { label, path: result.data.filePath ?? "" }),
+                "success",
+            );
+        })();
+    };
+
     return (
         <div className="flex h-full min-h-0 flex-col bg-surface text-fg-muted">
             <div className="flex h-9 shrink-0 items-center justify-between border-b border-edge bg-surface-sunken">
@@ -255,6 +326,15 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                 </div>
 
                 <div className="flex h-full shrink-0 items-center gap-2 px-2">
+                    <button
+                        type="button"
+                        className="flex h-7 w-7 cursor-default items-center justify-center rounded border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-white"
+                        title={t("console.export")}
+                        aria-label={t("console.export")}
+                        onClick={handleExport}
+                    >
+                        <Download className="h-3.5 w-3.5" />
+                    </button>
                     <div ref={filterMenuRef} className="relative">
                         <button
                             type="button"

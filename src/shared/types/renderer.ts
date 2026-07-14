@@ -149,6 +149,11 @@ export interface RendererPreloadedInterface {
             fileCount?: number;
             byteLength?: number;
         }>>;
+        exportConsoleLogs(defaultFileName: string, content: string): Promise<RequestStatus<{
+            canceled: boolean;
+            filePath?: string;
+            byteLength?: number;
+        }>>;
         onResolveAssetUrl(handler: (payload: { assetId: string; assetType?: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
         onResolveImageAssetUrl(handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
         onBlueprintNavigateFromPreview(handler: (payload: PreviewStudioBlueprintOpenPayload) => void): AppEventToken;
