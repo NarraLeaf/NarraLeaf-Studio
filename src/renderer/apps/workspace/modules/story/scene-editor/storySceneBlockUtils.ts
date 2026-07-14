@@ -5,6 +5,7 @@ import { richIfMeaningful } from "./richText";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { StoryBlockTarget, VisibleStoryRow } from "./storySceneEditorTypes";
 import { getActionCommandCategory, type ActionCommandCategoryId } from "./storyActionCommands";
+import { translate } from "@/lib/i18n";
 
 export function buildVisibleRows(scene: StoryScene, collapsedIds: Set<StoryBlockId>): VisibleStoryRow[] {
     const rows: VisibleStoryRow[] = [];
@@ -162,31 +163,35 @@ export function getContainerHeaderInfo(block: StoryBlock): StoryContainerHeaderI
     if (block.kind === "control") {
         const payload = block.payload;
         if (payload.control === "condition") {
-            return { pill: "Condition", role: "condition", hasCondition: false };
+            return { pill: translate("story.containerHeader.condition"), role: "condition", hasCondition: false };
         }
         if (payload.control === "conditionBranch") {
-            const pill = payload.branch === "if" ? "If" : payload.branch === "elseIf" ? "Else if" : "Otherwise";
+            const pill = payload.branch === "if"
+                ? translate("story.containerHeader.if")
+                : payload.branch === "elseIf"
+                    ? translate("story.containerHeader.elseIf")
+                    : translate("story.containerHeader.else");
             return { pill, role: "branch", hasCondition: payload.branch !== "else" };
         }
         if (payload.control === "repeat") {
-            return { pill: "Repeat", role: "group", hasCondition: false, repeatTimes: payload.times ?? 1 };
+            return { pill: translate("story.containerHeader.repeat"), role: "group", hasCondition: false, repeatTimes: payload.times ?? 1 };
         }
         if (payload.control === "parallel") {
-            return { pill: "Run at the same time", role: "group", hasCondition: false };
+            return { pill: translate("story.containerHeader.parallel"), role: "group", hasCondition: false };
         }
         if (payload.control === "race") {
-            return { pill: "Race — first to finish", role: "group", hasCondition: false };
+            return { pill: translate("story.containerHeader.race"), role: "group", hasCondition: false };
         }
-        return { pill: "In order", role: "group", hasCondition: false };
+        return { pill: translate("story.containerHeader.sequence"), role: "group", hasCondition: false };
     }
     if (block.kind === "action" && block.payload.action === "nvl") {
-        return { pill: "NVL", role: "nvl", hasCondition: false };
+        return { pill: translate("story.containerHeader.nvl"), role: "nvl", hasCondition: false };
     }
     if (block.kind === "nodeAction" && block.payload.action === "choice") {
-        return { pill: "Menu", role: "menu", hasCondition: false };
+        return { pill: translate("story.containerHeader.menu"), role: "menu", hasCondition: false };
     }
     if (block.kind === "nodeAction" && block.payload.action === "choiceOption") {
-        return { pill: "Option", role: "option", hasCondition: false };
+        return { pill: translate("story.containerHeader.option"), role: "option", hasCondition: false };
     }
     return null;
 }
@@ -198,114 +203,114 @@ export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typ
         iconColor: getActionCommandCategory(categoryId).iconColor,
     });
     if (block.kind === "nodeAction") {
-        if (block.payload.action === "narration") return withCategory("Narration", FileText, "character");
-        if (block.payload.action === "dialogue") return withCategory("Dialogue", MessageSquare, "character");
-        if (block.payload.action === "choice") return withCategory("Choice", GitBranch, "control");
-        return withCategory("Choice option", Route, "control");
+        if (block.payload.action === "narration") return withCategory(translate("story.badge.narration"), FileText, "character");
+        if (block.payload.action === "dialogue") return withCategory(translate("story.badge.dialogue"), MessageSquare, "character");
+        if (block.payload.action === "choice") return withCategory(translate("story.badge.choice"), GitBranch, "control");
+        return withCategory(translate("story.badge.choiceOption"), Route, "control");
     }
     if (block.kind === "action") {
-        if (block.payload.action === "setBackground") return withCategory("Background", Image, "scene");
-        if (block.payload.action === "character") return withCategory("Character", UserRound, "character");
-        if (block.payload.action === "audio") return withCategory("Audio", Music, "media");
-        if (block.payload.action === "setVariable") return withCategory("Variable", Variable, "data");
-        if (block.payload.action === "wait") return withCategory("Wait", Clock, "control");
-        if (block.payload.action === "image") return withCategory("Image", Image, "image");
+        if (block.payload.action === "setBackground") return withCategory(translate("story.badge.background"), Image, "scene");
+        if (block.payload.action === "character") return withCategory(translate("story.badge.character"), UserRound, "character");
+        if (block.payload.action === "audio") return withCategory(translate("story.badge.audio"), Music, "media");
+        if (block.payload.action === "setVariable") return withCategory(translate("story.badge.variable"), Variable, "data");
+        if (block.payload.action === "wait") return withCategory(translate("story.badge.wait"), Clock, "control");
+        if (block.payload.action === "image") return withCategory(translate("story.badge.image"), Image, "image");
         if (block.payload.action === "displayable") {
-            if (block.payload.operation === "transform") return withCategory("Transform", Move, "image");
-            return withCategory("Displayable", Eye, "image");
+            if (block.payload.operation === "transform") return withCategory(translate("story.badge.transform"), Move, "image");
+            return withCategory(translate("story.badge.displayable"), Eye, "image");
         }
-        if (block.payload.action === "text") return withCategory("Text", Type, "text");
-        if (block.payload.action === "layer") return withCategory("Layer", Layers, "layer");
-        if (block.payload.action === "video") return withCategory("Video", Video, "video");
-        if (block.payload.action === "nvl") return withCategory("NVL", FileText, "scene");
-        if (block.payload.action === "blueprint") return withCategory("Blueprint", Puzzle, "data");
-        return withCategory("Effect", Sparkles, "effects");
+        if (block.payload.action === "text") return withCategory(translate("story.badge.text"), Type, "text");
+        if (block.payload.action === "layer") return withCategory(translate("story.badge.layer"), Layers, "layer");
+        if (block.payload.action === "video") return withCategory(translate("story.badge.video"), Video, "video");
+        if (block.payload.action === "nvl") return withCategory(translate("story.badge.nvl"), FileText, "scene");
+        if (block.payload.action === "blueprint") return withCategory(translate("story.badge.blueprint"), Puzzle, "data");
+        return withCategory(translate("story.badge.effect"), Sparkles, "effects");
     }
-    if (block.kind === "control") return withCategory("Control", Settings2, "control");
-    if (block.kind === "jump") return withCategory("Jump", Route, "scene");
-    if (block.kind === "code") return withCategory("Code", Code, "utils");
-    return withCategory("Note", StickyNote, "utils");
+    if (block.kind === "control") return withCategory(translate("story.badge.control"), Settings2, "control");
+    if (block.kind === "jump") return withCategory(translate("story.badge.jump"), Route, "scene");
+    if (block.kind === "code") return withCategory(translate("story.badge.code"), Code, "utils");
+    return withCategory(translate("story.badge.note"), StickyNote, "utils");
 }
 
 /** Short, user-safe label for a variable reference (never exposes internal ids). */
 function variableRefShortLabel(ref: StoryVariableRef, scene?: StoryScene): string {
     if (ref.scope === "scene") {
-        return scene?.sceneVariables?.[ref.variableId]?.name ?? "variable";
+        return scene?.sceneVariables?.[ref.variableId]?.name ?? translate("story.describe.variableFallback");
     }
     if (ref.scope === "saved") {
-        return "saved variable";
+        return translate("story.describe.savedVariable");
     }
-    return "persistent";
+    return translate("story.describe.persistent");
 }
 
 export function describeBlock(block: StoryBlock, characters: Character[], scene?: StoryScene, scenes?: Record<StorySceneId, StoryScene>): string {
     if (block.kind === "nodeAction") {
         const payload = block.payload;
-        if (payload.action === "narration") return payload.text.value || "Narration";
-        if (payload.action === "dialogue") return `${getCharacterName(characters, payload.characterId)}: ${payload.text.value || "Dialogue"}`;
-        if (payload.action === "choice") return `Choice ${payload.prompt?.value ? `- ${payload.prompt.value}` : ""}`;
-        return `Option ${payload.text.value || ""}`;
+        if (payload.action === "narration") return payload.text.value || translate("story.describe.narration");
+        if (payload.action === "dialogue") return `${getCharacterName(characters, payload.characterId)}: ${payload.text.value || translate("story.describe.dialogue")}`;
+        if (payload.action === "choice") return `${translate("story.describe.choice")}${payload.prompt?.value ? ` - ${payload.prompt.value}` : ""}`;
+        return `${translate("story.describe.option")} ${payload.text.value || ""}`;
     }
     if (block.kind === "action") {
         const payload = block.payload;
-        if (payload.action === "setBackground") return `Set background ${payload.assetId || payload.color || "unassigned"}`;
+        if (payload.action === "setBackground") return translate("story.describe.setBackground", { value: payload.assetId || payload.color || translate("story.describe.unassigned") });
         if (payload.action === "character") {
-            const name = payload.characterId ? getCharacterName(characters, payload.characterId) : (payload.objectName || "character");
+            const name = payload.characterId ? getCharacterName(characters, payload.characterId) : (payload.objectName || translate("story.describe.characterFallback"));
             return `${payload.operation} ${name}`;
         }
-        if (payload.action === "audio") return `${payload.operation} ${payload.objectName || payload.assetId || "unassigned"}`;
+        if (payload.action === "audio") return `${payload.operation} ${payload.objectName || payload.assetId || translate("story.describe.unassigned")}`;
         if (payload.action === "setVariable") return `${variableRefShortLabel(payload.target, scene)} = ${String(payload.value)}`;
-        if (payload.action === "wait") return payload.mode === "duration" ? `Wait ${payload.durationMs ?? 0}ms` : "Wait for click";
-        if (payload.action === "image") return `${payload.operation} image ${payload.objectName || "unnamed"}`;
-        if (payload.action === "displayable") return `${payload.operation} ${resolveDisplayableTargetRef(scene, payload.target).name || "target"}`;
-        if (payload.action === "text") return `${payload.operation} text ${payload.objectName || "unnamed"}`;
+        if (payload.action === "wait") return payload.mode === "duration" ? translate("story.describe.waitDuration", { ms: payload.durationMs ?? 0 }) : translate("story.describe.waitClick");
+        if (payload.action === "image") return translate("story.describe.image", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
+        if (payload.action === "displayable") return `${payload.operation} ${resolveDisplayableTargetRef(scene, payload.target).name || translate("story.describe.targetFallback")}`;
+        if (payload.action === "text") return translate("story.describe.text", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
         if (payload.action === "layer") {
             const layerName = payload.operation === "create"
-                ? (payload.objectName || "unnamed")
-                : (resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)).name || "unnamed");
-            return `${payload.operation} layer ${layerName}`;
+                ? (payload.objectName || translate("story.describe.unnamed"))
+                : (resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)).name || translate("story.describe.unnamed"));
+            return translate("story.describe.layer", { operation: payload.operation, name: layerName });
         }
-        if (payload.action === "video") return `${payload.operation} video ${payload.objectName || "unnamed"}`;
-        if (payload.action === "nvl") return "NVL block";
-        if (payload.action === "blueprint") return "Blueprint";
-        return `${payload.effect} screen effect`;
+        if (payload.action === "video") return translate("story.describe.video", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
+        if (payload.action === "nvl") return translate("story.describe.nvl");
+        if (payload.action === "blueprint") return translate("story.describe.blueprint");
+        return translate("story.describe.effect", { effect: payload.effect });
     }
     if (block.kind === "control") {
-        if (block.payload.control === "condition") return "Condition";
-        if (block.payload.control === "conditionBranch") return `${block.payload.branch} branch`;
+        if (block.payload.control === "condition") return translate("story.describe.condition");
+        if (block.payload.control === "conditionBranch") return translate("story.describe.branch", { branch: block.payload.branch });
         return block.payload.control;
     }
     if (block.kind === "jump") {
-        return `Jump ${getSceneName(scenes, block.payload.targetSceneId)}`;
+        return translate("story.describe.jump", { scene: getSceneName(scenes, block.payload.targetSceneId) });
     }
     if (block.kind === "code") {
-        return `${block.payload.language} code`;
+        return translate("story.describe.code", { language: block.payload.language });
     }
-    return block.payload.text.value || "Note";
+    return block.payload.text.value || translate("story.describe.note");
 }
 
 export function getEmptyTextPlaceholder(block: StoryBlock): string {
     if (block.kind === "nodeAction") {
-        if (block.payload.action === "narration") return "Double-click to enter narration";
-        if (block.payload.action === "choiceOption") return "Double-click to enter option text";
-        if (block.payload.action === "choice") return "Double-click to enter choice prompt";
+        if (block.payload.action === "narration") return translate("story.emptyPlaceholder.narration");
+        if (block.payload.action === "choiceOption") return translate("story.emptyPlaceholder.option");
+        if (block.payload.action === "choice") return translate("story.emptyPlaceholder.choice");
     }
-    if (block.kind === "note") return "Double-click to enter a note";
-    return "Double-click to enter text";
+    if (block.kind === "note") return translate("story.emptyPlaceholder.note");
+    return translate("story.emptyPlaceholder.text");
 }
 
 export function getSceneName(scenes: Record<StorySceneId, StoryScene> | undefined, sceneId: string | undefined): string {
     if (!sceneId) {
-        return "unassigned";
+        return translate("story.describe.sceneUnassigned");
     }
-    return scenes?.[sceneId]?.name || "unknown scene";
+    return scenes?.[sceneId]?.name || translate("story.describe.sceneUnknown");
 }
 
 export function getCharacterName(characters: Character[], characterId: string | undefined): string {
     if (!characterId) {
-        return "Unassigned character";
+        return translate("story.characterName.unassigned");
     }
-    return characters.find(character => character.profile.getId() === characterId)?.profile.getName() ?? "Unknown character";
+    return characters.find(character => character.profile.getId() === characterId)?.profile.getName() ?? translate("story.characterName.unknown");
 }
 
 export function selectRange(rows: VisibleStoryRow[], fromId: StoryBlockId, toId: StoryBlockId): Set<StoryBlockId> {

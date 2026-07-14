@@ -52,6 +52,7 @@ export const common = {
     expand: "Expand",
     collapse: "Collapse",
     filter: "Filter",
+    noMatchesFound: "No matches found",
     error: "Error",
     warning: "Warning",
     untitled: "Untitled",

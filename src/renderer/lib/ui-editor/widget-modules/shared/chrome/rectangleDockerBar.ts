@@ -1,5 +1,6 @@
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
+import { translate } from "@/lib/i18n";
 import type { DockerBarContext, DockerBarItem } from "@/lib/ui-editor/widget-modules/types";
 import { getRectangleLikeProps } from "./rectangleHelpers";
 
@@ -19,8 +20,8 @@ export function createRectangleDockerBarItems(
         {
             kind: "number",
             id: "docker-border-radius",
-            label: "Radius",
-            tooltip: "Border radius",
+            label: translate("widgetChrome.dockerItems.radius"),
+            tooltip: translate("widgetChrome.dockerItems.radiusHint"),
             value: props.borderRadius,
             min: 0,
             step: 1,
@@ -45,8 +46,8 @@ export function createRectangleDockerBarItems(
         {
             kind: "number",
             id: "docker-border-width",
-            label: "Border",
-            tooltip: "Border width",
+            label: translate("widgetChrome.dockerItems.border"),
+            tooltip: translate("widgetChrome.dockerItems.borderHint"),
             value: props.borderWidth,
             min: 0,
             step: 1,

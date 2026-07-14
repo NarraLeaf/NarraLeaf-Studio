@@ -1,3 +1,4 @@
+import type { TranslationKey } from "@shared/i18n";
 import type {
     EffectFilterStored,
     EffectShadowStored,
@@ -20,15 +21,15 @@ export const EFFECT_STACK_KIND_ORDER: readonly VisualEffectKind[] = [
     "filter",
 ] as const;
 
-export const EFFECT_KIND_LABEL: Record<VisualEffectKind, string> = {
-    blur: "Blur",
-    backgroundBlur: "Bg blur",
-    shadow: "Shadow",
-    textShadow: "Text shadow",
-    innerShadow: "Inner shadow",
-    blend: "Blend",
-    glow: "Glow",
-    filter: "Filter",
+export const EFFECT_KIND_LABEL_KEY: Record<VisualEffectKind, TranslationKey> = {
+    blur: "widgetAppearance.effectKinds.blur",
+    backgroundBlur: "widgetAppearance.effectKinds.backgroundBlur",
+    shadow: "widgetAppearance.effectKinds.shadow",
+    textShadow: "widgetAppearance.effectKinds.textShadow",
+    innerShadow: "widgetAppearance.effectKinds.innerShadow",
+    blend: "widgetAppearance.effectKinds.blend",
+    glow: "widgetAppearance.effectKinds.glow",
+    filter: "widgetAppearance.effectKinds.filter",
 };
 
 function shadowSlotForKind(kind: VisualEffectKind): ShadowSlotKind {

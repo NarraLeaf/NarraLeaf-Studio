@@ -24,6 +24,7 @@ import { Input, InputGroup } from "@/lib/components/elements/Input";
 import { Select, type SelectOption } from "@/lib/components/elements/Select";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/blueprint-nodes/types";
 import { useTranslation } from "@/lib/i18n";
+import { resolveBlueprintNodeTitle } from "../blueprintNodeI18n";
 
 export type BlueprintEventLayerEntry = Pick<BlueprintNodeEditorCatalogEntry, "type" | "displayName">;
 
@@ -96,11 +97,11 @@ export function BlueprintEventLayerDialogContent({ entries, defaultName, onChang
             { value: "", label: "-" },
             ...sortedEntries.map(entry => ({
                 value: entry.type,
-                label: entry.displayName,
+                label: resolveBlueprintNodeTitle(entry.displayName, t),
                 secondaryLabel: entry.type,
             })),
         ],
-        [sortedEntries],
+        [sortedEntries, t],
     );
 
     const trimmedName = name.trim();
@@ -122,7 +123,8 @@ export function BlueprintEventLayerDialogContent({ entries, defaultName, onChang
                         const nextType = String(value);
                         setNodeType(nextType);
                         if (nextType) {
-                            setName(entryByType.get(nextType)?.displayName ?? name);
+                            const nextEntry = entryByType.get(nextType);
+                            setName(nextEntry ? resolveBlueprintNodeTitle(nextEntry.displayName, t) : name);
                         }
                     }}
                     placeholder="-"

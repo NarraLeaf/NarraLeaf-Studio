@@ -1,4 +1,5 @@
 import { Home } from "lucide-react";
+import { translate } from "@/lib/i18n";
 import { EditorModule } from "../types";
 import { WelcomeEditor } from "./WelcomeEditor";
 
@@ -9,7 +10,10 @@ import { WelcomeEditor } from "./WelcomeEditor";
 export const welcomeModule: EditorModule = {
     metadata: {
         id: "narraleaf-studio:welcome",
-        title: "Welcome",
+        // Resolved lazily on read (module registration runs after i18n init).
+        get title() {
+            return translate("placeholders.moduleTitles.welcome");
+        },
         icon: <Home className="w-4 h-4" />,
         closable: true,
     },

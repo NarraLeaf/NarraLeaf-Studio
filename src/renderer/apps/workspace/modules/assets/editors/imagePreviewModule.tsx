@@ -1,4 +1,5 @@
 import { Image } from "lucide-react";
+import { translate } from "@/lib/i18n";
 import { EditorModule } from "../../types";
 import { ImagePreviewEditor } from "./ImagePreviewEditor";
 
@@ -9,7 +10,7 @@ import { ImagePreviewEditor } from "./ImagePreviewEditor";
 export const imagePreviewModule: EditorModule = {
     metadata: {
         id: "narraleaf-studio:image-preview",
-        title: "Image Preview",
+        get title() { return translate("placeholders.moduleTitles.imagePreview"); },
         icon: <Image className="w-4 h-4" />,
         closable: true,
     },

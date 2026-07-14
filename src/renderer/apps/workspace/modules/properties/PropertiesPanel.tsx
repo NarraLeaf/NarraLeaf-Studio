@@ -959,6 +959,10 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         return getAssetPropertySchema(activeAsset.type, t);
     }, [activeAsset?.type, t]);
 
+    // Build localized scene and character schemas (rebuilt when the locale changes)
+    const sceneSchema = useMemo(() => scenePropertySchema(t), [t]);
+    const characterSchema = useMemo(() => characterPropertySchema(t), [t]);
+
     // Render appropriate property editor
     const renderPropertyEditor = () => {
         if (storyMotionSelection && storyService && uiService) {
@@ -979,7 +983,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             );
         }
         if (sceneEditorContext) {
-            return <PropertyEditor schema={scenePropertySchema} data={sceneEditorContext} />;
+            return <PropertyEditor schema={sceneSchema} data={sceneEditorContext} />;
         }
         // No selection
         if (!activeAsset && !activeCharacter && !sceneEditorContext && !storyMotionSelection) {
@@ -996,7 +1000,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
 
         // Character editor
         if (activeCharacter && characterContext) {
-            return <PropertyEditor schema={characterPropertySchema} data={characterContext} />;
+            return <PropertyEditor schema={characterSchema} data={characterContext} />;
         }
 
         // Asset editor

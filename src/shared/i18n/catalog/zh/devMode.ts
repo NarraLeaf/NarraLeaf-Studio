@@ -21,7 +21,7 @@ export const devMode = {
     blueprints: {
         empty: "暂无蓝图",
         openWorkspace: "工作区",
-        cannotOpen: "无法从预览中打开该蓝图。",
+        cannotOpen: "无法从预览中打开该蓝图",
         openFailed: "无法打开蓝图。",
     },
     output: {

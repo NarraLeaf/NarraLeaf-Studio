@@ -21,6 +21,10 @@ import type {
 import { SurfaceBlueprintEntrySection } from "../blueprint/SurfaceBlueprintEntrySection";
 import { PageAnimationEditor } from "@/lib/ui-editor/widget-modules/shared/page-animation/PageAnimationEditor";
 import { normalizeUIPageAnimationSettings, type UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
+import type { Translator } from "@shared/i18n";
+
+/** Translator function, threaded into schema builders since they run outside React. */
+type TranslateFn = Translator["t"];
 
 export type SceneEditorContext = {
     surface: UISurface;
@@ -38,11 +42,11 @@ const DEFAULT_GAME_UI_SLOT_ID: UIStageSlotId = DEFAULT_UI_STAGE_SLOT_ID;
 
 const isGameUi = (surface: UISurface): surface is UIStageSurface => surface.kind === "stageSurface";
 
-const getInterfaceTypeLabel = (surface: UISurface): string => {
+const getInterfaceTypeLabel = (surface: UISurface, t: TranslateFn): string => {
     if (surface.id === MAIN_APP_SURFACE_ID) {
         return DEFAULT_APP_SURFACE_NAME;
     }
-    return isGameUi(surface) ? "Game UI" : "Page";
+    return isGameUi(surface) ? t("properties.scene.typeGameUi") : t("properties.scene.typePage");
 };
 
 const getGameUiSlotLabel = (surface: UISurface): string => {
@@ -66,25 +70,26 @@ function SurfacePageAnimationField({ data }: CustomFieldProps<SceneEditorContext
     return createElement(PageAnimationEditor, { settings, onChange: update });
 }
 
-export const scenePropertySchema = createPropertyEditorSchema<SceneEditorContext>({
+export const scenePropertySchema = (t: TranslateFn) =>
+    createPropertyEditorSchema<SceneEditorContext>({
     id: "scene-properties",
-    title: "Interface Properties",
+    title: t("properties.scene.title"),
     fields: [
         defineField<SceneEditorContext, InfoFieldDefinition<SceneEditorContext>>({
             id: "scene.info",
             type: "info",
-            label: "Interface",
+            label: t("properties.scene.interface"),
             items: [
                 {
-                    label: "Type",
-                    getValue: data => getInterfaceTypeLabel(data.surface),
+                    label: t("properties.scene.type"),
+                    getValue: data => getInterfaceTypeLabel(data.surface, t),
                 },
                 {
-                    label: "Size",
+                    label: t("properties.layout.size"),
                     getValue: data => `${data.surface.designSize.width}×${data.surface.designSize.height}`,
                 },
                 {
-                    label: "Slot",
+                    label: t("properties.scene.slot"),
                     getValue: data => getGameUiSlotLabel(data.surface),
                     hidden: data => !isGameUi(data.surface),
                 },
@@ -93,7 +98,7 @@ export const scenePropertySchema = createPropertyEditorSchema<SceneEditorContext
         defineField<SceneEditorContext, TextFieldDefinition<SceneEditorContext>>({
             id: "scene.name",
             type: "text",
-            label: "Name",
+            label: t("common.name"),
             getValue: data => data.surface.name,
             setValue: (data, value) => {
                 if (value === data.surface.name) {
@@ -105,7 +110,7 @@ export const scenePropertySchema = createPropertyEditorSchema<SceneEditorContext
         defineField<SceneEditorContext, ColorPickerFieldDefinition<SceneEditorContext>>({
             id: "scene.backgroundColor",
             type: "colorPicker",
-            label: "Background Color",
+            label: t("properties.scene.backgroundColor"),
             allowOpacity: true,
             getValue: data =>
                 parseColorValue(data.surface.settings?.backgroundColor, {
@@ -128,7 +133,7 @@ export const scenePropertySchema = createPropertyEditorSchema<SceneEditorContext
         defineField<SceneEditorContext, SectionFieldDefinition<SceneEditorContext>>({
             id: "scene.pageAnimation",
             type: "section",
-            title: "Animation",
+            title: t("properties.scene.animation"),
             fields: [
                 defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({
                     id: "scene.pageAnimation.editor",
@@ -141,7 +146,7 @@ export const scenePropertySchema = createPropertyEditorSchema<SceneEditorContext
         defineField<SceneEditorContext, SelectFieldDefinition<SceneEditorContext>>({
             id: "scene.gameUiSlot",
             type: "select",
-            label: "Slot",
+            label: t("properties.scene.slot"),
             options: GAME_UI_SLOT_OPTIONS,
             getValue: data => (isGameUi(data.surface) ? data.surface.mount.slotId : DEFAULT_GAME_UI_SLOT_ID),
             setValue: (data, value) => {
@@ -167,7 +172,7 @@ export const scenePropertySchema = createPropertyEditorSchema<SceneEditorContext
         defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({
             id: "scene.blueprintEntry",
             type: "custom",
-            label: "Logic",
+            label: t("properties.scene.logic"),
             component: SurfaceBlueprintEntrySection,
         }),
     ],
