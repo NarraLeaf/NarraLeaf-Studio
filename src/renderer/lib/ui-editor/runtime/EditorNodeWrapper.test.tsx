@@ -53,13 +53,13 @@ const element: UIElement = {
     },
 };
 
-function renderWrapper(store: WidgetRuntimeStateStore): string {
+function renderWrapper(store: WidgetRuntimeStateStore, layout = element.layout): string {
     return renderToStaticMarkup(
         <WidgetRuntimeStateProvider externalStore={store}>
             <WidgetRuntimeScopeProvider runtimeScopeId="scope">
                 <EditorNodeWrapper
                     element={element}
-                    layout={element.layout}
+                    layout={layout}
                     interactive={false}
                 />
             </WidgetRuntimeScopeProvider>
@@ -103,5 +103,34 @@ describe("EditorNodeWrapper", () => {
 
         expect(markup).toContain("data-motion-initial=\"false\"");
         expect(markup).not.toContain("opacity:0.35");
+    });
+
+    it("routes the persistent base offset through motion-managed style values", () => {
+        const store = new WidgetRuntimeStateStore();
+        store.setDisplayableBaseTransform("scope\0image", { offsetX: 24, offsetY: -12 });
+
+        const markup = renderWrapper(store);
+
+        // The offset is a motion style value (x/y), not a raw transform string, so a motion
+        // rendering its own transform composes with it instead of discarding it.
+        expect(markup).toContain("x:24px");
+        expect(markup).toContain("y:-12px");
+        expect(markup).not.toContain("transform:");
+    });
+
+    it("keeps static rotation in the motion-managed transform channel", () => {
+        const markup = renderWrapper(new WidgetRuntimeStateStore(), { ...element.layout, rotation: 15 });
+
+        // Static rotation must survive motions: a raw style.transform string is dropped as soon
+        // as motion renders transforms, so it always flows through the motion `rotate` value.
+        expect(markup).toContain("rotate:15");
+        expect(markup).not.toContain("transform:rotate(15deg)");
+    });
+
+    it("keeps plain widgets free of motion transform values until they carry a pose", () => {
+        const markup = renderWrapper(new WidgetRuntimeStateStore());
+
+        expect(markup).not.toContain("x:");
+        expect(markup).not.toContain("rotate:");
     });
 });

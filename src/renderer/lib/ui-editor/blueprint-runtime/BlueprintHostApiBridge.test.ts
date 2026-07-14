@@ -682,10 +682,8 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         expect(onWidgetPatch).toHaveBeenLastCalledWith("image", {
             layout: { opacity: 1 },
         });
-        expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
-            target: { opacity: { from: "current", to: 1 } },
-            resetOnComplete: false,
-        });
+        // Held motions commit into the layout patch and release the one-shot motion slot.
+        expect(store.getDisplayableMotion("scope\0image")).toBeNull();
     });
 
     it("commits held Displayable opacity only after natural animation completion", async () => {
@@ -978,10 +976,11 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
             offsetY: -12,
         });
 
-        expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
-            target: { x: 24, y: -12 },
-            transition: { type: "tween", durationMs: 0, easing: "linear" },
-            resetOnComplete: false,
+        // Persistent offsets live in the base transform, not the one-shot motion slot.
+        expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+        expect(store.getDisplayableBaseTransform("scope\0image")).toMatchObject({
+            offsetX: 24,
+            offsetY: -12,
         });
         expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
             position: { x: 12, y: 48 },
@@ -1227,6 +1226,123 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
             expect(store.getDisplayableMotion("scope\0image")).toBeNull();
             expect(onWidgetPatch).not.toHaveBeenCalled();
             expect(hostApi.widget.getDisplayableProperties("image").position.x).toBe(0);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("keeps persistent Displayable offsets when a Variant opacity transition runs", async () => {
+        vi.useFakeTimers();
+        try {
+            const document = createDocument();
+            const image = document.elements.image!;
+            const appearance = (image.props as { appearance: AppearanceModel }).appearance;
+            const defaultVariant = appearance.variants[0]!;
+            const transparentVariant = {
+                ...defaultVariant,
+                id: "transparent",
+                name: "Transparent",
+                propertyGroups: defaultVariant.propertyGroups.map(group =>
+                    group.key === "transformOpacity"
+                        ? {
+                              ...group,
+                              rows: [{ conditions: null, value: 0 }],
+                              transition: {
+                                  type: "tween" as const,
+                                  durationMs: 25,
+                                  delayMs: 0,
+                                  easing: "linear" as const,
+                              },
+                          }
+                        : group,
+                ),
+            };
+            appearance.variants = [...appearance.variants, transparentVariant];
+            const store = new WidgetRuntimeStateStore();
+            const hostApi = createHostApi({ document, widgetRuntimeStore: store, runtimeScopeId: "scope" });
+
+            await hostApi.widget.setDisplayableProperties("image", { offsetX: 24, offsetY: -12 });
+            expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+
+            const pending = hostApi.widget.setVariant("image", "transparent", { waitForTransition: true });
+
+            // The variant opacity transition occupies the one-shot motion slot without
+            // evicting the persistent offset (it used to replace the offset motion and
+            // reset the widget to its un-offset origin on completion).
+            expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
+                target: { opacity: [1, 0] },
+                resetOnComplete: true,
+            });
+            expect(store.getDisplayableBaseTransform("scope\0image")).toMatchObject({
+                offsetX: 24,
+                offsetY: -12,
+            });
+            expect(hostApi.widget.getDisplayableProperties("image").offset).toEqual({ x: 24, y: -12 });
+
+            await vi.advanceTimersByTimeAsync(30);
+            await pending;
+
+            expect(hostApi.widget.getDisplayableProperties("image").offset).toEqual({ x: 24, y: -12 });
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("folds held Displayable offset animations into the base transform on completion", async () => {
+        vi.useFakeTimers();
+        try {
+            const store = new WidgetRuntimeStateStore();
+            const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+            const animation = hostApi.widget.animateDisplayable("image", {
+                target: { x: [0, 100] },
+                transition: { type: "tween", durationMs: 100, delayMs: 0, easing: "linear" },
+                resetOnComplete: false,
+            });
+
+            await vi.advanceTimersByTimeAsync(16);
+            expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
+                target: { x: [0, 100] },
+            });
+
+            await vi.advanceTimersByTimeAsync(100);
+            await expect(animation).resolves.toMatchObject({
+                target: { x: [0, 100] },
+            });
+
+            // Held offsets become the new persistent base and the motion slot is released,
+            // so a later motion cannot evict the held pose and reads stay consistent.
+            expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+            expect(store.getDisplayableBaseTransform("scope\0image")).toMatchObject({ offsetX: 100 });
+            expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
+                position: { x: 0, y: 48 },
+                offset: { x: 100, y: 0 },
+            });
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("resets to the persistent offset base when a held animation is stopped mid-flight", async () => {
+        vi.useFakeTimers();
+        try {
+            const store = new WidgetRuntimeStateStore();
+            const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+            await hostApi.widget.setDisplayableProperties("image", { offsetX: 24 });
+            const animation = hostApi.widget.animateDisplayable("image", {
+                id: "animation:offset",
+                target: { x: [24, 100] },
+                transition: { type: "tween", durationMs: 1000, delayMs: 0, easing: "linear" },
+                resetOnComplete: false,
+            });
+
+            await vi.advanceTimersByTimeAsync(100);
+            await hostApi.widget.stopDisplayableAnimation("animation:offset");
+            await expect(animation).resolves.toMatchObject({ id: "animation:offset" });
+
+            // Stop = cancel: nothing is committed and reads report the pre-animation base pose.
+            expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+            expect(store.getDisplayableBaseTransform("scope\0image")).toMatchObject({ offsetX: 24 });
+            expect(hostApi.widget.getDisplayableProperties("image").offset).toEqual({ x: 24, y: 0 });
         } finally {
             vi.useRealTimers();
         }
