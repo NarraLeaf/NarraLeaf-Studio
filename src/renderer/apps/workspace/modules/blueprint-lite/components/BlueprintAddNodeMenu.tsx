@@ -25,6 +25,10 @@ import {
 } from "./BlueprintAddNodeMenuModel";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
 import { useTranslation } from "@/lib/i18n";
+import {
+    resolveBlueprintCategoryLabel,
+    resolveBlueprintNodeTitle,
+} from "../blueprintNodeI18n";
 
 const MENU_W = 440;
 const MENU_MAX_H = 520;
@@ -341,7 +345,7 @@ export function BlueprintAddNodeMenu({
                                     onClick={() => setActiveCategoryId(category.id)}
                                 >
                                     <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: visual.color }} aria-hidden />
-                                    <span>{category.label}</span>
+                                    <span>{resolveBlueprintCategoryLabel(category.label, t)}</span>
                                     <span className="text-2xs text-fg-subtle">{category.count}</span>
                                 </button>
                             );
@@ -393,11 +397,13 @@ function BlueprintAddNodeRow(props: {
     const visual = getCategoryVisual(props.entry.category);
     const Icon = visual.icon;
     const magicRef = props.entry.magicElementRef;
+    const categoryLabel = resolveBlueprintCategoryLabel(props.entry.category, t);
+    const nodeTitle = resolveBlueprintNodeTitle(props.entry.displayName, t);
     const subtitle = magicRef
-        ? `${props.entry.category} -> ${magicRef.label}`
-        : props.entry.category;
+        ? `${categoryLabel} -> ${magicRef.label}`
+        : categoryLabel;
     const title = [
-        props.entry.displayName,
+        nodeTitle,
         props.entry.type,
         magicRef ? t("blueprint.addNode.targetTooltip", { label: magicRef.label, type: magicRef.elementType }) : "",
         props.entry.keywords?.length ? props.entry.keywords.join(", ") : "",
@@ -427,7 +433,7 @@ function BlueprintAddNodeRow(props: {
                     <Icon className="h-4 w-4" style={{ color: visual.color }} aria-hidden />
                 </span>
                 <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-fg">{props.entry.displayName}</span>
+                    <span className="block truncate text-sm text-fg">{nodeTitle}</span>
                     <span className="block truncate text-2xs text-fg-subtle">{subtitle}</span>
                 </span>
                 <span className="min-w-0 max-w-[180px] shrink-0 truncate font-mono text-2xs text-fg-subtle">

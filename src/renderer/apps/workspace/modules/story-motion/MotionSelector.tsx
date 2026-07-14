@@ -9,7 +9,7 @@ import type {
     StoryDocument,
     StoryTransformRef,
 } from "@shared/types/story";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { Services } from "@/lib/workspace/services/services";
@@ -54,12 +54,12 @@ function clamp(value: number, min: number, max: number): number {
     return Math.min(Math.max(value, min), max);
 }
 
-export function motionSummary(asset: StoryAnimationAsset): string {
+export function motionSummary(asset: StoryAnimationAsset, t: UseTranslation["t"]): string {
     const durationMs = getStoryMotionDurationMs(asset.timeline);
     const tracks = asset.timeline?.tracks ?? [];
     const labels = tracks
         .slice(0, 3)
-        .map(track => getStoryMotionPropertyMeta(track.property).label)
+        .map(track => t(`motion.propertyLabel.${track.property}`))
         .join(", ");
     return `${durationMs}ms${labels ? ` / ${labels}${tracks.length > 3 ? "..." : ""}` : ""}`;
 }
@@ -421,7 +421,7 @@ function MotionHoverPreview(props: {
                         {asset.name}
                     </div>
                     <div className="absolute right-2 bottom-2 rounded bg-black/55 px-1.5 py-0.5 text-2xs text-fg-muted">
-                        {motionSummary(asset)}
+                        {motionSummary(asset, t)}
                     </div>
                 </div>
             ) : (
@@ -493,7 +493,7 @@ export function MotionField(props: {
                 <span className={["truncate", animationId ? "" : "italic text-fg-subtle"].join(" ")}>
                     {asset?.name ?? (animationId ? t("motion.field.motionAsset") : t("motion.field.choosePlaceholder"))}
                 </span>
-                {asset ? <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{motionSummary(asset)}</span> : null}
+                {asset ? <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{motionSummary(asset, t)}</span> : null}
             </button>
             {animationId ? (
                 <>

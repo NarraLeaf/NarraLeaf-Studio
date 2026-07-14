@@ -78,6 +78,7 @@ export const characters = {
         },
     },
     properties: {
+        editorTitle: "角色属性",
         thumbnail: "缩略图",
         preview: "预览",
         select: "选择",
@@ -114,7 +115,7 @@ export const characters = {
         formActions: "形态操作",
         empty: "还没有形态，点击 + 创建一个",
         groupCount: {
-            one: "{count} group",
+            one: "{count} 个分组",
             other: "{count} 个分组",
         },
     },
@@ -150,7 +151,7 @@ export const characters = {
         noVariants: "还没有差分，请使用上方的按钮添加",
         groupNoVariants: "还没有差分，点击“+”添加",
         variantCount: {
-            one: "{count} variant",
+            one: "{count} 个差分",
             other: "{count} 个差分",
         },
     },

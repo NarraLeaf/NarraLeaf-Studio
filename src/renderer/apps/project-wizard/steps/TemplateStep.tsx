@@ -63,9 +63,9 @@ export function TemplateStep({ projectData, updateProjectData }: TemplateStepPro
                             {/* Content area */}
                             <div className="h-full flex items-center justify-center p-4">
                                 <div className="text-center w-full">
-                                    <CardTitle className="text-lg mb-2">{template.name}</CardTitle>
+                                    <CardTitle className="text-lg mb-2">{template.nameKey ? t(template.nameKey) : template.name}</CardTitle>
                                     <CardDescription className="text-sm">
-                                        {template.description}
+                                        {template.descriptionKey ? t(template.descriptionKey) : template.description}
                                     </CardDescription>
                                 </div>
                             </div>

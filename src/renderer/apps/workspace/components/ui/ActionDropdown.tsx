@@ -11,6 +11,7 @@ import {
     isActionMenuAction,
     isActionMenuSeparator,
 } from "./actionMenuModel";
+import { useTranslation } from "@/lib/i18n";
 
 interface ActionDropdownProps {
     group: ActionGroup;
@@ -21,7 +22,9 @@ interface ActionDropdownProps {
  * Filters actions based on focus context and when conditions
  */
 export function ActionDropdown({ group }: ActionDropdownProps) {
+    const { t } = useTranslation();
     const { workspace, context } = useWorkspace();
+    const groupLabel = group.labelKey ? t(group.labelKey) : group.label;
     const [isOpen, setIsOpen] = useState(false);
     const [openPath, setOpenPath] = useState<number[]>([]); // path of opened submenus
     const [focusPath, setFocusPath] = useState<number[]>([]); // path of focused item
@@ -166,13 +169,13 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
                     }
                 }}
                 className="h-8 px-2 rounded-md flex items-center gap-2 text-sm transition-colors cursor-default text-fg-muted hover:bg-fill hover:text-white"
-                title={String(group.label)}
-                aria-label={String(group.label)}
+                title={String(groupLabel)}
+                aria-label={String(groupLabel)}
                 aria-expanded={isOpen}
                 aria-haspopup="true"
             >
                 {group.icon && <span className="w-4 h-4">{group.icon}</span>}
-                <span>{String(group.label)}</span>
+                <span>{String(groupLabel)}</span>
                 <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? "rotate-180" : ""}`} />
             </button>
 
@@ -189,7 +192,7 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
                         ref={rootMenuRef}
                         className="absolute top-full left-0 mt-1 z-20 min-w-64 bg-[#1a1a1a] border border-edge-strong rounded-md shadow-lg py-1"
                         role="menu"
-                        aria-label={group.label}
+                        aria-label={groupLabel}
                         tabIndex={0}
                         onKeyDown={handleGlobalKeyDown}
                     >
@@ -286,6 +289,7 @@ interface MenuLevelProps {
 }
 
 function MenuLevel(props: MenuLevelProps) {
+    const { t } = useTranslation();
     const { level, items, openPath, focusPath, setOpenPath, setFocusPath, onActionClick, hoverOpenTimerRef, hoverCloseTimerRef, focusContext } = props;
     const parentPath = focusPath.slice(0, level);
     const focusedIndex = focusPath[level] ?? -1;
@@ -362,7 +366,7 @@ function MenuLevel(props: MenuLevelProps) {
                         >
                             <span className="flex items-center gap-2">
                                 {isActionMenuAction(item) ? null : (item.icon ? <span className="w-4 h-4">{item.icon}</span> : null)}
-                                <span>{String(item.label)}</span>
+                                <span>{String(item.labelKey ? t(item.labelKey) : item.label)}</span>
                             </span>
                             {/* Right side: shortcut + badge/chevron */}
                             <span className="flex items-center gap-2">

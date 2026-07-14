@@ -24,6 +24,7 @@ import {
 } from "@shared/types/ui-editor/document";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
+import { translate } from "@/lib/i18n";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { roundUILayoutGeometryFields } from "@/lib/ui-editor/layout/roundLayoutGeometry";
 import { ProjectNameConvention } from "../../project/nameConvention";
@@ -229,7 +230,7 @@ function cloneJson<T>(value: T): T {
 }
 
 function createDuplicateName(baseName: string, existingNames: Set<string>): string {
-    const base = `${baseName.trim() || "Page"} Copy`;
+    const base = translate("defaultDoc.pageCopy", { name: baseName.trim() || translate("defaultDoc.pageName") });
     if (!existingNames.has(base)) {
         return base;
     }
@@ -1620,7 +1621,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const rootElement: UIElement = {
             id: rootElementId,
             type: "nl.container",
-            name: "Root",
+            name: translate("defaultDoc.rootName"),
             parentId: null,
             childrenIds: [],
             layout: roundUILayoutGeometryFields({
@@ -1638,7 +1639,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         };
         const component: UIComponentDefinition = {
             id: componentId,
-            name: sanitizeComponentName(name, "Component"),
+            name: sanitizeComponentName(name, translate("defaultDoc.componentName")),
             rootElementId,
             elements: {
                 [rootElementId]: rootElement,
@@ -1724,7 +1725,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             const rootElement: UIElement = {
                 id: rootElementId,
                 type: "nl.container",
-                name: "Root",
+                name: translate("defaultDoc.rootName"),
                 parentId: null,
                 childrenIds: topLevelIds.map(id => elementIdMap[id]).filter(Boolean),
                 layout: roundUILayoutGeometryFields({
@@ -1770,7 +1771,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
         const component: UIComponentDefinition = {
             id: componentId,
-            name: sanitizeComponentName(name, selectedTopElements.length === 1 ? (selectedTopElements[0].name ?? "Component") : "Component"),
+            name: sanitizeComponentName(name, selectedTopElements.length === 1 ? (selectedTopElements[0].name ?? translate("defaultDoc.componentName")) : translate("defaultDoc.componentName")),
             rootElementId,
             elements: componentElements,
             previewMeta: {
@@ -2969,7 +2970,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const interactionLayer: UIElement = {
             id: interactionLayerId,
             type: "nl.container",
-            name: "Dialog Interaction Layer",
+            name: translate("defaultDoc.dialog.interactionLayer"),
             parentId: rootElement.id,
             childrenIds: [],
             layout: roundUILayoutGeometryFields({
@@ -2998,7 +2999,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const panel: UIElement = {
             id: panelId,
             type: "nl.container",
-            name: "Dialog Panel",
+            name: translate("defaultDoc.dialog.panel"),
             parentId: rootElement.id,
             childrenIds: [stackId],
             layout: roundUILayoutGeometryFields({
@@ -3028,7 +3029,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const stack: UIElement = {
             id: stackId,
             type: "nl.container",
-            name: "Dialog Content",
+            name: translate("defaultDoc.dialog.content"),
             parentId: panelId,
             childrenIds: [nametagId, sentenceId],
             layout: roundUILayoutGeometryFields({
@@ -3058,7 +3059,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const nametag: UIElement = {
             id: nametagId,
             type: "nl.text",
-            name: "Nametag",
+            name: translate("defaultDoc.dialog.nametag"),
             parentId: stackId,
             childrenIds: [],
             layout: roundUILayoutGeometryFields({
@@ -3070,7 +3071,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 visible: true,
             }),
             props: createTextTemplateProps({
-                text: "Speaker",
+                text: translate("defaultDoc.speaker"),
                 fontSize: 22,
                 color: "#f8d37a",
                 fontWeight: "600",
@@ -3082,7 +3083,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const sentence: UIElement = {
             id: sentenceId,
             type: DIALOG_SENTENCE_WIDGET_TYPE,
-            name: "Sentence",
+            name: translate("defaultDoc.dialog.sentence"),
             parentId: stackId,
             childrenIds: [],
             layout: roundUILayoutGeometryFields({
@@ -3094,7 +3095,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 visible: true,
             }),
             props: createTextTemplateProps({
-                text: "The current line will appear here.",
+                text: translate("defaultDoc.dialog.sentenceText"),
                 fontSize: 24,
                 color: "#f8fafc",
                 lineHeight: 1.45,
@@ -3332,7 +3333,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const contentBlueprintId = localBp.ensureWidgetMain(
             surfaceId,
             template.stackId,
-            "Dialog Content",
+            translate("defaultDoc.dialog.content"),
             "nl.container",
         );
         const dialogNextEventId = "dialogNext";
@@ -3344,7 +3345,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             blueprint.program.graphs.events = {
                 [dialogNextEventId]: {
                     id: dialogNextEventId,
-                    name: "Dialog Next",
+                    name: translate("defaultDoc.dialog.nextEvent"),
                     graph: this.createDialogContentNextGraph(surfaceId, {
                         interactionLayerId: template.interactionLayerId,
                         panelId: template.panelId,
@@ -3355,7 +3356,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             };
         });
 
-        const nametagBlueprintId = localBp.ensureWidgetMain(surfaceId, template.nametagId, "Nametag", "nl.text");
+        const nametagBlueprintId = localBp.ensureWidgetMain(surfaceId, template.nametagId, translate("defaultDoc.dialog.nametag"), "nl.text");
         localBp.applyBlueprintMutation(doc => {
             const blueprint = doc.blueprints[nametagBlueprintId];
             if (!blueprint || blueprint.program.kind !== "graph") {
@@ -3364,7 +3365,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             blueprint.program.graphs.events = {
                 nametagUpdate: {
                     id: "nametagUpdate",
-                    name: "Update Nametag",
+                    name: translate("defaultDoc.dialog.updateNametagEvent"),
                     graph: this.createNametagUpdateGraph(),
                 },
             };
@@ -3429,7 +3430,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const list: UIElement = {
             id: listId,
             type: NOTIFICATION_LIST_WIDGET_TYPE,
-            name: "Notification List",
+            name: translate("defaultDoc.notification.list"),
             parentId: rootElement.id,
             childrenIds: [itemContainerId],
             layout: roundUILayoutGeometryFields({
@@ -3444,8 +3445,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 itemKeyPath: "id",
                 itemGap: 12,
                 previewItems: [
-                    { id: "preview-1", message: "Notification message" },
-                    { id: "preview-2", message: "Another message" },
+                    { id: "preview-1", message: translate("defaultDoc.notification.messageText") },
+                    { id: "preview-2", message: translate("defaultDoc.notification.anotherMessage") },
                 ],
                 scrollbar: {
                     ...cloneJson(defaultListWidgetProps.scrollbar),
@@ -3458,7 +3459,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const itemContainer: UIElement = {
             id: itemContainerId,
             type: "nl.container",
-            name: "Notification Item",
+            name: translate("defaultDoc.notification.item"),
             parentId: listId,
             childrenIds: [itemTextId],
             layout: roundUILayoutGeometryFields({
@@ -3494,7 +3495,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const itemText: UIElement = {
             id: itemTextId,
             type: "nl.text",
-            name: "Notification Message",
+            name: translate("defaultDoc.notification.message"),
             parentId: itemContainerId,
             childrenIds: [],
             layout: roundUILayoutGeometryFields({
@@ -3506,7 +3507,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 visible: true,
             }),
             props: createTextTemplateProps({
-                text: "Notification message",
+                text: translate("defaultDoc.notification.messageText"),
                 fontSize: 20,
                 color: "#f8fafc",
                 lineHeight: 1.3,
@@ -3544,7 +3545,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const list: UIElement = {
             id: listId,
             type: CHOICE_LIST_WIDGET_TYPE,
-            name: "Choice List",
+            name: translate("defaultDoc.choice.list"),
             parentId: rootElement.id,
             childrenIds: [itemContainerId],
             layout: roundUILayoutGeometryFields({
@@ -3559,9 +3560,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 itemKeyPath: "index",
                 itemGap: 16,
                 previewItems: [
-                    { text: "Choice A", index: 0, disabled: false },
-                    { text: "Choice B", index: 1, disabled: false },
-                    { text: "Choice C", index: 2, disabled: true },
+                    { text: translate("defaultDoc.choice.previewA"), index: 0, disabled: false },
+                    { text: translate("defaultDoc.choice.previewB"), index: 1, disabled: false },
+                    { text: translate("defaultDoc.choice.previewC"), index: 2, disabled: true },
                 ],
                 scrollbar: {
                     ...cloneJson(defaultListWidgetProps.scrollbar),
@@ -3574,7 +3575,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const itemContainer: UIElement = {
             id: itemContainerId,
             type: "nl.container",
-            name: "Choice Item",
+            name: translate("defaultDoc.choice.item"),
             parentId: listId,
             childrenIds: [itemTextId],
             layout: roundUILayoutGeometryFields({
@@ -3610,7 +3611,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const itemText: UIElement = {
             id: itemTextId,
             type: "nl.text",
-            name: "Choice Text",
+            name: translate("defaultDoc.choice.text"),
             parentId: itemContainerId,
             childrenIds: [],
             layout: roundUILayoutGeometryFields({
@@ -3622,7 +3623,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 visible: true,
             }),
             props: createTextTemplateProps({
-                text: "Choice",
+                text: translate("defaultDoc.choice.itemText"),
                 fontSize: 24,
                 color: "#0b0d12",
                 lineHeight: 1.3,
@@ -3666,7 +3667,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const interactionLayer: UIElement = {
             id: interactionLayerId,
             type: "nl.container",
-            name: "NVL Interaction Layer",
+            name: translate("defaultDoc.nvl.interactionLayer"),
             parentId: rootElement.id,
             childrenIds: [],
             layout: roundUILayoutGeometryFields({
@@ -3695,7 +3696,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const panel: UIElement = {
             id: panelId,
             type: "nl.container",
-            name: "NVL Panel",
+            name: translate("defaultDoc.nvl.panel"),
             parentId: rootElement.id,
             childrenIds: [listId],
             layout: roundUILayoutGeometryFields({
@@ -3724,7 +3725,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const list: UIElement = {
             id: listId,
             type: NVL_LIST_WIDGET_TYPE,
-            name: "NVL List",
+            name: translate("defaultDoc.nvl.list"),
             parentId: panelId,
             childrenIds: [nametagId, textsId],
             layout: roundUILayoutGeometryFields({
@@ -3741,7 +3742,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 templateDirection: "vertical",
                 templateGap: 6,
                 previewItems: [
-                    { nametag: "Speaker", index: 0, isActive: false },
+                    { nametag: translate("defaultDoc.speaker"), index: 0, isActive: false },
                     { nametag: "", index: 1, isActive: true },
                 ],
             }),
@@ -3750,7 +3751,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const nametag: UIElement = {
             id: nametagId,
             type: "nl.text",
-            name: "NVL Nametag",
+            name: translate("defaultDoc.nvl.nametag"),
             parentId: listId,
             childrenIds: [],
             layout: roundUILayoutGeometryFields({
@@ -3762,7 +3763,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 visible: true,
             }),
             props: createTextTemplateProps({
-                text: "Speaker",
+                text: translate("defaultDoc.speaker"),
                 fontSize: 20,
                 color: "#f8d37a",
                 fontWeight: "600",
@@ -3775,7 +3776,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const texts: UIElement = {
             id: textsId,
             type: NVL_TEXTS_WIDGET_TYPE,
-            name: "NVL Texts",
+            name: translate("defaultDoc.nvl.texts"),
             parentId: listId,
             childrenIds: [],
             layout: roundUILayoutGeometryFields({
@@ -3787,7 +3788,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 visible: true,
             }),
             props: createTextTemplateProps({
-                text: "The dialog entry text will appear here.",
+                text: translate("defaultDoc.nvl.entryText"),
                 fontSize: 22,
                 color: "#f8fafc",
                 lineHeight: 1.5,
@@ -4012,8 +4013,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.seedListItemTextValueBinding(
             template.itemTextId,
             "message",
-            "Notification Message",
-            "Notification message",
+            translate("defaultDoc.notification.message"),
+            translate("defaultDoc.notification.messageText"),
         );
     }
 
@@ -4023,12 +4024,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             return;
         }
 
-        this.seedListItemTextValueBinding(template.itemTextId, "text", "Choice Text", "Choice");
+        this.seedListItemTextValueBinding(template.itemTextId, "text", translate("defaultDoc.choice.text"), translate("defaultDoc.choice.itemText"));
 
         const listBlueprintId = localBp.ensureWidgetMain(
             surfaceId,
             template.listId,
-            "Choice List",
+            translate("defaultDoc.choice.list"),
             CHOICE_LIST_WIDGET_TYPE,
         );
         localBp.applyBlueprintMutation(doc => {
@@ -4039,7 +4040,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             blueprint.program.graphs.events = {
                 choiceSelect: {
                     id: "choiceSelect",
-                    name: "Select Choice",
+                    name: translate("defaultDoc.choice.selectEvent"),
                     graph: this.createChoiceSelectGraph(),
                 },
             };
@@ -4052,14 +4053,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             return;
         }
 
-        this.seedListItemTextValueBinding(template.nametagId, "nametag", "NVL Nametag", "Speaker");
+        this.seedListItemTextValueBinding(template.nametagId, "nametag", translate("defaultDoc.nvl.nametag"), translate("defaultDoc.speaker"));
 
         // Advancement graph hosted on the Panel (nl.container) — collection widgets like the NVL
         // List do not expose a Mouse Click head.
         const panelBlueprintId = localBp.ensureWidgetMain(
             surfaceId,
             template.panelId,
-            "NVL Panel",
+            translate("defaultDoc.nvl.panel"),
             "nl.container",
         );
         localBp.applyBlueprintMutation(doc => {
@@ -4070,7 +4071,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             blueprint.program.graphs.events = {
                 nvlNext: {
                     id: "nvlNext",
-                    name: "NVL Next",
+                    name: translate("defaultDoc.nvl.nextEvent"),
                     graph: this.createNvlNextGraph(surfaceId, {
                         interactionLayerId: template.interactionLayerId,
                     }),

@@ -24,7 +24,7 @@ export const launcher = {
         errorImport: "导入项目失败",
     },
     recentCount: {
-        one: "{count} recent project",
+        one: "{count} 个最近项目",
         other: "{count} 个最近项目",
     },
     plugins: {

@@ -1,3 +1,5 @@
+import type { TranslationKey } from "@shared/i18n";
+import { translate } from "@/lib/i18n";
 import type {
     AppearanceFieldTransition,
     AppearanceModel,
@@ -10,18 +12,18 @@ import type {
 } from "@shared/types/ui-editor/appearance";
 
 export const APPEARANCE_TRANSITION_TYPE_OPTIONS = [
-    { value: "tween", label: "Tween" },
-    { value: "spring", label: "Spring" },
-] as const;
+    { value: "tween", labelKey: "widgetAppearance.motion.typeTween" },
+    { value: "spring", labelKey: "widgetAppearance.motion.typeSpring" },
+] as const satisfies readonly { value: string; labelKey: TranslationKey }[];
 
-export const APPEARANCE_TWEEN_EASING_OPTIONS: { value: AppearanceTransitionTweenEasing; label: string }[] = [
-    { value: "linear", label: "Linear" },
-    { value: "easeIn", label: "Ease in" },
-    { value: "easeOut", label: "Ease out" },
-    { value: "easeInOut", label: "Ease in-out" },
-    { value: "circIn", label: "Circ in" },
-    { value: "circOut", label: "Circ out" },
-    { value: "circInOut", label: "Circ in-out" },
+export const APPEARANCE_TWEEN_EASING_OPTIONS: { value: AppearanceTransitionTweenEasing; labelKey: TranslationKey }[] = [
+    { value: "linear", labelKey: "widgetAppearance.motion.easingLinear" },
+    { value: "easeIn", labelKey: "widgetAppearance.motion.easingIn" },
+    { value: "easeOut", labelKey: "widgetAppearance.motion.easingOut" },
+    { value: "easeInOut", labelKey: "widgetAppearance.motion.easingInOut" },
+    { value: "circIn", labelKey: "widgetAppearance.motion.easingCircIn" },
+    { value: "circOut", labelKey: "widgetAppearance.motion.easingCircOut" },
+    { value: "circInOut", labelKey: "widgetAppearance.motion.easingCircInOut" },
 ];
 
 export const DEFAULT_TWEEN_TRANSITION: AppearanceFieldTransition = {
@@ -166,82 +168,50 @@ export function getDefaultAppearanceTransition(type: AppearanceFieldTransition["
     return JSON.parse(JSON.stringify(type === "spring" ? DEFAULT_SPRING_TRANSITION : DEFAULT_TWEEN_TRANSITION));
 }
 
+const APPEARANCE_FIELD_LABEL_KEYS: Partial<Record<AppearancePropertyKey, TranslationKey>> = {
+    backgroundColor: "widgetAppearance.fieldLabels.backgroundColor",
+    fillOpacity: "widgetAppearance.fieldLabels.fillOpacity",
+    fillVisible: "widgetAppearance.fieldLabels.fillVisibility",
+    borderWidth: "widgetAppearance.fieldLabels.borderWidth",
+    borderColor: "widgetAppearance.fieldLabels.borderColor",
+    strokeOpacity: "widgetAppearance.fieldLabels.borderOpacity",
+    strokeVisible: "widgetAppearance.fieldLabels.borderVisibility",
+    strokeAlign: "widgetAppearance.fieldLabels.borderAlign",
+    strokeSide: "widgetAppearance.fieldLabels.borderSides",
+    borderJoin: "widgetAppearance.fieldLabels.cornerJoin",
+    borderRadius: "widgetAppearance.fieldLabels.cornerRadius",
+    borderRadiusTL: "widgetAppearance.fieldLabels.topLeftRadius",
+    borderRadiusTR: "widgetAppearance.fieldLabels.topRightRadius",
+    borderRadiusBL: "widgetAppearance.fieldLabels.bottomLeftRadius",
+    borderRadiusBR: "widgetAppearance.fieldLabels.bottomRightRadius",
+    paddingX: "widgetAppearance.fieldLabels.horizontalPadding",
+    paddingY: "widgetAppearance.fieldLabels.verticalPadding",
+    fontSize: "widgetAppearance.fieldLabels.fontSize",
+    color: "widgetAppearance.fieldLabels.textColor",
+    lineHeight: "widgetAppearance.fieldLabels.lineHeight",
+    effectTextShadow: "widgetAppearance.fieldLabels.textShadow",
+    transformOffsetX: "widgetAppearance.fieldLabels.offsetX",
+    transformOffsetY: "widgetAppearance.fieldLabels.offsetY",
+    transformScale: "widgetAppearance.fieldLabels.zoom",
+    transformRotation: "widgetAppearance.fieldLabels.rotation",
+    transformOpacity: "widgetAppearance.fieldLabels.transformOpacity",
+    effectBlur: "widgetAppearance.fieldLabels.blur",
+    effectBackgroundBlur: "widgetAppearance.fieldLabels.backdropBlur",
+    effectShadow: "widgetAppearance.fieldLabels.shadow",
+    effectInnerShadow: "widgetAppearance.fieldLabels.innerShadow",
+    effectBlend: "widgetAppearance.fieldLabels.blendMode",
+    effectGlow: "widgetAppearance.fieldLabels.glow",
+    effectFilter: "widgetAppearance.fieldLabels.filter",
+};
+
 export function getAppearanceFieldLabel(key: AppearancePropertyKey): string {
-    switch (key) {
-        case "backgroundColor":
-            return "Background color";
-        case "fillOpacity":
-            return "Fill opacity";
-        case "fillVisible":
-            return "Fill visibility";
-        case "borderWidth":
-            return "Border width";
-        case "borderColor":
-            return "Border color";
-        case "strokeOpacity":
-            return "Border opacity";
-        case "strokeVisible":
-            return "Border visibility";
-        case "strokeAlign":
-            return "Border align";
-        case "strokeSide":
-            return "Border sides";
-        case "borderJoin":
-            return "Corner join";
-        case "borderRadius":
-            return "Corner radius";
-        case "borderRadiusTL":
-            return "Top-left radius";
-        case "borderRadiusTR":
-            return "Top-right radius";
-        case "borderRadiusBL":
-            return "Bottom-left radius";
-        case "borderRadiusBR":
-            return "Bottom-right radius";
-        case "paddingX":
-            return "Horizontal padding";
-        case "paddingY":
-            return "Vertical padding";
-        case "fontSize":
-            return "Font size";
-        case "color":
-            return "Text color";
-        case "lineHeight":
-            return "Line height";
-        case "effectTextShadow":
-            return "Text shadow";
-        case "transformOffsetX":
-            return "Offset X";
-        case "transformOffsetY":
-            return "Offset Y";
-        case "transformScale":
-            return "Zoom";
-        case "transformRotation":
-            return "Rotation";
-        case "transformOpacity":
-            return "Transform opacity";
-        case "effectBlur":
-            return "Blur";
-        case "effectBackgroundBlur":
-            return "Backdrop blur";
-        case "effectShadow":
-            return "Shadow";
-        case "effectInnerShadow":
-            return "Inner shadow";
-        case "effectBlend":
-            return "Blend mode";
-        case "effectGlow":
-            return "Glow";
-        case "effectFilter":
-            return "Filter";
-        default:
-            return key;
-    }
+    const labelKey = APPEARANCE_FIELD_LABEL_KEYS[key];
+    return labelKey ? translate(labelKey) : key;
 }
 
 export function formatAppearanceTransitionSummary(transition: AppearanceFieldTransition | null | undefined): string {
     if (!transition) {
-        return "Off";
+        return translate("widgetAppearance.motion.summaryOff");
     }
     if (transition.type === "tween") {
         return `${transition.durationMs}ms ${transition.easing}`;

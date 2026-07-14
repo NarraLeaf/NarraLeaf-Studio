@@ -1,6 +1,7 @@
 import { EditorTabComponentProps, FocusContext, PanelComponentProps } from "@/lib/workspace/services/ui/types";
 import { Workspace } from "@/lib/workspace/workspace";
 import { ComponentType, ReactNode } from "react";
+import { TranslationKey } from "@shared/i18n";
 
 /**
  * Position where a panel can be displayed
@@ -32,6 +33,8 @@ export interface PanelDefinition<TPayload = any> {
 export interface ActionSubmenu {
     id: string;
     label: string;
+    /** i18n key; when set, it overrides `label` at render time (falls back to `label`). */
+    labelKey?: TranslationKey;
     icon?: ReactNode;
     items: ActionMenuItem[];
     order?: number;
@@ -55,6 +58,8 @@ export type ActionMenuItem = ActionDefinition | ActionSubmenu | ActionSeparator;
 export interface ActionGroup {
     id: string;
     label: string;
+    /** i18n key; when set, it overrides `label` at render time (falls back to `label`). */
+    labelKey?: TranslationKey;
     icon?: ReactNode;
     /**
      * Backward-compatible flat actions. If provided and `items` is undefined,
@@ -74,8 +79,12 @@ export interface ActionGroup {
 export interface ActionDefinition {
     id: string;
     label?: string;
+    /** i18n key; when set, it overrides `label` at render time (falls back to `label`). */
+    labelKey?: TranslationKey;
     icon?: ReactNode;
     tooltip?: string;
+    /** i18n key; when set, it overrides `tooltip` at render time (falls back to `tooltip`). */
+    tooltipKey?: TranslationKey;
     shortcut?: string;
     onClick: (workspace: Workspace) => void;
     order?: number;

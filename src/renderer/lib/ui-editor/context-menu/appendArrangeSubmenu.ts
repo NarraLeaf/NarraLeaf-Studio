@@ -6,6 +6,7 @@ import {
     type UiEditorArrangeOp,
 } from "@/lib/ui-editor/commands/uiEditorArrange";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
+import { translate } from "@/lib/i18n";
 
 const ROOT = "nl.root";
 
@@ -53,11 +54,11 @@ export function appendArrangeSubmenu(
     items.push({ separator: true, id: "sep-arrange" });
     items.push({
         id: "arrange",
-        label: "Arrange",
+        label: translate("uiEditor.contextMenu.arrange.label"),
         submenu: [
             {
                 id: "arrange-bring-front",
-                label: "Bring to front",
+                label: translate("uiEditor.contextMenu.arrange.bringToFront"),
                 disabled: !av.bringToFront,
                 onClick: () => {
                     hideMenu();
@@ -66,7 +67,7 @@ export function appendArrangeSubmenu(
             },
             {
                 id: "arrange-send-back",
-                label: "Send to back",
+                label: translate("uiEditor.contextMenu.arrange.sendToBack"),
                 disabled: !av.sendToBack,
                 onClick: () => {
                     hideMenu();
@@ -75,7 +76,7 @@ export function appendArrangeSubmenu(
             },
             {
                 id: "arrange-bring-forward",
-                label: "Bring forward",
+                label: translate("uiEditor.contextMenu.arrange.bringForward"),
                 disabled: !av.bringForward,
                 onClick: () => {
                     hideMenu();
@@ -84,7 +85,7 @@ export function appendArrangeSubmenu(
             },
             {
                 id: "arrange-send-backward",
-                label: "Send backward",
+                label: translate("uiEditor.contextMenu.arrange.sendBackward"),
                 disabled: !av.sendBackward,
                 onClick: () => {
                     hideMenu();

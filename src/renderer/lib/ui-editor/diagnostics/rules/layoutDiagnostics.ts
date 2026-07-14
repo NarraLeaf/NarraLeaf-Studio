@@ -3,6 +3,7 @@ import { isUIElementFlowLayoutChild } from "@shared/types/ui-editor/document";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { getElementSurfaceTopLeft } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
+import { translate } from "@/lib/i18n";
 import type { UISurfaceDiagnostic } from "../types";
 
 const MIN_VISIBLE_SIZE = 2;
@@ -32,8 +33,12 @@ export function collectLayoutDiagnostics(
                 id: `layout:tiny:${el.id}`,
                 severity: "warning",
                 source: "layout",
-                message: `Element “${el.name ?? el.type}” has a very small size (${Math.round(width)}×${Math.round(height)})`,
-                hint: "Increase width and height for reliable layout and hit testing.",
+                message: translate("blueprint.diagnostics.layout.tiny", {
+                    name: el.name ?? el.type,
+                    width: Math.round(width),
+                    height: Math.round(height),
+                }),
+                hint: translate("blueprint.diagnostics.layout.tinyHint"),
                 elementId: el.id,
             });
         }
@@ -47,8 +52,8 @@ export function collectLayoutDiagnostics(
                 id: `layout:oob:${el.id}`,
                 severity: "warning",
                 source: "layout",
-                message: `Element “${el.name ?? el.type}” is outside the Surface design bounds`,
-                hint: `Design size is ${dw}×${dh}. Move or resize the element.`,
+                message: translate("blueprint.diagnostics.layout.outOfBounds", { name: el.name ?? el.type }),
+                hint: translate("blueprint.diagnostics.layout.outOfBoundsHint", { width: dw, height: dh }),
                 elementId: el.id,
             });
         }

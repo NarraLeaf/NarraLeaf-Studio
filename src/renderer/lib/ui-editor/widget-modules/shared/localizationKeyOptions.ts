@@ -8,6 +8,7 @@
 
 import type { SelectOption } from "@/apps/workspace/modules/properties/framework/types";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
+import { translate } from "@/lib/i18n";
 
 export function listLocalizationKeyOptions(): SelectOption[] {
     let keys: Record<string, { sourceText: string }> = {};
@@ -17,7 +18,7 @@ export function listLocalizationKeyOptions(): SelectOption[] {
         // Outside a workspace context; offer only "None".
     }
     return [
-        { value: "", label: "None" },
+        { value: "", label: translate("widgets.localization.none") },
         ...Object.entries(keys)
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([name, definition]) => ({
