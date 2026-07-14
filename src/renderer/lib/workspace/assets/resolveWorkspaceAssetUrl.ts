@@ -22,6 +22,10 @@ export type WorkspaceBlobUrlResolver = {
  * Resolves an asset id to a URL loadable inside any renderer window:
  * remote assets resolve to their stored URL, local assets to an `app://fs/{hash}` grant.
  *
+ * Grants are issued one-shot; the Dev Mode request path promotes them in the
+ * main process to session-lived repeatable reads bound to the Dev Mode window
+ * (see devModeAction.ts) so the engine can re-fetch assets on scene changes.
+ *
  * This is the single source of truth used by both the cross-window IPC handler
  * (WorkspaceContext) and in-window consumers such as the story preview stage.
  */
