@@ -25,7 +25,7 @@ import { Plus, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
 import {
     clearEffectKindPatch,
     enableEffectKindPatch,
-    EFFECT_KIND_LABEL,
+    EFFECT_KIND_LABEL_KEY,
     listEnabledKindsInOrder,
     listRemainingKinds,
     summarizeEffectKind,
@@ -504,7 +504,7 @@ export function EffectsStackEditor({
 
     const enabled = listEnabledKindsInOrder(values, supportedKinds);
     const remaining = listRemainingKinds(values, supportedKinds);
-    const addOptions = remaining.map(k => ({ value: k, label: EFFECT_KIND_LABEL[k] }));
+    const addOptions = remaining.map(k => ({ value: k, labelKey: EFFECT_KIND_LABEL_KEY[k] }));
 
     const addSelected = useCallback(() => {
         if (!pendingAdd) {
@@ -555,7 +555,7 @@ export function EffectsStackEditor({
                 <div key={kind} className="flex flex-col gap-0 min-w-0 rounded-md border border-edge bg-black/15 px-2 py-1.5">
                     <div className="flex items-center gap-1.5 min-w-0">
                         <span className="text-2xs font-medium text-fg-muted shrink-0 w-[4.5rem]">
-                            {EFFECT_KIND_LABEL[kind]}
+                            {t(EFFECT_KIND_LABEL_KEY[kind])}
                         </span>
                         <span className="text-2xs text-fg-subtle truncate flex-1 min-w-0 font-mono">
                             {summarizeEffectKind(kind, values)}

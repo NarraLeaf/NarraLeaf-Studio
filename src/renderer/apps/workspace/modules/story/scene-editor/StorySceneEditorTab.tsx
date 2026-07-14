@@ -247,7 +247,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         {
             id: "delete",
             key: "delete",
-            description: "Delete selected story rows",
+            description: t("story.keybindings.deleteRows"),
             handler: () => {
                 void editor.deleteSelection({ confirmMultiple: false });
             },
@@ -255,7 +255,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         {
             id: "backspace",
             key: "backspace",
-            description: "Delete selected story rows with multi-select confirmation",
+            description: t("story.keybindings.deleteRowsConfirm"),
             handler: () => {
                 void editor.deleteSelection({ confirmMultiple: true });
             },
@@ -263,139 +263,139 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         {
             id: "undo",
             key: "ctrl+z",
-            description: "Undo story scene edit",
+            description: t("story.keybindings.undo"),
             handler: editor.undoEdit,
         },
         {
             id: "redo",
             key: "ctrl+shift+z",
-            description: "Redo story scene edit",
+            description: t("story.keybindings.redo"),
             handler: editor.redoEdit,
         },
         {
             id: "edit-active",
             key: "enter",
-            description: "Edit the active row (or open its inspector)",
+            description: t("story.keybindings.editRow"),
             handler: editor.enterEditOrInspectorForActive,
         },
         {
             id: "insert-after-active-ctrl",
             key: "ctrl+enter",
-            description: "Insert a new story row below the active row",
+            description: t("story.keybindings.insertRow"),
             handler: editor.startInsertAfterActive,
         },
         {
             id: "insert-after-active-meta",
             key: "meta+enter",
-            description: "Insert a new story row below the active row",
+            description: t("story.keybindings.insertRow"),
             handler: editor.startInsertAfterActive,
         },
         {
             id: "indent",
             key: "tab",
-            description: "Indent selected story rows",
+            description: t("story.keybindings.indent"),
             handler: () => editor.indentSelection("in"),
         },
         {
             id: "outdent",
             key: "shift+tab",
-            description: "Outdent selected story rows",
+            description: t("story.keybindings.outdent"),
             handler: () => editor.indentSelection("out"),
         },
         {
             id: "select-all-ctrl",
             key: "ctrl+a",
-            description: "Select all visible story rows",
+            description: t("story.keybindings.selectAll"),
             handler: editor.selectAllRows,
         },
         {
             id: "select-all-meta",
             key: "meta+a",
-            description: "Select all visible story rows",
+            description: t("story.keybindings.selectAll"),
             handler: editor.selectAllRows,
         },
         {
             id: "duplicate-ctrl",
             key: "ctrl+d",
-            description: "Duplicate selected story rows",
+            description: t("story.keybindings.duplicateRows"),
             handler: editor.duplicateSelection,
         },
         {
             id: "duplicate-meta",
             key: "meta+d",
-            description: "Duplicate selected story rows",
+            description: t("story.keybindings.duplicateRows"),
             handler: editor.duplicateSelection,
         },
         {
             id: "move-selection-down",
             key: "arrowdown",
-            description: "Move story row selection down",
+            description: t("story.keybindings.moveSelectionDown"),
             handler: () => editor.moveActiveRowSelection("down"),
         },
         {
             id: "move-selection-up",
             key: "arrowup",
-            description: "Move story row selection up",
+            description: t("story.keybindings.moveSelectionUp"),
             handler: () => editor.moveActiveRowSelection("up"),
         },
         {
             id: "extend-selection-down",
             key: "shift+arrowdown",
-            description: "Extend story row selection down",
+            description: t("story.keybindings.extendSelectionDown"),
             handler: () => editor.extendRowSelection("down"),
         },
         {
             id: "extend-selection-up",
             key: "shift+arrowup",
-            description: "Extend story row selection up",
+            description: t("story.keybindings.extendSelectionUp"),
             handler: () => editor.extendRowSelection("up"),
         },
         {
             id: "move-row-down",
             key: "alt+arrowdown",
-            description: "Move the selected story row down",
+            description: t("story.keybindings.moveRowDown"),
             handler: () => editor.moveSelectedRows("down"),
         },
         {
             id: "move-row-up",
             key: "alt+arrowup",
-            description: "Move the selected story row up",
+            description: t("story.keybindings.moveRowUp"),
             handler: () => editor.moveSelectedRows("up"),
         },
         {
             id: "select-first",
             key: "home",
-            description: "Select the first story row",
+            description: t("story.keybindings.selectFirst"),
             handler: () => editor.jumpRowSelection("first"),
         },
         {
             id: "select-last",
             key: "end",
-            description: "Select the last story row",
+            description: t("story.keybindings.selectLast"),
             handler: () => editor.jumpRowSelection("last"),
         },
         {
             id: "select-first-ctrl",
             key: "ctrl+home",
-            description: "Select the first story row",
+            description: t("story.keybindings.selectFirst"),
             handler: () => editor.jumpRowSelection("first"),
         },
         {
             id: "select-last-ctrl",
             key: "ctrl+end",
-            description: "Select the last story row",
+            description: t("story.keybindings.selectLast"),
             handler: () => editor.jumpRowSelection("last"),
         },
         {
             id: "page-down",
             key: "pagedown",
-            description: "Move story row selection down a page",
+            description: t("story.keybindings.pageDown"),
             handler: () => editor.pageRowSelection("down"),
         },
         {
             id: "page-up",
             key: "pageup",
-            description: "Move story row selection up a page",
+            description: t("story.keybindings.pageUp"),
             handler: () => editor.pageRowSelection("up"),
         },
     ], [
@@ -412,6 +412,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         editor.selectAllRows,
         editor.startInsertAfterActive,
         editor.undoEdit,
+        t,
     ]);
 
     useKeybindings({

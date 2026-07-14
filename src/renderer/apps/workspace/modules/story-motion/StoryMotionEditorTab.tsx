@@ -273,9 +273,9 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
             .filter(item => !existing.has(item.property))
             .map(item => ({
                 value: item.property,
-                label: item.label,
+                label: t(`motion.propertyLabel.${item.property}`),
             }));
-    }, [tracks]);
+    }, [tracks, t]);
     const previewTimeline = useMemo(() => {
         if (!keyframeDrag) {
             return timeline;

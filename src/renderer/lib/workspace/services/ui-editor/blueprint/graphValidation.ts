@@ -7,6 +7,7 @@ import type {
 } from "@shared/types/blueprint/document";
 import { isStorySyncValueOwner } from "@shared/types/blueprint/document";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
+import { translate } from "@/lib/i18n";
 import {
     BLUEPRINT_NODE_PARAM_FN_NAME,
     BLUEPRINT_NODE_PARAM_FN_REF,
@@ -100,7 +101,12 @@ function reportDuplicatePinConnection(
         out.push({
             severity: "error",
             code: "edge.pin_multiple",
-            message: `Pin ${input.nodeId}.${input.port} has multiple ${input.direction} connections; each pin can only have one edge.`,
+            message: translate(
+                input.direction === "input"
+                    ? "blueprint.diagnostics.graph.pinMultipleInput"
+                    : "blueprint.diagnostics.graph.pinMultipleOutput",
+                { node: input.nodeId, port: input.port },
+            ),
             target: {
                 kind: "node",
                 graphKind: input.graphKind,
@@ -187,9 +193,14 @@ function buildNodeValidationPaletteContext(ctx: {
 function describeNodeContextError(def: BlueprintNodeDef, ctx: BlueprintPaletteContext): string {
     const valueGraphHint =
         def.role === "valueReturn"
-            ? " Return Value only belongs in Blueprint Value graphs."
+            ? translate("blueprint.diagnostics.node.contextValueReturnHint")
             : "";
-    return `Node "${def.displayName}" is not allowed in this ${ctx.owner.kind} ${ctx.graphKind} graph.${valueGraphHint}`;
+    return translate("blueprint.diagnostics.node.contextInvalid", {
+        name: def.displayName,
+        ownerKind: ctx.owner.kind,
+        graphKind: ctx.graphKind,
+        hint: valueGraphHint,
+    });
 }
 
 function fnPinDeclSignature(decls: ReturnType<typeof readBlueprintFnReturnPinDecls>): string {
@@ -283,7 +294,7 @@ function validateBlueprintFnRules(
             out.push({
                 severity: "warning",
                 code: "fn.name_missing",
-                message: `Fn "${nodeId}": set a function name.`,
+                message: translate("blueprint.diagnostics.fn.nameMissing", { node: nodeId }),
                 target: nodeTarget(nodeId),
             });
             continue;
@@ -298,7 +309,7 @@ function validateBlueprintFnRules(
             out.push({
                 severity: "warning",
                 code: "fn.duplicate_name",
-                message: `Fn name "${name}" is used by another function in scope (calls bind by id).`,
+                message: translate("blueprint.diagnostics.fn.duplicateName", { name }),
                 target: nodeTarget(nodeId),
             });
         }
@@ -314,14 +325,14 @@ function validateBlueprintFnRules(
                 out.push({
                     severity: "error",
                     code: "fn.return_orphan",
-                    message: "Fn Return must be reachable from a Fn head.",
+                    message: translate("blueprint.diagnostics.fn.returnOrphan"),
                     target: nodeTarget(nodeId),
                 });
             } else if (owners.length > 1) {
                 out.push({
                     severity: "error",
                     code: "fn.return_orphan",
-                    message: "Fn Return is reachable from multiple Fn heads.",
+                    message: translate("blueprint.diagnostics.fn.returnMultipleHeads"),
                     target: nodeTarget(nodeId),
                 });
             }
@@ -338,7 +349,7 @@ function validateBlueprintFnRules(
                     out.push({
                         severity: "error",
                         code: "fn.return_signature_conflict",
-                        message: `Fn Return "${returnId}" declares different results than the first Return of this fn.`,
+                        message: translate("blueprint.diagnostics.fn.returnSignatureConflict", { node: returnId }),
                         target: nodeTarget(returnId),
                     });
                 }
@@ -354,7 +365,7 @@ function validateBlueprintFnRules(
             out.push({
                 severity: "warning",
                 code: "fn.call_unset",
-                message: `Node "${nodeId}": pick a function.`,
+                message: translate("blueprint.diagnostics.fn.callUnset", { node: nodeId }),
                 target: nodeTarget(nodeId),
             });
             continue;
@@ -366,7 +377,7 @@ function validateBlueprintFnRules(
             out.push({
                 severity: "error",
                 code: "fn.call_target_not_found",
-                message: `Fn "${snapshotName ?? fnRef}" does not exist in this scope.`,
+                message: translate("blueprint.diagnostics.fn.callTargetNotFound", { name: snapshotName ?? fnRef }),
                 target: nodeTarget(nodeId),
             });
             continue;
@@ -375,7 +386,7 @@ function validateBlueprintFnRules(
             out.push({
                 severity: "warning",
                 code: "fn.call_signature_stale",
-                message: `Function signature changed; re-select "${decl.name}" to sync pins.`,
+                message: translate("blueprint.diagnostics.fn.callSignatureStale", { name: decl.name }),
                 target: nodeTarget(nodeId),
             });
         }
@@ -383,7 +394,7 @@ function validateBlueprintFnRules(
             out.push({
                 severity: "warning",
                 code: "fn.recursive_call",
-                message: `Fn "${decl.name}" calls itself (directly or indirectly); the runtime aborts deep recursion.`,
+                message: translate("blueprint.diagnostics.fn.recursiveCall", { name: decl.name }),
                 target: nodeTarget(nodeId),
             });
         }
@@ -417,7 +428,7 @@ export function validateBlueprintWidgetMainEventWiring(
             out.push({
                 severity: "warning",
                 code: "blueprint.widget_legacy_hooks_present",
-                message: "Legacy event hooks in uidoc (non-graph revision).",
+                message: translate("blueprint.diagnostics.widget.legacyHooksPresent"),
             });
         }
         return out;
@@ -428,7 +439,7 @@ export function validateBlueprintWidgetMainEventWiring(
             out.push({
                 severity: "warning",
                 code: "blueprint.widget_legacy_hook_wrong_blueprint",
-                message: `Legacy hook "${hook.slotName}" points to another blueprint.`,
+                message: translate("blueprint.diagnostics.widget.legacyHookWrongBlueprint", { slot: hook.slotName }),
             });
             continue;
         }
@@ -436,7 +447,7 @@ export function validateBlueprintWidgetMainEventWiring(
             out.push({
                 severity: "warning",
                 code: "blueprint.widget_legacy_hook_unsupported_slot",
-                message: `Legacy hook "${hook.slotName}" is not supported for ${element.type}.`,
+                message: translate("blueprint.diagnostics.widget.legacyHookUnsupported", { slot: hook.slotName, type: element.type }),
             });
             continue;
         }
@@ -479,7 +490,7 @@ export function validateBlueprintGraphIr(
         out.push({
             severity: "info",
             code: "graph.empty",
-            message: "Graph has no nodes yet.",
+            message: translate("blueprint.diagnostics.graph.noNodes"),
             target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
         });
         return out;
@@ -499,8 +510,7 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "error",
                 code: "event.missing_event_nodes",
-                message:
-                    "Add an event head (right-click canvas).",
+                message: translate("blueprint.diagnostics.event.missingHead"),
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         }
@@ -512,14 +522,14 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "error",
                 code: "function.missing_entry",
-                message: "Add a Function entry node.",
+                message: translate("blueprint.diagnostics.function.missingEntry"),
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         } else if (entries.length > 1) {
             out.push({
                 severity: "error",
                 code: "function.multiple_entries",
-                message: "Only one Function entry allowed.",
+                message: translate("blueprint.diagnostics.function.multipleEntries"),
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         }
@@ -535,7 +545,7 @@ export function validateBlueprintGraphIr(
                     out.push({
                         severity: "error",
                         code: "graph.entry_missing_node",
-                        message: `Entry points to missing node "${entry.start.nodeId}".`,
+                        message: translate("blueprint.diagnostics.graph.entryMissingNode", { node: entry.start.nodeId }),
                         target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
                     });
                 } else {
@@ -544,7 +554,7 @@ export function validateBlueprintGraphIr(
                         out.push({
                             severity: "error",
                             code: "function.entry_not_entry_node",
-                            message: "Function entry must be the entry node.",
+                            message: translate("blueprint.diagnostics.function.entryNotEntryNode"),
                             target: {
                                 kind: "node",
                                 graphKind: ctx.graphKind,
@@ -558,7 +568,7 @@ export function validateBlueprintGraphIr(
                 out.push({
                     severity: "error",
                     code: "graph.entry_invalid",
-                    message: "Function entry not found.",
+                    message: translate("blueprint.diagnostics.graph.entryInvalid"),
                     target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
                 });
             }
@@ -571,7 +581,7 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "error",
                 code: "edge.self_connection",
-                message: `Node "${edge.from.nodeId}" cannot connect to itself.`,
+                message: translate("blueprint.diagnostics.edge.selfConnection", { node: edge.from.nodeId }),
                 target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: edge.from.nodeId },
             });
         }
@@ -579,7 +589,7 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "error",
                 code: "edge.from_unknown",
-                message: `Missing source node "${edge.from.nodeId}".`,
+                message: translate("blueprint.diagnostics.edge.fromUnknown", { node: edge.from.nodeId }),
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         }
@@ -587,7 +597,7 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "error",
                 code: "edge.to_unknown",
-                message: `Missing target node "${edge.to.nodeId}".`,
+                message: translate("blueprint.diagnostics.edge.toUnknown", { node: edge.to.nodeId }),
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         }
@@ -612,7 +622,10 @@ export function validateBlueprintGraphIr(
                 out.push({
                     severity: "warning",
                     code: "edge.port_mismatch",
-                    message: `Pin mismatch on ${edge.from.nodeId}.${edge.from.port} → ${edge.to.nodeId}.${edge.to.port}.`,
+                    message: translate("blueprint.diagnostics.edge.portMismatch", {
+                        from: `${edge.from.nodeId}.${edge.from.port}`,
+                        to: `${edge.to.nodeId}.${edge.to.port}`,
+                    }),
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: edge.from.nodeId },
                 });
             } else if (
@@ -627,12 +640,19 @@ export function validateBlueprintGraphIr(
             ) {
                 const typeDetail =
                     outPin.semantic === "data" && inPin.semantic === "data" && outPin.valueType && inPin.valueType
-                        ? ` Type mismatch: ${outPin.valueType} -> ${inPin.valueType}.`
+                        ? translate("blueprint.diagnostics.edge.connectionTypeDetail", {
+                              from: outPin.valueType,
+                              to: inPin.valueType,
+                          })
                         : "";
                 out.push({
                     severity: "error",
                     code: "edge.connection_invalid",
-                    message: `Invalid connection ${edge.from.nodeId}.${edge.from.port} -> ${edge.to.nodeId}.${edge.to.port}.${typeDetail}`,
+                    message: translate("blueprint.diagnostics.edge.connectionInvalid", {
+                        from: `${edge.from.nodeId}.${edge.from.port}`,
+                        to: `${edge.to.nodeId}.${edge.to.port}`,
+                        detail: typeDetail,
+                    }),
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: edge.from.nodeId },
                 });
             }
@@ -688,7 +708,7 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "warning",
                 code: "node.no_runtime",
-                message: `Node "${nid}": no runtime for type "${n.type}".`,
+                message: translate("blueprint.diagnostics.node.noRuntime", { node: nid, type: n.type }),
                 target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
             });
         }
@@ -701,7 +721,7 @@ export function validateBlueprintGraphIr(
                 out.push({
                     severity: "warning",
                     code: "node.variable_id_invalid",
-                    message: `Node "${nid}": pick a variable.`,
+                    message: translate("blueprint.diagnostics.node.variableIdInvalid", { node: nid }),
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
                 });
             }
@@ -715,7 +735,7 @@ export function validateBlueprintGraphIr(
                 out.push({
                     severity: "warning",
                     code: "node.persistent_variable_id_invalid",
-                    message: `Node "${nid}": pick a persistent variable.`,
+                    message: translate("blueprint.diagnostics.node.persistentVariableIdInvalid", { node: nid }),
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
                 });
             }
@@ -762,7 +782,7 @@ function validateStoryConditionReturnType(
             out.push({
                 severity: "warning",
                 code: "condition.return_missing",
-                message: "Condition should return a boolean value.",
+                message: translate("blueprint.diagnostics.condition.returnMissing"),
                 target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId },
             });
             continue;
@@ -783,7 +803,7 @@ function validateStoryConditionReturnType(
             out.push({
                 severity: "error",
                 code: "condition.return_not_boolean",
-                message: `Condition must return a boolean, but this returns ${valueType}.`,
+                message: translate("blueprint.diagnostics.condition.returnNotBoolean", { type: valueType }),
                 target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId },
             });
         }
@@ -803,7 +823,7 @@ export function validateBlueprintBindingsForBlueprint(doc: BlueprintDocument, bl
             out.push({
                 severity: "error",
                 code: "binding.broken",
-                message: `Broken binding "${b.id}"${detail}`,
+                message: translate("blueprint.diagnostics.binding.broken", { id: b.id, detail }),
                 target: { kind: "binding", bindingId: b.id },
             });
             continue;
@@ -818,7 +838,7 @@ export function validateBlueprintBindingsForBlueprint(doc: BlueprintDocument, bl
             out.push({
                 severity: "error",
                 code: "binding.missing_field",
-                message: `Missing field "${b.source.fieldId}".`,
+                message: translate("blueprint.diagnostics.binding.missingField", { id: b.source.fieldId }),
                 target: { kind: "field", fieldId: b.source.fieldId },
             });
         }

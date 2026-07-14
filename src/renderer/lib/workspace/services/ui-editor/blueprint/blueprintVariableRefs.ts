@@ -7,6 +7,7 @@ import type {
 } from "@shared/types/blueprint/document";
 import { BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR } from "@shared/types/blueprint/graph";
 import { resolveBlueprintVariableDefaultValue } from "@shared/types/blueprint/variableTypes";
+import { translate } from "@/lib/i18n";
 import { GLOBAL_MAIN_OWNER_KEY, surfaceMainOwnerKey } from "./ownerKeys";
 
 const EXPLICIT_BLUEPRINT_VARIABLE_REF_PREFIX = "bp:";
@@ -213,12 +214,12 @@ function resolveCurrentSurfaceId(blueprint: Blueprint, fallback?: string): strin
 
 function currentBlueprintScope(blueprint: Blueprint): { kind: BlueprintVariableScopeKind; label: string } {
     if (blueprint.owner.kind === "globalMain") {
-        return { kind: "global", label: "Global" };
+        return { kind: "global", label: translate("blueprint.variableScope.global") };
     }
     if (blueprint.owner.kind === "surfaceMain") {
-        return { kind: "page", label: "Page" };
+        return { kind: "page", label: translate("blueprint.variableScope.page") };
     }
-    return { kind: "blueprint", label: "Blueprint" };
+    return { kind: "blueprint", label: translate("blueprint.variableScope.blueprint") };
 }
 
 function buildVariableGroups(input: {
@@ -246,7 +247,7 @@ function buildVariableGroups(input: {
                   blueprintId: pageBlueprintId,
                   blueprint: pageBlueprint,
                   scopeKind: "page",
-                  scopeLabel: "Page",
+                  scopeLabel: translate("blueprint.variableScope.page"),
                   explicit: pageBlueprintId !== input.currentBlueprintId,
               }
             : null,
@@ -267,7 +268,7 @@ function buildVariableGroups(input: {
                   blueprintId: globalBlueprintId,
                   blueprint: globalBlueprint,
                   scopeKind: "global",
-                  scopeLabel: "Global",
+                  scopeLabel: translate("blueprint.variableScope.global"),
                   explicit: globalBlueprintId !== input.currentBlueprintId,
               }
             : null,

@@ -32,7 +32,7 @@ import {
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
-import { i18nStore } from "@/lib/i18n";
+import { i18nStore, translate } from "@/lib/i18n";
 import { getTextProps } from "./helpers";
 import type { TextAlign, TextVerticalAlign, TextWidgetProps, TextWrapMode } from "./types";
 
@@ -128,8 +128,11 @@ const TextBlueprintValueField = createBlueprintValueField({
   propPath: "text",
   valueType: "string",
   valueLabel: "text",
-  title: "Text Value",
-  getDisplayName: ({ liveElement }) => `${liveElement.name ?? "Text"} text`,
+  title: "widgets.blueprintValue.textTitle",
+  getDisplayName: ({ liveElement }) =>
+    translate("widgets.blueprintValue.nameText", {
+      name: liveElement.name ?? translate("widgets.defaults.text.name"),
+    }),
   getLiteralValue: ({ liveElement }) => getTextProps(liveElement).text,
   renderLiteralEditor: ({ data, liveElement }) => {
     const textProps = getTextProps(liveElement);

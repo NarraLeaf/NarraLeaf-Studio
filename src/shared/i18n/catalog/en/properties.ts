@@ -12,6 +12,17 @@ export const properties = {
         noSelection: "No item selected",
         noSelectionHint: "Select an item to view its properties",
     },
+    scene: {
+        title: "Interface Properties",
+        interface: "Interface",
+        type: "Type",
+        slot: "Slot",
+        typeGameUi: "Game UI",
+        typePage: "Page",
+        backgroundColor: "Background Color",
+        animation: "Animation",
+        logic: "Logic",
+    },
     diagnostics: {
         title: "Static checks",
         selectOnCanvas: "→ select on canvas",

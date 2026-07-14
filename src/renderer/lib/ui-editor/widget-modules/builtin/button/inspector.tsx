@@ -28,7 +28,7 @@ import {
     isUsableAppearanceModel,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import type { TextAlign, TextVerticalAlign, TextWrapMode } from "@/lib/ui-editor/widget-modules/builtin/text/types";
-import { i18nStore } from "@/lib/i18n";
+import { i18nStore, translate } from "@/lib/i18n";
 import { getButtonProps } from "./helpers";
 import type { ButtonWidgetProps } from "./types";
 
@@ -72,8 +72,11 @@ const ButtonLabelBlueprintValueField = createBlueprintValueField({
     propPath: "label",
     valueType: "string",
     valueLabel: "label",
-    title: "Button Text Value",
-    getDisplayName: ({ liveElement }) => `${liveElement.name ?? "Button"} label`,
+    title: "widgets.blueprintValue.buttonTextTitle",
+    getDisplayName: ({ liveElement }) =>
+        translate("widgets.blueprintValue.nameLabel", {
+            name: liveElement.name ?? translate("widgets.defaults.button.name"),
+        }),
     getLiteralValue: ({ liveElement }) => getButtonProps(liveElement).label,
     renderLiteralEditor: ({ data, liveElement }) => {
         const buttonProps = getButtonProps(liveElement);

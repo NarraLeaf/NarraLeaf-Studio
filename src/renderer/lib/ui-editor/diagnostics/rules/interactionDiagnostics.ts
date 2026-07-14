@@ -1,6 +1,7 @@
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { isUIElementFlowLayoutChild } from "@shared/types/ui-editor/document";
 import type { UIDocument } from "@shared/types/ui-editor/document";
+import { translate } from "@/lib/i18n";
 import type { UISurfaceDiagnostic } from "../types";
 
 const MIN_HIT_AREA = 20 * 20;
@@ -37,8 +38,8 @@ export function collectInteractionDiagnostics(document: UIDocument, elements: UI
                 id: `ix:hidden-events:${el.id}`,
                 severity: "warning",
                 source: "interaction",
-                message: `Element “${el.name ?? el.type}” is not visible but still has interaction bindings`,
-                hint: "Remove events or make the element visible; runtime may never receive input.",
+                message: translate("blueprint.diagnostics.interaction.hiddenEvents", { name: el.name ?? el.type }),
+                hint: translate("blueprint.diagnostics.interaction.hiddenEventsHint"),
                 elementId: el.id,
             });
         }
@@ -48,8 +49,8 @@ export function collectInteractionDiagnostics(document: UIDocument, elements: UI
                 id: `ix:opaque-events:${el.id}`,
                 severity: "warning",
                 source: "interaction",
-                message: `Element “${el.name ?? el.type}” is nearly invisible (opacity) but has interaction bindings`,
-                hint: "Users may not see the control; verify in Dev Mode.",
+                message: translate("blueprint.diagnostics.interaction.opaqueEvents", { name: el.name ?? el.type }),
+                hint: translate("blueprint.diagnostics.interaction.opaqueEventsHint"),
                 elementId: el.id,
             });
         }
@@ -59,8 +60,8 @@ export function collectInteractionDiagnostics(document: UIDocument, elements: UI
                 id: `ix:small-hit:${el.id}`,
                 severity: "warning",
                 source: "interaction",
-                message: `Element “${el.name ?? el.type}” has a small hit area with interactions`,
-                hint: "Prefer at least ~24×24 px for touch targets.",
+                message: translate("blueprint.diagnostics.interaction.smallHit", { name: el.name ?? el.type }),
+                hint: translate("blueprint.diagnostics.interaction.smallHitHint"),
                 elementId: el.id,
             });
         }

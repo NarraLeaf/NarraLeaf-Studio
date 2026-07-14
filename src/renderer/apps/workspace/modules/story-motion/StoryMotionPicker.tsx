@@ -6,7 +6,7 @@ import type {
     StoryDisplayableTargetKind,
     StoryTransformRef,
 } from "@shared/types/story";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { Services } from "@/lib/workspace/services/services";
@@ -159,7 +159,7 @@ export function StoryMotionPicker(props: {
                     <div className="min-w-0 flex-1">
                         <div className="truncate text-xs font-medium text-primary">{selectedAsset?.name ?? props.motionLabel}</div>
                         <div className="truncate text-2xs text-fg-muted">
-                            {selectedAsset ? motionSummary(selectedAsset) : t("motion.picker.assetFallback", { id: animationId ?? "" })}
+                            {selectedAsset ? motionSummary(selectedAsset, t) : t("motion.picker.assetFallback", { id: animationId ?? "" })}
                         </div>
                     </div>
                     <button className={ICON_BUTTON_CLASS} type="button" onClick={() => openEditor(animationId)} title={t("motion.editMotion")}>
@@ -234,12 +234,12 @@ export function StoryMotionPicker(props: {
     );
 }
 
-function motionSummary(asset: StoryAnimationAsset): string {
+function motionSummary(asset: StoryAnimationAsset, t: UseTranslation["t"]): string {
     const durationMs = getStoryMotionDurationMs(asset.timeline);
     const tracks = asset.timeline?.tracks ?? [];
     const labels = tracks
         .slice(0, 3)
-        .map(track => getStoryMotionPropertyMeta(track.property).label)
+        .map(track => t(`motion.propertyLabel.${track.property}`))
         .join(", ");
     return `${durationMs}ms${labels ? ` / ${labels}${tracks.length > 3 ? "..." : ""}` : ""}`;
 }

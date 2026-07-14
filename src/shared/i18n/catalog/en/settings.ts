@@ -7,6 +7,8 @@ export const settings = {
     noResults: "No settings match your search.",
     empty: "No settings available.",
     noneExposed: "No implemented settings are currently exposed.",
+    invalidValue: "Please provide a valid value",
+    persistFailed: "Failed to persist setting",
     // Category chrome — keys mirror the category `key` in appSettings.ts.
     categories: {
         general: {
@@ -39,6 +41,20 @@ export const settings = {
         language: {
             label: "Language",
             description: "Display language for the Studio interface.",
+        },
+        editorFontSize: {
+            label: "Story editor font size",
+            description:
+                "Font size (px) for dialogue, narration, and choice text in the story scene editor ({min}–{max}).",
+        },
+        editorFontFamily: {
+            label: "Story editor font",
+            description: "Typeface used for story text in the scene editor.",
+        },
+        maxActiveEditors: {
+            label: "Maximum active editors",
+            description:
+                "How many editor tabs stay loaded at once so their scroll position and focus are preserved when you switch between them ({min}–{max}). Tabs beyond this reload when reopened.",
         },
     },
 } as const;

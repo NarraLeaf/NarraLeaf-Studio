@@ -6,17 +6,28 @@ export const properties = {
     select: "选择",
     panel: {
         title: "属性",
-        motionKeyframe: "运动关键帧",
+        motionKeyframe: "动效关键帧",
         storyMotion: "故事动效",
         scene: "场景",
         character: "角色",
         noSelection: "未选择任何项目",
         noSelectionHint: "选择一个项目以查看其属性",
     },
+    scene: {
+        title: "界面属性",
+        interface: "界面",
+        type: "类型",
+        slot: "插槽",
+        typeGameUi: "游戏界面",
+        typePage: "页面",
+        backgroundColor: "背景颜色",
+        animation: "动画",
+        logic: "逻辑",
+    },
     diagnostics: {
         title: "静态检查",
         selectOnCanvas: "→ 在画布中选中",
-        help: "图结构与绑定问题：从蓝图区域打开蓝图编辑器标签页。实时执行、节点进入/退出以及宿主 API 跟踪仅在开发模式中显示。",
+        help: "图形结构与绑定问题：从蓝图区域打开蓝图编辑器标签页。实时执行、节点进入/退出以及宿主 API 跟踪仅在开发模式中显示。",
     },
     layout: {
         title: "布局",
@@ -35,15 +46,15 @@ export const properties = {
     },
     linkedComponent: {
         missing: "组件缺失",
-        info: "关联实例。解绑前仅可修改位置、尺寸和旋转。",
+        info: "关联实例，解除关联前仅可修改位置、大小和旋转",
     },
     binding: {
-        notReady: "该控件的蓝图尚未就绪。",
+        notReady: "该控件的蓝图尚未就绪",
         bindToField: "绑定到字段…",
         bindProperty: "绑定属性",
         closePicker: "关闭绑定选择器",
         searchFields: "搜索字段…",
-        noMatches: "没有匹配的字段。",
+        noMatches: "没有匹配的字段",
         newField: "新建字段",
         createAndBind: "创建并绑定",
         openField: "打开字段",
@@ -58,7 +69,7 @@ export const properties = {
     },
     events: {
         title: "事件",
-        legacy: "检测到旧版事件 id。",
+        legacy: "检测到旧版事件 ID",
     },
     blueprintEntry: {
         gameUiLogic: "游戏界面逻辑",
@@ -68,7 +79,8 @@ export const properties = {
         open: "打开界面蓝图",
         noBlueprint: "此界面没有蓝图",
         brokenBindings: {
-            other: "{count} 个失效绑定。",
+            one: "{count} 个失效绑定",
+            other: "{count} 个失效绑定",
         },
     },
     color: {
@@ -79,7 +91,7 @@ export const properties = {
         fallbackName: "字体",
         none: "无字体",
         choose: "选择字体",
-        loadError: "字体无法加载（{error}）。在素材有效之前，预览可能会回退。",
+        loadError: "字体无法加载（{error}），在素材有效之前预览可能会使用回退字体",
         select: "选择字体",
     },
     imageFill: {
@@ -94,7 +106,7 @@ export const properties = {
         selectHint: "点击打开素材浏览器",
         changeImage: "更换图片",
         openEditor: "点击打开编辑器",
-        resolveError: "静态检查：图片素材无法解析（{error}）。在素材存在之前预览可能有误；请在开发模式中验证。",
+        resolveError: "静态检查：图片素材无法解析（{error}），在素材存在之前预览可能不准确，请在开发模式下进行验证",
         selectFillImage: "选择填充图片",
         mode: {
             cover: "覆盖",
@@ -165,6 +177,7 @@ export const properties = {
             info: "音频信息",
             preview: "音频概览",
             channelCount: {
+                one: "{count} 个声道",
                 other: "{count} 个声道",
             },
         },

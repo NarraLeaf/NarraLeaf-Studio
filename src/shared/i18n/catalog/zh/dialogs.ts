@@ -42,6 +42,11 @@ export const dialogs = {
         placeholder: "输入邮箱地址…",
         invalid: "请输入有效的邮箱地址",
     },
+    service: {
+        alertTitle: "提示",
+        selectTitle: "选择一项",
+        inputTitle: "输入",
+    },
     noun: {
         item: "项目",
         layer: "图层",

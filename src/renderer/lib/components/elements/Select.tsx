@@ -2,12 +2,16 @@ import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Check } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
 import { Button } from "./Button";
 import { cn } from "../../utils/cn";
 
 export interface SelectOption {
     value: string | number;
-    label: string;
+    /** Static label. Prefer `labelKey` for localized options; one of the two must be set. */
+    label?: string;
+    /** i18n key; when set it is resolved at render (falls back to `label`). */
+    labelKey?: TranslationKey;
     secondaryLabel?: string;
     disabled?: boolean;
     icon?: React.ReactNode;
@@ -76,6 +80,7 @@ export function Select({
 }: SelectProps) {
     const { t } = useTranslation();
     const resolvedPlaceholder = placeholder ?? t("dialogs.select.placeholder");
+    const optionLabel = (o: SelectOption) => (o.labelKey ? t(o.labelKey) : o.label ?? "");
     const [isOpen, setIsOpen] = useState(false);
     const selectRef = useRef<HTMLDivElement>(null);
     const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -265,7 +270,7 @@ export function Select({
                         <div className="flex-shrink-0 text-fg-muted">{option.icon}</div>
                     )}
                     <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-                        <span className="truncate">{option.label}</span>
+                        <span className="truncate">{optionLabel(option)}</span>
                         {option.secondaryLabel ? (
                             <span className="shrink-0 text-xs text-fg-subtle">{option.secondaryLabel}</span>
                         ) : null}
@@ -300,7 +305,7 @@ export function Select({
                         <span className="shrink-0 text-fg-muted">{selectedOption.icon}</span>
                     ) : null}
                     <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-                        <span className="truncate">{selectedOption ? selectedOption.label : resolvedPlaceholder}</span>
+                        <span className="truncate">{selectedOption ? optionLabel(selectedOption) : resolvedPlaceholder}</span>
                         {selectedOption?.secondaryLabel ? (
                             <span className="shrink-0 text-2xs text-fg-subtle">
                                 {selectedOption.secondaryLabel}
@@ -341,6 +346,7 @@ export function Combobox({
 }) {
     const { t } = useTranslation();
     const resolvedPlaceholder = placeholder ?? t("dialogs.select.searchPlaceholder");
+    const optionLabel = (o: SelectOption) => (o.labelKey ? t(o.labelKey) : o.label ?? "");
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [filteredOptions, setFilteredOptions] = useState(options);
@@ -353,7 +359,7 @@ export function Combobox({
         if (filterOptions) {
             setFilteredOptions(
                 options.filter(option =>
-                    option.label.toLowerCase().includes(searchTerm.toLowerCase())
+                    optionLabel(option).toLowerCase().includes(searchTerm.toLowerCase())
                 )
             );
         } else {
@@ -408,7 +414,7 @@ export function Combobox({
     }, [isOpen, filteredOptions.length, searchTerm, value]);
 
     const selectedOption = options.find(option => option.value === value);
-    const displayValue = selectedOption ? selectedOption.label : "";
+    const displayValue = selectedOption ? optionLabel(selectedOption) : "";
 
     const handleOptionClick = (option: SelectOption) => {
         if (option.disabled) return;
@@ -482,7 +488,7 @@ export function Combobox({
                                     {option.icon}
                                 </div>
                             )}
-                            <span className="truncate">{option.label}</span>
+                            <span className="truncate">{optionLabel(option)}</span>
                         </button>
                     ))}
                 </div>
@@ -496,7 +502,7 @@ export function Combobox({
                         dropdownDirection === "down" ? "top-full mt-1" : "bottom-full mb-1",
                     )}
                 >
-                    <p className="text-sm text-fg-muted">No matches found</p>
+                    <p className="text-sm text-fg-muted">{t("common.noMatchesFound")}</p>
                 </div>
             )}
         </div>

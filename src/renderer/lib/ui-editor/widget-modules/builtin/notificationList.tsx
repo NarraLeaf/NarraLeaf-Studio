@@ -1,5 +1,6 @@
 import { Bell } from "lucide-react";
 import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import { translate } from "@/lib/i18n";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { ListRenderer } from "./list/renderer";
 import { createListInspector } from "./list/inspector";
@@ -13,8 +14,8 @@ function createDefaultNotificationListProps(): ListWidgetProps {
     props.itemKeyPath = "id";
     props.itemGap = 12;
     props.previewItems = [
-        { id: "preview-1", message: "Notification message" },
-        { id: "preview-2", message: "Another message" },
+        { id: "preview-1", message: translate("widgets.defaults.notificationList.message1") },
+        { id: "preview-2", message: translate("widgets.defaults.notificationList.message2") },
     ];
     props.scrollbar.enabled = false;
     props.scrollbar.visibility = "hidden";
@@ -28,12 +29,14 @@ function createDefaultNotificationListProps(): ListWidgetProps {
 export const NotificationListWidgetModule: UIWidgetModule = {
     type: NOTIFICATION_LIST_TYPE,
     logicApi: getWidgetLogicApi(NOTIFICATION_LIST_TYPE),
-    displayName: "Notification List",
+    get displayName() {
+        return translate("widgets.defaults.notificationList.name");
+    },
     icon: Bell,
 
     createDefaultElement: () => ({
         type: NOTIFICATION_LIST_TYPE,
-        name: "Notification List",
+        name: translate("widgets.defaults.notificationList.name"),
         layout: {
             x: 0,
             y: 0,

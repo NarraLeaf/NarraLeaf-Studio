@@ -1,5 +1,6 @@
 import { ListChecks } from "lucide-react";
 import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import { translate } from "@/lib/i18n";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { ListRenderer } from "./list/renderer";
 import { createListInspector } from "./list/inspector";
@@ -13,9 +14,9 @@ function createDefaultChoiceListProps(): ListWidgetProps {
     props.itemKeyPath = "index";
     props.itemGap = 16;
     props.previewItems = [
-        { text: "Choice A", index: 0, disabled: false },
-        { text: "Choice B", index: 1, disabled: false },
-        { text: "Choice C", index: 2, disabled: true },
+        { text: translate("widgets.defaults.choiceList.choiceA"), index: 0, disabled: false },
+        { text: translate("widgets.defaults.choiceList.choiceB"), index: 1, disabled: false },
+        { text: translate("widgets.defaults.choiceList.choiceC"), index: 2, disabled: true },
     ];
     props.scrollbar.enabled = false;
     props.scrollbar.visibility = "hidden";
@@ -30,12 +31,14 @@ function createDefaultChoiceListProps(): ListWidgetProps {
 export const ChoiceListWidgetModule: UIWidgetModule = {
     type: CHOICE_LIST_TYPE,
     logicApi: getWidgetLogicApi(CHOICE_LIST_TYPE),
-    displayName: "Choice List",
+    get displayName() {
+        return translate("widgets.defaults.choiceList.name");
+    },
     icon: ListChecks,
 
     createDefaultElement: () => ({
         type: CHOICE_LIST_TYPE,
-        name: "Choice List",
+        name: translate("widgets.defaults.choiceList.name"),
         layout: {
             x: 0,
             y: 0,

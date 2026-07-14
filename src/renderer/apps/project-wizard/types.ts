@@ -1,4 +1,5 @@
 import { LucideIcon } from "lucide-react";
+import { TranslationKey } from "@shared/i18n";
 
 /**
  * Project template configuration
@@ -6,9 +7,15 @@ import { LucideIcon } from "lucide-react";
 export interface ProjectTemplate {
     id: string;
     name: string;
+    /** i18n key; when set, overrides `name` at render time (falls back to `name`). */
+    nameKey?: TranslationKey;
     description: string;
+    /** i18n key; when set, overrides `description` at render time (falls back to `description`). */
+    descriptionKey?: TranslationKey;
     icon: LucideIcon;
     category: string;
+    /** i18n key; when set, overrides `category` at render time (falls back to `category`). */
+    categoryKey?: TranslationKey;
 }
 
 /**
@@ -65,6 +72,8 @@ export interface StepConfig {
 export interface LicenseOption {
     value: string;
     label: string;
+    /** i18n key; when set, overrides `label` at render time (falls back to `label`). */
+    labelKey?: TranslationKey;
 }
 
 /**
@@ -81,6 +90,8 @@ export interface ResolutionOption {
 export interface VersionControlOption {
     value: string;
     label: string;
+    /** i18n key; when set, overrides `label` at render time (falls back to `label`). */
+    labelKey?: TranslationKey;
 }
 
 /**
@@ -89,4 +100,6 @@ export interface VersionControlOption {
 export interface BackupOption {
     value: string;
     label: string;
+    /** i18n key; when set, overrides `label` at render time (falls back to `label`). */
+    labelKey?: TranslationKey;
 }

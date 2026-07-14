@@ -21,7 +21,7 @@ import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEdito
 
 const BORDER_STYLE_SELECT_OPTIONS = BORDER_STYLE_OPTIONS.map(o => ({
     value: o.value,
-    label: o.label,
+    labelKey: o.labelKey,
 }));
 
 function coerceBorderStyleSelectValue(raw: string): string {

@@ -1,4 +1,5 @@
 import { Spline } from "lucide-react";
+import { translate } from "@/lib/i18n";
 import { PanelPosition } from "../../registry/types";
 import type { PanelModule } from "../types";
 import { StoryMotionPanel } from "./StoryMotionPanel";
@@ -16,7 +17,7 @@ export const STORY_MOTION_PANEL_ID = "narraleaf-studio:story-motion";
 export const storyMotionPanelModule: PanelModule<StoryMotionPanelPayload> = {
     metadata: {
         id: STORY_MOTION_PANEL_ID,
-        title: "Story Motion",
+        get title() { return translate("placeholders.moduleTitles.storyMotion"); },
         icon: <Spline className="w-4 h-4" />,
         position: PanelPosition.Bottom,
         defaultVisible: false,
