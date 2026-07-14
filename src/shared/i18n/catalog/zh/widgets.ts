@@ -10,7 +10,7 @@ export const widgets = {
     },
     appearance: {
         title: "外观",
-        modulesHelp: "紧凑模块，支持按模块的状态覆盖（标题菜单：添加或移除）。",
+        modulesHelp: "紧凑型模块，支持按模块单独覆盖状态（可在标题栏菜单中添加或移除）",
     },
     content: "内容",
     textLabel: "文本",
@@ -95,8 +95,8 @@ export const widgets = {
         contentPaddingDialog: "各边内容内边距",
         customizeScrollbar: "自定义滚动条",
         scrollbarPartsCreated: "已创建滚动条部件",
-        scrollbarPartsAuthoredHint: "轨道和滑块是列表大纲中的可编辑元素。选择它们即可编辑其外观。",
-        scrollbarCustomizeHint: "创建可编辑的轨道和滑块元素，且不改变项模板。",
+        scrollbarPartsAuthoredHint: "轨道与滑块是列表大纲中已定义的元素，选中即可编辑其外观",
+        scrollbarCustomizeHint: "创建可编辑的轨道与滑块元素，且不会改变项目模板",
     },
     slider: {
         title: "滑块",
