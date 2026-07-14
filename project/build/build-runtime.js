@@ -133,11 +133,23 @@ function runtimeAliasPlugin() {
 }
 
 (async () => {
+    // The runtime is ALWAYS built as production, even under `--dev` / `yarn dev`.
+    // Game packs (preview and shipped builds alike) copy dist/runtime verbatim,
+    // so a dev-flavored runtime built during a Studio dev session would leak
+    // development React/motion/narraleaf-react into "Production" games and tank
+    // their frame rate. `--dev` only keeps sourcemaps on for readable stacks.
     const dev = isDev();
-    console.log(`[build-runtime] Mode: ${dev ? 'development' : 'production'}`);
+    console.log(`[build-runtime] Building production runtime${dev ? ' (with sourcemaps)' : ''}...`);
 
     fs.rmSync(runtimeOutDir, { recursive: true, force: true });
     fs.mkdirSync(runtimeOutDir, { recursive: true });
+
+    // Explicit define is load-bearing: without it, esbuild only injects
+    // NODE_ENV=production into browser bundles when `minify` is on, and node
+    // bundles defer to whatever env the packaged app happens to launch with.
+    const productionDefine = {
+        'process.env.NODE_ENV': '"production"',
+    };
 
     const commonNodeOptions = {
         platform: 'node',
@@ -145,7 +157,8 @@ function runtimeAliasPlugin() {
         bundle: true,
         external: ['electron'],
         sourcemap: dev,
-        minify: !dev,
+        minify: true,
+        define: productionDefine,
         target: ['node18'],
         tsconfig: runtimeTsconfig,
     };
@@ -169,7 +182,8 @@ function runtimeAliasPlugin() {
         format: 'iife',
         bundle: true,
         sourcemap: dev,
-        minify: !dev,
+        minify: true,
+        define: productionDefine,
         jsx: 'automatic',
         target: ['chrome114'],
         tsconfig: runtimeTsconfig,
@@ -192,6 +206,20 @@ function runtimeAliasPlugin() {
     fs.writeFileSync(path.join(runtimeOutDir, 'index.html'), runtimeHtml(), 'utf-8');
 
     copyRuntimeSupportSidecar(runtimeOutDir);
+
+    // Build marker consumed by the game pack compiler (gameRuntimeArtifactCompiler's
+    // assertRuntimeDistReady): packs refuse to ship a dist/runtime that was not
+    // produced by this script in production mode. Grepping bundles for dev-only
+    // strings would be brittle; an explicit marker is authoritative.
+    fs.writeFileSync(
+        path.join(runtimeOutDir, 'build-manifest.json'),
+        JSON.stringify({
+            mode: 'production',
+            sourcemap: dev,
+            builtAt: new Date().toISOString(),
+        }, null, 2),
+        'utf-8',
+    );
 
     console.log('[build-runtime] Runtime built successfully.');
 })();

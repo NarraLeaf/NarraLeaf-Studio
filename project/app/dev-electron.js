@@ -142,6 +142,10 @@ function broadcastReload(target = 'all') {
         runtimeBuildRunning = true;
         runtimeBuildQueued = false;
         try {
+            // The game runtime is ALWAYS a production bundle (NODE_ENV=production,
+            // minified) regardless of this flag — build-runtime.js enforces that so
+            // packs produced from a dev Studio session never ship dev React.
+            // `--dev` here only turns on sourcemaps for readable runtime stacks.
             await runNodeScript(['project/build/build-runtime.js', '--dev']);
             if (!initialRuntimeBuilt) {
                 initialRuntimeBuilt = true;
