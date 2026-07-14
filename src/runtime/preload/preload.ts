@@ -5,11 +5,18 @@ import {
     type GameRuntimePackV1,
     type GameRuntimePreloadBridge,
 } from "@shared/types/gameRuntime";
+import { readGameRuntimeAssetVersionArg } from "@shared/utils/gameRuntimeAssetUrl";
+
+// Version tag for asset URLs, injected by the main process at window creation
+// so immutable HTTP cache entries are keyed per pack. The fallback is
+// session-unique: a missing marker can only under-cache, never serve bytes
+// from an older pack.
+const assetVersion = readGameRuntimeAssetVersionArg(process.argv) ?? String(Date.now());
 
 const bridge: GameRuntimePreloadBridge = {
     readPack: () => ipcRenderer.invoke("runtime:read-pack") as Promise<GameRuntimePackV1>,
     assetUrl: (assetId: string) =>
-        `${GAME_RUNTIME_PROTOCOL}://asset/${encodeURIComponent(String(assetId ?? ""))}`,
+        `${GAME_RUNTIME_PROTOCOL}://asset/${encodeURIComponent(String(assetId ?? ""))}?v=${encodeURIComponent(assetVersion)}`,
     log: (level, message) => {
         ipcRenderer.send("runtime:log", { level, message });
     },

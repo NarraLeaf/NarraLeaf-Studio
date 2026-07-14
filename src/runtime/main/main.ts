@@ -1,6 +1,7 @@
 import fsSync from "fs";
 import fs from "fs/promises";
 import path from "path";
+import { Readable } from "stream";
 import { nativeImage } from "electron";
 import { app, BrowserWindow, ipcMain, Menu, protocol, session } from "electron/main";
 import { WebSocketServer } from "ws";
@@ -9,6 +10,8 @@ import {
     type GameRuntimePackV1,
 } from "@shared/types/gameRuntime";
 import { getMimeType } from "@shared/utils/fs";
+import { buildGameRuntimeAssetVersionArg } from "@shared/utils/gameRuntimeAssetUrl";
+import { resolveSingleByteRange } from "@shared/utils/httpRange";
 import { createRuntimeResources, type RuntimeResources } from "./runtimeResources";
 import {
     PLUGIN_REACT_MODULE_SOURCES,
@@ -70,6 +73,9 @@ let packPromise: Promise<GameRuntimePackV1> | null = null;
 let mainWindow: BrowserWindow | null = null;
 let controlServer: WebSocketServer | null = null;
 let resources: RuntimeResources | null = null;
+let saveStore: RuntimeSaveStore | null = null;
+let persistenceStore: RuntimePersistenceStore | null = null;
+let runtimeStorageFlushedForQuit = false;
 
 /**
  * The active resource backend. Established once at startup; every packaged read
@@ -99,6 +105,9 @@ protocol.registerSchemesAsPrivileged([
             secure: true,
             supportFetchAPI: true,
             corsEnabled: true,
+            // Media elements need streamed responses for playback and seeking;
+            // without this the whole payload buffers before <video> starts.
+            stream: true,
         },
     },
 ]);
@@ -144,7 +153,20 @@ app.on("window-all-closed", () => {
     app.quit();
 });
 
-app.on("before-quit", () => {
+app.on("before-quit", event => {
+    // Save/persistence writes are debounced; hold the quit open until every
+    // queued write has reached disk, then quit again.
+    if (!runtimeStorageFlushedForQuit && (saveStore?.hasPendingWrites() || persistenceStore?.hasPendingWrites())) {
+        event.preventDefault();
+        void Promise.allSettled([
+            saveStore?.flush(),
+            persistenceStore?.flush(),
+        ]).then(() => {
+            runtimeStorageFlushedForQuit = true;
+            app.quit();
+        });
+        return;
+    }
     controlServer?.close();
     controlServer = null;
     void resources?.dispose();
@@ -175,15 +197,37 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         minHeight: 320,
         center: true,
         frame: true,
+        // Stay hidden until the renderer's first paint so launch never flashes
+        // an empty window; the background matches the entry surface for the
+        // brief gap between first paint and the surface rendering its content.
+        show: false,
         ...(icon ? { icon } : {}),
-        backgroundColor: "#000000",
+        backgroundColor: resolveInitialBackgroundColor(pack),
         webPreferences: {
             preload: path.join(appDir, "preload.js"),
             contextIsolation: true,
             devTools: devToolsEnabled,
+            // The preload derives versioned asset URLs from this marker; a
+            // process argument is the only synchronous channel it can read
+            // before the document loads.
+            additionalArguments: [buildGameRuntimeAssetVersionArg(resolveAssetVersion(pack))],
         },
     });
     win.setTitle(pack.project.name);
+    // Show on first paint. The timer is a safety net: a renderer that never
+    // reaches ready-to-show should still surface a window rather than leave
+    // the process running invisibly.
+    const fallbackShow = setTimeout(() => {
+        if (!win.isDestroyed() && !win.isVisible()) {
+            win.show();
+        }
+    }, 3000);
+    win.once("ready-to-show", () => {
+        clearTimeout(fallbackShow);
+        if (!win.isDestroyed()) {
+            win.show();
+        }
+    });
     win.on("closed", () => {
         if (mainWindow === win) {
             mainWindow = null;
@@ -252,17 +296,90 @@ function createProjectIcon(pack: GameRuntimePackV1): Electron.NativeImage | unde
     }
 }
 
-function resolveInitialWindowSize(pack: GameRuntimePackV1): { width: number; height: number } {
+function resolveEntrySurface(pack: GameRuntimePackV1) {
     const surfaceId = pack.entry.kind === "surface" ? pack.entry.surfaceId : null;
-    const surface = surfaceId
+    return surfaceId
         ? pack.bundle.ui.uidoc.surfaces.find(item => item.id === surfaceId)
         : pack.bundle.ui.uidoc.surfaces.find(item => item.kind === "appSurface");
+}
+
+function resolveInitialWindowSize(pack: GameRuntimePackV1): { width: number; height: number } {
+    const surface = resolveEntrySurface(pack);
     const width = surface?.designSize.width;
     const height = surface?.designSize.height;
     if (Number.isFinite(width) && Number.isFinite(height) && width! > 0 && height! > 0) {
         return { width: Math.round(width!), height: Math.round(height!) };
     }
     return { width: 1280, height: 720 };
+}
+
+/**
+ * The native window background is visible until the renderer's first paint, so
+ * it should match the entry surface instead of flashing black under a light
+ * UI. Mirrors the renderer's surface background defaults: app surfaces are
+ * white unless configured, stage surfaces are transparent — which has no
+ * native equivalent and falls back to black, as does anything unparseable.
+ */
+function resolveInitialBackgroundColor(pack: GameRuntimePackV1): string {
+    const surface = resolveEntrySurface(pack);
+    const configured = surface?.settings?.backgroundColor;
+    if (typeof configured === "string" && configured.trim()) {
+        return normalizeNativeBackgroundColor(configured) ?? "#000000";
+    }
+    return surface?.kind === "appSurface" ? "#ffffff" : "#000000";
+}
+
+/** Normalize a CSS color to an opaque form BrowserWindow accepts, or null. */
+function normalizeNativeBackgroundColor(value: string): string | null {
+    const color = value.trim().toLowerCase();
+    if (!color || color === "transparent") {
+        return null;
+    }
+    const hex = /^#([0-9a-f]{3,8})$/.exec(color)?.[1];
+    if (hex) {
+        if (hex.length === 3 || hex.length === 4) {
+            if (hex.length === 4 && hex[3] === "0") {
+                return null;
+            }
+            return `#${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`;
+        }
+        if (hex.length === 6) {
+            return `#${hex}`;
+        }
+        if (hex.length === 8) {
+            // Fully transparent falls through to the default; a translucent
+            // color keeps its RGB channels (the window cannot blend anyway).
+            return hex.slice(6) === "00" ? null : `#${hex.slice(0, 6)}`;
+        }
+        return null;
+    }
+    const fn = /^rgba?\(([^)]*)\)$/.exec(color);
+    if (fn) {
+        const parts = (fn[1] ?? "").split(",").map(part => Number(part.trim()));
+        const [r, g, b, a] = parts;
+        if (parts.length < 3 || [r, g, b].some(channel => !Number.isFinite(channel))) {
+            return null;
+        }
+        if (parts.length >= 4 && !(Number.isFinite(a) && a! > 0)) {
+            return null;
+        }
+        const toHex = (channel: number) =>
+            Math.round(Math.min(255, Math.max(0, channel))).toString(16).padStart(2, "0");
+        return `#${toHex(r!)}${toHex(g!)}${toHex(b!)}`;
+    }
+    // Named CSS colors pass through; Electron resolves them natively.
+    return /^[a-z]+$/.test(color) ? color : null;
+}
+
+/**
+ * Version tag baked into every asset URL by the preload. The per-compile
+ * bundle id changes whenever the Studio produces a new pack, which is exactly
+ * the lifetime of "this asset id maps to these bytes": asset ids themselves
+ * are stable across recompiles, so they cannot key the HTTP cache alone.
+ */
+function resolveAssetVersion(pack: GameRuntimePackV1): string {
+    const bundleId = String(pack.bundle?.bundleId ?? "").trim();
+    return bundleId || pack.generatedAt || String(Date.now());
 }
 
 function registerRuntimeProtocol(allowHttp: boolean): void {
@@ -295,18 +412,20 @@ function registerRuntimeProtocol(allowHttp: boolean): void {
                         status: 200,
                         headers: {
                             "Content-Type": "text/javascript",
-                            "Cache-Control": "no-store",
+                            // Fixed per runtime build and served from memory; a
+                            // modest lifetime skips re-fetches within a session
+                            // without pinning sources across Studio upgrades.
+                            "Cache-Control": "public, max-age=3600",
                         },
                     });
                 }
                 return new Response("Not found", { status: 404 });
             }
             if (url.hostname === "asset") {
+                // The query string only versions the URL for HTTP cache keying
+                // (see the preload's assetUrl); assets resolve by pathname alone.
                 const assetId = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
-                const pack = await readPack();
-                const item = pack.assets.items[assetId];
-                const bytes = await runtimeResources().readAsset(pack, assetId);
-                return serveBytes(bytes, item?.mimeType ?? getMimeType(assetId));
+                return await serveAsset(request, assetId);
             }
             return new Response("Not found", { status: 404 });
         } catch (error) {
@@ -316,18 +435,126 @@ function registerRuntimeProtocol(allowHttp: boolean): void {
     });
 }
 
+/**
+ * Asset responses are effectively immutable: every asset URL carries a
+ * per-pack version query, so a newer pack always requests different URLs and
+ * long-lived cache entries can never go stale. Caching matters here — the
+ * game engine drops and re-fetches images on every scene change, and without
+ * it each of those requests round-trips into this process.
+ */
+const ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
+/** Loose assets above this size stream from disk instead of buffering fully. */
+const ASSET_STREAM_THRESHOLD_BYTES = 8 * 1024 * 1024;
+
+async function serveAsset(request: Request, assetId: string): Promise<Response> {
+    const pack = await readPack();
+    const contentType = pack.assets.items[assetId]?.mimeType ?? getMimeType(assetId);
+    const rangeHeader = request.headers.get("range");
+    const filePath = runtimeResources().getAssetFilePath(pack, assetId);
+    if (filePath) {
+        const { size } = await fs.stat(filePath);
+        const range = resolveSingleByteRange(rangeHeader, size);
+        if (range.kind === "unsatisfiable") {
+            return rangeNotSatisfiable(size);
+        }
+        if (range.kind === "partial") {
+            return streamAssetFile(filePath, contentType, range, size, 206);
+        }
+        if (size > ASSET_STREAM_THRESHOLD_BYTES) {
+            return streamAssetFile(filePath, contentType, { start: 0, end: size - 1 }, size, 200);
+        }
+        return assetResponse(await fs.readFile(filePath), contentType);
+    }
+    const data = await runtimeResources().readAsset(pack, assetId);
+    const range = resolveSingleByteRange(rangeHeader, data.byteLength);
+    if (range.kind === "unsatisfiable") {
+        return rangeNotSatisfiable(data.byteLength);
+    }
+    if (range.kind === "partial") {
+        // subarray shares the underlying memory, so range requests against a
+        // cached buffer cost no copy.
+        return new Response(asBodyBytes(data.subarray(range.start, range.end + 1)), {
+            status: 206,
+            headers: partialAssetHeaders(contentType, range, data.byteLength),
+        });
+    }
+    return assetResponse(data, contentType);
+}
+
+function assetHeaders(contentType: string): Record<string, string> {
+    return {
+        "Content-Type": contentType,
+        "Cache-Control": ASSET_CACHE_CONTROL,
+        "Accept-Ranges": "bytes",
+    };
+}
+
+function partialAssetHeaders(
+    contentType: string,
+    range: { start: number; end: number },
+    totalSize: number,
+): Record<string, string> {
+    return {
+        ...assetHeaders(contentType),
+        "Content-Range": `bytes ${range.start}-${range.end}/${totalSize}`,
+        "Content-Length": String(range.end - range.start + 1),
+    };
+}
+
+function assetResponse(data: Buffer, contentType: string): Response {
+    return new Response(asBodyBytes(data), {
+        status: 200,
+        headers: assetHeaders(contentType),
+    });
+}
+
+function rangeNotSatisfiable(totalSize: number): Response {
+    return new Response(null, {
+        status: 416,
+        headers: {
+            "Content-Range": `bytes */${totalSize}`,
+            "Accept-Ranges": "bytes",
+        },
+    });
+}
+
+function streamAssetFile(
+    filePath: string,
+    contentType: string,
+    range: { start: number; end: number },
+    totalSize: number,
+    status: 200 | 206,
+): Response {
+    const stream = fsSync.createReadStream(filePath, { start: range.start, end: range.end });
+    const headers = status === 206
+        ? partialAssetHeaders(contentType, range, totalSize)
+        : { ...assetHeaders(contentType), "Content-Length": String(totalSize) };
+    return new Response(Readable.toWeb(stream) as unknown as ReadableStream, { status, headers });
+}
+
 async function serveFile(filePath: string, contentType = getMimeType(filePath)): Promise<Response> {
     return serveBytes(await fs.readFile(filePath), contentType);
 }
 
+/** Runtime code and the pack stay no-store: preview recompiles must always be fresh. */
 function serveBytes(data: Buffer, contentType: string): Response {
-    return new Response(new Uint8Array(data), {
+    return new Response(asBodyBytes(data), {
         status: 200,
         headers: {
             "Content-Type": contentType,
             "Cache-Control": "no-store",
         },
     });
+}
+
+/**
+ * Hand Buffer bytes to a Response without the copy `new Uint8Array(data)`
+ * would make: a Buffer already satisfies the runtime BufferSource contract,
+ * the cast only bridges lib.dom's stricter ArrayBuffer-backed view type.
+ */
+function asBodyBytes(data: Buffer): Uint8Array<ArrayBuffer> {
+    return data as Uint8Array<ArrayBuffer>;
 }
 
 function isIndexDocument(pathname: string): boolean {
@@ -348,8 +575,11 @@ async function serveIndexDocument(filePath: string, allowHttp: boolean): Promise
 }
 
 function registerRuntimeIpc(): void {
+    // Module-level refs so the before-quit handler can flush pending writes.
     const saves = new RuntimeSaveStore(userDataDir);
     const persistence = new RuntimePersistenceStore(userDataDir);
+    saveStore = saves;
+    persistenceStore = persistence;
 
     ipcMain.handle("runtime:read-pack", () => readPack());
     ipcMain.handle("runtime:close", () => {
