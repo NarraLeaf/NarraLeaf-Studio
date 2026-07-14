@@ -228,6 +228,10 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
             prepaintKey={entry.key}
             direction={entry.direction}
             pageMotion={pageMotion}
+            // This layer wraps the scaled surface content (it is outside the design→backing
+            // transform), so page-animation distances must be scaled from design px here.
+            // Nested in-tree layers (SurfaceElementTree) keep the default scale of 1.
+            scale={scale}
             className="absolute inset-0 flex items-center justify-center"
             style={{ backgroundColor: getSurfaceBackgroundColor(surface) }}
             presentZIndex={10 + layerIndex}

@@ -716,6 +716,10 @@ export function GameApp(props: GameAppProps): ReactNode {
             height,
             contentContainerId: `__nlr_preview_stage_${sessionId.replace(/[^a-zA-Z0-9_-]/g, "_")}`,
             slots,
+            // NLR clamps its stage to 800×450 by default; windows smaller than that would crop
+            // and offset the stage instead of letterboxing down (same override as the story
+            // preview, which embeds into arbitrarily small panes).
+            minStageSize: { width: 1, height: 1 },
         });
         const environmentReady = new Promise<void>((resolve, reject) => {
             pendingEnvReadyRef.current.set(sessionId, { resolve, reject });
@@ -1408,11 +1412,14 @@ export function GameApp(props: GameAppProps): ReactNode {
     const gameViewport = nlrSession ? { width: nlrSession.width, height: nlrSession.height } : null;
 
     if (!host.ready || !core || !hostAdapterBundle) {
+        // Keep the same root element shape as the ready branch below: switching the root type
+        // (Fragment → Provider) when the host becomes ready would make React unmount and
+        // remount the whole frame subtree (StageViewportFrame and everything inside it).
         return (
-            <>
+            <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
                 {renderFrame({ activeSurface, gameViewport, children: null })}
                 {renderOverlays?.({ core, activeSurface, widgetRuntimeStore })}
-            </>
+            </GameLocalizationContext.Provider>
         );
     }
 
@@ -1422,6 +1429,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         <NlrStageLayer
             session={nlrSession}
             interactive={gameStageVisible}
+            // The stage mounts (hidden) as soon as a session exists so the Player can preload,
+            // which is before the surface system starts; painting it that early would flash its
+            // black backdrop over the first frame. It only becomes visible on reveal.
+            visible={gameStageVisible}
             renderOnStage={gameStageVisible}
             onFirstSceneReady={sessionId => {
                 const pending = pendingGameStartsRef.current.get(sessionId);
