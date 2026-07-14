@@ -13,6 +13,7 @@ export const assets = {
     preview: "预览",
     emptyType: "还没有{label}",
     itemCount: {
+        one: "{count} item",
         other: "{count} 项",
     },
     view: {
@@ -32,18 +33,21 @@ export const assets = {
         noResults: "未找到匹配的素材",
         matchTag: "标签：{tag}",
         resultCount: {
+            one: "{count} result",
             other: "{count} 条结果",
         },
     },
     list: {
-        emptyFiltered: "没有符合当前筛选的素材。",
+        emptyFiltered: "没有符合当前筛选的素材",
     },
     iconView: {
         updating: "正在更新…",
         assetCount: {
+            one: "{count} asset",
             other: "{count} 个素材",
         },
         tagCount: {
+            one: "+{count} tag",
             other: "+{count} 个标签",
         },
     },
@@ -52,12 +56,15 @@ export const assets = {
         newSubGroup: "新建子分组",
         importAssets: "导入素材…",
         copyCount: {
+            one: "Copy {count} item",
             other: "复制 {count} 项",
         },
         cutCount: {
+            one: "Cut {count} item",
             other: "剪切 {count} 项",
         },
         deleteCount: {
+            one: "Delete {count} item",
             other: "删除 {count} 项",
         },
     },
@@ -99,6 +106,7 @@ export const assets = {
         loading: "正在加载音频…",
         loadError: "加载音频失败",
         channelCount: {
+            one: "{count} channel",
             other: "{count} 声道",
         },
     },
