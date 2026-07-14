@@ -4,6 +4,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import type { GameBuildRequest, GameBuildStateSnapshot, GameBuildStatus } from "@shared/types/gameBuild";
 import { EventEmitter } from "../ui/EventEmitter";
+import { ConsoleService } from "./ConsoleService";
 import { CharacterService } from "./CharacterService";
 import { StoryService } from "../story/StoryService";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
@@ -15,6 +16,21 @@ type BuildServiceEvents = {
 
 const IDLE_STATE: GameBuildStateSnapshot = { status: "idle" };
 
+/** Console channel the production build logs to; also where it drives the progress bar. */
+const BUILD_CONSOLE_CHANNEL = "build";
+
+/**
+ * The pipeline reports only coarse phases (preparing → compiling → packaging), and the
+ * longest phase — electron-builder packaging — is fully opaque: there is no real
+ * fraction to show. Rather than fake a fill level that creeps upward (which is a lie
+ * about how far along the build is), the bar runs as an indeterminate animation while a
+ * build is active. It snaps to a solid 100% only on real completion.
+ */
+const BUILD_ACTIVE_STATUSES: readonly GameBuildStatus[] = ["preparing", "compiling", "packaging"];
+
+/** How long the full bar lingers after a successful build before it clears. */
+const BUILD_DONE_LINGER_MS = 1400;
+
 /**
  * Renderer-side view of the production build. Mirrors PreviewService: it holds
  * the last snapshot, polls the main process while a build is active, and lets
@@ -24,6 +40,7 @@ const IDLE_STATE: GameBuildStateSnapshot = { status: "idle" };
 export class BuildService extends Service<BuildService> {
     private state: GameBuildStateSnapshot = IDLE_STATE;
     private timer: ReturnType<typeof setInterval> | null = null;
+    private clearProgressTimer: ReturnType<typeof setTimeout> | null = null;
     private refreshInFlight = false;
     private readonly events = new EventEmitter<BuildServiceEvents>();
 
@@ -37,6 +54,10 @@ export class BuildService extends Service<BuildService> {
 
     public override dispose(_ctx: WorkspaceContext): void {
         this.stopPolling();
+        if (this.clearProgressTimer) {
+            clearTimeout(this.clearProgressTimer);
+            this.clearProgressTimer = null;
+        }
         this.events.clear();
     }
 
@@ -131,6 +152,10 @@ export class BuildService extends Service<BuildService> {
         this.syncPolling(next.status);
         const previous = this.state;
         this.state = next;
+        // Phase transitions (not every poll tick) drive the console progress bar.
+        if (previous.status !== next.status) {
+            this.syncConsoleProgress(next.status);
+        }
         // Polling returns a fresh snapshot object every second; only notify
         // subscribers when something they render actually changed, so a
         // minutes-long packaging phase does not re-render the toolbar each tick.
@@ -138,6 +163,62 @@ export class BuildService extends Service<BuildService> {
             return;
         }
         this.events.emit("stateChanged", next);
+    }
+
+    /**
+     * Reflect the build phase onto the console's bottom progress bar (the "build"
+     * channel). Because the pipeline exposes no real fraction, an active build shows an
+     * indeterminate animation (honest "working", never a faked fill level). Completion
+     * snaps to a solid 100% and lingers briefly; a failure turns the bar warning.
+     */
+    private syncConsoleProgress(status: GameBuildStatus): void {
+        const consoleService = this.tryGetConsole();
+        if (!consoleService) {
+            return;
+        }
+        if (this.clearProgressTimer) {
+            clearTimeout(this.clearProgressTimer);
+            this.clearProgressTimer = null;
+        }
+
+        if (status === "error") {
+            // Solid full-width warning bar — the colour signals failure (the console
+            // logs carry the detail); it does not claim a completion fraction.
+            consoleService.setProgress(BUILD_CONSOLE_CHANNEL, { value: 1, indeterminate: false, error: true });
+            return;
+        }
+        if (status === "done") {
+            consoleService.setProgress(BUILD_CONSOLE_CHANNEL, { value: 1, indeterminate: false, error: false });
+            this.clearProgressTimer = setTimeout(() => {
+                this.clearProgressTimer = null;
+                this.tryGetConsole()?.setProgress(BUILD_CONSOLE_CHANNEL, null);
+            }, BUILD_DONE_LINGER_MS);
+            return;
+        }
+        if (!BUILD_ACTIVE_STATUSES.includes(status)) {
+            // idle (or anything else): no build running, so no bar.
+            consoleService.setProgress(BUILD_CONSOLE_CHANNEL, null);
+            return;
+        }
+
+        // Active build. "preparing" opens a fresh run: drop any stale (done/error) bar
+        // and start a clean indeterminate animation with the error colour reset. Later
+        // phases just ensure the animation exists without disturbing an error flip that
+        // an error-level log may have already applied.
+        if (status === "preparing") {
+            consoleService.setProgress(BUILD_CONSOLE_CHANNEL, null);
+            consoleService.setProgress(BUILD_CONSOLE_CHANNEL, { indeterminate: true, error: false });
+        } else if (!consoleService.getProgress(BUILD_CONSOLE_CHANNEL)) {
+            consoleService.setProgress(BUILD_CONSOLE_CHANNEL, { indeterminate: true });
+        }
+    }
+
+    private tryGetConsole(): ConsoleService | null {
+        try {
+            return this.getContext().services.get<ConsoleService>(Services.Console);
+        } catch {
+            return null;
+        }
     }
 
     private syncPolling(status: GameBuildStatus): void {
