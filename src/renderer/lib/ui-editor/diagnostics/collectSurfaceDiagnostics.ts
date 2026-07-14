@@ -1,5 +1,6 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
+import { translate } from "@/lib/i18n";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { buildReadonlySurfaceMainSummary } from "@/lib/workspace/services/ui-editor/blueprint/readonlyBlueprintSummary";
 import { collectSubtreeElements } from "./collectSubtreeElements";
@@ -26,7 +27,7 @@ export function collectSurfaceDiagnostics(
                 id: `surface:missing:${surfaceId}`,
                 severity: "error",
                 source: "layout",
-                message: "Surface not found in document",
+                message: translate("blueprint.diagnostics.surface.notFound"),
             },
         ];
     }
@@ -49,8 +50,8 @@ export function collectSurfaceDiagnostics(
                 id: `bp:broken:${surfaceId}`,
                 severity: "warning",
                 source: "blueprint",
-                message: `Surface blueprint has ${sum.brokenBindingCount} broken binding(s)`,
-                hint: "Fix bindings in the Blueprint editor or Dev Mode for runtime behavior.",
+                message: translate("blueprint.diagnostics.surface.brokenBindings", { count: sum.brokenBindingCount }),
+                hint: translate("blueprint.diagnostics.surface.brokenBindingsHint"),
             });
         }
     }

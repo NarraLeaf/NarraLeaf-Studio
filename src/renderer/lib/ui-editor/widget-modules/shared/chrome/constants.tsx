@@ -1,3 +1,6 @@
+import type { ReactNode } from "react";
+import type { TranslationKey } from "@shared/i18n";
+
 type StrokeStyleOptionValue = "solid" | "dashed" | "dotted" | "none";
 
 const STROKE_STYLE_DASHARRAY: Record<StrokeStyleOptionValue, string | undefined> = {
@@ -64,29 +67,29 @@ export function controlButtonClass(active?: boolean) {
   return [CONTROL_BUTTON_BASE, active ? CONTROL_BUTTON_ACTIVE : null].filter(Boolean).join(" ");
 }
 
-export const BORDER_STYLE_OPTIONS = [
-  { value: "solid", label: "Solid", icon: <StrokeStyleIcon style="solid" /> },
-  { value: "dashed", label: "Dashed", icon: <StrokeStyleIcon style="dashed" /> },
-  { value: "dotted", label: "Dotted", icon: <StrokeStyleIcon style="dotted" /> },
-  { value: "none", label: "None", icon: <StrokeStyleIcon style="none" /> },
+export const BORDER_STYLE_OPTIONS: { value: string; labelKey: TranslationKey; icon: ReactNode }[] = [
+  { value: "solid", labelKey: "widgetAppearance.border.styleSolid", icon: <StrokeStyleIcon style="solid" /> },
+  { value: "dashed", labelKey: "widgetAppearance.border.styleDashed", icon: <StrokeStyleIcon style="dashed" /> },
+  { value: "dotted", labelKey: "widgetAppearance.border.styleDotted", icon: <StrokeStyleIcon style="dotted" /> },
+  { value: "none", labelKey: "widgetAppearance.border.styleNone", icon: <StrokeStyleIcon style="none" /> },
 ];
 
-export const FILL_TYPE_OPTIONS = [
-  { value: "color", label: "Color" },
-  { value: "image", label: "Image" },
+export const FILL_TYPE_OPTIONS: { value: string; labelKey: TranslationKey }[] = [
+  { value: "color", labelKey: "widgetAppearance.fillType.color" },
+  { value: "image", labelKey: "widgetAppearance.fillType.image" },
 ];
 
-export const STROKE_ALIGN_OPTIONS = [
-  { value: "none", label: "None" },
-  { value: "center", label: "Center" },
-  { value: "inside", label: "Inside" },
-  { value: "outside", label: "Outside" },
+export const STROKE_ALIGN_OPTIONS: { value: string; labelKey: TranslationKey }[] = [
+  { value: "none", labelKey: "widgetAppearance.border.alignNone" },
+  { value: "center", labelKey: "widgetAppearance.border.alignCenter" },
+  { value: "inside", labelKey: "widgetAppearance.border.alignInside" },
+  { value: "outside", labelKey: "widgetAppearance.border.alignOutside" },
 ];
 
-export const STROKE_JOIN_OPTIONS = [
-  { value: "miter", label: "Miter" },
-  { value: "round", label: "Round" },
-  { value: "bevel", label: "Bevel" },
+export const STROKE_JOIN_OPTIONS: { value: string; labelKey: TranslationKey }[] = [
+  { value: "miter", labelKey: "widgetAppearance.border.joinMiter" },
+  { value: "round", labelKey: "widgetAppearance.border.joinRound" },
+  { value: "bevel", labelKey: "widgetAppearance.border.joinBevel" },
 ];
 
 const STROKE_SIDE_PATHS: Record<"all" | "top" | "right" | "bottom" | "left", string> = {
@@ -125,12 +128,12 @@ function StrokeSideIcon({ side }: { side: keyof typeof STROKE_SIDE_PATHS }) {
   );
 }
 
-export const STROKE_SIDE_OPTIONS = [
-  { id: "all", icon: <StrokeSideIcon side="all" />, label: "All" },
-  { id: "top", icon: <StrokeSideIcon side="top" />, label: "Top" },
-  { id: "right", icon: <StrokeSideIcon side="right" />, label: "Right" },
-  { id: "bottom", icon: <StrokeSideIcon side="bottom" />, label: "Bottom" },
-  { id: "left", icon: <StrokeSideIcon side="left" />, label: "Left" },
+export const STROKE_SIDE_OPTIONS: { id: string; icon: ReactNode; labelKey: TranslationKey }[] = [
+  { id: "all", icon: <StrokeSideIcon side="all" />, labelKey: "widgetAppearance.border.sideAll" },
+  { id: "top", icon: <StrokeSideIcon side="top" />, labelKey: "widgetAppearance.border.sideTop" },
+  { id: "right", icon: <StrokeSideIcon side="right" />, labelKey: "widgetAppearance.border.sideRight" },
+  { id: "bottom", icon: <StrokeSideIcon side="bottom" />, labelKey: "widgetAppearance.border.sideBottom" },
+  { id: "left", icon: <StrokeSideIcon side="left" />, labelKey: "widgetAppearance.border.sideLeft" },
 ];
 
 export { CornerIcon };

@@ -43,6 +43,13 @@ export const wizard = {
     template: {
         title: "选择项目模板",
         subtitle: "选择一个项目模板，借助预配置的结构和设置快速开始",
+        options: {
+            empty: {
+                name: "空白",
+                description: "从空白项目开始，从零构建",
+                category: "自定义",
+            },
+        },
     },
     details: {
         title: "项目详情",
@@ -65,6 +72,7 @@ export const wizard = {
         licensePlaceholder: "选择许可证…",
         customLicense: "自定义许可证",
         customLicensePlaceholder: "输入自定义许可证…",
+        licenseOther: "其他",
         descriptionPlaceholder: "描述你的项目…",
         resolutionPlaceholder: "选择分辨率…",
         requiredFieldsTitle: "必填项",
@@ -85,6 +93,12 @@ export const wizard = {
         directoryWillBeCreated: "创建项目时将自动创建该目录",
         versionControlSystem: "版本控制系统",
         versionControlPlaceholder: "选择版本控制…",
+        backup: {
+            none: "不备份",
+            hourly: "每小时",
+            daily: "每天",
+            weekly: "每周",
+        },
     },
     review: {
         title: "确认项目",
@@ -102,5 +116,21 @@ export const wizard = {
         },
         notSpecified: "未指定",
         custom: "自定义",
+    },
+    validation: {
+        nameRequired: "项目名称为必填项",
+        locationRequired: "项目位置为必填项",
+        templateRequired: "项目模板为必填项",
+        invalidPath: "无效路径",
+        notADirectory: "所选路径已存在，但不是目录。请选择一个目录或新建一个。",
+        cannotWrite: "无法写入所选目录。请检查权限或选择其他位置。",
+        notEmpty: "目录不为空。请选择一个空目录或新建一个。",
+        validationFailed: "目录校验失败",
+        failedToValidate: "校验目录失败",
+        checkExistenceFailed: "检查目录是否存在失败",
+        checkIsDirFailed: "检查路径是否为目录失败",
+        listContentsFailed: "列出目录内容失败",
+        selectDirectoryFailed: "选择目录失败",
+        createFailed: "创建项目失败",
     },
 } satisfies LocaleNamespace<"wizard">;

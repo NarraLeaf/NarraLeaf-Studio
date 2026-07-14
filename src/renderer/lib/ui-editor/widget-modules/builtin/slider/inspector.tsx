@@ -13,17 +13,19 @@ import { createInitialContainerAppearance } from "@/lib/ui-editor/widget-modules
 import { CompactModuleCard } from "@/lib/ui-editor/widget-modules/shared/appearance/compact/CompactModuleCard";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
-import { i18nStore, useTranslation } from "@/lib/i18n";
+import { i18nStore, translate, useTranslation } from "@/lib/i18n";
 import { getSliderProps, patchSliderProps } from "./helpers";
 
 const SliderBlueprintValueField = createBlueprintValueField({
     propPath: "value",
     valueType: "float",
     valueLabel: "float",
-    title: "Slider Value",
-    createLabel: "Blueprint Value",
-    clearLabel: "Literal value",
-    getDisplayName: ({ liveElement }) => `${liveElement.name ?? "Slider"} Value`,
+    title: "widgets.blueprintValue.sliderTitle",
+    clearLabel: "widgets.blueprintValue.literalValue",
+    getDisplayName: ({ liveElement }) =>
+        translate("widgets.blueprintValue.nameValue", {
+            name: liveElement.name ?? translate("widgets.defaults.slider.name"),
+        }),
     getLiteralValue: ({ liveElement }) => getSliderProps(liveElement).value,
     renderLiteralEditor: ({ data, liveElement }) => (
         <SliderValueLiteralEditor data={data} liveElement={liveElement} />

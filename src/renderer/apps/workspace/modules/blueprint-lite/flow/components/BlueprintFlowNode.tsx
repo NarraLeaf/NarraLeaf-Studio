@@ -53,6 +53,11 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { ButtonCursorSelect } from "@/lib/ui-editor/widget-modules/shared/appearance/editors/ButtonCursorSelect";
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
+import {
+    resolveBlueprintCategoryLabel,
+    resolveBlueprintLabel,
+    resolveBlueprintNodeTitle,
+} from "../../blueprintNodeI18n";
 
 type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
 type BlueprintNodeParamPatch = (
@@ -363,12 +368,13 @@ function readDynamicPinLabelValues(params: Record<string, unknown>, key: string 
     return out;
 }
 
-function pinLabelOnly(pin: CatalogPin): string {
-    return pin.label?.trim() || pin.id;
+function pinLabelOnly(pin: CatalogPin, t: UseTranslation["t"]): string {
+    const raw = pin.label?.trim();
+    return raw ? resolveBlueprintLabel(raw, t) : pin.id;
 }
 
-function pinCaption(pin: CatalogPin, semantic: "exec" | "data"): string {
-    const name = pinLabelOnly(pin);
+function pinCaption(pin: CatalogPin, semantic: "exec" | "data", t: UseTranslation["t"]): string {
+    const name = pinLabelOnly(pin, t);
     if (semantic === "data" && pin.valueType && pin.valueType !== "any") {
         return `${name} · ${pin.valueType}`;
     }
@@ -393,7 +399,7 @@ function DynamicPinLabelInput({
     onPatchNodeParam: (nodeId: string, key: string, value: unknown) => void;
 }) {
     const { t } = useTranslation();
-    const committed = labels[pin.id] ?? pinLabelOnly(pin);
+    const committed = labels[pin.id] ?? pinLabelOnly(pin, t);
     const [draft, setDraft] = useState(committed);
 
     useEffect(() => {
@@ -666,9 +672,9 @@ function InputPinRow({
             ) : (
                 <span
                     className={`shrink-0 text-2xs leading-tight ${labelClass}`}
-                    title={pinLabelOnly(pin)}
+                    title={pinLabelOnly(pin, t)}
                 >
-                    {pinLabelOnly(pin)}
+                    {pinLabelOnly(pin, t)}
                 </span>
             );
         return (
@@ -736,9 +742,9 @@ function InputPinRow({
         ) : (
             <span
                 className={`min-w-0 shrink truncate text-2xs leading-tight ${labelClass}`}
-                title={pinCaption(pin, semantic)}
+                title={pinCaption(pin, semantic, t)}
             >
-                {pinCaption(pin, semantic)}
+                {pinCaption(pin, semantic, t)}
             </span>
         );
     return (
@@ -748,7 +754,7 @@ function InputPinRow({
                 position={Position.Left}
                 id={pin.id}
                 className={`${handleClass} !left-0 !top-1/2 !-translate-y-1/2`}
-                title={pinCaption(pin, semantic)}
+                title={pinCaption(pin, semantic, t)}
             />
             <div className="flex min-w-0 flex-1 items-center pl-3.5">
                 <div className="flex min-w-0 max-w-full items-center gap-0.5">
@@ -856,7 +862,7 @@ function OutputPinRow({
                     />
                 ) : (
                     <span className="min-w-0 shrink truncate text-2xs leading-tight text-fg-muted">
-                        {pinLabelOnly(pin)}
+                        {pinLabelOnly(pin, t)}
                     </span>
                 )}
                 {dynamicTypeParamKey && dynamicTypeOptions?.length ? (
@@ -875,7 +881,7 @@ function OutputPinRow({
                     position={Position.Right}
                     id={pin.id}
                     className={`${handleClass} !right-0 !top-1/2 !-translate-y-1/2`}
-                    title={pinCaption(pin, semantic)}
+                    title={pinCaption(pin, semantic, t)}
                 />
             </div>
         );
@@ -884,16 +890,16 @@ function OutputPinRow({
         <div className="relative flex min-h-[20px] w-full min-w-0 items-center justify-end pl-0.5 pr-1">
             <span
                 className="min-w-0 flex-1 truncate pr-3.5 text-right text-2xs leading-tight text-fg-muted"
-                title={pinCaption(pin, semantic)}
+                title={pinCaption(pin, semantic, t)}
             >
-                {pinCaption(pin, semantic)}
+                {pinCaption(pin, semantic, t)}
             </span>
             <Handle
                 type="source"
                 position={Position.Right}
                 id={pin.id}
                 className={`${handleClass} !right-0 !top-1/2 !-translate-y-1/2`}
-                title={pinCaption(pin, semantic)}
+                title={pinCaption(pin, semantic, t)}
             />
         </div>
     );
@@ -1087,6 +1093,7 @@ function InspectorParamOnCard({
     persistentVariables?: BlueprintFlowNodeData["persistentVariables"];
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>;
 }) {
+    const { t } = useTranslation();
     const raw = spec.key in params ? params[spec.key] : undefined;
     const variableSelectValue =
         spec.kind === "variableRef"
@@ -1113,8 +1120,8 @@ function InspectorParamOnCard({
             : rawSelectOptions;
     const selectComponentOptions: SelectOption[] | undefined = selectOptions
         ? [
-              { value: "", label: spec.emptyOptionLabel ?? "-" },
-              ...selectOptions.map(opt => ({ value: opt.value, label: opt.label })),
+              { value: "", label: resolveBlueprintLabel(spec.emptyOptionLabel ?? "-", t) },
+              ...selectOptions.map(opt => ({ value: opt.value, label: resolveBlueprintLabel(opt.label, t) })),
           ]
         : undefined;
     const variableComponentOptions: SelectOption[] = [
@@ -1147,7 +1154,7 @@ function InspectorParamOnCard({
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
-            <div className="mb-0.5 text-2xs tracking-wide text-fg-subtle">{spec.label}</div>
+            <div className="mb-0.5 text-2xs tracking-wide text-fg-subtle">{resolveBlueprintLabel(spec.label, t)}</div>
             {spec.kind === "select" && selectComponentOptions ? (
                 <Select
                     fullWidth
@@ -2074,8 +2081,8 @@ function BlueprintElementLiteralNodeCard({
             aria-invalid={Boolean(firstNodeError)}
         >
             <div className="border-b border-edge px-2 py-1.5">
-                <div className="text-2xs text-fg-subtle">{catalog.category}</div>
-                <div className="font-medium leading-tight text-fg">{catalog.displayName}</div>
+                <div className="text-2xs text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
+                <div className="font-medium leading-tight text-fg">{resolveBlueprintNodeTitle(catalog.displayName, t)}</div>
                 <div className="mt-1 min-w-0 truncate text-2xs text-fg-muted">{boundLabel}</div>
                 <div className="min-w-0 truncate font-mono text-2xs text-fg-subtle">{typeLabel}</div>
             </div>
@@ -2128,6 +2135,7 @@ function BlueprintImageAssetLiteralNodeCard({
     firstNodeError?: BlueprintFlowNodeDiagnostic;
     onPatchNodeParam?: BlueprintNodeParamPatch;
 }) {
+    const { t } = useTranslation();
     const outputPins = catalog.pins.filter(p => p.kind === "output");
     return (
         <div
@@ -2142,8 +2150,8 @@ function BlueprintImageAssetLiteralNodeCard({
             aria-invalid={Boolean(firstNodeError)}
         >
             <div className="border-b border-edge px-2 py-1.5">
-                <div className="text-2xs tracking-wide text-fg-subtle">{catalog.category}</div>
-                <div className="font-medium leading-tight text-fg">{catalog.displayName}</div>
+                <div className="text-2xs tracking-wide text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
+                <div className="font-medium leading-tight text-fg">{resolveBlueprintNodeTitle(catalog.displayName, t)}</div>
             </div>
             <div className="mx-2 my-1.5">
                 <ImageAssetPickerCard
@@ -2252,7 +2260,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
         return (
             <BlueprintCommentNodeCard
                 nodeId={nodeId}
-                displayName={catalog.displayName}
+                displayName={resolveBlueprintNodeTitle(catalog.displayName, t)}
                 params={params}
                 selected={Boolean(selected)}
                 onPatchNodeParam={onPatchNodeParam}
@@ -2325,8 +2333,8 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
             aria-invalid={Boolean(firstNodeError)}
         >
             <div className="border-b border-edge-subtle px-2 py-1.5">
-                <div className="text-2xs tracking-wide text-fg-subtle">{catalog.category}</div>
-                <div className="font-medium leading-tight text-fg">{catalog.displayName}</div>
+                <div className="text-2xs tracking-wide text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
+                <div className="font-medium leading-tight text-fg">{resolveBlueprintNodeTitle(catalog.displayName, t)}</div>
                 {showAnimatePropertyCard && onPatchNodeParam ? (
                     <DisplayableAnimatePropertyCard
                         nodeId={nodeId}

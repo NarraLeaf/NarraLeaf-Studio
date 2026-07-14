@@ -37,6 +37,8 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     description: string;
     /** i18n key; when set, it overrides `description` at render time. */
     descriptionKey?: TranslationKey;
+    /** Interpolation params for `descriptionKey` (e.g. dynamic min/max ranges). */
+    descriptionParams?: Record<string, string | number>;
     defaultValue: TypeofSettingSchema<T>;
     options?: string[];
     /** Human-facing label per option value (e.g. locale code → endonym). */

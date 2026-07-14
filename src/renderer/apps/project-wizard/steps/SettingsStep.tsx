@@ -35,6 +35,10 @@ export function SettingsStep({
     isSelectingDirectory
 }: SettingsStepProps) {
     const { t } = useTranslation();
+    const localizedVersionControlOptions = versionControlOptions.map((option) => ({
+        ...option,
+        label: option.labelKey ? t(option.labelKey) : option.label,
+    }));
     return (
         <div className="p-6">
             <div className="space-y-6">
@@ -103,7 +107,7 @@ export function SettingsStep({
                         <CardContent className="space-y-4">
                             <InputGroup label={t("wizard.settings.versionControlSystem")}>
                                 <Select
-                                    options={versionControlOptions}
+                                    options={localizedVersionControlOptions}
                                     value={projectData.versionControl || "git"}
                                     onChange={(value) => updateProjectData({ versionControl: String(value) })}
                                     placeholder={t("wizard.settings.versionControlPlaceholder")}

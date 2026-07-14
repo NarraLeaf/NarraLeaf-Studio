@@ -1,4 +1,5 @@
 import { FolderOpen } from "lucide-react";
+import { translate } from "@/lib/i18n";
 import { PanelModule } from "../types";
 import { AssetsPanel } from "./AssetsPanel";
 import { PanelPosition } from "../../registry/types";
@@ -11,7 +12,7 @@ import { FocusArea } from "@/lib/workspace/services/ui/types";
 export const assetsModule: PanelModule = {
     metadata: {
         id: "narraleaf-studio:assets",
-        title: "Assets",
+        get title() { return translate("placeholders.moduleTitles.assets"); },
         icon: <FolderOpen className="w-4 h-4" />,
         position: PanelPosition.Left,
         defaultVisible: true,
@@ -31,7 +32,7 @@ export const assetsModule: PanelModule = {
 export const assetsBottomModule: PanelModule = {
     metadata: {
         id: "narraleaf-studio:assets-bottom",
-        title: "Assets",
+        get title() { return translate("placeholders.moduleTitles.assets"); },
         icon: <FolderOpen className="w-4 h-4" />,
         position: PanelPosition.Bottom,
         defaultVisible: false,

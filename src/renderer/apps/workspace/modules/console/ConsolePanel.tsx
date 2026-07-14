@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ListFilter, Terminal, Trash2 } from "lucide-react";
+import type { TranslationKey } from "@shared/i18n";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/lib/components/elements";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
@@ -31,6 +32,28 @@ const LEVEL_TEXT_CLASS: Record<ConsoleLogLevel, string> = {
     info: "text-cyan-300/75",
     verbose: "text-fg-subtle/80",
 };
+
+/** Translation keys for known console channels; unknown feature channels fall back to their own label. */
+const BUILTIN_CHANNEL_LABEL_KEYS: Partial<Record<ConsoleChannelId, TranslationKey>> = {
+    blueprint: "console.channels.blueprint",
+    build: "console.channels.build",
+    story: "console.channels.story",
+};
+const BUILTIN_CHANNEL_DESCRIPTION_KEYS: Partial<Record<ConsoleChannelId, TranslationKey>> = {
+    blueprint: "console.channels.blueprintDescription",
+    build: "console.channels.buildDescription",
+    story: "console.channels.storyDescription",
+};
+
+function channelLabel(t: (key: TranslationKey) => string, channel: ConsoleChannelDefinition): string {
+    const key = BUILTIN_CHANNEL_LABEL_KEYS[channel.id];
+    return key ? t(key) : channel.label;
+}
+
+function channelDescription(t: (key: TranslationKey) => string, channel: ConsoleChannelDefinition): string | undefined {
+    const key = BUILTIN_CHANNEL_DESCRIPTION_KEYS[channel.id];
+    return key ? t(key) : channel.description;
+}
 
 function isConsoleLogLevel(value: unknown): value is ConsoleLogLevel {
     return LOG_LEVELS.includes(value as ConsoleLogLevel);
@@ -205,7 +228,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                                 type="button"
                                 role="tab"
                                 aria-selected={active}
-                                title={channel.description}
+                                title={channelDescription(t, channel)}
                                 className={`relative flex min-w-28 cursor-default items-center justify-center gap-2 px-4 text-xs transition-colors ${
                                     active
                                         ? "bg-[#12151c] text-white"
@@ -213,7 +236,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                                 }`}
                                 onClick={() => setActiveChannel(channel.id)}
                             >
-                                <span>{channel.label}</span>
+                                <span>{channelLabel(t, channel)}</span>
                                 <span
                                     className={`rounded border px-1.5 py-0.5 text-2xs leading-none ${
                                         active
@@ -284,7 +307,10 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                 className={`${visibleEntries.length > 0 ? "nl-selectable-text cursor-text" : "cursor-default select-none"} min-h-0 flex-1 overflow-auto overscroll-contain py-1 font-mono text-2xs leading-relaxed`}
             >
                 {visibleEntries.length === 0 ? (
-                    <ConsoleEmptyState label={activeChannelDef?.label ?? "output"} total={channelEntries.length} />
+                    <ConsoleEmptyState
+                        label={activeChannelDef ? channelLabel(t, activeChannelDef) : t("console.outputFallback")}
+                        total={channelEntries.length}
+                    />
                 ) : (
                     <ConsoleEntryGrid entries={visibleEntries} />
                 )}

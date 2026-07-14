@@ -6,7 +6,7 @@ import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/
 import { findUIElementSurfaceId, getUIFrameTargetInvalidReason } from "@shared/types/ui-editor/frame";
 import { normalizeUIPageAnimationSettings, type UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 import { PageAnimationEditor } from "@/lib/ui-editor/widget-modules/shared/page-animation/PageAnimationEditor";
-import { i18nStore, useTranslation } from "@/lib/i18n";
+import { i18nStore, translate, useTranslation } from "@/lib/i18n";
 import { getFrameProps, type FrameWidgetProps } from "./helpers";
 
 const NO_PAGE_VALUE = "__nl-frame-no-page__";
@@ -24,9 +24,12 @@ const FrameParamsBlueprintValueField = createBlueprintValueField({
     propPath: "params",
     valueType: "json",
     valueLabel: "params",
-    title: "Page Props Value",
-    clearLabel: "Static",
-    getDisplayName: ({ liveElement }) => `${liveElement.name ?? "Page"} props`,
+    title: "widgets.blueprintValue.pagePropsTitle",
+    clearLabel: "widgets.blueprintValue.static",
+    getDisplayName: ({ liveElement }) =>
+        translate("widgets.blueprintValue.nameProps", {
+            name: liveElement.name ?? translate("widgets.defaults.frame.name"),
+        }),
     getLiteralValue: ({ liveElement }) => getFrameProps(liveElement).params,
 });
 

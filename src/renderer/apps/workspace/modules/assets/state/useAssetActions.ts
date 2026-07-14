@@ -8,6 +8,8 @@ import { Services } from '@/lib/workspace/services/services';
 import { InputDialog } from '@/lib/components/dialogs/InputDialog';
 import { ClipboardState } from './useClipboard';
 import { getInterface } from '@/lib/app/bridge';
+import { useTranslation } from '@/lib/i18n';
+import type { Translator } from '@shared/i18n';
 
 export interface ContextMenuTargetState {
     type: AssetType;
@@ -56,16 +58,16 @@ function parseFileUriList(dataTransfer?: DataTransfer): string[] {
         });
 }
 
-function summarizeImportFailures(errors: Array<string | undefined>): string {
+function summarizeImportFailures(errors: Array<string | undefined>, t: Translator["t"]): string {
     const messages = errors.filter((message): message is string => typeof message === "string" && message.length > 0);
     if (messages.length === 0) {
-        return "Unknown error";
+        return t("assets.unknownError");
     }
 
     const visibleMessages = messages.slice(0, 3);
     const remaining = messages.length - visibleMessages.length;
     return remaining > 0
-        ? `${visibleMessages.join("\n")}\n...and ${remaining} more.`
+        ? `${visibleMessages.join("\n")}\n${t("assets.import.moreFailures", { count: remaining })}`
         : visibleMessages.join("\n");
 }
 
@@ -83,6 +85,8 @@ export function useAssetActions({
     setActionLoading,
     expandGroup
 }: UseAssetActionsParams) {
+    const { t } = useTranslation();
+
     // Use ref to always have latest context inside callbacks to avoid stale closure issues.
     const contextRef = useRef(context);
     contextRef.current = context;
@@ -172,11 +176,11 @@ export function useAssetActions({
                     const fileArray = Array.from(files);
                     const grantResult = await getInterface().fs.grantFileAccessForFiles(fileArray);
                     if (!grantResult.success) {
-                        uiService.showAlert("Unable to import", grantResult.error || "File access grant failed.");
+                        uiService.showAlert(t("assets.import.unableTitle"), grantResult.error || t("assets.import.fileAccessFailed"));
                         return;
                     }
                     if (!grantResult.data.ok) {
-                        uiService.showAlert("Unable to import", grantResult.data.error.message);
+                        uiService.showAlert(t("assets.import.unableTitle"), grantResult.data.error.message);
                         return;
                     }
 
@@ -199,8 +203,8 @@ export function useAssetActions({
 
                         if (paths.length === 0) {
                             uiService.showAlert(
-                                'Unable to import',
-                                'File path parsing failed.'
+                                t("assets.import.unableTitle"),
+                                t("assets.import.filePathParsingFailed")
                             );
                             return;
                         }
@@ -211,7 +215,7 @@ export function useAssetActions({
                 }
 
                 if (!result.success) {
-                    uiService.showAlert("Failed to import assets", result.error || "Unknown error");
+                    uiService.showAlert(t("assets.import.failedTitle"), result.error || t("assets.unknownError"));
                     return;
                 }
 
@@ -224,7 +228,7 @@ export function useAssetActions({
                     for (const asset of importedAssets) {
                         const moveResult = await svc.moveAssetToGroup(asset, groupId);
                         if (!moveResult.success) {
-                            uiService.showAlert("Failed to move imported asset", moveResult.error || "Unknown error");
+                            uiService.showAlert(t("assets.import.moveFailedTitle"), moveResult.error || t("assets.unknownError"));
                             return;
                         }
                     }
@@ -232,8 +236,8 @@ export function useAssetActions({
 
                 if (importFailures.length > 0) {
                     uiService.showAlert(
-                        importedAssets.length > 0 ? "Some assets failed to import" : "Failed to import assets",
-                        summarizeImportFailures(importFailures.map(assetResult => assetResult.error))
+                        importedAssets.length > 0 ? t("assets.import.someFailedTitle") : t("assets.import.failedTitle"),
+                        summarizeImportFailures(importFailures.map(assetResult => assetResult.error), t)
                     );
                 }
             });
@@ -248,16 +252,16 @@ export function useAssetActions({
         notifyLoading(true);
 
         const url = await inputDialog.show({
-            title: "Import Remote Asset",
+            title: t("assets.import.remoteTitle"),
             placeholder: "https://example.com/asset.png",
-            description: "Paste a direct link to the remote asset",
+            description: t("assets.import.remoteDescription"),
             required: true,
             validation: (value) => {
                 try {
                     new URL(value.trim());
                     return null;
                 } catch {
-                    return "Please enter a valid URL";
+                    return t("assets.import.remoteInvalidUrl");
                 }
             },
             assetType: type,
@@ -272,8 +276,8 @@ export function useAssetActions({
             const result = await assetsService.importRemoteAsset(type, url.trim());
             if (!result.success) {
                 context.services.get<UIService>(Services.UI).showAlert(
-                    "Failed to import remote asset",
-                    result.error || "Unknown error"
+                    t("assets.import.remoteFailedTitle"),
+                    result.error || t("assets.unknownError")
                 );
             }
         });
@@ -622,8 +626,8 @@ export function useAssetActions({
         } catch (error) {
             const uiService = ctx.services.get<UIService>(Services.UI);
             uiService.showAlert(
-                'Magic Tags parsing failed',
-                error instanceof Error ? error.message : 'Unknown error'
+                t("assets.magicTag.parseFailedTitle"),
+                error instanceof Error ? error.message : t("assets.unknownError")
             );
             return null;
         }
@@ -664,8 +668,8 @@ export function useAssetActions({
         } catch (error) {
             const uiService = ctx.services.get<UIService>(Services.UI);
             uiService.showAlert(
-                'Applying tags failed',
-                error instanceof Error ? error.message : 'Unknown error'
+                t("assets.magicTag.applyFailedTitle"),
+                error instanceof Error ? error.message : t("assets.unknownError")
             );
         } finally {
             notifyLoading(false);

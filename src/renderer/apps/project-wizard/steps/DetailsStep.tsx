@@ -23,6 +23,11 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
     const [showCustomLicense, setShowCustomLicense] = useState(false);
     const [appIdError, setAppIdError] = useState("");
 
+    const localizedLicenseOptions = licenseOptions.map((option) => ({
+        ...option,
+        label: option.labelKey ? t(option.labelKey) : option.label,
+    }));
+
     /**
      * Validate app ID and update error state
      */
@@ -103,7 +108,7 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
 
                             <InputGroup label={t("wizard.fields.license")}>
                                 <Select
-                                    options={licenseOptions}
+                                    options={localizedLicenseOptions}
                                     value={projectData.license}
                                     onChange={async (value) => await handleLicenseChange(value)}
                                     placeholder={t("wizard.details.licensePlaceholder")}

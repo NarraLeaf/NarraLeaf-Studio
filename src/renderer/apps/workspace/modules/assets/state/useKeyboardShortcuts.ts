@@ -5,6 +5,7 @@ import {
     whenFocused,
     type KeybindingDefinition,
 } from "@/apps/workspace/hooks";
+import { useTranslation } from "@/lib/i18n";
 
 export interface UseKeyboardShortcutsParams {
     /** Whether the shortcuts should be enabled */
@@ -36,6 +37,7 @@ export function useKeyboardShortcuts({
     onRename,
     registerClipboardShortcuts = true,
 }: UseKeyboardShortcutsParams) {
+    const { t } = useTranslation();
     // Build keybinding definitions based on options
     const keybindings = useMemo(() => {
         const bindings: KeybindingDefinition[] = [];
@@ -45,19 +47,19 @@ export function useKeyboardShortcuts({
                 {
                     id: "copy",
                     key: "ctrl+c",
-                    description: "Copy selected assets",
+                    description: t("assets.shortcuts.copy"),
                     handler: onCopy,
                 },
                 {
                     id: "cut",
                     key: "ctrl+x",
-                    description: "Cut selected assets",
+                    description: t("assets.shortcuts.cut"),
                     handler: onCut,
                 },
                 {
                     id: "paste",
                     key: "ctrl+v",
-                    description: "Paste assets",
+                    description: t("assets.shortcuts.paste"),
                     handler: onPaste,
                 }
             );
@@ -66,12 +68,12 @@ export function useKeyboardShortcuts({
         bindings.push({
             id: "rename",
             key: "f2",
-            description: "Rename selected asset or group",
+            description: t("assets.shortcuts.rename"),
             handler: onRename,
         });
 
         return bindings;
-    }, [registerClipboardShortcuts, onCopy, onCut, onPaste, onRename]);
+    }, [registerClipboardShortcuts, onCopy, onCut, onPaste, onRename, t]);
 
     // Use the new keybindings hook with common condition
     useKeybindings({

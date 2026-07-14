@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { translate } from "@/lib/i18n";
 import { ProjectData, WizardStep, ValidationErrors, DirectoryValidationResult } from "../types";
 import { defaultProjectData } from "../constants";
 import { ValidationService } from "../services/validationService";
@@ -118,7 +119,7 @@ export function useProjectWizard() {
         } catch (error) {
             setValidationErrors(prev => ({
                 ...prev,
-                directory: "Failed to validate directory"
+                directory: translate("wizard.validation.failedToValidate")
             }));
         } finally {
             setIsValidatingDirectory(false);
@@ -290,7 +291,7 @@ export function useProjectWizard() {
         try {
             const result = await ProjectService.createProject(projectData);
             if (!result.success) {
-                setCreationError(result.error || "Failed to create project");
+                setCreationError(result.error || translate("wizard.validation.createFailed"));
             }
             return result;
         } catch (error) {

@@ -1,3 +1,4 @@
+import { translate } from "@/lib/i18n";
 import type { DockerBarContext, DockerBarItem } from "@/lib/ui-editor/widget-modules/types";
 import { getButtonProps } from "./helpers";
 
@@ -9,8 +10,8 @@ export function createButtonDockerBarItems(ctx: DockerBarContext): DockerBarItem
     {
       kind: "number",
       id: "docker-button-pad-x",
-      label: "Pad X",
-      tooltip: "Horizontal padding",
+      label: translate("widgetChrome.dockerItems.padX"),
+      tooltip: translate("widgetChrome.dockerItems.padXHint"),
       value: props.paddingX,
       min: 0,
       max: 128,

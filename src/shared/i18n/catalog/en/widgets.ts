@@ -51,6 +51,7 @@ export const widgets = {
     localization: {
         title: "Localization",
         textKey: "Text key",
+        none: "None",
     },
     list: {
         title: "List",
@@ -129,6 +130,11 @@ export const widgets = {
         pageLogic: "Page component logic",
         scale: "Scale",
         selectPage: "Select Page",
+        missingPage: "Missing Page",
+        targetNotPage: "Target is not a Page",
+        pageLoopBlocked: "Page loop blocked",
+        previewUnavailable: "Page preview unavailable",
+        pageRootMissing: "Page root missing",
     },
     container: {
         title: "Container",
@@ -164,4 +170,58 @@ export const widgets = {
     image: {
         title: "Image",
     },
+    rectangleInspector: {
+        cornerRadius: "Corner Radius",
+        cornerJoin: "Corner join",
+        cornerTL: "TL",
+        cornerTR: "TR",
+        cornerBL: "BL",
+        cornerBR: "BR",
+        toggleCornerBreakdown: "Toggle corner breakdown",
+        layer: "Layer",
+        toggleLayerVisibility: "Toggle layer visibility",
+        fill: "Fill",
+        fillType: "Fill Type",
+        imageFill: "Image Fill",
+        toggleFillVisibility: "Toggle fill visibility",
+        border: "Border",
+        borderStyle: "Border Style",
+        borderSides: "Border sides",
+        toggleBorderVisibility: "Toggle border visibility",
+        moreBorderOptions: "More border options",
+    },
+    blueprintValue: {
+        sliderTitle: "Slider Value",
+        pagePropsTitle: "Page Props Value",
+        buttonTextTitle: "Button Text Value",
+        textTitle: "Text Value",
+        literalValue: "Literal value",
+        static: "Static",
+        nameValue: "{name} Value",
+        nameProps: "{name} props",
+        nameLabel: "{name} label",
+        nameText: "{name} text",
+    },
+    /**
+     * Default element names / text / preview content baked into the user's project at
+     * creation time. Resolved via `translate()` inside each widget's create path so the
+     * baked value reflects the editor language when the element is inserted.
+     */
+    defaults: {
+        button: { name: "Button", label: "Button" },
+        choiceList: { name: "Choice List", choiceA: "Choice A", choiceB: "Choice B", choiceC: "Choice C" },
+        container: { name: "Container" },
+        dialog: { name: "Sentence", text: "The current line will appear here." },
+        frame: { name: "Page" },
+        image: { name: "Image" },
+        list: { name: "List" },
+        notificationList: { name: "Notification List", message1: "Notification message", message2: "Another message" },
+        nvl: { name: "NVL Texts", text: "The dialog entry text will appear here." },
+        nvlList: { name: "NVL List", speaker: "Speaker" },
+        root: { name: "Root" },
+        slider: { name: "Slider", track: "Slider Track", handle: "Slider Handle" },
+        text: { name: "Text", text: "Text" },
+        appearanceVariant: "Default",
+    },
+    unsupportedType: "Unsupported type: {type}",
 } as const;

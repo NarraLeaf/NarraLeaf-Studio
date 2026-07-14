@@ -42,6 +42,14 @@ export const wizard = {
     template: {
         title: "Choose a Project Template",
         subtitle: "Select a project template to get started quickly with pre-configured structure and settings.",
+        // Template option labels — keyed by the template `id` in constants.ts.
+        options: {
+            empty: {
+                name: "Empty",
+                description: "Start with a blank project and build from scratch",
+                category: "Custom",
+            },
+        },
     },
     details: {
         title: "Project Details",
@@ -64,6 +72,7 @@ export const wizard = {
         licensePlaceholder: "Select license…",
         customLicense: "Custom License",
         customLicensePlaceholder: "Enter custom license…",
+        licenseOther: "Other",
         descriptionPlaceholder: "Describe your project…",
         resolutionPlaceholder: "Select resolution…",
         requiredFieldsTitle: "Required Fields",
@@ -84,6 +93,13 @@ export const wizard = {
         directoryWillBeCreated: "This directory will be created automatically when you create the project",
         versionControlSystem: "Version Control System",
         versionControlPlaceholder: "Select version control…",
+        // Backup cadence option labels — keyed by the backup option `value` in constants.ts.
+        backup: {
+            none: "No backups",
+            hourly: "Hourly",
+            daily: "Daily",
+            weekly: "Weekly",
+        },
     },
     review: {
         title: "Review Project",
@@ -101,5 +117,22 @@ export const wizard = {
         },
         notSpecified: "Not specified",
         custom: "Custom",
+    },
+    // User-facing errors surfaced by the wizard validation/creation services.
+    validation: {
+        nameRequired: "Project name is required",
+        locationRequired: "Project location is required",
+        templateRequired: "Project template is required",
+        invalidPath: "Invalid path",
+        notADirectory: "Selected path exists but is not a directory. Please choose a directory or create a new one.",
+        cannotWrite: "Cannot write to the selected directory. Please check permissions or choose a different location.",
+        notEmpty: "Directory is not empty. Please choose an empty directory or create a new one.",
+        validationFailed: "Directory validation failed",
+        failedToValidate: "Failed to validate directory",
+        checkExistenceFailed: "Failed to check directory existence",
+        checkIsDirFailed: "Failed to check if path is directory",
+        listContentsFailed: "Failed to list directory contents",
+        selectDirectoryFailed: "Failed to select directory",
+        createFailed: "Failed to create project",
     },
 } as const;

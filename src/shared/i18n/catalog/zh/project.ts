@@ -76,19 +76,19 @@ export const project = {
         },
         usage: {
             blueprintNode: {
-                one: "{count} node",
+                one: "{count} 个节点",
                 other: "{count} 个节点",
             },
             widget: {
-                one: "{count} widget",
+                one: "{count} 个挂件",
                 other: "{count} 个挂件",
             },
             storage: {
-                one: "{count} store",
+                one: "{count} 个存储",
                 other: "{count} 个存储",
             },
             storyAction: {
-                one: "{count} action",
+                one: "{count} 个动作",
                 other: "{count} 个动作",
             },
         },

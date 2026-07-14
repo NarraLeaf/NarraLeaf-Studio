@@ -8,4 +8,18 @@ export const placeholders = {
         title: "Localization",
         description: "Translation tables and language assets will be managed here.",
     },
+    // Static panel/editor module titles registered at load time (see each module's index).
+    moduleTitles: {
+        welcome: "Welcome",
+        project: "Project",
+        properties: "Properties",
+        characters: "Characters",
+        story: "Story",
+        localization: "Localization",
+        assets: "Assets",
+        console: "Console",
+        storyMotion: "Story Motion",
+        audioPreview: "Audio Preview",
+        imagePreview: "Image Preview",
+    },
 } as const;

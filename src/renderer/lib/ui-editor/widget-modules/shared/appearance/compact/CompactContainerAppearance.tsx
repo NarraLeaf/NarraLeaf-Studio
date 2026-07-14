@@ -128,7 +128,7 @@ export function CompactContainerAppearance({
             label: t("widgetAppearance.border.align"),
             submenu: STROKE_ALIGN_OPTIONS.map(option => ({
                 id: `border-align-${option.value}`,
-                label: option.label,
+                label: t(option.labelKey),
                 onClick: () => {
                     patchStroke("strokeAlign", String(option.value) as RectangleLikeProps["strokeAlign"]);
                 },
@@ -140,7 +140,7 @@ export function CompactContainerAppearance({
             label: t("widgetAppearance.border.cornerJoin"),
             submenu: STROKE_JOIN_OPTIONS.map(option => ({
                 id: `border-join-${option.value}`,
-                label: option.label,
+                label: t(option.labelKey),
                 onClick: () => {
                     patchStroke("borderJoin", option.value as StrokeJoin);
                 },

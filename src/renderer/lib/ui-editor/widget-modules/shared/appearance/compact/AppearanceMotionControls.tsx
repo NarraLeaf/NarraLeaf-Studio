@@ -251,7 +251,7 @@ export function AppearanceFieldMotionButton({
                                   value={transition.type}
                                   options={APPEARANCE_TRANSITION_TYPE_OPTIONS.map(option => ({
                                       value: option.value,
-                                      label: option.label,
+                                      labelKey: option.labelKey,
                                   }))}
                                   fullWidth
                                   onChange={next =>
@@ -322,7 +322,7 @@ export function AppearanceFieldMotionButton({
                                           value={transition.easing}
                                           options={APPEARANCE_TWEEN_EASING_OPTIONS.map(option => ({
                                               value: option.value,
-                                              label: option.label,
+                                              labelKey: option.labelKey,
                                           }))}
                                           fullWidth
                                           onChange={next =>

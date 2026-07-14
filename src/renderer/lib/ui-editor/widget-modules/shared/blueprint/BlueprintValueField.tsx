@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ExternalLink, GitBranch, Pencil } from "lucide-react";
+import type { TranslationKey } from "@shared/i18n";
 import type { UIElement, UIElementValueBindingValueType } from "@shared/types/ui-editor/document";
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
 import { useWorkspace } from "@/apps/workspace/context";
@@ -14,10 +15,14 @@ import { useTranslation } from "@/lib/i18n";
 export type BlueprintValueFieldConfig = {
     propPath: string;
     valueType: UIElementValueBindingValueType;
+    /** Short technical value/path indicator shown in monospace (not localized). */
     valueLabel: string;
-    title: string;
-    createLabel?: string;
-    clearLabel?: string;
+    /** i18n key for the field/editor title, resolved at render. */
+    title: TranslationKey;
+    /** i18n key for the "create binding" button label; falls back to the generic Blueprint Value label. */
+    createLabel?: TranslationKey;
+    /** i18n key for the "clear binding" button label; falls back to the generic Literal label. */
+    clearLabel?: TranslationKey;
     getDisplayName: (input: { liveElement: UIElement; data: UIInspectorData }) => string;
     getLiteralValue: (input: { liveElement: UIElement; data: UIInspectorData }) => unknown;
     renderLiteralEditor?: (input: {
@@ -59,7 +64,7 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
                 elementId: live.id,
                 propPath: config.propPath,
                 focusEventId: "init",
-                title: config.title,
+                title: t(config.title),
             });
         };
 
@@ -111,7 +116,7 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
                         onClick={() => props.data.documentService.clearElementBlueprintValueBinding(live.id, config.propPath)}
                     >
                         <Pencil className="h-3.5 w-3.5" />
-                        {config.clearLabel ?? t("widgetChrome.blueprint.literal")}
+                        {config.clearLabel ? t(config.clearLabel) : t("widgetChrome.blueprint.literal")}
                     </button>
                 </div>
             );
@@ -125,7 +130,7 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
                             <GitBranch className="h-4 w-4 shrink-0 text-fg-subtle" />
                             <div className="min-w-0 flex-1">
                                 <div className="truncate text-xs font-medium text-fg">
-                                    {config.title}
+                                    {t(config.title)}
                                 </div>
                                 <div className="truncate font-mono text-2xs text-fg-subtle">
                                     {config.valueLabel}
@@ -142,7 +147,7 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
                     title={isComponentEditorSurface ? t("widgetChrome.blueprint.componentsUnavailable") : undefined}
                 >
                     <GitBranch className="h-3.5 w-3.5" />
-                    {config.createLabel ?? t("widgetChrome.blueprint.blueprintValue")}
+                    {config.createLabel ? t(config.createLabel) : t("widgetChrome.blueprint.blueprintValue")}
                 </button>
             </div>
         );

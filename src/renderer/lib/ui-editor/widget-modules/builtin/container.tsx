@@ -1,5 +1,6 @@
 import { Box } from "lucide-react";
 import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import { translate } from "@/lib/i18n";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { ContainerRenderer } from "./container/renderer";
 import { createContainerInspector } from "./container/inspector";
@@ -10,12 +11,14 @@ import { createInitialContainerAppearance } from "@/lib/ui-editor/widget-modules
 export const ContainerWidgetModule: UIWidgetModule = {
     type: "nl.container",
     logicApi: getWidgetLogicApi("nl.container"),
-    displayName: "Container",
+    get displayName() {
+        return translate("widgets.defaults.container.name");
+    },
     icon: Box,
 
     createDefaultElement: () => ({
         type: "nl.container",
-        name: "Container",
+        name: translate("widgets.defaults.container.name"),
         layout: {
             x: 0,
             y: 0,

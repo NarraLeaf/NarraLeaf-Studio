@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent } from "react";
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneUpdate } from "@shared/types/story";
+import { translate } from "@/lib/i18n";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
@@ -376,7 +377,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return false;
         }
 
-        const nextName = patch.name !== undefined ? patch.name.trim() || scene.name || "Untitled Scene" : scene.name;
+        const nextName = patch.name !== undefined ? patch.name.trim() || scene.name || translate("story.sceneEditor.defaultSceneName") : scene.name;
         const nextDescription = patch.description !== undefined ? patch.description.trim() : scene.description ?? "";
         const nextBackgroundAssetId = patch.defaultBackgroundAssetId !== undefined
             ? patch.defaultBackgroundAssetId?.trim() || undefined
@@ -987,8 +988,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 return;
             }
             const confirmed = await uiService.showConfirm(
-                `Delete ${ids.length} selected rows?`,
-                "This removes the selected script rows and their children.",
+                translate("story.bulkDelete.confirm", { count: ids.length }),
+                translate("story.bulkDelete.detail"),
             );
             if (!confirmed) {
                 return;

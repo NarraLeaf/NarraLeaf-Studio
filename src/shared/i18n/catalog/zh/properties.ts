@@ -13,6 +13,17 @@ export const properties = {
         noSelection: "未选择任何项目",
         noSelectionHint: "选择一个项目以查看其属性",
     },
+    scene: {
+        title: "界面属性",
+        interface: "界面",
+        type: "类型",
+        slot: "插槽",
+        typeGameUi: "游戏界面",
+        typePage: "页面",
+        backgroundColor: "背景颜色",
+        animation: "动画",
+        logic: "逻辑",
+    },
     diagnostics: {
         title: "静态检查",
         selectOnCanvas: "→ 在画布中选中",
@@ -68,7 +79,7 @@ export const properties = {
         open: "打开界面蓝图",
         noBlueprint: "此界面没有蓝图",
         brokenBindings: {
-            one: "{count} broken binding.",
+            one: "{count} 个失效绑定",
             other: "{count} 个失效绑定",
         },
     },
@@ -166,7 +177,7 @@ export const properties = {
             info: "音频信息",
             preview: "音频概览",
             channelCount: {
-                one: "{count} channel",
+                one: "{count} 个声道",
                 other: "{count} 个声道",
             },
         },
