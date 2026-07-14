@@ -64,7 +64,7 @@ export function SettingsExplorer<T>({
     onSearchChange,
     showSearch = true,
     loading = false,
-    emptyStateMessage = "No settings available.",
+    emptyStateMessage,
     panelFocusHandler,
 }: SettingsExplorerProps<T>) {
     const { t } = useTranslation();
@@ -193,12 +193,12 @@ export function SettingsExplorer<T>({
             const rawValue = pendingInputs[id] ?? String(getValue(entry.source, entry.descriptor) ?? entry.descriptor.defaultValue ?? "");
             const parsed = parseSettingInput(entry.descriptor.type, rawValue);
             if (parsed === null) {
-                setErrors(prev => ({ ...prev, [id]: "Please provide a valid value" }));
+                setErrors(prev => ({ ...prev, [id]: t("settings.invalidValue") }));
                 return;
             }
             handleCommit(entry, parsed);
         },
-        [getValue, handleCommit, pendingInputs],
+        [getValue, handleCommit, pendingInputs, t],
     );
 
     const handleEnumChange = useCallback(
@@ -362,7 +362,7 @@ export function SettingsExplorer<T>({
                     </div>
                 ) : categoryEntriesToRender.length === 0 ? (
                     <div className="px-3 py-4 text-xs text-fg-subtle">
-                        {effectiveSearch.trim() ? t("settings.noResults") : emptyStateMessage}
+                        {effectiveSearch.trim() ? t("settings.noResults") : (emptyStateMessage ?? t("settings.empty"))}
                     </div>
                 ) : (
                     <div className="space-y-5 px-3 py-3">

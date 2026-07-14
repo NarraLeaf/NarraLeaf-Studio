@@ -1,5 +1,6 @@
 import { ScrollText } from "lucide-react";
 import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import { translate } from "@/lib/i18n";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { ListRenderer } from "./list/renderer";
 import { createListInspector } from "./list/inspector";
@@ -13,7 +14,7 @@ function createDefaultNvlListProps(): ListWidgetProps {
     props.itemKeyPath = "index";
     props.itemGap = 18;
     props.previewItems = [
-        { nametag: "Speaker", index: 0, isActive: false },
+        { nametag: translate("widgets.defaults.nvlList.speaker"), index: 0, isActive: false },
         { nametag: "", index: 1, isActive: true },
     ];
     return props;
@@ -27,12 +28,14 @@ function createDefaultNvlListProps(): ListWidgetProps {
 export const NvlListWidgetModule: UIWidgetModule = {
     type: NVL_LIST_TYPE,
     logicApi: getWidgetLogicApi(NVL_LIST_TYPE),
-    displayName: "NVL List",
+    get displayName() {
+        return translate("widgets.defaults.nvlList.name");
+    },
     icon: ScrollText,
 
     createDefaultElement: () => ({
         type: NVL_LIST_TYPE,
-        name: "NVL List",
+        name: translate("widgets.defaults.nvlList.name"),
         layout: {
             x: 0,
             y: 0,

@@ -154,7 +154,7 @@ export function ContainerAppearanceValueEditor({
             return (
                 <Select
                     value={v}
-                    options={BORDER_STYLE_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
+                    options={BORDER_STYLE_OPTIONS.map(o => ({ value: o.value, labelKey: o.labelKey }))}
                     fullWidth
                     onChange={next => onChange(String(next))}
                 />
@@ -314,7 +314,7 @@ export function ContainerAppearanceValueEditor({
             return (
                 <Select
                     value={v}
-                    options={STROKE_SIDE_OPTIONS.map(o => ({ value: o.id, label: o.label }))}
+                    options={STROKE_SIDE_OPTIONS.map(o => ({ value: o.id, labelKey: o.labelKey }))}
                     fullWidth
                     onChange={next => onChange(String(next))}
                 />

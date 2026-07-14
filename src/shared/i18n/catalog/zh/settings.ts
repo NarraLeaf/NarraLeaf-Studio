@@ -8,6 +8,8 @@ export const settings = {
     noResults: "没有匹配的设置",
     empty: "暂无可用设置。",
     noneExposed: "当前没有已实装的设置可供配置",
+    invalidValue: "请输入有效的值",
+    persistFailed: "保存设置失败",
     categories: {
         general: {
             label: "常规",
@@ -38,6 +40,19 @@ export const settings = {
         language: {
             label: "语言",
             description: "Studio 界面的显示语言",
+        },
+        editorFontSize: {
+            label: "故事编辑器字号",
+            description: "故事场景编辑器中对话、旁白与选项文本的字号（px，{min}–{max}）。",
+        },
+        editorFontFamily: {
+            label: "故事编辑器字体",
+            description: "场景编辑器中故事文本所用的字体。",
+        },
+        maxActiveEditors: {
+            label: "最大活动编辑器数",
+            description:
+                "同时保持加载的编辑器标签数，切换标签时保留其滚动位置与焦点（{min}–{max}）。超出的标签会在重新打开时重新加载。",
         },
     },
 } satisfies LocaleNamespace<"settings">;

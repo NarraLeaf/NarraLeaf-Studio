@@ -1,3 +1,4 @@
+import { translate } from "@/lib/i18n";
 import type { DockerBarContext, DockerBarItem } from "@/lib/ui-editor/widget-modules/types";
 import { getListProps } from "./helpers";
 
@@ -9,8 +10,8 @@ export function createListDockerBarItems(ctx: DockerBarContext): DockerBarItem[]
         {
             kind: "number",
             id: "docker-list-item-gap",
-            label: "Gap",
-            tooltip: "Space between list items",
+            label: translate("widgetChrome.dockerItems.gap"),
+            tooltip: translate("widgetChrome.dockerItems.listGapHint"),
             value: props.itemGap,
             min: 0,
             max: 128,
@@ -29,8 +30,8 @@ export function createListDockerBarItems(ctx: DockerBarContext): DockerBarItem[]
         {
             kind: "number",
             id: "docker-list-preview",
-            label: "Preview",
-            tooltip: "Preview item count in editor",
+            label: translate("widgetChrome.dockerItems.preview"),
+            tooltip: translate("widgetChrome.dockerItems.previewHint"),
             value: props.previewCount,
             min: 1,
             max: 32,

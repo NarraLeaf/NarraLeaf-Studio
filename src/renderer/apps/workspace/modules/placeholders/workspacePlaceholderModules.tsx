@@ -1,5 +1,5 @@
 import { BookOpen, Languages } from "lucide-react";
-import { useTranslation } from "@/lib/i18n";
+import { translate, useTranslation } from "@/lib/i18n";
 import { PanelComponentProps, PanelModule } from "../types";
 import { PanelPosition } from "../../registry/types";
 import { WorkspacePlaceholderPanel } from "./WorkspacePlaceholderPanel";
@@ -30,7 +30,10 @@ function LocalizationPanel(_props: PanelComponentProps) {
 export const storyPanelModule: PanelModule = {
     metadata: {
         id: "narraleaf-studio:story",
-        title: "Story",
+        // Resolved lazily on read (module registration runs after i18n init).
+        get title() {
+            return translate("placeholders.moduleTitles.story");
+        },
         icon: <BookOpen className="w-4 h-4" />,
         position: PanelPosition.Left,
         defaultVisible: false,
@@ -43,7 +46,10 @@ export const storyPanelModule: PanelModule = {
 export const localizationPanelModule: PanelModule = {
     metadata: {
         id: "narraleaf-studio:localization",
-        title: "Localization",
+        // Resolved lazily on read (module registration runs after i18n init).
+        get title() {
+            return translate("placeholders.moduleTitles.localization");
+        },
         icon: <Languages className="w-4 h-4" />,
         position: PanelPosition.Left,
         defaultVisible: false,

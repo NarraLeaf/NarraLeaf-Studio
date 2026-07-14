@@ -1,4 +1,5 @@
 import { getInterface } from "@/lib/app/bridge";
+import { translate } from "@/lib/i18n";
 
 /**
  * Service for handling directory operations in the project wizard
@@ -35,7 +36,7 @@ export class DirectoryService {
             return result;
         } catch (error) {
             console.error("Failed to select directory:", error);
-            return { success: false, error: "Failed to select directory" };
+            return { success: false, error: translate("wizard.validation.selectDirectoryFailed") };
         }
     }
 }

@@ -3,6 +3,7 @@ import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import { defaultContainerWidgetProps } from "@shared/types/ui-editor/container";
 import { defaultSliderWidgetProps, sliderValueToNormalized } from "@shared/types/ui-editor/slider";
 import type { UIElement } from "@shared/types/ui-editor/document";
+import { translate } from "@/lib/i18n";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { createInitialContainerAppearance } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { SliderRenderer } from "./slider/renderer";
@@ -60,12 +61,14 @@ function createSliderPart(input: {
 export const SliderWidgetModule: UIWidgetModule = {
     type: "nl.slider",
     logicApi: getWidgetLogicApi("nl.slider"),
-    displayName: "Slider",
+    get displayName() {
+        return translate("widgets.defaults.slider.name");
+    },
     icon: SlidersHorizontal,
 
     createDefaultElement: () => ({
         type: "nl.slider",
-        name: "Slider",
+        name: translate("widgets.defaults.slider.name"),
         layout: {
             x: 0,
             y: 0,
@@ -106,14 +109,14 @@ export const SliderWidgetModule: UIWidgetModule = {
                 createSliderPart({
                     id: trackId,
                     parentId: element.id,
-                    name: "Slider Track",
+                    name: translate("widgets.defaults.slider.track"),
                     slot: "track",
                     layout: trackLayout,
                 }),
                 createSliderPart({
                     id: handleId,
                     parentId: element.id,
-                    name: "Slider Handle",
+                    name: translate("widgets.defaults.slider.handle"),
                     slot: "handle",
                     layout: {
                         x: trackLayout.x + handleTravel * normalizedValue,

@@ -5,6 +5,10 @@ import {
     SelectOption,
     createPropertyEditorSchema,
 } from "../framework";
+import type { Translator } from "@shared/i18n";
+
+/** Translator function, threaded into schema builders since they run outside React. */
+type TranslateFn = Translator["t"];
 
 /**
  * Context for character property editor
@@ -18,14 +22,15 @@ export interface CharacterEditorContext {
 /**
  * Character property editor schema
  */
-export const characterPropertySchema = createPropertyEditorSchema<CharacterEditorContext>({
+export const characterPropertySchema = (t: TranslateFn) =>
+    createPropertyEditorSchema<CharacterEditorContext>({
     id: "character",
-    title: "Character Properties",
+    title: t("characters.properties.editorTitle"),
     fields: [
         {
             id: "thumbnail",
             type: "thumbnail",
-            label: "Thumbnail",
+            label: t("characters.properties.thumbnail"),
             getThumbnailUrl: (ctx) => ctx.thumbnailUrl,
             getThumbnailId: (ctx) => ctx.character.profile.getProfile().thumbnail,
             setThumbnail: async (ctx, id) => {
@@ -37,8 +42,8 @@ export const characterPropertySchema = createPropertyEditorSchema<CharacterEdito
         {
             id: "name",
             type: "text",
-            label: "Name",
-            placeholder: "Character name",
+            label: t("common.name"),
+            placeholder: t("characters.properties.namePlaceholder"),
             getValue: (ctx) => ctx.character.profile.getProfile().name,
             setValue: async (ctx, value) => {
                 ctx.character.profile.setName(value);
@@ -48,8 +53,8 @@ export const characterPropertySchema = createPropertyEditorSchema<CharacterEdito
         {
             id: "description",
             type: "textarea",
-            label: "Description",
-            placeholder: "Character description...",
+            label: t("common.description"),
+            placeholder: t("characters.properties.descriptionPlaceholder"),
             rows: 4,
             getValue: (ctx) => ctx.character.profile.getProfile().description,
             setValue: async (ctx, value) => {
@@ -60,8 +65,8 @@ export const characterPropertySchema = createPropertyEditorSchema<CharacterEdito
         {
             id: "tags",
             type: "tags",
-            label: "Tags",
-            addPlaceholder: "Add tag...",
+            label: t("characters.properties.tags"),
+            addPlaceholder: t("characters.properties.addTagPlaceholder"),
             getValue: (ctx) => ctx.character.profile.getProfile().tags || [],
             addTag: async (ctx, tag) => {
                 ctx.character.profile.addTag(tag);
@@ -74,10 +79,10 @@ export const characterPropertySchema = createPropertyEditorSchema<CharacterEdito
         {
             id: "defaultForm",
             type: "select",
-            label: "Default Form",
-            placeholder: "Select default form",
+            label: t("characters.properties.defaultForm"),
+            placeholder: t("characters.properties.selectDefaultForm"),
             options: (ctx): SelectOption[] => [
-                { value: "", label: "Follow first form" },
+                { value: "", label: t("characters.properties.followFirstForm") },
                 ...ctx.forms.map((form) => ({ value: form.name, label: form.name })),
             ],
             getValue: (ctx) => ctx.character.profile.getProfile().defaultForm ?? "",

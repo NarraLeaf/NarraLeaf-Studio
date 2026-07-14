@@ -49,6 +49,7 @@ export const common = {
     expand: "展开",
     collapse: "折叠",
     filter: "筛选",
+    noMatchesFound: "未找到匹配项",
     error: "错误",
     warning: "警告",
     untitled: "未命名",

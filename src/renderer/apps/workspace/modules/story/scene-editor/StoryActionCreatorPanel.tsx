@@ -11,6 +11,8 @@ import {
     ACTION_COMMANDS,
     actionCommandMatchesQuery,
     getActionCommandCategory,
+    localizeActionCommand,
+    translateActionCommandCategoryLabel,
     type ActionCommandCategory,
     type PaletteActionCommand,
 } from "./storyActionCommands";
@@ -70,13 +72,13 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
 
     const categories = useMemo<SidebarCategory[]>(() => [
         { id: STARRED_CATEGORY_ID, label: t("story.actionCreator.starred"), icon: Star, iconColor: "#c8b06e" },
-        ...ACTION_COMMAND_CATEGORIES,
+        ...ACTION_COMMAND_CATEGORIES.map(category => ({ ...category, label: translateActionCommandCategoryLabel(category, t) })),
     ], [t]);
 
     const allCommands = useMemo<PaletteActionCommand[]>(() => [
         ...ACTION_COMMANDS,
         ...pluginCommands,
-    ], [pluginCommands]);
+    ].map(command => localizeActionCommand(command, t)), [pluginCommands, t]);
 
     const filteredCommands = useMemo(() => {
         return allCommands.filter(command => {

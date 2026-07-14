@@ -17,6 +17,8 @@ import {
     ACTION_COMMANDS,
     actionCommandMatchesQuery,
     getActionCommandCategory,
+    localizeActionCommand,
+    translateActionCommandCategoryLabel,
     type ActionCommandCategory,
     type ActionCommandCategoryId,
     type PaletteActionCommand,
@@ -701,10 +703,12 @@ export function InsertRow(props: {
     const menuAnchorRef = useRef<HTMLDivElement | null>(null);
     const menuPlacement = useAutoMenuPlacement(menuAnchorRef, props.mode.chooser !== "none", 312);
     const pluginCommands = useStoryPluginActionCommands();
-    const actionOptions = useMemo<PaletteActionCommand[]>(() => [
-        ...getActionCommandOptions(chooserQuery),
-        ...pluginCommands.filter(command => actionCommandMatchesQuery(command, chooserQuery)),
-    ], [chooserQuery, pluginCommands]);
+    const actionOptions = useMemo<PaletteActionCommand[]>(
+        () => [...ACTION_COMMANDS, ...pluginCommands]
+            .map(command => localizeActionCommand(command, t))
+            .filter(command => actionCommandMatchesQuery(command, chooserQuery)),
+        [chooserQuery, pluginCommands, t],
+    );
     const characterOptions = useMemo(() => getCharacterOptions(props.characters, chooserQuery), [props.characters, chooserQuery]);
     const actionMenu = useActionCommandMenuState(actionOptions);
     const characterMenu = useCharacterPickerState(characterOptions);
@@ -807,10 +811,6 @@ export function InsertRow(props: {
             </div>
         </div>
     );
-}
-
-function getActionCommandOptions(query: string) {
-    return ACTION_COMMANDS.filter(command => actionCommandMatchesQuery(command, query));
 }
 
 function getCharacterOptions(characters: Character[], query: string) {
@@ -1004,7 +1004,7 @@ function ActionCommandMenu(props: {
                                     ].join(" ")}
                                     onMouseDown={() => props.onSelectCategory(category.id)}
                                 >
-                                    <span className="block truncate">{category.label}</span>
+                                    <span className="block truncate">{translateActionCommandCategoryLabel(category, t)}</span>
                                     {active ? <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-primary/70" aria-hidden /> : null}
                                 </button>
                             );
@@ -1013,7 +1013,7 @@ function ActionCommandMenu(props: {
                     <div ref={listRef} className="max-h-64 overflow-auto p-1">
                         {activeCategory && activeCategory.commands.length === 0 ? (
                             <button type="button" className="w-full rounded px-2 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
-                                {t("story.rows.noCategoryActionFound", { category: activeCategory.label.toLowerCase() })}
+                                {t("story.rows.noCategoryActionFound", { category: translateActionCommandCategoryLabel(activeCategory, t).toLowerCase() })}
                             </button>
                         ) : activeCategory?.commands.map(command => {
                             const Icon = command.icon;

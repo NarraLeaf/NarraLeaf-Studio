@@ -67,7 +67,9 @@ export function SettingsApp() {
             id: setting.key,
             type: setting.type,
             label: setting.labelKey ? t(setting.labelKey) : setting.label,
-            description: setting.descriptionKey ? t(setting.descriptionKey) : setting.description,
+            description: setting.descriptionKey
+                ? t(setting.descriptionKey, setting.descriptionParams)
+                : setting.description,
             defaultValue: setting.defaultValue,
             options: setting.options,
             optionLabels: setting.optionLabels,
@@ -90,7 +92,7 @@ export function SettingsApp() {
                 value as unknown as GlobalStateValue<GlobalStateKeys>,
             );
             if (!response.success) {
-                const errorText = response.error ?? "Failed to persist setting";
+                const errorText = response.error ?? t("settings.persistFailed");
                 throw new Error(errorText);
             }
             setValues((prev) => ({
@@ -98,7 +100,7 @@ export function SettingsApp() {
                 [key]: value,
             }));
         },
-        [],
+        [t],
     );
 
     const handleCategoryClick = useCallback((categoryKey: string) => {

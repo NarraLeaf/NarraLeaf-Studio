@@ -4,6 +4,8 @@ export const uiEditor = {
     surfaceKind: {
         page: "页面",
         gameUi: "游戏 UI",
+        pageDescription: "页面是完整的屏幕界面，例如标题、设置、存档、历史或图库。",
+        gameUiDescription: "游戏 UI 属于进行中的游戏玩法，例如对话、选项、HUD、快捷操作和通知。",
     },
     panel: {
         interfaceType: "界面类型",
@@ -57,7 +59,7 @@ export const uiEditor = {
         componentActions: "组件操作",
         deleteReferencedTitle: "删除被引用的组件？",
         deleteReferencedDetail: {
-            one: "{count} linked instance will show as missing until unlinked or replaced.",
+            one: "{count} 个关联实例在解除关联或替换之前将显示为缺失",
             other: "{count} 个关联实例在解除关联或替换之前将显示为缺失",
         },
         refs: "{count} 处引用",
@@ -78,6 +80,8 @@ export const uiEditor = {
         staticChecks: "静态检查（仅编辑器）：",
         devModeHint: "请打开开发模式以查看实际执行、节点追踪及 Host API 调用",
         layerFallback: "图层",
+        openComponent: "打开组件",
+        unlinkComponent: "解除组件关联",
     },
     snap: {
         label: "智能吸附",
@@ -87,5 +91,26 @@ export const uiEditor = {
         canvasLayout: "画布布局（边缘与中心）",
         elementBorders: "元素边框（边到边）",
         elementLayout: "元素布局（中心）",
+    },
+    contextMenu: {
+        pasteIntoContainer: "粘贴到容器内",
+        insert: "插入",
+        insertChild: "插入子元素",
+        selectAll: "全选",
+        expandAll: "全部展开",
+        collapseAll: "全部折叠",
+        copyElementId: "复制元素 ID",
+        rename: "重命名…",
+        showSelected: "显示所选",
+        hideSelected: "隐藏所选",
+        addToComponentLibrary: "添加到组件库",
+        addToGroup: "添加到分组",
+        arrange: {
+            label: "排列",
+            bringToFront: "置于顶层",
+            sendToBack: "置于底层",
+            bringForward: "上移一层",
+            sendBackward: "下移一层",
+        },
     },
 } satisfies LocaleNamespace<"uiEditor">;
