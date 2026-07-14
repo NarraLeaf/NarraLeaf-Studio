@@ -7,21 +7,13 @@ import {
     GAME_RUNTIME_PROTOCOL,
     type GameRuntimePackV1,
 } from "@shared/types/gameRuntime";
-import {
-    createRuntimeReader,
-    isProtectedPayload,
-    RUNTIME_SUPPORT_FILENAME,
-    type RuntimeReader,
-} from "@narraleaf/encryption/runtime";
 import { getMimeType } from "@shared/utils/fs";
+import { createRuntimeResources, type RuntimeResources } from "./runtimeResources";
 import {
     PLUGIN_REACT_MODULE_SOURCES,
     PLUGIN_RUNTIME_API_MODULE_SOURCE,
 } from "@shared/utils/pluginRuntimeApiModule";
-import {
-    resolveRuntimeAssetPath,
-    resolveRuntimeStaticPath,
-} from "./runtimeProtocol";
+import { resolveRuntimeStaticPath } from "./runtimeProtocol";
 import { injectRuntimeCsp, installRuntimeNetworkPolicy } from "./networkPolicy";
 import {
     RuntimePersistenceStore,
@@ -29,7 +21,6 @@ import {
 } from "./runtimeStorage";
 
 const appDir = __dirname;
-const packPath = path.join(appDir, "pack.json");
 const userDataDir = path.resolve(appDir, "..", "userData");
 
 /**
@@ -52,21 +43,17 @@ const DEBUG_SWITCHES = [
 let packPromise: Promise<GameRuntimePackV1> | null = null;
 let mainWindow: BrowserWindow | null = null;
 let controlServer: WebSocketServer | null = null;
-let runtimeReader: RuntimeReader | null = null;
+let resources: RuntimeResources | null = null;
 
 /**
- * Return pack bytes in usable form: protected input is handled by the codec,
- * unprotected input passes through untouched. The codec is loaded lazily, so
- * unprotected packs never touch it.
+ * The active resource backend. Established once at startup; every packaged read
+ * (pack, assets, bundled plugin entries) goes through it.
  */
-function decryptIfNeeded(data: Buffer): Buffer {
-    if (!isProtectedPayload(data)) {
-        return data;
+function runtimeResources(): RuntimeResources {
+    if (!resources) {
+        throw new Error("Runtime resources accessed before initialization");
     }
-    if (!runtimeReader) {
-        runtimeReader = createRuntimeReader(path.join(appDir, RUNTIME_SUPPORT_FILENAME));
-    }
-    return runtimeReader.decrypt(data, PACK_KEY);
+    return resources;
 }
 
 /** Whether the process was started with an inspector / remote-debugging switch. */
@@ -93,6 +80,7 @@ protocol.registerSchemesAsPrivileged([
 app.setPath("userData", userDataDir);
 
 void app.whenReady().then(async () => {
+    resources = await createRuntimeResources(appDir, PACK_KEY);
     const pack = await readPack();
     if (pack.mode === "production" && hasDebuggingSwitch()) {
         // Refuse to run a production game under an attached debugger/CDP.
@@ -118,12 +106,15 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
     controlServer?.close();
     controlServer = null;
+    void resources?.dispose();
+    resources = null;
 });
 
 async function readPack(): Promise<GameRuntimePackV1> {
     if (!packPromise) {
-        packPromise = fs.readFile(packPath).then(raw =>
-            JSON.parse(decryptIfNeeded(raw).toString("utf-8")) as GameRuntimePackV1);
+        packPromise = runtimeResources()
+            .readPack()
+            .then(raw => JSON.parse(raw.toString("utf-8")) as GameRuntimePackV1);
     }
     return packPromise;
 }
@@ -220,10 +211,16 @@ function registerRuntimeProtocol(allowHttp: boolean): void {
                 if (isIndexDocument(pathname)) {
                     return serveIndexDocument(resolveRuntimeStaticPath(appDir, pathname), allowHttp);
                 }
+                // Bundled runtime files (e.g. plugin entries) come from the store;
+                // static runtime files fall back to a loose read from the app dir.
+                const bundled = await runtimeResources().readRuntimeFile(pathname.replace(/^\/+/, ""));
+                if (bundled) {
+                    return serveBytes(bundled, getMimeType(pathname));
+                }
                 return serveFile(resolveRuntimeStaticPath(appDir, pathname));
             }
             if (url.hostname === "pack") {
-                return serveFile(packPath, "application/json");
+                return serveBytes(await runtimeResources().readPack(), "application/json");
             }
             if (url.hostname === "plugin-api") {
                 const pathname = `/${decodeURIComponent(url.pathname).replace(/^\/+/, "")}`;
@@ -243,7 +240,10 @@ function registerRuntimeProtocol(allowHttp: boolean): void {
             }
             if (url.hostname === "asset") {
                 const assetId = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
-                return serveFile(resolveRuntimeAssetPath(appDir, await readPack(), assetId));
+                const pack = await readPack();
+                const item = pack.assets.items[assetId];
+                const bytes = await runtimeResources().readAsset(pack, assetId);
+                return serveBytes(bytes, item?.mimeType ?? getMimeType(assetId));
             }
             return new Response("Not found", { status: 404 });
         } catch (error) {
@@ -254,7 +254,10 @@ function registerRuntimeProtocol(allowHttp: boolean): void {
 }
 
 async function serveFile(filePath: string, contentType = getMimeType(filePath)): Promise<Response> {
-    const data = decryptIfNeeded(await fs.readFile(filePath));
+    return serveBytes(await fs.readFile(filePath), contentType);
+}
+
+function serveBytes(data: Buffer, contentType: string): Response {
     return new Response(new Uint8Array(data), {
         status: 200,
         headers: {

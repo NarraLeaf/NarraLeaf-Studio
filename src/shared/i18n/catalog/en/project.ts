@@ -48,8 +48,8 @@ export const project = {
     settings: {
         allowHttpTitle: "Allow HTTP",
         allowHttpDescription: "When off, the game is confined to the app protocol and all HTTP/HTTPS requests are blocked.",
-        encryptAssetsTitle: "Protect assets",
-        encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed builds. Raises the bar against casual extraction; does not affect Dev Mode.",
+        encryptAssetsTitle: "Encrypt assets",
+        encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed builds. Makes unpacking difficult; does not affect Dev Mode.",
     },
     dependencies: {
         rescan: "Rescan",

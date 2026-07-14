@@ -49,8 +49,8 @@ export const project = {
     settings: {
         allowHttpTitle: "允许 HTTP",
         allowHttpDescription: "关闭时，游戏将限定在 app 协议内，所有 HTTP/HTTPS 请求都会被拦截。",
-        encryptAssetsTitle: "资源保护",
-        encryptAssetsDescription: "在打包与预览产物中加密资源、插件代码与剧本数据，抬高随手解包的门槛；不影响 Dev Mode。",
+        encryptAssetsTitle: "加密资源",
+        encryptAssetsDescription: "在打包与预览产物中加密资源、插件代码与剧本数据，让解包变得困难；不影响 Dev Mode。",
     },
     dependencies: {
         rescan: "重新扫描",

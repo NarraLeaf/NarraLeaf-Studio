@@ -15,17 +15,28 @@ import {
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
 import {
-    encryptBuffer,
+    createSealedBundle,
     runtimeSupportPath,
+    RUNTIME_BUNDLE_FILENAME,
     RUNTIME_KEY_PLACEHOLDER,
     RUNTIME_SUPPORT_FILENAME,
+    type SealedBundleWriter,
 } from "@narraleaf/encryption";
+import {
+    GAME_RUNTIME_BUNDLE_PACK_ENTRY,
+    gameRuntimeBundleAssetEntry,
+    gameRuntimeBundleRuntimeEntry,
+} from "@shared/utils/gameRuntimeBundle";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { getMimeType } from "@shared/utils/fs";
 
 const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "other"] as const;
-const REQUIRED_RUNTIME_FILES = ["main.js", "preload.js", "renderer.js", "renderer.css", "index.html"] as const;
+// "native.js" is a support module the packaged main.js requires from its own
+// directory at startup; it is produced by the runtime build (build-runtime.js)
+// and must ship next to main.js in every pack, so it is validated and copied
+// like any other required runtime file.
+const REQUIRED_RUNTIME_FILES = ["main.js", "native.js", "preload.js", "renderer.js", "renderer.css", "index.html"] as const;
 const OPTIONAL_RUNTIME_FILES = ["main.js.map", "preload.js.map", "renderer.js.map", "renderer.css.map"] as const;
 
 export type GameRuntimePluginSource = {
@@ -67,6 +78,17 @@ export type GameRuntimeArtifactCompileResult = {
     copiedAssetCount: number;
 };
 
+/**
+ * Where packaged game payload goes. "loose" writes each item as its own plain
+ * file under the app dir (used when protection is off). "sealed" streams every
+ * item into a single consolidated store so the packed app dir exposes no
+ * per-item files, names, sizes, or types. The compiler builds the same manifest
+ * either way; only the destination and the manifest's recorded location differ.
+ */
+type PackTarget =
+    | { kind: "loose" }
+    | { kind: "sealed"; writer: SealedBundleWriter };
+
 type AssetMetadataRecord = {
     id?: unknown;
     type?: unknown;
@@ -93,7 +115,10 @@ export async function compileGameRuntimePreviewArtifact(
 
     await assertRuntimeDistReady(input.runtimeDistDir);
     await fs.rm(appDir, { recursive: true, force: true });
-    await fs.mkdir(assetsDir, { recursive: true });
+    if (!input.encryptionKey) {
+        // Loose items live under assets/; the sealed store needs no such dir.
+        await fs.mkdir(assetsDir, { recursive: true });
+    }
     await fs.mkdir(userDataDir, { recursive: true });
     await copyRuntimeFiles(input.runtimeDistDir, appDir);
     if (input.encryptionKey) {
@@ -117,73 +142,96 @@ export async function compileGameRuntimePreviewArtifact(
         blueprintScriptsCompileOk: blueprintScripts.ok,
         blueprintScriptsCompileErrors: blueprintScripts.errors,
     });
-    const assetManifest = await copyProjectAssets({
-        projectPath: input.projectPath,
-        assetsDir,
-        encryptionKey: input.encryptionKey,
-    });
-    const projectIcon = await copyProjectIcon({
-        projectPath: input.projectPath,
-        appDir,
-        projectConfig,
-    });
-    const packPlugins = await copyRuntimePlugins({
-        appDir,
-        runtimePlugins: input.runtimePlugins ?? [],
-        encryptionKey: input.encryptionKey,
-    });
 
-    const pack: GameRuntimePackV1 = {
-        schemaVersion: GAME_RUNTIME_PACK_SCHEMA_VERSION,
-        generatedAt: new Date().toISOString(),
-        mode: input.mode ?? "preview",
-        runtimeVersion: input.runtimeVersion,
-        project: {
-            name: projectConfig?.name?.trim() || path.basename(input.projectPath) || "NarraLeaf Game",
-            identifier: projectConfig?.identifier?.trim() || undefined,
-            version: readString(projectConfig?.metadata?.version),
-            metadata: normalizeRecord(projectConfig?.metadata),
-            icon: projectIcon,
-        },
-        entry: input.entry,
-        bundle,
-        assets: {
-            items: assetManifest,
-        },
-        plugins: packPlugins,
-        network: {
-            // Secure default: HTTP is only permitted when the project explicitly
-            // opts in via app.network.allowHttp. Mirrors normalizeNetworkConfiguration.
-            allowHttp: (projectConfig?.app as { network?: { allowHttp?: unknown } } | undefined)?.network?.allowHttp === true,
-        },
-        preview: {
-            controlPort: input.controlPort,
-            controlToken: input.controlToken,
-        },
-    };
+    // Everything below either writes loose files or streams into the store; on
+    // any failure the store handle is released so a failed compile leaks nothing.
+    const target: PackTarget = input.encryptionKey
+        ? { kind: "sealed", writer: await createSealedBundle(path.join(appDir, RUNTIME_BUNDLE_FILENAME), input.encryptionKey) }
+        : { kind: "loose" };
 
-    const packPath = path.join(appDir, "pack.json");
-    const packJson = Buffer.from(JSON.stringify(pack), "utf-8");
-    await fs.writeFile(packPath, input.encryptionKey ? encryptBuffer(packJson, input.encryptionKey) : packJson);
-    await fs.writeFile(
-        path.join(appDir, "package.json"),
-        JSON.stringify({
-            name: "narraleaf-preview-runtime",
-            version: input.runtimeVersion,
-            private: true,
-            main: "main.js",
-        }, null, 2),
-        "utf-8",
-    );
+    try {
+        const assetManifest = await copyProjectAssets({
+            projectPath: input.projectPath,
+            assetsDir,
+            target,
+        });
+        const projectIcon = await copyProjectIcon({
+            projectPath: input.projectPath,
+            appDir,
+            projectConfig,
+        });
+        const packPlugins = await copyRuntimePlugins({
+            appDir,
+            runtimePlugins: input.runtimePlugins ?? [],
+            target,
+        });
 
-    return {
-        previewRoot,
-        appDir,
-        userDataDir,
-        packPath,
-        pack,
-        copiedAssetCount: Object.keys(assetManifest).length,
-    };
+        const pack: GameRuntimePackV1 = {
+            schemaVersion: GAME_RUNTIME_PACK_SCHEMA_VERSION,
+            generatedAt: new Date().toISOString(),
+            mode: input.mode ?? "preview",
+            runtimeVersion: input.runtimeVersion,
+            project: {
+                name: projectConfig?.name?.trim() || path.basename(input.projectPath) || "NarraLeaf Game",
+                identifier: projectConfig?.identifier?.trim() || undefined,
+                version: readString(projectConfig?.metadata?.version),
+                metadata: normalizeRecord(projectConfig?.metadata),
+                icon: projectIcon,
+            },
+            entry: input.entry,
+            bundle,
+            assets: {
+                items: assetManifest,
+            },
+            plugins: packPlugins,
+            network: {
+                // Secure default: HTTP is only permitted when the project explicitly
+                // opts in via app.network.allowHttp. Mirrors normalizeNetworkConfiguration.
+                allowHttp: (projectConfig?.app as { network?: { allowHttp?: unknown } } | undefined)?.network?.allowHttp === true,
+            },
+            preview: {
+                controlPort: input.controlPort,
+                controlToken: input.controlToken,
+            },
+        };
+
+        const packJson = Buffer.from(JSON.stringify(pack), "utf-8");
+        let packPath: string;
+        if (target.kind === "sealed") {
+            await target.writer.add(GAME_RUNTIME_BUNDLE_PACK_ENTRY, packJson);
+            await target.writer.finalize();
+            packPath = path.join(appDir, RUNTIME_BUNDLE_FILENAME);
+        } else {
+            packPath = path.join(appDir, "pack.json");
+            await fs.writeFile(packPath, packJson);
+        }
+        await fs.writeFile(
+            path.join(appDir, "package.json"),
+            JSON.stringify({
+                name: "narraleaf-preview-runtime",
+                version: input.runtimeVersion,
+                private: true,
+                main: "main.js",
+            }, null, 2),
+            "utf-8",
+        );
+
+        return {
+            previewRoot,
+            appDir,
+            userDataDir,
+            packPath,
+            pack,
+            copiedAssetCount: Object.keys(assetManifest).length,
+        };
+    } catch (error) {
+        if (target.kind === "sealed") {
+            // Release the file handle; the partial store is discarded on the next
+            // compile (appDir is wiped up front). finalize() is idempotent.
+            await target.writer.finalize().catch(() => undefined);
+        }
+        throw error;
+    }
 }
 
 async function assertRuntimeDistReady(runtimeDistDir: string): Promise<void> {
@@ -223,16 +271,6 @@ async function copyOptionalFile(sourcePath: string, targetPath: string): Promise
     }
 }
 
-/** Copy a file, protecting it when a key is provided, else a plain copy. */
-async function copyMaybeEncrypt(sourcePath: string, targetPath: string, encryptionKey?: string): Promise<void> {
-    if (!encryptionKey) {
-        await fs.copyFile(sourcePath, targetPath);
-        return;
-    }
-    const data = await fs.readFile(sourcePath);
-    await fs.writeFile(targetPath, encryptBuffer(data, encryptionKey));
-}
-
 /**
  * Apply the pack key to the packed main.js through @narraleaf/encryption's
  * marker. Fails loudly if the marker is absent, meaning the runtime was built
@@ -253,7 +291,7 @@ async function embedPackKey(appDir: string, encryptionKey: string): Promise<void
 async function copyProjectAssets(input: {
     projectPath: string;
     assetsDir: string;
-    encryptionKey?: string;
+    target: PackTarget;
 }): Promise<Record<string, GameRuntimeAssetManifestEntry>> {
     const manifest: Record<string, GameRuntimeAssetManifestEntry> = {};
     for (const type of ASSET_TYPES) {
@@ -265,15 +303,28 @@ async function copyProjectAssets(input: {
         for (const [assetId, rawAsset] of Object.entries(metadata)) {
             const normalized = normalizeAssetRecord(assetId, type, rawAsset);
             const sourcePath = resolveAssetSourcePath(input.projectPath, normalized);
-            const relativePath = path.join("assets", `${normalized.id}.${normalized.ext}`).replace(/\\/g, "/");
-            const targetPath = path.join(input.assetsDir, `${normalized.id}.${normalized.ext}`);
-            await copyMaybeEncrypt(sourcePath, targetPath, input.encryptionKey).catch(error => {
-                const sourceLabel = normalized.source === "remote" ? "remote cache" : "local asset";
+            const sourceLabel = normalized.source === "remote" ? "remote cache" : "local asset";
+            // The MIME type is derived from the extension, not from where the
+            // bytes land, so it is available even when the store keeps the item
+            // under an extension-free name.
+            const mimeType = getMimeType(`${normalized.id}.${normalized.ext}`);
+            let relativePath: string;
+            try {
+                if (input.target.kind === "sealed") {
+                    // Extension-free entry name: an item's media type is not
+                    // recoverable from the store.
+                    relativePath = gameRuntimeBundleAssetEntry(normalized.id);
+                    await input.target.writer.add(relativePath, await fs.readFile(sourcePath));
+                } else {
+                    relativePath = path.join("assets", `${normalized.id}.${normalized.ext}`).replace(/\\/g, "/");
+                    await fs.copyFile(sourcePath, path.join(input.assetsDir, `${normalized.id}.${normalized.ext}`));
+                }
+            } catch (error) {
                 throw new Error(
                     `Failed to copy ${sourceLabel} "${normalized.name}" (${normalized.id}) from ${sourcePath}: ` +
                     `${error instanceof Error ? error.message : String(error)}`,
                 );
-            });
+            }
             manifest[normalized.id] = {
                 id: normalized.id,
                 type,
@@ -283,7 +334,7 @@ async function copyProjectAssets(input: {
                 originalRelativePath: path.relative(input.projectPath, sourcePath).replace(/\\/g, "/"),
                 hash: normalized.hash,
                 ext: normalized.ext,
-                mimeType: getMimeType(targetPath),
+                mimeType,
             };
         }
     }
@@ -293,19 +344,25 @@ async function copyProjectAssets(input: {
 async function copyRuntimePlugins(input: {
     appDir: string;
     runtimePlugins: GameRuntimePluginSource[];
-    encryptionKey?: string;
+    target: PackTarget;
 }): Promise<GameRuntimePackPluginEntry[]> {
     const entries: GameRuntimePackPluginEntry[] = [];
     for (const plugin of input.runtimePlugins) {
         const relativePath = path.posix.join("plugins", plugin.manifest.id, ...plugin.entry.split("/"));
-        const targetPath = path.join(input.appDir, ...relativePath.split("/"));
-        await fs.mkdir(path.dirname(targetPath), { recursive: true });
-        await copyMaybeEncrypt(plugin.entryPath, targetPath, input.encryptionKey).catch(error => {
+        try {
+            if (input.target.kind === "sealed") {
+                await input.target.writer.add(gameRuntimeBundleRuntimeEntry(relativePath), await fs.readFile(plugin.entryPath));
+            } else {
+                const targetPath = path.join(input.appDir, ...relativePath.split("/"));
+                await fs.mkdir(path.dirname(targetPath), { recursive: true });
+                await fs.copyFile(plugin.entryPath, targetPath);
+            }
+        } catch (error) {
             throw new Error(
                 `Failed to copy runtime entry of plugin "${plugin.manifest.id}" from ${plugin.entryPath}: ` +
                 `${error instanceof Error ? error.message : String(error)}`,
             );
-        });
+        }
         entries.push({
             manifest: plugin.manifest,
             entryRelativePath: relativePath,

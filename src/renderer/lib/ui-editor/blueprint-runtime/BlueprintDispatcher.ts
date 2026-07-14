@@ -269,10 +269,6 @@ function createScriptExecutionContext(input: {
                     input.debug.emit({ type: "function.call", functionId: "game.setSentenceSpeed" });
                     input.debug.emit({ type: "function.return", functionId: "game.setSentenceSpeed" });
                 },
-                setOutputResolution: async (_width: number, _height: number) => {
-                    input.debug.emit({ type: "function.call", functionId: "game.setOutputResolution" });
-                    input.debug.emit({ type: "function.return", functionId: "game.setOutputResolution" });
-                },
                 getPreference: (key: BlueprintGamePreferenceKey): BlueprintGamePreferenceValue => {
                     input.debug.emit({ type: "function.call", functionId: "game.getPreference" });
                     input.debug.emit({ type: "function.return", functionId: "game.getPreference" });

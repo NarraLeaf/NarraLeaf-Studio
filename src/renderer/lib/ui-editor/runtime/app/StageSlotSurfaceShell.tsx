@@ -76,7 +76,6 @@ export type GameUiSlotHostOptions = {
     setSentenceSpeedInGame: (cps: number) => Promise<void>;
     getGamePreferenceInGame: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
     setGamePreferenceInGame: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void>;
-    setOutputResolutionInGame: (width: number, height: number) => Promise<void>;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -183,7 +182,6 @@ export function useStageSlotSurfaceRuntime(input: {
             onSetSentenceSpeed: options.setSentenceSpeedInGame,
             onGetGamePreference: options.getGamePreferenceInGame,
             onSetGamePreference: options.setGamePreferenceInGame,
-            onSetOutputResolution: options.setOutputResolutionInGame,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,

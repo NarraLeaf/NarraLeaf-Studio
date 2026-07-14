@@ -37,7 +37,7 @@ export const wizard = {
         license: "许可证",
         location: "位置",
         versionControl: "版本控制",
-        resolution: "分辨率",
+        resolution: "舞台尺寸",
         appId: "应用 ID",
     },
     template: {
@@ -66,9 +66,9 @@ export const wizard = {
         customLicense: "自定义许可证",
         customLicensePlaceholder: "输入自定义许可证…",
         descriptionPlaceholder: "描述你的项目…",
-        resolutionPlaceholder: "选择分辨率…",
+        resolutionPlaceholder: "选择舞台尺寸…",
         requiredFieldsTitle: "必填项",
-        requiredFieldsMessage: "请填写必填项：项目名称、应用 ID 和分辨率。",
+        requiredFieldsMessage: "请填写必填项：项目名称、应用 ID 和舞台尺寸。",
     },
     settings: {
         title: "项目设置",
