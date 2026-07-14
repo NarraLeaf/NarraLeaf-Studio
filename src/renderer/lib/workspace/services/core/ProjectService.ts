@@ -4,10 +4,12 @@ import { ProjectDependencyTable, normalizeProjectDependencyTable } from "@shared
 import { basename, extname, join } from "@shared/utils/path";
 import { ProjectConfig, ProjectIconConfig, ProjectIconPlatform, ProjectMetadata, Resolution } from "../../project/project";
 import {
+    BuildConfiguration,
     LocalizationConfiguration,
     NetworkConfiguration,
     ProjectAppConfiguration,
     SecurityConfiguration,
+    normalizeBuildConfiguration,
     normalizeLocalizationConfiguration,
     normalizeNetworkConfiguration,
     normalizeSecurityConfiguration,
@@ -196,6 +198,33 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 security,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read the remembered production-build selection, or null when the project
+     * has never been built (the build dialog then uses a host-appropriate
+     * default).
+     */
+    public getBuildConfiguration(): BuildConfiguration | null {
+        return normalizeBuildConfiguration(this.getProjectConfig().app?.build);
+    }
+
+    /**
+     * Persist the production-build dialog selection so the next build reopens
+     * with the same platforms/formats/output dir.
+     */
+    public async updateBuildConfiguration(build: BuildConfiguration): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                build,
             };
             return {
                 ...config,

@@ -56,5 +56,10 @@ export const settings = {
             description:
                 "How many editor tabs stay loaded at once so their scroll position and focus are preserved when you switch between them ({min}–{max}). Tabs beyond this reload when reopened.",
         },
+        electronMirror: {
+            label: "Electron download mirror",
+            description:
+                "Mirror URL for downloading Electron when building games for other platforms. Leave empty to use the official source.",
+        },
     },
 } as const;

@@ -34,6 +34,12 @@ import {
     PreviewLaunchHandler,
     PreviewStopHandler,
 } from "./handlers/previewAction";
+import {
+    GameBuildCancelHandler,
+    GameBuildGetStatusHandler,
+    GameBuildSelectOutputDirHandler,
+    GameBuildStartHandler,
+} from "./handlers/gameBuildAction";
 import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./handlers/pluginPermissionAction";
 import {
     PluginApproveHandler,
@@ -117,6 +123,12 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new PreviewLaunchHandler(),
         new PreviewStopHandler(),
         new PreviewGetStatusHandler(),
+
+        // Production game build handlers
+        new GameBuildStartHandler(),
+        new GameBuildCancelHandler(),
+        new GameBuildGetStatusHandler(),
+        new GameBuildSelectOutputDirHandler(),
 
         // Blueprint persistent variable storage handlers
         new BlueprintPersistenceGetAllHandler(),

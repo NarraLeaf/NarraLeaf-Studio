@@ -8,6 +8,7 @@ import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
+import type { GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
@@ -213,6 +214,13 @@ export interface RendererPreloadedInterface {
         launch(projectPath: string, entry: GameRuntimeLaunchEntry): Promise<RequestStatus<{ status: PreviewStatus }>>;
         stop(projectPath: string): Promise<RequestStatus<{ status: PreviewStatus }>>;
         getStatus(projectPath: string): Promise<RequestStatus<{ status: PreviewStatus }>>;
+    };
+
+    gameBuild: {
+        start(projectPath: string, entry: GameRuntimeLaunchEntry, request: GameBuildRequest): Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>;
+        cancel(projectPath: string): Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>;
+        getStatus(projectPath: string): Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>;
+        selectOutputDir(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
     };
 
     blueprintPersistence: {

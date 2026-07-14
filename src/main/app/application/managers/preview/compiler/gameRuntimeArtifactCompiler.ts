@@ -30,6 +30,7 @@ import {
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { getMimeType } from "@shared/utils/fs";
+import { sanitizeProjectFileName } from "@shared/utils/nlproj";
 
 const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "other"] as const;
 // "native.js" is a support module the packaged main.js requires from its own
@@ -52,8 +53,21 @@ export type GameRuntimeArtifactCompileInput = {
     entry: GameRuntimeLaunchEntry;
     runtimeDistDir: string;
     runtimeVersion: string;
-    controlPort: number;
-    controlToken: string;
+    /**
+     * Directory the compiled app dir is written under (appDir = outputRoot/app).
+     * Preview also keeps its persistent userData dir here; production staging
+     * roots hold only the app dir.
+     */
+    outputRoot: string;
+    /**
+     * Studio-side control channel embedded in the pack so the workspace can
+     * drive the running preview. Required in preview mode; must be absent for
+     * production packs (a shipped game exposes no control server).
+     */
+    preview?: {
+        controlPort: number;
+        controlToken: string;
+    };
     /** Runtime entries of enabled plugins to ship inside the pack. */
     runtimePlugins?: GameRuntimePluginSource[];
     /**
@@ -70,9 +84,10 @@ export type GameRuntimeArtifactCompileInput = {
 };
 
 export type GameRuntimeArtifactCompileResult = {
-    previewRoot: string;
+    outputRoot: string;
     appDir: string;
-    userDataDir: string;
+    /** Preview-only saves/persistence dir; production packs use the OS userData path. */
+    userDataDir: string | null;
     packPath: string;
     pack: GameRuntimePackV1;
     copiedAssetCount: number;
@@ -105,12 +120,19 @@ type ProjectIconConfigRecord = {
     updatedAt?: unknown;
 };
 
-export async function compileGameRuntimePreviewArtifact(
+export async function compileGameRuntimeArtifact(
     input: GameRuntimeArtifactCompileInput,
 ): Promise<GameRuntimeArtifactCompileResult> {
-    const previewRoot = path.join(input.projectPath, ".nlstudio", "preview");
-    const appDir = path.join(previewRoot, "app");
-    const userDataDir = path.join(previewRoot, "userData");
+    const mode = input.mode ?? "preview";
+    if (mode === "preview" && !input.preview) {
+        throw new Error("Preview artifact compile requires a preview control channel");
+    }
+    if (mode === "production" && input.preview) {
+        throw new Error("Production artifact compile must not carry a preview control channel");
+    }
+    const outputRoot = input.outputRoot;
+    const appDir = path.join(outputRoot, "app");
+    const userDataDir = mode === "preview" ? path.join(outputRoot, "userData") : null;
     const assetsDir = path.join(appDir, "assets");
 
     await assertRuntimeDistReady(input.runtimeDistDir);
@@ -119,7 +141,9 @@ export async function compileGameRuntimePreviewArtifact(
         // Loose items live under assets/; the sealed store needs no such dir.
         await fs.mkdir(assetsDir, { recursive: true });
     }
-    await fs.mkdir(userDataDir, { recursive: true });
+    if (userDataDir) {
+        await fs.mkdir(userDataDir, { recursive: true });
+    }
     await copyRuntimeFiles(input.runtimeDistDir, appDir);
     if (input.encryptionKey) {
         // Protection on: prepare the packed runtime and ship its support binary.
@@ -169,7 +193,7 @@ export async function compileGameRuntimePreviewArtifact(
         const pack: GameRuntimePackV1 = {
             schemaVersion: GAME_RUNTIME_PACK_SCHEMA_VERSION,
             generatedAt: new Date().toISOString(),
-            mode: input.mode ?? "preview",
+            mode,
             runtimeVersion: input.runtimeVersion,
             project: {
                 name: projectConfig?.name?.trim() || path.basename(input.projectPath) || "NarraLeaf Game",
@@ -189,10 +213,7 @@ export async function compileGameRuntimePreviewArtifact(
                 // opts in via app.network.allowHttp. Mirrors normalizeNetworkConfiguration.
                 allowHttp: (projectConfig?.app as { network?: { allowHttp?: unknown } } | undefined)?.network?.allowHttp === true,
             },
-            preview: {
-                controlPort: input.controlPort,
-                controlToken: input.controlToken,
-            },
+            ...(input.preview ? { preview: input.preview } : {}),
         };
 
         const packJson = Buffer.from(JSON.stringify(pack), "utf-8");
@@ -207,17 +228,12 @@ export async function compileGameRuntimePreviewArtifact(
         }
         await fs.writeFile(
             path.join(appDir, "package.json"),
-            JSON.stringify({
-                name: "narraleaf-preview-runtime",
-                version: input.runtimeVersion,
-                private: true,
-                main: "main.js",
-            }, null, 2),
+            JSON.stringify(buildAppManifest(mode, input.runtimeVersion, pack, projectConfig), null, 2),
             "utf-8",
         );
 
         return {
-            previewRoot,
+            outputRoot,
             appDir,
             userDataDir,
             packPath,
@@ -232,6 +248,42 @@ export async function compileGameRuntimePreviewArtifact(
         }
         throw error;
     }
+}
+
+/**
+ * The loose app manifest Electron reads before any pack (possibly sealed) is
+ * open. Production identity fields drive the shell's app name — and with it
+ * the default OS userData location — plus the packager's product metadata.
+ * `narraleaf.mode` is the early mode marker the runtime consults before
+ * app-ready; the pack's own `mode` stays authoritative.
+ */
+function buildAppManifest(
+    mode: "preview" | "production",
+    runtimeVersion: string,
+    pack: GameRuntimePackV1,
+    projectConfig: ProjectConfigData | null,
+): Record<string, unknown> {
+    const base = {
+        private: true,
+        main: "main.js",
+        narraleaf: { mode },
+    };
+    if (mode === "preview") {
+        return {
+            name: "narraleaf-preview-runtime",
+            version: runtimeVersion,
+            ...base,
+        };
+    }
+    const identifier = readString(projectConfig?.identifier);
+    return {
+        name: sanitizeProjectFileName(identifier ?? pack.project.name),
+        productName: pack.project.name,
+        version: pack.project.version ?? "0.0.0",
+        description: readString(projectConfig?.metadata?.description),
+        author: readString(projectConfig?.metadata?.author) ?? "NarraLeaf",
+        ...base,
+    };
 }
 
 async function assertRuntimeDistReady(runtimeDistDir: string): Promise<void> {

@@ -29,6 +29,22 @@ const { rootDir, isDev } = require('./utils');
         tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
     });
 
+    console.log('[build-main] Bundling game build worker…');
+    await esbuild.build({
+        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'buildWorker.ts')],
+        outfile: path.join(outDir, 'buildWorker.js'),
+        platform: 'node',
+        format: 'cjs',
+        bundle: true,
+        // electron-builder stays a real node_modules require: its module tree
+        // reads template/resource files relative to itself at runtime.
+        external: ['electron', 'electron-builder'],
+        sourcemap: isDev(),
+        minify: !isDev(),
+        target: ['node18'],
+        tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
+    });
+
     const preloadEntry = path.join(rootDir, 'src', 'main', 'preload', 'preload.ts');
     if (!fs.existsSync(preloadEntry)) {
         console.warn('[build-main] Preload entry "src/main/preload/preload.ts" not found. Skipping preload build.');

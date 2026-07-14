@@ -3,6 +3,7 @@ import { BaseApp, BaseAppConfig } from "./application/baseApp";
 import { AppWindow, WindowConfig } from "./application/managers/window/appWindow";
 import { DevModeManager } from "./application/managers/devMode/DevModeManager";
 import { devModeNetworkPolicy, readProjectAllowHttp } from "./application/managers/devMode/devModeNetworkPolicy";
+import { GameBuildManager } from "./application/managers/build/GameBuildManager";
 import { PreviewManager } from "./application/managers/preview/PreviewManager";
 
 export interface AppConfig extends BaseAppConfig {
@@ -17,10 +18,12 @@ export class App extends BaseApp {
         super(config);
         this.devModeManager = new DevModeManager(this);
         this.previewManager = new PreviewManager(this);
+        this.gameBuildManager = new GameBuildManager(this);
     }
 
     private readonly devModeManager: DevModeManager;
     private readonly previewManager: PreviewManager;
+    private readonly gameBuildManager: GameBuildManager;
 
     public getDevModeManager(): DevModeManager {
         return this.devModeManager;
@@ -28,6 +31,10 @@ export class App extends BaseApp {
 
     public getPreviewManager(): PreviewManager {
         return this.previewManager;
+    }
+
+    public getGameBuildManager(): GameBuildManager {
+        return this.gameBuildManager;
     }
 
     private applyWindowIcon(window: AppWindow): void {

@@ -19,12 +19,14 @@ import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
-import { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
+import { BuildService } from "@/lib/workspace/services/core/BuildService";
 import type { DevModeStatus } from "@shared/types/devMode";
 import type { PreviewStatus } from "@shared/types/gameRuntime";
+import type { GameBuildStatus } from "@shared/types/gameBuild";
 import { useWorkspace } from "../../context";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "./runtimeActionStatus";
+import { openBuildDialog } from "./BuildDialog";
 import { translate, translateN } from "@/lib/i18n";
 
 /**
@@ -147,39 +149,59 @@ function PreviewActionIcon() {
 
 /**
  * Build project action
- * Builds the current project for distribution
+ * Opens the production build dialog for the current project.
  */
 export const buildAction: ModuleAction = {
     id: "narraleaf-studio:build",
-    icon: <Package className="w-4 h-4" />,
+    icon: <BuildActionIcon />,
     tooltip: "Build project",
     tooltipKey: "actions.build.tooltip",
     onClick: (workspace: Workspace) => {
-        const services = workspace.getContext().services;
-        const consoleService = services.get<ConsoleService>(Services.Console);
-        const uiService = services.get<UIService>(Services.UI);
-        const projectPath = workspace.getContext().project.getConfig().projectPath;
-        const projectName = projectPath.split(/[\\/]/).filter(Boolean).at(-1) ?? "project";
-
-        uiService.panels.show("narraleaf-studio:console");
-        consoleService.append("build", {
-            level: "info",
-            source: translate("actions.build.source"),
-            segments: [
-                { text: translate("actions.build.requested", { name: projectName }), color: "#8b949e" },
-            ],
-        });
-        consoleService.append("build", {
-            level: "warning",
-            source: translate("actions.build.source"),
-            segments: [
-                { text: translate("actions.build.notWiredTitle"), bold: true },
-                { text: translate("actions.build.notWiredDetail"), italic: true },
-            ],
-        });
+        void openBuildDialog(workspace);
     },
     order: 4,
 };
+
+function BuildActionIcon() {
+    const { context } = useWorkspace();
+    const [status, setStatus] = useState<GameBuildStatus>("idle");
+
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const buildService = context.services.get<BuildService>(Services.Build);
+        const uiService = context.services.get<UIService>(Services.UI);
+        let previous = buildService.getStatus();
+        setStatus(previous);
+        const unsub = buildService.onStateChanged(state => {
+            setStatus(state.status);
+            if (state.status !== previous) {
+                if (state.status === "done") {
+                    uiService.showNotification(translate("build.toast.done"), "success");
+                } else if (state.status === "error") {
+                    uiService.showNotification(state.error ?? translate("build.toast.failed"), "error");
+                }
+            }
+            previous = state.status;
+        });
+        return () => {
+            unsub();
+        };
+    }, [context]);
+
+    const iconColor = useMemo(() => {
+        if (status === "error") {
+            return "#f87171";
+        }
+        if (status === "preparing" || status === "compiling" || status === "packaging") {
+            return "#ffffff";
+        }
+        return "rgba(255,255,255,0.6)";
+    }, [status]);
+
+    return <Package className="w-4 h-4" color={iconColor} />;
+}
 
 /**
  * File action group

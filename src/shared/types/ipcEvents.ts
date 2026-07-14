@@ -6,6 +6,7 @@ import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbilit
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
+import type { GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
@@ -118,6 +119,11 @@ export enum IPCEventType {
     previewLaunch = "preview.launch",
     previewStop = "preview.stop",
     previewGetStatus = "preview.getStatus",
+
+    gameBuildStart = "gameBuild.start",
+    gameBuildCancel = "gameBuild.cancel",
+    gameBuildGetStatus = "gameBuild.getStatus",
+    gameBuildSelectOutputDir = "gameBuild.selectOutputDir",
 
     blueprintPersistenceGetAll = "blueprintPersistence.getAll",
     blueprintPersistenceGetValue = "blueprintPersistence.getValue",
@@ -294,7 +300,7 @@ export type IPCEvents = {
             path: string;
         };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCPrivilegedEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameBuildEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCPrivilegedEvents;
 
 export type IPCFsEvents = {
     [IPCEventType.fsStat]: {
@@ -831,6 +837,51 @@ export type IPCPreviewEvents = {
         };
         response: {
             status: PreviewStatus;
+        };
+    };
+};
+
+export type IPCGameBuildEvents = {
+    [IPCEventType.gameBuildStart]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            entry: GameRuntimeLaunchEntry;
+            request: GameBuildRequest;
+        };
+        response: {
+            state: GameBuildStateSnapshot;
+        };
+    };
+    [IPCEventType.gameBuildCancel]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        };
+        response: {
+            state: GameBuildStateSnapshot;
+        };
+    };
+    [IPCEventType.gameBuildGetStatus]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        };
+        response: {
+            state: GameBuildStateSnapshot;
+        };
+    };
+    [IPCEventType.gameBuildSelectOutputDir]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            defaultPath?: string;
+        };
+        response: {
+            path: string | null;
         };
     };
 };

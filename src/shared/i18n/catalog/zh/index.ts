@@ -32,6 +32,7 @@ import { devMode } from "./devMode";
 import { pluginPermission } from "./pluginPermission";
 import { dialogs } from "./dialogs";
 import { defaultDoc } from "./defaultDoc";
+import { build } from "./build";
 import type { LocaleMessages } from "../types";
 
 export const zh = {
@@ -62,4 +63,5 @@ export const zh = {
     pluginPermission,
     dialogs,
     defaultDoc,
+    build,
 } satisfies LocaleMessages;

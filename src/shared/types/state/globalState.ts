@@ -26,6 +26,8 @@ export interface GlobalStateType extends Record<string, any> {
     "advanced.enableTelemetry": boolean;
     "advanced.enableDevTools": boolean;
     "advanced.experimentalFeatures": boolean;
+    /** Electron download mirror for cross-platform game builds; "" = official source. */
+    "build.electronMirror": string;
 }
 
 export type GlobalStateKeys = string;
@@ -60,4 +62,5 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "advanced.enableTelemetry": false,
     "advanced.enableDevTools": false,
     "advanced.experimentalFeatures": false,
+    "build.electronMirror": "",
 };

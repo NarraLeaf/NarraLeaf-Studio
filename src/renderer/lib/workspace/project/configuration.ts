@@ -1,4 +1,9 @@
 import type { LocalizationConfiguration } from "@shared/types/localization";
+import {
+    GAME_BUILD_FORMATS_BY_PLATFORM,
+    type GameBuildFormat,
+    type GameBuildPlatform,
+} from "@shared/types/gameBuild";
 
 export {
     DEFAULT_LOCALIZATION_CONFIGURATION,
@@ -21,12 +26,26 @@ export type SecurityConfiguration = {
     encryptAssets: boolean;
 };
 
+/**
+ * Remembered production-build selection, so the build dialog re-opens with the
+ * user's last platforms/formats/output dir. Purely a renderer-side convenience;
+ * the actual build request is sent with explicit targets.
+ */
+export type BuildConfiguration = {
+    platforms: GameBuildPlatform[];
+    formats: Partial<Record<GameBuildPlatform, GameBuildFormat[]>>;
+    /** Absolute output directory chosen last time; empty means the default. */
+    outputDir: string;
+};
+
 export type ProjectAppConfiguration = {
     network: NetworkConfiguration;
     /** Game localization setup (see @shared/types/localization); absent until configured. */
     localization?: LocalizationConfiguration;
     /** Asset-protection policy applied at pack time; absent until configured. */
     security?: SecurityConfiguration;
+    /** Last production-build dialog selection; absent until the first build. */
+    build?: BuildConfiguration;
 };
 
 /**
@@ -78,5 +97,51 @@ export function normalizeSecurityConfiguration(value: unknown): SecurityConfigur
         encryptAssets: typeof record.encryptAssets === "boolean"
             ? record.encryptAssets
             : DEFAULT_SECURITY_CONFIGURATION.encryptAssets,
+    };
+}
+
+const ALL_BUILD_PLATFORMS: GameBuildPlatform[] = ["windows", "macos", "linux"];
+
+/** Keep only formats electron-builder supports for the given platform. */
+function sanitizeFormats(platform: GameBuildPlatform, value: unknown): GameBuildFormat[] {
+    const allowed = GAME_BUILD_FORMATS_BY_PLATFORM[platform];
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return allowed.filter(format => value.includes(format));
+}
+
+/**
+ * Coerce an unknown persisted value into a complete BuildConfiguration,
+ * dropping unknown platforms/formats. Returns null when nothing usable was
+ * stored, so callers can fall back to a host-appropriate default.
+ */
+export function normalizeBuildConfiguration(value: unknown): BuildConfiguration | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+    const record = value as Record<string, unknown>;
+    const rawPlatforms: unknown[] = Array.isArray(record.platforms) ? record.platforms : [];
+    const selectedPlatforms = ALL_BUILD_PLATFORMS.filter(platform => rawPlatforms.includes(platform));
+    const rawFormats = (record.formats && typeof record.formats === "object")
+        ? record.formats as Record<string, unknown>
+        : {};
+    const formats: Partial<Record<GameBuildPlatform, GameBuildFormat[]>> = {};
+    for (const platform of selectedPlatforms) {
+        const sanitized = sanitizeFormats(platform, rawFormats[platform]);
+        if (sanitized.length > 0) {
+            formats[platform] = sanitized;
+        }
+    }
+    // Keep `platforms` and `formats` in sync: a selected platform with no valid
+    // formats is dropped, so callers never see a platform they can't act on.
+    const platforms = selectedPlatforms.filter(platform => formats[platform]);
+    if (platforms.length === 0) {
+        return null;
+    }
+    return {
+        platforms,
+        formats,
+        outputDir: typeof record.outputDir === "string" ? record.outputDir.trim() : "",
     };
 }
