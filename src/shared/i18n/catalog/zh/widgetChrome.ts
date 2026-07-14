@@ -3,21 +3,21 @@ import type { LocaleNamespace } from "../types";
 export const widgetChrome = {
     docker: {
         insert: "插入{name}",
-        drawing: "正在绘制{name}——在画布上拖动以创建",
+        drawing: "正在绘制 {name}，请在画布上拖动以创建",
         moreInsertElements: "更多插入元素",
         components: "组件",
         openComponentLibrary: "打开组件库",
         componentLibrary: "组件库",
         searchComponents: "搜索组件",
-        noComponents: "此项目中没有组件。",
-        noMatchingComponents: "没有匹配的组件。",
+        noComponents: "此项目中没有组件",
+        noMatchingComponents: "没有匹配的组件",
         element: "元素",
         multiple: "多选",
     },
     outline: {
         title: "图层",
         noSurface: "没有可用的界面",
-        linkedSurfaceHint: "关联界面——正在编辑关联的应用根树（与画布一致）。",
+        linkedSurfaceHint: "关联界面，正在编辑关联的应用根级树（与画布一致）",
         layer: "图层",
         dragToReorder: "拖动以重新排序",
     },
@@ -72,8 +72,9 @@ export const widgetChrome = {
         openControlBlueprint: "打开控件蓝图",
         noBlueprintForControl: "此控件没有蓝图",
         legacyHookCount: {
-            other: "UI 文档中存在 {count} 个旧版钩子。",
+            one: "{count} legacy hook in uidoc.",
+            other: "UI 文档中存在 {count} 个旧版钩子",
         },
-        eventSchemaMismatch: "事件结构不匹配。请在编辑器中查看诊断信息。",
+        eventSchemaMismatch: "事件结构不匹配。请在编辑器中查看诊断信息",
     },
 } satisfies LocaleNamespace<"widgetChrome">;

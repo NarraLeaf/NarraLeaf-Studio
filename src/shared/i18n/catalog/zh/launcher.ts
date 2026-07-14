@@ -13,18 +13,18 @@ export const launcher = {
         openProject: "打开项目",
         import: "导入",
         recentTitle: "最近项目",
-        empty: "还没有最近打开的项目。",
+        empty: "还没有最近打开的项目",
         openFolder: "打开文件夹",
         importProject: "导入项目",
         openNamed: "打开 {name}",
         removeFromRecent: "从最近移除",
         removeNamedFromRecent: "将 {name} 从最近项目中移除",
-        errorCreate: "创建项目失败。",
-        errorOpenFolder: "打开文件夹失败。",
-        errorImport: "导入项目失败。",
+        errorCreate: "创建项目失败",
+        errorOpenFolder: "打开文件夹失败",
+        errorImport: "导入项目失败",
     },
-    // 中文只有一种复数形式，只需给出 other。
     recentCount: {
+        one: "{count} recent project",
         other: "{count} 个最近项目",
     },
     plugins: {
@@ -48,15 +48,15 @@ export const launcher = {
         },
         task: {
             installing: "正在安装插件…",
-            installed: "插件已安装。",
+            installed: "插件已安装",
             authorizing: "等待授权…",
-            authorized: "插件已授权。",
+            authorized: "插件已授权",
             enabling: "正在启用插件…",
             disabling: "正在禁用插件…",
-            enabled: "插件已启用。",
-            disabled: "插件已禁用。",
+            enabled: "插件已启用",
+            disabled: "插件已禁用",
             uninstalling: "正在卸载插件…",
-            uninstalled: "插件已卸载。",
+            uninstalled: "插件已卸载",
         },
         error: {
             load: "加载插件失败",
@@ -67,6 +67,6 @@ export const launcher = {
         },
     },
     learning: {
-        placeholder: "这里将显示教程、文档和示例（占位）。",
+        placeholder: "这里将显示教程、文档和示例（占位）",
     },
 } satisfies LocaleNamespace<"launcher">;
