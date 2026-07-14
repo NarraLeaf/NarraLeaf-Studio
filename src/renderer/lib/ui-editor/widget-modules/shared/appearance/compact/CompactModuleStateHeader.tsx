@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "@/lib/i18n";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { ConfirmModal } from "@/lib/components/elements/Modal";
 import type { AppearanceVariant } from "@shared/types/ui-editor/appearance";
@@ -13,10 +14,6 @@ import {
     type SystemStateKey,
 } from "./appearanceModuleState";
 
-function stateLabel(state: SystemStateKey): string {
-    return state.charAt(0).toUpperCase() + state.slice(1);
-}
-
 type Props = {
     variant: AppearanceVariant;
     commitVariant: (v: AppearanceVariant) => void;
@@ -27,10 +24,10 @@ type Props = {
 
 function chipClass(active: boolean): string {
     return [
-        "rounded px-1.5 py-0.5 text-[10px] font-medium border transition shrink-0",
+        "rounded px-1.5 py-0.5 text-2xs font-medium border transition shrink-0",
         active
             ? "border-primary/60 bg-primary/15 text-primary"
-            : "border-white/10 bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200",
+            : "border-edge bg-fill-subtle text-fg-muted hover:bg-fill hover:text-fg",
     ].join(" ");
 }
 
@@ -38,6 +35,8 @@ function chipClass(active: boolean): string {
  * Per compact module: switch default vs exclusive system-state rows; add/remove state rows via context menu.
  */
 export function CompactModuleStateHeader({ variant, commitVariant, moduleKeys, mode, onModeChange }: Props) {
+    const { t } = useTranslation();
+    const stateLabel = (state: SystemStateKey): string => t(`widgetAppearance.states.${state}`);
     const [pendingRemove, setPendingRemove] = useState<SystemStateKey | null>(null);
 
     const presentStates = useMemo(
@@ -53,7 +52,9 @@ export function CompactModuleStateHeader({ variant, commitVariant, moduleKeys, m
             const exists = moduleFullyHasExclusiveState(variant, moduleKeys, state);
             return {
                 id: `state-${state}`,
-                label: exists ? `Remove ${stateLabel(state)}` : `Add ${stateLabel(state)}`,
+                label: exists
+                    ? t("widgetAppearance.states.removeOverride", { state: stateLabel(state) })
+                    : t("widgetAppearance.states.addOverride", { state: stateLabel(state) }),
                 onClick: () => {
                     if (exists) {
                         setPendingRemove(state);
@@ -65,7 +66,7 @@ export function CompactModuleStateHeader({ variant, commitVariant, moduleKeys, m
                 },
             };
         });
-    }, [variant, moduleKeys, commitVariant, onModeChange]);
+    }, [variant, moduleKeys, commitVariant, onModeChange, t]);
 
     const handleConfirmRemove = () => {
         if (!pendingRemove) {
@@ -88,7 +89,7 @@ export function CompactModuleStateHeader({ variant, commitVariant, moduleKeys, m
                         className={chipClass(mode === "default")}
                         onClick={() => onModeChange("default")}
                     >
-                        Default
+                        {t("widgetAppearance.states.default")}
                     </button>
                 ) : null}
                 {presentStates.map(s => (
@@ -96,20 +97,24 @@ export function CompactModuleStateHeader({ variant, commitVariant, moduleKeys, m
                         {stateLabel(s)}
                     </button>
                 ))}
-                <InlineMenuTriggerButton menu={menu} ariaLabel="Add or remove state override" className="shrink-0" />
+                <InlineMenuTriggerButton
+                    menu={menu}
+                    ariaLabel={t("widgetAppearance.states.addRemoveAria")}
+                    className="shrink-0"
+                />
             </div>
             <ConfirmModal
                 isOpen={pendingRemove !== null}
                 onClose={() => setPendingRemove(null)}
                 onConfirm={handleConfirmRemove}
-                title="Remove state override"
+                title={t("widgetAppearance.states.removeOverrideTitle")}
                 message={
                     pendingRemove
-                        ? `Remove all ${stateLabel(pendingRemove)} overrides for this module? This cannot be undone.`
+                        ? t("widgetAppearance.states.removeConfirm", { state: stateLabel(pendingRemove) })
                         : ""
                 }
-                confirmText="Remove"
-                cancelText="Cancel"
+                confirmText={t("common.remove")}
+                cancelText={t("common.cancel")}
                 variant="danger"
             />
         </>

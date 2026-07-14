@@ -6,6 +6,7 @@ import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox"
 import { Loader2 } from "lucide-react";
 import { SettingValueType } from "@/lib/settings/types";
 import { SettingCategory, SettingDescriptor } from "@/lib/settings/models";
+import { useTranslation } from "@/lib/i18n";
 
 export type SettingValue = string | number | boolean;
 
@@ -63,9 +64,10 @@ export function SettingsExplorer<T>({
     onSearchChange,
     showSearch = true,
     loading = false,
-    emptyStateMessage = "No settings available.",
+    emptyStateMessage,
     panelFocusHandler,
 }: SettingsExplorerProps<T>) {
+    const { t } = useTranslation();
     const [localSearch, setLocalSearch] = useState("");
     const [saving, setSaving] = useState<Set<string>>(new Set());
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -191,12 +193,12 @@ export function SettingsExplorer<T>({
             const rawValue = pendingInputs[id] ?? String(getValue(entry.source, entry.descriptor) ?? entry.descriptor.defaultValue ?? "");
             const parsed = parseSettingInput(entry.descriptor.type, rawValue);
             if (parsed === null) {
-                setErrors(prev => ({ ...prev, [id]: "Please provide a valid value" }));
+                setErrors(prev => ({ ...prev, [id]: t("settings.invalidValue") }));
                 return;
             }
             handleCommit(entry, parsed);
         },
-        [getValue, handleCommit, pendingInputs],
+        [getValue, handleCommit, pendingInputs, t],
     );
 
     const handleEnumChange = useCallback(
@@ -235,7 +237,7 @@ export function SettingsExplorer<T>({
                 const options = descriptor.options ?? [];
                 const selectOptions: SelectOption[] = options.map(option => ({
                     value: option,
-                    label: option,
+                    label: descriptor.optionLabels?.[option] ?? option,
                 }));
                 return (
                     <Select
@@ -245,7 +247,7 @@ export function SettingsExplorer<T>({
                         value={displayValue}
                         onChange={(value) => handleEnumChange(entry, value as string)}
                         disabled={isSaving || options.length === 0}
-                        placeholder={displayValue || "Select..."}
+                        placeholder={descriptor.optionLabels?.[displayValue] ?? displayValue}
                     />
                 );
             }
@@ -280,11 +282,11 @@ export function SettingsExplorer<T>({
         if (descriptor.type === SettingValueType.Boolean) {
             // boolean control already renders loader
             return (
-                <div key={descriptor.id} className="px-2 py-2 transition duration-200 hover:bg-white/[0.02]">
+                <div key={descriptor.id} className="px-2 py-2 transition duration-200 hover:bg-fill-subtle">
                     <div className="flex items-start justify-between gap-4">
                         <div className="flex flex-col gap-1 flex-1 min-w-0">
-                            <span className="text-sm font-medium text-gray-100">{descriptor.label}</span>
-                            <span className="text-xs text-gray-500">{descriptor.description}</span>
+                            <span className="text-sm font-medium text-fg">{descriptor.label}</span>
+                            <span className="text-xs text-fg-subtle">{descriptor.description}</span>
                         </div>
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
                             {renderControl(entry)}
@@ -297,11 +299,11 @@ export function SettingsExplorer<T>({
         }
 
         return (
-            <div key={descriptor.id} className="px-2 py-2 transition duration-200 hover:bg-white/[0.02]">
+            <div key={descriptor.id} className="px-2 py-2 transition duration-200 hover:bg-fill-subtle">
                 <div className="flex items-start justify-between gap-4">
                     <div className="flex flex-col gap-1 flex-1 min-w-0">
-                        <span className="text-sm font-medium text-gray-100">{descriptor.label}</span>
-                        <span className="text-xs text-gray-500">{descriptor.description}</span>
+                        <span className="text-sm font-medium text-fg">{descriptor.label}</span>
+                        <span className="text-xs text-fg-subtle">{descriptor.description}</span>
                     </div>
                     <div className="flex flex-col items-end gap-1 flex-shrink-0">
                         {renderControl(entry)}
@@ -343,11 +345,11 @@ export function SettingsExplorer<T>({
             onClick={() => panelFocusHandler?.()}
         >
             {showSearch && (
-                <div className="px-3 py-2 border-b border-white/10">
+                <div className="px-3 py-2 border-b border-edge">
                     <SearchBox
                         value={effectiveSearch}
                         onChange={handleSearchChange}
-                        placeholder="Search settings..."
+                        placeholder={t("settings.searchPlaceholder")}
                         className="w-full"
                     />
                 </div>
@@ -355,12 +357,12 @@ export function SettingsExplorer<T>({
 
             <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
                 {loading ? (
-                    <div className="flex h-full items-center justify-center text-xs text-gray-500">
-                        Loading settings...
+                    <div className="flex h-full items-center justify-center text-xs text-fg-subtle">
+                        {t("settings.loading")}
                     </div>
                 ) : categoryEntriesToRender.length === 0 ? (
-                    <div className="px-3 py-4 text-xs text-gray-500">
-                        {effectiveSearch.trim() ? "No settings match your search." : emptyStateMessage}
+                    <div className="px-3 py-4 text-xs text-fg-subtle">
+                        {effectiveSearch.trim() ? t("settings.noResults") : (emptyStateMessage ?? t("settings.empty"))}
                     </div>
                 ) : (
                     <div className="space-y-5 px-3 py-3">
@@ -370,8 +372,8 @@ export function SettingsExplorer<T>({
                                 ref={(node) => setCategoryRef(entry.category.key, node)}
                                 className="scroll-mt-3"
                             >
-                                <div className="mb-2 border-b border-white/10 px-2 pb-2">
-                                    <h2 className="text-sm font-semibold text-gray-100">{entry.category.label}</h2>
+                                <div className="mb-2 border-b border-edge px-2 pb-2">
+                                    <h2 className="text-sm font-semibold text-fg">{entry.category.label}</h2>
                                 </div>
                                 <div className="space-y-0">
                                     {entry.entries.map(renderSetting)}

@@ -7,7 +7,12 @@ export function isInteractiveTarget(target: EventTarget): boolean {
 
 export function isTextInputActive(): boolean {
     const active = document.activeElement;
-    return active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement;
+    return active instanceof HTMLInputElement
+        || active instanceof HTMLTextAreaElement
+        || active instanceof HTMLSelectElement
+        // The dialogue / narration rich-text editor is a contentEditable <div>, not an <input>. Treat
+        // it as a text input so the editor stops hijacking copy/cut/paste while the author is typing.
+        || (active instanceof HTMLElement && active.isContentEditable);
 }
 
 export function hasShiftModifier(event: ClipboardEvent<HTMLElement>): boolean {

@@ -1,4 +1,5 @@
 import React from "react";
+import { cn } from "../../utils/cn";
 
 export type ProgressVariant = "default" | "success" | "warning" | "error";
 export type ProgressSize = "sm" | "md" | "lg";
@@ -13,10 +14,18 @@ export interface ProgressProps {
 }
 
 const variantStyles: Record<ProgressVariant, string> = {
-    default: "bg-[#40a8c4]",
-    success: "bg-green-600",
-    warning: "bg-yellow-600",
-    error: "bg-red-600",
+    default: "bg-primary",
+    success: "bg-success",
+    warning: "bg-warning",
+    error: "bg-danger",
+};
+
+/** CSS color for each variant, for contexts that can't use a Tailwind class (svg stroke, gradient). */
+const variantColor: Record<ProgressVariant, string> = {
+    default: "var(--narraleaf-accent, #40a8c4)",
+    success: "rgb(var(--nl-success))",
+    warning: "rgb(var(--nl-warning))",
+    error: "rgb(var(--nl-danger))",
 };
 
 const sizeStyles: Record<ProgressSize, string> = {
@@ -40,19 +49,14 @@ export function Progress({
     const percentage = Math.min(Math.max((value / max) * 100, 0), 100);
 
     return (
-        <div className={`w-full ${className}`}>
-            <div
-                className={`
-                    w-full bg-white/10 rounded-full overflow-hidden
-                    ${sizeStyles[size]}
-                `}
-            >
+        <div className={cn("w-full", className)}>
+            <div className={cn("w-full bg-fill rounded-full overflow-hidden", sizeStyles[size])}>
                 <div
-                    className={`
-                        h-full rounded-full transition-all duration-150 ease-out
-                        ${variantStyles[variant]}
-                        ${animated ? "animate-pulse" : ""}
-                    `}
+                    className={cn(
+                        "h-full rounded-full transition-all duration-150 ease-out",
+                        variantStyles[variant],
+                        animated && "animate-pulse",
+                    )}
                     style={{ width: `${percentage}%` }}
                 />
             </div>
@@ -69,23 +73,13 @@ export function ProgressIndeterminate({
     className = "",
 }: Omit<ProgressProps, "value" | "max" | "showLabel" | "label" | "animated">) {
     return (
-        <div
-            className={`
-                w-full bg-white/10 rounded-full overflow-hidden
-                ${sizeStyles[size]}
-                ${className}
-            `}
-        >
+        <div className={cn("w-full bg-fill rounded-full overflow-hidden", sizeStyles[size], className)}>
             <div
-                className={`
-                    h-full rounded-full animate-pulse
-                    ${variantStyles[variant]}
-                    animate-[progress-indeterminate_2s_ease-in-out_infinite]
-                `}
+                className="h-full rounded-full animate-[progress-indeterminate_2s_ease-in-out_infinite]"
                 style={{
-                    background: `linear-gradient(90deg, transparent 0%, ${variantStyles[variant].split('bg-')[1]} 50%, transparent 100%)`,
-                    width: '100%',
-                    transform: 'translateX(-100%)',
+                    background: `linear-gradient(90deg, transparent 0%, ${variantColor[variant]} 50%, transparent 100%)`,
+                    width: "100%",
+                    transform: "translateX(-100%)",
                 }}
             />
         </div>
@@ -118,15 +112,8 @@ export function ProgressCircle({
     const strokeDasharray = circumference;
     const strokeDashoffset = circumference - (percentage / 100) * circumference;
 
-    const strokeColor = {
-        default: "#40a8c4",
-        success: "#16a34a",
-        warning: "#ca8a04",
-        error: "#dc2626",
-    }[variant];
-
     return (
-        <div className={`relative inline-flex items-center justify-center ${className}`}>
+        <div className={cn("relative inline-flex items-center justify-center", className)}>
             <svg width={size} height={size} className="transform -rotate-90">
                 <circle
                     cx={size / 2}
@@ -140,7 +127,7 @@ export function ProgressCircle({
                     cx={size / 2}
                     cy={size / 2}
                     r={radius}
-                    stroke={strokeColor}
+                    stroke={variantColor[variant]}
                     strokeWidth={strokeWidth}
                     fill="none"
                     strokeDasharray={strokeDasharray}
@@ -151,7 +138,7 @@ export function ProgressCircle({
             </svg>
             {showValue && (
                 <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-xs font-medium text-gray-200">
+                    <span className="text-xs font-medium text-fg">
                         {Math.round(percentage)}%
                     </span>
                 </div>

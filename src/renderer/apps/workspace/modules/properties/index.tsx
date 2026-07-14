@@ -1,4 +1,5 @@
 import { Settings } from "lucide-react";
+import { translate } from "@/lib/i18n";
 import { PanelModule } from "../types";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { PanelPosition } from "../../registry/types";
@@ -10,7 +11,10 @@ import { PanelPosition } from "../../registry/types";
 export const propertiesModule: PanelModule = {
     metadata: {
         id: "narraleaf-studio:properties",
-        title: "Properties",
+        // Resolved lazily on read (module registration runs after i18n init).
+        get title() {
+            return translate("placeholders.moduleTitles.properties");
+        },
         icon: <Settings className="w-4 h-4" />,
         position: PanelPosition.Right,
         defaultVisible: true,

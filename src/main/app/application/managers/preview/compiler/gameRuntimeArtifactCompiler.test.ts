@@ -1,7 +1,15 @@
+import crypto from "crypto";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { derivePackEncryptionKey } from "@narraleaf/encryption";
+import {
+    openSealedBundle,
+    RUNTIME_BUNDLE_FILENAME,
+    RUNTIME_KEY_PLACEHOLDER,
+    RUNTIME_SUPPORT_FILENAME,
+} from "@narraleaf/encryption/runtime";
 import { GAME_RUNTIME_PACK_SCHEMA_VERSION } from "@shared/types/gameRuntime";
 import { UI_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/document";
 import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
@@ -113,6 +121,76 @@ describe("game runtime artifact compiler", () => {
                 blueprintScriptsCompileOk: true,
             },
         });
+    });
+
+    it("copies plugin runtime entries into the pack", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        const pluginInstallDir = path.join(tempDir, "plugins", "acme.sample-plugin");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await fs.mkdir(pluginInstallDir, { recursive: true });
+        await fs.writeFile(path.join(pluginInstallDir, "runtime.js"), "export default {};", "utf-8");
+
+        const manifest = {
+            manifestVersion: 2 as const,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+            contributes: { blueprintNodes: ["acme.sample-plugin.node"], widgets: [] },
+            permissions: [],
+        };
+        const result = await compileGameRuntimePreviewArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: {
+                kind: "surface",
+                surfaceId: "surface-main",
+            },
+            controlPort: 47324,
+            controlToken: "token",
+            runtimePlugins: [{
+                manifest,
+                entry: "runtime.js",
+                entryPath: path.join(pluginInstallDir, "runtime.js"),
+            }],
+        });
+
+        await expect(fs.readFile(
+            path.join(result.appDir, "plugins", "acme.sample-plugin", "runtime.js"),
+            "utf-8",
+        )).resolves.toBe("export default {};");
+        expect(result.pack.plugins).toEqual([{
+            manifest,
+            entryRelativePath: "plugins/acme.sample-plugin/runtime.js",
+        }]);
+    });
+
+    it("produces an empty plugin list when no runtime plugins are supplied", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimePreviewArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: {
+                kind: "surface",
+                surfaceId: "surface-main",
+            },
+            controlPort: 47325,
+            controlToken: "token",
+        });
+
+        expect(result.pack.plugins).toEqual([]);
     });
 
     it("fails with a clear diagnostic when a remote asset is missing from editor cache", async () => {
@@ -228,11 +306,86 @@ describe("game runtime artifact compiler", () => {
             to: 100,
         });
     });
+
+    it("consolidates the pack, assets and plugins into a single protected store", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        const pluginInstallDir = path.join(tempDir, "plugins", "acme.sample-plugin");
+        await createRuntimeDist(runtimeDistDir);
+        // Protection injects the pack key into main.js at its placeholder.
+        await fs.writeFile(path.join(runtimeDistDir, "main.js"), `const K = "${RUNTIME_KEY_PLACEHOLDER}";`, "utf-8");
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await fs.mkdir(pluginInstallDir, { recursive: true });
+        await fs.writeFile(path.join(pluginInstallDir, "runtime.js"), "export default {};", "utf-8");
+
+        const packKey = derivePackEncryptionKey(crypto.randomBytes(32), crypto.randomBytes(16));
+        const manifest = {
+            manifestVersion: 2 as const,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+            contributes: { blueprintNodes: ["acme.sample-plugin.node"], widgets: [] },
+            permissions: [],
+        };
+
+        const result = await compileGameRuntimePreviewArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            controlPort: 47330,
+            controlToken: "token",
+            encryptionKey: packKey,
+            runtimePlugins: [{
+                manifest,
+                entry: "runtime.js",
+                entryPath: path.join(pluginInstallDir, "runtime.js"),
+            }],
+        });
+
+        // No loose game payload on disk: no pack.json, no assets/ dir, no plugins/ dir.
+        await expect(fs.access(path.join(result.appDir, "pack.json"))).rejects.toThrow();
+        await expect(fs.access(path.join(result.appDir, "assets"))).rejects.toThrow();
+        await expect(fs.access(path.join(result.appDir, "plugins"))).rejects.toThrow();
+        // The consolidated store and the support binary are present.
+        await expect(fs.access(path.join(result.appDir, RUNTIME_BUNDLE_FILENAME))).resolves.toBeUndefined();
+        await expect(fs.access(path.join(result.appDir, RUNTIME_SUPPORT_FILENAME))).resolves.toBeUndefined();
+        expect(result.packPath).toBe(path.join(result.appDir, RUNTIME_BUNDLE_FILENAME));
+
+        // The asset is addressed by an extension-free store entry; the media type
+        // is still known from the manifest.
+        expect(result.pack.assets.items[ASSET_ID].relativePath).toBe(`assets/${ASSET_ID}`);
+        expect(result.pack.assets.items[ASSET_ID].mimeType).toBe("image/png");
+
+        // main.js received the real key in place of the placeholder.
+        const mainJs = await fs.readFile(path.join(result.appDir, "main.js"), "utf-8");
+        expect(mainJs).toContain(packKey);
+        expect(mainJs).not.toContain(RUNTIME_KEY_PLACEHOLDER);
+
+        // The store round-trips through the runtime reader.
+        const reader = await openSealedBundle(
+            path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
+            path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+            packKey,
+        );
+        try {
+            const pack = JSON.parse((await reader.read("pack")).toString("utf-8"));
+            expect(pack.assets.items[ASSET_ID].relativePath).toBe(`assets/${ASSET_ID}`);
+            expect((await reader.read(`assets/${ASSET_ID}`)).toString("utf-8")).toBe("local image bytes");
+            expect((await reader.read("plugins/acme.sample-plugin/runtime.js")).toString("utf-8")).toBe("export default {};");
+        } finally {
+            await reader.close();
+        }
+    });
 });
 
 async function createRuntimeDist(runtimeDistDir: string): Promise<void> {
     await fs.mkdir(runtimeDistDir, { recursive: true });
     await fs.writeFile(path.join(runtimeDistDir, "main.js"), "// main", "utf-8");
+    await fs.writeFile(path.join(runtimeDistDir, "native.js"), "// native", "utf-8");
     await fs.writeFile(path.join(runtimeDistDir, "preload.js"), "// preload", "utf-8");
     await fs.writeFile(path.join(runtimeDistDir, "renderer.js"), "// renderer", "utf-8");
     await fs.writeFile(path.join(runtimeDistDir, "renderer.css"), "/* renderer css */", "utf-8");

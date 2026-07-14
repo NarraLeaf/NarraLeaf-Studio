@@ -97,10 +97,14 @@ import {
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
+    BLUEPRINT_NODE_TYPE_GAME_CHOOSE,
     BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT,
     BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
+    BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
     BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
@@ -111,6 +115,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_HIDE_DIALOG,
     BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_NEXT,
     BLUEPRINT_NODE_TYPE_GAME_QUIT,
@@ -204,6 +211,10 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
+    BLUEPRINT_NODE_TYPE_SAVED_GET,
+    BLUEPRINT_NODE_TYPE_SAVED_SET,
+    BLUEPRINT_NODE_TYPE_SCENE_GET,
+    BLUEPRINT_NODE_TYPE_SCENE_SET,
     BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE,
     BLUEPRINT_NODE_TYPE_SLIDER_GET_RANGE,
     BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE,
@@ -230,8 +241,10 @@ import { controlFlowBlueprintNodes } from "./controlFlowNodes";
 import { dataBlueprintNodes } from "./dataNodes";
 import { devtoolsBlueprintNodes } from "./devtoolsNodes";
 import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
+import { fnBlueprintNodes } from "./fnNodes";
 import { frameBlueprintNodes } from "./frameNodes";
 import { gameBlueprintNodes } from "./gameNodes";
+import { backlogBlueprintNodes } from "./backlogNodes";
 import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 import { resolveDataPinValue } from "./graphParamResolvers";
@@ -254,6 +267,7 @@ import {
     BLUEPRINT_VALUE_TYPE_TIMER,
 } from "@shared/types/blueprint/valueTypes";
 import { BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT } from "../types";
+import { resolveEffectiveBlueprintCatalogEntry, resolveEffectiveBlueprintNodePins } from "../effectivePins";
 
 function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAdapter {
     return {
@@ -286,6 +300,11 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                         }
                     },
                 },
+                localization: {
+                    getConfig: () => null,
+                    getLocale: async () => "",
+                    setLocale: async () => undefined,
+                },
                 frame: {
                     getParam: () => undefined,
                     emit: async () => undefined,
@@ -301,7 +320,13 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     listSaveIds: async () => [],
                     getSaveMetadata: async () => ({}),
                     getSavePreview: async () => null,
+                    getHistory: async () => [],
+                    restoreHistory: async () => undefined,
                     getNametag: () => null,
+                    getNotifications: () => [],
+                    getChoiceCount: () => 0,
+                    isNvlMode: () => false,
+                    choose: async () => undefined,
                     next: async () => undefined,
                     skip: async () => undefined,
                     showDialog: async () => undefined,
@@ -384,6 +409,11 @@ function createPageNavigationHostAdapter(
                     get: async () => undefined,
                     set: async () => undefined,
                 },
+                localization: {
+                    getConfig: () => null,
+                    getLocale: async () => "",
+                    setLocale: async () => undefined,
+                },
                 frame: {
                     getParam: () => undefined,
                     emit: async () => undefined,
@@ -401,7 +431,13 @@ function createPageNavigationHostAdapter(
                     listSaveIds: async () => [],
                     getSaveMetadata: async () => ({}),
                     getSavePreview: async () => null,
+                    getHistory: async () => [],
+                    restoreHistory: async () => undefined,
                     getNametag: () => null,
+                    getNotifications: () => [],
+                    getChoiceCount: () => 0,
+                    isNvlMode: () => false,
+                    choose: async () => undefined,
                     next: async () => undefined,
                     skip: async () => undefined,
                     showDialog: async () => undefined,
@@ -428,7 +464,13 @@ function createGameSaveHostAdapter(options: {
     listedIds?: string[];
     metadata?: unknown;
     previews?: Record<string, unknown>;
+    history?: Array<Record<string, unknown>>;
+    restoredIds?: Array<string | undefined>;
     nametag?: string | null;
+    notifications?: Array<{ id: string; message: string }>;
+    choiceCount?: number;
+    nvlMode?: boolean;
+    chosenIndexes?: number[];
     isInGame?: boolean;
     isGameOverlay?: boolean;
     quitSurfaceIds?: string[];
@@ -465,6 +507,11 @@ function createGameSaveHostAdapter(options: {
                     get: async () => undefined,
                     set: async () => undefined,
                 },
+                localization: {
+                    getConfig: () => null,
+                    getLocale: async () => "",
+                    setLocale: async () => undefined,
+                },
                 frame: {
                     getParam: () => undefined,
                     emit: async () => undefined,
@@ -490,7 +537,17 @@ function createGameSaveHostAdapter(options: {
                     listSaveIds: async () => options.listedIds ?? [],
                     getSaveMetadata: async () => options.metadata ?? {},
                     getSavePreview: async (id: string) => options.previews?.[id] as any ?? null,
+                    getHistory: async () => (options.history ?? []) as any,
+                    restoreHistory: async (id?: string) => {
+                        options.restoredIds?.push(id);
+                    },
                     getNametag: () => options.nametag ?? null,
+                    getNotifications: () => options.notifications ?? [],
+                    getChoiceCount: () => options.choiceCount ?? 0,
+                    isNvlMode: () => options.nvlMode ?? false,
+                    choose: async (index: number) => {
+                        options.chosenIndexes?.push(index);
+                    },
                     next: async () => {
                         options.nextCalls?.push(true);
                     },
@@ -533,6 +590,7 @@ describe("built-in blueprint nodes", () => {
             ...broadcastBlueprintNodes,
             ...frameBlueprintNodes,
             ...gameBlueprintNodes,
+            ...backlogBlueprintNodes,
             ...controlFlowBlueprintNodes,
             ...dataBlueprintNodes,
             ...elementBlueprintNodes,
@@ -582,6 +640,9 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(true);
         expect(frameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)?.hideInPalette).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_EMIT)).toBe(true);
@@ -734,6 +795,37 @@ describe("built-in blueprint nodes", () => {
         }
     });
 
+    it("concatenates Log fixed and dynamic value inputs like Concat", () => {
+        const logNode = devtoolsBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_LOG)!;
+        const devtoolsLog = vi.fn();
+        const hostAdapter = createPersistenceHostAdapter({});
+        hostAdapter.blueprintRuntime!.hostApi!.devtools.log = devtoolsLog;
+        const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+        try {
+            logNode.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "log", port: "in" } } },
+                    nodes: { log: { id: "log", type: BLUEPRINT_NODE_TYPE_LOG } },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "log", port: "in" } },
+                node: { id: "log", type: BLUEPRINT_NODE_TYPE_LOG },
+                params: {
+                    value: "result: ",
+                    __dynamicInputPinIds: ["in_1"],
+                    in_1: "42",
+                },
+                hostAdapter,
+            });
+
+            expect(devtoolsLog).toHaveBeenCalledWith("info", "result: 42");
+        } finally {
+            consoleLog.mockRestore();
+        }
+    });
+
     it("defines filtered and any keyboard event head card fields and pins", () => {
         registerCoreBlueprintNodes();
 
@@ -786,6 +878,10 @@ describe("built-in blueprint nodes", () => {
             BLUEPRINT_NODE_TYPE_LOCAL_SET,
             BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
             BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
+            BLUEPRINT_NODE_TYPE_SCENE_GET,
+            BLUEPRINT_NODE_TYPE_SCENE_SET,
+            BLUEPRINT_NODE_TYPE_SAVED_GET,
+            BLUEPRINT_NODE_TYPE_SAVED_SET,
         ].sort());
     });
 
@@ -1857,6 +1953,119 @@ describe("built-in blueprint nodes", () => {
         expect(localsAfterLoad).not.toHaveProperty("afterLoad");
     });
 
+    it("reads the dialogue backlog and restores the game from a history entry", async () => {
+        registerCoreBlueprintNodes();
+
+        // Get History exposes the entries array and its count to downstream nodes, then continues.
+        const backlogEntries = [
+            { id: "t1", type: "say", text: "Hello", character: "Alice", voice: "v1", selected: null, isPending: false },
+            { id: "t2", type: "menu", text: "Pick one", character: null, voice: null, selected: "Left", isPending: true },
+        ];
+        const localsFromBacklog: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "getBacklog",
+                entries: { main: { start: { nodeId: "backlog", port: "in" } } },
+                nodes: {
+                    backlog: { id: "backlog", type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET, params: {} },
+                    captureEntries: {
+                        id: "captureEntries",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "entries" },
+                    },
+                    captureCount: {
+                        id: "captureCount",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "count" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "backlog", port: "next" }, to: { nodeId: "captureEntries", port: "in" } },
+                    { from: { nodeId: "backlog", port: "entries" }, to: { nodeId: "captureEntries", port: "value" } },
+                    { from: { nodeId: "captureEntries", port: "next" }, to: { nodeId: "captureCount", port: "in" } },
+                    { from: { nodeId: "backlog", port: "count" }, to: { nodeId: "captureCount", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "backlog", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ history: backlogEntries }),
+            blueprintLocals: localsFromBacklog,
+        });
+        expect(localsFromBacklog.entries).toEqual(backlogEntries);
+        expect(localsFromBacklog.count).toBe(2);
+
+        // Restore From History forwards the entry id to the host and continues to `next`.
+        const restoredIds: Array<string | undefined> = [];
+        const localsAfterRestore: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "restoreHistory",
+                entries: { main: { start: { nodeId: "restore", port: "in" } } },
+                nodes: {
+                    restore: {
+                        id: "restore",
+                        type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE,
+                        params: { id: "t2" },
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "afterRestore" },
+                    },
+                    literal: {
+                        id: "literal",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                        params: { value: "continued" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "restore", port: "next" }, to: { nodeId: "after", port: "in" } },
+                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "restore", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ restoredIds }),
+            blueprintLocals: localsAfterRestore,
+        });
+        expect(restoredIds).toEqual(["t2"]);
+        expect(localsAfterRestore.afterRestore).toBe("continued");
+
+        // Undo Last Dialogue restores without an id (undo the most recent entry).
+        const undoneIds: Array<string | undefined> = [];
+        await executeGraph({
+            graph: {
+                id: "undoLast",
+                entries: { main: { start: { nodeId: "undo", port: "in" } } },
+                nodes: {
+                    undo: { id: "undo", type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST, params: {} },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "undo", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ restoredIds: undoneIds }),
+            blueprintLocals: {},
+        });
+        expect(undoneIds).toEqual([undefined]);
+
+        // Restore From History requires a non-empty entry id.
+        await expect(executeGraph({
+            graph: {
+                id: "restoreHistoryMissingId",
+                entries: { main: { start: { nodeId: "restore", port: "in" } } },
+                nodes: {
+                    restore: {
+                        id: "restore",
+                        type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE,
+                        params: { id: "  " },
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "restore", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ restoredIds: [] }),
+            blueprintLocals: {},
+        })).rejects.toThrow(/entry id is required/);
+    });
+
     it("uses class.md palette categories for the new node groups", () => {
         registerCoreBlueprintNodes();
 
@@ -1864,6 +2073,8 @@ describe("built-in blueprint nodes", () => {
         expect(broadcastBlueprintNodes.every(def => def.category === "Events")).toBe(true);
         expect(frameBlueprintNodes.every(def => def.category === "Page")).toBe(true);
         expect(gameBlueprintNodes.every(def => def.category === "Game")).toBe(true);
+        // Backlog / dialogue-history nodes live under the shared "Game" category.
+        expect(backlogBlueprintNodes.every(def => def.category === "Game")).toBe(true);
         const gameReadyHead = eventHeadBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY);
         expect(gameReadyHead?.displayName).toBe("On Game Ready");
         expect(gameReadyHead?.role).toBe("eventHead");
@@ -4294,6 +4505,86 @@ describe("built-in blueprint nodes", () => {
         expect(widgetPaletteTypes.has(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)).toBe(false);
     });
 
+    it("registers the Game UI slot nodes with pure/latent gating and slot widget palettes", async () => {
+        registerCoreBlueprintNodes();
+
+        expect(
+            gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS)?.pins.map(pin => pin.id),
+        ).toEqual(["notifications"]);
+        expect(
+            gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT)?.pins.map(pin => pin.id),
+        ).toEqual(["count"]);
+        expect(
+            gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE)?.pins.map(pin => pin.id),
+        ).toEqual(["isNvlMode"]);
+        expect(
+            gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_CHOOSE)?.pins.map(pin => pin.id),
+        ).toEqual(["in", "next", "index"]);
+
+        const valuePaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "widgetValue", surfaceId: "surface", elementId: "text", propPath: "text" },
+                widgetElementType: "nl.text",
+                isBlueprintValueGraph: true,
+            }).map(entry => entry.type),
+        );
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_CHOOSE)).toBe(false);
+
+        for (const widgetElementType of ["nl.notification.list", "nl.choice.list", "nl.nvl.list"]) {
+            const slotPaletteTypes = new Set(
+                blueprintNodeRegistry.listPaletteEntries({
+                    graphKind: "event",
+                    owner: { kind: "widgetMain", surfaceId: "surface", elementId: "slot-list" },
+                    widgetElementType,
+                }).map(entry => entry.type),
+            );
+            expect(slotPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)).toBe(true);
+            expect(slotPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_RENDER)).toBe(true);
+            expect(slotPaletteTypes.has(BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS)).toBe(true);
+            expect(slotPaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_CHOOSE)).toBe(true);
+        }
+
+        const chosenIndexes: number[] = [];
+        await executeGraph({
+            graph: {
+                id: "choose",
+                entries: { main: { start: { nodeId: "choose", port: "in" } } },
+                nodes: {
+                    choose: {
+                        id: "choose",
+                        type: BLUEPRINT_NODE_TYPE_GAME_CHOOSE,
+                        params: { index: 2 },
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "choose", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ chosenIndexes }),
+        });
+        expect(chosenIndexes).toEqual([2]);
+
+        await expect(executeGraph({
+            graph: {
+                id: "choose-invalid",
+                entries: { main: { start: { nodeId: "choose", port: "in" } } },
+                nodes: {
+                    choose: {
+                        id: "choose",
+                        type: BLUEPRINT_NODE_TYPE_GAME_CHOOSE,
+                        params: { index: -1 },
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "choose", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ chosenIndexes }),
+        })).rejects.toThrow("Select Choice: index must be a non-negative integer");
+    });
+
     it("exposes Blueprint Value nodes through the editor palette facade", () => {
         const entries = listBlueprintNodePaletteEntries({
             graphKind: "event",
@@ -4305,7 +4596,7 @@ describe("built-in blueprint nodes", () => {
 
         expect(byType.get(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)?.category).toBe("Events");
         expect(byType.get("blueprint.event.head.flush")?.category).toBe("Events");
-        expect(byType.get(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)?.category).toBe("Data");
+        expect(byType.get(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)?.category).toBe("Flow");
         expect(byType.get(BLUEPRINT_NODE_TYPE_ELEMENT_REF)?.category).toBe("Element");
         expect(byType.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(false);
         expect(byType.get(BLUEPRINT_NODE_TYPE_LOCAL_GET)?.category).toBe("Variables");
@@ -6248,5 +6539,170 @@ describe("built-in blueprint nodes", () => {
                 { hostAdapter, executionOwner: owner },
             ),
         ).toBe(64);
+    });
+});
+
+describe("fn blueprint nodes", () => {
+    const FN_HEAD_TYPE = "blueprint.fn.head";
+    const FN_CALL_TYPE = "blueprint.fn.call";
+    const FN_RETURN_TYPE = "blueprint.fn.return";
+    const CALL_SNAPSHOT = {
+        name: "Echo",
+        params: [{ pinId: "param_1_value", name: "input", valueType: "string" }],
+        returns: [{ pinId: "ret_1_value", name: "result", valueType: "integer" }],
+    };
+
+    it("maps invoke returns to Call Fn output values and forwards caller context", async () => {
+        const callDef = fnBlueprintNodes.find(def => def.type === FN_CALL_TYPE)!;
+        const invokeBlueprintFn = vi.fn(async () => ({ returns: { ret_1_value: 42 } }));
+        const params = {
+            fnRef: "fn:bp-a:head",
+            __fnSignatureSnapshot: CALL_SNAPSHOT,
+            param_1_value: "hello",
+        };
+        const node = { id: "call", type: FN_CALL_TYPE, params };
+
+        const result = await callDef.execute({
+            graph: {
+                id: "graph",
+                entries: { main: { start: { nodeId: "call", port: "in" } } },
+                nodes: { call: node },
+                edges: [],
+            },
+            entry: { start: { nodeId: "call", port: "in" } },
+            node,
+            params,
+            hostAdapter: {
+                host: "player",
+                blueprintRuntime: {
+                    surfaceId: "s1",
+                    setSurfaceState: () => undefined,
+                    getSurfaceState: () => undefined,
+                    emitDebug: () => undefined,
+                    dispatchElementBlueprintEvent: async () => undefined,
+                    invokeBlueprintFn,
+                },
+            },
+            executionOwner: { surfaceId: "s1", blueprintId: "bp-caller" },
+        });
+
+        expect(result).toEqual({ outputValues: { ret_1_value: 42 }, nextPort: "next" });
+        expect(invokeBlueprintFn).toHaveBeenCalledWith(
+            expect.objectContaining({
+                fnRef: "fn:bp-a:head",
+                args: { param_1_value: "hello" },
+                callerSurfaceId: "s1",
+                depth: 0,
+            }),
+        );
+    });
+
+    it("throws when the fn runtime is unavailable or no fn is picked", async () => {
+        const callDef = fnBlueprintNodes.find(def => def.type === FN_CALL_TYPE)!;
+        const baseCtx = {
+            graph: {
+                id: "graph",
+                entries: { main: { start: { nodeId: "call", port: "in" } } },
+                nodes: { call: { id: "call", type: FN_CALL_TYPE } },
+                edges: [],
+            },
+            entry: { start: { nodeId: "call", port: "in" } },
+            node: { id: "call", type: FN_CALL_TYPE },
+        };
+
+        await expect(
+            callDef.execute({
+                ...baseCtx,
+                params: { fnRef: "fn:bp-a:head" },
+                hostAdapter: { host: "player" },
+            }),
+        ).rejects.toThrow(/Fn runtime is unavailable/);
+
+        await expect(
+            callDef.execute({
+                ...baseCtx,
+                params: {},
+                hostAdapter: {
+                    host: "player",
+                    blueprintRuntime: {
+                        surfaceId: "s1",
+                        setSurfaceState: () => undefined,
+                        getSurfaceState: () => undefined,
+                        emitDebug: () => undefined,
+                        dispatchElementBlueprintEvent: async () => undefined,
+                        invokeBlueprintFn: async () => ({ returns: {} }),
+                    },
+                },
+            }),
+        ).rejects.toThrow(/Pick a function/);
+    });
+
+    it("resolves fn head parameter pins with per-pin labels and types", () => {
+        const headDef = blueprintNodeRegistry.get(FN_HEAD_TYPE) ?? fnBlueprintNodes.find(def => def.type === FN_HEAD_TYPE)!;
+        const pins = resolveEffectiveBlueprintNodePins(headDef, {
+            __fnParamPinIds: ["param_1_value", "param_2_value"],
+            __fnParamPinLabels: { param_1_value: "count", param_2_value: "flag" },
+            __fnParamPinTypes: { param_2_value: "boolean" },
+        });
+
+        const first = pins.find(pin => pin.id === "param_1_value");
+        const second = pins.find(pin => pin.id === "param_2_value");
+        expect(first).toMatchObject({ kind: "output", semantic: "data", label: "count", valueType: "string" });
+        expect(second).toMatchObject({ kind: "output", semantic: "data", label: "flag", valueType: "boolean" });
+
+        const entry = resolveEffectiveBlueprintCatalogEntry(headDef, {
+            __fnParamPinIds: ["param_1_value"],
+        });
+        expect(entry.pins.find(pin => pin.id === "param_1_value")?.removable).toBe(true);
+        expect(entry.dynamicInputPinTypeParamKey).toBe("__fnParamPinTypes");
+    });
+
+    it("synthesizes Call Fn pins from the signature snapshot", () => {
+        const callDef = fnBlueprintNodes.find(def => def.type === FN_CALL_TYPE)!;
+        const pins = resolveEffectiveBlueprintNodePins(callDef, { __fnSignatureSnapshot: CALL_SNAPSHOT });
+
+        expect(pins.find(pin => pin.id === "param_1_value")).toMatchObject({
+            kind: "input",
+            semantic: "data",
+            valueType: "string",
+            label: "input",
+            allowInlineLiteral: true,
+        });
+        expect(pins.find(pin => pin.id === "ret_1_value")).toMatchObject({
+            kind: "output",
+            semantic: "data",
+            valueType: "integer",
+            label: "result",
+        });
+        // Without a snapshot only the exec pins remain.
+        expect(resolveEffectiveBlueprintNodePins(callDef, {}).map(pin => pin.id)).toEqual(["in", "next"]);
+    });
+
+    it("never offers inline literals on Fn Return result pins", () => {
+        const returnDef = fnBlueprintNodes.find(def => def.type === FN_RETURN_TYPE)!;
+        const pins = resolveEffectiveBlueprintNodePins(returnDef, {
+            __fnReturnPinIds: ["ret_1_value", "ret_2_value"],
+            __fnReturnPinTypes: { ret_2_value: "json" },
+        });
+
+        expect(pins.find(pin => pin.id === "ret_1_value")?.allowInlineLiteral).toBe(false);
+        expect(pins.find(pin => pin.id === "ret_2_value")?.allowInlineLiteral).toBe(false);
+    });
+
+    it("allows Call Fn (but not Fn head/return) in Blueprint Value graph palettes", () => {
+        registerCoreBlueprintNodes();
+        const valuePaletteTypes = new Set(
+            blueprintNodeRegistry
+                .listPaletteEntries({
+                    graphKind: "event",
+                    owner: { kind: "widgetValue", surfaceId: "s1", elementId: "text", propPath: "props.text" },
+                    widgetElementType: "nl.text",
+                    isBlueprintValueGraph: true,
+                })
+                .map(entry => entry.type),
+        );
+        expect(valuePaletteTypes.has(FN_CALL_TYPE)).toBe(true);
+        expect(valuePaletteTypes.has(FN_HEAD_TYPE)).toBe(false);
+        expect(valuePaletteTypes.has(FN_RETURN_TYPE)).toBe(false);
     });
 });

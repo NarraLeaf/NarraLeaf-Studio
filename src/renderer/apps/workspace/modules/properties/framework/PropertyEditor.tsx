@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, memo, useEffect } from "react";
+import { useTranslation } from "@/lib/i18n";
 import { PropertyEditorSchema, FieldDefinition, PropertyEditorTab } from "./types";
 import { FieldRenderer } from "./fields";
 
@@ -40,6 +41,7 @@ function PropertyEditorInner<TData>({
     onChange,
     className = "",
 }: PropertyEditorProps<TData>) {
+    const { t } = useTranslation();
     const [savingCount, setSavingCount] = useState(0);
     const [activeTabId, setActiveTabId] = useState<string | null>(
         () => schema.defaultTabId ?? schema.tabs?.[0]?.id ?? null
@@ -81,9 +83,9 @@ function PropertyEditorInner<TData>({
     const hasTabs = sortedTabs.length > 0;
 
     return (
-        <div className={`text-gray-200 ${className}`}>
+        <div className={`text-fg ${className}`}>
             {hasTabs && (
-                <div className="border-b border-white/10 bg-[#05060a]/60">
+                <div className="border-b border-edge bg-surface-canvas/60">
                     <div className="flex flex-wrap gap-3 px-3 py-2 text-sm">
                         {sortedTabs.map((tab) => (
                             <button
@@ -92,7 +94,7 @@ function PropertyEditorInner<TData>({
                                 className={`px-2 py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
                                     activeTabId === tab.id
                                         ? "text-white"
-                                        : "text-gray-400 hover:text-gray-200"
+                                        : "text-fg-muted hover:text-fg"
                                 }`}
                                 onClick={() => setActiveTabId(tab.id)}
                             >
@@ -114,7 +116,7 @@ function PropertyEditorInner<TData>({
                 ))}
 
                 {schema.showSavingIndicator && isSaving && (
-                    <div className="text-xs text-gray-400 text-center">Saving...</div>
+                    <div className="text-xs text-fg-muted text-center">{t("properties.saving")}</div>
                 )}
             </div>
         </div>

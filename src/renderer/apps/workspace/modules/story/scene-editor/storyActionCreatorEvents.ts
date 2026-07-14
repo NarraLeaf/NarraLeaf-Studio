@@ -1,5 +1,3 @@
-import type { ActionCommandId } from "./storyActionCommands";
-
 export const STORY_ACTION_CREATOR_PANEL_ID = "narraleaf-studio:story-action-creator";
 export const STORY_ACTION_CREATE_REQUEST_EVENT = "narraleaf-studio:story-action-create-request";
 
@@ -13,7 +11,8 @@ export type StoryActionCreatorPanelPayload = {
 
 export type StoryActionCreateRequestDetail = {
     tabId: string;
-    commandId: ActionCommandId;
+    /** Built-in ActionCommandId, or a namespaced plugin story action id. */
+    commandId: string;
 };
 
 export function dispatchStoryActionCreateRequest(detail: StoryActionCreateRequestDetail): void {

@@ -14,6 +14,7 @@ import type {
     PluginApproveResult,
     PluginInstallResult,
     PluginListItem,
+    RuntimePluginDescriptor,
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type {
@@ -50,6 +51,7 @@ export enum IPCEventType {
     appGlobalStateGet = "app.globalState.get",
     appGlobalStateSet = "app.globalState.set",
     appGlobalStateGetAll = "app.globalState.getAll",
+    appGlobalStateChanged = "app.globalState.changed",
     appAddRecentProject = "app.addRecentProject",
     appSystemPath = "app.systemPath",
 
@@ -130,6 +132,7 @@ export enum IPCEventType {
     pluginUninstall = "plugin.uninstall",
     pluginRevoke = "plugin.revoke",
     pluginWorkspaceList = "plugin.workspaceList",
+    pluginRuntimeList = "plugin.runtimeList",
     pluginReportLoadError = "plugin.reportLoadError",
 
     privilegedFsCall = "privileged.fs.call",
@@ -259,6 +262,17 @@ export type IPCEvents = {
         response: {
             settings: Record<string, any>;
         };
+    };
+    // Host -> renderer push: fired for every window whenever any global-state key
+    // changes, so live views (e.g. the active i18n locale) can react in place.
+    [IPCEventType.appGlobalStateChanged]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: {
+            key: GlobalStateKeys;
+            value: GlobalStateValue<GlobalStateKeys>;
+        },
+        response: never;
     };
     [IPCEventType.appAddRecentProject]: {
         type: IPCMessageType.request,
@@ -921,6 +935,14 @@ export type IPCPluginManagerEvents = {
         data: {},
         response: {
             plugins: WorkspacePluginDescriptor[];
+        };
+    };
+    [IPCEventType.pluginRuntimeList]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            plugins: RuntimePluginDescriptor[];
         };
     };
     [IPCEventType.pluginReportLoadError]: {

@@ -33,6 +33,7 @@ import { useLayerOutlineContextMenus } from "@/lib/ui-editor/interaction/outline
 import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
+import { useTranslation } from "@/lib/i18n";
 
 export type UILayersPanelProps = {
     surfaceId: string;
@@ -134,6 +135,7 @@ export function UILayersPanel({
     inputDialog,
     allowAddSelectionToComponentLibrary = true,
 }: UILayersPanelProps) {
+    const { t } = useTranslation();
     const [docVersion, setDocVersion] = useState(0);
     const [selection, setSelection] = useState(stateService.getSelection());
     const [outlineRev, setOutlineRev] = useState(0);
@@ -261,14 +263,14 @@ export function UILayersPanel({
                 return;
             }
             void inputDialog
-                .showRenameDialog(element.name ?? element.type ?? "Layer", "layer")
+                .showRenameDialog(element.name ?? element.type ?? t("widgetChrome.outline.layer"), "layer")
                 .then(name => {
                     if (name) {
                         documentService.renameElement(element.id, name);
                     }
                 });
         },
-        [documentService, inputDialog]
+        [documentService, inputDialog, t]
     );
 
     const collectBranchIdsWithChildren = useCallback(
@@ -423,7 +425,7 @@ export function UILayersPanel({
     );
 
     if (!surface || !root || !outlineRoot || !outlineEffectiveRootId) {
-        return <div className="p-4 text-xs text-gray-500">No surface available</div>;
+        return <div className="p-4 text-xs text-fg-subtle">{t("widgetChrome.outline.noSurface")}</div>;
     }
 
     const activeDragElement = activeDragId ? document.elements[activeDragId] : undefined;
@@ -446,10 +448,10 @@ export function UILayersPanel({
 
     return (
         <div className="space-y-2 px-2 py-2" onContextMenu={openBlankContextMenu}>
-            <div className="text-xs uppercase tracking-wide text-gray-400">Layers</div>
+            <div className="text-xs tracking-wide text-fg-muted">{t("widgetChrome.outline.title")}</div>
             {isLinkedTree ? (
-                <div className="text-[10px] leading-snug text-amber-400/90 px-0.5">
-                    Linked surface — editing the linked app root tree (same as canvas).
+                <div className="text-2xs leading-snug text-amber-400/90 px-0.5">
+                    {t("widgetChrome.outline.linkedSurfaceHint")}
                 </div>
             ) : null}
             <DndContext

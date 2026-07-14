@@ -1,3 +1,4 @@
+import { useTranslation } from "@/lib/i18n";
 import { Progress } from "@/lib/components/elements";
 import { CheckCircle } from "lucide-react";
 import { StepConfig, WizardStep } from "../types";
@@ -14,16 +15,17 @@ interface WizardHeaderProps {
  * Header component for the project wizard showing progress and step navigation
  */
 export function WizardHeader({ steps, currentStep }: WizardHeaderProps) {
+    const { t } = useTranslation();
     const currentStepIndex = steps.findIndex(step => step.key === currentStep);
     const progress = ((currentStepIndex + 1) / steps.length) * 100;
 
     return (
-        <div className="p-6 border-b border-white/10">
+        <div className="p-6 border-b border-edge">
             <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                    <h1 className="text-xl font-semibold text-gray-200">Create New Project</h1>
-                    <span className="text-sm text-gray-400">
-                        Step {currentStepIndex + 1} of {steps.length}
+                    <h1 className="text-xl font-semibold text-fg">{t("wizard.header.title")}</h1>
+                    <span className="text-sm text-fg-muted">
+                        {t("wizard.header.stepIndicator", { current: currentStepIndex + 1, total: steps.length })}
                     </span>
                 </div>
 
@@ -37,8 +39,8 @@ export function WizardHeader({ steps, currentStep }: WizardHeaderProps) {
                                 <div className={`
                                     flex items-center gap-2 text-sm flex-shrink-0
                                     ${index <= currentStepIndex
-                                        ? "text-[#40a8c4]"
-                                        : "text-gray-500"
+                                        ? "text-primary"
+                                        : "text-fg-subtle"
                                     }
                                 `}>
                                     {index < currentStepIndex ? (
@@ -47,12 +49,12 @@ export function WizardHeader({ steps, currentStep }: WizardHeaderProps) {
                                         <div className={`
                                             w-4 h-4 rounded-full border-2
                                             ${index === currentStepIndex
-                                                ? "border-[#40a8c4] bg-[#40a8c4]/20"
+                                                ? "border-primary bg-primary/20"
                                                 : "border-gray-500"
                                             }
                                         `}>
                                             {index === currentStepIndex && (
-                                                <div className="w-full h-full rounded-full bg-[#40a8c4] scale-50" />
+                                                <div className="w-full h-full rounded-full bg-primary scale-50" />
                                             )}
                                         </div>
                                     )}
@@ -66,7 +68,7 @@ export function WizardHeader({ steps, currentStep }: WizardHeaderProps) {
                                     <div className={`
                                         w-8 h-px transition-colors duration-150
                                         ${index < currentStepIndex
-                                            ? "bg-[#40a8c4]"
+                                            ? "bg-primary"
                                             : "bg-gray-600"
                                         }
                                     `} />

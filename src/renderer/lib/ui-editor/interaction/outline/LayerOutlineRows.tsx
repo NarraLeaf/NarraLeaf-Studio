@@ -5,6 +5,7 @@ import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { uiElementTypeAcceptsChildren } from "@shared/types/ui-editor/document";
 import { DEFAULT_UI_ROOT_NAME } from "@shared/constants/ui-editor";
 import { getOutlineVisualChildren } from "@/lib/ui-editor/interaction/outline/outlineDropGeometry";
+import { useTranslation } from "@/lib/i18n";
 
 export const OUTLINE_ROOT_WIDGET_TYPE = "nl.root";
 const ROW_LEFT_PADDING = 6;
@@ -42,7 +43,7 @@ function useActiveOutlineGapData(): OutlineGapDropData | null {
 function getOutlineElementLabel(element: UIElement): string {
     return element.type === OUTLINE_ROOT_WIDGET_TYPE
         ? DEFAULT_UI_ROOT_NAME
-        : element.name ?? element.type ?? element.id;
+        : element.name ?? element.type;
 }
 
 export type OutlineRowBase = {
@@ -72,6 +73,7 @@ export function OutlineRow({
     onToggleVisible,
     onStartRename,
 }: OutlineRowBase & { element: UIElement; depth: number }) {
+    const { t } = useTranslation();
     const { attributes, listeners, setActivatorNodeRef, setNodeRef, isDragging } = useDraggable({
         id: element.id,
     });
@@ -92,8 +94,8 @@ export function OutlineRow({
             ? "bg-primary/25 text-white ring-1 ring-primary/45"
             : "bg-primary/[0.12] text-white"
         : isDropParentPreview
-          ? "bg-primary/[0.10] text-gray-100 ring-1 ring-primary/25"
-          : "text-gray-300 hover:bg-white/[0.055]";
+          ? "bg-primary/[0.10] text-fg ring-1 ring-primary/25"
+          : "text-fg-muted hover:bg-white/[0.055]";
     const rowDropPreviewClass = isDropParentPreview
         ? "shadow-[inset_2px_0_0_rgba(64,168,196,0.55)]"
         : "";
@@ -114,7 +116,7 @@ export function OutlineRow({
             {depth > 0 ? (
                 <span
                     aria-hidden
-                    className="pointer-events-none absolute top-[14px] h-px bg-white/[0.09]"
+                    className="pointer-events-none absolute top-[14px] h-px bg-fill"
                     style={{
                         left: rowPaddingLeft - GUIDE_OFFSET,
                         width: GUIDE_OFFSET,
@@ -129,9 +131,9 @@ export function OutlineRow({
             >
                 <button
                     type="button"
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-500 transition-colors hover:bg-white/5 hover:text-white disabled:pointer-events-none disabled:opacity-25"
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-subtle transition-colors hover:bg-fill-subtle hover:text-white disabled:pointer-events-none disabled:opacity-25"
                     disabled={!hasChildren}
-                    aria-label={expanded ? "Collapse" : "Expand"}
+                    aria-label={expanded ? t("common.collapse") : t("common.expand")}
                     onClick={e => {
                         e.stopPropagation();
                         if (!hasChildren) {
@@ -153,15 +155,15 @@ export function OutlineRow({
                 <button
                     type="button"
                     ref={setActivatorNodeRef}
-                    className="flex h-5 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded text-gray-500/70 opacity-60 transition hover:text-white hover:opacity-100 active:cursor-grabbing group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100"
-                    aria-label="Drag to reorder"
+                    className="flex h-5 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded text-fg-subtle/70 opacity-60 transition hover:text-white hover:opacity-100 active:cursor-grabbing group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100"
+                    aria-label={t("widgetChrome.outline.dragToReorder")}
                     {...attributes}
                     {...listeners}
                 >
                     <GripVertical className="h-3.5 w-3.5" />
                 </button>
                 {element.type === OUTLINE_ROOT_WIDGET_TYPE ? (
-                    <Lock className="h-3 w-3 shrink-0 text-gray-500" aria-hidden />
+                    <Lock className="h-3 w-3 shrink-0 text-fg-subtle" aria-hidden />
                 ) : (
                     <span className="h-3 w-1 shrink-0" />
                 )}
@@ -180,17 +182,17 @@ export function OutlineRow({
                 >
                     <span className="min-w-0 truncate">{label}</span>
                     {element.type !== OUTLINE_ROOT_WIDGET_TYPE ? (
-                        <span className="min-w-0 max-w-[7rem] truncate font-mono text-[10px] font-normal text-gray-500 opacity-0 transition-opacity group-hover/outline-row:opacity-100">
+                        <span className="min-w-0 max-w-[7rem] truncate font-mono text-2xs font-normal text-fg-subtle opacity-0 transition-opacity group-hover/outline-row:opacity-100">
                             {element.type.replace(/^nl\./, "")}
                         </span>
                     ) : null}
                 </button>
                 <button
                     type="button"
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 transition hover:bg-white/5 hover:text-white disabled:pointer-events-none disabled:opacity-25 ${
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-subtle transition hover:bg-fill-subtle hover:text-white disabled:pointer-events-none disabled:opacity-25 ${
                         visible ? "opacity-0 group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100" : "opacity-100"
                     }`}
-                    aria-label={visible ? "Hide" : "Show"}
+                    aria-label={visible ? t("common.hide") : t("common.show")}
                     disabled={element.type === OUTLINE_ROOT_WIDGET_TYPE}
                     onClick={e => onToggleVisible(element, e)}
                 >
@@ -236,15 +238,15 @@ export function OutlineDragPreview({ element }: { element: UIElement }) {
                 visible ? "" : "opacity-70"
             }`}
         >
-            <GripVertical className="h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
+            <GripVertical className="h-3.5 w-3.5 shrink-0 text-fg-muted" aria-hidden />
             {element.type === OUTLINE_ROOT_WIDGET_TYPE ? (
-                <Lock className="h-3 w-3 shrink-0 text-gray-500" aria-hidden />
+                <Lock className="h-3 w-3 shrink-0 text-fg-subtle" aria-hidden />
             ) : (
                 <span className="h-3 w-1 shrink-0" />
             )}
             <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
             {element.type !== OUTLINE_ROOT_WIDGET_TYPE ? (
-                <span className="min-w-0 max-w-[7rem] truncate font-mono text-[10px] font-normal text-gray-500">
+                <span className="min-w-0 max-w-[7rem] truncate font-mono text-2xs font-normal text-fg-subtle">
                     {element.type.replace(/^nl\./, "")}
                 </span>
             ) : null}

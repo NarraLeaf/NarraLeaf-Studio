@@ -1,7 +1,7 @@
 import type {
     StoryActionPayload,
     StoryBlock,
-    StoryCharacterVariantSelection,
+    StoryBlockId,
     StoryCodePayload,
     StoryConditionRef,
     StoryControlPayload,
@@ -13,16 +13,20 @@ import type {
     StoryTransformRef,
     StoryTransformPreset,
     StoryTextSegment,
+    StoryVariableRef,
     StoryVariableScope,
+    StoryVariableValueType,
 } from "@shared/types/story";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image as ImageIcon, Music, Palette, Trash2, Video } from "lucide-react";
+import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
+import { useTranslation } from "@/lib/i18n";
+import type { Translator } from "@shared/i18n";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ChevronRight, Image as ImageIcon, Music, Palette, Trash2, Video, X } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "@/apps/workspace/context";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { Character } from "@/lib/workspace/services/character/Character";
-import type { CharacterForm } from "@/lib/workspace/services/character/types";
 import { Select, type SelectOption } from "@/lib/components/elements";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
@@ -31,144 +35,330 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
+import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
+import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
+import { ConditionEditor } from "./ConditionEditor";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { describeBlock, getBlockBadgeInfo } from "./storySceneBlockUtils";
-import { StoryMotionPicker } from "../../story-motion";
+import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
+import { DisplayableTargetField } from "./DisplayableTargetField";
+import { StoryLayerField } from "./StoryLayerField";
+import { MotionField } from "../../story-motion";
 
-const FIELD_LABEL_CLASS = "block text-xs font-medium text-gray-400 mb-1";
-const TEXTAREA_CLASS = "w-full resize-none rounded-md border border-white/10 bg-[#1e1f22] px-3 py-2 text-sm text-gray-300 outline-none transition-colors focus:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50";
+const FIELD_LABEL_CLASS = "block text-xs font-medium text-fg-muted mb-1";
+const TEXTAREA_CLASS = "w-full resize-none rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-fg-muted outline-none transition-colors focus:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50";
 const SELECT_CLASS = "[&>button]:h-9 [&>button]:min-h-[34px] [&>button]:py-0";
 
-const VARIABLE_SCOPE_OPTIONS: SelectOption[] = [
-    { value: "sceneLocal", label: "Scene local" },
-    { value: "studioGlobal", label: "Studio global" },
-    { value: "gamePersistent", label: "Game persistent" },
+type TFunc = Translator["t"];
+
+const variableScopeOptions = (t: TFunc): SelectOption[] => [
+    { value: "scene", label: t("storyInspector.variableScope.scene") },
+    { value: "saved", label: t("storyInspector.variableScope.saved") },
+    { value: "persistent", label: t("storyInspector.variableScope.persistent") },
 ];
 
-const TRANSFORM_PRESET_OPTIONS: SelectOption[] = [
-    { value: "none", label: "None" },
-    { value: "left", label: "Left" },
-    { value: "center", label: "Center" },
-    { value: "right", label: "Right" },
-    { value: "fadeIn", label: "Fade in" },
-    { value: "fadeOut", label: "Fade out" },
-    { value: "slideLeft", label: "Slide left" },
-    { value: "slideRight", label: "Slide right" },
-    { value: "slideUp", label: "Slide up" },
-    { value: "slideDown", label: "Slide down" },
-    { value: "zoom", label: "Zoom" },
-    { value: "scale", label: "Scale" },
-    { value: "rotate", label: "Rotate" },
-    { value: "opacity", label: "Opacity" },
-    { value: "darken", label: "Darken" },
-    { value: "circleReveal", label: "Circle reveal" },
-    { value: "circleClose", label: "Circle close" },
-    { value: "wipe", label: "Wipe" },
+type DeclaredVariableOption = { id: string; name: string; valueType: StoryVariableValueType };
+
+type StoryVariableOptions = {
+    scene: DeclaredVariableOption[];
+    saved: DeclaredVariableOption[];
+    persistent: DeclaredVariableOption[];
+};
+
+/** Read declared scene/saved variables (from the story document) and persistent variables (shared blueprint store). */
+function useStoryVariableOptions(document: StoryDocument, sceneId: StorySceneId): StoryVariableOptions {
+    const { context, isInitialized } = useWorkspace();
+    const [persistent, setPersistent] = useState<DeclaredVariableOption[]>([]);
+    useEffect(() => {
+        if (!context || !isInitialized) return;
+        const service = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        const read = () => {
+            const bpDoc = service.getBlueprintDocument();
+            setPersistent(
+                Object.values(bpDoc.persistentVariables ?? {}).map(variable => ({
+                    id: variable.storageKey,
+                    name: variable.name,
+                    valueType: (variable.valueType as StoryVariableValueType) ?? "string",
+                })),
+            );
+        };
+        read();
+        return service.onBlueprintHistoryChanged(read);
+    }, [context, isInitialized]);
+    return useMemo(() => {
+        const scene = Object.values(document.scenes[sceneId]?.sceneVariables ?? {}).map(variable => ({
+            id: variable.id,
+            name: variable.name,
+            valueType: variable.valueType,
+        }));
+        const saved = Object.values(document.savedVariables ?? {}).map(variable => ({
+            id: variable.id,
+            name: variable.name,
+            valueType: variable.valueType,
+        }));
+        return { scene, saved, persistent };
+    }, [document, sceneId, persistent]);
+}
+
+function refVariableId(ref: StoryVariableRef): string {
+    return ref.scope === "persistent" ? ref.storageKey : ref.variableId;
+}
+
+function makeVariableRef(scope: StoryVariableScope, id: string): StoryVariableRef {
+    return scope === "persistent" ? { scope: "persistent", storageKey: id } : { scope, variableId: id };
+}
+
+function resolveRefValueType(ref: StoryVariableRef, options: StoryVariableOptions): StoryVariableValueType {
+    const id = refVariableId(ref);
+    return options[ref.scope].find(option => option.id === id)?.valueType ?? "string";
+}
+
+/** Scope + declared-variable picker. Shows variable names; internal ids are never displayed. */
+function VariableRefPicker(props: {
+    value: StoryVariableRef;
+    options: StoryVariableOptions;
+    onChange: (ref: StoryVariableRef) => void;
+}) {
+    const { t } = useTranslation();
+    const scope = props.value.scope;
+    const declared = props.options[scope];
+    const variableOptions: SelectOption[] = declared.length
+        ? declared.map(option => ({ value: option.id, label: option.name }))
+        : [{ value: "", label: t("storyInspector.noVariablesDeclared") }];
+    return (
+        <>
+            <SelectField
+                label={t("storyInspector.field.scope")}
+                options={variableScopeOptions(t)}
+                value={scope}
+                onChange={next => props.onChange(makeVariableRef(next as StoryVariableScope, ""))}
+            />
+            <SelectField
+                label={t("storyInspector.field.variable")}
+                options={variableOptions}
+                value={refVariableId(props.value)}
+                onChange={id => props.onChange(makeVariableRef(scope, String(id)))}
+            />
+        </>
+    );
+}
+
+/** Value editor whose control matches the declared variable type. */
+function VariableValueField(props: {
+    valueType: StoryVariableValueType;
+    value: StoryLiteralValue;
+    onChange: (value: StoryLiteralValue) => void;
+}) {
+    const { t } = useTranslation();
+    if (props.valueType === "boolean") {
+        return <CheckboxField label={t("storyInspector.field.value")} checked={props.value === true} onChange={checked => props.onChange(checked)} />;
+    }
+    if (props.valueType === "number") {
+        return (
+            <NumberField
+                label={t("storyInspector.field.value")}
+                value={typeof props.value === "number" ? props.value : undefined}
+                onChange={value => props.onChange(value ?? 0)}
+            />
+        );
+    }
+    if (props.valueType === "json") {
+        const text = typeof props.value === "string" ? props.value : JSON.stringify(props.value ?? null);
+        return (
+            <LabeledTextarea
+                label={t("storyInspector.field.valueJson")}
+                value={text}
+                onChange={next => {
+                    try {
+                        props.onChange(JSON.parse(next) as StoryLiteralValue);
+                    } catch {
+                        props.onChange(next);
+                    }
+                }}
+            />
+        );
+    }
+    return <TextField label={t("storyInspector.field.value")} value={String(props.value ?? "")} onChange={value => props.onChange(value)} />;
+}
+
+const transformPresetOptions = (t: TFunc): SelectOption[] => [
+    { value: "none", label: t("common.none") },
+    { value: "left", label: t("storyInspector.transformPreset.left") },
+    { value: "center", label: t("storyInspector.transformPreset.center") },
+    { value: "right", label: t("storyInspector.transformPreset.right") },
+    { value: "fadeIn", label: t("storyInspector.transformPreset.fadeIn") },
+    { value: "fadeOut", label: t("storyInspector.transformPreset.fadeOut") },
+    { value: "slideLeft", label: t("storyInspector.transformPreset.slideLeft") },
+    { value: "slideRight", label: t("storyInspector.transformPreset.slideRight") },
+    { value: "slideUp", label: t("storyInspector.transformPreset.slideUp") },
+    { value: "slideDown", label: t("storyInspector.transformPreset.slideDown") },
+    { value: "zoom", label: t("storyInspector.transformPreset.zoom") },
+    { value: "scale", label: t("storyInspector.transformPreset.scale") },
+    { value: "rotate", label: t("storyInspector.transformPreset.rotate") },
+    { value: "opacity", label: t("storyInspector.transformPreset.opacity") },
+    { value: "darken", label: t("storyInspector.transformPreset.darken") },
+    { value: "circleReveal", label: t("storyInspector.transformPreset.circleReveal") },
+    { value: "circleClose", label: t("storyInspector.transformPreset.circleClose") },
+    { value: "wipe", label: t("storyInspector.transformPreset.slideReveal") },
 ];
 
-const EASING_OPTIONS: SelectOption[] = [
-    { value: "", label: "Default" },
-    { value: "linear", label: "Linear" },
-    { value: "easeIn", label: "Ease in" },
-    { value: "easeOut", label: "Ease out" },
-    { value: "easeInOut", label: "Ease in/out" },
-    { value: "circIn", label: "Circ in" },
-    { value: "circOut", label: "Circ out" },
-    { value: "circInOut", label: "Circ in/out" },
-    { value: "backIn", label: "Back in" },
-    { value: "backOut", label: "Back out" },
-    { value: "backInOut", label: "Back in/out" },
-    { value: "anticipate", label: "Anticipate" },
+const easingOptions = (t: TFunc): SelectOption[] => [
+    { value: "", label: t("storyInspector.easing.default") },
+    { value: "linear", label: t("storyInspector.easing.linear") },
+    { value: "easeIn", label: t("storyInspector.easing.easeIn") },
+    { value: "easeOut", label: t("storyInspector.easing.easeOut") },
+    { value: "easeInOut", label: t("storyInspector.easing.easeInOut") },
+    { value: "circIn", label: t("storyInspector.easing.circIn") },
+    { value: "circOut", label: t("storyInspector.easing.circOut") },
+    { value: "circInOut", label: t("storyInspector.easing.circInOut") },
+    { value: "backIn", label: t("storyInspector.easing.backIn") },
+    { value: "backOut", label: t("storyInspector.easing.backOut") },
+    { value: "backInOut", label: t("storyInspector.easing.backInOut") },
+    { value: "anticipate", label: t("storyInspector.easing.anticipate") },
 ];
 
-const TRANSITION_OPTIONS: SelectOption[] = [
-    { value: "none", label: "None" },
-    { value: "dissolve", label: "Dissolve" },
-    { value: "fadeIn", label: "Fade in" },
-    { value: "maskCircle", label: "Mask circle" },
-    { value: "maskWipe", label: "Mask wipe" },
+const transitionOptions = (t: TFunc): SelectOption[] => [
+    { value: "none", label: t("common.none") },
+    { value: "dissolve", label: t("storyInspector.transition.dissolve") },
+    { value: "blurDissolve", label: t("storyInspector.transition.blurDissolve") },
+    { value: "fadeIn", label: t("storyInspector.transition.fadeIn") },
+    { value: "maskCircle", label: t("storyInspector.transition.maskCircle") },
+    { value: "softIris", label: t("storyInspector.transition.softIris") },
+    { value: "maskWipe", label: t("storyInspector.transition.maskWipe") },
+    { value: "softWipe", label: t("storyInspector.transition.softWipe") },
+    { value: "blinds", label: t("storyInspector.transition.blinds") },
+    { value: "slide", label: t("storyInspector.transition.slide") },
+    { value: "throughColor", label: t("storyInspector.transition.throughColor") },
 ];
 
-const DISPLAYABLE_KIND_OPTIONS: SelectOption[] = [
-    { value: "", label: "Infer" },
-    { value: "character", label: "Character" },
-    { value: "image", label: "Image" },
-    { value: "text", label: "Text" },
-    { value: "layer", label: "Layer" },
+const wipeDirectionOptions = (t: TFunc): SelectOption[] => [
+    { value: "left", label: t("storyInspector.wipeDirection.left") },
+    { value: "right", label: t("storyInspector.wipeDirection.right") },
+    { value: "top", label: t("storyInspector.wipeDirection.top") },
+    { value: "bottom", label: t("storyInspector.wipeDirection.bottom") },
 ];
 
-const IMAGE_OPERATION_OPTIONS: SelectOption[] = [
-    { value: "create", label: "Create / update" },
-    { value: "setSource", label: "Set source" },
-    { value: "show", label: "Show" },
-    { value: "hide", label: "Hide" },
+const blindsOrientationOptions = (t: TFunc): SelectOption[] => [
+    { value: "horizontal", label: t("storyInspector.blindsOrientation.horizontal") },
+    { value: "vertical", label: t("storyInspector.blindsOrientation.vertical") },
 ];
 
-const DISPLAYABLE_OPERATION_OPTIONS: SelectOption[] = [
-    { value: "transform", label: "Transform" },
-    { value: "show", label: "Show" },
-    { value: "hide", label: "Hide" },
+const throughColorPatternOptions = (t: TFunc): SelectOption[] => [
+    { value: "plain", label: t("storyInspector.throughColorPattern.plain") },
+    { value: "linear", label: t("storyInspector.throughColorPattern.linear") },
+    { value: "blinds", label: t("storyInspector.throughColorPattern.blinds") },
+    { value: "iris", label: t("storyInspector.throughColorPattern.iris") },
 ];
 
-const TEXT_OPERATION_OPTIONS: SelectOption[] = [
-    { value: "create", label: "Create / update" },
-    { value: "setText", label: "Set text" },
-    { value: "show", label: "Show" },
-    { value: "hide", label: "Hide" },
-    { value: "setFontSize", label: "Set font size" },
-    { value: "setFontColor", label: "Set font color" },
+const transitionHints = (t: TFunc): Record<string, string> => ({
+    dissolve: t("storyInspector.transitionHint.dissolve"),
+    blurDissolve: t("storyInspector.transitionHint.blurDissolve"),
+    fadeIn: t("storyInspector.transitionHint.fadeIn"),
+    maskCircle: t("storyInspector.transitionHint.maskCircle"),
+    softIris: t("storyInspector.transitionHint.softIris"),
+    maskWipe: t("storyInspector.transitionHint.maskWipe"),
+    softWipe: t("storyInspector.transitionHint.softWipe"),
+    blinds: t("storyInspector.transitionHint.blinds"),
+    slide: t("storyInspector.transitionHint.slide"),
+    throughColor: t("storyInspector.transitionHint.throughColor"),
+});
+
+const imageOperationOptions = (t: TFunc): SelectOption[] => [
+    { value: "create", label: t("storyInspector.imageOperation.create") },
+    { value: "setSource", label: t("storyInspector.imageOperation.setSource") },
+    { value: "show", label: t("common.show") },
+    { value: "hide", label: t("common.hide") },
 ];
 
-const LAYER_OPERATION_OPTIONS: SelectOption[] = [
-    { value: "create", label: "Create" },
-    { value: "setZIndex", label: "Set z-index" },
-    { value: "show", label: "Show" },
-    { value: "hide", label: "Hide" },
-    { value: "transform", label: "Transform" },
+const displayableOperationOptions = (t: TFunc): SelectOption[] => [
+    { value: "transform", label: t("storyInspector.displayableOperation.transform") },
+    { value: "show", label: t("common.show") },
+    { value: "hide", label: t("common.hide") },
+    { value: "mask", label: t("storyInspector.displayableOperation.mask") },
+    { value: "clearMask", label: t("storyInspector.displayableOperation.clearMask") },
+    { value: "clip", label: t("storyInspector.displayableOperation.clip") },
+    { value: "clearClip", label: t("storyInspector.displayableOperation.clearClip") },
+    { value: "filter", label: t("storyInspector.displayableOperation.filter") },
+    { value: "clearFilter", label: t("storyInspector.displayableOperation.clearFilter") },
+    { value: "darken", label: t("storyInspector.displayableOperation.darken") },
+    { value: "circleReveal", label: t("storyInspector.displayableOperation.circleReveal") },
+    { value: "circleClose", label: t("storyInspector.displayableOperation.circleClose") },
+    { value: "wipe", label: t("storyInspector.displayableOperation.wipe") },
 ];
 
-const VIDEO_OPERATION_OPTIONS: SelectOption[] = [
-    { value: "create", label: "Create" },
-    { value: "show", label: "Show" },
-    { value: "hide", label: "Hide" },
-    { value: "play", label: "Play" },
+const DISPLAYABLE_EFFECT_OPERATIONS = new Set([
+    "mask", "clearMask", "clip", "clearClip", "filter", "clearFilter", "darken", "circleReveal", "circleClose", "wipe",
+]);
+
+const displayableEffectHints = (t: TFunc): Record<string, string> => ({
+    mask: t("storyInspector.displayableEffectHint.mask"),
+    clearMask: t("storyInspector.displayableEffectHint.clearMask"),
+    clip: t("storyInspector.displayableEffectHint.clip"),
+    clearClip: t("storyInspector.displayableEffectHint.clearClip"),
+    filter: t("storyInspector.displayableEffectHint.filter"),
+    clearFilter: t("storyInspector.displayableEffectHint.clearFilter"),
+    darken: t("storyInspector.displayableEffectHint.darken"),
+    circleReveal: t("storyInspector.displayableEffectHint.circleReveal"),
+    circleClose: t("storyInspector.displayableEffectHint.circleClose"),
+    wipe: t("storyInspector.displayableEffectHint.wipe"),
+});
+
+const textOperationOptions = (t: TFunc): SelectOption[] => [
+    { value: "create", label: t("storyInspector.textOperation.create") },
+    { value: "setText", label: t("storyInspector.textOperation.setText") },
+    { value: "show", label: t("common.show") },
+    { value: "hide", label: t("common.hide") },
+    { value: "setFontSize", label: t("storyInspector.textOperation.setFontSize") },
+    { value: "setFontColor", label: t("storyInspector.textOperation.setFontColor") },
 ];
 
-const AUDIO_OPERATION_OPTIONS: SelectOption[] = [
-    { value: "setBgm", label: "Set BGM" },
-    { value: "playSound", label: "Play sound" },
-    { value: "stopSound", label: "Stop sound" },
-    { value: "pauseSound", label: "Pause sound" },
-    { value: "resumeSound", label: "Resume sound" },
-    { value: "setVolume", label: "Set volume" },
-    { value: "setRate", label: "Set rate" },
-    { value: "muteSound", label: "Mute / unmute" },
+// `transform` is intentionally omitted: transforming a layer goes through the unified
+// "Transform displayable" target list (which includes both built-in layers). The `layer` action
+// stays layer-lifecycle only. `transform` remains valid in the type + compiler so pre-existing
+// layer-transform blocks still compile; it is just no longer offered as a new choice here.
+const layerOperationOptions = (t: TFunc): SelectOption[] => [
+    { value: "create", label: t("common.create") },
+    { value: "setZIndex", label: t("storyInspector.layerOperation.setZIndex") },
+    { value: "show", label: t("common.show") },
+    { value: "hide", label: t("common.hide") },
 ];
 
-const SCREEN_EFFECT_OPTIONS: SelectOption[] = [
-    { value: "blink", label: "Blink" },
-    { value: "vignette", label: "Vignette" },
+const videoOperationOptions = (t: TFunc): SelectOption[] => [
+    { value: "create", label: t("common.create") },
+    { value: "show", label: t("common.show") },
+    { value: "hide", label: t("common.hide") },
+    { value: "play", label: t("storyInspector.videoOperation.play") },
 ];
 
-const CONDITION_OPERATOR_OPTIONS: SelectOption[] = [
-    { value: "isTrue", label: "Is true" },
-    { value: "isFalse", label: "Is false" },
-    { value: "equals", label: "Equals" },
-    { value: "notEquals", label: "Not equals" },
-    { value: "exists", label: "Exists" },
+const audioOperationOptions = (t: TFunc): SelectOption[] => [
+    { value: "setBgm", label: t("storyInspector.audioOperation.setBgm") },
+    { value: "playSound", label: t("storyInspector.audioOperation.playSound") },
+    { value: "stopSound", label: t("storyInspector.audioOperation.stopSound") },
+    { value: "pauseSound", label: t("storyInspector.audioOperation.pauseSound") },
+    { value: "resumeSound", label: t("storyInspector.audioOperation.resumeSound") },
+    { value: "setVolume", label: t("storyInspector.audioOperation.setVolume") },
+    { value: "setRate", label: t("storyInspector.audioOperation.setRate") },
+    { value: "muteSound", label: t("storyInspector.audioOperation.muteSound") },
 ];
 
-const WAIT_MODE_OPTIONS: SelectOption[] = [
-    { value: "duration", label: "Duration" },
-    { value: "click", label: "Click" },
+const screenEffectOptions = (t: TFunc): SelectOption[] => [
+    { value: "blink", label: t("storyInspector.screenEffectOption.blink") },
+    { value: "vignette", label: t("storyInspector.screenEffectOption.vignette") },
 ];
 
-const BRANCH_OPTIONS: SelectOption[] = [
-    { value: "if", label: "If" },
-    { value: "elseIf", label: "Else if" },
-    { value: "else", label: "Else" },
+const waitModeOptions = (t: TFunc): SelectOption[] => [
+    { value: "duration", label: t("storyInspector.waitMode.duration") },
+    { value: "click", label: t("storyInspector.waitMode.click") },
 ];
 
+const branchOptions = (t: TFunc): SelectOption[] => [
+    { value: "if", label: t("storyInspector.branch.if") },
+    { value: "elseIf", label: t("storyInspector.branch.elseIf") },
+    { value: "else", label: t("storyInspector.branch.else") },
+];
+
+// Language names are product / technology proper nouns and are not translated.
 const CODE_LANGUAGE_OPTIONS: SelectOption[] = [
     { value: "narraleaf", label: "NarraLeaf" },
     { value: "typescript", label: "TypeScript" },
@@ -184,24 +374,43 @@ export function ActionInspector(props: {
     onClose: () => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     generateTextId: () => string;
+    onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
 }) {
+    const { t } = useTranslation();
     const block = props.block;
     const { label, icon: Icon, iconColor } = getBlockBadgeInfo(block);
 
     return (
         <div
-            className="mt-2 max-w-3xl rounded-xl border border-white/10 bg-[#16191e] p-3 shadow-lg"
+            className="mt-2 max-w-3xl animate-scale-in rounded-xl border border-edge bg-[#16191e] p-3 shadow-lg"
             onClick={event => event.stopPropagation()}
             onMouseDown={event => event.stopPropagation()}
+            onKeyDown={event => {
+                if (event.key === "Escape") {
+                    event.stopPropagation();
+                    props.onClose();
+                }
+            }}
         >
             <div className="mb-3 flex items-center gap-2">
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04]">
+                <span
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle"
+                    style={{ boxShadow: `inset 0 0 0 1px ${iconColor}22` }}
+                >
                     <Icon className="h-4 w-4" style={{ color: iconColor }} />
                 </span>
-                <div className="min-w-0">
-                    <div className="text-sm font-medium text-slate-100">{label}</div>
-                    <div className="truncate text-xs text-slate-500">{describeBlock(block, props.characters)}</div>
+                <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-fg">{label}</div>
+                    <div className="truncate text-xs text-fg-subtle">{describeBlock(block, props.characters, props.document.scenes[props.sceneId], props.document.scenes)}</div>
                 </div>
+                <button
+                    type="button"
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted transition-colors hover:border-edge-strong hover:text-fg"
+                    title={t("storyInspector.closeEditor")}
+                    onClick={props.onClose}
+                >
+                    <X className="h-3.5 w-3.5" />
+                </button>
             </div>
             <InspectorFields
                 block={block}
@@ -211,6 +420,7 @@ export function ActionInspector(props: {
                 onUpdatePayload={props.onUpdatePayload}
                 onSetDialogueCharacter={props.onSetDialogueCharacter}
                 generateTextId={props.generateTextId}
+                onCreateLayer={props.onCreateLayer}
             />
         </div>
     );
@@ -224,34 +434,64 @@ function InspectorFields(props: {
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     generateTextId: () => string;
+    onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
 }) {
+    const { t } = useTranslation();
     const { block } = props;
     if (block.kind === "nodeAction") {
         const payload = block.payload;
+        if (payload.action === "narration") {
+            return (
+                <div className="grid grid-cols-1 gap-2">
+                    <div className="text-xs text-fg-subtle">{t("storyInspector.narration.editHint")}</div>
+                    <TextIdReadout text={payload.text} />
+                </div>
+            );
+        }
         if (payload.action === "dialogue") {
             const characterOptions: SelectOption[] = [
-                { value: "", label: "Unassigned" },
+                { value: "", label: t("storyInspector.unassigned") },
                 ...props.characters.map(character => ({
                     value: character.profile.getId(),
                     label: character.profile.getName(),
                 })),
             ];
+            const pauseEnabled = payload.pauseAfter !== undefined;
+            const pauseMs = typeof payload.pauseAfter === "number" ? payload.pauseAfter : undefined;
             return (
-                <div className="grid gap-2 sm:grid-cols-2">
-                    <SelectField
-                        label="Character"
-                        options={characterOptions}
-                        value={payload.characterId ?? ""}
-                        onChange={value => props.onSetDialogueCharacter(String(value) || undefined)}
-                    />
-                    <TextIdReadout text={payload.text} />
+                <div className="grid grid-cols-1 gap-2">
+                    <FieldGrid cols={2}>
+                        <SelectField
+                            label={t("storyInspector.field.character")}
+                            options={characterOptions}
+                            value={payload.characterId ?? ""}
+                            onChange={value => props.onSetDialogueCharacter(String(value) || undefined)}
+                        />
+                        <TextIdReadout text={payload.text} />
+                    </FieldGrid>
+                    <Section title={t("storyInspector.section.timing")}>
+                        <FieldGrid cols={2}>
+                            <CheckboxField
+                                label={t("storyInspector.dialogue.pauseAfter")}
+                                checked={pauseEnabled}
+                                onChange={checked => props.onUpdatePayload({ ...payload, pauseAfter: checked ? true : undefined })}
+                            />
+                            {pauseEnabled ? (
+                                <NumberField
+                                    label={t("storyInspector.dialogue.pauseMs")}
+                                    value={pauseMs}
+                                    onChange={ms => props.onUpdatePayload({ ...payload, pauseAfter: ms === undefined ? true : ms })}
+                                />
+                            ) : null}
+                        </FieldGrid>
+                    </Section>
                 </div>
             );
         }
         if (payload.action === "choice") {
             return (
                 <TextSegmentEditor
-                    label="Prompt"
+                    label={t("storyInspector.choice.prompt")}
                     text={payload.prompt}
                     role="choicePrompt"
                     generateTextId={props.generateTextId}
@@ -261,13 +501,38 @@ function InspectorFields(props: {
         }
         if (payload.action === "choiceOption") {
             return (
-                <TextSegmentEditor
-                    label="Option text"
-                    text={payload.text}
-                    role="choiceText"
-                    generateTextId={props.generateTextId}
-                    onChange={text => props.onUpdatePayload({ ...payload, text })}
-                />
+                <div className="grid grid-cols-1 gap-2">
+                    <TextSegmentEditor
+                        label={t("storyInspector.choiceOption.optionText")}
+                        text={payload.text}
+                        role="choiceText"
+                        generateTextId={props.generateTextId}
+                        onChange={text => props.onUpdatePayload({ ...payload, text })}
+                    />
+                    <Section title={t("storyInspector.section.conditions")}>
+                        <div className="grid grid-cols-1 gap-2">
+                            <div>
+                                <div className={FIELD_LABEL_CLASS}>{t("storyInspector.choiceOption.hiddenWhen")}</div>
+                                <ConditionEditor
+                                    document={props.document}
+                                    sceneId={props.sceneId}
+                                    value={payload.hiddenWhen}
+                                    onChange={hiddenWhen => props.onUpdatePayload({ ...payload, hiddenWhen })}
+                                />
+                            </div>
+                            <div>
+                                <div className={FIELD_LABEL_CLASS}>{t("storyInspector.choiceOption.disabledWhen")}</div>
+                                <ConditionEditor
+                                    document={props.document}
+                                    sceneId={props.sceneId}
+                                    value={payload.disabledWhen}
+                                    onChange={disabledWhen => props.onUpdatePayload({ ...payload, disabledWhen })}
+                                />
+                            </div>
+                            <div className="text-2xs text-fg-subtle">{t("storyInspector.choiceOption.hint")}</div>
+                        </div>
+                    </Section>
+                </div>
             );
         }
     }
@@ -280,11 +545,12 @@ function InspectorFields(props: {
                 payload={block.payload}
                 characters={props.characters}
                 onChange={props.onUpdatePayload}
+                onCreateLayer={props.onCreateLayer}
             />
         );
     }
     if (block.kind === "control") {
-        return <ControlPayloadFields payload={block.payload} onChange={props.onUpdatePayload} />;
+        return <ControlPayloadFields document={props.document} sceneId={props.sceneId} payload={block.payload} onChange={props.onUpdatePayload} />;
     }
     if (block.kind === "jump") {
         const payload = block.payload;
@@ -293,12 +559,18 @@ function InspectorFields(props: {
             label: scene.name,
         }));
         return (
-            <div className="max-w-sm">
-                <SelectField
-                    label="Target scene"
-                    options={sceneOptions}
-                    value={payload.targetSceneId}
-                    onChange={targetSceneId => props.onUpdatePayload({ ...payload, targetSceneId: String(targetSceneId) })}
+            <div className="grid grid-cols-1 gap-3">
+                <div className="max-w-sm">
+                    <SelectField
+                        label={t("storyInspector.jump.targetScene")}
+                        options={sceneOptions}
+                        value={payload.targetSceneId}
+                        onChange={targetSceneId => props.onUpdatePayload({ ...payload, targetSceneId: String(targetSceneId) })}
+                    />
+                </div>
+                <TransitionEditor
+                    value={payload.transition}
+                    onChange={transition => props.onUpdatePayload({ ...payload, transition })}
                 />
             </div>
         );
@@ -309,7 +581,7 @@ function InspectorFields(props: {
     if (block.kind === "note") {
         return (
             <TextSegmentEditor
-                label="Note"
+                label={t("storyInspector.note.label")}
                 text={block.payload.text}
                 role="note"
                 generateTextId={props.generateTextId}
@@ -317,7 +589,58 @@ function InspectorFields(props: {
             />
         );
     }
-    return <div className="text-sm text-slate-400">No editable fields for this action yet.</div>;
+    return <div className="text-sm text-fg-muted">{t("storyInspector.noEditableFields")}</div>;
+}
+
+function SetVariableEditor(props: {
+    document: StoryDocument;
+    sceneId: StorySceneId;
+    payload: Extract<StoryActionPayload, { action: "setVariable" }>;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const options = useStoryVariableOptions(props.document, props.sceneId);
+    const valueType = resolveRefValueType(props.payload.target, options);
+    return (
+        <div className="nl-field-grid">
+            <VariableRefPicker
+                value={props.payload.target}
+                options={options}
+                onChange={target => props.onChange({ ...props.payload, target })}
+            />
+            <VariableValueField
+                valueType={valueType}
+                value={props.payload.value}
+                onChange={value => props.onChange({ ...props.payload, value })}
+            />
+        </div>
+    );
+}
+
+function StoryActionBlueprintEditor(props: {
+    payload: Extract<StoryActionPayload, { action: "blueprint" }>;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    const { context, isInitialized } = useWorkspace();
+    const openBlueprint = useOpenBlueprintTarget();
+    const handleOpen = useCallback(() => {
+        if (!context || !isInitialized) return;
+        const service = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        let blueprintId = props.payload.blueprintId;
+        if (!blueprintId) {
+            blueprintId = service.ensureStoryActionBlueprint();
+            props.onChange({ ...props.payload, blueprintId });
+        }
+        openBlueprint({ blueprintId, ownerKind: "storyAction", title: t("storyInspector.blueprint.storyActionTitle") });
+    }, [context, isInitialized, openBlueprint, props, t]);
+    return (
+        <Section title={t("storyInspector.section.blueprint")}>
+            <StoryActionBlueprintPreviewCard
+                blueprintId={props.payload.blueprintId}
+                onOpen={handleOpen}
+            />
+        </Section>
+    );
 }
 
 function ActionPayloadFields(props: {
@@ -327,7 +650,9 @@ function ActionPayloadFields(props: {
     payload: StoryActionPayload;
     characters: Character[];
     onChange: (payload: StoryBlock["payload"]) => void;
+    onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
 }) {
+    const { t } = useTranslation();
     const payload = props.payload;
     if (payload.action === "setBackground") {
         return (
@@ -352,81 +677,80 @@ function ActionPayloadFields(props: {
     }
     if (payload.action === "audio") {
         return (
-            <div className="grid gap-3">
-                <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3">
+                <div className="nl-field-grid">
                     <SelectField
-                        label="Operation"
-                        options={AUDIO_OPERATION_OPTIONS}
+                        label={t("storyInspector.field.operation")}
+                        options={audioOperationOptions(t)}
                         value={payload.operation}
                         onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "audio" }>["operation"] })}
                     />
-                    <TextField label="Sound name" value={payload.objectName ?? ""} onChange={objectName => props.onChange({ ...payload, objectName })} />
+                    <TextField label={t("storyInspector.audio.soundName")} value={payload.objectName ?? ""} onChange={objectName => props.onChange({ ...payload, objectName })} />
                     <AssetField
-                        label={payload.operation === "setBgm" ? "BGM asset" : "Sound asset"}
+                        label={payload.operation === "setBgm" ? t("storyInspector.audio.bgmAsset") : t("storyInspector.audio.soundAsset")}
                         assetType={AssetType.Audio}
                         assetId={payload.assetId}
                         onChange={assetId => props.onChange({ ...payload, assetId })}
                     />
-                    <NumberField label="Fade ms" value={payload.fadeMs} onChange={fadeMs => props.onChange({ ...payload, fadeMs })} />
-                    <NumberField label="Volume" value={payload.volume} onChange={volume => props.onChange({ ...payload, volume })} />
-                    <NumberField label="Rate" value={payload.rate} onChange={rate => props.onChange({ ...payload, rate })} />
-                    <CheckboxField label="Loop" checked={Boolean(payload.loop)} onChange={loop => props.onChange({ ...payload, loop })} />
-                    <CheckboxField label="Muted" checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
+                    <NumberField label={t("storyInspector.audio.fadeMs")} value={payload.fadeMs} onChange={fadeMs => props.onChange({ ...payload, fadeMs })} />
+                    <NumberField label={t("storyInspector.audio.volume")} value={payload.volume} onChange={volume => props.onChange({ ...payload, volume })} />
+                    <NumberField label={t("storyInspector.audio.rate")} value={payload.rate} onChange={rate => props.onChange({ ...payload, rate })} />
+                    <CheckboxField label={t("storyInspector.audio.loop")} checked={Boolean(payload.loop)} onChange={loop => props.onChange({ ...payload, loop })} />
+                    <CheckboxField label={t("storyInspector.field.muted")} checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
                 </div>
             </div>
         );
     }
     if (payload.action === "setVariable") {
-        return (
-            <div className="grid gap-2 sm:grid-cols-3">
-                <TextField label="Key" value={payload.target.key} onChange={key => props.onChange({ ...payload, target: { ...payload.target, key } })} />
-                <SelectField
-                    label="Scope"
-                    options={VARIABLE_SCOPE_OPTIONS}
-                    value={payload.target.scope}
-                    onChange={scope => props.onChange({ ...payload, target: { ...payload.target, scope: scope as StoryVariableScope } })}
-                />
-                <TextField label="Value" value={String(payload.value ?? "")} onChange={value => props.onChange({ ...payload, value })} />
-            </div>
-        );
+        return <SetVariableEditor document={props.document} sceneId={props.sceneId} payload={payload} onChange={props.onChange} />;
+    }
+    if (payload.action === "blueprint") {
+        return <StoryActionBlueprintEditor payload={payload} onChange={props.onChange} />;
     }
     if (payload.action === "wait") {
         return (
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="nl-field-grid nl-field-grid-2">
                 <SelectField
-                    label="Mode"
-                    options={WAIT_MODE_OPTIONS}
+                    label={t("storyInspector.field.mode")}
+                    options={waitModeOptions(t)}
                     value={payload.mode}
                     onChange={mode => props.onChange({ ...payload, mode: mode as "duration" | "click" })}
                 />
-                <NumberField label="Duration ms" value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
+                <NumberField label={t("storyInspector.field.durationMs")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
             </div>
         );
     }
     if (payload.action === "image") {
         return (
-            <div className="grid gap-3">
-                <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3">
+                <div className="nl-field-grid">
                     <SelectField
-                        label="Operation"
-                        options={IMAGE_OPERATION_OPTIONS}
+                        label={t("storyInspector.field.operation")}
+                        options={imageOperationOptions(t)}
                         value={payload.operation}
                         onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "image" }>["operation"] })}
                     />
-                    <TextField label="Image name" value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
-                    <TextField label="Layer" value={payload.layerName ?? ""} onChange={layerName => props.onChange({ ...payload, layerName: layerName || undefined })} />
+                    <TextField label={t("storyInspector.image.imageName")} value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
+                    <StoryLayerField
+                        document={props.document}
+                        sceneId={props.sceneId}
+                        blockId={props.block.id}
+                        value={payload.layer}
+                        onChange={layer => props.onChange({ ...payload, layer })}
+                        onCreateLayer={() => props.onCreateLayer(props.block.id)}
+                    />
                     <AssetField
-                        label="Image asset"
+                        label={t("storyInspector.image.imageAsset")}
                         assetType={AssetType.Image}
                         assetId={payload.assetId}
                         onChange={assetId => props.onChange({ ...payload, assetId })}
                     />
-                    <CheckboxField label="Auto fit" checked={Boolean(payload.autoFit)} onChange={autoFit => props.onChange({ ...payload, autoFit })} />
+                    <CheckboxField label={t("storyInspector.image.autoFit")} checked={Boolean(payload.autoFit)} onChange={autoFit => props.onChange({ ...payload, autoFit })} />
                 </div>
                 <TransformPresetEditor
                     value={payload.transform}
                     motionTargetKind="image"
-                    motionLabel={`${payload.objectName || "Image"} ${payload.operation}`}
+                    motionLabel={`${payload.objectName || t("storyInspector.motionTarget.image")} ${payload.operation}`}
                     storyId={props.document.id}
                     sceneId={props.sceneId}
                     blockId={props.block.id}
@@ -438,58 +762,71 @@ function ActionPayloadFields(props: {
         );
     }
     if (payload.action === "displayable") {
+        const isEffect = DISPLAYABLE_EFFECT_OPERATIONS.has(payload.operation);
+        const resolvedTarget = resolveDisplayableTargetRef(props.document.scenes[props.sceneId], payload.target);
         return (
-            <div className="grid gap-3">
-                <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3">
+                <FieldGrid cols={2}>
                     <SelectField
-                        label="Operation"
-                        options={DISPLAYABLE_OPERATION_OPTIONS}
+                        label={t("storyInspector.field.operation")}
+                        options={displayableOperationOptions(t)}
                         value={payload.operation}
                         onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "displayable" }>["operation"] })}
                     />
-                    <TextField label="Target name" value={payload.target.name} onChange={name => props.onChange({ ...payload, target: { ...payload.target, name } })} />
-                    <SelectField
-                        label="Target kind"
-                        options={DISPLAYABLE_KIND_OPTIONS}
-                        value={payload.target.kind ?? ""}
-                        onChange={kind => props.onChange({ ...payload, target: { ...payload.target, kind: String(kind) ? kind as StoryDisplayableTargetKind : undefined } })}
+                    <DisplayableTargetField
+                        document={props.document}
+                        sceneId={props.sceneId}
+                        blockId={props.block.id}
+                        target={payload.target}
+                        onChange={target => props.onChange({ ...payload, target })}
                     />
-                </div>
-                <TransformPresetEditor
-                    value={payload.transform}
-                    motionTargetKind={payload.target.kind ?? "image"}
-                    motionLabel={`${payload.target.name || "Displayable"} ${payload.operation}`}
-                    storyId={props.document.id}
-                    sceneId={props.sceneId}
-                    blockId={props.block.id}
-                    storyName={props.document.name}
-                    onChange={transform => props.onChange({ ...payload, transform })}
-                />
+                </FieldGrid>
+                {isEffect ? (
+                    <DisplayableEffectEditor payload={payload} onChange={props.onChange} />
+                ) : (
+                    <TransformPresetEditor
+                        value={payload.transform}
+                        motionTargetKind={resolvedTarget.kind ?? "image"}
+                        motionLabel={`${resolvedTarget.name || t("storyInspector.motionTarget.displayable")} ${payload.operation}`}
+                        storyId={props.document.id}
+                        sceneId={props.sceneId}
+                        blockId={props.block.id}
+                        storyName={props.document.name}
+                        onChange={transform => props.onChange({ ...payload, transform })}
+                    />
+                )}
             </div>
         );
     }
     if (payload.action === "text") {
         return (
-            <div className="grid gap-3">
-                <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3">
+                <div className="nl-field-grid">
                     <SelectField
-                        label="Operation"
-                        options={TEXT_OPERATION_OPTIONS}
+                        label={t("storyInspector.field.operation")}
+                        options={textOperationOptions(t)}
                         value={payload.operation}
                         onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "text" }>["operation"] })}
                     />
-                    <TextField label="Text name" value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
-                    <TextField label="Layer" value={payload.layerName ?? ""} onChange={layerName => props.onChange({ ...payload, layerName: layerName || undefined })} />
-                    <NumberField label="Font size" value={payload.fontSize} onChange={fontSize => props.onChange({ ...payload, fontSize })} />
-                    <ColorTextField label="Font color" value={payload.fontColor ?? "#ffffff"} onChange={fontColor => props.onChange({ ...payload, fontColor })} />
+                    <TextField label={t("storyInspector.text.textName")} value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
+                    <StoryLayerField
+                        document={props.document}
+                        sceneId={props.sceneId}
+                        blockId={props.block.id}
+                        value={payload.layer}
+                        onChange={layer => props.onChange({ ...payload, layer })}
+                        onCreateLayer={() => props.onCreateLayer(props.block.id)}
+                    />
+                    <NumberField label={t("storyInspector.text.fontSize")} value={payload.fontSize} onChange={fontSize => props.onChange({ ...payload, fontSize })} />
+                    <ColorTextField label={t("storyInspector.text.fontColor")} value={payload.fontColor ?? "#ffffff"} onChange={fontColor => props.onChange({ ...payload, fontColor })} />
                 </div>
                 {payload.operation === "create" || payload.operation === "setText" ? (
-                    <LabeledTextarea label="Text" className="min-h-16" value={payload.text ?? ""} onChange={text => props.onChange({ ...payload, text })} />
+                    <LabeledTextarea label={t("storyInspector.text.text")} className="min-h-16" value={payload.text ?? ""} onChange={text => props.onChange({ ...payload, text })} />
                 ) : null}
                 <TransformPresetEditor
                     value={payload.transform}
                     motionTargetKind="text"
-                    motionLabel={`${payload.objectName || "Text"} ${payload.operation}`}
+                    motionLabel={`${payload.objectName || t("storyInspector.motionTarget.text")} ${payload.operation}`}
                     storyId={props.document.id}
                     sceneId={props.sceneId}
                     blockId={props.block.id}
@@ -500,59 +837,84 @@ function ActionPayloadFields(props: {
         );
     }
     if (payload.action === "layer") {
+        const isCreate = payload.operation === "create";
+        // Non-create ops target an existing layer (built-in or custom) via the layer picker; `create`
+        // names a new one. Z-index only applies to create / setZIndex; transform/show/hide animate.
+        const showZIndex = isCreate || payload.operation === "setZIndex";
+        const showTransform = payload.operation === "transform" || payload.operation === "show" || payload.operation === "hide";
+        const layerRefValue = layerActionTargetRef(payload.target, payload.objectName);
+        const layerName = isCreate
+            ? (payload.objectName || t("storyInspector.motionTarget.layer"))
+            : (resolveStoryLayerRef(props.document.scenes[props.sceneId], layerRefValue).name || t("storyInspector.motionTarget.layer"));
         return (
-            <div className="grid gap-3">
-                <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3">
+                <div className="nl-field-grid">
                     <SelectField
-                        label="Operation"
-                        options={LAYER_OPERATION_OPTIONS}
+                        label={t("storyInspector.field.operation")}
+                        options={layerOperationOptions(t)}
                         value={payload.operation}
                         onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "layer" }>["operation"] })}
                     />
-                    <TextField label="Layer name" value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
-                    <NumberField label="Z-index" value={payload.zIndex} onChange={zIndex => props.onChange({ ...payload, zIndex })} />
+                    {isCreate ? (
+                        <TextField label={t("storyInspector.layer.layerName")} value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
+                    ) : (
+                        <StoryLayerField
+                            label={t("storyInspector.field.layer")}
+                            document={props.document}
+                            sceneId={props.sceneId}
+                            blockId={props.block.id}
+                            value={layerRefValue}
+                            onChange={target => props.onChange({ ...payload, target })}
+                            onCreateLayer={() => props.onCreateLayer(props.block.id)}
+                        />
+                    )}
+                    {showZIndex ? (
+                        <NumberField label={t("storyInspector.layer.zIndex")} value={payload.zIndex} onChange={zIndex => props.onChange({ ...payload, zIndex })} />
+                    ) : null}
                 </div>
-                <TransformPresetEditor
-                    value={payload.transform}
-                    motionTargetKind="layer"
-                    motionLabel={`${payload.objectName || "Layer"} ${payload.operation}`}
-                    storyId={props.document.id}
-                    sceneId={props.sceneId}
-                    blockId={props.block.id}
-                    storyName={props.document.name}
-                    onChange={transform => props.onChange({ ...payload, transform })}
-                />
+                {showTransform ? (
+                    <TransformPresetEditor
+                        value={payload.transform}
+                        motionTargetKind="layer"
+                        motionLabel={`${layerName} ${payload.operation}`}
+                        storyId={props.document.id}
+                        sceneId={props.sceneId}
+                        blockId={props.block.id}
+                        storyName={props.document.name}
+                        onChange={transform => props.onChange({ ...payload, transform })}
+                    />
+                ) : null}
             </div>
         );
     }
     if (payload.action === "video") {
         return (
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="nl-field-grid">
                 <SelectField
-                    label="Operation"
-                    options={VIDEO_OPERATION_OPTIONS}
+                    label={t("storyInspector.field.operation")}
+                    options={videoOperationOptions(t)}
                     value={payload.operation}
                     onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "video" }>["operation"] })}
                 />
-                <TextField label="Video name" value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
+                <TextField label={t("storyInspector.video.videoName")} value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
                 <AssetField
-                    label="Video asset"
+                    label={t("storyInspector.video.videoAsset")}
                     assetType={AssetType.Video}
                     assetId={payload.assetId}
                     onChange={assetId => props.onChange({ ...payload, assetId })}
                 />
-                <CheckboxField label="Muted" checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
+                <CheckboxField label={t("storyInspector.field.muted")} checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
             </div>
         );
     }
     if (payload.action === "nvl") {
         return (
-            <div className="grid gap-3">
-                <div className="text-sm text-slate-400">Children of this row will run inside NLR NVL mode.</div>
+            <div className="grid grid-cols-1 gap-3">
+                <div className="text-xs text-fg-subtle">{t("storyInspector.nvl.hint")}</div>
                 <TransformPresetEditor
                     value={payload.transition}
                     motionTargetKind="layer"
-                    motionLabel="NVL transition"
+                    motionLabel={t("storyInspector.nvl.motionLabel")}
                     storyId={props.document.id}
                     sceneId={props.sceneId}
                     blockId={props.block.id}
@@ -564,20 +926,20 @@ function ActionPayloadFields(props: {
     }
     if (payload.action === "screenEffect") {
         return (
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="nl-field-grid">
                 <SelectField
-                    label="Effect"
-                    options={SCREEN_EFFECT_OPTIONS}
+                    label={t("storyInspector.field.effect")}
+                    options={screenEffectOptions(t)}
                     value={payload.effect}
                     onChange={effect => props.onChange({ ...payload, effect: effect as Extract<StoryActionPayload, { action: "screenEffect" }>["effect"] })}
                 />
-                <NumberField label="Duration ms" value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
-                <NumberField label="Hold ms" value={payload.holdMs} onChange={holdMs => props.onChange({ ...payload, holdMs })} />
-                <ColorTextField label="Color" value={payload.color ?? "#000000"} onChange={color => props.onChange({ ...payload, color })} />
-                <NumberField label="Opacity" value={payload.opacity} onChange={opacity => props.onChange({ ...payload, opacity })} />
+                <NumberField label={t("storyInspector.field.durationMs")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
+                <NumberField label={t("storyInspector.field.holdMs")} value={payload.holdMs} onChange={holdMs => props.onChange({ ...payload, holdMs })} />
+                <ColorTextField label={t("storyInspector.field.color")} value={payload.color ?? "#000000"} onChange={color => props.onChange({ ...payload, color })} />
+                <NumberField label={t("storyInspector.field.opacity")} value={payload.opacity} onChange={opacity => props.onChange({ ...payload, opacity })} />
                 <SelectField
-                    label="Easing"
-                    options={EASING_OPTIONS}
+                    label={t("storyInspector.field.easing")}
+                    options={easingOptions(t)}
                     value={payload.easing ?? ""}
                     onChange={easing => props.onChange({ ...payload, easing: String(easing) || undefined })}
                 />
@@ -598,206 +960,85 @@ function CharacterActionEditor(props: {
     characters: Character[];
     onChange: (payload: StoryBlock["payload"]) => void;
 }) {
+    const { t } = useTranslation();
     const payload = props.payload;
+    const onChange = props.onChange;
     const characterOptions: SelectOption[] = [
-        { value: "", label: "Unassigned" },
+        { value: "", label: t("storyInspector.unassigned") },
         ...props.characters.map(character => ({
             value: character.profile.getId(),
             label: character.profile.getName(),
         })),
     ];
     const selectedCharacter = getCharacterById(props.characters, payload.characterId);
-    const selectedForm = selectedCharacter ? getSelectedCharacterForm(selectedCharacter, payload.formName) : null;
-    const formOptions = getFormOptions(selectedCharacter, payload.formName);
-    const formValue = payload.formName ?? "";
-    const showZoom = getTransformNumberProp(payload.transform, "zoom");
-    const showXOffset = getTransformNumberProp(payload.transform, "xoffset");
-    const showYOffset = getTransformNumberProp(payload.transform, "yoffset");
-    const onChange = props.onChange;
-
-    const updatePayload = useCallback((next: CharacterActionPayload) => {
-        onChange(next);
-    }, [onChange]);
 
     const updateCharacter = useCallback((characterIdValue: string | number) => {
         const characterId = String(characterIdValue) || undefined;
-        updatePayload({
-            ...payload,
-            characterId,
-            formName: undefined,
-            variants: undefined,
-        });
-    }, [payload, updatePayload]);
-
-    const updateForm = useCallback((formNameValue: string | number) => {
-        const formName = String(formNameValue) || undefined;
-        updatePayload({
-            ...payload,
-            formName,
-            variants: undefined,
-        });
-    }, [payload, updatePayload]);
-
-    const updateVariant = useCallback((groupName: string, variantNameValue: string | number) => {
-        if (!selectedForm) {
-            return;
-        }
-        const current = getVariantSelectionMap(payload.variants, selectedForm);
-        const variantName = String(variantNameValue);
-        if (variantName) {
-            current[groupName] = variantName;
-        } else {
-            delete current[groupName];
-        }
-        const variants = normalizeVariantSelection(current);
-        updatePayload({
-            ...payload,
-            variants,
-        });
-    }, [payload, selectedForm, updatePayload]);
-
-    const updateShowZoom = useCallback((zoom: number | undefined) => {
-        updatePayload({
-            ...payload,
-            transform: setTransformNumberProp(payload.transform, "zoom", zoom, {
-                preset: "center",
-                durationMs: 300,
-            }),
-        });
-    }, [payload, updatePayload]);
-
-    const updateShowXOffset = useCallback((xoffset: number | undefined) => {
-        updatePayload({
-            ...payload,
-            transform: setTransformNumberProp(payload.transform, "xoffset", xoffset, {
-                preset: "center",
-                durationMs: 300,
-            }),
-        });
-    }, [payload, updatePayload]);
-
-    const updateShowYOffset = useCallback((yoffset: number | undefined) => {
-        updatePayload({
-            ...payload,
-            transform: setTransformNumberProp(payload.transform, "yoffset", yoffset, {
-                preset: "center",
-                durationMs: 300,
-            }),
-        });
-    }, [payload, updatePayload]);
+        const nextCharacter = getCharacterById(props.characters, characterId);
+        const previousName = getCharacterById(props.characters, payload.characterId)?.profile.getName();
+        // Auto-fill the stage name with the character's name, unless the author set a custom one.
+        const autofill = !payload.objectName || payload.objectName === previousName || payload.objectName === payload.characterId;
+        const objectName = autofill ? nextCharacter?.profile.getName() ?? payload.objectName : payload.objectName;
+        onChange({ ...payload, characterId, objectName, formName: undefined, variants: undefined });
+    }, [onChange, payload, props.characters]);
 
     return (
-        <div className="grid gap-3">
-            <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3">
+            <FieldGrid cols={2}>
                 <SelectField
-                    label="Character"
+                    label={t("storyInspector.field.character")}
                     options={characterOptions}
                     value={payload.characterId ?? ""}
                     onChange={updateCharacter}
                 />
                 <TextField
-                    label="Stage name"
-                    value={payload.objectName ?? payload.characterId ?? ""}
-                    onChange={objectName => updatePayload({ ...payload, objectName })}
+                    label={t("storyInspector.character.stageName")}
+                    value={payload.objectName ?? ""}
+                    onChange={objectName => onChange({ ...payload, objectName })}
                 />
-                <SelectField
-                    label="Form"
-                    options={formOptions}
-                    value={formValue}
-                    onChange={updateForm}
-                />
-                <AssetField
-                    label="Override image"
-                    assetType={AssetType.Image}
-                    assetId={payload.assetId}
-                    onChange={assetId => updatePayload({ ...payload, assetId })}
-                />
-                {payload.operation === "enter" && payload.transform?.mode !== "animation" ? (
-                    <NumberField
-                        label="Zoom"
-                        value={showZoom}
-                        onChange={updateShowZoom}
+            </FieldGrid>
+            {selectedCharacter ? (
+                <Section title={t("storyInspector.section.appearance")}>
+                    <CharacterAppearancePicker
+                        character={selectedCharacter}
+                        formName={payload.formName}
+                        variants={payload.variants}
+                        onChange={next => onChange({ ...payload, formName: next.formName, variants: next.variants })}
                     />
-                ) : null}
-                {payload.operation === "enter" && payload.transform?.mode !== "animation" ? (
-                    <NumberField
-                        label="X Offset"
-                        value={showXOffset}
-                        onChange={updateShowXOffset}
-                    />
-                ) : null}
-                {payload.operation === "enter" && payload.transform?.mode !== "animation" ? (
-                    <NumberField
-                        label="Y Offset"
-                        value={showYOffset}
-                        onChange={updateShowYOffset}
-                    />
-                ) : null}
-            </div>
-            {selectedForm ? (
-                <CharacterVariantSelectors
-                    form={selectedForm}
-                    selection={payload.variants}
-                    onChange={updateVariant}
-                />
-            ) : null}
+                </Section>
+            ) : (
+                <div className="text-xs text-fg-subtle">{t("storyInspector.character.chooseHint")}</div>
+            )}
             <TransformPresetEditor
                 value={payload.transform}
                 motionTargetKind="character"
-                motionLabel={`${payload.characterId || payload.objectName || "Character"} ${payload.operation}`}
+                motionLabel={`${selectedCharacter?.profile.getName() ?? payload.objectName ?? t("storyInspector.motionTarget.character")} ${payload.operation}`}
                 storyId={props.storyId}
                 sceneId={props.sceneId}
                 blockId={props.blockId}
                 storyName={props.storyName}
-                onChange={transform => updatePayload({ ...payload, transform })}
+                onChange={transform => onChange({ ...payload, transform })}
             />
-            <TransitionEditor
-                value={payload.transition}
-                onChange={transition => updatePayload({ ...payload, transition })}
-            />
-        </div>
-    );
-}
-
-function CharacterVariantSelectors(props: {
-    form: CharacterForm;
-    selection: StoryCharacterVariantSelection | undefined;
-    onChange: (groupName: string, variantName: string | number) => void;
-}) {
-    if (props.form.groups.length === 0) {
-        return null;
-    }
-    const selectionMap = getVariantSelectionMap(props.selection, props.form);
-    return (
-        <div className="rounded-lg border border-white/10 bg-white/[0.025] p-2">
-            <div className="mb-2 text-xs font-medium text-slate-300">Variants</div>
-            <div className="grid gap-2 sm:grid-cols-3">
-                {props.form.groups.map(group => {
-                    const defaultVariant = group.defaultVariant && group.variants.some(variant => variant.name === group.defaultVariant)
-                        ? group.defaultVariant
-                        : group.variants[0]?.name ?? "";
-                    const value = selectionMap[group.name] ?? "";
-                    const options: SelectOption[] = [
-                        {
-                            value: "",
-                            label: defaultVariant ? `Default (${defaultVariant})` : "Default",
-                        },
-                        ...group.variants.map(variant => ({
-                            value: variant.name,
-                            label: variant.name,
-                        })),
-                    ];
-                    return (
-                        <SelectField
-                            key={group.name}
-                            label={group.name}
-                            options={options}
-                            value={value}
-                            onChange={variantName => props.onChange(group.name, variantName)}
-                        />
-                    );
-                })}
-            </div>
+            {/* A transition only applies where the image source is set (NLR `char(src, transition)`),
+                i.e. changing a visible character's appearance. `exit` (`hide()`) and `move`
+                (`transform()`) take a transform, not a transition; `enter`'s entrance is driven by
+                its transform preset. So the transition editor is only meaningful for `expression`. */}
+            {payload.operation === "expression" ? (
+                <TransitionEditor
+                    value={payload.transition}
+                    onChange={transition => onChange({ ...payload, transition })}
+                />
+            ) : null}
+            <Disclosure title={t("storyInspector.advanced")}>
+                <div className="max-w-sm">
+                    <AssetField
+                        label={t("storyInspector.character.overrideImage")}
+                        assetType={AssetType.Image}
+                        assetId={payload.assetId}
+                        onChange={assetId => onChange({ ...payload, assetId })}
+                    />
+                </div>
+            </Disclosure>
         </div>
     );
 }
@@ -807,77 +1048,6 @@ function getCharacterById(characters: Character[], characterId: string | undefin
         return null;
     }
     return characters.find(character => character.profile.getId() === characterId) ?? null;
-}
-
-function getSelectedCharacterForm(character: Character, formName: string | undefined): CharacterForm | null {
-    const forms = character.profile.appearance.getForms();
-    return forms.find(form => form.name === formName)
-        ?? forms.find(form => form.name === character.profile.getDefaultForm())
-        ?? forms[0]
-        ?? null;
-}
-
-function getFormOptions(character: Character | null, currentFormName: string | undefined): SelectOption[] {
-    if (!character) {
-        return [
-            { value: "", label: "Unassigned" },
-            ...(currentFormName ? [{ value: currentFormName, label: `Missing (${currentFormName})` }] : []),
-        ];
-    }
-    const forms = character.profile.appearance.getForms();
-    const defaultFormName = character.profile.getDefaultForm();
-    const options: SelectOption[] = [
-        {
-            value: "",
-            label: defaultFormName ? `Default (${defaultFormName})` : "Default form",
-        },
-        ...forms.map(form => ({
-            value: form.name,
-            label: form.name,
-        })),
-    ];
-    if (currentFormName && !forms.some(form => form.name === currentFormName)) {
-        options.push({ value: currentFormName, label: `Missing (${currentFormName})` });
-    }
-    return options;
-}
-
-function getVariantSelectionMap(selection: StoryCharacterVariantSelection | undefined, form: CharacterForm): Record<string, string> {
-    if (!selection) {
-        return {};
-    }
-    const validVariantByGroup = new Map(
-        form.groups.map(group => [group.name, new Set(group.variants.map(variant => variant.name))]),
-    );
-    const groupByVariant = new Map<string, string>();
-    form.groups.forEach(group => {
-        group.variants.forEach(variant => {
-            groupByVariant.set(variant.name, group.name);
-        });
-    });
-
-    const result: Record<string, string> = {};
-    if (Array.isArray(selection)) {
-        selection.forEach(variantName => {
-            const groupName = groupByVariant.get(variantName);
-            if (groupName) {
-                result[groupName] = variantName;
-            }
-        });
-        return result;
-    }
-
-    Object.entries(selection).forEach(([groupName, variantName]) => {
-        if (validVariantByGroup.get(groupName)?.has(variantName)) {
-            result[groupName] = variantName;
-        }
-    });
-    return result;
-}
-
-function normalizeVariantSelection(selection: Record<string, string>): StoryCharacterVariantSelection | undefined {
-    const entries = Object.entries(selection).filter(([, variantName]) => variantName.trim());
-    return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 function getTransformNumberProp(transform: StoryTransformRef | undefined, key: string): number | undefined {
@@ -918,6 +1088,7 @@ function AssetField(props: {
     assetId: string | undefined;
     onChange: (assetId: string | undefined) => void;
 }) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const assetsService = useMemo(
         () => context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null,
@@ -929,7 +1100,7 @@ function AssetField(props: {
     const [selectorOpen, setSelectorOpen] = useState(false);
     const buttonRef = useRef<HTMLButtonElement | null>(null);
     const Icon = props.assetType === AssetType.Audio ? Music : props.assetType === AssetType.Video ? Video : ImageIcon;
-    const label = selectedAsset?.name ?? (props.assetId ? "Missing asset" : "No asset");
+    const label = selectedAsset?.name ?? (props.assetId ? t("storyInspector.asset.missing") : t("storyInspector.asset.none"));
 
     const handleSelect = useCallback((assets: Asset[]) => {
         const selected = assets[0];
@@ -947,17 +1118,17 @@ function AssetField(props: {
                 <button
                     ref={buttonRef}
                     type="button"
-                    className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-white/10 bg-[#1e1f22] px-3 text-left text-sm text-gray-300 hover:border-primary/40"
+                    className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-edge bg-surface-raised px-3 text-left text-sm text-fg-muted hover:border-primary/40"
                     onClick={() => setSelectorOpen(true)}
                 >
-                    <Icon className="h-3.5 w-3.5 shrink-0 text-slate-500" />
-                    <span className={["truncate", selectedAsset ? "" : "italic text-gray-500"].join(" ")}>{label}</span>
+                    <Icon className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
+                    <span className={["truncate", selectedAsset ? "" : "italic text-fg-subtle"].join(" ")}>{label}</span>
                 </button>
                 <button
                     type="button"
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04] text-slate-400 hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
                     disabled={!props.assetId}
-                    title="Clear asset"
+                    title={t("storyInspector.asset.clear")}
                     onClick={() => props.onChange(undefined)}
                 >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -970,10 +1141,67 @@ function AssetField(props: {
                 onConfirm={handleSelect}
                 selectedIds={props.assetId ? [props.assetId] : []}
                 anchorRef={buttonRef}
-                title={`Select ${props.label}`}
+                title={t("storyInspector.asset.selectTitle", { label: props.label })}
                 multiple={false}
             />
         </div>
+    );
+}
+
+type DisplayableActionPayload = Extract<StoryActionPayload, { action: "displayable" }>;
+
+function DisplayableEffectEditor(props: {
+    payload: DisplayableActionPayload;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    const payload = props.payload;
+    const op = payload.operation;
+    const setEffectParam = (patch: Record<string, StoryLiteralValue | undefined>) =>
+        props.onChange({ ...payload, effectProps: mergeParams(payload.effectProps, patch) });
+    return (
+        <Section title={t("storyInspector.section.effect")}>
+            <FieldGrid cols={3}>
+                <NumberField label={t("storyInspector.field.durationMs")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
+                <SelectField
+                    label={t("storyInspector.field.easing")}
+                    options={easingOptions(t)}
+                    value={payload.easing ?? ""}
+                    onChange={easing => props.onChange({ ...payload, easing: String(easing) || undefined })}
+                />
+                {op === "mask" ? (
+                    <AssetField label={t("storyInspector.displayableEffect.maskImage")} assetType={AssetType.Image} assetId={payload.maskAssetId} onChange={maskAssetId => props.onChange({ ...payload, maskAssetId })} />
+                ) : null}
+                {op === "clip" ? (
+                    <TextField label={t("storyInspector.displayableEffect.clipPath")} value={payload.clipPath ?? ""} onChange={clipPath => props.onChange({ ...payload, clipPath: clipPath || undefined })} />
+                ) : null}
+                {op === "filter" ? (
+                    <TextField label={t("storyInspector.displayableEffect.cssFilter")} value={payload.filter ?? ""} onChange={filter => props.onChange({ ...payload, filter: filter || undefined })} />
+                ) : null}
+                {op === "darken" ? (
+                    <NumberField label={t("storyInspector.displayableEffect.darkness")} value={payload.darkness} onChange={darkness => props.onChange({ ...payload, darkness })} />
+                ) : null}
+                {op === "circleReveal" || op === "circleClose" ? (
+                    <>
+                        <TextField label={t("storyInspector.field.center")} value={paramString(payload.effectProps, "center", "50% 50%")} onChange={center => setEffectParam({ center: center || undefined })} />
+                        <NumberField label={t("storyInspector.field.fromRadius")} value={paramNumber(payload.effectProps, "from")} onChange={from => setEffectParam({ from })} />
+                        <NumberField label={t("storyInspector.field.toRadius")} value={paramNumber(payload.effectProps, "to")} onChange={to => setEffectParam({ to })} />
+                    </>
+                ) : null}
+                {op === "wipe" ? (
+                    <>
+                        <SelectField
+                            label={t("storyInspector.field.direction")}
+                            options={wipeDirectionOptions(t)}
+                            value={paramString(payload.effectProps, "direction", "left")}
+                            onChange={direction => setEffectParam({ direction: String(direction) })}
+                        />
+                        <CheckboxField label={t("storyInspector.field.reverse")} checked={paramBool(payload.effectProps, "reverse")} onChange={reverse => setEffectParam({ reverse: reverse || undefined })} />
+                    </>
+                ) : null}
+            </FieldGrid>
+            <div className="mt-1.5 text-2xs text-fg-subtle">{displayableEffectHints(t)[op] ?? ""}</div>
+        </Section>
     );
 }
 
@@ -987,56 +1215,88 @@ function TransformPresetEditor(props: {
     storyName: string;
     onChange: (value: StoryTransformRef | undefined) => void;
 }) {
+    const { t } = useTranslation();
     const value = props.value ?? { preset: "none" as StoryTransformPreset };
+    const mode: "preset" | "animation" = value.mode === "animation" ? "animation" : "preset";
     const propsText = formatPropsText(value.props);
+    const actionContext = {
+        storyId: props.storyId,
+        sceneId: props.sceneId,
+        blockId: props.blockId,
+        storyName: props.storyName,
+    };
     return (
-        <div className="grid gap-2">
-            <StoryMotionPicker
-                value={props.value}
-                targetKind={props.motionTargetKind}
-                motionLabel={props.motionLabel}
-                actionContext={{
-                    storyId: props.storyId,
-                    sceneId: props.sceneId,
-                    blockId: props.blockId,
-                    storyName: props.storyName,
-                }}
-                onChange={props.onChange}
-            />
-            {value.mode === "animation" ? null : (
-                <div className="rounded-lg border border-white/10 bg-white/[0.025] p-2">
-                    <div className="mb-2 text-xs font-medium text-slate-300">Preset Transform</div>
-                    <div className="grid gap-2 sm:grid-cols-4">
+        <Section
+            title={t("storyInspector.section.transform")}
+            right={
+                <SegToggle
+                    value={mode}
+                    options={[
+                        { value: "preset", label: t("storyInspector.transform.presetMode") },
+                        { value: "animation", label: t("storyInspector.transform.motionMode") },
+                    ]}
+                    onChange={next => props.onChange(next === "animation"
+                        ? { ...value, mode: "animation", preset: undefined }
+                        : { ...value, mode: "preset", animationId: undefined, preset: value.preset ?? "none" })}
+                />
+            }
+        >
+            {mode === "animation" ? (
+                <MotionField
+                    value={props.value}
+                    targetKind={props.motionTargetKind}
+                    motionLabel={props.motionLabel}
+                    actionContext={actionContext}
+                    onChange={props.onChange}
+                />
+            ) : (
+                <div className="grid grid-cols-1 gap-2">
+                    <FieldGrid cols={3}>
                         <SelectField
-                            label="Preset"
-                            options={TRANSFORM_PRESET_OPTIONS}
+                            label={t("storyInspector.transform.preset")}
+                            options={transformPresetOptions(t)}
                             value={value.preset ?? "none"}
-                            onChange={preset => props.onChange({
-                                ...value,
-                                mode: "preset",
-                                preset: preset as StoryTransformPreset,
-                            })}
+                            onChange={preset => props.onChange({ ...value, mode: "preset", preset: preset as StoryTransformPreset })}
                         />
                         <NumberField
-                            label="Duration ms"
+                            label={t("storyInspector.field.durationMs")}
                             value={value.durationMs}
                             onChange={durationMs => props.onChange({ ...value, durationMs })}
                         />
                         <SelectField
-                            label="Easing"
-                            options={EASING_OPTIONS}
+                            label={t("storyInspector.field.easing")}
+                            options={easingOptions(t)}
                             value={value.easing ?? ""}
                             onChange={easing => props.onChange({ ...value, easing: String(easing) || undefined })}
                         />
+                    </FieldGrid>
+                    <FieldGrid cols={3}>
+                        <NumberField
+                            label={t("storyInspector.transform.zoom")}
+                            value={getTransformNumberProp(value, "zoom")}
+                            onChange={zoom => props.onChange(setTransformNumberProp(value, "zoom", zoom, { preset: value.preset ?? "none" }))}
+                        />
+                        <NumberField
+                            label={t("storyInspector.transform.xOffset")}
+                            value={getTransformNumberProp(value, "xoffset")}
+                            onChange={xoffset => props.onChange(setTransformNumberProp(value, "xoffset", xoffset, { preset: value.preset ?? "none" }))}
+                        />
+                        <NumberField
+                            label={t("storyInspector.transform.yOffset")}
+                            value={getTransformNumberProp(value, "yoffset")}
+                            onChange={yoffset => props.onChange(setTransformNumberProp(value, "yoffset", yoffset, { preset: value.preset ?? "none" }))}
+                        />
+                    </FieldGrid>
+                    <Disclosure title={t("storyInspector.advancedParams")}>
                         <TextField
-                            label="Params"
+                            label={t("storyInspector.transform.params")}
                             value={propsText}
                             onChange={nextProps => props.onChange({ ...value, props: parsePropsText(nextProps) })}
                         />
-                    </div>
+                    </Disclosure>
                 </div>
             )}
-        </div>
+        </Section>
     );
 }
 
@@ -1045,36 +1305,145 @@ function TransitionEditor(props: {
     onChange: (value: StoryTransitionRef | undefined) => void;
 }) {
     const value = props.value ?? { kind: "none" as const };
+    const kind = value.kind;
+    const realKind = kind === "none" ? "dissolve" : kind;
+    const setBase = (patch: Partial<StoryTransitionRef>) => props.onChange({ ...value, kind: realKind, ...patch });
+    const setParam = (patch: Record<string, StoryLiteralValue | undefined>) =>
+        props.onChange({ ...value, kind: realKind, props: mergeParams(value.props, patch) });
+    const { t } = useTranslation();
     return (
-        <div className="rounded-lg border border-white/10 bg-white/[0.025] p-2">
-            <div className="mb-2 text-xs font-medium text-slate-300">Transition</div>
-            <div className="grid gap-2 sm:grid-cols-4">
+        <Section title={t("storyInspector.section.transition")}>
+            <FieldGrid cols={4}>
                 <SelectField
-                    label="Kind"
-                    options={TRANSITION_OPTIONS}
-                    value={value.kind}
-                    onChange={kind => props.onChange(kind === "none" ? undefined : { ...value, kind: kind as StoryTransitionRef["kind"] })}
+                    label={t("storyInspector.field.kind")}
+                    options={transitionOptions(t)}
+                    value={kind}
+                    onChange={next => next === "none"
+                        ? props.onChange(undefined)
+                        : props.onChange({ ...value, kind: next as StoryTransitionRef["kind"] })}
                 />
-                <NumberField label="Duration ms" value={value.durationMs} onChange={durationMs => props.onChange({ ...value, kind: value.kind === "none" ? "dissolve" : value.kind, durationMs })} />
-                <SelectField
-                    label="Easing"
-                    options={EASING_OPTIONS}
-                    value={value.easing ?? ""}
-                    onChange={easing => props.onChange({ ...value, kind: value.kind === "none" ? "dissolve" : value.kind, easing: String(easing) || undefined })}
-                />
-                <TextField
-                    label="Params"
-                    value={formatPropsText(value.props)}
-                    onChange={nextProps => props.onChange({ ...value, kind: value.kind === "none" ? "dissolve" : value.kind, props: parsePropsText(nextProps) })}
-                />
-            </div>
-        </div>
+                {kind === "none" ? null : (
+                    <>
+                        <NumberField label={t("storyInspector.field.durationMs")} value={value.durationMs} onChange={durationMs => setBase({ durationMs })} />
+                        <SelectField
+                            label={t("storyInspector.field.easing")}
+                            options={easingOptions(t)}
+                            value={value.easing ?? ""}
+                            onChange={easing => setBase({ easing: String(easing) || undefined })}
+                        />
+                    </>
+                )}
+                {kind === "fadeIn" ? (
+                    <>
+                        <NumberField label={t("storyInspector.transition.startX")} value={paramNumber(value.props, "x")} onChange={x => setParam({ x })} />
+                        <NumberField label={t("storyInspector.transition.startY")} value={paramNumber(value.props, "y")} onChange={y => setParam({ y })} />
+                    </>
+                ) : null}
+                {kind === "maskCircle" ? (
+                    <>
+                        <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
+                        <NumberField label={t("storyInspector.field.fromRadius")} value={paramNumber(value.props, "from")} onChange={from => setParam({ from })} />
+                        <NumberField label={t("storyInspector.field.toRadius")} value={paramNumber(value.props, "to")} onChange={to => setParam({ to })} />
+                    </>
+                ) : null}
+                {kind === "maskWipe" ? (
+                    <SelectField
+                        label={t("storyInspector.field.direction")}
+                        options={wipeDirectionOptions(t)}
+                        value={paramString(value.props, "direction", "left")}
+                        onChange={direction => setParam({ direction: String(direction) })}
+                    />
+                ) : null}
+                {kind === "softWipe" ? (
+                    <>
+                        <SelectField
+                            label={t("storyInspector.field.direction")}
+                            options={wipeDirectionOptions(t)}
+                            value={paramString(value.props, "direction", "left")}
+                            onChange={direction => setParam({ direction: String(direction) })}
+                        />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                    </>
+                ) : null}
+                {kind === "blinds" ? (
+                    <>
+                        <SelectField
+                            label={t("storyInspector.field.orientation")}
+                            options={blindsOrientationOptions(t)}
+                            value={paramString(value.props, "orientation", "horizontal")}
+                            onChange={orientation => setParam({ orientation: String(orientation) })}
+                        />
+                        <NumberField label={t("storyInspector.field.slats")} value={paramNumber(value.props, "slats")} onChange={slats => setParam({ slats })} />
+                    </>
+                ) : null}
+                {kind === "slide" ? (
+                    <SelectField
+                        label={t("storyInspector.field.direction")}
+                        options={wipeDirectionOptions(t)}
+                        value={paramString(value.props, "direction", "left")}
+                        onChange={direction => setParam({ direction: String(direction) })}
+                    />
+                ) : null}
+                {kind === "softIris" ? (
+                    <>
+                        <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                    </>
+                ) : null}
+                {kind === "blurDissolve" ? (
+                    <NumberField label={t("storyInspector.transition.blurPx")} value={paramNumber(value.props, "blur")} onChange={blur => setParam({ blur })} />
+                ) : null}
+                {kind === "throughColor" ? (
+                    <>
+                        <SelectField
+                            label={t("storyInspector.field.pattern")}
+                            options={throughColorPatternOptions(t)}
+                            value={paramString(value.props, "pattern", "plain")}
+                            onChange={pattern => setParam({ pattern: String(pattern) })}
+                        />
+                        <ColorTextField label={t("storyInspector.field.color")} value={paramString(value.props, "color", "#000000")} onChange={color => setParam({ color })} />
+                        <NumberField label={t("storyInspector.transition.holdPct")} value={paramNumber(value.props, "hold")} onChange={hold => setParam({ hold })} />
+                    </>
+                ) : null}
+                {kind === "throughColor" && paramString(value.props, "pattern", "plain") === "linear" ? (
+                    <>
+                        <SelectField
+                            label={t("storyInspector.field.direction")}
+                            options={wipeDirectionOptions(t)}
+                            value={paramString(value.props, "direction", "left")}
+                            onChange={direction => setParam({ direction: String(direction) })}
+                        />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                    </>
+                ) : null}
+                {kind === "throughColor" && paramString(value.props, "pattern", "plain") === "blinds" ? (
+                    <>
+                        <SelectField
+                            label={t("storyInspector.field.orientation")}
+                            options={blindsOrientationOptions(t)}
+                            value={paramString(value.props, "orientation", "horizontal")}
+                            onChange={orientation => setParam({ orientation: String(orientation) })}
+                        />
+                        <NumberField label={t("storyInspector.field.slats")} value={paramNumber(value.props, "slats")} onChange={slats => setParam({ slats })} />
+                    </>
+                ) : null}
+                {kind === "throughColor" && paramString(value.props, "pattern", "plain") === "iris" ? (
+                    <>
+                        <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                    </>
+                ) : null}
+            </FieldGrid>
+            {kind === "none" ? null : (
+                <div className="mt-1.5 text-2xs text-fg-subtle">{transitionHints(t)[realKind] ?? ""}</div>
+            )}
+        </Section>
     );
 }
 
 function CheckboxField(props: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
     return (
-        <label className="flex h-full min-h-[34px] items-end gap-2 pb-1 text-sm text-slate-300">
+        <label className="flex h-full min-h-[34px] items-end gap-2 pb-1 text-sm text-fg-muted">
             <input
                 type="checkbox"
                 className="h-4 w-4 accent-primary"
@@ -1146,6 +1515,7 @@ function BackgroundActionEditor(props: {
     payload: Extract<StoryActionPayload, { action: "setBackground" }>;
     onChange: (payload: Extract<StoryActionPayload, { action: "setBackground" }>) => void;
 }) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const assetsService = useMemo(
         () => context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null,
@@ -1215,41 +1585,41 @@ function BackgroundActionEditor(props: {
         alpha: 1,
     });
     const colorValue: ColorValue = { hex: parsedColorValue.hex, alpha: 1 };
-    const imageLabel = selectedAsset?.name ?? (props.payload.assetId ? "Missing image" : "No image");
+    const imageLabel = selectedAsset?.name ?? (props.payload.assetId ? t("storyInspector.background.missing") : t("storyInspector.background.none"));
 
     return (
-        <div className="grid gap-3">
-            <div className="inline-flex w-fit overflow-hidden rounded-md border border-white/10 bg-[#101216]">
+        <div className="grid grid-cols-1 gap-3">
+            <div className="inline-flex w-fit overflow-hidden rounded-md border border-edge bg-[#101216]">
                 <button
                     type="button"
                     className={[
                         "flex h-8 items-center gap-1.5 px-3 text-xs transition-colors",
-                        mode === "image" ? "bg-primary/20 text-primary" : "text-slate-400 hover:bg-white/[0.05] hover:text-slate-100",
+                        mode === "image" ? "bg-primary/20 text-primary" : "text-fg-muted hover:bg-fill-subtle hover:text-fg",
                     ].join(" ")}
                     onClick={selectImageMode}
                 >
                     <ImageIcon className="h-3.5 w-3.5" />
-                    Image
+                    {t("storyInspector.background.image")}
                 </button>
                 <button
                     type="button"
                     className={[
-                        "flex h-8 items-center gap-1.5 border-l border-white/10 px-3 text-xs transition-colors",
-                        mode === "color" ? "bg-primary/20 text-primary" : "text-slate-400 hover:bg-white/[0.05] hover:text-slate-100",
+                        "flex h-8 items-center gap-1.5 border-l border-edge px-3 text-xs transition-colors",
+                        mode === "color" ? "bg-primary/20 text-primary" : "text-fg-muted hover:bg-fill-subtle hover:text-fg",
                     ].join(" ")}
                     onClick={selectColorMode}
                 >
                     <Palette className="h-3.5 w-3.5" />
-                    Color
+                    {t("storyInspector.background.color")}
                 </button>
             </div>
 
             {mode === "image" ? (
-                <div className="grid gap-2 sm:grid-cols-[minmax(220px,320px)_minmax(0,1fr)]">
+                <div className="nl-field-grid nl-field-grid-2">
                     <button
                         ref={imageButtonRef}
                         type="button"
-                        className="group relative aspect-[16/9] min-h-32 overflow-hidden rounded-lg border border-white/10 bg-[#0f1115] text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
+                        className="group relative aspect-[16/9] min-h-32 overflow-hidden rounded-lg border border-edge bg-surface text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
                         onClick={() => setSelectorOpen(true)}
                     >
                         {url ? (
@@ -1260,25 +1630,25 @@ function BackgroundActionEditor(props: {
                                 draggable={false}
                             />
                         ) : (
-                            <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-xs text-slate-500">
-                                <ImageIcon className="h-5 w-5 text-slate-600" />
+                            <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-xs text-fg-subtle">
+                                <ImageIcon className="h-5 w-5 text-fg-subtle" />
                                 <span>{imageLabel}</span>
                             </div>
                         )}
                         {loading ? (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-slate-100">
-                                Loading...
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-fg">
+                                {t("common.loading")}
                             </div>
                         ) : null}
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-[10px] uppercase tracking-[0.22em] text-white opacity-0 transition-opacity group-hover:opacity-100">
-                            Change
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-2xs tracking-[0.22em] text-white opacity-0 transition-opacity group-hover:opacity-100">
+                            {t("storyInspector.background.change")}
                         </div>
                     </button>
                     <div className="flex min-w-0 flex-col gap-2">
                         <div>
-                            <div className={FIELD_LABEL_CLASS}>Image</div>
-                            <div className="flex h-9 min-h-[34px] min-w-0 items-center rounded-md border border-white/10 bg-[#1e1f22] px-3 text-sm text-gray-300">
-                                <span className={["truncate", selectedAsset ? "" : "italic text-gray-500"].join(" ")}>
+                            <div className={FIELD_LABEL_CLASS}>{t("storyInspector.background.image")}</div>
+                            <div className="flex h-9 min-h-[34px] min-w-0 items-center rounded-md border border-edge bg-surface-raised px-3 text-sm text-fg-muted">
+                                <span className={["truncate", selectedAsset ? "" : "italic text-fg-subtle"].join(" ")}>
                                     {imageLabel}
                                 </span>
                             </div>
@@ -1286,31 +1656,31 @@ function BackgroundActionEditor(props: {
                         <div className="flex gap-2">
                             <button
                                 type="button"
-                                className="h-8 rounded-md border border-white/10 bg-white/[0.04] px-3 text-xs text-slate-200 hover:border-primary/40 hover:text-primary"
+                                className="h-8 rounded-md border border-edge bg-fill-subtle px-3 text-xs text-fg hover:border-primary/40 hover:text-primary"
                                 onClick={() => setSelectorOpen(true)}
                             >
-                                {selectedAsset ? "Change" : "Select"}
+                                {selectedAsset ? t("storyInspector.background.change") : t("storyInspector.background.select")}
                             </button>
                             <button
                                 type="button"
-                                className="grid h-8 w-8 place-items-center rounded-md border border-white/10 bg-white/[0.04] text-slate-400 hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                                className="grid h-8 w-8 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
                                 onClick={clearImage}
                                 disabled={!props.payload.assetId}
-                                title="Clear image"
+                                title={t("storyInspector.background.clearImage")}
                             >
                                 <Trash2 className="h-3.5 w-3.5" />
                             </button>
                         </div>
                         {props.payload.assetId && error ? (
-                            <div className="text-[11px] leading-snug text-amber-400/90">
-                                Image asset could not be resolved: {error}
+                            <div className="text-2xs leading-snug text-amber-400/90">
+                                {t("storyInspector.background.assetError", { error })}
                             </div>
                         ) : null}
                     </div>
                 </div>
             ) : (
                 <div className="max-w-md">
-                    <label className={FIELD_LABEL_CLASS}>Color</label>
+                    <label className={FIELD_LABEL_CLASS}>{t("storyInspector.background.color")}</label>
                     <div>
                         <ColorPickerTrigger
                             value={colorValue}
@@ -1322,6 +1692,11 @@ function BackgroundActionEditor(props: {
                 </div>
             )}
 
+            <TransitionEditor
+                value={props.payload.transition}
+                onChange={transition => props.onChange({ ...props.payload, transition })}
+            />
+
             <AssetSelector
                 visible={selectorOpen}
                 assetType={AssetType.Image}
@@ -1329,135 +1704,102 @@ function BackgroundActionEditor(props: {
                 onConfirm={handleSelectImage}
                 selectedIds={props.payload.assetId ? [props.payload.assetId] : []}
                 anchorRef={imageButtonRef}
-                title="Select Background Image"
+                title={t("storyInspector.background.selectImageTitle")}
                 multiple={false}
             />
         </div>
     );
 }
 
-function ControlPayloadFields(props: { payload: StoryControlPayload; onChange: (payload: StoryBlock["payload"]) => void }) {
+function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySceneId; payload: StoryControlPayload; onChange: (payload: StoryBlock["payload"]) => void }) {
+    const { t } = useTranslation();
     if (props.payload.control === "condition") {
-        return <div className="text-sm text-slate-400">Condition container. Add condition branches as children.</div>;
+        return <div className="text-sm text-fg-muted">{t("storyInspector.control.conditionContainer")}</div>;
     }
     if (props.payload.control !== "conditionBranch") {
         const groupPayload = props.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
         return (
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="nl-field-grid">
                 <SelectField
-                    label="Control"
+                    label={t("storyInspector.control.control")}
                     options={[
-                        { value: "sequence", label: "Sequence" },
-                        { value: "parallel", label: "Parallel all" },
-                        { value: "race", label: "Race any" },
-                        { value: "repeat", label: "Repeat" },
+                        { value: "sequence", label: t("storyInspector.control.sequence") },
+                        { value: "parallel", label: t("storyInspector.control.parallel") },
+                        { value: "race", label: t("storyInspector.control.race") },
+                        { value: "repeat", label: t("storyInspector.control.repeat") },
                     ]}
                     value={groupPayload.control}
                     onChange={control => props.onChange({ ...groupPayload, control: control as "sequence" | "parallel" | "race" | "repeat" })}
                 />
                 <SelectField
-                    label="Mode"
+                    label={t("storyInspector.field.mode")}
                     options={[
-                        { value: "do", label: "Do" },
-                        { value: "doAsync", label: "Do async" },
-                        { value: "all", label: "All" },
-                        { value: "allAsync", label: "All async" },
-                        { value: "any", label: "Any" },
+                        { value: "do", label: t("storyInspector.control.mode.do") },
+                        { value: "doAsync", label: t("storyInspector.control.mode.doAsync") },
+                        { value: "all", label: t("storyInspector.control.mode.all") },
+                        { value: "allAsync", label: t("storyInspector.control.mode.allAsync") },
+                        { value: "any", label: t("storyInspector.control.mode.any") },
                     ]}
                     value={groupPayload.mode ?? "do"}
                     onChange={mode => props.onChange({ ...groupPayload, mode: mode as "do" | "doAsync" | "all" | "allAsync" | "any" })}
                 />
-                <NumberField label="Times" value={groupPayload.times} onChange={times => props.onChange({ ...groupPayload, times })} />
+                <NumberField label={t("storyInspector.control.times")} value={groupPayload.times} onChange={times => props.onChange({ ...groupPayload, times })} />
             </div>
         );
     }
     const branchPayload = props.payload;
     return (
-        <div className="grid gap-3">
+        <div className="grid grid-cols-1 gap-3">
             <SelectField
-                label="Branch"
-                options={BRANCH_OPTIONS}
+                label={t("storyInspector.control.branch")}
+                options={branchOptions(t)}
                 value={branchPayload.branch}
                 onChange={branch => props.onChange({ ...branchPayload, branch: branch as "if" | "elseIf" | "else" })}
             />
             {branchPayload.branch !== "else" ? (
-                <ConditionRefEditor
-                    value={branchPayload.condition}
-                    onChange={condition => props.onChange({ ...branchPayload, condition })}
-                />
+                <div className="flex flex-col gap-2">
+                    <ConditionEditor
+                        document={props.document}
+                        sceneId={props.sceneId}
+                        value={branchPayload.condition}
+                        onChange={condition => props.onChange({ ...branchPayload, condition })}
+                    />
+                    {branchPayload.condition?.kind === "expression" ? (
+                        <div className="rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
+                            {t("storyInspector.condition.legacyExpression")}
+                        </div>
+                    ) : null}
+                    {branchPayload.condition ? (
+                        <button
+                            type="button"
+                            className="h-8 w-fit rounded-md border border-edge px-2 text-xs text-fg-muted hover:border-red-400/40 hover:text-red-300"
+                            onClick={() => props.onChange({ ...branchPayload, condition: undefined })}
+                        >
+                            {t("storyInspector.condition.clear")}
+                        </button>
+                    ) : null}
+                </div>
             ) : (
-                <div className="text-sm text-slate-400">Else branch runs when previous branches do not match.</div>
+                <div className="text-sm text-fg-muted">{t("storyInspector.control.elseHint")}</div>
             )}
         </div>
     );
 }
 
-function ConditionRefEditor(props: {
-    value: StoryConditionRef | undefined;
-    onChange: (condition: StoryConditionRef | undefined) => void;
-}) {
-    const value = props.value?.kind === "variable"
-        ? props.value
-        : {
-            kind: "variable" as const,
-            target: { scope: "sceneLocal" as const, key: "variable" },
-            operator: "isTrue" as const,
-        };
-    return (
-        <div className="grid gap-2 sm:grid-cols-4">
-            <TextField
-                label="Key"
-                value={value.target.key}
-                onChange={key => props.onChange({ ...value, target: { ...value.target, key } })}
-            />
-            <SelectField
-                label="Scope"
-                options={VARIABLE_SCOPE_OPTIONS}
-                value={value.target.scope}
-                onChange={scope => props.onChange({ ...value, target: { ...value.target, scope: scope as StoryVariableScope } })}
-            />
-            <SelectField
-                label="Operator"
-                options={CONDITION_OPERATOR_OPTIONS}
-                value={value.operator}
-                onChange={operator => props.onChange({ ...value, operator: operator as Extract<StoryConditionRef, { kind: "variable" }>["operator"] })}
-            />
-            {value.operator === "equals" || value.operator === "notEquals" ? (
-                <TextField
-                    label="Value"
-                    value={value.value === undefined ? "" : String(value.value)}
-                    onChange={next => props.onChange({ ...value, value: parseScalar(next) as StoryLiteralValue })}
-                />
-            ) : null}
-            {props.value?.kind === "expression" ? (
-                <div className="sm:col-span-4 rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
-                    Legacy expression conditions are preserved in the document but are not part of the NLR action surface.
-                </div>
-            ) : null}
-            <button
-                type="button"
-                className="h-8 w-fit rounded-md border border-white/10 px-2 text-xs text-slate-400 hover:border-red-400/40 hover:text-red-300"
-                onClick={() => props.onChange(undefined)}
-            >
-                Clear condition
-            </button>
-        </div>
-    );
-}
-
 function CodePayloadFields(props: { payload: StoryCodePayload; onChange: (payload: StoryBlock["payload"]) => void }) {
+    const { t } = useTranslation();
     return (
-        <div className="grid gap-2">
+        <div className="grid grid-cols-1 gap-2">
             <div className="max-w-xs">
                 <SelectField
-                    label="Language"
+                    label={t("storyInspector.code.language")}
                     options={CODE_LANGUAGE_OPTIONS}
                     value={props.payload.language}
                     onChange={language => props.onChange({ ...props.payload, language: language as StoryCodePayload["language"] })}
                 />
             </div>
             <LabeledTextarea
-                label="Source"
+                label={t("storyInspector.code.source")}
                 className="min-h-28 font-mono"
                 value={props.payload.source}
                 onChange={source => props.onChange({ ...props.payload, source })}
@@ -1475,7 +1817,7 @@ function TextSegmentEditor(props: {
 }) {
     const text = props.text ?? { textId: props.generateTextId(), role: props.role, value: "" };
     return (
-        <div className="grid gap-2">
+        <div className="grid grid-cols-1 gap-2">
             <LabeledTextarea
                 label={props.label}
                 className="min-h-20"
@@ -1488,10 +1830,11 @@ function TextSegmentEditor(props: {
 }
 
 function TextIdReadout(props: { text: StoryTextSegment }) {
+    const { t } = useTranslation();
     return (
         <div>
-            <div className={FIELD_LABEL_CLASS}>Text ID</div>
-            <div className="flex h-9 min-h-[34px] min-w-0 items-center rounded-md border border-white/10 bg-[#1e1f22] px-3 text-xs text-gray-400">
+            <div className={FIELD_LABEL_CLASS}>{t("storyInspector.textId")}</div>
+            <div className="flex h-9 min-h-[34px] min-w-0 items-center rounded-md border border-edge bg-surface-raised px-3 text-xs text-fg-muted">
                 <span className="truncate font-mono">{props.text.textId}</span>
             </div>
         </div>
@@ -1562,4 +1905,110 @@ function LabeledTextarea(props: { label: string; value: string; onChange: (value
             />
         </div>
     );
+}
+
+/**
+ * A titled, boxed group used to organise the compact action editor into scannable
+ * sections (Basics / Appearance / Motion / Transition / Timing / ...).
+ */
+function Section(props: { title?: string; right?: ReactNode; className?: string; children: ReactNode }) {
+    return (
+        <section className={["rounded-lg border border-edge bg-fill-subtle p-2.5", props.className ?? ""].join(" ")}>
+            {props.title || props.right ? (
+                <div className="mb-2 flex items-center justify-between gap-2">
+                    {props.title ? (
+                        <div className="min-w-0 truncate text-2xs font-medium tracking-wide text-fg-muted">{props.title}</div>
+                    ) : <span />}
+                    {props.right ? <div className="shrink-0">{props.right}</div> : null}
+                </div>
+            ) : null}
+            {props.children}
+        </section>
+    );
+}
+
+/** Collapsible disclosure using the project chevron (matches the story panel accordion). */
+function Disclosure(props: { title: string; children: ReactNode }) {
+    return (
+        <details className="group">
+            <summary className="flex cursor-pointer select-none list-none items-center gap-1 text-2xs font-medium tracking-wide text-fg-subtle transition-colors hover:text-fg-muted [&::-webkit-details-marker]:hidden">
+                <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+                {props.title}
+            </summary>
+            <div className="mt-2">{props.children}</div>
+        </details>
+    );
+}
+
+/**
+ * Standard dense field grid used across every action editor. Columns respond to
+ * the property card's own width (see `.nl-field-grid` in styles.css), so a narrow
+ * editor pane collapses to fewer columns instead of overflowing horizontally.
+ */
+function FieldGrid(props: { cols?: 2 | 3 | 4; className?: string; children: ReactNode }) {
+    const cols = props.cols ?? 3;
+    const colClass = cols === 2 ? "nl-field-grid-2" : cols === 4 ? "nl-field-grid-4" : "";
+    return <div className={["nl-field-grid", colClass, props.className ?? ""].join(" ")}>{props.children}</div>;
+}
+
+/** Compact inline segmented toggle (e.g. Preset / Motion). */
+function SegToggle<T extends string>(props: { value: T; options: { value: T; label: string }[]; onChange: (value: T) => void }) {
+    return (
+        <div className="inline-flex overflow-hidden rounded-md border border-edge bg-[#101216]">
+            {props.options.map((option, index) => (
+                <button
+                    key={option.value}
+                    type="button"
+                    className={[
+                        "h-7 px-2.5 text-xs transition-colors",
+                        index > 0 ? "border-l border-edge" : "",
+                        props.value === option.value ? "bg-primary/20 text-primary" : "text-fg-muted hover:bg-fill-subtle hover:text-fg",
+                    ].join(" ")}
+                    onClick={() => props.onChange(option.value)}
+                >
+                    {option.label}
+                </button>
+            ))}
+        </div>
+    );
+}
+
+/** Merge a patch into a transition/transform props record, dropping empty values. */
+function mergeParams(
+    current: Record<string, StoryLiteralValue> | undefined,
+    patch: Record<string, StoryLiteralValue | undefined>,
+): Record<string, StoryLiteralValue> | undefined {
+    const next: Record<string, StoryLiteralValue> = { ...(current ?? {}) };
+    for (const [key, val] of Object.entries(patch)) {
+        if (val === undefined || val === "") {
+            delete next[key];
+        } else {
+            next[key] = val;
+        }
+    }
+    return Object.keys(next).length > 0 ? next : undefined;
+}
+
+function paramNumber(props: Record<string, StoryLiteralValue> | undefined, key: string): number | undefined {
+    const value = props?.[key];
+    if (typeof value === "number") {
+        return value;
+    }
+    if (typeof value === "string") {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : undefined;
+    }
+    return undefined;
+}
+
+function paramString(props: Record<string, StoryLiteralValue> | undefined, key: string, fallback: string): string {
+    const value = props?.[key];
+    if (typeof value === "string") {
+        return value;
+    }
+    return typeof value === "number" ? String(value) : fallback;
+}
+
+function paramBool(props: Record<string, StoryLiteralValue> | undefined, key: string): boolean {
+    return props?.[key] === true || props?.[key] === "true";
 }

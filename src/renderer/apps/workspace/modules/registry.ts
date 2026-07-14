@@ -17,7 +17,7 @@ import { uiEditorSurfacesModule } from "./ui-editor";
 import { projectPanelModule } from "./project";
 import { storyPanelModule } from "./story";
 import { storyMotionPanelModule } from "./story-motion";
-import { localizationPanelModule } from "./placeholders/workspacePlaceholderModules";
+import { localizationPanelModule } from "./localization";
 
 /**
  * Built-in panel modules
@@ -71,4 +71,4 @@ export { uiEditorSurfacesModule } from "./ui-editor";
 export { projectPanelModule } from "./project";
 export { storyPanelModule } from "./story";
 export { storyMotionPanelModule } from "./story-motion";
-export { localizationPanelModule } from "./placeholders/workspacePlaceholderModules";
+export { localizationPanelModule } from "./localization";

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
-import { BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR } from "@shared/types/blueprint/graph";
+import {
+    BLUEPRINT_NODE_PARAM_FN_REF,
+    BLUEPRINT_NODE_TYPE_FN_CALL,
+    BLUEPRINT_NODE_TYPE_FN_HEAD,
+    BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+} from "@shared/types/blueprint/graph";
+import { createBlueprintFnRef, parseBlueprintFnRef } from "./fnCatalog";
 import {
     buildBlueprintGraphClipboardPayload,
     pasteBlueprintGraphClipboardPayload,
@@ -118,5 +124,65 @@ describe("blueprint graph clipboard", () => {
             name: "score",
             valueType: "integer",
         });
+    });
+
+    it("re-points a Call Fn at the pasted head when both are copied together", () => {
+        const fnRef = createBlueprintFnRef("bp-src", "head");
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                head: {
+                    id: "head",
+                    type: BLUEPRINT_NODE_TYPE_FN_HEAD,
+                    params: { name: "Echo" },
+                    meta: { editorLayout: { x: 0, y: 0 } },
+                },
+                call: {
+                    id: "call",
+                    type: BLUEPRINT_NODE_TYPE_FN_CALL,
+                    params: { [BLUEPRINT_NODE_PARAM_FN_REF]: fnRef },
+                    meta: { editorLayout: { x: 160, y: 0 } },
+                },
+            },
+            edges: [],
+        };
+        const payload = buildBlueprintGraphClipboardPayload(ir, ["head", "call"]);
+        const ids = ["headCopy", "callCopy"];
+
+        const result = pasteBlueprintGraphClipboardPayload({
+            ir,
+            payload,
+            generateId: () => ids.shift()!,
+            targetBlueprintId: "bp-dst",
+        });
+
+        expect(parseBlueprintFnRef(result?.ir.nodes?.callCopy?.params?.[BLUEPRINT_NODE_PARAM_FN_REF])).toEqual({
+            blueprintId: "bp-dst",
+            headNodeId: "headCopy",
+        });
+    });
+
+    it("keeps a lone Call Fn ref untouched so validation can flag missing targets", () => {
+        const fnRef = createBlueprintFnRef("bp-src", "head");
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                call: {
+                    id: "call",
+                    type: BLUEPRINT_NODE_TYPE_FN_CALL,
+                    params: { [BLUEPRINT_NODE_PARAM_FN_REF]: fnRef },
+                    meta: { editorLayout: { x: 0, y: 0 } },
+                },
+            },
+            edges: [],
+        };
+        const payload = buildBlueprintGraphClipboardPayload(ir, ["call"]);
+
+        const result = pasteBlueprintGraphClipboardPayload({
+            ir,
+            payload,
+            generateId: () => "callCopy",
+            targetBlueprintId: "bp-dst",
+        });
+
+        expect(result?.ir.nodes?.callCopy?.params?.[BLUEPRINT_NODE_PARAM_FN_REF]).toBe(fnRef);
     });
 });

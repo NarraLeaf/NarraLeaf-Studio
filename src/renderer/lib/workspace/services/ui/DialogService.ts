@@ -3,6 +3,7 @@ import { UIStore } from "./UIStore";
 import { FocusManager } from "./FocusManager";
 import { FocusArea } from "./types";
 import { Dialog, DialogButton, QuickPickItem, QuickPickOptions, InputBoxOptions } from "./types";
+import { translate } from "@/lib/i18n";
 
 /**
  * Dialog Service
@@ -33,20 +34,20 @@ export class DialogService {
             };
 
             const id = this.createDialog({
-                title: "Confirm",
+                title: translate("common.confirm"),
                 message,
-                // content: detail ? <div className="text-sm text-gray-400 whitespace-pre-wrap">{detail}</div> : undefined
-                content: React.createElement("div", { className: "text-sm text-gray-400 whitespace-pre-wrap" }, detail),
+                // content: detail ? <div className="text-sm text-fg-muted whitespace-pre-wrap">{detail}</div> : undefined
+                content: React.createElement("div", { className: "text-sm text-fg-muted whitespace-pre-wrap" }, detail),
                 buttons: [
                     {
-                        label: "Cancel",
+                        label: translate("common.cancel"),
                         onClick: () => {
                             this.close(id);
                             safeResolve(false);
                         },
                     },
                     {
-                        label: "OK",
+                        label: translate("common.ok"),
                         primary: true,
                         onClick: () => {
                             safeResolve(true);
@@ -66,12 +67,12 @@ export class DialogService {
     public async alert(message: string, detail?: string): Promise<void> {
         return new Promise<void>(resolve => {
             const id = this.createDialog({
-                title: "Alert",
+                title: translate("dialogs.service.alertTitle"),
                 message,
-                content: React.createElement("div", { className: "text-sm text-gray-400 whitespace-pre-wrap" }, detail),
+                content: React.createElement("div", { className: "text-sm text-fg-muted whitespace-pre-wrap" }, detail),
                 buttons: [
                     {
-                        label: "OK",
+                        label: translate("common.ok"),
                         primary: true,
                         onClick: () => {
                             this.close(id);
@@ -147,7 +148,7 @@ export class DialogService {
             // Create a dialog with QuickPick component
             // The component will call resolveDialog when selection is made
             this.createDialog({
-                title: options?.title ?? "Select an item",
+                title: options?.title ?? translate("dialogs.service.selectTitle"),
                 content: null, // QuickPick component would go here
                 closable: true,
                 width: 600,
@@ -169,7 +170,7 @@ export class DialogService {
             
             // Create a dialog with InputBox component
             this.createDialog({
-                title: options?.title ?? "Input",
+                title: options?.title ?? translate("dialogs.service.inputTitle"),
                 content: null, // InputBox component would go here
                 closable: true,
                 width: 500,

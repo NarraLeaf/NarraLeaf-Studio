@@ -15,6 +15,8 @@ import {
     BLUEPRINT_GRAPH_IR_META_KIND,
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
+    BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
     BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
@@ -55,6 +57,7 @@ import {
 import {
     componentWidgetMainOwnerKey,
     ownerRefToIndexKey,
+    storyActionOwnerKey,
     surfaceMainOwnerKey,
     widgetMainOwnerKey,
     widgetValueOwnerKey,
@@ -155,7 +158,7 @@ function areUIBehaviorSnapshotsEqual(a: UIBehaviorSnapshot, b: UIBehaviorSnapsho
 
 function createValueGraphIr(input: {
     headNodeType: string;
-    valueType: UIElementValueBindingValueType;
+    valueType: UIElementValueBindingValueType | "boolean";
     literalValue: unknown;
     generateId: () => string;
 }): BlueprintGraphIr {
@@ -173,7 +176,9 @@ function createValueGraphIr(input: {
             ? BLUEPRINT_NODE_TYPE_LITERAL_JSON
             : input.valueType === "float"
               ? BLUEPRINT_NODE_TYPE_LITERAL_FLOAT
-              : BLUEPRINT_NODE_TYPE_LITERAL_STRING;
+              : input.valueType === "boolean"
+                ? BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN
+                : BLUEPRINT_NODE_TYPE_LITERAL_STRING;
     const literal: BlueprintGraphNode = {
         id: literalId,
         type: literalType,
@@ -206,7 +211,10 @@ function createValueGraphIr(input: {
     };
 }
 
-function normalizeBlueprintValueLiteral(value: unknown, valueType: UIElementValueBindingValueType): unknown {
+function normalizeBlueprintValueLiteral(value: unknown, valueType: UIElementValueBindingValueType | "boolean"): unknown {
+    if (valueType === "boolean") {
+        return value === true || value === "true";
+    }
     if (valueType === "string") {
         return value == null ? "" : String(value);
     }
@@ -574,6 +582,89 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     public getWidgetValueBlueprintId(surfaceId: string, elementId: string, propPath: string): string | undefined {
         const key = widgetValueOwnerKey(surfaceId, elementId, propPath);
         return getActiveBlueprintId(this.getBlueprintDocument(), key);
+    }
+
+    /**
+     * Ensure the implicit Story Action Blueprint exists for a story action. Self-referential owner:
+     * the owner key equals the blueprint id. Seeds a single "On Call" event graph. Returns the id.
+     */
+    public ensureStoryActionBlueprint(input?: { blueprintId?: string; displayName?: string; mode?: "action" | "value" | "condition" }): string {
+        const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
+        const id = input?.blueprintId || uuid.generate();
+        const key = storyActionOwnerKey(id);
+        let outId = id;
+        this.applyBlueprintMutation(doc => {
+            const active = getActiveBlueprintId(doc, key);
+            if (active && doc.blueprints[active]) {
+                outId = active;
+                return;
+            }
+            const defaultName =
+                input?.mode === "value" ? "Story Value" : input?.mode === "condition" ? "Story Condition" : "Story Action";
+            const blueprint = createMainBlueprint({
+                id,
+                name: input?.displayName ?? defaultName,
+                owner: { kind: "storyAction", blueprintId: id, ...(input?.mode ? { mode: input.mode } : {}) },
+            });
+            if (blueprint.program.kind === "graph") {
+                // Value mode (inline interpolation) opens ready to return a string: On Call → Return Value
+                // ← "" literal. Condition mode returns a boolean: On Call → Return Value ← `false` literal
+                // (type-checked to boolean while authoring). Action mode runs for side effects, so it only
+                // needs the On Call head.
+                const graph = input?.mode === "value"
+                    ? createValueGraphIr({
+                          headNodeType: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
+                          valueType: "string",
+                          literalValue: "",
+                          generateId: () => uuid.generate(),
+                      })
+                    : input?.mode === "condition"
+                    ? createValueGraphIr({
+                          headNodeType: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
+                          valueType: "boolean",
+                          literalValue: false,
+                          generateId: () => uuid.generate(),
+                      })
+                    : (() => {
+                          const headId = uuid.generate();
+                          return {
+                              nodes: { [headId]: { id: headId, type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL, params: {} } },
+                              edges: [],
+                              meta: { [BLUEPRINT_GRAPH_IR_META_KIND]: "event" },
+                          };
+                      })();
+                blueprint.program.graphs.events = {
+                    onCall: { id: "onCall", name: "On Call", graph },
+                };
+            }
+            doc.blueprints[id] = blueprint;
+            registerPrivateBlueprintAsActive(doc, key, id, "visual");
+            outId = id;
+        });
+        return outId;
+    }
+
+    public removeStoryActionBlueprint(blueprintId: string): void {
+        const key = storyActionOwnerKey(blueprintId);
+        this.applyBlueprintMutation(doc => {
+            const rec = doc.ownerRecords[key];
+            if (!rec) {
+                return;
+            }
+            for (const bid of rec.privateBlueprintIds) {
+                delete doc.blueprints[bid];
+            }
+            delete doc.ownerRecords[key];
+        });
+    }
+
+    public getStoryActionBlueprintId(blueprintId: string): string | undefined {
+        return getActiveBlueprintId(this.getBlueprintDocument(), storyActionOwnerKey(blueprintId));
+    }
+
+    /** All project-level persistent variable definitions (shared with the Story editor). */
+    public listPersistentVariables(): BlueprintDocument["persistentVariables"][string][] {
+        return Object.values(this.getBlueprintDocument().persistentVariables ?? {});
     }
 
     public getSurfaceMainBlueprintId(surfaceId: string): string | undefined {

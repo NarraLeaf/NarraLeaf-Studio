@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { useOpenBlueprintTarget } from "../hooks/useOpenBlueprintTarget";
 import { EditorComponentProps } from "../../types";
 import { useWorkspace } from "../../../context";
@@ -14,6 +15,7 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
+import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
@@ -21,7 +23,7 @@ import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/docume
 import type { StoryDocument } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
-import { getUIListChildSlot } from "@shared/types/ui-editor/list";
+import { getUIListChildSlot, isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import {
     applyBlueprintIrConnection,
     createGraphNodeForPalette,
@@ -61,14 +63,25 @@ import type {
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import { BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
+    BLUEPRINT_NODE_PARAM_FN_REF,
+    BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+    BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
+    readBlueprintFnSignatureSnapshot,
 } from "@shared/types/blueprint/graph";
+import {
+    buildBlueprintFnSignatureSnapshot,
+    findBlueprintFnByRef,
+    isBlueprintFnSnapshotStale,
+    isBlueprintFnVisibleToOwner,
+    listCallableBlueprintFnOptions,
+} from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import {
     ELEMENT_REF_PARAM_ELEMENT_ID,
     ELEMENT_REF_PARAM_ELEMENT_TYPE,
@@ -133,7 +146,7 @@ function isListItemContextElement(document: UIDocument, element: UIElement | und
         if (!parent) {
             return false;
         }
-        if (parent.type === "nl.list") {
+        if (isListLikeWidgetType(parent.type)) {
             const slot = getUIListChildSlot(child.extra);
             return slot == null || slot === "itemTemplate";
         }
@@ -267,7 +280,7 @@ function collectMagicElementRefs(input: {
             surfaceId: ref.surfaceId,
             elementId: ref.elementId,
             elementType: ref.elementType,
-            label: element.name?.trim() || `${element.type} (${element.id.slice(0, 8)})`,
+            label: element.name?.trim() || element.type,
         });
     }
     return out.sort((a, b) => a.label.localeCompare(b.label) || a.sourceNodeId.localeCompare(b.sourceNodeId));
@@ -286,13 +299,14 @@ function isElementBindingNodeType(type: string): boolean {
 
 function elementVariantOptions(
     element: UIElement | undefined,
-    targetLabel?: string,
+    targetLabel: string | undefined,
+    t: UseTranslation["t"],
 ): NonNullable<BlueprintFlowNodeData["displayableTargetVariants"]> {
     if (!element) {
         return {
             supported: false,
             options: [],
-            message: "Target element is missing",
+            message: t("blueprint.displayable.variant.targetMissing"),
         };
     }
     const appearance = (element.props as { appearance?: unknown } | undefined)?.appearance;
@@ -301,7 +315,9 @@ function elementVariantOptions(
             supported: false,
             targetLabel,
             options: [],
-            message: `${targetLabel ?? element.name ?? element.id} does not support variants`,
+            message: t("blueprint.displayable.variant.unsupportedNamed", {
+                name: targetLabel ?? element.name ?? element.type,
+            }),
         };
     }
     return {
@@ -309,7 +325,7 @@ function elementVariantOptions(
         targetLabel,
         options: appearance.variants.map((variant, index) => ({
             value: variant.id,
-            label: variant.name?.trim() || `Variant ${index + 1}`,
+            label: variant.name?.trim() || t("blueprint.displayable.variant.fallbackName", { index: index + 1 }),
         })),
         message: targetLabel,
     };
@@ -330,6 +346,7 @@ function ElementLiteralSurfacePreview({
     surface: UISurface;
     element: UIElement;
 }) {
+    const { t } = useTranslation();
     const width = Math.max(1, Math.abs(previewNumber(element.layout.width, 1)));
     const height = Math.max(1, Math.abs(previewNumber(element.layout.height, 1)));
     const scale = Math.max(
@@ -388,8 +405,8 @@ function ElementLiteralSurfacePreview({
 
     if (!rendered) {
         return (
-            <div className="flex h-[72px] w-full items-center justify-center rounded-sm bg-[#0d1117] text-[10px] text-gray-500">
-                Preview unavailable
+            <div className="flex h-[72px] w-full items-center justify-center rounded-sm bg-[#0d1117] text-2xs text-fg-subtle">
+                {t("blueprint.canvas.previewUnavailable")}
             </div>
         );
     }
@@ -397,7 +414,7 @@ function ElementLiteralSurfacePreview({
     return (
         <div className="relative flex h-[72px] w-full items-center justify-center overflow-hidden rounded-sm bg-[#0d1117]">
             <div
-                className="relative overflow-hidden rounded-[3px] border border-white/10 shadow-sm"
+                className="relative overflow-hidden rounded-[3px] border border-edge shadow-sm"
                 style={{
                     width: frameWidth,
                     height: frameHeight,
@@ -421,15 +438,46 @@ function ElementLiteralSurfacePreview({
     );
 }
 
-export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<BlueprintEntryTabPayload | undefined>) {
+/**
+ * Guard wrapper: resolves the target blueprint and only mounts the editor when it exists.
+ * If the blueprint is deleted while open (e.g. a Blueprint Value binding is reverted to a
+ * literal), this unmounts the inner editor as a whole instead of returning early between its
+ * hooks — which would otherwise trip React's "rendered fewer hooks than expected" error.
+ */
+export function BlueprintEntryTab(props: EditorComponentProps<BlueprintEntryTabPayload | undefined>) {
+    const { t } = useTranslation();
+    const { context, isInitialized } = useWorkspace();
+    // Subscribe so the wrapper re-evaluates (and can unmount the inner editor) on deletion.
+    useBlueprintDocumentRevision();
+
+    if (!isInitialized || !context || !props.payload?.blueprintId) {
+        return (
+            <div className="flex h-full items-center justify-center p-6 text-sm text-fg-muted">
+                {t("blueprint.tab.invalid")}
+            </div>
+        );
+    }
+    const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+    if (!localBp.getBlueprintDocument().blueprints[props.payload.blueprintId]) {
+        return (
+            <div className="flex h-full items-center justify-center p-6 text-sm text-amber-400">
+                {t("blueprint.tab.notFound", { id: props.payload.blueprintId })}
+            </div>
+        );
+    }
+    return <BlueprintEntryTabInner key={props.payload.blueprintId} {...props} />;
+}
+
+function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<BlueprintEntryTabPayload | undefined>) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const revision = useBlueprintDocumentRevision();
 
     if (!isInitialized || !context || !payload?.blueprintId) {
         return (
-            <div className="flex h-full items-center justify-center p-6 text-sm text-gray-400">
-                Blueprint tab is invalid.
+            <div className="flex h-full items-center justify-center p-6 text-sm text-fg-muted">
+                {t("blueprint.tab.invalid")}
             </div>
         );
     }
@@ -504,14 +552,9 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         };
     }, [storyService]);
     const doc = localBp.getBlueprintDocument();
-    const bp = doc.blueprints[payload.blueprintId];
-    if (!bp) {
-        return (
-            <div className="flex h-full items-center justify-center p-6 text-sm text-amber-400">
-                Blueprint not found: {payload.blueprintId}
-            </div>
-        );
-    }
+    // Existence is guaranteed by the BlueprintEntryTab wrapper, which unmounts this component
+    // when the blueprint is deleted (avoids an early return between the hooks below).
+    const bp = doc.blueprints[payload.blueprintId]!;
 
     const uiDocument = blueprintDocumentService.getDocument();
     const widgetElement =
@@ -576,7 +619,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 componentId: payload.componentId,
                 elementId: payload.elementId,
                 propPath: payload.propPath,
-                title: "Blueprint",
+                title: t("blueprint.tab.title"),
                 focusEventId: session.graphKind === "event" ? session.graphId : undefined,
                 focusFunctionId: session.graphKind === "function" ? session.graphId : undefined,
                 focusNodeId: session.nodeId,
@@ -584,7 +627,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         };
         handleCompletion();
         return subscribeElementBindingSession(handleCompletion);
-    }, [localBp, openBlueprint, payload, tabId]);
+    }, [localBp, openBlueprint, payload, tabId, t]);
 
     const reopenRevision = useCallback(
         (blueprintId: string) => {
@@ -595,10 +638,10 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 componentId: payload.componentId,
                 elementId: payload.elementId,
                 propPath: payload.propPath,
-                title: "Blueprint",
+                title: t("blueprint.tab.title"),
             });
         },
-        [openBlueprint, payload],
+        [openBlueprint, payload, t],
     );
 
     const onTsSourceChange = useCallback(
@@ -682,13 +725,14 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             ir: activeIr,
             payload: getBlueprintGraphClipboard(),
             generateId: () => uuid.generate(),
+            targetBlueprintId: payload.blueprintId,
         });
         if (!pasted) {
             return;
         }
         commitIr(pasted.ir);
         editor.setSelectedNodeIds(pasted.newNodeIds);
-    }, [commitIr, editor, uuid]);
+    }, [commitIr, editor, uuid, payload.blueprintId]);
 
     const blueprintKeybindings = useMemo(
         () => [
@@ -912,7 +956,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             listItemContextAvailable,
             isComponentDefinitionGraph,
         })).filter(entry => entry.role === "eventHead" || entry.role === "elementEventHead");
-        const defaultLayerName = `Layer ${eventIds.length + 1}`;
+        const defaultLayerName = t("blueprint.eventLayer.defaultName", { index: eventIds.length + 1 });
 
         let selection: BlueprintEventLayerDialogValue = createDefaultBlueprintEventLayerValue(
             eventHeadEntries,
@@ -936,7 +980,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             };
             const handleCreate = () => {
                 if (!selection.valid) {
-                    uiService.showNotification("Select an event and name the layer before creating it.", "warning");
+                    uiService.showNotification(t("blueprint.eventLayer.createInvalid"), "warning");
                     return;
                 }
                 safeResolve({ ...selection });
@@ -947,7 +991,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 closeDialog();
             };
             dialogId = uiService.dialogs.show({
-                title: "Create event layer",
+                title: t("blueprint.eventLayer.createTitle"),
                 content: (
                     <BlueprintEventLayerDialogContent
                         entries={eventHeadEntries}
@@ -960,8 +1004,8 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 closable: true,
                 width: 460,
                 buttons: [
-                    { label: "Cancel", onClick: handleCancel },
-                    { label: "Create", primary: true, onClick: handleCreate },
+                    { label: t("common.cancel"), onClick: handleCancel },
+                    { label: t("common.create"), primary: true, onClick: handleCreate },
                 ],
                 onClose: handleCancel,
             });
@@ -996,13 +1040,14 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         uuid,
         widgetElement,
         widgetLogicEvents,
+        t,
     ]);
 
     const onDeleteLayer = useCallback(
         (layerId: string) => {
             const wasActive = editor.graphView?.kind === "event" && editor.graphView.graphId === layerId;
             localBp.runBlueprintHistoryTransaction(payload.blueprintId, () => {
-                blueprintDocumentService.stripBlueprintLayerBindings(payload.surfaceId, payload.blueprintId, layerId);
+                blueprintDocumentService.stripBlueprintLayerBindings(payload.surfaceId ?? "", payload.blueprintId, layerId);
                 localBp.removeEventGraph(payload.blueprintId, layerId);
             });
             if (wasActive) {
@@ -1164,7 +1209,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             const revisionKey = `${node.id}:${ref.surfaceId}:${ref.elementId}:${uiDocumentRevision}`;
             previews[node.id] = {
                 revisionKey,
-                name: element.name?.trim() || element.id,
+                name: element.name?.trim() || element.type,
                 type: element.type,
                 text: typeof element.props?.text === "string" ? element.props.text : undefined,
                 layout: {
@@ -1194,8 +1239,8 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         const out: Record<string, BlueprintFlowNodeData["displayableTargetVariants"]> = {};
         for (const node of Object.values(activeIr.nodes ?? {})) {
             if (node.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT) {
-                const label = widgetElement?.name?.trim() || widgetElement?.id;
-                out[node.id] = elementVariantOptions(widgetElement, label);
+                const label = widgetElement?.name?.trim() || widgetElement?.type;
+                out[node.id] = elementVariantOptions(widgetElement, label, t);
                 continue;
             }
             if (node.type !== BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT) {
@@ -1206,7 +1251,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 out[node.id] = {
                     supported: false,
                     options: [],
-                    message: "Connect an Element ref to preview variants",
+                    message: t("blueprint.displayable.variant.connectElement"),
                 };
                 continue;
             }
@@ -1215,17 +1260,17 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 out[node.id] = {
                     supported: false,
                     options: [],
-                    message: "Static Element target required for variant list",
+                    message: t("blueprint.displayable.variant.staticRequired"),
                 };
                 continue;
             }
             const ref = readBlueprintElementRefParams(sourceNode.params);
             const element = ref ? currentDocument.elements[ref.elementId] : undefined;
-            const label = element?.name?.trim() || element?.id || ref?.elementId;
-            out[node.id] = elementVariantOptions(element, label);
+            const label = element?.name?.trim() || element?.type;
+            out[node.id] = elementVariantOptions(element, label, t);
         }
         return out;
-    }, [blueprintDocumentService, editor.graphView, ir, revision, uiDocumentRevision, widgetElement]);
+    }, [blueprintDocumentService, editor.graphView, ir, revision, uiDocumentRevision, widgetElement, t]);
 
     const dynamicSelectOptionsByNodeId = useMemo(() => {
         const activeIr = editor.graphView ? ir : null;
@@ -1308,10 +1353,10 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         const uiDocument = blueprintDocumentService.getDocument();
         const surfaceOptions: BlueprintInspectorParamSelectOption[] = uiDocument.surfaces
             .filter(s => s.kind === "appSurface")
-            .map(s => ({ value: s.id, label: s.name || s.id }));
+            .map(s => ({ value: s.id, label: s.name || t("blueprint.options.untitledSurface") }));
         const storyEntries = storyService.listStories();
         const storyOptions: BlueprintInspectorParamSelectOption[] = storyEntries
-            .map(story => ({ value: story.id, label: story.name || story.id }));
+            .map(story => ({ value: story.id, label: story.name || t("blueprint.options.untitledStory") }));
         const storySceneOptions: BlueprintInspectorParamSelectOption[] = [];
         for (const story of storyEntries) {
             const storyDocument = storyDocumentsById[story.id];
@@ -1341,15 +1386,34 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 }
                 storySceneOptions.push({
                     value: scene.id,
-                    label: scene.name || scene.runtimeName || scene.id,
+                    label: scene.name || scene.runtimeName || t("blueprint.options.untitledScene"),
                     meta: { storyId: story.id },
                 });
             }
+        }
+        // Named localization keys: pick by source text, key name as context.
+        let localizationKeyOptions: BlueprintInspectorParamSelectOption[] = [];
+        try {
+            const keys = LocalizationService.getInstance().getKeysIfLoaded()?.keys ?? {};
+            localizationKeyOptions = Object.entries(keys)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([name, definition]) => ({
+                    value: name,
+                    label: definition.sourceText.trim() ? `${definition.sourceText} — ${name}` : name,
+                }));
+        } catch {
+            // Outside a workspace context; no key options.
         }
         const opts: Record<string, BlueprintInspectorParamSelectOption[]> = {
             surfaces: surfaceOptions,
             stories: storyOptions,
             storyScenes: storySceneOptions,
+            localizationKeys: localizationKeyOptions,
+            callableFns: listCallableBlueprintFnOptions({
+                blueprintDocument: doc,
+                uiDocument,
+                caller: bp.owner,
+            }),
             ...nodeCatalog.getDynamicSelectOptions(),
         };
         if (
@@ -1364,7 +1428,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                         const el = uiDocument.elements[id];
                         if (!el) return;
                         if (el.type !== "nl.root") {
-                            result.push({ value: el.id, label: el.name || `${el.type} (${el.id.slice(0, 8)})` });
+                            result.push({ value: el.id, label: el.name || el.type });
                         }
                         for (const cid of el.childrenIds) visit(cid);
                     };
@@ -1385,7 +1449,65 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         storyLibraryRevision,
         nodeCatalog,
         dynamicSelectOptionsRevision,
+        doc,
+        bp.owner,
+        t,
     ]);
+
+    const resolveCallableFnSignature = useCallback(
+        (fnRef: string) => {
+            const currentDoc = localBp.getBlueprintDocument();
+            const decl = findBlueprintFnByRef(currentDoc, fnRef);
+            if (!decl || !isBlueprintFnVisibleToOwner(decl.owner, bp.owner)) {
+                return null;
+            }
+            return buildBlueprintFnSignatureSnapshot(decl);
+        },
+        [localBp, bp.owner],
+    );
+
+    // Heal stale Call Fn signature snapshots when this blueprint is opened. Cross-blueprint
+    // signature changes are pull-based: same-graph edits sync on commit, other graphs are
+    // covered by the fn.call_signature_stale diagnostic until reopened or re-picked.
+    useEffect(() => {
+        const currentDoc = localBp.getBlueprintDocument();
+        const currentBp = currentDoc.blueprints[payload.blueprintId];
+        if (!currentBp || currentBp.program.kind !== "graph") {
+            return;
+        }
+        for (const [graphId, eventGraph] of Object.entries(currentBp.program.graphs.events ?? {})) {
+            const staleSnapshots = new Map<string, ReturnType<typeof buildBlueprintFnSignatureSnapshot>>();
+            for (const [nodeId, node] of Object.entries(eventGraph.graph?.nodes ?? {})) {
+                if (node.type !== BLUEPRINT_NODE_TYPE_FN_CALL) {
+                    continue;
+                }
+                const fnRef = node.params?.[BLUEPRINT_NODE_PARAM_FN_REF];
+                if (typeof fnRef !== "string" || fnRef.length === 0) {
+                    continue;
+                }
+                const decl = findBlueprintFnByRef(currentDoc, fnRef);
+                if (!decl || !isBlueprintFnVisibleToOwner(decl.owner, currentBp.owner)) {
+                    // Missing/out-of-scope targets stay untouched — validation reports the error.
+                    continue;
+                }
+                if (isBlueprintFnSnapshotStale(readBlueprintFnSignatureSnapshot(node.params), decl)) {
+                    staleSnapshots.set(nodeId, buildBlueprintFnSignatureSnapshot(decl));
+                }
+            }
+            if (staleSnapshots.size === 0) {
+                continue;
+            }
+            localBp.updateEventGraphIr(payload.blueprintId, graphId, draft => {
+                for (const [nodeId, snapshot] of staleSnapshots) {
+                    const node = draft.nodes?.[nodeId];
+                    if (!node) {
+                        continue;
+                    }
+                    node.params = { ...(node.params ?? {}), [BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT]: snapshot };
+                }
+            });
+        }
+    }, [localBp, payload.blueprintId]);
 
     const [memberPanelFocusContained, setMemberPanelFocusContained] = useState(false);
 
@@ -1453,7 +1575,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                         >
                             <span className="text-sm font-semibold text-white">TypeScript</span>
                             <BlueprintFrontendBadge kind="typescript" />
-                            <span className="truncate font-mono text-[11px] text-gray-400">{bp.name}</span>
+                            <span className="truncate font-mono text-2xs text-fg-muted">{bp.name}</span>
                         </div>
                     }
                     memberTree={
@@ -1474,8 +1596,8 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
 
     const header = (
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5" title={contextTitle}>
-            <span className="text-sm font-semibold text-white">Blueprint</span>
-            <span className="truncate font-mono text-[11px] text-gray-400">{bp.name}</span>
+            <span className="text-sm font-semibold text-white">{t("blueprint.header.title")}</span>
+            <span className="truncate font-mono text-2xs text-fg-muted">{bp.name}</span>
         </div>
     );
 
@@ -1510,6 +1632,8 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                         onBindElementLiteral={onBindElementLiteral}
                         initialViewport={initialFlowViewport}
                         onViewportChange={onFlowViewportChange}
+                        currentBlueprintId={payload.blueprintId}
+                        resolveCallableFnSignature={resolveCallableFnSignature}
                     />
                 </div>
             </div>
@@ -1520,12 +1644,12 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                     className="rounded-md border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-100 hover:bg-cyan-500/20"
                     onClick={onAddEvent}
                 >
-                    Add layer
+                    {t("blueprint.canvas.addLayer")}
                 </button>
             </div>
         ) : (
-            <div className="flex h-full min-h-0 items-center justify-center text-xs text-gray-500">
-                Select a layer on the left.
+            <div className="flex h-full min-h-0 items-center justify-center text-xs text-fg-subtle">
+                {t("blueprint.canvas.selectLayer")}
             </div>
         );
 

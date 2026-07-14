@@ -4,6 +4,7 @@
  */
 
 import {
+    BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
@@ -620,5 +621,33 @@ export const controlFlowBlueprintNodes: BlueprintNodeDef[] = [
             { id: "in", kind: "input", semantic: "exec", label: "In" },
         ],
         execute: () => ({ nextPort: undefined }),
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
+        displayName: "Return Value",
+        category: "Flow",
+        keywords: ["return", "value", "output", "result", "flow"],
+        graphKinds: ["event"],
+        isPure: false,
+        role: "valueReturn",
+        scope: { ownerKinds: ["widgetValue", "storyAction"] },
+        // Terminal (tail) flow node: an exec input and the value to return, no exec output.
+        pins: [
+            { id: "in", kind: "input", semantic: "exec", label: "In" },
+            { id: "value", kind: "input", semantic: "data", valueType: "any", label: "Value" },
+        ],
+        execute: ctx => {
+            const value = resolveDataPinValue(ctx.graph, ctx.node.id, "value", ctx.params, ctx.blueprintLocals, 0, {
+                hostAdapter: ctx.hostAdapter,
+                eventPayload: ctx.eventPayload,
+                listItemScope: ctx.listItemScope,
+                instanceKey: ctx.instanceKey,
+                executionOwner: ctx.executionOwner,
+                valueExecution: ctx.valueExecution,
+            });
+            ctx.valueExecution?.returnValue(value);
+            // Producing the return value ends this execution path (no `next`).
+            return { nextPort: undefined };
+        },
     },
 ];

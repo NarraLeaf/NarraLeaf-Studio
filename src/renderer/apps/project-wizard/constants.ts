@@ -22,9 +22,12 @@ export const projectTemplates: ProjectTemplate[] = [
     {
         id: "empty",
         name: "Empty",
+        nameKey: "wizard.template.options.empty.name",
         description: "Start with a blank project and build from scratch",
+        descriptionKey: "wizard.template.options.empty.description",
         icon: FileText,
-        category: "Custom"
+        category: "Custom",
+        categoryKey: "wizard.template.options.empty.category"
     }
 ];
 
@@ -39,7 +42,7 @@ export const licenseOptions: LicenseOption[] = [
     { value: "BSD-3-Clause", label: "BSD 3-Clause License" },
     { value: "ISC", label: "ISC License" },
     { value: "Unlicense", label: "The Unlicense" },
-    { value: "Other", label: "Other" },
+    { value: "Other", label: "Other", labelKey: "wizard.details.licenseOther" },
 ];
 
 /**
@@ -58,17 +61,17 @@ export const resolutionOptions: ResolutionOption[] = [
  */
 export const versionControlOptions: VersionControlOption[] = [
     { value: "git", label: "Git" },
-    { value: "none", label: "None" },
+    { value: "none", label: "None", labelKey: "common.none" },
 ];
 
 /**
  * Backup options (currently unused but prepared for future use)
  */
 export const backupOptions: BackupOption[] = [
-    { value: "none", label: "No backups" },
-    { value: "hourly", label: "Hourly" },
-    { value: "daily", label: "Daily" },
-    { value: "weekly", label: "Weekly" },
+    { value: "none", label: "No backups", labelKey: "wizard.settings.backup.none" },
+    { value: "hourly", label: "Hourly", labelKey: "wizard.settings.backup.hourly" },
+    { value: "daily", label: "Daily", labelKey: "wizard.settings.backup.daily" },
+    { value: "weekly", label: "Weekly", labelKey: "wizard.settings.backup.weekly" },
 ];
 
 /**

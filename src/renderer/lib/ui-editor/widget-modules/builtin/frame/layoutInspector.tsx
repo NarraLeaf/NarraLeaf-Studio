@@ -11,6 +11,7 @@ import type {
 } from "@/lib/ui-editor/widget-modules/types";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIAppSurface, UIElement } from "@shared/types/ui-editor/document";
+import { i18nStore } from "@/lib/i18n";
 import { getFrameProps } from "./helpers";
 
 type ReadDocumentService = Pick<UIDocumentService, "getDocument">;
@@ -70,10 +71,11 @@ export function applyFrameScalePercent(input: {
 export function createFrameLayoutSizeField(
     _context: LayoutSizeFieldContext,
 ): FieldDefinition<UIInspectorData> {
+    const { t } = i18nStore.getTranslator();
     const field: InlineRowFieldDefinition<UIInspectorData> = {
         id: "layout.frameScale",
         type: "inlineRow",
-        label: "Scale",
+        label: t("widgets.frame.scale"),
         gap: 8,
         wrap: false,
         items: [
@@ -109,12 +111,12 @@ export function createFrameLayoutSizeField(
                             min={0}
                             precision={2}
                             unit="%"
-                            leftIcon={<Maximize2 className="w-4 h-4 text-gray-400" />}
+                            leftIcon={<Maximize2 className="w-4 h-4 text-fg-muted" />}
                             className="w-full min-w-0"
                             disabled={disabled}
-                            placeholder="Select Page"
+                            placeholder={t("widgets.frame.selectPage")}
                             selectAllOnFocus
-                            aria-label="Scale"
+                            aria-label={t("widgets.frame.scale")}
                         />
                     );
                 },

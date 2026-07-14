@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, Loader2, X } from "lucide-react";
 import { AppLayout } from "@/lib/components/layout";
 import { getInterface } from "@/lib/app/bridge";
+import { useTranslation } from "@/lib/i18n";
+import type { TranslationKey, Translator } from "@shared/i18n";
 import {
     PluginPermissionGrantResult,
     PluginPermissionPersistence,
@@ -19,14 +21,14 @@ type PermissionCopy = {
     detail?: string;
 };
 
-const WINDOW_LABELS: Record<string, string> = {
-    launcher: "Launcher",
-    settings: "Settings",
-    workspace: "Workspace",
-    "project-wizard": "Project Wizard",
-    "dev-mode": "Dev Mode",
-    "plugin-permission": "Plugin Permission",
-    raw: "Studio",
+const WINDOW_LABEL_KEYS: Record<string, TranslationKey> = {
+    launcher: "pluginPermission.window.launcher",
+    settings: "pluginPermission.window.settings",
+    workspace: "pluginPermission.window.workspace",
+    "project-wizard": "pluginPermission.window.projectWizard",
+    "dev-mode": "pluginPermission.window.devMode",
+    "plugin-permission": "pluginPermission.window.pluginPermission",
+    raw: "pluginPermission.window.studio",
 };
 
 const PLUGIN_PERMISSION_WINDOW_CONTROL_ABILITY: WindowControlAbility = {
@@ -47,90 +49,100 @@ function pluginLabel(request: PluginPermissionRequest): string {
     return name ? `${name} (${request.plugin.id})` : request.plugin.id;
 }
 
-function requesterLabel(props: PluginPermissionPromptProps | null): string {
+function requesterLabel(props: PluginPermissionPromptProps | null, t: Translator["t"]): string {
     const windowType = props?.requester?.windowType;
     if (!windowType) {
-        return "Studio";
+        return t("pluginPermission.window.studio");
     }
-    return WINDOW_LABELS[windowType] ?? windowType;
+    const key = WINDOW_LABEL_KEYS[windowType];
+    return key ? t(key) : windowType;
 }
 
-function buildPermissionCopy(props: PluginPermissionPromptProps): PermissionCopy {
+function buildPermissionCopy(props: PluginPermissionPromptProps, t: Translator["t"]): PermissionCopy {
     const request = props.request;
     const plugin = pluginLabel(request);
-    const requester = requesterLabel(props);
+    const requester = requesterLabel(props, t);
 
     switch (request.kind) {
         case "install": {
             return {
-                type: "Plugin Install Request",
-                title: `${requester} requests to install ${plugin}`,
+                type: t("pluginPermission.install.type"),
+                title: t("pluginPermission.install.title", { requester, plugin }),
                 body: [
-                    "Studio identified these privileged controls for this installation:",
-                    "Approving this install grants the listed controls to this plugin version. Only install plugins you trust.",
+                    t("pluginPermission.install.body1"),
+                    t("pluginPermission.install.body2"),
                 ],
                 permissions: describePluginInstallPermissions(request.permissions),
-                detail: `Source: ${request.source}`,
+                detail: t("pluginPermission.install.source", { source: request.source }),
             };
         }
         case "filesystem":
             return {
-                type: "File System Permission Request",
-                title: `${plugin} requests file access`,
+                type: t("pluginPermission.filesystem.type"),
+                title: t("pluginPermission.filesystem.title", { plugin }),
                 body: [
-                    "This plugin will be able to use the requested file system control after you approve it.",
+                    t("pluginPermission.filesystem.body1"),
                     request.persistence === "permanent"
-                        ? "Choosing Allow Once grants this only for the current Studio session."
-                        : "This request is for the current Studio session.",
+                        ? t("pluginPermission.filesystem.bodyPermanent")
+                        : t("pluginPermission.filesystem.bodySession"),
                 ],
                 permissions: [
-                    `${formatMode(request.mode)} ${request.recursive ? "inside" : "for"} ${request.path}`,
+                    request.recursive
+                        ? t("pluginPermission.filesystem.permissionRecursive", {
+                              mode: formatMode(request.mode, t),
+                              path: request.path,
+                          })
+                        : t("pluginPermission.filesystem.permissionSingle", {
+                              mode: formatMode(request.mode, t),
+                              path: request.path,
+                          }),
                 ],
             };
         case "api":
             return {
-                type: "Plugin API Permission Request",
-                title: `${plugin} requests ${request.capability}`,
+                type: t("pluginPermission.api.type"),
+                title: t("pluginPermission.api.title", { plugin, capability: request.capability }),
                 body: [
-                    "This plugin will be able to call the requested Studio API after approval.",
-                    "Only approve this if the plugin needs the capability for the action you started.",
+                    t("pluginPermission.api.body1"),
+                    t("pluginPermission.api.body2"),
                 ],
                 permissions: [request.capability],
             };
         case "trust":
             return {
-                type: "Plugin Trust Request",
-                title: `${requester} requests to trust ${plugin}`,
+                type: t("pluginPermission.trust.type"),
+                title: t("pluginPermission.trust.title", { requester, plugin }),
                 body: [
-                    "Trusted plugins can be enabled by Studio without repeating the initial trust prompt.",
-                    "Only trust plugins from sources you recognize.",
+                    t("pluginPermission.trust.body1"),
+                    t("pluginPermission.trust.body2"),
                 ],
-                permissions: ["Trust this plugin identity"],
+                permissions: [t("pluginPermission.trust.permission")],
             };
         default:
             return {
-                type: "Plugin Permission Request",
-                title: `${plugin} requests a Studio permission`,
-                body: ["Review the request before allowing it."],
+                type: t("pluginPermission.generic.type"),
+                title: t("pluginPermission.generic.title", { plugin }),
+                body: [t("pluginPermission.generic.body")],
                 permissions: [],
             };
     }
 }
 
-function formatMode(mode: string): string {
+function formatMode(mode: string, t: Translator["t"]): string {
     switch (mode) {
         case "read":
-            return "Read access";
+            return t("pluginPermission.mode.read");
         case "write":
-            return "Write access";
+            return t("pluginPermission.mode.write");
         case "readwrite":
-            return "Read and write access";
+            return t("pluginPermission.mode.readwrite");
         default:
             return mode;
     }
 }
 
 export function PluginPermissionApp() {
+    const { t } = useTranslation();
     const [props, setProps] = useState<PluginPermissionPromptProps | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
@@ -144,7 +156,7 @@ export function PluginPermissionApp() {
                     return;
                 }
                 if (!result.success) {
-                    setError(result.error ?? "Failed to load permission request");
+                    setError(result.error ?? t("pluginPermission.error.load"));
                     return;
                 }
                 setProps(result.data);
@@ -162,7 +174,7 @@ export function PluginPermissionApp() {
     }, []);
 
     const request = props?.request ?? null;
-    const copy = useMemo(() => props ? buildPermissionCopy(props) : null, [props]);
+    const copy = useMemo(() => props ? buildPermissionCopy(props, t) : null, [props, t]);
     const showPersistentChoices = Boolean(request && isPrivilegedRequest(request) && request.persistence === "permanent");
 
     const closeWithResult = (result: PluginPermissionGrantResult | null) => {
@@ -197,7 +209,7 @@ export function PluginPermissionApp() {
         setBusy(false);
 
         if (!result.success) {
-            setError(result.error ?? "Failed to grant permission");
+            setError(result.error ?? t("pluginPermission.error.grant"));
             return;
         }
 
@@ -206,22 +218,22 @@ export function PluginPermissionApp() {
 
     return (
         <AppLayout
-            title="Plugin Permission"
+            title={t("pluginPermission.title")}
             iconSrc="/favicon.ico"
             initialControlAbility={PLUGIN_PERMISSION_WINDOW_CONTROL_ABILITY}
             windowControlPolicy={WindowControlPolicy.None}
         >
-            <div className="flex h-full min-h-0 flex-col bg-[#0f1115] text-gray-200">
+            <div className="flex h-full min-h-0 flex-col bg-surface text-fg">
                 {!request && !error ? (
                     <div className="flex min-h-0 flex-1 items-center justify-center">
-                        <Loader2 className="h-6 w-6 animate-spin text-gray-500" aria-label="Loading" />
+                        <Loader2 className="h-6 w-6 animate-spin text-fg-subtle" aria-label={t("common.loading")} />
                     </div>
                 ) : null}
 
                 {copy ? (
                     <>
-                        <div className="border-b border-white/10 bg-[#0b0d12] px-4 py-2">
-                            <div className="text-[11px] font-medium uppercase tracking-normal text-gray-400">
+                        <div className="border-b border-edge bg-surface-sunken px-4 py-2">
+                            <div className="text-2xs font-medium tracking-normal text-fg-muted">
                                 {copy.type}
                             </div>
                             <div className="mt-1 text-sm font-medium text-white">
@@ -230,18 +242,18 @@ export function PluginPermissionApp() {
                         </div>
 
                         <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
-                            <div className="space-y-2 text-sm leading-5 text-gray-300">
+                            <div className="space-y-2 text-sm leading-5 text-fg-muted">
                                 {copy.body.map((line, index) => (
                                     <p key={index}>{line}</p>
                                 ))}
                             </div>
 
                             {copy.permissions.length > 0 ? (
-                                <div className="mt-3 border border-white/10 bg-white/[0.03]">
+                                <div className="mt-3 border border-edge bg-fill-subtle">
                                     {copy.permissions.map((permission, index) => (
                                         <div
                                             key={`${permission}-${index}`}
-                                            className="border-b border-white/10 px-3 py-2 text-sm text-gray-200 last:border-b-0"
+                                            className="border-b border-edge px-3 py-2 text-sm text-fg last:border-b-0"
                                         >
                                             {permission}
                                         </div>
@@ -250,13 +262,13 @@ export function PluginPermissionApp() {
                             ) : null}
 
                             {copy.detail ? (
-                                <div className="mt-3 truncate font-mono text-[11px] text-gray-500">
+                                <div className="mt-3 truncate font-mono text-2xs text-fg-subtle">
                                     {copy.detail}
                                 </div>
                             ) : null}
 
                             {request?.reason ? (
-                                <div className="mt-3 border border-white/10 bg-[#111318] px-3 py-2 text-xs leading-5 text-gray-400">
+                                <div className="mt-3 border border-edge bg-[#111318] px-3 py-2 text-xs leading-5 text-fg-muted">
                                     {request.reason}
                                 </div>
                             ) : null}
@@ -277,25 +289,25 @@ export function PluginPermissionApp() {
                 ) : null}
 
                 {request ? (
-                    <div className={`grid gap-2 border-t border-white/10 bg-[#0b0d12] p-3 ${showPersistentChoices ? "grid-cols-[1fr_1fr_1.15fr]" : "grid-cols-2"}`}>
+                    <div className={`grid gap-2 border-t border-edge bg-surface-sunken p-3 ${showPersistentChoices ? "grid-cols-[1fr_1fr_1.15fr]" : "grid-cols-2"}`}>
                         <button
                             type="button"
                             onClick={handleDeny}
                             autoFocus
-                            className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded border border-white/10 bg-white/[0.04] px-3 text-sm font-medium text-gray-200 hover:bg-white/[0.08] focus:outline-none focus:ring-2 focus:ring-primary/60"
+                            className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded border border-edge bg-fill-subtle px-3 text-sm font-medium text-fg hover:bg-fill focus:outline-none focus:ring-2 focus:ring-primary/60"
                         >
                             <X size={15} className="shrink-0" />
-                            <span className="whitespace-nowrap">{request.kind === "install" ? "Don't Allow" : "Deny"}</span>
+                            <span className="whitespace-nowrap">{request.kind === "install" ? t("pluginPermission.button.dontAllow") : t("pluginPermission.button.deny")}</span>
                         </button>
                         {showPersistentChoices ? (
                             <button
                                 type="button"
                                 onClick={() => handleApprove("temporary")}
                                 disabled={!request || busy}
-                                className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded border border-white/10 bg-white/[0.06] px-3 text-sm font-medium text-gray-100 hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
+                                className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded border border-edge bg-fill px-3 text-sm font-medium text-fg hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 <Check size={15} className="shrink-0" />
-                                <span className="whitespace-nowrap">Allow Once</span>
+                                <span className="whitespace-nowrap">{t("pluginPermission.button.allowOnce")}</span>
                             </button>
                         ) : null}
                         <button
@@ -305,7 +317,7 @@ export function PluginPermissionApp() {
                             className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded bg-primary px-3 text-sm font-semibold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <Check size={15} className="shrink-0" />
-                            <span className="whitespace-nowrap">{busy ? "Granting" : showPersistentChoices ? "Always Allow" : "Allow"}</span>
+                            <span className="whitespace-nowrap">{busy ? t("pluginPermission.button.granting") : showPersistentChoices ? t("pluginPermission.button.alwaysAllow") : t("pluginPermission.button.allow")}</span>
                         </button>
                     </div>
                 ) : null}

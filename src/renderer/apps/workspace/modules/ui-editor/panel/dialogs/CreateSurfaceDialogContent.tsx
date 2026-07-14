@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Input, InputGroup } from "@/lib/components/elements/Input";
 import type { UIStageSlotId, UISurfaceDesignSize, UISurfaceKind } from "@shared/types/ui-editor/document";
+import { useTranslation } from "@/lib/i18n";
 import { GAME_UI_SLOT_OPTIONS, STAGE_SLOT_LABELS } from "../constants";
 
 export type CreateSurfaceDialogValue = {
@@ -35,6 +36,7 @@ export function CreateSurfaceDialogContent({
     disabledSlotIds = [],
     onChange,
 }: CreateSurfaceDialogContentProps) {
+    const { t } = useTranslation();
     const [name, setName] = useState(defaultName);
     const [width, setWidth] = useState(String(defaultDesignSize.width));
     const [height, setHeight] = useState(String(defaultDesignSize.height));
@@ -44,7 +46,7 @@ export function CreateSurfaceDialogContent({
     const heightValue = useMemo(() => parsePositiveInteger(height), [height]);
     const isPage = kind === "appSurface";
     const pageValid = name.trim().length > 0 && widthValue != null && heightValue != null;
-    const gameUiName = `${STAGE_SLOT_LABELS[slotId] ?? slotId} UI`;
+    const gameUiName = t("uiEditor.naming.gameUi", { slot: STAGE_SLOT_LABELS[slotId] ?? slotId });
     const disabledSlots = useMemo(() => new Set(disabledSlotIds), [disabledSlotIds]);
     const gameUiValid = !disabledSlots.has(slotId);
 
@@ -69,7 +71,7 @@ export function CreateSurfaceDialogContent({
     if (!isPage) {
         return (
             <div className="space-y-4">
-                <div className="text-sm text-gray-400">Choose where this Game UI belongs during gameplay.</div>
+                <div className="text-sm text-fg-muted">{t("uiEditor.createDialog.slotIntro")}</div>
                 <div className="grid gap-2">
                     {GAME_UI_SLOT_OPTIONS.map(option => {
                         const isActive = slotId === option.value;
@@ -87,19 +89,22 @@ export function CreateSurfaceDialogContent({
                                 className={`w-full rounded-md border px-3 py-3 text-left text-sm transition-colors ${
                                     isActive
                                         ? "border-primary bg-primary/10 text-white"
-                                        : "border-white/10 text-gray-300 hover:border-white/30 hover:bg-white/5"
-                                } ${disabled ? "cursor-not-allowed opacity-45 hover:border-white/10 hover:bg-transparent" : ""}`}
+                                        : "border-edge text-fg-muted hover:border-edge-strong hover:bg-fill-subtle"
+                                } ${disabled ? "cursor-not-allowed opacity-45 hover:border-edge hover:bg-transparent" : ""}`}
                             >
                                 <div className="font-semibold">{option.label}</div>
-                                <div className="text-[11px] text-gray-400">
-                                    {disabled ? "Already created. Open the existing Game UI from the list." : option.description}
+                                <div className="text-2xs text-fg-muted">
+                                    {disabled ? t("uiEditor.createDialog.slotAlreadyCreated") : option.description}
                                 </div>
                             </button>
                         );
                     })}
                 </div>
-                <div className="text-xs text-gray-500">
-                    Game UI uses the project resolution: {defaultDesignSize.width}×{defaultDesignSize.height}.
+                <div className="text-xs text-fg-subtle">
+                    {t("uiEditor.createDialog.resolutionNote", {
+                        width: defaultDesignSize.width,
+                        height: defaultDesignSize.height,
+                    })}
                 </div>
             </div>
         );
@@ -107,7 +112,7 @@ export function CreateSurfaceDialogContent({
 
     return (
         <div className="space-y-4">
-            <InputGroup label="Name" required error={name.trim().length === 0 ? "Name is required" : undefined}>
+            <InputGroup label={t("common.name")} required error={name.trim().length === 0 ? t("uiEditor.createDialog.nameRequired") : undefined}>
                 <Input
                     value={name}
                     onChange={event => setName(event.target.value)}
@@ -117,7 +122,7 @@ export function CreateSurfaceDialogContent({
                 />
             </InputGroup>
             <div className="grid grid-cols-2 gap-3">
-                <InputGroup label="Width" required error={widthValue == null ? "Use a positive integer" : undefined}>
+                <InputGroup label={t("uiEditor.createDialog.width")} required error={widthValue == null ? t("uiEditor.createDialog.positiveIntegerError") : undefined}>
                     <Input
                         type="number"
                         min={1}
@@ -127,7 +132,7 @@ export function CreateSurfaceDialogContent({
                         fullWidth
                     />
                 </InputGroup>
-                <InputGroup label="Height" required error={heightValue == null ? "Use a positive integer" : undefined}>
+                <InputGroup label={t("uiEditor.createDialog.height")} required error={heightValue == null ? t("uiEditor.createDialog.positiveIntegerError") : undefined}>
                     <Input
                         type="number"
                         min={1}

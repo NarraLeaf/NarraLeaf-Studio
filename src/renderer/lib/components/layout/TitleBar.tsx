@@ -1,9 +1,11 @@
 import { useWindowControls } from "@/lib/app/hooks/useWindowControls";
+import { useTranslation } from "@/lib/i18n";
 import { ErrorBoundary } from "@/lib/app/errorHandling/ErrorBoundary";
 import { isMacPlatform } from "@/lib/app/platform";
 import { Minus, Square, X } from "lucide-react";
 import { ReactNode } from "react";
 import { WindowControlPolicy, type WindowControlAbility } from "@shared/types/window";
+import { cn } from "../../utils/cn";
 
 const MACOS_TRAFFIC_LIGHT_SAFE_AREA = 90;
 const TITLEBAR_EDGE_GAP = 5;
@@ -31,6 +33,7 @@ export function TitleBar({
     initialControlAbility,
     windowControlPolicy = WindowControlPolicy.Standard,
 }: TitleBarProps) {
+    const { t } = useTranslation();
     const isMac = isMacPlatform();
     const usesInlineMacControls = isMac && windowControlPolicy === WindowControlPolicy.Standard;
     const hasWindowControls = windowControlPolicy !== WindowControlPolicy.None;
@@ -46,14 +49,14 @@ export function TitleBar({
         : undefined;
 
     return (
-        <div className={`titlebar-drag relative z-[20000] flex h-10 min-h-10 shrink-0 items-center bg-[#0b0d12] border-b border-white/10 ${className}`}>
+        <div className={cn("titlebar-drag relative z-[20000] flex h-10 min-h-10 shrink-0 items-center bg-surface-sunken border-b border-edge", className)}>
             {/* Left side - App Icon and Action Bar */}
             <div className="no-drag flex h-full min-w-0 items-center" style={leftSafeAreaStyle}>
                 {!usesInlineMacControls && iconSrc && (
                     <div className="flex h-full shrink-0 items-center px-4">
                         <img
                             src={iconSrc}
-                            alt="App Icon"
+                            alt={t("dialogs.window.appIcon")}
                             className="w-5 h-5"
                         />
                     </div>
@@ -71,7 +74,7 @@ export function TitleBar({
                 style={titleSafeAreaStyle}
             >
                 {title && (
-                    <span className="text-sm text-gray-300 truncate">
+                    <span className="text-sm text-fg-muted truncate">
                         {title}
                     </span>
                 )}
@@ -88,7 +91,7 @@ export function TitleBar({
                     <div className="flex h-full shrink-0 items-center px-4">
                         <img
                             src={iconSrc}
-                            alt="App Icon"
+                            alt={t("dialogs.window.appIcon")}
                             className="w-5 h-5"
                         />
                     </div>
@@ -106,6 +109,7 @@ interface CustomWindowControlsProps {
 }
 
 function CustomWindowControls({ initialAbility }: CustomWindowControlsProps) {
+    const { t } = useTranslation();
     const { isMaximized, ability, minimize, toggleMaximize, close } = useWindowControls(initialAbility);
 
     return (
@@ -113,9 +117,9 @@ function CustomWindowControls({ initialAbility }: CustomWindowControlsProps) {
             {ability.minimizable && (
                 <button
                     onClick={minimize}
-                    className="h-10 w-10 grid place-items-center text-gray-300 hover:bg-white/10 rounded-sm transition-colors cursor-default"
-                    aria-label="Minimize"
-                    title="Minimize"
+                    className="h-10 w-10 grid place-items-center text-fg-muted hover:bg-fill rounded-sm transition-colors cursor-default"
+                    aria-label={t("dialogs.window.minimize")}
+                    title={t("dialogs.window.minimize")}
                 >
                     <Minus className="w-4 h-4" />
                 </button>
@@ -123,9 +127,9 @@ function CustomWindowControls({ initialAbility }: CustomWindowControlsProps) {
             {ability.maximizable && (
                 <button
                     onClick={toggleMaximize}
-                    className="h-10 w-10 grid place-items-center text-gray-300 hover:bg-white/10 rounded-sm transition-colors cursor-default"
-                    aria-label={isMaximized ? "Restore" : "Maximize"}
-                    title={isMaximized ? "Restore" : "Maximize"}
+                    className="h-10 w-10 grid place-items-center text-fg-muted hover:bg-fill rounded-sm transition-colors cursor-default"
+                    aria-label={isMaximized ? t("dialogs.window.restore") : t("dialogs.window.maximize")}
+                    title={isMaximized ? t("dialogs.window.restore") : t("dialogs.window.maximize")}
                 >
                     <Square className="w-3 h-3" />
                 </button>
@@ -133,9 +137,9 @@ function CustomWindowControls({ initialAbility }: CustomWindowControlsProps) {
             {ability.closable && (
                 <button
                     onClick={close}
-                    className="h-10 w-10 grid place-items-center text-gray-300 hover:bg-red-500/80 hover:text-white rounded-sm transition-colors cursor-default"
-                    aria-label="Close"
-                    title="Close"
+                    className="h-10 w-10 grid place-items-center text-fg-muted hover:bg-danger/80 hover:text-white rounded-sm transition-colors cursor-default"
+                    aria-label={t("common.close")}
+                    title={t("common.close")}
                 >
                     <X className="w-4 h-4" />
                 </button>

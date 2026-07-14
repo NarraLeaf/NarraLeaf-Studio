@@ -1,29 +1,69 @@
 import fs from "fs/promises";
 import path from "path";
 import { nativeImage } from "electron";
-import { app, BrowserWindow, ipcMain, protocol } from "electron/main";
+import { app, BrowserWindow, ipcMain, protocol, session } from "electron/main";
 import { WebSocketServer } from "ws";
 import {
     GAME_RUNTIME_PROTOCOL,
     type GameRuntimePackV1,
 } from "@shared/types/gameRuntime";
 import { getMimeType } from "@shared/utils/fs";
+import { createRuntimeResources, type RuntimeResources } from "./runtimeResources";
 import {
-    resolveRuntimeAssetPath,
-    resolveRuntimeStaticPath,
-} from "./runtimeProtocol";
+    PLUGIN_REACT_MODULE_SOURCES,
+    PLUGIN_RUNTIME_API_MODULE_SOURCE,
+} from "@shared/utils/pluginRuntimeApiModule";
+import { resolveRuntimeStaticPath } from "./runtimeProtocol";
+import { injectRuntimeCsp, installRuntimeNetworkPolicy } from "./networkPolicy";
 import {
     RuntimePersistenceStore,
     RuntimeSaveStore,
 } from "./runtimeStorage";
 
 const appDir = __dirname;
-const packPath = path.join(appDir, "pack.json");
 const userDataDir = path.resolve(appDir, "..", "userData");
+
+/**
+ * Build-time placeholder. The compiler substitutes the real value when asset
+ * protection is on and leaves it untouched (and unused) otherwise. Must match
+ * RUNTIME_KEY_PLACEHOLDER in @narraleaf/encryption.
+ */
+const PACK_KEY = "__NLS_ENC_KEY_PLACEHOLDER__";
+
+/** Node inspector / Chromium remote-debugging switches refused in production. */
+const DEBUG_SWITCHES = [
+    "remote-debugging-port",
+    "remote-debugging-pipe",
+    "inspect",
+    "inspect-brk",
+    "inspect-port",
+    "inspect-publish-uid",
+];
 
 let packPromise: Promise<GameRuntimePackV1> | null = null;
 let mainWindow: BrowserWindow | null = null;
 let controlServer: WebSocketServer | null = null;
+let resources: RuntimeResources | null = null;
+
+/**
+ * The active resource backend. Established once at startup; every packaged read
+ * (pack, assets, bundled plugin entries) goes through it.
+ */
+function runtimeResources(): RuntimeResources {
+    if (!resources) {
+        throw new Error("Runtime resources accessed before initialization");
+    }
+    return resources;
+}
+
+/** Whether the process was started with an inspector / remote-debugging switch. */
+function hasDebuggingSwitch(): boolean {
+    if (DEBUG_SWITCHES.some(name => app.commandLine.hasSwitch(name))) {
+        return true;
+    }
+    const pattern = /^--(remote-debugging-(port|pipe)|inspect(-brk|-port|-publish-uid)?)(=|$)/;
+    return [...process.argv, ...process.execArgv].some(arg => pattern.test(arg));
+}
 
 protocol.registerSchemesAsPrivileged([
     {
@@ -40,11 +80,21 @@ protocol.registerSchemesAsPrivileged([
 app.setPath("userData", userDataDir);
 
 void app.whenReady().then(async () => {
+    resources = await createRuntimeResources(appDir, PACK_KEY);
     const pack = await readPack();
+    if (pack.mode === "production" && hasDebuggingSwitch()) {
+        // Refuse to run a production game under an attached debugger/CDP.
+        app.quit();
+        return;
+    }
+    const allowHttp = pack.network?.allowHttp === true;
     applyRuntimeAppIdentity(pack);
-    registerRuntimeProtocol();
+    registerRuntimeProtocol(allowHttp);
     registerRuntimeIpc();
     startPreviewControlServer(pack);
+    // Confine the renderer to the app protocol before it loads any document
+    // unless the project opted into HTTP.
+    installRuntimeNetworkPolicy(session.defaultSession, allowHttp);
     mainWindow = createWindow(pack);
     await mainWindow.loadURL(`${GAME_RUNTIME_PROTOCOL}://runtime/index.html`);
 });
@@ -56,11 +106,15 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
     controlServer?.close();
     controlServer = null;
+    void resources?.dispose();
+    resources = null;
 });
 
 async function readPack(): Promise<GameRuntimePackV1> {
     if (!packPromise) {
-        packPromise = fs.readFile(packPath, "utf-8").then(raw => JSON.parse(raw) as GameRuntimePackV1);
+        packPromise = runtimeResources()
+            .readPack()
+            .then(raw => JSON.parse(raw.toString("utf-8")) as GameRuntimePackV1);
     }
     return packPromise;
 }
@@ -68,6 +122,10 @@ async function readPack(): Promise<GameRuntimePackV1> {
 function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     const size = resolveInitialWindowSize(pack);
     const icon = createProjectIcon(pack);
+    // Production disables DevTools outright: with devTools:false Electron ignores
+    // any openDevTools call and the menu/keyboard toggles become no-ops, so there
+    // is no in-app path to the inspector (the startup switch guard covers CDP).
+    const devToolsEnabled = pack.mode !== "production";
     const win = new BrowserWindow({
         title: pack.project.name,
         width: size.width,
@@ -81,6 +139,7 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         webPreferences: {
             preload: path.join(appDir, "preload.js"),
             contextIsolation: true,
+            devTools: devToolsEnabled,
         },
     });
     win.setTitle(pack.project.name);
@@ -89,15 +148,17 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             mainWindow = null;
         }
     });
-    win.webContents.on("before-input-event", (_event, input) => {
-        if (input.type === "keyUp" && input.key === "F12") {
-            if (win.webContents.isDevToolsOpened()) {
-                win.webContents.closeDevTools();
-            } else {
-                win.webContents.openDevTools({ mode: "detach" });
+    if (devToolsEnabled) {
+        win.webContents.on("before-input-event", (_event, input) => {
+            if (input.type === "keyUp" && input.key === "F12") {
+                if (win.webContents.isDevToolsOpened()) {
+                    win.webContents.closeDevTools();
+                } else {
+                    win.webContents.openDevTools({ mode: "detach" });
+                }
             }
-        }
-    });
+        });
+    }
     return win;
 }
 
@@ -141,19 +202,48 @@ function resolveInitialWindowSize(pack: GameRuntimePackV1): { width: number; hei
     return { width: 1280, height: 720 };
 }
 
-function registerRuntimeProtocol(): void {
+function registerRuntimeProtocol(allowHttp: boolean): void {
     protocol.handle(GAME_RUNTIME_PROTOCOL, async request => {
         const url = new URL(request.url);
         try {
             if (url.hostname === "runtime") {
-                return serveFile(resolveRuntimeStaticPath(appDir, decodeURIComponent(url.pathname)));
+                const pathname = decodeURIComponent(url.pathname);
+                if (isIndexDocument(pathname)) {
+                    return serveIndexDocument(resolveRuntimeStaticPath(appDir, pathname), allowHttp);
+                }
+                // Bundled runtime files (e.g. plugin entries) come from the store;
+                // static runtime files fall back to a loose read from the app dir.
+                const bundled = await runtimeResources().readRuntimeFile(pathname.replace(/^\/+/, ""));
+                if (bundled) {
+                    return serveBytes(bundled, getMimeType(pathname));
+                }
+                return serveFile(resolveRuntimeStaticPath(appDir, pathname));
             }
             if (url.hostname === "pack") {
-                return serveFile(packPath, "application/json");
+                return serveBytes(await runtimeResources().readPack(), "application/json");
+            }
+            if (url.hostname === "plugin-api") {
+                const pathname = `/${decodeURIComponent(url.pathname).replace(/^\/+/, "")}`;
+                const source = pathname === "/runtime.js"
+                    ? PLUGIN_RUNTIME_API_MODULE_SOURCE
+                    : PLUGIN_REACT_MODULE_SOURCES[pathname];
+                if (source) {
+                    return new Response(source, {
+                        status: 200,
+                        headers: {
+                            "Content-Type": "text/javascript",
+                            "Cache-Control": "no-store",
+                        },
+                    });
+                }
+                return new Response("Not found", { status: 404 });
             }
             if (url.hostname === "asset") {
                 const assetId = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
-                return serveFile(resolveRuntimeAssetPath(appDir, await readPack(), assetId));
+                const pack = await readPack();
+                const item = pack.assets.items[assetId];
+                const bytes = await runtimeResources().readAsset(pack, assetId);
+                return serveBytes(bytes, item?.mimeType ?? getMimeType(assetId));
             }
             return new Response("Not found", { status: 404 });
         } catch (error) {
@@ -164,11 +254,31 @@ function registerRuntimeProtocol(): void {
 }
 
 async function serveFile(filePath: string, contentType = getMimeType(filePath)): Promise<Response> {
-    const data = await fs.readFile(filePath);
+    return serveBytes(await fs.readFile(filePath), contentType);
+}
+
+function serveBytes(data: Buffer, contentType: string): Response {
     return new Response(new Uint8Array(data), {
         status: 200,
         headers: {
             "Content-Type": contentType,
+            "Cache-Control": "no-store",
+        },
+    });
+}
+
+function isIndexDocument(pathname: string): boolean {
+    const normalized = pathname.replace(/^\/+/, "").toLowerCase();
+    return normalized === "" || normalized === "index.html";
+}
+
+/** Serve the runtime document with the gated Content-Security-Policy injected. */
+async function serveIndexDocument(filePath: string, allowHttp: boolean): Promise<Response> {
+    const html = await fs.readFile(filePath, "utf-8");
+    return new Response(injectRuntimeCsp(html, allowHttp), {
+        status: 200,
+        headers: {
+            "Content-Type": "text/html; charset=utf-8",
             "Cache-Control": "no-store",
         },
     });

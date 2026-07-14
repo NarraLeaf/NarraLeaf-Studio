@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useTranslation } from "@/lib/i18n";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
@@ -59,6 +60,7 @@ export function CompactButtonAppearance({
     setButtonMotionVisible,
     motionFieldsConfigured,
 }: Props) {
+    const { t } = useTranslation();
     const backgroundMode = buttonModuleModes.background;
     const borderMode = buttonModuleModes.border;
     const spacingMode = buttonModuleModes.spacing;
@@ -130,10 +132,10 @@ export function CompactButtonAppearance({
     const buildBorderMoreMenu = (): ContextMenuDef => [
         {
             id: "border-align",
-            label: "Border align",
+            label: t("widgetAppearance.border.align"),
             submenu: STROKE_ALIGN_OPTIONS.map(option => ({
                 id: `border-align-${option.value}`,
-                label: option.label,
+                label: t(option.labelKey),
                 onClick: () => {
                     patchBorder("strokeAlign", String(option.value) as RectangleLikeProps["strokeAlign"]);
                 },
@@ -142,10 +144,10 @@ export function CompactButtonAppearance({
         { separator: true, id: "border-more-separator" },
         {
             id: "border-join",
-            label: "Corner join",
+            label: t("widgetAppearance.border.cornerJoin"),
             submenu: STROKE_JOIN_OPTIONS.map(option => ({
                 id: `border-join-${option.value}`,
-                label: option.label,
+                label: t(option.labelKey),
                 onClick: () => {
                     patchBorder("borderJoin", option.value as StrokeJoin);
                 },
@@ -173,7 +175,7 @@ export function CompactButtonAppearance({
             />
 
             <CompactModuleCard
-                title="Border"
+                title={t("widgetAppearance.border.title")}
                 headerHoverAction={
                     <ModuleMotionMenuButton
                         enabled={borderMotionVisible}
@@ -238,13 +240,13 @@ export function CompactButtonAppearance({
                         strokeOpacity01={readFiniteNumber(getBorder("strokeOpacity"), 1)}
                         onStrokeOpacity01Change={o => patchBorder("strokeOpacity", o)}
                         moreMenu={buildBorderMoreMenu()}
-                        moreMenuAriaLabel="More border options"
+                        moreMenuAriaLabel={t("widgetAppearance.border.moreOptionsAria")}
                     />
                 </div>
             </CompactModuleCard>
 
             <CompactModuleCard
-                title="Spacing"
+                title={t("widgetAppearance.spacing.title")}
                 headerHoverAction={
                     <ModuleMotionMenuButton
                         enabled={spacingMotionVisible}
@@ -318,23 +320,23 @@ export function CompactButtonAppearance({
                         </div>
                     </div>
                 </div>
-                <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer pt-1">
+                <label className="flex items-center gap-2 text-xs text-fg-muted cursor-pointer pt-1">
                     <input
                         type="checkbox"
                         checked={Boolean(getSpacing("clipContent"))}
                         onChange={e => patchSpacing("clipContent", e.target.checked)}
-                        className="rounded border-white/20"
+                        className="rounded border-edge-strong"
                     />
-                    Clip content
+                    {t("widgetAppearance.spacing.clipContent")}
                 </label>
             </CompactModuleCard>
 
-            <CompactModuleCard title="Mouse">
+            <CompactModuleCard title={t("widgetAppearance.mouse.title")}>
                 <ButtonCursorSelect value={cursorValue} onChange={patchCursor} />
             </CompactModuleCard>
 
             <CompactModuleCard
-                title="Transform"
+                title={t("widgetAppearance.transform.title")}
                 headerHoverAction={
                     <ModuleMotionMenuButton
                         enabled={transformMotionVisible}
@@ -354,7 +356,7 @@ export function CompactButtonAppearance({
             >
                 <div className="flex flex-wrap gap-2 min-w-0">
                     <div className="flex min-w-[6rem] flex-1 flex-col gap-1">
-                        <span className="text-xs font-medium text-gray-400">X offset</span>
+                        <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.xOffset")}</span>
                         <div className="flex items-center gap-1 min-w-0">
                             <NumericDraftEnhancedInput
                                 committedDisplay={String(readFiniteNumber(getTransform("transformOffsetX"), 0))}
@@ -363,7 +365,7 @@ export function CompactButtonAppearance({
                                 inputMode="numeric"
                                 type="number"
                                 unit="px"
-                                leftIcon={<Move className="w-4 h-4 text-gray-400" />}
+                                leftIcon={<Move className="w-4 h-4 text-fg-muted" />}
                                 className="w-full min-w-0"
                                 selectAllOnFocus
                             />
@@ -378,7 +380,7 @@ export function CompactButtonAppearance({
                         </div>
                     </div>
                     <div className="flex min-w-[6rem] flex-1 flex-col gap-1">
-                        <span className="text-xs font-medium text-gray-400">Y offset</span>
+                        <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.yOffset")}</span>
                         <div className="flex items-center gap-1 min-w-0">
                             <NumericDraftEnhancedInput
                                 committedDisplay={String(readFiniteNumber(getTransform("transformOffsetY"), 0))}
@@ -387,7 +389,7 @@ export function CompactButtonAppearance({
                                 inputMode="numeric"
                                 type="number"
                                 unit="px"
-                                leftIcon={<Move className="w-4 h-4 text-gray-400" />}
+                                leftIcon={<Move className="w-4 h-4 text-fg-muted" />}
                                 className="w-full min-w-0"
                                 selectAllOnFocus
                             />
@@ -404,7 +406,7 @@ export function CompactButtonAppearance({
                 </div>
 
                 <div className="mt-2 flex min-w-0 flex-col gap-1">
-                    <span className="text-xs font-medium text-gray-400">Zoom</span>
+                    <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.zoom")}</span>
                     <div className="flex items-center gap-1 min-w-0">
                         <NumericDraftEnhancedInput
                             committedDisplay={formatPercentDisplay(readFiniteNumber(getTransform("transformScale"), 1))}
@@ -433,7 +435,7 @@ export function CompactButtonAppearance({
                 </div>
 
                 <div className="mt-2 flex min-w-0 flex-col gap-1">
-                    <span className="text-xs font-medium text-gray-400">Rotation</span>
+                    <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.rotation")}</span>
                     <div className="flex items-center gap-1 min-w-0">
                         <NumericDraftEnhancedInput
                             committedDisplay={String(readFiniteNumber(getTransform("transformRotation"), 0))}
@@ -457,7 +459,7 @@ export function CompactButtonAppearance({
                 </div>
 
                 <div className="mt-2 flex min-w-0 flex-col gap-1">
-                    <span className="text-xs font-medium text-gray-400">Opacity</span>
+                    <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.opacity")}</span>
                     <div className="flex items-center gap-1 min-w-0">
                         <NumericDraftEnhancedInput
                             committedDisplay={formatPercentDisplay(
@@ -473,7 +475,7 @@ export function CompactButtonAppearance({
                             min={0}
                             max={100}
                             precision={null}
-                            leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                            leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                             className="w-full min-w-0 flex-1"
                             selectAllOnFocus
                         />

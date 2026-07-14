@@ -1,4 +1,5 @@
 import { getInterface } from "@/lib/app/bridge";
+import { translate } from "@/lib/i18n";
 import { ProjectData } from "../types";
 import { encodeProjectConfig, getProjectConfigFileName } from "@shared/utils/nlproj";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
@@ -123,19 +124,19 @@ export class ProjectService {
         const errors: string[] = [];
 
         if (!projectData.name.trim()) {
-            errors.push("Project name is required");
+            errors.push(translate("wizard.validation.nameRequired"));
         }
 
         if (!projectData.appId.trim()) {
-            errors.push("App ID is required");
+            errors.push(translate("wizard.details.appIdRequired"));
         }
 
         if (!projectData.location.trim()) {
-            errors.push("Project location is required");
+            errors.push(translate("wizard.validation.locationRequired"));
         }
 
         if (!projectData.template) {
-            errors.push("Project template is required");
+            errors.push(translate("wizard.validation.templateRequired"));
         }
 
         return {

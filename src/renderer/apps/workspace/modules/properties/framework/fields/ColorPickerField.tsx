@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
+import { useTranslation } from "@/lib/i18n";
 import {
     ColorPickerFieldDefinition,
     ColorPickerGroupFieldDefinition,
@@ -58,6 +59,8 @@ interface ColorPickerTriggerProps {
     disabled?: boolean;
     readOnly?: boolean;
     onChange: (value: ColorValue) => void;
+    /** Fired once when the picker panel closes, with the final settled color. */
+    onCommit?: (value: ColorValue) => void;
 }
 
 function rgbToHsl(r: number, g: number, b: number) {
@@ -236,7 +239,9 @@ export function ColorPickerTrigger({
     disabled = false,
     readOnly = false,
     onChange,
+    onCommit,
 }: ColorPickerTriggerProps) {
+    const { t } = useTranslation();
     const triggerRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const [isOpen, setIsOpen] = useState(false);
@@ -250,6 +255,8 @@ export function ColorPickerTrigger({
     const [hexDraft, setHexDraft] = useState(() => colorState.hex);
     const [isEditingHex, setIsEditingHex] = useState(false);
     const colorStateRef = useRef(colorState);
+    const onCommitRef = useRef(onCommit);
+    onCommitRef.current = onCommit;
     const pendingPushHexRef = useRef<string | null>(null);
     const lastMapPushAtRef = useRef(0);
     const lastMapInteractionRef = useRef(false);
@@ -418,6 +425,7 @@ export function ColorPickerTrigger({
         setIsDragging(false);
         setIsOpen(false);
         setAnchorRect(null);
+        onCommitRef.current?.({ hex: colorStateRef.current.hex, alpha: colorStateRef.current.alpha });
     }, [flushPendingMapDragNotify]);
 
     useEffect(() => {
@@ -730,7 +738,7 @@ export function ColorPickerTrigger({
                         { label: "B", channel: "b", value: Math.round(currentRgb.b) },
                     ].map(({ label, channel, value }) => (
                         <div key={channel} className="space-y-1">
-                            <div className="text-xs text-gray-400">{label}</div>
+                            <div className="text-xs text-fg-muted">{label}</div>
                             <EnhancedInput
                                 value={String(value)}
                                 onChange={(next) => handleRgbChange(channel as "r" | "g" | "b", next)}
@@ -750,7 +758,7 @@ export function ColorPickerTrigger({
                     { label: "L", channel: "l", value: Math.round(colorState.lightness) },
                 ].map(({ label, channel, value }) => (
                     <div key={channel} className="space-y-1">
-                        <div className="text-xs text-gray-400">{label}</div>
+                        <div className="text-xs text-fg-muted">{label}</div>
                         <EnhancedInput
                             value={String(value)}
                             onChange={(next) =>
@@ -768,7 +776,7 @@ export function ColorPickerTrigger({
         <div
             ref={panelRef}
             data-color-picker-panel
-            className="nodrag nowheel w-80 rounded-2xl border border-white/10 bg-[#1e1f22] p-4 shadow-2xl"
+            className="nodrag nowheel w-80 rounded-2xl border border-edge bg-surface-raised p-4 shadow-2xl"
             style={{
                 position: "fixed",
                 zIndex: COLOR_PICKER_PANEL_Z_INDEX,
@@ -782,7 +790,7 @@ export function ColorPickerTrigger({
             onWheel={stopPickerPointerBubble}
         >
             <div
-                className="relative h-32 rounded-xl border border-white/10 overflow-hidden cursor-crosshair"
+                className="relative h-32 rounded-xl border border-edge overflow-hidden cursor-crosshair"
                 data-color-map
                 onPointerDown={(event) => {
                     event.preventDefault();
@@ -820,8 +828,8 @@ export function ColorPickerTrigger({
             </div>
 
             <div className="mt-3 space-y-2">
-                <div className="flex items-center justify-between text-xs text-gray-400">
-                    <span>Hue</span>
+                <div className="flex items-center justify-between text-xs text-fg-muted">
+                    <span>{t("properties.color.hue")}</span>
                     <span>{Math.round(colorState.hue)}°</span>
                 </div>
                 <input
@@ -847,7 +855,7 @@ export function ColorPickerTrigger({
                         className={`flex-1 rounded-lg border px-2 py-1 text-xs font-semibold transition ${
                             activeMode === mode
                                 ? "border-primary text-white"
-                                : "border-white/10 text-gray-400 hover:border-white/40"
+                                : "border-edge text-fg-muted hover:border-white/40"
                         }`}
                         onClick={() => setActiveMode(mode)}
                     >
@@ -860,8 +868,8 @@ export function ColorPickerTrigger({
 
             {allowOpacity && (
                 <div className="mt-3 space-y-2">
-                    <div className="flex items-center justify-between text-xs text-gray-400">
-                        <span>Opacity</span>
+                    <div className="flex items-center justify-between text-xs text-fg-muted">
+                        <span>{t("properties.color.opacity")}</span>
                         <span>{Math.round(colorState.alpha * 100)}%</span>
                     </div>
                     <input
@@ -886,19 +894,19 @@ export function ColorPickerTrigger({
             onClick={isOpen ? closePicker : openPicker}
             disabled={disabled || readOnly}
             className={`
-                nodrag nowheel flex items-center rounded-md border border-white/20 bg-[#17181a] px-3 py-2 text-sm
-                text-gray-200 transition focus:outline-none focus:ring-2 focus:ring-primary/50
+                nodrag nowheel flex items-center rounded-md border border-edge-strong bg-[#17181a] px-3 py-2 text-sm
+                text-fg transition focus:outline-none focus:ring-2 focus:ring-primary/50
                 ${displayMode === "icon" ? "gap-2" : "gap-3"}
             `}
             onMouseDown={stopPickerPointerBubble}
             onPointerDown={stopPickerPointerBubble}
         >
             <span
-                className="h-5 w-5 rounded-full border border-white/30"
+                className="h-5 w-5 rounded-full border border-edge-strong"
                 style={{ backgroundColor: displayColor }}
             />
             {displayMode === "icon-hex" && (
-                <span className="text-xs text-gray-200 font-mono tracking-wide">
+                <span className="text-xs text-fg font-mono tracking-wide">
                     {colorState.hex}
                 </span>
             )}
@@ -1021,7 +1029,7 @@ export function ColorPickerGroupField<TData>({
                     type="number"
                     min={0}
                     max={100}
-                    leftIcon={<span className="text-xs text-gray-400">α</span>}
+                    leftIcon={<span className="text-xs text-fg-muted">α</span>}
                     className="flex-1"
                 />
             </div>

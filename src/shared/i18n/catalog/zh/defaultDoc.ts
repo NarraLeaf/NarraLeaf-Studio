@@ -1,0 +1,45 @@
+import type { LocaleNamespace } from "../types";
+
+export const defaultDoc = {
+    rootName: "根节点",
+    componentName: "组件",
+    pageName: "页面",
+    pageCopy: "{name} 副本",
+    speaker: "说话人",
+    dialog: {
+        interactionLayer: "对话交互图层",
+        panel: "对话面板",
+        content: "对话内容",
+        nametag: "名牌",
+        sentence: "句子",
+        sentenceText: "当前台词将显示在这里。",
+        nextEvent: "对话下一步",
+        updateNametagEvent: "更新名牌",
+    },
+    notification: {
+        list: "通知列表",
+        item: "通知条目",
+        message: "通知消息",
+        messageText: "通知消息",
+        anotherMessage: "另一条消息",
+    },
+    choice: {
+        list: "选项列表",
+        item: "选项条目",
+        text: "选项文本",
+        itemText: "选项",
+        selectEvent: "选择选项",
+        previewA: "选项 A",
+        previewB: "选项 B",
+        previewC: "选项 C",
+    },
+    nvl: {
+        interactionLayer: "NVL 交互图层",
+        panel: "NVL 面板",
+        list: "NVL 列表",
+        nametag: "NVL 名牌",
+        texts: "NVL 文本",
+        entryText: "对话条目文本将显示在这里。",
+        nextEvent: "NVL 下一步",
+    },
+} satisfies LocaleNamespace<"defaultDoc">;

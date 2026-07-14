@@ -38,6 +38,8 @@ function createPrivilegedBridge(guarded: boolean): RendererPrivilegedInterface {
         fs: {
             selectFile: (actor: PrivilegedActor, filters: string[], multiple: boolean) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "selectFile", filters, multiple }),
+            selectSaveFile: (actor: PrivilegedActor, defaultFileName: string, filters: string[]) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "selectSaveFile", defaultFileName, filters }),
             stat: (actor: PrivilegedActor, path: string) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "stat", path }),
             list: (actor: PrivilegedActor, path: string) =>
@@ -191,6 +193,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             setGlobalState: <K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>) => ipcClient.invoke(IPCEventType.appGlobalStateSet, { key, value }) as Promise<RequestStatus<void>>,
             getAllGlobalState: () =>
                 ipcClient.invoke(IPCEventType.appGlobalStateGetAll, {}) as Promise<RequestStatus<{ settings: Record<string, any> }>>,
+            onGlobalStateChanged: (handler: (change: { key: GlobalStateKeys; value: any }) => void) =>
+                ipcClient.onMessage(IPCEventType.appGlobalStateChanged, handler),
         },
         addRecentProject: (name: string, path: string) =>
             ipcClient.invoke(IPCEventType.appAddRecentProject, { name, path }) as Promise<RequestStatus<void>>,
@@ -291,6 +295,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.pluginRevoke, { pluginId }),
         getWorkspacePlugins: () =>
             ipcClient.invoke(IPCEventType.pluginWorkspaceList, {}),
+        getRuntimePlugins: () =>
+            ipcClient.invoke(IPCEventType.pluginRuntimeList, {}),
         reportLoadError: (pluginId: string, error: string | null) =>
             ipcClient.invoke(IPCEventType.pluginReportLoadError, { pluginId, error }),
     },

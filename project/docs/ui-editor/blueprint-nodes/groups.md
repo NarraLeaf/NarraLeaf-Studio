@@ -24,7 +24,7 @@ Blueprint Value 可用节点包括：
 
 `nl.slider.props.value` 使用 `float` Blueprint Value，返回值表示映射后的值而不是 0-1 normalized 值；运行时会按该 Slider 的 `min` / `max` / `step` clamp 和 snap。
 
-Blueprint Value 只允许安全的数据生产节点：`Init` / `On Flush` Head、安全的非 latent Flow、图内注释、纯 Data / Math、本地变量读写、Element Literal，以及纯读取型 Text / Displayable / Slider / List / Widget Property / Page / Game 节点。Page 纯读取节点包括 `Get Page Props`、`Is Surface Exiting`、`Is Surface Entering` 与 `Is Surface Transitioning`；Game 纯读取节点包括 `Get Nametag`、`Is In Game`、`Is Game Overlay` 与 Game Preference Getter。当前核心目录不提供 global state 读写或可变 surface state 读写节点；Blueprint Value 也不允许 `Var` 声明、Widget 改写、Navigation、Persistent 变量读写、Broadcast、latent 节点、`Skip Delay` 这类运行时跳过节点和 TypeScript revision。
+Blueprint Value 只允许安全的数据生产节点：`Init` / `On Flush` Head、安全的非 latent Flow、图内注释、纯 Data / Math、本地变量读写、Element Literal，以及纯读取型 Text / Displayable / Slider / List / Widget Property / Page / Game 节点。Page 纯读取节点包括 `Get Page Props`、`Is Surface Exiting`、`Is Surface Entering` 与 `Is Surface Transitioning`；Game 纯读取节点包括 `Get Nametag`、`Get Notifications`、`Get Choice Count`、`Is NVL Mode`、`Is In Game`、`Is Game Overlay` 与 Game Preference Getter。当前核心目录不提供 global state 读写或可变 surface state 读写节点；Blueprint Value 也不允许 `Var` 声明、Widget 改写、Navigation、Persistent 变量读写、Broadcast、latent 节点、`Skip Delay` 这类运行时跳过节点和 TypeScript revision。
 
 ## Self 与 Element 方法节点
 
@@ -173,6 +173,10 @@ Game 节点组用于控制当前 NarraLeaf 游戏运行时、Dialog 推进、Nar
 Game 节点组默认具有：
 - `blueprint.game.startStory` - 启动指定 Story / Scene（尾节点，无执行出口）
 - `blueprint.game.getNametag` - 读取当前 Dialog 说话人名字；没有说话人时返回 `null`；pure 节点，可用于 Blueprint Value
+- `blueprint.game.getNotifications` - 读取当前 NarraLeaf 通知数组（`{id, message}` 的 `array`）；pure 节点，可用于 Blueprint Value
+- `blueprint.game.getChoiceCount` - 读取当前选择菜单的可见选项数量；没有活动菜单时返回 `0`；pure 节点，可用于 Blueprint Value
+- `blueprint.game.isNvlMode` - 读取当前是否处于 NVL 模式；pure 节点，可用于 Blueprint Value
+- `blueprint.game.choose` - `Select Choice`，按原始选项序号选择当前菜单的选项；默认 Choice 模板在 Choice List 蓝图中预接 `Item Click → Select Choice`；hidden/disabled 选项拒绝，无活动菜单时执行失败
 - `blueprint.game.isInGame` - 读取当前是否处于 NarraLeaf 游戏状态；pure 节点，可用于 Blueprint Value
 - `blueprint.game.isGameOverlay` - 读取当前 Page / Game UI Surface 是否以游戏上方 UI 叠层身份运行；pure 节点，可用于 Blueprint Value
 - `blueprint.game.quit` - 退出当前 NarraLeaf 游戏状态并打开指定返回 Page（尾节点，无执行出口）
@@ -224,7 +228,7 @@ Surface 节点组默认具有：
 
 List 节点组用于 `nl.list` 的运行时内容、选中项、滚动和条目上下文。Array / JSON / Object 处理不放入 List，统一放在 Data 分类。
 
-List Self 节点只在 `nl.list` 自己的私有蓝图中出现，创建浮窗中归入 `List` 分类，且没有 `list` 输入。List Element 节点使用 `blueprint.element.list.*`，带 `element:nl.list` 输入，归入 `Element` 分类；当前图中没有绑定到 `nl.list` 的 Element、Element Flush 或 Element Click 时不会显示。List item context 读取节点只在 item template 后代元素蓝图中出现。
+List Self 节点在所有 list-like 控件（`nl.list`、`nl.notification.list`、`nl.choice.list`、`nl.nvl.list`）自己的私有蓝图中出现，创建浮窗中归入 `List` 分类，且没有 `list` 输入。List Element 节点使用 `blueprint.element.list.*`，带 `element:nl.list` 输入，归入 `Element` 分类，目前仍只针对 `nl.list`（Game UI slot 包装控件的 Element 派生版为后续跟进）；当前图中没有绑定到 `nl.list` 的 Element、Element Flush 或 Element Click 时不会显示。List item context 读取节点只在 item template 后代元素蓝图中出现（包括 Game UI slot 包装控件的 item 模板后代）。
 
 List 节点组默认具有：
 - `blueprint.event.head.scroll` - 列表滚动事件

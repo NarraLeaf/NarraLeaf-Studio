@@ -1,4 +1,5 @@
 import {
+    STORY_ANIMATION_SCHEMA_VERSION,
     STORY_DOCUMENT_SCHEMA_VERSION,
     STORY_LIBRARY_INDEX_SCHEMA_VERSION,
     StoryAnimationAsset,
@@ -14,16 +15,26 @@ import {
     StoryBlock,
     StoryBlockId,
     StoryChapter,
+    StoryConditionRef,
     StoryDocument,
     StoryId,
+    StoryLayerRef,
     StoryLibraryEntry,
     StoryLibraryIndex,
+    StoryLiteralValue,
     StoryNodeActionPayload,
+    StoryPersistentDefinitionLegacy,
+    StorySavedVariableDefinition,
     StoryScene,
     StorySceneId,
+    StorySceneVariableDefinition,
     StoryTextId,
     StoryTextSegment,
     StoryTransformSequenceProps,
+    StoryVariableDefinitionLegacy,
+    StoryVariableRef,
+    StoryVariableRefLegacy,
+    StoryVariableValueType,
 } from "@shared/types/story";
 import { assertValidStoryEntityId, assertValidStoryId, isValidStoryEntityId, isValidStoryId } from "@shared/utils/storyId";
 
@@ -42,7 +53,7 @@ export function createEmptyStoryLibraryIndex(now: string): StoryLibraryIndex {
 
 export function createEmptyStoryAnimationIndex(now: string): StoryAnimationIndex {
     return {
-        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+        schemaVersion: STORY_ANIMATION_SCHEMA_VERSION,
         animations: [],
         meta: {
             createdAt: now,
@@ -96,7 +107,7 @@ export function createStoryAnimationAsset(input: {
     assertValidStoryEntityId(input.id, "Story animation id");
     const sequences = input.sequences ?? [createDefaultAnimationSequence(input.id)];
     return {
-        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+        schemaVersion: STORY_ANIMATION_SCHEMA_VERSION,
         id: input.id,
         name: input.name,
         targetKind: input.targetKind,
@@ -151,8 +162,7 @@ export function createEmptyStoryDocument(input: {
         scenes: {
             [sceneId]: scene,
         },
-        studioGlobals: {},
-        gamePersistents: {},
+        savedVariables: {},
         meta: {
             createdAt: input.now,
             updatedAt: input.now,
@@ -189,19 +199,19 @@ export function assertSupportedStoryDocument(document: StoryDocument): void {
 }
 
 export function assertSupportedStoryAnimationIndex(index: StoryAnimationIndex): void {
-    if (index.schemaVersion > STORY_DOCUMENT_SCHEMA_VERSION) {
+    if (index.schemaVersion > STORY_ANIMATION_SCHEMA_VERSION) {
         throw new Error("Story animation index schema is newer than this Studio version");
     }
-    if (index.schemaVersion !== STORY_DOCUMENT_SCHEMA_VERSION) {
+    if (index.schemaVersion !== STORY_ANIMATION_SCHEMA_VERSION) {
         throw new Error("Story animation index migration is not implemented");
     }
 }
 
 export function assertSupportedStoryAnimationAsset(asset: StoryAnimationAsset): void {
-    if (asset.schemaVersion > STORY_DOCUMENT_SCHEMA_VERSION) {
+    if (asset.schemaVersion > STORY_ANIMATION_SCHEMA_VERSION) {
         throw new Error("Story animation asset schema is newer than this Studio version");
     }
-    if (asset.schemaVersion !== STORY_DOCUMENT_SCHEMA_VERSION) {
+    if (asset.schemaVersion !== STORY_ANIMATION_SCHEMA_VERSION) {
         throw new Error("Story animation asset migration is not implemented");
     }
 }
@@ -269,31 +279,289 @@ export function normalizeStoryAnimationIndex(index: StoryAnimationIndex, now: st
     };
 }
 
-export function normalizeStoryDocument(document: StoryDocument, now: string): StoryDocument {
-    assertSupportedStoryDocument(document);
-    assertValidStoryId(document.id);
+// ---------------------------------------------------------------------------
+// Schema migration (v1 → v2): typed variable system.
+//   - localVariables (scene) → sceneVariables; gamePersistents → savedVariables (flattened);
+//     studioGlobals dropped (downgraded to scene refs); free-text refs → typed refs by id.
+// ---------------------------------------------------------------------------
+
+type LegacyStoryDocumentFields = {
+    studioGlobals?: Record<string, StoryVariableDefinitionLegacy>;
+    gamePersistents?: Record<string, StoryPersistentDefinitionLegacy>;
+};
+
+type LegacyStorySceneFields = {
+    localVariables?: Record<string, StoryVariableDefinitionLegacy>;
+};
+
+export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocument {
+    const version = typeof document.schemaVersion === "number" ? document.schemaVersion : 1;
+    if (version >= STORY_DOCUMENT_SCHEMA_VERSION) {
+        return document;
+    }
+    let migrated = document;
+    if (version < 2) {
+        migrated = migrateStoryDocumentV1toV2(migrated);
+    }
+    if (version < 3) {
+        migrated = migrateStoryDocumentV2toV3(migrated);
+    }
+    return migrated;
+}
+
+function migrateStoryDocumentV1toV2(document: StoryDocument): StoryDocument {
+    const legacyDoc = document as StoryDocument & LegacyStoryDocumentFields;
+    const savedVariables: Record<string, StorySavedVariableDefinition> = {};
+
+    // Flatten legacy gamePersistents (namespace bags) into flat saved variables.
+    for (const persistent of Object.values(legacyDoc.gamePersistents ?? {})) {
+        const namespace = typeof persistent?.namespace === "string" ? persistent.namespace : "";
+        for (const [key, value] of Object.entries(persistent?.defaultContent ?? {})) {
+            provisionSavedVariable(savedVariables, namespace, key, value);
+        }
+    }
+
     const scenes: Record<StorySceneId, StoryScene> = {};
     for (const [sceneId, scene] of Object.entries(document.scenes)) {
+        const sceneVariables = migrateLegacySceneVariables(scene);
+        const blocks = migrateSceneBlockRefs(scene.blocks, sceneVariables, savedVariables);
+        const cleanedScene = { ...scene, sceneVariables, blocks } as StoryScene & LegacyStorySceneFields;
+        delete cleanedScene.localVariables;
+        scenes[sceneId] = cleanedScene;
+    }
+
+    const migrated = {
+        ...document,
+        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+        scenes,
+        savedVariables,
+    } as StoryDocument & LegacyStoryDocumentFields;
+    delete migrated.studioGlobals;
+    delete migrated.gamePersistents;
+    return migrated;
+}
+
+// ---------------------------------------------------------------------------
+// Schema migration (v2 → v3): stable layer references.
+//   image/text actions used to bind a render layer by free-text `layerName`. That becomes a
+//   StoryLayerRef bound to the stable id of the matching `layer` create block; when no block
+//   matches, the last-known name is kept so the compiler's name fallback still renders it.
+// ---------------------------------------------------------------------------
+
+type LegacyLayerNameFields = { layerName?: string };
+
+function migrateStoryDocumentV2toV3(document: StoryDocument): StoryDocument {
+    const scenes: Record<StorySceneId, StoryScene> = {};
+    for (const [sceneId, scene] of Object.entries(document.scenes)) {
+        const layerBlockIdsByName = collectLayerBlockIdsByName(scene);
+        const blocks: Record<StoryBlockId, StoryBlock> = {};
+        for (const [blockId, block] of Object.entries(scene.blocks)) {
+            blocks[blockId] = migrateBlockLayerRef(block, layerBlockIdsByName);
+        }
+        scenes[sceneId] = { ...scene, blocks };
+    }
+    return { ...document, schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION, scenes };
+}
+
+function collectLayerBlockIdsByName(scene: StoryScene): Map<string, StoryBlockId> {
+    const byName = new Map<string, StoryBlockId>();
+    for (const [blockId, block] of Object.entries(scene.blocks)) {
+        if (block.kind === "action" && block.payload.action === "layer") {
+            const key = block.payload.objectName.trim().toLowerCase();
+            if (key && !byName.has(key)) {
+                byName.set(key, blockId);
+            }
+        }
+    }
+    return byName;
+}
+
+function migrateBlockLayerRef(block: StoryBlock, layerBlockIdsByName: Map<string, StoryBlockId>): StoryBlock {
+    if (block.kind !== "action" || (block.payload.action !== "image" && block.payload.action !== "text")) {
+        return block;
+    }
+    const legacy = block.payload as typeof block.payload & LegacyLayerNameFields;
+    if (typeof legacy.layerName !== "string") {
+        return block;
+    }
+    const name = legacy.layerName.trim();
+    const nextPayload = { ...legacy };
+    delete nextPayload.layerName;
+    if (name) {
+        const sourceBlockId = layerBlockIdsByName.get(name.toLowerCase());
+        nextPayload.layer = sourceBlockId ? { kind: "custom", sourceBlockId, name } : { kind: "custom", name };
+    }
+    return { ...block, payload: nextPayload } as StoryBlock;
+}
+
+function migrateLegacySceneVariables(scene: StoryScene): Record<string, StorySceneVariableDefinition> {
+    const legacyScene = scene as StoryScene & LegacyStorySceneFields;
+    const result: Record<string, StorySceneVariableDefinition> = {};
+    for (const legacy of Object.values(legacyScene.localVariables ?? {})) {
+        if (!legacy || typeof legacy.id !== "string") continue;
+        result[legacy.id] = {
+            id: legacy.id,
+            name: typeof legacy.name === "string" && legacy.name.length > 0 ? legacy.name : legacy.id,
+            valueType: legacy.valueType ?? "string",
+            defaultValue: legacy.defaultValue,
+            storageKey: legacy.id,
+            meta: legacy.meta,
+        };
+    }
+    return result;
+}
+
+function migrateSceneBlockRefs(
+    blocks: Record<StoryBlockId, StoryBlock>,
+    sceneVariables: Record<string, StorySceneVariableDefinition>,
+    savedVariables: Record<string, StorySavedVariableDefinition>,
+): Record<StoryBlockId, StoryBlock> {
+    const result: Record<StoryBlockId, StoryBlock> = {};
+    for (const [blockId, block] of Object.entries(blocks)) {
+        result[blockId] = migrateBlockRefs(block, sceneVariables, savedVariables);
+    }
+    return result;
+}
+
+function migrateBlockRefs(
+    block: StoryBlock,
+    sceneVariables: Record<string, StorySceneVariableDefinition>,
+    savedVariables: Record<string, StorySavedVariableDefinition>,
+): StoryBlock {
+    if (block.kind === "action" && block.payload.action === "setVariable") {
+        const target = migrateLegacyVariableRef(block.payload.target, sceneVariables, savedVariables);
+        return { ...block, payload: { ...block.payload, target } };
+    }
+    if (block.kind === "control" && block.payload.control === "conditionBranch") {
+        const condition = migrateConditionRef(block.payload.condition, sceneVariables, savedVariables);
+        return { ...block, payload: { ...block.payload, condition } };
+    }
+    if (block.kind === "nodeAction" && block.payload.action === "choiceOption") {
+        return {
+            ...block,
+            payload: {
+                ...block.payload,
+                hiddenWhen: migrateConditionRef(block.payload.hiddenWhen, sceneVariables, savedVariables),
+                disabledWhen: migrateConditionRef(block.payload.disabledWhen, sceneVariables, savedVariables),
+            },
+        };
+    }
+    return block;
+}
+
+function migrateConditionRef(
+    condition: StoryConditionRef | undefined,
+    sceneVariables: Record<string, StorySceneVariableDefinition>,
+    savedVariables: Record<string, StorySavedVariableDefinition>,
+): StoryConditionRef | undefined {
+    if (!condition || condition.kind !== "variable") {
+        return condition;
+    }
+    return { ...condition, target: migrateLegacyVariableRef(condition.target, sceneVariables, savedVariables) };
+}
+
+function migrateLegacyVariableRef(
+    ref: StoryVariableRef,
+    sceneVariables: Record<string, StorySceneVariableDefinition>,
+    savedVariables: Record<string, StorySavedVariableDefinition>,
+): StoryVariableRef {
+    // Already a v2 ref (defensive): leave untouched.
+    if (ref && ("variableId" in ref || "storageKey" in ref)) {
+        return ref;
+    }
+    const legacy = ref as unknown as StoryVariableRefLegacy;
+    const key = typeof legacy?.key === "string" ? legacy.key : "";
+    if (legacy?.scope === "gamePersistent") {
+        return { scope: "saved", variableId: provisionSavedVariable(savedVariables, legacy.namespace ?? "", key) };
+    }
+    // sceneLocal, studioGlobal (downgraded), or anything else → scene.
+    return { scope: "scene", variableId: provisionSceneVariable(sceneVariables, key) };
+}
+
+function provisionSceneVariable(
+    sceneVariables: Record<string, StorySceneVariableDefinition>,
+    name: string,
+    defaultValue?: StoryLiteralValue,
+): string {
+    const existing = findVariableByName(sceneVariables, name);
+    if (existing) {
+        return existing;
+    }
+    const id = uniqueVariableId("svar", name, sceneVariables);
+    sceneVariables[id] = { id, name, valueType: inferStoryValueType(defaultValue), defaultValue, storageKey: id };
+    return id;
+}
+
+function provisionSavedVariable(
+    savedVariables: Record<string, StorySavedVariableDefinition>,
+    namespace: string,
+    key: string,
+    defaultValue?: StoryLiteralValue,
+): string {
+    const name = namespace && namespace !== "default" ? `${namespace}.${key}` : key;
+    const existing = findVariableByName(savedVariables, name);
+    if (existing) {
+        return existing;
+    }
+    const id = uniqueVariableId("saved", name, savedVariables);
+    savedVariables[id] = { id, name, valueType: inferStoryValueType(defaultValue), defaultValue, storageKey: id };
+    return id;
+}
+
+function findVariableByName(record: Record<string, { name: string }>, name: string): string | undefined {
+    for (const [id, def] of Object.entries(record)) {
+        if (def.name === name) {
+            return id;
+        }
+    }
+    return undefined;
+}
+
+function uniqueVariableId(prefix: string, name: string, taken: Record<string, unknown>): string {
+    const slug = name.trim().replace(/[^a-zA-Z0-9_]+/g, "_").replace(/^_+|_+$/g, "") || "var";
+    const base = `${prefix}_${slug}`;
+    if (!(base in taken)) {
+        return base;
+    }
+    let index = 2;
+    while (`${base}_${index}` in taken) {
+        index += 1;
+    }
+    return `${base}_${index}`;
+}
+
+function inferStoryValueType(value: unknown): StoryVariableValueType {
+    if (typeof value === "boolean") return "boolean";
+    if (typeof value === "number") return "number";
+    if (typeof value === "string") return "string";
+    return "json";
+}
+
+export function normalizeStoryDocument(document: StoryDocument, now: string): StoryDocument {
+    const migrated = migrateStoryDocumentToLatest(document);
+    assertSupportedStoryDocument(migrated);
+    assertValidStoryId(migrated.id);
+    const scenes: Record<StorySceneId, StoryScene> = {};
+    for (const [sceneId, scene] of Object.entries(migrated.scenes)) {
         const normalized = normalizeScene(scene);
         scenes[sceneId] = normalized;
     }
-    const chapters = document.chapters.map(chapter => ({
+    const chapters = migrated.chapters.map(chapter => ({
         ...chapter,
         sceneIds: chapter.sceneIds.filter(sceneId => scenes[sceneId]),
     }));
-    const entrySceneId = document.entrySceneId && scenes[document.entrySceneId]
-        ? document.entrySceneId
+    const entrySceneId = migrated.entrySceneId && scenes[migrated.entrySceneId]
+        ? migrated.entrySceneId
         : firstSceneId(chapters);
     return {
-        ...document,
+        ...migrated,
         chapters,
         scenes,
         entrySceneId,
-        studioGlobals: document.studioGlobals ?? {},
-        gamePersistents: document.gamePersistents ?? {},
+        savedVariables: migrated.savedVariables ?? {},
         meta: {
-            ...document.meta,
-            updatedAt: document.meta?.updatedAt ?? now,
+            ...migrated.meta,
+            updatedAt: migrated.meta?.updatedAt ?? now,
         },
     };
 }
@@ -314,6 +582,8 @@ export function normalizeStoryAnimationAsset(asset: StoryAnimationAsset, now: st
         timeline: normalizeAnimationTimeline(asset.timeline, normalizedSequences, asset.id),
         sequences: normalizedSequences,
         config: Object.fromEntries(Object.entries(config).filter(([, value]) => value !== undefined)),
+        previewAssetId: normalizeOptionalString(asset.previewAssetId),
+        previewBackgroundAssetId: normalizeOptionalString(asset.previewBackgroundAssetId),
         meta: {
             ...asset.meta,
             updatedAt: asset.meta?.updatedAt ?? now,
@@ -343,7 +613,7 @@ export function createScene(input: { id: string; name: string; runtimeName: stri
         description: "",
         rootBlockIds: [],
         blocks: {},
-        localVariables: {},
+        sceneVariables: {},
         meta: {
             createdAt: input.now,
             updatedAt: input.now,
@@ -470,7 +740,7 @@ function normalizeScene(scene: StoryScene): StoryScene {
         defaultBackgroundAssetId: normalizeOptionalString(scene.defaultBackgroundAssetId),
         rootBlockIds,
         blocks,
-        localVariables: scene.localVariables ?? {},
+        sceneVariables: scene.sceneVariables ?? migrateLegacySceneVariables(scene),
     };
 }
 

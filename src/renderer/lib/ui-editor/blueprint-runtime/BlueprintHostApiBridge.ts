@@ -6,8 +6,15 @@ import {
     type BlueprintImageAsset,
 } from "@shared/types/blueprint/valueTypes";
 import { truncateDebugEventMessage } from "./DebugBridge";
-import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
+import {
+    BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY,
+    BLUEPRINT_GAME_NAMETAG_STATE_KEY,
+    BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY,
+    BLUEPRINT_GAME_NVL_MODE_STATE_KEY,
+} from "@shared/types/blueprint/hostApi";
+import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/localization";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { normalizeElementEffectValues, type ElementEffectValues } from "@shared/types/ui-editor/effects";
 import type {
     UIDisplayableMotionOverride,
@@ -226,6 +233,14 @@ export type BlueprintHostApiRuntime = {
         get: (key: string) => Promise<unknown>;
         set: (key: string, value: unknown) => Promise<void>;
     };
+    localization: {
+        /** Localization setup of the running game, or null when the project has none. */
+        getConfig: () => GameLocalizationConfigSnapshot | null;
+        /** Effective current locale (stored player choice, else the source locale). */
+        getLocale: () => Promise<string>;
+        /** Persist the player's language choice; callers validate against getConfig(). */
+        setLocale: (code: string) => Promise<void>;
+    };
     frame: {
         getParam: (key: string) => unknown;
         emit: (eventName: string, data: unknown) => Promise<void>;
@@ -241,7 +256,14 @@ export type BlueprintHostApiRuntime = {
         listSaveIds: () => Promise<string[]>;
         getSaveMetadata: (id: string) => Promise<unknown>;
         getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
+        getHistory: () => Promise<BlueprintGameHistoryEntry[]>;
+        /** Jump back to a history entry by id; omit the id to undo the last entry. */
+        restoreHistory: (id?: string) => Promise<void>;
         getNametag: () => string | null;
+        getNotifications: () => BlueprintGameNotification[];
+        getChoiceCount: () => number;
+        isNvlMode: () => boolean;
+        choose: (index: number) => Promise<void>;
         next: () => Promise<void>;
         skip: () => Promise<void>;
         showDialog: () => Promise<void>;
@@ -255,6 +277,15 @@ export type BlueprintHostApiRuntime = {
         log: (level: string, message: string) => void;
     };
 };
+
+/**
+ * Localization payload of the running game as exposed to blueprint nodes.
+ * Hosts pass the full bundle (locales + translation tables + named keys) so
+ * text-resolution nodes (Get Text / Has Text) can look translations up; a
+ * bare config (no tables) still satisfies the language-management nodes.
+ */
+export type GameLocalizationConfigSnapshot = Pick<GameLocalizationBundle, "sourceLocale" | "locales">
+    & Partial<Pick<GameLocalizationBundle, "tables" | "keys">>;
 
 export type CreateBlueprintHostApiRuntimeOptions = {
     document: UIDocument;
@@ -274,7 +305,13 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onListSaveIds?: () => Promise<string[]> | string[];
     onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
     onGetSavePreview?: (id: string) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
+    onGetHistory?: () => Promise<BlueprintGameHistoryEntry[]> | BlueprintGameHistoryEntry[];
+    onRestoreHistory?: (id?: string) => Promise<void> | void;
     onGetNametag?: () => string | null;
+    onGetNotifications?: () => BlueprintGameNotification[];
+    onGetChoiceCount?: () => number;
+    onIsNvlMode?: () => boolean;
+    onSelectChoice?: (index: number) => Promise<void> | void;
     onNext?: () => Promise<void> | void;
     onSkip?: () => Promise<void> | void;
     onShowDialog?: () => Promise<void> | void;
@@ -292,6 +329,8 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     widgetRuntimeStore: WidgetRuntimeStateStore;
     /** Component definition graphs should pass a component-scoped document so Element Host API stays local. */
     componentDefinitionMode?: boolean;
+    /** Game localization setup (from the bundle); absent when the project has none. */
+    localizationConfig?: GameLocalizationConfigSnapshot | null;
 };
 
 function readDocumentElement(document: UIDocument, elementId: string): UIElement | undefined {
@@ -496,7 +535,7 @@ function assertSliderElement(document: UIDocument, elementId: string) {
 
 function assertListElement(document: UIDocument, elementId: string) {
     const el = requireDocumentElement(document, elementId, "list");
-    if (el.type !== "nl.list") {
+    if (!isListLikeWidgetType(el.type)) {
         throw new Error(`list: element is not a List widget: ${el.type}`);
     }
     return el;
@@ -903,6 +942,88 @@ function normalizeBlueprintNametag(value: unknown): string | null {
     return text.trim().length > 0 ? text : null;
 }
 
+/** One NarraLeaf notification mirrored into the blueprint runtime. */
+export type BlueprintGameNotification = {
+    id: string;
+    message: string;
+};
+
+function normalizeBlueprintGameNotifications(value: unknown): BlueprintGameNotification[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    const out: BlueprintGameNotification[] = [];
+    for (const item of value) {
+        if (!item || typeof item !== "object") {
+            continue;
+        }
+        const record = item as Record<string, unknown>;
+        out.push({
+            id: String(record.id ?? ""),
+            message: String(record.message ?? ""),
+        });
+    }
+    return out;
+}
+
+/**
+ * One dialogue/menu backlog entry mirrored from NarraLeaf's `LiveGame.getHistory()`.
+ * Flattened so a backlog List widget can bind each field directly, and `id` can be fed
+ * back into the Restore From History node (NLR `LiveGame.undo(id)`).
+ */
+export type BlueprintGameHistoryEntry = {
+    /** History token; pass to Restore From History to jump the game back to this point. */
+    id: string;
+    /** "say" for spoken lines, "menu" for a resolved choice. */
+    type: "say" | "menu";
+    /** Sentence text (say) or the menu prompt (menu); empty string when the source had none. */
+    text: string;
+    /** Speaker nametag for a say entry; null for menu entries or narration. */
+    character: string | null;
+    /** Voice clip id for a say entry; null when absent. */
+    voice: string | null;
+    /** Chosen option text for a menu entry; null for say entries or an unresolved menu. */
+    selected: string | null;
+    /** True while the entry is the line currently being shown (not yet committed). */
+    isPending: boolean;
+};
+
+function normalizeNullableHistoryString(raw: unknown): string | null {
+    if (raw == null) {
+        return null;
+    }
+    const text = String(raw);
+    return text.length > 0 ? text : null;
+}
+
+function normalizeBlueprintGameHistory(value: unknown): BlueprintGameHistoryEntry[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    const out: BlueprintGameHistoryEntry[] = [];
+    for (const item of value) {
+        if (!item || typeof item !== "object") {
+            continue;
+        }
+        const record = item as Record<string, unknown>;
+        out.push({
+            id: String(record.id ?? ""),
+            type: record.type === "menu" ? "menu" : "say",
+            text: record.text == null ? "" : String(record.text),
+            character: normalizeNullableHistoryString(record.character),
+            voice: normalizeNullableHistoryString(record.voice),
+            selected: normalizeNullableHistoryString(record.selected),
+            isPending: record.isPending === true,
+        });
+    }
+    return out;
+}
+
+function normalizeBlueprintChoiceCount(value: unknown): number {
+    const count = Number(value);
+    return Number.isInteger(count) && count > 0 ? count : 0;
+}
+
 function normalizeNullableString(raw: unknown): string | null {
     if (raw === null) {
         return null;
@@ -1192,7 +1313,13 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onListSaveIds,
         onGetSaveMetadata,
         onGetSavePreview,
+        onGetHistory,
+        onRestoreHistory,
         onGetNametag,
+        onGetNotifications,
+        onGetChoiceCount,
+        onIsNvlMode,
+        onSelectChoice,
         onNext,
         onSkip,
         onShowDialog,
@@ -2090,6 +2217,31 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 }
             },
         },
+        localization: {
+            getConfig: () => options.localizationConfig ?? null,
+            getLocale: async () => {
+                emitHostCall(emit, "localization.getLocale", "call");
+                try {
+                    const config = options.localizationConfig;
+                    const stored = await scope.persistenceGetAsync(LOCALE_STORAGE_KEY);
+                    if (typeof stored === "string" && stored && config?.locales.some(locale => locale.code === stored)) {
+                        return stored;
+                    }
+                    return config?.sourceLocale ?? "";
+                } finally {
+                    emitHostCall(emit, "localization.getLocale", "return");
+                }
+            },
+            setLocale: async (code: string) => {
+                emitHostCall(emit, "localization.setLocale", "call");
+                try {
+                    await scope.persistenceSetAsync(LOCALE_STORAGE_KEY, code);
+                    emit({ type: "state.write", scope: "persistence", key: LOCALE_STORAGE_KEY });
+                } finally {
+                    emitHostCall(emit, "localization.setLocale", "return");
+                }
+            },
+        },
         frame: {
             getParam: (key: string) => {
                 emitHostCall(emit, "frame.getParam", "call");
@@ -2243,12 +2395,85 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
+            getHistory: async () => {
+                const cap = "game.getHistory";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onGetHistory) {
+                        throw new Error("getHistory: game runtime is not available");
+                    }
+                    return normalizeBlueprintGameHistory(await onGetHistory());
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            restoreHistory: async (id?: string) => {
+                const cap = "game.restoreHistory";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onRestoreHistory) {
+                        throw new Error("restoreHistory: game runtime is not available");
+                    }
+                    const safeId = String(id ?? "").trim();
+                    await onRestoreHistory(safeId ? safeId : undefined);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
             getNametag: () => {
                 const cap = "game.getNametag";
                 emitHostCall(emit, cap, "call");
                 try {
                     const value = onGetNametag ? onGetNametag() : scope.globalGet(BLUEPRINT_GAME_NAMETAG_STATE_KEY);
                     return normalizeBlueprintNametag(value);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getNotifications: () => {
+                const cap = "game.getNotifications";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const value = onGetNotifications
+                        ? onGetNotifications()
+                        : scope.globalGet(BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY);
+                    return normalizeBlueprintGameNotifications(value);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getChoiceCount: () => {
+                const cap = "game.getChoiceCount";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const value = onGetChoiceCount
+                        ? onGetChoiceCount()
+                        : scope.globalGet(BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY);
+                    return normalizeBlueprintChoiceCount(value);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isNvlMode: () => {
+                const cap = "game.isNvlMode";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const value = onIsNvlMode
+                        ? onIsNvlMode()
+                        : scope.globalGet(BLUEPRINT_GAME_NVL_MODE_STATE_KEY);
+                    return value === true;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            choose: async (index: number) => {
+                const cap = "game.choose";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onSelectChoice) {
+                        throw new Error("choose: choice runtime is not available");
+                    }
+                    await onSelectChoice(index);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

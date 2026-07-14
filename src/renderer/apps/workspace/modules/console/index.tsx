@@ -1,4 +1,5 @@
 import { Terminal } from "lucide-react";
+import { translate } from "@/lib/i18n";
 import { PanelModule } from "../types";
 import { ConsolePanel } from "./ConsolePanel";
 import { PanelPosition } from "../../registry/types";
@@ -10,7 +11,7 @@ import { PanelPosition } from "../../registry/types";
 export const consoleModule: PanelModule = {
     metadata: {
         id: "narraleaf-studio:console",
-        title: "Console",
+        get title() { return translate("placeholders.moduleTitles.console"); },
         icon: <Terminal className="w-4 h-4" />,
         position: PanelPosition.Bottom,
         defaultVisible: false,
