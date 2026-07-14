@@ -354,6 +354,8 @@ describe("game runtime artifact compiler", () => {
         expect(result.appDir).toBe(path.join(outputRoot, "app"));
         expect(result.userDataDir).toBeNull();
         await expect(fs.access(path.join(outputRoot, "userData"))).rejects.toThrow();
+        // Sourcemaps are preview-only; shipped games must not carry them.
+        await expect(fs.access(path.join(result.appDir, "renderer.css.map"))).rejects.toThrow();
 
         const packOnDisk = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
         expect(packOnDisk.mode).toBe("production");
@@ -385,6 +387,32 @@ describe("game runtime artifact compiler", () => {
             name: "narraleaf-preview-runtime",
             narraleaf: { mode: "preview" },
         });
+    });
+
+    it("rejects a runtime dist without a build manifest", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await fs.rm(path.join(runtimeDistDir, "build-manifest.json"));
+        await createMinimalProject(projectPath);
+
+        await expect(compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47328)))
+            .rejects.toThrow(/missing build-manifest\.json.*yarn build:runtime/s);
+    });
+
+    it("rejects a runtime dist whose build manifest is not production", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await fs.writeFile(
+            path.join(runtimeDistDir, "build-manifest.json"),
+            JSON.stringify({ mode: "development" }),
+            "utf-8",
+        );
+        await createMinimalProject(projectPath);
+
+        await expect(compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47329)))
+            .rejects.toThrow(/not a production build.*"development".*yarn build:runtime/s);
     });
 
     it("rejects mode/control-channel mismatches", async () => {
@@ -431,6 +459,13 @@ async function createRuntimeDist(runtimeDistDir: string): Promise<void> {
     await fs.writeFile(path.join(runtimeDistDir, "renderer.css"), "/* renderer css */", "utf-8");
     await fs.writeFile(path.join(runtimeDistDir, "renderer.css.map"), "{}", "utf-8");
     await fs.writeFile(path.join(runtimeDistDir, "index.html"), "<!doctype html>", "utf-8");
+    // Written by build-runtime.js; the compiler refuses dists that lack it or
+    // that report any mode other than "production".
+    await fs.writeFile(
+        path.join(runtimeDistDir, "build-manifest.json"),
+        JSON.stringify({ mode: "production", sourcemap: true, builtAt: "2026-01-01T00:00:00.000Z" }),
+        "utf-8",
+    );
 }
 
 async function createMinimalProject(

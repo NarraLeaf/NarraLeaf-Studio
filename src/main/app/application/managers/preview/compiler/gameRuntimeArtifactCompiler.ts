@@ -39,6 +39,10 @@ const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "ot
 // like any other required runtime file.
 const REQUIRED_RUNTIME_FILES = ["main.js", "native.js", "preload.js", "renderer.js", "renderer.css", "index.html"] as const;
 const OPTIONAL_RUNTIME_FILES = ["main.js.map", "preload.js.map", "renderer.js.map", "renderer.css.map"] as const;
+// Build marker written by project/build/build-runtime.js. It attests that the
+// dist was produced by the runtime build script in production mode; it is
+// validated before packing and never copied into the app dir.
+const RUNTIME_BUILD_MANIFEST_FILENAME = "build-manifest.json";
 
 export type GameRuntimePluginSource = {
     manifest: NormalizedPluginManifestV2;
@@ -144,7 +148,7 @@ export async function compileGameRuntimeArtifact(
     if (userDataDir) {
         await fs.mkdir(userDataDir, { recursive: true });
     }
-    await copyRuntimeFiles(input.runtimeDistDir, appDir);
+    await copyRuntimeFiles(input.runtimeDistDir, appDir, mode);
     if (input.encryptionKey) {
         // Protection on: prepare the packed runtime and ship its support binary.
         await embedPackKey(appDir, input.encryptionKey);
@@ -300,14 +304,46 @@ async function assertRuntimeDistReady(runtimeDistDir: string): Promise<void> {
             `Runtime build output is missing ${missing.join(", ")}. Run "yarn build:runtime" first.`,
         );
     }
+    // Existence is not enough: a dist left behind by an older build script (or a
+    // tampered one) could carry development React and ship it inside every pack.
+    // build-runtime.js writes this marker on every successful build; anything
+    // else is a stale or foreign dist and must be rebuilt, not packed.
+    let manifest: { mode?: unknown };
+    try {
+        manifest = await readJson<{ mode?: unknown }>(path.join(runtimeDistDir, RUNTIME_BUILD_MANIFEST_FILENAME));
+    } catch (error) {
+        if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+            throw new Error(
+                `Runtime build output is missing ${RUNTIME_BUILD_MANIFEST_FILENAME}, so it cannot be ` +
+                `verified as a production build. Run "yarn build:runtime" to rebuild it.`,
+            );
+        }
+        throw error;
+    }
+    if (manifest.mode !== "production") {
+        throw new Error(
+            `Runtime build output at ${runtimeDistDir} is not a production build ` +
+            `(${RUNTIME_BUILD_MANIFEST_FILENAME} reports mode ${JSON.stringify(manifest.mode)}). ` +
+            `Run "yarn build:runtime" to rebuild it.`,
+        );
+    }
 }
 
-async function copyRuntimeFiles(runtimeDistDir: string, appDir: string): Promise<void> {
+async function copyRuntimeFiles(
+    runtimeDistDir: string,
+    appDir: string,
+    mode: "preview" | "production",
+): Promise<void> {
     await fs.mkdir(appDir, { recursive: true });
     for (const fileName of REQUIRED_RUNTIME_FILES) {
         await fs.copyFile(path.join(runtimeDistDir, fileName), path.join(appDir, fileName));
     }
     for (const fileName of OPTIONAL_RUNTIME_FILES) {
+        // Sourcemaps are a preview-session debugging aid; shipped games leave
+        // them out to keep installers smaller and bundle internals unmapped.
+        if (mode === "production" && fileName.endsWith(".map")) {
+            continue;
+        }
         await copyOptionalFile(path.join(runtimeDistDir, fileName), path.join(appDir, fileName));
     }
 }
