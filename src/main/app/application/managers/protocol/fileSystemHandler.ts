@@ -219,17 +219,29 @@ export class FileSystemHashHandler implements ProtocolHandler {
             };
         }
 
-        // Cleanup hash after successful read
-        this.storageManager.cleanup(hash);
+        const sessionLived = storageInfo.lifetime === "session";
+        if (!sessionLived) {
+            // One-shot grants are destroyed after the first successful read;
+            // session grants stay valid until the owner window revokes them.
+            this.storageManager.cleanup(hash);
+        }
 
         const mimeType = getMimeType(storageInfo.path);
         return {
             statusCode: 200,
             headers: {
                 "Content-Type": storageInfo.raw ? "application/octet-stream" : mimeType,
-                "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-                "Pragma": "no-cache",
-                "Expires": "0"
+                // Session-lived grants back engine assets that get re-fetched on
+                // scene changes: let the renderer's HTTP cache absorb repeats.
+                // The hash URL is unique per grant (each re-resolve mints a new
+                // one), so cached bytes cannot go stale across recompiles.
+                ...(sessionLived ? {
+                    "Cache-Control": "private, max-age=3600"
+                } : {
+                    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                })
             },
             data: result.data
         };

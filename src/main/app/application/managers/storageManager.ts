@@ -13,6 +13,8 @@ import { BaseApp } from "../baseApp";
 import type { AppWindow } from "./window/appWindow";
 import { FileSystemAccessMode, FileSystemGrant, FileSystemGrantMode, getDeclaredFileSystemGrants } from "./window/permissions";
 
+export type FileStorageLifetime = "once" | "session";
+
 export interface FileStorageInfo {
     path: string;
     raw: boolean;
@@ -20,6 +22,15 @@ export interface FileStorageInfo {
     encoding?: BufferEncoding;
     status: "allocated" | "ready" | "error";
     error?: string;
+    /**
+     * "once" (default when absent): destroyed after the first successful use.
+     * "session": stays usable until the owner webContents goes away, so the
+     * same app://fs/{hash} URL can be fetched repeatedly (e.g. the game engine
+     * re-fetching evicted assets on scene changes in Dev Mode).
+     */
+    lifetime?: FileStorageLifetime;
+    /** webContents id whose destruction revokes this grant (session lifetime only). */
+    ownerWebContentsId?: number;
 }
 
 type SecurityScopedResourceLifetime = "window" | "session";
@@ -32,6 +43,8 @@ type SecurityScopedBookmarkGrant = {
 export class StorageManager extends Manager {
     private storage = new Map<string, FileStorageInfo>();
     private runtimeFileSystemGrants = new Map<number, FileSystemGrant[]>();
+    /** webContents ids memoized while windows are alive; see revokeWindowFileSystemAccess. */
+    private windowStorageKeys = new WeakMap<AppWindow, number>();
     private runtimeSecurityScopedResourceStops = new Map<number, Array<() => void>>();
     private sessionSecurityScopedResourceStops: Array<() => void> = [];
     private securityScopedBookmarkGrants: SecurityScopedBookmarkGrant[] = [];
@@ -100,10 +113,29 @@ export class StorageManager extends Manager {
     }
 
     public revokeWindowFileSystemAccess(window: AppWindow): void {
-        this.runtimeFileSystemGrants.delete(this.getWindowStorageKey(window));
-        const key = this.getWindowStorageKey(window);
+        // Revocation runs from unregisterWindow, which can fire after the
+        // BrowserWindow is already destroyed — at that point webContents (and
+        // its id) is gone. Grants are always issued while the window is alive,
+        // so the cached key covers every window that has anything to revoke.
+        let key = this.windowStorageKeys.get(window);
+        if (key === undefined) {
+            try {
+                key = this.getWindowStorageKey(window);
+            } catch {
+                // Destroyed before any grant was issued: nothing to revoke.
+                return;
+            }
+        }
+        this.runtimeFileSystemGrants.delete(key);
         this.stopSecurityScopedResources(this.runtimeSecurityScopedResourceStops.get(key) ?? []);
         this.runtimeSecurityScopedResourceStops.delete(key);
+        // Session-lived hash grants die with the window that consumed them, so a
+        // closed Dev Mode session cannot leave repeatable-read tokens behind.
+        for (const [hash, info] of this.storage) {
+            if (info.ownerWebContentsId === key) {
+                this.storage.delete(hash);
+            }
+        }
     }
 
     /**
@@ -111,6 +143,25 @@ export class StorageManager extends Manager {
      */
     public get(hash: string): FileStorageInfo | undefined {
         return this.storage.get(hash);
+    }
+
+    /**
+     * Promote an existing one-shot read grant to a session-lived, repeatable-read
+     * grant owned by the given webContents. The same app://fs/{hash} URL then
+     * stays readable until the owner window closes, at which point
+     * {@link revokeWindowFileSystemAccess} destroys the grant. Write grants are
+     * never promoted: a repeatable write token would widen the attack surface far
+     * more than repeated reads of a single pre-authorized file.
+     */
+    public promoteToSessionRead(hash: string, ownerWebContentsId: number): boolean {
+        const item = this.storage.get(hash);
+        if (!item || item.operation !== "read") {
+            return false;
+        }
+        item.lifetime = "session";
+        item.ownerWebContentsId = ownerWebContentsId;
+        this.storage.set(hash, item);
+        return true;
     }
 
     /**
@@ -301,7 +352,13 @@ export class StorageManager extends Manager {
     }
 
     private getWindowStorageKey(window: AppWindow): number {
-        return window.getWebContents().id;
+        const cached = this.windowStorageKeys.get(window);
+        if (cached !== undefined) {
+            return cached;
+        }
+        const key = window.getWebContents().id;
+        this.windowStorageKeys.set(window, key);
+        return key;
     }
 
     private async resolvePathForAuthorization(fsPath: string): Promise<string> {
