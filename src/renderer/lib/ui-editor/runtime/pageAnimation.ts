@@ -157,6 +157,29 @@ export function shouldBlockPageAnimationExit(
     return normalized.exitBlocking && durationFor(normalized, "exit", reducedMotion) > 0;
 }
 
+/**
+ * Scale the translation distances (numeric `x`/`y`) of a Motion target.
+ *
+ * Page-animation distances are authored in design px, but the top-level surface
+ * animation layers sit OUTSIDE the design→backing scale transform (they wrap the
+ * scaled surface content), so their pixel offsets are backing px. Multiplying by
+ * the render scale keeps the visual travel identical to nested (in-tree) layers,
+ * which animate in design px and get scaled with the tree.
+ */
+export function scalePageMotionDistances(target: MotionTarget, scale: number): MotionTarget {
+    if (scale === 1 || !target || typeof target !== "object") {
+        return target;
+    }
+    const scaled: Record<string, unknown> = { ...target };
+    if (typeof scaled.x === "number") {
+        scaled.x = scaled.x * scale;
+    }
+    if (typeof scaled.y === "number") {
+        scaled.y = scaled.y * scale;
+    }
+    return scaled;
+}
+
 export function resolvePageAnimationMotion(input: {
     settings?: UIPageAnimationSettings | null;
     navigationDirection?: PageAnimationNavigationDirection;

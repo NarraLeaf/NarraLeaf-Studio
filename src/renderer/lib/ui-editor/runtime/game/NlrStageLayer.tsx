@@ -120,6 +120,16 @@ export function NlrStageLayer(props: {
     session: NlrStageSession | null;
     interactive: boolean;
     /**
+     * Whether the stage has been revealed by the host. The layer mounts as soon as a session
+     * exists (the Player must mount to preload and fire the ready callbacks), which is earlier
+     * than the host reveals it — so while not visible the layer keeps its layout via
+     * `visibility: hidden` (NOT `display: none`: the Player needs real measurements to mount)
+     * but paints nothing. Without this, the opaque black backdrop flashes over the first frame
+     * before the surface system starts. Defaults to true for hosts that manage buffer
+     * visibility themselves (e.g. the story preview's double-buffered stage).
+     */
+    visible?: boolean;
+    /**
      * Whether the On-Stage Game UI (Player children) should render. Gated on the game stage being
      * visible so on-stage elements never show during the pre-game boot preload or between app
      * page transitions before a story is entered.
@@ -147,7 +157,7 @@ export function NlrStageLayer(props: {
      */
     onError: (error: Error, sessionId: string) => void;
 }) {
-    const { session, interactive, renderOnStage, onFirstSceneReady, onEnvironmentReady, onLiveGameReady, onError } = props;
+    const { session, interactive, visible = true, renderOnStage, onFirstSceneReady, onEnvironmentReady, onLiveGameReady, onError } = props;
     const startedSessionRef = useRef<string | null>(null);
     const stageRootRef = useRef<HTMLDivElement>(null);
 
@@ -202,8 +212,13 @@ export function NlrStageLayer(props: {
     return (
         <div
             ref={stageRootRef}
-            className="absolute inset-0 z-0 overflow-hidden bg-black"
-            style={{ pointerEvents: interactive ? "auto" : "none" }}
+            // The opaque black backdrop only applies while revealed: a hidden stage that still
+            // claims a black background would flash over layers that mount before the reveal.
+            className={`absolute inset-0 z-0 overflow-hidden${visible ? " bg-black" : ""}`}
+            style={{
+                pointerEvents: interactive ? "auto" : "none",
+                visibility: visible ? "visible" : "hidden",
+            }}
         >
             {/* Key the providers by session id: NLR's GameProvider captures the `game` instance
                 once via useState and never reacts to a changed prop, so a new Game (e.g. the

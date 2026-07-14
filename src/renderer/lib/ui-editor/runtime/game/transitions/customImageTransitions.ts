@@ -351,10 +351,14 @@ export class ThroughColor extends ImageTransition<NumberChannel> {
  * the direction the outgoing image travels toward.
  *
  * The offset is applied via the independent CSS `translate` property (not
- * `transform`) in viewport units. That composes additively with whatever base
- * positioning NLR gives the layer instead of overriding it, and at offset `0`
- * it is the identity — so neither image jumps at the start/end of the slide,
- * regardless of how the background is anchored.
+ * `transform`) in percentages of the layer's own size. That composes additively
+ * with whatever base positioning NLR gives the layer instead of overriding it,
+ * and at offset `0` it is the identity — so neither image jumps at the
+ * start/end of the slide, regardless of how the background is anchored.
+ * Percentages (not viewport units!) matter: the transition layers live inside
+ * the letterboxed stage box, so whenever the window aspect differs from the
+ * design aspect a `100vw`/`100vh` travel overshoots or undershoots the stage
+ * and both images sit off-stage mid-slide, exposing the backdrop.
  */
 export class Slide extends ImageTransition<NumberChannel> {
     constructor(
@@ -365,28 +369,28 @@ export class Slide extends ImageTransition<NumberChannel> {
         super();
     }
 
-    private axisUnit(): { axis: "x" | "y"; unit: "vw" | "vh"; sign: number } {
+    private axisSign(): { axis: "x" | "y"; sign: number } {
         switch (this.direction) {
             case "right":
-                return { axis: "x", unit: "vw", sign: 1 };
+                return { axis: "x", sign: 1 };
             case "top":
-                return { axis: "y", unit: "vh", sign: -1 };
+                return { axis: "y", sign: -1 };
             case "bottom":
-                return { axis: "y", unit: "vh", sign: 1 };
+                return { axis: "y", sign: 1 };
             case "left":
             default:
-                return { axis: "x", unit: "vw", sign: -1 };
+                return { axis: "x", sign: -1 };
         }
     }
 
     private translate(offset: number): CSSProperties {
-        const { axis, unit } = this.axisUnit();
-        const value = `${offset}${unit}`;
+        const { axis } = this.axisSign();
+        const value = `${offset}%`;
         return { translate: axis === "x" ? `${value} 0px` : `0px ${value}` } as CSSProperties;
     }
 
     createTask(): ImageTransitionTask {
-        const { sign } = this.axisUnit();
+        const { sign } = this.axisSign();
         return {
             animations: [unitChannel(this.duration, this.easing)],
             resolve: [
