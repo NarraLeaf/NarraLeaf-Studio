@@ -17,6 +17,7 @@ import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { normalizeElementEffectValues, type ElementEffectValues } from "@shared/types/ui-editor/effects";
 import type {
+    UIDisplayableBaseTransform,
     UIDisplayableMotionOverride,
     UIDisplayableMotionTarget,
     UIDisplayableMotionTransition,
@@ -756,9 +757,13 @@ function readEffectiveDisplayableProperties(
     const merged = readDisplayableProperties(document, elementId, runtimePatches);
     const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
     const motion = widgetRuntimeStore.getDisplayableMotion(scopedKey);
+    const baseTransform = widgetRuntimeStore.getDisplayableBaseTransform(scopedKey);
+    // An in-flight motion that animates x/y still reports its target offset (legacy behavior);
+    // otherwise the persistent base transform is the effective offset. Persistent offsets no
+    // longer live in the motion slot, so reads survive the motion being replaced.
     merged.offset = {
-        x: finalDisplayableMotionValue(motion?.target.x) ?? 0,
-        y: finalDisplayableMotionValue(motion?.target.y) ?? 0,
+        x: finalDisplayableMotionValue(motion?.target.x) ?? baseTransform.offsetX,
+        y: finalDisplayableMotionValue(motion?.target.y) ?? baseTransform.offsetY,
     };
     if (!hasRuntimeOpacityPatch(patch)) {
         const appearanceOpacity = readAppearanceOpacity(document, widgetRuntimeStore, scopedKey, elementId);
@@ -1964,13 +1969,14 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     const layoutPatch = createDisplayableLayoutPatch(elementId, patch);
                     const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
                     if (offsetX !== undefined || offsetY !== undefined) {
-                        widgetRuntimeStore.setDisplayableMotion(scopedKey, {
-                            target: {
-                                x: offsetX ?? current.offset.x,
-                                y: offsetY ?? current.offset.y,
-                            },
-                            transition: { type: "tween", durationMs: 0, delayMs: 0, easing: "linear" },
-                            resetOnComplete: false,
+                        // Offsets are persistent state, so they go to the base transform, NOT the
+                        // one-shot motion slot: a later motion (variant opacity transition, shake)
+                        // replacing the slot used to evict the offset and reset the widget to its
+                        // un-offset origin. A motion currently animating x/y keeps visual control
+                        // until it clears; the pose then converges on this base.
+                        widgetRuntimeStore.setDisplayableBaseTransform(scopedKey, {
+                            ...(offsetX !== undefined ? { offsetX } : {}),
+                            ...(offsetY !== undefined ? { offsetY } : {}),
                         });
                     }
                     const previousPatch = runtimePatches.get(elementId) ?? {};
@@ -2022,17 +2028,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.animateDisplayable";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const current = readEffectiveDisplayableProperties(
-                        document,
-                        widgetRuntimeStore,
-                        runtimePatches,
-                        runtimeScopeId,
-                        activeSurfaceId,
-                        elementId,
-                    );
-                    const heldOpacity = request.resetOnComplete
-                        ? undefined
-                        : finalDisplayableMotionValue(request.target.opacity);
                     const waitMs = displayableMotionWaitMs(request.transition) * (request.resetOnComplete ? 2 : 1);
                     const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
                     const motion = widgetRuntimeStore.setDisplayableMotion(
@@ -2046,27 +2041,15 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         }
                     }
                     const waitReason = await waitForDisplayableAnimation(motion.id, waitMs);
-                    if (waitReason === "completed" && heldOpacity !== undefined) {
-                        const currentMotion = widgetRuntimeStore.getDisplayableMotion(scopedKey);
-                        if (currentMotion?.id === motion.id) {
-                            const opacity = normalizeDisplayableOpacity(heldOpacity);
-                            const previousPatch = runtimePatches.get(elementId) ?? {};
-                            const nextPatch: DevModeWidgetRuntimePatch = {
-                                ...previousPatch,
-                                layout: {
-                                    ...(previousPatch.layout ?? {}),
-                                    opacity,
-                                },
-                            };
-                            runtimePatches.set(elementId, nextPatch);
-                            emitWidgetPatch(elementId, nextPatch);
-                            if (current.opacity !== opacity) {
-                                scheduleElementFlush(elementId);
-                            }
-                        }
-                    }
-                    const commitLayoutOnComplete = request.resetOnComplete ? undefined : request.commitLayoutOnComplete;
-                    if (waitReason === "completed" && commitLayoutOnComplete) {
+                    // Hold-mode motions ("after: hold") commit their final pose into persistent
+                    // state on natural completion and release the one-shot motion slot in the
+                    // same update: absolute x/y (commitLayoutOnComplete), rotation, and opacity
+                    // fold into the layout patch; held x/y offsets and scale fold into the base
+                    // transform. Committing and clearing together lets EditorNodeWrapper wipe
+                    // the leftover DOM transform in the same React commit as the layout change
+                    // (no double offset, no flash-back), and the committed pose survives the
+                    // next motion replacing the slot.
+                    if (waitReason === "completed" && !request.resetOnComplete) {
                         const currentMotion = widgetRuntimeStore.getDisplayableMotion(scopedKey);
                         if (currentMotion?.id === motion.id) {
                             const beforeCommit = readEffectiveDisplayableProperties(
@@ -2077,23 +2060,56 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                                 activeSurfaceId,
                                 elementId,
                             );
-                            const layoutPatch = createDisplayableLayoutPatch(elementId, commitLayoutOnComplete);
-                            const previousPatch = runtimePatches.get(elementId) ?? {};
-                            const nextPatch: DevModeWidgetRuntimePatch = {
-                                ...previousPatch,
-                                layout: {
-                                    ...(previousPatch.layout ?? {}),
-                                    ...layoutPatch,
-                                },
+                            const finalX = finalDisplayableMotionValue(request.target.x);
+                            const finalY = finalDisplayableMotionValue(request.target.y);
+                            const finalScale = finalDisplayableMotionValue(request.target.scale);
+                            const finalRotate = finalDisplayableMotionValue(request.target.rotate);
+                            const heldOpacity = finalDisplayableMotionValue(request.target.opacity);
+                            const layoutCommit: BlueprintDisplayablePropertiesPatch = {
+                                ...(request.commitLayoutOnComplete ?? {}),
                             };
-                            if (Object.keys(nextPatch.layout ?? {}).length === 0) {
-                                delete nextPatch.layout;
+                            if (finalRotate !== undefined) {
+                                layoutCommit.rotation = finalRotate;
                             }
-                            runtimePatches.set(elementId, nextPatch);
+                            if (heldOpacity !== undefined) {
+                                layoutCommit.opacity = normalizeDisplayableOpacity(heldOpacity);
+                            }
+                            const basePatch: Partial<UIDisplayableBaseTransform> = {};
+                            // An absolute x/y layout commit consumes the whole translate delta;
+                            // the base offset on that axis must return to zero or the layout move
+                            // would double-apply it. Otherwise the held offset becomes the new base.
+                            if (layoutCommit.x !== undefined) {
+                                basePatch.offsetX = 0;
+                            } else if (finalX !== undefined) {
+                                basePatch.offsetX = finalX;
+                            }
+                            if (layoutCommit.y !== undefined) {
+                                basePatch.offsetY = 0;
+                            } else if (finalY !== undefined) {
+                                basePatch.offsetY = finalY;
+                            }
+                            if (finalScale !== undefined) {
+                                basePatch.scale = finalScale;
+                            }
+                            const layoutPatch = createDisplayableLayoutPatch(elementId, layoutCommit);
+                            let nextPatch: DevModeWidgetRuntimePatch = runtimePatches.get(elementId) ?? {};
+                            if (Object.keys(layoutPatch).length > 0) {
+                                nextPatch = {
+                                    ...nextPatch,
+                                    layout: {
+                                        ...(nextPatch.layout ?? {}),
+                                        ...layoutPatch,
+                                    },
+                                };
+                                runtimePatches.set(elementId, nextPatch);
+                            }
+                            const baseChanged = Object.keys(basePatch).length > 0
+                                ? widgetRuntimeStore.setDisplayableBaseTransform(scopedKey, basePatch, { silent: true })
+                                : false;
                             const motionCleared = widgetRuntimeStore.clearDisplayableMotion(scopedKey, {
                                 silent: true,
                             });
-                            emitWidgetPatch(elementId, nextPatch, { widgetStateChanged: motionCleared });
+                            emitWidgetPatch(elementId, nextPatch, { widgetStateChanged: motionCleared || baseChanged });
                             const afterCommit = readEffectiveDisplayableProperties(
                                 document,
                                 widgetRuntimeStore,
@@ -2106,7 +2122,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                                 beforeCommit.position.x !== afterCommit.position.x ||
                                 beforeCommit.position.y !== afterCommit.position.y ||
                                 beforeCommit.offset.x !== afterCommit.offset.x ||
-                                beforeCommit.offset.y !== afterCommit.offset.y
+                                beforeCommit.offset.y !== afterCommit.offset.y ||
+                                beforeCommit.rotation !== afterCommit.rotation ||
+                                beforeCommit.opacity !== afterCommit.opacity
                             ) {
                                 scheduleElementFlush(elementId);
                             }
@@ -2121,6 +2139,12 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.stopDisplayableAnimation";
                 emitHostCall(emit, cap, "call");
                 try {
+                    // "Stop Animation" cancels: the motion is discarded without committing any
+                    // layout/base state, and the widget snaps back to its base pose (authored
+                    // layout + persistent offsets) via EditorNodeWrapper's cleared-motion reset.
+                    // Freezing the mid-flight pose is not an option here: this store never sees
+                    // DOM-sampled values, and getDisplayableProperties already reports base
+                    // values after a stop, so the DOM must match what blueprints read.
                     const cleared = widgetRuntimeStore.clearDisplayableMotionById(animationId);
                     if (cleared) {
                         scheduleElementFlush(elementIdFromScopedWidgetRuntimeKey(cleared.elementId));
