@@ -212,6 +212,22 @@ function broadcastReload(target = 'all') {
         // to avoid duplicate restarts
     });
 
+    /** Build & watch the game build worker (forked by utilityProcess). */
+    await watchBuild({
+        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'buildWorker.ts')],
+        outfile: path.join(distDir, 'main', 'buildWorker.js'),
+        platform: 'node',
+        format: 'cjs',
+        bundle: true,
+        // electron-builder reads template files relative to itself at runtime.
+        external: ['electron', 'electron-builder'],
+        sourcemap: true,
+        target: ['node18'],
+    }, () => {
+        // No Electron restart: the worker is spawned fresh per build.
+        console.log('[buildWorker] built.');
+    });
+
     /** Build & watch preload script */
     const preloadEntry = path.join(rootDir, 'src', 'main', 'preload', 'preload.ts');
     if (fs.existsSync(preloadEntry)) {

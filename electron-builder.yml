@@ -15,6 +15,34 @@ extraMetadata:
   main: dist/main/index.js
 
 asar: true
+# The in-app game build worker runs electron-builder with Electron's asar fs
+# patch disabled (see src/main/buildWorker/enableNoAsar.ts), so electron-builder
+# and its dependency closure must be require-able as real files rather than from
+# inside the asar. Unpack node_modules wholesale: enumerating the ~250-package
+# closure is unmaintainable, and Studio's own main-process requires resolve from
+# app.asar.unpacked transparently.
+asarUnpack:
+  - node_modules/**/*
+# Application hardening for the shipped Studio binary. runAsNode:false is the
+# load-bearing one: it closes the ELECTRON_RUN_AS_NODE path that would let the
+# binary be re-run as a plain Node process. Preview spawns a *separate* Electron
+# binary and the game-build worker uses utilityProcess (neither needs
+# ELECTRON_RUN_AS_NODE), so this does not affect them.
+#   - enableCookieEncryption stays off: Studio ships unsigned, and turning it on
+#     makes the first launch prompt for keychain/secret-store access.
+#   - asar integrity stays off until Studio is code-signed: on an unsigned build
+#     it is a fragility footgun with no real tamper-proofing (see the game build
+#     pipeline for the same reasoning).
+#   - grantFileProtocolExtraPrivileges is intentionally NOT disabled: Studio
+#     loads its windows over file:// (loadFile), which relies on those privileges.
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: false
+  onlyLoadAppFromAsar: true
+  resetAdHocDarwinSignature: true
 publish: null
 extraResources:
   - from: ./resources

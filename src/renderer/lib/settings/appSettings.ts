@@ -133,4 +133,18 @@ export const AppSettings: AppSettingDefinition[] = [
         descriptionParams: { min: MAX_ACTIVE_EDITORS_MIN, max: MAX_ACTIVE_EDITORS_MAX },
         defaultValue: MAX_ACTIVE_EDITORS_DEFAULT,
     },
+    {
+        // Read by the main-process GameBuildManager (readElectronMirror) and
+        // passed to electron-builder as electronDownload.mirror for cross-platform
+        // game builds. Empty = official Electron download source.
+        key: "build.electronMirror",
+        category: "advanced",
+        scope: SettingScope.Global,
+        type: SettingValueType.String,
+        label: "Electron download mirror",
+        labelKey: "settings.items.electronMirror.label",
+        description: "Mirror URL for downloading Electron when building games for other platforms. Leave empty to use the official source.",
+        descriptionKey: "settings.items.electronMirror.description",
+        defaultValue: "",
+    },
 ];

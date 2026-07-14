@@ -54,6 +54,7 @@ import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../ui-editor/
 import type { SelectionState } from "./ui/UIStore";
 import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
+import type { GameBuildRequest, GameBuildStateSnapshot, GameBuildStatus } from "@shared/types/gameBuild";
 import type {
     ConsoleAppendInput,
     ConsoleChannelDefinition,
@@ -114,6 +115,7 @@ enum Services {
     UIBlueprintLifecycle = "uiBlueprintLifecycle",
     DevMode = "devMode",
     Preview = "preview",
+    Build = "build",
     Console = "console",
     /** Ref-counted FontFace + blob URLs for UI editor widgets */
     UIEditorFontFace = "uiEditorFontFace",
@@ -810,7 +812,15 @@ interface IPreviewService extends IService {
     onStatusChanged(handler: (status: PreviewStatus) => void): () => void;
 }
 
-interface IBuildService extends IService { }
+interface IBuildService extends IService {
+    getState(): GameBuildStateSnapshot;
+    getStatus(): GameBuildStatus;
+    isBuilding(): boolean;
+    refreshState(): Promise<GameBuildStateSnapshot>;
+    start(request: GameBuildRequest): Promise<GameBuildStateSnapshot>;
+    cancel(): Promise<GameBuildStateSnapshot>;
+    onStateChanged(handler: (state: GameBuildStateSnapshot) => void): () => void;
+}
 
 interface IDebugService extends IService { }
 

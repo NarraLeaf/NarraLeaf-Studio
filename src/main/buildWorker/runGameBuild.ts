@@ -1,0 +1,74 @@
+import path from "path";
+import { build, Platform, Arch, type Configuration } from "electron-builder";
+import { currentGameBuildPlatform, type GameBuildFormat, type GameBuildPlatform } from "@shared/types/gameBuild";
+import type { GameBuildWorkerConfig, GameBuildWorkerTarget } from "./protocol";
+
+/**
+ * The electron-builder invocation behind a production game build. Pure with
+ * respect to Studio state: everything arrives pre-resolved in the config, so
+ * this runs identically inside the packaging utility process and under plain
+ * node (tests, smoke scripts).
+ */
+
+export type GameBuildLogger = (level: "info" | "warning" | "error", message: string) => void;
+
+const BUILDER_PLATFORMS: Record<GameBuildPlatform, Platform> = {
+    windows: Platform.WINDOWS,
+    macos: Platform.MAC,
+    linux: Platform.LINUX,
+};
+
+const BUILDER_TARGET_NAMES: Record<GameBuildFormat, string> = {
+    dir: "dir",
+    zip: "zip",
+    nsis: "nsis",
+    dmg: "dmg",
+    appimage: "AppImage",
+};
+
+function targetArch(target: GameBuildWorkerTarget): Arch {
+    if (target.platform === currentGameBuildPlatform()) {
+        return process.arch === "arm64" ? Arch.arm64 : Arch.x64;
+    }
+    // Cross builds default to x64, the broadest player base.
+    return Arch.x64;
+}
+
+function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWorkerTarget): Configuration {
+    return {
+        appId: config.appId,
+        productName: config.productName,
+        electronVersion: config.electronVersion,
+        ...(target.electronDist ? { electronDist: target.electronDist } : {}),
+        ...(target.iconPath ? { icon: target.iconPath } : {}),
+        ...(config.electronMirror
+            ? { electronDownload: { mirror: config.electronMirror } }
+            : {}),
+        directories: {
+            output: config.outputDir,
+        },
+        files: ["**/*"],
+        asar: true,
+        asarUnpack: config.asarUnpack,
+        electronFuses: target.fuses,
+        artifactName: `${config.artifactBaseName}-\${version}-\${os}-\${arch}.\${ext}`,
+        npmRebuild: false,
+        publish: null,
+    };
+}
+
+export async function runGameBuild(config: GameBuildWorkerConfig, log: GameBuildLogger): Promise<string[]> {
+    const artifacts: string[] = [];
+    for (const target of config.targets) {
+        const platform = BUILDER_PLATFORMS[target.platform];
+        const targetNames = target.formats.map(format => BUILDER_TARGET_NAMES[format]);
+        log("info", `packaging ${target.platform} (${target.formats.join(", ")})`);
+        const produced = await build({
+            targets: platform.createTarget(targetNames, targetArch(target)),
+            projectDir: config.appDir,
+            config: builderConfiguration(config, target),
+        });
+        artifacts.push(...produced.map(artifact => path.resolve(artifact)));
+    }
+    return artifacts;
+}
