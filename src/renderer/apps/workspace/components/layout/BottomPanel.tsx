@@ -16,6 +16,13 @@ interface BottomPanelProps {
 }
 
 /**
+ * Vertical space the dock cell spends on chrome above/around the panel body:
+ * the 4px `ResizableHandle` (`h-1`) stacked above it plus the cell's 1px top border.
+ * Kept in sync with the cell markup in WorkspaceLayout's bottom region.
+ */
+const BOTTOM_PANEL_CHROME_OFFSET = 5;
+
+/**
  * Bottom panel container
  * Displays the selected panel content with payload support
  * Manages focus state and visual focus indicator
@@ -59,11 +66,15 @@ export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
     };
 
     return (
-        <div 
+        <div
             className={`bg-surface flex flex-col border transition-colors ${
                 isFocused ? 'border-primary' : 'border-transparent border-t-white/10'
             }`}
-            style={{ height: `${height - 1}px` }}
+            // The dock cell (`height` px) also holds the 4px ResizableHandle above this
+            // panel, plus its own 1px top border. Subtract both so the panel fits inside
+            // the cell instead of overflowing — otherwise its bottom edge (and anything
+            // pinned there, e.g. the console progress bar) is clipped by the viewport.
+            style={{ height: `${height - BOTTOM_PANEL_CHROME_OFFSET}px` }}
             onClick={handleClick}
             tabIndex={0}
         >

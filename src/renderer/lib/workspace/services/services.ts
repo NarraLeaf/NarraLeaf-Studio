@@ -61,6 +61,8 @@ import type {
     ConsoleChannelId,
     ConsoleEntry,
     ConsoleLogLevel,
+    ConsoleProgress,
+    ConsoleProgressInput,
 } from "./core/ConsoleService";
 import type {
     StoryAnimationAsset,
@@ -646,6 +648,12 @@ interface IConsoleService extends IService {
     }) => void): () => void;
     onChannelsChanged(handler: (event: {
         channels: readonly ConsoleChannelDefinition[];
+    }) => void): () => void;
+    getProgress(channel: ConsoleChannelId): ConsoleProgress | null;
+    setProgress(channel: ConsoleChannelId, input: ConsoleProgressInput | null): void;
+    onProgressChanged(handler: (event: {
+        channel: ConsoleChannelId;
+        progress: ConsoleProgress | null;
     }) => void): () => void;
 }
 
