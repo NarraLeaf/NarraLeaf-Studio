@@ -3,6 +3,7 @@ import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryIns
 import { appendArrangeSubmenu } from "./appendArrangeSubmenu";
 import type { BuildCanvasContextMenuInput } from "./types";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
+import { translate } from "@/lib/i18n";
 
 const ROOT = "nl.root";
 
@@ -13,7 +14,7 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
     if (hasClipboard) {
         items.push({
             id: "paste",
-            label: "Paste",
+            label: translate("common.paste"),
             onClick: () => {
                 actions.hideMenu();
                 actions.paste();
@@ -32,14 +33,14 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
     if (insertSubmenu.length > 0) {
         items.push({
             id: "insert",
-            label: "Insert",
+            label: translate("uiEditor.contextMenu.insert"),
             submenu: insertSubmenu,
         });
     }
 
     items.push({
         id: "select-all",
-        label: "Select all",
+        label: translate("uiEditor.contextMenu.selectAll"),
         onClick: () => {
             actions.hideMenu();
             actions.selectAll();
@@ -61,7 +62,7 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
     items.push(
         {
             id: "copy",
-            label: "Copy",
+            label: translate("common.copy"),
             disabled: !hasEditable,
             onClick: () => {
                 actions.hideMenu();
@@ -70,7 +71,7 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
         },
         {
             id: "cut",
-            label: "Cut",
+            label: translate("common.cut"),
             disabled: !hasEditable,
             onClick: () => {
                 actions.hideMenu();
@@ -79,7 +80,7 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
         },
         {
             id: "duplicate",
-            label: "Duplicate",
+            label: translate("common.duplicate"),
             disabled: !hasEditable,
             onClick: () => {
                 actions.hideMenu();
@@ -88,7 +89,7 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
         },
         {
             id: "delete",
-            label: "Delete",
+            label: translate("common.delete"),
             disabled: !hasEditable,
             onClick: () => {
                 actions.hideMenu();
@@ -111,7 +112,7 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
         if (el) {
             items.push({
                 id: "rename",
-                label: "Rename…",
+                label: translate("uiEditor.contextMenu.rename"),
                 disabled: el.type === ROOT || isComponentEditorRootElement(el),
                 onClick: () => {
                     actions.hideMenu();
@@ -124,7 +125,7 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
     if (input.allowAddToComponentLibrary !== false) {
         items.push({
             id: "add-to-component-library",
-            label: "Add to Component Library",
+            label: translate("uiEditor.contextMenu.addToComponentLibrary"),
             disabled: !hasEditable,
             onClick: () => {
                 actions.hideMenu();
@@ -137,7 +138,7 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
         { separator: true, id: "sep-vis" },
         {
             id: "show-selected",
-            label: "Show",
+            label: translate("common.show"),
             disabled: !hasEditable,
             onClick: () => {
                 actions.hideMenu();
@@ -146,7 +147,7 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
         },
         {
             id: "hide-selected",
-            label: "Hide",
+            label: translate("common.hide"),
             disabled: !hasEditable,
             onClick: () => {
                 actions.hideMenu();
@@ -157,7 +158,7 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
 
     items.push({
         id: "add-to-group",
-        label: "Add to group",
+        label: translate("uiEditor.contextMenu.addToGroup"),
         disabled: !canAddToGroup,
         onClick: () => {
             actions.hideMenu();

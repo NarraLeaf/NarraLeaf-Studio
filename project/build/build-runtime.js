@@ -11,16 +11,27 @@ const runtimeOutDir = path.join(rootDir, 'dist', 'runtime');
 const runtimeTsconfig = path.join(runtimeSourceDir, 'tsconfig.json');
 
 function runtimeHtml() {
+    // NOTE: the Content-Security-Policy is intentionally NOT baked in here. It is
+    // injected into <head> at serve time by the runtime main process
+    // (src/runtime/main/networkPolicy.ts), because the policy is gated on the
+    // project's per-launch `allowHttp` flag which is only known at runtime.
     return `<!doctype html>
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta
-        http-equiv="Content-Security-Policy"
-        content="default-src 'self' nlgame: data: blob:; script-src 'self' nlgame:; style-src 'self' nlgame: 'unsafe-inline'; img-src 'self' nlgame: data: blob:; media-src 'self' nlgame: data: blob:; font-src 'self' nlgame: data: blob:;"
-    />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NarraLeaf Game</title>
+    <script type="importmap">
+    {
+        "imports": {
+            "narraleaf-studio/runtime": "nlgame://plugin-api/runtime.js",
+            "react": "nlgame://plugin-api/react.js",
+            "react-dom": "nlgame://plugin-api/react-dom.js",
+            "react/jsx-runtime": "nlgame://plugin-api/react-jsx-runtime.js",
+            "react/jsx-dev-runtime": "nlgame://plugin-api/react-jsx-dev-runtime.js"
+        }
+    }
+    </script>
     <link rel="stylesheet" href="nlgame://runtime/renderer.css" />
 </head>
 <body>
@@ -34,6 +45,10 @@ function runtimeHtml() {
 function runtimeAliasPlugin() {
     const shim = name => path.join(runtimeSourceDir, 'renderer', 'shims', name);
     const exactAliases = new Map([
+        [
+            '@/lib/i18n',
+            shim('i18n.ts'),
+        ],
         [
             '@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant',
             shim('useEditorAppearanceInspectorVariant.ts'),
@@ -79,12 +94,39 @@ function runtimeAliasPlugin() {
             shim('doubleClickDebug.ts'),
         ],
     ]);
+    // The game runtime bundle may only reach Studio renderer code through:
+    //   1. an explicit shim alias above,
+    //   2. the shared ui-editor tree, or
+    //   3. a triaged pure module (functions/constants over @shared types only).
+    // Everything else is a Studio module and must fail the build instead of
+    // silently falling through to the tsconfig "@/*" path mapping.
+    const allowedPrefixes = ['@/lib/ui-editor/'];
+    const allowedExact = new Set([
+        // Pure blueprint helpers (no services, no state); candidates to move
+        // under @/lib/ui-editor or @shared eventually.
+        '@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs',
+        '@/lib/workspace/services/ui-editor/blueprint/fieldEvaluation',
+        '@/lib/workspace/services/ui-editor/blueprint/fnCatalog',
+        '@/lib/workspace/services/ui-editor/blueprint/ownerKeys',
+    ]);
     return {
         name: 'runtime-alias',
         setup(build) {
             build.onResolve({ filter: /^@\/(?:apps|lib)\/.*$/ }, args => {
                 const target = exactAliases.get(args.path);
-                return target ? { path: target } : undefined;
+                if (target) {
+                    return { path: target };
+                }
+                if (allowedPrefixes.some(prefix => args.path.startsWith(prefix)) || allowedExact.has(args.path)) {
+                    return undefined; // fall through to tsconfig paths
+                }
+                return {
+                    errors: [{
+                        text: `Runtime bundle must not import "${args.path}" (imported by ${args.importer}). ` +
+                            `Add a shim under src/runtime/renderer/shims + an alias in build-runtime.js, ` +
+                            `or move the code into a shared module under @/lib/ui-editor.`,
+                    }],
+                };
             });
         },
     };
@@ -131,6 +173,13 @@ function runtimeAliasPlugin() {
         jsx: 'automatic',
         target: ['chrome114'],
         tsconfig: runtimeTsconfig,
+        // Keep react/motion resolution pinned to this repo when narraleaf-react is a linked
+        // sibling checkout (see build-apps.js).
+        alias: {
+            'react': path.join(rootDir, 'node_modules', 'react'),
+            'react-dom': path.join(rootDir, 'node_modules', 'react-dom'),
+            'motion': path.join(rootDir, 'node_modules', 'motion'),
+        },
         loader: {
             '.css': 'css',
             '.ttf': 'file',
@@ -142,5 +191,26 @@ function runtimeAliasPlugin() {
 
     fs.writeFileSync(path.join(runtimeOutDir, 'index.html'), runtimeHtml(), 'utf-8');
 
+    copyRuntimeSupportSidecar(runtimeOutDir);
+
     console.log('[build-runtime] Runtime built successfully.');
 })();
+
+// The bundled runtime main.js reaches for a sibling support module through a
+// require the bundler cannot inline (the specifier is computed, not a literal),
+// so that module is neither embedded in main.js nor emitted. It must sit next to
+// main.js at runtime; copyRuntimeFiles() then carries it into every packed app.
+// Emitted for every pack because the require runs eagerly at startup; the module
+// itself is inert until the runtime asks it to do work.
+function copyRuntimeSupportSidecar(runtimeOutDir) {
+    const SIDECAR = 'native.js';
+    const packageRuntimeDir = path.dirname(require.resolve('@narraleaf/encryption/runtime'));
+    const source = path.join(packageRuntimeDir, SIDECAR);
+    if (!fs.existsSync(source)) {
+        throw new Error(
+            `[build-runtime] Missing runtime support file "${SIDECAR}" from @narraleaf/encryption. ` +
+            `Reinstall dependencies so the packaged runtime can boot.`,
+        );
+    }
+    fs.copyFileSync(source, path.join(runtimeOutDir, SIDECAR));
+}

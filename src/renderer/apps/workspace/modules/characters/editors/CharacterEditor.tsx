@@ -5,6 +5,7 @@ import { PreviewPanel } from "./components/PreviewPanel";
 import { VariantsPanel } from "./components/VariantsPanel";
 import { AssetView } from "./components/types";
 import { createInputDialog } from "@/lib/components/dialogs";
+import { useTranslation } from "@/lib/i18n";
 import { ContextMenu, ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset } from "@/lib/workspace/services/assets/types";
@@ -63,6 +64,7 @@ function findFirstAssetVariant(form?: CharacterForm | null): string | null {
 }
 
 export function CharacterEditor({ payload }: EditorComponentProps<CharacterEditorPayload>) {
+    const { t } = useTranslation();
     const appearance = payload?.character.profile.appearance;
     const profile = payload?.character.profile;
     const { context } = useWorkspace();
@@ -133,7 +135,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         const result = await assetsService.fetch(asset as Asset<AssetType.Image>);
         loadingAssets.current.delete(asset.id);
         if (!result.success) {
-            setPreviewError(result.error || "Failed to load asset");
+            setPreviewError(result.error || t("characters.errors.assetLoad"));
             return null;
         }
         const blob = new Blob([new Uint8Array(result.data.data)]);
@@ -146,7 +148,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
             return { ...prev, [asset.id]: { url, metadata: result.data.metadata } };
         });
         return { url, metadata: result.data.metadata };
-    }, [assetViews, assetsService]);
+    }, [assetViews, assetsService, t]);
 
     const syncPreview = useCallback(async (variantName: string | null, form: CharacterForm | null) => {
         if (!variantName || !form) {
@@ -200,22 +202,22 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     const handleAddForm = useCallback(async () => {
         if (!appearance || !inputDialog) return;
         const name = await inputDialog.show({
-            title: "New Form",
-            placeholder: "Enter form name",
+            title: t("characters.editor.dialog.newFormTitle"),
+            placeholder: t("characters.editor.dialog.formNamePlaceholder"),
             required: true,
             maxLength: 80,
             validation: (value) => {
                 const trimmed = value.trim();
-                if (!trimmed) return "Name is required";
+                if (!trimmed) return t("characters.editor.validation.nameRequired");
                 const exists = forms.some(f => f.name.toLowerCase() === trimmed.toLowerCase());
-                if (exists) return "Form already exists";
+                if (exists) return t("characters.editor.validation.formExists");
                 return null;
             },
         });
         if (!name) return;
         const exists = forms.some(f => f.name.toLowerCase() === name.trim().toLowerCase());
         if (exists) {
-            uiService?.showNotification("Form already exists", "error");
+            uiService?.showNotification(t("characters.editor.validation.formExists"), "error");
             return;
         }
         appearance.ensureForm(name.trim());
@@ -224,11 +226,11 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         }
         setActiveFormName(name.trim());
         setProfileVersion(v => v + 1);
-    }, [appearance, forms, inputDialog, profile, uiService]);
+    }, [appearance, forms, inputDialog, profile, uiService, t]);
 
     const handleDeleteForm = useCallback(async (name: string) => {
         if (!appearance || !uiService) return;
-        const confirmed = await uiService.showConfirm(`Delete form "${name}"?`, "Groups and variants inside will be removed.");
+        const confirmed = await uiService.showConfirm(t("characters.editor.confirm.deleteFormTitle", { name }), t("characters.editor.confirm.deleteFormDetail"));
         if (!confirmed) return;
         appearance.removeForm(name);
         if (profile?.getDefaultForm() === name) {
@@ -238,21 +240,21 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         setActiveFormName(remaining[0]?.name ?? "");
         setProfileVersion(v => v + 1);
         setMenuState(prev => ({ ...prev, visible: false }));
-    }, [appearance, profile, uiService]);
+    }, [appearance, profile, uiService, t]);
 
     const handleRenameForm = useCallback(async (currentName: string) => {
         if (!appearance || !inputDialog) return;
         const nextName = await inputDialog.show({
-            title: "Rename Form",
-            placeholder: "Enter form name",
+            title: t("characters.editor.dialog.renameFormTitle"),
+            placeholder: t("characters.editor.dialog.formNamePlaceholder"),
             initialValue: currentName,
             required: true,
             maxLength: 80,
             validation: (value) => {
                 const trimmed = value.trim();
-                if (!trimmed) return "Name is required";
+                if (!trimmed) return t("characters.editor.validation.nameRequired");
                 const exists = appearance.getForms().some(f => f.name.toLowerCase() === trimmed.toLowerCase());
-                if (exists && trimmed.toLowerCase() !== currentName.toLowerCase()) return "Form already exists";
+                if (exists && trimmed.toLowerCase() !== currentName.toLowerCase()) return t("characters.editor.validation.formExists");
                 return null;
             },
         });
@@ -260,7 +262,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         const normalized = nextName.trim();
         const success = appearance.renameForm(currentName, normalized);
         if (!success) {
-            uiService?.showNotification("Unable to rename form", "error");
+            uiService?.showNotification(t("characters.editor.notify.renameFormFailed"), "error");
             return;
         }
         setExpandedGroups(prev => {
@@ -283,7 +285,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         }
         setActiveFormName(prev => (prev === currentName ? normalized : prev));
         setProfileVersion(v => v + 1);
-    }, [appearance, inputDialog, profile, uiService]);
+    }, [appearance, inputDialog, profile, uiService, t]);
 
     const ensureDefaultGroup = useCallback((formName: string): CharacterVariantGroup => {
         if (!appearance) {
@@ -299,17 +301,17 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     const handleAddVariant = useCallback(async (formName: string, targetGroupName?: string) => {
         if (!appearance || !inputDialog) return;
         const name = await inputDialog.show({
-            title: "New Variant",
-            placeholder: "Enter variant name",
+            title: t("characters.editor.dialog.newVariantTitle"),
+            placeholder: t("characters.editor.dialog.variantNamePlaceholder"),
             required: true,
             maxLength: 80,
             validation: (value) => {
                 const trimmed = value.trim();
-                if (!trimmed) return "Name is required";
+                if (!trimmed) return t("characters.editor.validation.nameRequired");
                 const form = appearance.getForm(formName);
-                if (!form) return "Form not found";
+                if (!form) return t("characters.editor.validation.formNotFound");
                 const exists = form.groups.some(g => g.variants.some(v => v.name.toLowerCase() === trimmed.toLowerCase()));
-                if (exists) return "Variant already exists in this form";
+                if (exists) return t("characters.editor.validation.variantExists");
                 return null;
             },
         });
@@ -328,7 +330,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         const normalizedName = name.trim();
         const formHasDuplicate = appearance.getForm(formName)?.groups.some(g => g.variants.some(v => v.name.toLowerCase() === normalizedName.toLowerCase()));
         if (formHasDuplicate) {
-            uiService?.showNotification("Variant name must be unique within the form", "error");
+            uiService?.showNotification(t("characters.editor.notify.variantNameUnique"), "error");
             return;
         }
         const created = appearance.createVariantInGroup(formName, group.name, normalizedName);
@@ -337,42 +339,42 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         }
         setPreviewVariant(created.name);
         setProfileVersion(v => v + 1);
-    }, [appearance, inputDialog, uiService, ensureDefaultGroup]);
+    }, [appearance, inputDialog, uiService, ensureDefaultGroup, t]);
 
     const handleAddGroup = useCallback(async (formName: string) => {
         if (!appearance || !inputDialog) return;
         const name = await inputDialog.show({
-            title: "New Variant Group",
-            placeholder: "Enter group name",
+            title: t("characters.editor.dialog.newGroupTitle"),
+            placeholder: t("characters.editor.dialog.groupNamePlaceholder"),
             required: true,
             maxLength: 80,
             validation: (value) => {
                 const trimmed = value.trim();
-                if (!trimmed) return "Name is required";
+                if (!trimmed) return t("characters.editor.validation.nameRequired");
                 const form = appearance.getForm(formName);
-                if (!form) return "Form not found";
+                if (!form) return t("characters.editor.validation.formNotFound");
                 const exists = form.groups.some(g => g.name.toLowerCase() === trimmed.toLowerCase());
-                if (exists) return "Group already exists";
+                if (exists) return t("characters.editor.validation.groupExists");
                 return null;
             },
         });
         if (!name) return;
         const form = appearance.getForm(formName);
         if (form?.groups.some(g => g.name.toLowerCase() === name.trim().toLowerCase())) {
-            uiService?.showNotification("Group already exists", "error");
+            uiService?.showNotification(t("characters.editor.validation.groupExists"), "error");
             return;
         }
         appearance.createGroup(formName, name.trim(), [], null);
         setProfileVersion(v => v + 1);
-    }, [appearance, inputDialog, uiService]);
+    }, [appearance, inputDialog, uiService, t]);
 
     const handleDeleteGroup = useCallback(async (formName: string, groupName: string) => {
         if (!appearance || !uiService) return;
         if (groupName === DEFAULT_GROUP) {
-            uiService?.showNotification("Cannot delete ungrouped bucket", "warning");
+            uiService?.showNotification(t("characters.editor.notify.deleteUngroupedBucket"), "warning");
             return;
         }
-        const confirmed = await uiService.showConfirm(`Delete group "${groupName}"?`, "Variants inside will be removed.");
+        const confirmed = await uiService.showConfirm(t("characters.editor.confirm.deleteGroupTitle", { name: groupName }), t("characters.editor.confirm.deleteGroupDetail"));
         if (!confirmed) return;
         const form = appearance.getForm(formName);
         const isPreviewVariantInGroup = form?.groups.find(g => g.name === groupName)?.variants.some(v => v.name === previewVariant);
@@ -381,27 +383,27 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
             setPreviewVariant(findFirstAssetVariant(appearance.getForm(formName)) ?? null);
         }
         setProfileVersion(v => v + 1);
-    }, [appearance, previewVariant, uiService]);
+    }, [appearance, previewVariant, uiService, t]);
 
     const handleRenameGroup = useCallback(async (formName: string, currentName: string) => {
         if (!appearance || !inputDialog) return;
         if (currentName === DEFAULT_GROUP) {
-            uiService?.showNotification("Cannot rename ungrouped bucket", "warning");
+            uiService?.showNotification(t("characters.editor.notify.renameUngroupedBucket"), "warning");
             return;
         }
         const form = appearance.getForm(formName);
         if (!form) return;
         const nextName = await inputDialog.show({
-            title: "Rename Group",
-            placeholder: "Enter group name",
+            title: t("characters.editor.dialog.renameGroupTitle"),
+            placeholder: t("characters.editor.dialog.groupNamePlaceholder"),
             initialValue: currentName,
             required: true,
             maxLength: 80,
             validation: (value) => {
                 const trimmed = value.trim();
-                if (!trimmed) return "Name is required";
+                if (!trimmed) return t("characters.editor.validation.nameRequired");
                 const exists = form.groups.some(g => g.name.toLowerCase() === trimmed.toLowerCase());
-                if (exists && trimmed.toLowerCase() !== currentName.toLowerCase()) return "Group already exists";
+                if (exists && trimmed.toLowerCase() !== currentName.toLowerCase()) return t("characters.editor.validation.groupExists");
                 return null;
             },
         });
@@ -409,7 +411,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         const normalized = nextName.trim();
         const success = appearance.renameGroup(formName, currentName, normalized);
         if (!success) {
-            uiService?.showNotification("Unable to rename group", "error");
+            uiService?.showNotification(t("characters.editor.notify.renameGroupFailed"), "error");
             return;
         }
         setExpandedGroups(prev => {
@@ -422,34 +424,34 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
             return next;
         });
         setProfileVersion(v => v + 1);
-    }, [appearance, inputDialog, uiService]);
+    }, [appearance, inputDialog, uiService, t]);
 
     const handleDeleteVariant = useCallback(async (formName: string, group: CharacterVariantGroup, variantName: string) => {
         if (!appearance || !uiService) return;
-        const confirmed = await uiService.showConfirm(`Delete variant "${variantName}"?`, "Asset binding will be removed.");
+        const confirmed = await uiService.showConfirm(t("characters.editor.confirm.deleteVariantTitle", { name: variantName }), t("characters.editor.confirm.deleteVariantDetail"));
         if (!confirmed) return;
         appearance.removeVariant(formName, group.name, variantName);
         if (previewVariant === variantName) {
             setPreviewVariant(findFirstAssetVariant(appearance.getForm(formName)) ?? null);
         }
         setProfileVersion(v => v + 1);
-    }, [appearance, previewVariant, uiService]);
+    }, [appearance, previewVariant, uiService, t]);
 
     const handleRenameVariant = useCallback(async (formName: string, groupName: string, currentName: string) => {
         if (!appearance || !inputDialog) return;
         const form = appearance.getForm(formName);
         if (!form) return;
         const nextName = await inputDialog.show({
-            title: "Rename Variant",
-            placeholder: "Enter variant name",
+            title: t("characters.editor.dialog.renameVariantTitle"),
+            placeholder: t("characters.editor.dialog.variantNamePlaceholder"),
             initialValue: currentName,
             required: true,
             maxLength: 80,
             validation: (value) => {
                 const trimmed = value.trim();
-                if (!trimmed) return "Name is required";
+                if (!trimmed) return t("characters.editor.validation.nameRequired");
                 const exists = form.groups.some(g => g.variants.some(v => v.name.toLowerCase() === trimmed.toLowerCase()));
-                if (exists && trimmed.toLowerCase() !== currentName.toLowerCase()) return "Variant already exists in this form";
+                if (exists && trimmed.toLowerCase() !== currentName.toLowerCase()) return t("characters.editor.validation.variantExists");
                 return null;
             },
         });
@@ -457,13 +459,13 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         const normalized = nextName.trim();
         const success = appearance.renameVariant(formName, groupName, currentName, normalized);
         if (!success) {
-            uiService?.showNotification("Unable to rename variant", "error");
+            uiService?.showNotification(t("characters.editor.notify.renameVariantFailed"), "error");
             return;
         }
         setPreviewVariant(prev => (prev === currentName ? normalized : prev));
         setSelectorState(prev => (prev.variantName === currentName ? { ...prev, variantName: normalized } : prev));
         setProfileVersion(v => v + 1);
-    }, [appearance, inputDialog, uiService]);
+    }, [appearance, inputDialog, uiService, t]);
 
     const handleSelectVariantForPreview = useCallback((variantName: string) => {
         setPreviewVariant(variantName);
@@ -502,24 +504,24 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         const items: ContextMenuDef = [
             {
                 id: "rename-variant",
-                label: "Rename Variant",
+                label: t("characters.editor.menu.renameVariant"),
                 onClick: () => handleRenameVariant(formName, group.name, variantName),
             },
             {
                 id: "set-default-variant",
-                label: "Set as Default",
+                label: t("characters.editor.menu.setAsDefault"),
                 onClick: () => handleSetDefaultVariant(formName, group.name, variantName),
                 disabled: group.defaultVariant === variantName,
             },
             {
                 id: "delete-variant",
-                label: "Delete Variant",
+                label: t("characters.editor.menu.deleteVariant"),
                 onClick: () => handleDeleteVariant(formName, group, variantName),
             },
         ];
         setMenuItems(items);
         setMenuState({ visible: true, position: { x: rect.right, y: rect.bottom } });
-    }, [handleDeleteVariant, handleRenameVariant, handleSetDefaultVariant]);
+    }, [handleDeleteVariant, handleRenameVariant, handleSetDefaultVariant, t]);
 
     const toggleGroup = useCallback((formName: string, groupName: string) => {
         setExpandedGroups(prev => {
@@ -556,12 +558,12 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         const items: ContextMenuDef = [
             {
                 id: "rename-form",
-                label: "Rename Form",
+                label: t("characters.editor.menu.renameForm"),
                 onClick: () => handleRenameForm(form.name),
             },
             {
                 id: "set-default-form",
-                label: "Set as Default",
+                label: t("characters.editor.menu.setAsDefault"),
                 onClick: () => {
                     profile?.setDefaultForm(form.name);
                     setProfileVersion(v => v + 1);
@@ -570,13 +572,13 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
             },
             {
                 id: "delete-form",
-                label: "Delete Form",
+                label: t("characters.editor.menu.deleteForm"),
                 onClick: () => handleDeleteForm(form.name),
             },
         ];
         setMenuItems(items);
         setMenuState({ visible: true, position: { x: rect.right, y: rect.bottom } });
-    }, [handleDeleteForm, handleRenameForm, profile]);
+    }, [handleDeleteForm, handleRenameForm, profile, t]);
 
     useEffect(() => {
         forms.forEach(form => {
@@ -607,12 +609,12 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     }, [formsCollapsed, variantsCollapsed]);
 
     return (
-        <div className="h-full bg-[#0f1115] text-gray-200 flex flex-col">
-            <div className="px-4 py-2 border-b border-white/10 flex items-center gap-2">
+        <div className="h-full bg-surface text-fg flex flex-col">
+            <div className="px-4 py-2 border-b border-edge flex items-center gap-2">
                 <span className="text-sm font-semibold truncate">
-                    {payload?.character.profile.getProfile().name || "Character"}
+                    {payload?.character.profile.getProfile().name || t("characters.editor.header.fallbackName")}
                 </span>
-                <span className="text-xs text-gray-500">Character Editor</span>
+                <span className="text-xs text-fg-subtle">{t("characters.editor.header.subtitle")}</span>
             </div>
 
             <div
@@ -668,7 +670,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                 onClose={handleCloseSelector}
                 onConfirm={handleSelectAsset}
                 anchorRef={selectorAnchorMemo}
-                title="Select Variant Image"
+                title={t("characters.editor.selectVariantImage")}
                 multiple={false}
             />
             <ContextMenu

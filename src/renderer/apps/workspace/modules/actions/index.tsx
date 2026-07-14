@@ -17,6 +17,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { Separator } from "../../registry/types";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
+import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
 import { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import type { DevModeStatus } from "@shared/types/devMode";
@@ -24,6 +25,7 @@ import type { PreviewStatus } from "@shared/types/gameRuntime";
 import { useWorkspace } from "../../context";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "./runtimeActionStatus";
+import { translate, translateN } from "@/lib/i18n";
 
 /**
  * Global toolbar actions
@@ -42,6 +44,7 @@ export const devModeAction: ModuleAction = {
     id: "narraleaf-studio:dev-mode",
     icon: <DevModeActionIcon />,
     tooltip: "Dev Mode",
+    tooltipKey: "actions.devMode.tooltip",
     onClick: (workspace: Workspace) => {
         const devModeService = workspace.getContext().services.get<DevModeService>(Services.DevMode);
         const status = devModeService.getStatus();
@@ -97,6 +100,7 @@ export const previewAction: ModuleAction = {
     id: "narraleaf-studio:preview",
     icon: <PreviewActionIcon />,
     tooltip: "Preview",
+    tooltipKey: "actions.preview.tooltip",
     onClick: (workspace: Workspace) => {
         const previewService = workspace.getContext().services.get<PreviewService>(Services.Preview);
         const status = previewService.getStatus();
@@ -149,6 +153,7 @@ export const buildAction: ModuleAction = {
     id: "narraleaf-studio:build",
     icon: <Package className="w-4 h-4" />,
     tooltip: "Build project",
+    tooltipKey: "actions.build.tooltip",
     onClick: (workspace: Workspace) => {
         const services = workspace.getContext().services;
         const consoleService = services.get<ConsoleService>(Services.Console);
@@ -159,19 +164,17 @@ export const buildAction: ModuleAction = {
         uiService.panels.show("narraleaf-studio:console");
         consoleService.append("build", {
             level: "info",
-            source: "Build",
+            source: translate("actions.build.source"),
             segments: [
-                { text: "Build requested for ", color: "#8b949e" },
-                { text: projectName, bold: true },
-                { text: "." },
+                { text: translate("actions.build.requested", { name: projectName }), color: "#8b949e" },
             ],
         });
         consoleService.append("build", {
             level: "warning",
-            source: "Build",
+            source: translate("actions.build.source"),
             segments: [
-                { text: "Project build pipeline is not wired to the toolbar yet.", bold: true },
-                { text: " Packaging output will stream here once the build runner is connected.", italic: true },
+                { text: translate("actions.build.notWiredTitle"), bold: true },
+                { text: translate("actions.build.notWiredDetail"), italic: true },
             ],
         });
     },
@@ -185,13 +188,16 @@ export const buildAction: ModuleAction = {
 export const fileActionGroup: ModuleActionGroup = {
     id: "narraleaf-studio:file",
     label: "File",
+    labelKey: "actions.file.label",
     order: 10,
     actions: [
         {
             id: "narraleaf-studio:file-new",
             label: "New Workspace",
+            labelKey: "actions.file.new.label",
             icon: <FileText className="w-4 h-4" />,
             tooltip: "Create a new workspace",
+            tooltipKey: "actions.file.new.tooltip",
             onClick: () => {
                 void (async () => {
                     const result = await getInterface().app.launchProjectWizard({});
@@ -208,8 +214,10 @@ export const fileActionGroup: ModuleActionGroup = {
         {
             id: "narraleaf-studio:file-open",
             label: "Open Workspace",
+            labelKey: "actions.file.open.label",
             icon: <FolderOpen className="w-4 h-4" />,
             tooltip: "Open an existing workspace",
+            tooltipKey: "actions.file.open.tooltip",
             onClick: () => {
                 void (async () => {
                     const result = await getInterface().selectFolder();
@@ -225,17 +233,32 @@ export const fileActionGroup: ModuleActionGroup = {
         {
             id: "narraleaf-studio:file-export-project",
             label: "Export Project",
+            labelKey: "actions.file.export.label",
             icon: <Archive className="w-4 h-4" />,
             tooltip: "Export the current project as a package",
+            tooltipKey: "actions.file.export.tooltip",
             onClick: (workspace: Workspace) => {
                 void (async () => {
-                    const uiService = workspace.getContext().services.get<UIService>(Services.UI);
-                    uiService.showNotification("Choose a folder for the exported project package.", "info");
+                    const context = workspace.getContext();
+                    const uiService = context.services.get<UIService>(Services.UI);
 
-                    const projectPath = workspace.getContext().project.getConfig().projectPath;
+                    // Refresh the plugin dependency table so the exported package
+                    // records exactly which plugins this project needs. Best-effort:
+                    // a scan failure must not block the export itself.
+                    try {
+                        await context.services
+                            .get<ProjectDependencyService>(Services.ProjectDependency)
+                            .rescanAndPersist();
+                    } catch (error) {
+                        console.warn("[export] plugin dependency rescan failed", error);
+                    }
+
+                    uiService.showNotification(translate("actions.export.chooseFolder"), "info");
+
+                    const projectPath = context.project.getConfig().projectPath;
                     const result = await getInterface().workspace.exportProjectPackage(projectPath);
                     if (!result.success) {
-                        uiService.showNotification(result.error || "Failed to export project.", "error");
+                        uiService.showNotification(result.error || translate("actions.export.failed"), "error");
                         return;
                     }
                     if (result.data.canceled) {
@@ -243,7 +266,7 @@ export const fileActionGroup: ModuleActionGroup = {
                     }
 
                     const fileCount = result.data.fileCount ?? 0;
-                    uiService.showNotification(`Exported project package with ${fileCount} files.`, "success");
+                    uiService.showNotification(translateN("actions.export.success", fileCount), "success");
                 })();
             },
             order: 2,
@@ -252,8 +275,10 @@ export const fileActionGroup: ModuleActionGroup = {
         {
             id: "narraleaf-studio:file-close-workspace",
             label: "Close",
+            labelKey: "common.close",
             icon: <X className="w-4 h-4" />,
             tooltip: "Close the current workspace",
+            tooltipKey: "actions.file.close.tooltip",
             onClick: () => {
                 getInterface().workspace.close();
             },
@@ -265,12 +290,15 @@ export const fileActionGroup: ModuleActionGroup = {
 export const helpActionGroup: ModuleActionGroup = {
     id: "narraleaf-studio:help",
     label: "Help",
+    labelKey: "actions.help.label",
     order: 30,
     actions: [
         {
             id: "narraleaf-studio:open-welcome",
             label: "Open Welcome",
+            labelKey: "actions.help.welcome.label",
             tooltip: "Open welcome screen",
+            tooltipKey: "actions.help.welcome.tooltip",
             onClick: (workspace: Workspace) => {
                 const uiService = workspace.getContext().services.get<UIService>(Services.UI);
                 uiService.editor.open({

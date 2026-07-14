@@ -14,6 +14,10 @@ export function componentWidgetMainOwnerKey(componentId: string, elementId: stri
     return `componentWidgetMain:${componentId}:${elementId}`;
 }
 
+export function storyActionOwnerKey(blueprintId: string): string {
+    return `storyAction:${blueprintId}`;
+}
+
 function encodeOwnerPart(value: string): string {
     return encodeURIComponent(value);
 }
@@ -60,6 +64,8 @@ export function ownerRefToIndexKey(owner: BlueprintOwnerRef): string {
             return componentWidgetMainOwnerKey(owner.componentId, owner.elementId);
         case "sharedAsset":
             return `sharedAsset:${owner.assetId}`;
+        case "storyAction":
+            return storyActionOwnerKey(owner.blueprintId);
         default: {
             const _exhaustive: never = owner;
             return _exhaustive;

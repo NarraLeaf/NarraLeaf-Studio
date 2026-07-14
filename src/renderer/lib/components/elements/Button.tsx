@@ -1,4 +1,5 @@
 import React from "react";
+import { cn } from "../../utils/cn";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 export type ButtonSize = "sm" | "md" | "lg";
@@ -11,10 +12,10 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 }
 
 const variantStyles: Record<ButtonVariant, string> = {
-    primary: "bg-[#40a8c4] text-white hover:bg-[#4fb8d4] focus:ring-[#40a8c4]/30 focus:shadow-lg focus:shadow-[#40a8c4]/20",
-    secondary: "bg-white/10 text-gray-300 hover:bg-white/20 hover:text-white focus:ring-white/20 focus:shadow-lg focus:shadow-white/10",
-    ghost: "text-gray-300 hover:bg-white/10 hover:text-white focus:ring-white/10 focus:shadow-lg focus:shadow-white/10",
-    danger: "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500/30 focus:shadow-lg focus:shadow-red-500/20",
+    primary: "bg-primary text-white hover:brightness-110",
+    secondary: "bg-fill text-fg-muted hover:bg-fill-strong hover:text-fg",
+    ghost: "text-fg-muted hover:bg-fill hover:text-fg",
+    danger: "bg-danger text-white hover:brightness-110",
 };
 
 const sizeStyles: Record<ButtonSize, string> = {
@@ -37,18 +38,15 @@ export function Button({
 }: ButtonProps) {
     return (
         <button
-            className={`
-                inline-flex items-center justify-center gap-2 rounded-md font-medium
-                transition-all duration-150 ease-out focus:outline-none focus:ring-0
-                disabled:opacity-50 disabled:cursor-not-allowed cursor-default
-                ${variantStyles[variant]}
-                ${sizeStyles[size]}
-                ${fullWidth ? "w-full" : ""}
-                ${className}
-            `}
-            style={{
-                outline: 'none'
-            }}
+            className={cn(
+                "inline-flex items-center justify-center gap-2 rounded-md font-medium",
+                "transition-all duration-150 ease-out focus:outline-none",
+                "disabled:opacity-50 disabled:cursor-not-allowed cursor-default",
+                variantStyles[variant],
+                sizeStyles[size],
+                fullWidth && "w-full",
+                className,
+            )}
             {...props}
         >
             {children}
@@ -78,17 +76,14 @@ export function IconButton({
 
     return (
         <button
-            className={`
-                grid place-items-center rounded-md
-                transition-all duration-150 ease-out focus:outline-none focus:ring-0
-                disabled:opacity-50 disabled:cursor-not-allowed cursor-default
-                ${variantStyles[variant]}
-                ${iconSizeStyles[size]}
-                ${className}
-            `}
-            style={{
-                outline: 'none'
-            }}
+            className={cn(
+                "grid place-items-center rounded-md",
+                "transition-all duration-150 ease-out focus:outline-none",
+                "disabled:opacity-50 disabled:cursor-not-allowed cursor-default",
+                variantStyles[variant],
+                iconSizeStyles[size],
+                className,
+            )}
             aria-label={ariaLabel}
             title={title}
             {...props}

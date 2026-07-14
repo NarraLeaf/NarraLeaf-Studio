@@ -12,6 +12,7 @@ import type { DevModeStatus } from "@shared/types/devMode";
 import type { PreviewStatus } from "@shared/types/gameRuntime";
 import { getActionGroupItems, getVisibleActionMenuItems, isActionVisible } from "../ui/actionMenuModel";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "../../modules/actions/runtimeActionStatus";
+import { useTranslation } from "@/lib/i18n";
 
 interface ActionBarProps {
     hiddenGroupIds?: string[];
@@ -23,6 +24,7 @@ interface ActionBarProps {
  * Filters actions based on focus context and when conditions
  */
 export function ActionBar({ hiddenGroupIds = [] }: ActionBarProps) {
+    const { t } = useTranslation();
     const { actions, actionGroups } = useRegistry();
     const { workspace, context } = useWorkspace();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
@@ -104,15 +106,17 @@ export function ActionBar({ hiddenGroupIds = [] }: ActionBarProps) {
                     isPreviewAction && isPreviewRuntimeActive(previewStatus);
                 const isRuntimeActionActive = isDevModeActive || isPreviewActive;
                 const stateClasses = action.disabled
-                    ? "text-gray-500 cursor-not-allowed"
+                    ? "text-fg-subtle cursor-not-allowed"
                     : isRuntimeActionActive
                         ? "bg-red-600 text-white hover:bg-red-700 hover:text-white"
-                        : "text-gray-300 hover:bg-white/10 hover:text-white";
+                        : "text-fg-muted hover:bg-fill hover:text-white";
+                const resolvedLabel = action.labelKey ? t(action.labelKey) : action.label;
+                const resolvedTooltip = action.tooltipKey ? t(action.tooltipKey) : action.tooltip;
                 const title = isRuntimeActionActive
                     ? isDevModeAction
-                        ? "Stop Dev Mode"
-                        : "Stop Preview"
-                    : action.tooltip || action.label;
+                        ? t("workspace.shell.stopDevMode")
+                        : t("workspace.shell.stopPreview")
+                    : resolvedTooltip || resolvedLabel;
 
                 return (
                     <button
@@ -128,7 +132,7 @@ export function ActionBar({ hiddenGroupIds = [] }: ActionBarProps) {
                         aria-pressed={isRuntimeActionActive || undefined}
                     >
                         {action.icon && <span className="w-4 h-4">{action.icon}</span>}
-                        {action.label && <span>{String(action.label)}</span>}
+                        {resolvedLabel && <span>{String(resolvedLabel)}</span>}
                         {action.badge && (
                             <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
                                 {action.badge}

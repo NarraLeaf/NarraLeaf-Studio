@@ -21,7 +21,8 @@ const { rootDir, isDev } = require('./utils');
         platform: 'node', // Electron main runs in Node context
         format: 'cjs',
         bundle: true,
-        external: ['electron', 'esbuild'], // keep native modules external
+        // @narraleaf/encryption is kept external (required from node_modules, not bundled).
+        external: ['electron', 'esbuild', '@narraleaf/encryption'],
         sourcemap: isDev(),
         minify: !isDev(),
         target: ['node18'],

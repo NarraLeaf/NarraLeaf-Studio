@@ -6,6 +6,7 @@ import type {
 } from "@shared/types/ui-editor/appearance";
 import type { VisualEffectKind } from "@shared/types/ui-editor/effects";
 import { EFFECT_APPEARANCE_KEY_BY_KIND } from "@shared/types/ui-editor/effects";
+import { useTranslation } from "@/lib/i18n";
 import { EffectsStackEditor } from "@/lib/ui-editor/widget-modules/shared/effects/EffectsStackEditor";
 import { diffPatchElementEffectValues, readElementEffectValuesFromGetter } from "@/lib/ui-editor/widget-modules/shared/effects/effectValuesBridge";
 import {
@@ -44,6 +45,7 @@ export function CompactEffectsAppearance({
     moduleMotionFieldsConfigured,
     supportedKinds,
 }: Props) {
+    const { t } = useTranslation();
     const get = (key: AppearancePropertyKey) => getRowValueForModuleEdit(variant, key, editMode);
     const patch = (key: AppearancePropertyKey, value: AppearanceRowValue) => {
         commitVariant(updateRowValueForModuleEditOrEnsure(variant, moduleKeys, key, editMode, value));
@@ -57,7 +59,7 @@ export function CompactEffectsAppearance({
 
     return (
         <CompactModuleCard
-            title="Effects"
+            title={t("widgetAppearance.effects.title")}
             headerHoverAction={
                 <ModuleMotionMenuButton
                     enabled={motionVisible}

@@ -1,4 +1,5 @@
 import { transliterate } from "transliteration";
+import { translate } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { FsRequestResult } from "@shared/types/os";
 import { ProjectData, DirectoryValidationResult, ValidationErrors } from "../types";
@@ -35,7 +36,7 @@ export class ValidationService {
      */
     static validateLocation(location: string): string | undefined {
         if (!location || location.trim() === "") {
-            return "Project location is required";
+            return translate("wizard.validation.locationRequired");
         }
         return undefined;
     }
@@ -58,9 +59,9 @@ export class ValidationService {
             // Check if directory exists
             const dirExistsResult = await interface_.fs.isDirExists(path);
             if (!dirExistsResult.success) {
-                return { success: false, error: "Failed to check directory existence" };
+                return { success: false, error: translate("wizard.validation.checkExistenceFailed") };
             }
-            const dirExists = this.unwrapFsResult(dirExistsResult.data, "Failed to check directory existence");
+            const dirExists = this.unwrapFsResult(dirExistsResult.data, translate("wizard.validation.checkExistenceFailed"));
             if (!dirExists.success) {
                 return { success: false, error: dirExists.error };
             }
@@ -80,9 +81,9 @@ export class ValidationService {
             // Check if it's actually a directory
             const isDirResult = await interface_.fs.isDir(path);
             if (!isDirResult.success) {
-                return { success: false, error: "Failed to check if path is directory" };
+                return { success: false, error: translate("wizard.validation.checkIsDirFailed") };
             }
-            const isDir = this.unwrapFsResult(isDirResult.data, "Failed to check if path is directory");
+            const isDir = this.unwrapFsResult(isDirResult.data, translate("wizard.validation.checkIsDirFailed"));
             if (!isDir.success) {
                 return { success: false, error: isDir.error };
             }
@@ -103,9 +104,9 @@ export class ValidationService {
             // Use fs.list which now returns all entries (files and directories) via Fs.dirEntries
             const listResult = await interface_.fs.list(path);
             if (!listResult.success) {
-                return { success: false, error: "Failed to list directory contents" };
+                return { success: false, error: translate("wizard.validation.listContentsFailed") };
             }
-            const entries = this.unwrapFsResult(listResult.data, "Failed to list directory contents");
+            const entries = this.unwrapFsResult(listResult.data, translate("wizard.validation.listContentsFailed"));
             if (!entries.success) {
                 return { success: false, error: entries.error };
             }
@@ -127,7 +128,7 @@ export class ValidationService {
                 }
             };
         } catch (error) {
-            return { success: false, error: "Failed to validate directory" };
+            return { success: false, error: translate("wizard.validation.failedToValidate") };
         }
     }
 
@@ -161,7 +162,7 @@ export class ValidationService {
             // First validate that the path points to a valid drive/location
             const driveValidation = await this.validatePathDrive(path, platformInfo);
             if (!driveValidation.success) {
-                errors.directory = driveValidation.error || "Invalid path";
+                errors.directory = driveValidation.error || translate("wizard.validation.invalidPath");
                 return { success: false, errors };
             }
 
@@ -172,11 +173,11 @@ export class ValidationService {
                 // Note: Directory not existing is OK since we will create it
                 // Only show errors for actual problems (file exists, no write permission, not empty)
                 if (validationResult.data.exists && !validationResult.data.isDirectory) {
-                    errors.directory = "Selected path exists but is not a directory. Please choose a directory or create a new one.";
+                    errors.directory = translate("wizard.validation.notADirectory");
                 } else if (validationResult.data.exists && !validationResult.data.canWrite) {
-                    errors.directory = "Cannot write to the selected directory. Please check permissions or choose a different location.";
+                    errors.directory = translate("wizard.validation.cannotWrite");
                 } else if (validationResult.data.exists && !validationResult.data.isEmpty) {
-                    errors.directory = "Directory is not empty. Please choose an empty directory or create a new one.";
+                    errors.directory = translate("wizard.validation.notEmpty");
                 }
                 // If all checks pass or directory doesn't exist (which is OK), clear directory error
                 else {
@@ -189,11 +190,11 @@ export class ValidationService {
                     data: validationResult.data
                 };
             } else {
-                errors.directory = validationResult.error || "Directory validation failed";
+                errors.directory = validationResult.error || translate("wizard.validation.validationFailed");
                 return { success: false, errors };
             }
         } catch (error) {
-            errors.directory = "Failed to validate directory";
+            errors.directory = translate("wizard.validation.failedToValidate");
             return { success: false, errors };
         }
     }

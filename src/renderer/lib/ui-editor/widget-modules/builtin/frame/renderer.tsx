@@ -1,16 +1,18 @@
 import { useRef, type CSSProperties, type ReactElement } from "react";
+import { useTranslation } from "@/lib/i18n";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { getFrameProps } from "./helpers";
 
 function FramePlaceholder({ label }: { label: string }): ReactElement {
     return (
-        <div className="flex h-full w-full items-center justify-center border border-dashed border-white/20 bg-black/20 px-3 text-center text-xs text-gray-400">
+        <div className="flex h-full w-full items-center justify-center border border-dashed border-edge-strong bg-black/20 px-3 text-center text-xs text-fg-muted">
             {label}
         </div>
     );
 }
 
 export function FrameRenderer(props: WidgetRendererProps): ReactElement | null {
+    const { t } = useTranslation();
     const { element, document, hostAdapter, renderSurface, instanceKey } = props;
     const frame = getFrameProps(element);
     const targetSurface = frame.targetSurfaceId
@@ -27,13 +29,13 @@ export function FrameRenderer(props: WidgetRendererProps): ReactElement | null {
         return null;
     }
     if (frame.targetSurfaceId && !targetSurface) {
-        return <FramePlaceholder label="Missing Page" />;
+        return <FramePlaceholder label={t("widgets.frame.missingPage")} />;
     }
     if (targetSurface && targetSurface.kind !== "appSurface") {
-        return <FramePlaceholder label="Target is not a Page" />;
+        return <FramePlaceholder label={t("widgets.frame.targetNotPage")} />;
     }
     if (!renderSurface) {
-        return <FramePlaceholder label="Page preview unavailable" />;
+        return <FramePlaceholder label={t("widgets.frame.previewUnavailable")} />;
     }
 
     const layoutSurface = targetSurface ?? lastPageSurfaceRef.current;

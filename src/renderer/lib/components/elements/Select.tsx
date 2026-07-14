@@ -1,11 +1,17 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Check } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
 import { Button } from "./Button";
+import { cn } from "../../utils/cn";
 
 export interface SelectOption {
     value: string | number;
-    label: string;
+    /** Static label. Prefer `labelKey` for localized options; one of the two must be set. */
+    label?: string;
+    /** i18n key; when set it is resolved at render (falls back to `label`). */
+    labelKey?: TranslationKey;
     secondaryLabel?: string;
     disabled?: boolean;
     icon?: React.ReactNode;
@@ -43,9 +49,9 @@ const sizeStyles = {
 };
 
 const variantStyles = {
-    default: "border-white/20 hover:border-white/30 focus:border-[#40a8c4] focus:ring-1 focus:ring-[#40a8c4]/30 focus:shadow-lg focus:shadow-[#40a8c4]/10",
-    error: "border-red-500/50 hover:border-red-400/70 focus:border-red-500 focus:ring-1 focus:ring-red-500/30 focus:shadow-lg focus:shadow-red-500/10",
-    success: "border-green-500/50 hover:border-green-400/70 focus:border-green-500 focus:ring-1 focus:ring-green-500/30 focus:shadow-lg focus:shadow-green-500/10",
+    default: "border-edge-strong hover:border-edge-strong focus:border-primary",
+    error: "border-danger/50 hover:border-danger/70 focus:border-danger",
+    success: "border-success/50 hover:border-success/70 focus:border-success",
 };
 
 const SELECT_MENU_GAP_PX = 4;
@@ -59,7 +65,7 @@ export function Select({
     options,
     value,
     onChange,
-    placeholder = "Please select...",
+    placeholder,
     disabled = false,
     size = "md",
     variant = "default",
@@ -72,6 +78,9 @@ export function Select({
     menuDataAttributes,
     menuZIndex,
 }: SelectProps) {
+    const { t } = useTranslation();
+    const resolvedPlaceholder = placeholder ?? t("dialogs.select.placeholder");
+    const optionLabel = (o: SelectOption) => (o.labelKey ? t(o.labelKey) : o.label ?? "");
     const [isOpen, setIsOpen] = useState(false);
     const selectRef = useRef<HTMLDivElement>(null);
     const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -229,43 +238,41 @@ export function Select({
     const dropdownPanel = isOpen ? (
         <div
             ref={dropdownRef}
-            className={
-                portalMenu
-                    ? `bg-[#1e1f22] border border-white/20 rounded-md shadow-lg overflow-y-auto ${menuClassName}`
-                    : `absolute z-50 w-full left-0 bg-[#1e1f22] border border-white/20 rounded-md shadow-lg max-h-60 overflow-y-auto ${
-                          openMenuDown ? "top-full mt-1" : "bottom-full mb-1"
-                      } ${menuClassName}`
-            }
+            className={cn(
+                "bg-surface-raised border border-edge-strong rounded-md shadow-lg overflow-y-auto",
+                !portalMenu && "absolute z-50 w-full left-0 max-h-60",
+                !portalMenu && (openMenuDown ? "top-full mt-1" : "bottom-full mb-1"),
+                menuClassName,
+            )}
             style={dropdownPanelStyle}
             {...menuDataAttributes}
         >
             {options.map((option) => (
                 <button
                     key={option.value}
-                    className={`
-                                w-full flex items-center gap-2 px-3 py-2 text-left text-sm
-                                transition-colors duration-150
-                                ${option.disabled
-                                    ? "text-gray-500 cursor-not-allowed"
-                                    : "text-gray-200 hover:bg-white/10 cursor-default"
-                                }
-                                ${option.value === value ? "bg-white/10 text-white" : ""}
-                            `}
+                    className={cn(
+                        "w-full flex items-center gap-2 px-3 py-2 text-left text-sm",
+                        "transition-colors duration-150",
+                        option.disabled
+                            ? "text-fg-subtle cursor-not-allowed"
+                            : "text-fg hover:bg-fill cursor-default",
+                        option.value === value && "bg-fill text-white",
+                    )}
                     onClick={() => handleOptionClick(option)}
                     disabled={option.disabled}
                 >
                     {multiple && (
-                        <div className="w-4 h-4 border border-white/30 rounded flex items-center justify-center">
-                            {option.value === value && <Check className="w-3 h-3 text-[#40a8c4]" />}
+                        <div className="w-4 h-4 border border-edge-strong rounded-md flex items-center justify-center">
+                            {option.value === value && <Check className="w-3 h-3 text-primary" />}
                         </div>
                     )}
                     {option.icon && (
-                        <div className="flex-shrink-0 text-gray-400">{option.icon}</div>
+                        <div className="flex-shrink-0 text-fg-muted">{option.icon}</div>
                     )}
                     <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-                        <span className="truncate">{option.label}</span>
+                        <span className="truncate">{optionLabel(option)}</span>
                         {option.secondaryLabel ? (
-                            <span className="shrink-0 text-xs text-gray-500">{option.secondaryLabel}</span>
+                            <span className="shrink-0 text-xs text-fg-subtle">{option.secondaryLabel}</span>
                         ) : null}
                     </span>
                 </button>
@@ -274,41 +281,43 @@ export function Select({
     ) : null;
 
     return (
-        <div ref={selectRef} className={`relative ${fullWidth ? "w-full min-w-0" : ""} ${className}`}>
+        <div ref={selectRef} className={cn("relative", fullWidth && "w-full min-w-0", className)}>
             <Button
                 variant="ghost"
                 size={size}
                 fullWidth={fullWidth}
                 disabled={disabled}
-                className={`
-                    min-w-0 justify-between bg-white/5 hover:bg-white/10
-                    ${variantStyles[variant]}
-                    ${sizeStyles[size]}
-                    ${isOpen ? "border-[#40a8c4] ring-2 ring-[#40a8c4]/20" : ""}
-                `}
+                className={cn(
+                    "min-w-0 justify-between bg-fill-subtle hover:bg-fill",
+                    variantStyles[variant],
+                    sizeStyles[size],
+                    isOpen && "border-primary ring-2 ring-primary/20",
+                )}
                 onClick={() => !disabled && setIsOpen(!isOpen)}
             >
                 <span
-                    className={`flex min-w-0 flex-1 items-center gap-2 text-left ${
-                        selectedOption ? "text-gray-200" : "text-gray-400"
-                    }`}
+                    className={cn(
+                        "flex min-w-0 flex-1 items-center gap-2 text-left",
+                        selectedOption ? "text-fg" : "text-fg-muted",
+                    )}
                 >
                     {selectedOption?.icon ? (
-                        <span className="shrink-0 text-gray-400">{selectedOption.icon}</span>
+                        <span className="shrink-0 text-fg-muted">{selectedOption.icon}</span>
                     ) : null}
                     <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-                        <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
+                        <span className="truncate">{selectedOption ? optionLabel(selectedOption) : resolvedPlaceholder}</span>
                         {selectedOption?.secondaryLabel ? (
-                            <span className="shrink-0 text-[10px] text-gray-500">
+                            <span className="shrink-0 text-2xs text-fg-subtle">
                                 {selectedOption.secondaryLabel}
                             </span>
                         ) : null}
                     </span>
                 </span>
                 <ChevronDown
-                    className={`h-4 w-4 shrink-0 text-gray-400 transition-transform duration-150 ${
-                        isOpen ? "rotate-180" : ""
-                    }`}
+                    className={cn(
+                        "h-4 w-4 shrink-0 text-fg-muted transition-transform duration-150",
+                        isOpen && "rotate-180",
+                    )}
                 />
             </Button>
 
@@ -325,7 +334,7 @@ export function Combobox({
     options,
     value,
     onChange,
-    placeholder = "Search or select...",
+    placeholder,
     disabled = false,
     size = "md",
     variant = "default",
@@ -335,6 +344,9 @@ export function Combobox({
 }: SelectProps & {
     filterOptions?: boolean;
 }) {
+    const { t } = useTranslation();
+    const resolvedPlaceholder = placeholder ?? t("dialogs.select.searchPlaceholder");
+    const optionLabel = (o: SelectOption) => (o.labelKey ? t(o.labelKey) : o.label ?? "");
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [filteredOptions, setFilteredOptions] = useState(options);
@@ -347,7 +359,7 @@ export function Combobox({
         if (filterOptions) {
             setFilteredOptions(
                 options.filter(option =>
-                    option.label.toLowerCase().includes(searchTerm.toLowerCase())
+                    optionLabel(option).toLowerCase().includes(searchTerm.toLowerCase())
                 )
             );
         } else {
@@ -402,7 +414,7 @@ export function Combobox({
     }, [isOpen, filteredOptions.length, searchTerm, value]);
 
     const selectedOption = options.find(option => option.value === value);
-    const displayValue = selectedOption ? selectedOption.label : "";
+    const displayValue = selectedOption ? optionLabel(selectedOption) : "";
 
     const handleOptionClick = (option: SelectOption) => {
         if (option.disabled) return;
@@ -417,37 +429,34 @@ export function Combobox({
     };
 
     return (
-        <div ref={selectRef} className={`relative ${fullWidth ? "w-full min-w-0" : ""} ${className}`}>
-            <div className={`
-                relative bg-white/5 border rounded-md
-                ${variantStyles[variant]}
-                ${sizeStyles[size]}
-                ${isOpen ? "border-[#40a8c4] ring-1 ring-[#40a8c4]/30 shadow-lg shadow-[#40a8c4]/10" : ""}
-            `}>
+        <div ref={selectRef} className={cn("relative", fullWidth && "w-full min-w-0", className)}>
+            <div className={cn(
+                "relative bg-fill-subtle border rounded-md",
+                variantStyles[variant],
+                sizeStyles[size],
+                isOpen && "border-primary ring-1 ring-primary/30 shadow-lg shadow-primary/10",
+            )}>
                 <input
                     ref={inputRef}
                     type="text"
                     value={isOpen ? searchTerm : displayValue}
                     onChange={handleInputChange}
                     onFocus={() => !disabled && setIsOpen(true)}
-                    placeholder={placeholder}
+                    placeholder={resolvedPlaceholder}
                     disabled={disabled}
-                    className={`
-                        w-full bg-transparent text-gray-200 placeholder-gray-400
-                        focus:outline-none focus:ring-0
-                        ${sizeStyles[size]}
-                        ${displayValue ? "text-gray-200" : "text-gray-400"}
-                    `}
-                    style={{
-                        outline: 'none',
-                        boxShadow: 'none'
-                    }}
+                    className={cn(
+                        "w-full bg-transparent text-fg placeholder-fg-subtle",
+                        "focus:outline-none",
+                        sizeStyles[size],
+                        displayValue ? "text-fg" : "text-fg-muted",
+                    )}
                 />
                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
                     <ChevronDown
-                        className={`w-4 h-4 text-gray-400 transition-transform duration-150 ${
-                            isOpen ? "rotate-180" : ""
-                        }`}
+                        className={cn(
+                            "w-4 h-4 text-fg-muted transition-transform duration-150",
+                            isOpen && "rotate-180",
+                        )}
                     />
                 </div>
             </div>
@@ -455,31 +464,31 @@ export function Combobox({
             {isOpen && filteredOptions.length > 0 && (
                 <div
                     ref={dropdownRef}
-                    className={`absolute z-50 w-full left-0 bg-[#1e1f22] border border-white/20 rounded-md shadow-lg max-h-60 overflow-y-auto ${
-                        dropdownDirection === "down" ? "top-full mt-1" : "bottom-full mb-1"
-                    }`}
+                    className={cn(
+                        "absolute z-50 w-full left-0 bg-surface-raised border border-edge-strong rounded-md shadow-lg max-h-60 overflow-y-auto",
+                        dropdownDirection === "down" ? "top-full mt-1" : "bottom-full mb-1",
+                    )}
                 >
                     {filteredOptions.map((option) => (
                         <button
                             key={option.value}
-                            className={`
-                                w-full flex items-center gap-2 px-3 py-2 text-left text-sm
-                                transition-colors duration-150
-                                ${option.disabled
-                                    ? "text-gray-500 cursor-not-allowed"
-                                    : "text-gray-200 hover:bg-white/10 cursor-default"
-                                }
-                                ${option.value === value ? "bg-white/10 text-white" : ""}
-                            `}
+                            className={cn(
+                                "w-full flex items-center gap-2 px-3 py-2 text-left text-sm",
+                                "transition-colors duration-150",
+                                option.disabled
+                                    ? "text-fg-subtle cursor-not-allowed"
+                                    : "text-fg hover:bg-fill cursor-default",
+                                option.value === value && "bg-fill text-white",
+                            )}
                             onClick={() => handleOptionClick(option)}
                             disabled={option.disabled}
                         >
                             {option.icon && (
-                                <div className="flex-shrink-0 text-gray-400">
+                                <div className="flex-shrink-0 text-fg-muted">
                                     {option.icon}
                                 </div>
                             )}
-                            <span className="truncate">{option.label}</span>
+                            <span className="truncate">{optionLabel(option)}</span>
                         </button>
                     ))}
                 </div>
@@ -488,11 +497,12 @@ export function Combobox({
             {isOpen && filteredOptions.length === 0 && (
                 <div
                     ref={dropdownRef}
-                    className={`absolute z-50 w-full left-0 bg-[#1e1f22] border border-white/20 rounded-md shadow-lg p-3 ${
-                        dropdownDirection === "down" ? "top-full mt-1" : "bottom-full mb-1"
-                    }`}
+                    className={cn(
+                        "absolute z-50 w-full left-0 bg-surface-raised border border-edge-strong rounded-md shadow-lg p-3",
+                        dropdownDirection === "down" ? "top-full mt-1" : "bottom-full mb-1",
+                    )}
                 >
-                    <p className="text-sm text-gray-400">No matches found</p>
+                    <p className="text-sm text-fg-muted">{t("common.noMatchesFound")}</p>
                 </div>
             )}
         </div>
@@ -513,7 +523,7 @@ export function SelectGroup({
 }) {
     return (
         <div className={className}>
-            <div className="px-3 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            <div className="px-3 py-1 text-xs font-semibold text-fg-muted tracking-wider">
                 {label}
             </div>
             <div className="mb-1">

@@ -3,9 +3,10 @@
  * Comments in English per project convention.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Input, TextArea } from "@/lib/components/elements/Input";
 import { Select, type SelectOption } from "@/lib/components/elements/Select";
+import { useTranslation } from "@/lib/i18n";
 
 export type LiteralEditMode = "string" | "number" | "boolean" | "null" | "json";
 
@@ -49,22 +50,8 @@ type Props = {
     fixedMode?: LiteralEditMode;
 };
 
-const MODE_OPTIONS: { id: LiteralEditMode; label: string }[] = [
-    { id: "string", label: "String" },
-    { id: "number", label: "Number" },
-    { id: "boolean", label: "Bool" },
-    { id: "null", label: "Null" },
-    { id: "json", label: "JSON" },
-];
-
-const selectOptions = MODE_OPTIONS.map(o => ({ value: o.id, label: o.label }));
-const booleanOptions: SelectOption[] = [
-    { value: "true", label: "True" },
-    { value: "false", label: "False" },
-];
-
-const inputInspector = "px-2 py-1 text-[11px]";
-const inputNodeCard = "min-w-0 px-1.5 py-0.5 font-mono text-[10px]";
+const inputInspector = "px-2 py-1 text-2xs";
+const inputNodeCard = "min-w-0 px-1.5 py-0.5 font-mono text-2xs";
 
 function stringifyJsonDraft(value: unknown, variant: "inspector" | "nodeCard"): string {
     try {
@@ -76,6 +63,24 @@ function stringifyJsonDraft(value: unknown, variant: "inspector" | "nodeCard"): 
 }
 
 export function BlueprintLiteralValueControl({ value, onChange, variant, fixedMode }: Props) {
+    const { t } = useTranslation();
+    const selectOptions = useMemo<SelectOption[]>(
+        () => [
+            { value: "string", label: t("blueprint.literal.string") },
+            { value: "number", label: t("blueprint.literal.number") },
+            { value: "boolean", label: t("blueprint.literal.bool") },
+            { value: "null", label: t("blueprint.literal.null") },
+            { value: "json", label: t("blueprint.literal.json") },
+        ],
+        [t],
+    );
+    const booleanOptions = useMemo<SelectOption[]>(
+        () => [
+            { value: "true", label: t("blueprint.literal.true") },
+            { value: "false", label: t("blueprint.literal.false") },
+        ],
+        [t],
+    );
     const [mode, setMode] = useState<LiteralEditMode>(() => fixedMode ?? inferLiteralEditMode(value));
     const activeMode = fixedMode ?? mode;
     const [jsonDraft, setJsonDraft] = useState(() =>
@@ -166,7 +171,7 @@ export function BlueprintLiteralValueControl({ value, onChange, variant, fixedMo
                         />
                     ) : null}
                     {activeMode === "null" ? (
-                        <span className="text-[10px] text-gray-500 italic">no value</span>
+                        <span className="text-2xs text-fg-subtle italic">{t("blueprint.literal.noValue")}</span>
                     ) : null}
                 </div>
             ) : null}
@@ -175,7 +180,7 @@ export function BlueprintLiteralValueControl({ value, onChange, variant, fixedMo
                     className={variant === "inspector" ? inputInspector : inputNodeCard}
                     type="text"
                     value={typeof value === "string" ? value : ""}
-                    placeholder="Text..."
+                    placeholder={t("blueprint.literal.textPlaceholder")}
                     size="sm"
                     fullWidth
                     onChange={e => onChange(e.target.value)}
@@ -203,7 +208,7 @@ export function BlueprintLiteralValueControl({ value, onChange, variant, fixedMo
                     }
                     spellCheck={false}
                     value={jsonDraft}
-                    placeholder='e.g. {"a":1} or [1,2]'
+                    placeholder={t("blueprint.literal.jsonPlaceholder")}
                     size="sm"
                     fullWidth
                     onChange={e => setJsonDraft(e.target.value)}

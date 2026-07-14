@@ -5,6 +5,7 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
 import { ASSET_TYPE_ICONS, ASSET_TYPE_LABELS } from "../constants";
+import { useTranslation } from "@/lib/i18n";
 
 interface AssetsListViewProps {
     dropTargetId: string | null;
@@ -31,6 +32,7 @@ export function AssetsListView({
     onOpenChange,
     disableAnimation,
 }: AssetsListViewProps) {
+    const { t } = useTranslation();
     const { filteredAssets, filteredGroups, draggedItem } = useAssetsPanelContext();
 
     const hasAnyItems = useMemo(() => Object.values(filteredAssets).some(list => list.length > 0) || Object.values(filteredGroups).some(list => list.length > 0), [filteredAssets, filteredGroups]);
@@ -59,7 +61,7 @@ export function AssetsListView({
                                             handleImport(type);
                                         }}
                                         className="p-1 hover:text-primary"
-                                        title="Import"
+                                        title={t("common.import")}
                                     >
                                         <Upload className="w-3 h-3" />
                                     </button>
@@ -69,7 +71,7 @@ export function AssetsListView({
                                             handleImportRemote(type);
                                         }}
                                         className="p-1 hover:text-primary"
-                                        title="Import Remote"
+                                        title={t("assets.importRemote")}
                                     >
                                         <Link className="w-3 h-3" />
                                     </button>
@@ -79,7 +81,7 @@ export function AssetsListView({
                                             handleCreateGroup(type);
                                         }}
                                         className="p-1 hover:text-primary"
-                                        title="New Group"
+                                        title={t("assets.menu.newGroup")}
                                     >
                                         <FolderPlus className="w-3 h-3" />
                                     </button>
@@ -104,7 +106,7 @@ export function AssetsListView({
                             onContextMenu={(e) => e.preventDefault()}
                         >
                             {typeAssets.length === 0 && typeGroups.length === 0 ? (
-                                <div className="p-4 text-center text-xs text-gray-500">No {ASSET_TYPE_LABELS[type].toLowerCase()} yet</div>
+                                <div className="p-4 text-center text-xs text-fg-subtle">{t("assets.emptyType", { label: ASSET_TYPE_LABELS[type].toLowerCase() })}</div>
                             ) : (
                                 <div className="py-1">
                                     {typeGroups.filter(g => !g.parentGroupId).map(group => <GroupItem key={group.id} group={group} type={type} level={0} />)}
@@ -116,7 +118,7 @@ export function AssetsListView({
                 );
             })}
             {!hasAnyItems && (
-                <div className="px-3 py-4 text-center text-xs text-gray-500">No assets matched the current filters.</div>
+                <div className="px-3 py-4 text-center text-xs text-fg-subtle">{t("assets.list.emptyFiltered")}</div>
             )}
         </Accordion>
     );
@@ -205,7 +207,7 @@ function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType;
             >
                 <FolderPlus className="w-4 h-4 text-primary" />
                 <span className="text-sm">{group.name}</span>
-                <span className="text-xs text-gray-500">({groupAssets.length + childGroups.length})</span>
+                <span className="text-xs text-fg-subtle">({groupAssets.length + childGroups.length})</span>
             </div>
 
             {isOpen && (
@@ -237,9 +239,9 @@ function AssetItem({ asset, type, level }: { asset: Asset; type: AssetType; leve
             onDragStart={(e) => handleDragStart?.(e, type, asset, false)}
             onDragEnd={() => handleDragEnd?.()}
         >
-            <Icon className="w-4 h-4 text-gray-400" />
+            <Icon className="w-4 h-4 text-fg-muted" />
             <span className="text-sm flex-1 truncate">{asset.name}</span>
-            {asset.tags.length > 0 && <span className="text-xs text-gray-500">+{asset.tags.length}</span>}
+            {asset.tags.length > 0 && <span className="text-xs text-fg-subtle">+{asset.tags.length}</span>}
         </div>
     );
 }

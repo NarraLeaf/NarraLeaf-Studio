@@ -141,6 +141,21 @@ export class BlueprintNodeCatalogService
         return blueprintNodeRegistry.get(type);
     }
 
+    /** The plugin id that owns a node type, or undefined for built-in (core) nodes. */
+    public getNodeOwner(type: string): string | undefined {
+        return this.pluginNodeOwners.get(type);
+    }
+
+    /**
+     * The set of plugin ids that currently contribute at least one registered
+     * node type. Used by the dependency scanner to tell "this plugin is loaded,
+     * so its usage is authoritative" from "this plugin is absent, preserve the
+     * recorded dependency".
+     */
+    public getContributingPluginIds(): string[] {
+        return Array.from(new Set(this.pluginNodeOwners.values()));
+    }
+
     public getBlueprintNodeEditorCatalogEntry(type: string): BlueprintNodeEditorCatalogEntry | undefined {
         const def = this.get(type);
         return def ? blueprintNodeRegistry.toCatalogEntry(def) : undefined;

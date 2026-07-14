@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
+import { useTranslation } from "@/lib/i18n";
 import {
     clampContainerStackSpacingPx,
     CONTAINER_STACK_SPACING_ABS_MAX_PX,
@@ -35,6 +36,7 @@ export function ContainerStackPaddingEditor({
     onSaving,
     onPatch,
 }: ContainerStackPaddingEditorProps) {
+    const { t } = useTranslation();
     const [sidesOpen, setSidesOpen] = useState(false);
     const [popoverPos, setPopoverPos] = useState({ left: 0, top: 0, width: 280 });
     const anchorRef = useRef<HTMLDivElement | null>(null);
@@ -173,10 +175,10 @@ export function ContainerStackPaddingEditor({
     }, [closeSides, sidesOpen]);
 
     const sideKeys = [
-        { key: "stackPaddingTop" as const, label: "Top" },
-        { key: "stackPaddingRight" as const, label: "Right" },
-        { key: "stackPaddingBottom" as const, label: "Bottom" },
-        { key: "stackPaddingLeft" as const, label: "Left" },
+        { key: "stackPaddingTop" as const, label: t("widgets.sides.top") },
+        { key: "stackPaddingRight" as const, label: t("widgets.sides.right") },
+        { key: "stackPaddingBottom" as const, label: t("widgets.sides.bottom") },
+        { key: "stackPaddingLeft" as const, label: t("widgets.sides.left") },
     ];
 
     const popover =
@@ -185,8 +187,8 @@ export function ContainerStackPaddingEditor({
                   <div
                       ref={panelRef}
                       role="dialog"
-                      aria-label="Padding per side"
-                      className="fixed z-[70] rounded-xl border border-white/10 bg-[#17181c] p-3 shadow-2xl"
+                      aria-label={t("widgets.container.paddingDialog")}
+                      className="fixed z-[70] rounded-xl border border-edge bg-[#17181c] p-3 shadow-2xl"
                       style={{
                           left: popoverPos.left,
                           top: popoverPos.top,
@@ -195,11 +197,11 @@ export function ContainerStackPaddingEditor({
                       }}
                       onMouseDown={e => e.stopPropagation()}
                   >
-                      <p className="mb-2 text-xs font-medium text-gray-400">Per side (px)</p>
+                      <p className="mb-2 text-xs font-medium text-fg-muted">{t("widgets.perSidePx")}</p>
                       <div className="grid grid-cols-2 gap-2 min-w-0">
                           {sideKeys.map(({ key, label }) => (
                               <div key={key} className="flex min-w-0 flex-col gap-1">
-                                  <span className="text-[10px] font-medium text-gray-500">{label}</span>
+                                  <span className="text-2xs font-medium text-fg-subtle">{label}</span>
                                   <NumericDraftEnhancedInput
                                       committedDisplay={String(current[key])}
                                       draftResetKey={`${draftResetKey}-pad-${key}`}
@@ -209,8 +211,8 @@ export function ContainerStackPaddingEditor({
                                       min={-CONTAINER_STACK_SPACING_ABS_MAX_PX}
                                       max={CONTAINER_STACK_SPACING_ABS_MAX_PX}
                                       unit="px"
-                                      aria-label={`Padding ${label}`}
-                                      title={`Padding ${label}`}
+                                      aria-label={t("widgets.container.paddingSide", { side: label })}
+                                      title={t("widgets.container.paddingSide", { side: label })}
                                       className="w-full min-w-0"
                                       selectAllOnFocus
                                   />
@@ -225,7 +227,7 @@ export function ContainerStackPaddingEditor({
     return (
         <>
             <div ref={anchorRef} className="flex min-w-0 w-full flex-col gap-1 self-start">
-                <span className="text-xs font-medium text-gray-400">Padding</span>
+                <span className="text-xs font-medium text-fg-muted">{t("widgets.container.padding")}</span>
                 <div className="flex min-w-0 flex-nowrap items-stretch gap-2">
                     <div className="min-w-0 flex-1">
                         <NumericDraftEnhancedInput
@@ -238,8 +240,8 @@ export function ContainerStackPaddingEditor({
                             max={CONTAINER_STACK_SPACING_ABS_MAX_PX}
                             unit="px"
                             placeholder={uniformPlaceholder}
-                            aria-label="Padding on all sides"
-                            title="Padding (all sides)"
+                            aria-label={t("widgets.container.paddingAllSides")}
+                            title={t("widgets.container.paddingAllTitle")}
                             className="w-full min-w-0"
                             selectAllOnFocus
                         />
@@ -249,9 +251,9 @@ export function ContainerStackPaddingEditor({
                         onClick={toggleSides}
                         aria-expanded={sidesOpen}
                         aria-haspopup="dialog"
-                        aria-label={sidesOpen ? "Close per-side padding" : "Edit per-side padding"}
+                        aria-label={sidesOpen ? t("widgets.container.perSidePaddingClose") : t("widgets.container.perSidePaddingEdit")}
                         className={controlButtonClass(sidesOpen)}
-                        title="Per-side padding"
+                        title={t("widgets.container.perSidePadding")}
                     >
                         {sidesOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </button>

@@ -7,7 +7,8 @@ import type { BlueprintEntryOwnerKind } from "@/apps/workspace/modules/blueprint
 export type BlueprintEditorOpenTarget = {
     blueprintId: string;
     ownerKind: BlueprintEntryOwnerKind;
-    surfaceId: UISurfaceId;
+    /** Absent for surface-less owners (e.g. storyAction). */
+    surfaceId?: UISurfaceId;
     componentId?: string;
     elementId?: UIElementId;
     propPath?: string;

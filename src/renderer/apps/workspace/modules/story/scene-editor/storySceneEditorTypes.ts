@@ -1,4 +1,4 @@
-import type { StoryBlock, StoryBlockId } from "@shared/types/story";
+import type { StoryBlock, StoryBlockId, StoryRichRun } from "@shared/types/story";
 
 export type StoryBlockTarget = {
     parentId: StoryBlockId | null;
@@ -14,11 +14,16 @@ export type VisibleStoryRow = {
 export type InsertSlot = {
     afterBlockId: StoryBlockId | null;
     focusToken: number;
+    /**
+     * Explicit insertion target. When set, the created block is parented here (used by the "add inside
+     * a container" affordances) instead of being placed as a sibling after `afterBlockId`.
+     */
+    target?: StoryBlockTarget;
 };
 
 export type EditorMode =
     | { kind: "idle" }
-    | { kind: "text"; blockId: StoryBlockId; value: string }
+    | { kind: "text"; blockId: StoryBlockId; value: string; rich?: StoryRichRun[]; caret?: "start" | "end" }
     | { kind: "insert"; slot: InsertSlot; value: string; chooser: "none" | "action" | "character" }
     | { kind: "inspector"; blockId: StoryBlockId };
 

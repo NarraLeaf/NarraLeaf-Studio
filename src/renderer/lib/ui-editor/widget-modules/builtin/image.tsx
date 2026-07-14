@@ -1,5 +1,6 @@
 import { Image as ImageIcon } from "lucide-react";
 import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import { translate } from "@/lib/i18n";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { createInitialImageAppearanceFromProps } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { ImageRenderer } from "./image/renderer";
@@ -9,7 +10,9 @@ import { createImageDockerBarItems } from "./image/dockerBar";
 export const ImageWidgetModule: UIWidgetModule = {
     type: "nl.image",
     logicApi: getWidgetLogicApi("nl.image"),
-    displayName: "Image",
+    get displayName() {
+        return translate("widgets.defaults.image.name");
+    },
     icon: ImageIcon,
 
     createDefaultElement: () => {
@@ -47,7 +50,7 @@ export const ImageWidgetModule: UIWidgetModule = {
         };
         return {
             type: "nl.image" as const,
-            name: "Image",
+            name: translate("widgets.defaults.image.name"),
             layout: {
                 x: 0,
                 y: 0,

@@ -1,4 +1,5 @@
 import type { UISurfaceKind } from "@shared/types/ui-editor/document";
+import { useTranslation } from "@/lib/i18n";
 import { SURFACE_KIND_OPTIONS } from "./constants";
 
 type SurfaceFiltersProps = {
@@ -10,9 +11,10 @@ export function SurfaceFilters({
     kind,
     onKindChange,
 }: SurfaceFiltersProps) {
+    const { t } = useTranslation();
     return (
         <div className="px-2 pt-2 pb-1">
-            <div className="text-xs font-semibold uppercase text-gray-400">Interface Type</div>
+            <div className="text-xs font-semibold text-fg-muted">{t("uiEditor.panel.interfaceType")}</div>
             <div className="mt-2 flex gap-2">
                 {SURFACE_KIND_OPTIONS.map(option => (
                     <button
@@ -21,7 +23,7 @@ export function SurfaceFilters({
                         className={`flex-1 rounded-md px-2 py-1 text-xs font-medium border transition-colors ${
                             kind === option.kind
                                 ? "border-primary bg-primary/10 text-white"
-                                : "border-white/10 text-gray-300 hover:bg-white/10 hover:text-white"
+                                : "border-edge text-fg-muted hover:bg-fill hover:text-white"
                         }`}
                         onClick={() => onKindChange(option.kind)}
                     >

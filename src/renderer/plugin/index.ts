@@ -2,9 +2,12 @@ import type { BoundPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { PanelPosition } from "@/apps/workspace/registry/types";
 import type { PanelDefinition, ActionDefinition, ActionGroup, EditorTabDefinition } from "@/apps/workspace/registry/types";
 import type { Keybinding } from "@/lib/workspace/services/ui/types";
-import type { WorkspaceContext, Services } from "@/lib/workspace/services/services";
+import type {
+    StoryPluginActionCreateInput,
+    StoryPluginActionRegistration,
+} from "@/lib/workspace/services/services";
 import type { PluginIdentity } from "@shared/types/pluginPermissions";
-import type { NormalizedPluginManifestV1 } from "@shared/types/plugins";
+import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import type {
     BlueprintInspectorParamSelectOption,
     BlueprintNodeDef,
@@ -30,11 +33,13 @@ export type {
     PluginPermissionPromptResult,
 } from "@shared/types/pluginPermissions";
 export type {
-    PluginManifestV1,
-    NormalizedPluginManifestV1,
+    PluginManifestV2,
+    NormalizedPluginManifestV2,
+    PluginManifestEntries,
     PluginInstallRecord,
     PluginListItem,
     WorkspacePluginDescriptor,
+    RuntimePluginDescriptor,
 } from "@shared/types/plugins";
 export { PanelPosition, AssetExtensions, AssetType, AssetSource };
 export type { AssetData, Asset, AssetGroup, AssetsMap };
@@ -83,6 +88,15 @@ export type {
     PluginPanelToolbarProps,
     PluginUiKit,
 } from "./ui";
+export type {
+    StoryPluginActionCreateInput,
+    StoryPluginActionRegistration,
+};
+export type {
+    StoryBlock,
+    StoryBlockId,
+    StoryBlockKind,
+} from "@shared/types/story";
 
 export const ui = pluginUi;
 
@@ -98,7 +112,7 @@ export type PluginDefinition = {
 
 export type PluginApp = {
     plugin: PluginIdentity;
-    manifest: NormalizedPluginManifestV1;
+    manifest: NormalizedPluginManifestV2;
     services: PluginServices;
     privileged: BoundPrivilegedFacade;
 };
@@ -117,9 +131,14 @@ export type PluginAssetsService = {
     revokeObjectUrl(url: string): void;
 };
 
+/**
+ * The curated plugin API surface. This is intentionally a whitelist:
+ * plugins do NOT get access to the workspace service registry. Anything
+ * beyond this surface (arbitrary file system access, bash, permission
+ * grants) must go through the privileged facade, which is enforced
+ * per-plugin by the main process.
+ */
 export type PluginServices = {
-    get<T>(service: Services): T;
-    workspace: WorkspaceContext;
     storage: PluginStorageService;
     assets: PluginAssetsService;
     ui: {
@@ -154,6 +173,18 @@ export type PluginServices = {
         get(type: string): UIWidgetModule | undefined;
         list(): UIWidgetModule[];
         has(type: string): boolean;
+    };
+    story: {
+        actions: {
+            /**
+             * Register a scene-editor palette action (shown under the Plugin
+             * category) that creates story blocks. The blocks it returns are
+             * standard story blocks — the document does not depend on the
+             * plugin after creation. Action ids must be prefixed with the
+             * plugin id.
+             */
+            register(registration: StoryPluginActionRegistration): PluginCleanup;
+        };
     };
     blueprintNodes: {
         register(def: BlueprintNodeDef): void;

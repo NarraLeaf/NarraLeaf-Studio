@@ -52,6 +52,12 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { ButtonCursorSelect } from "@/lib/ui-editor/widget-modules/shared/appearance/editors/ButtonCursorSelect";
+import { useTranslation, type UseTranslation } from "@/lib/i18n";
+import {
+    resolveBlueprintCategoryLabel,
+    resolveBlueprintLabel,
+    resolveBlueprintNodeTitle,
+} from "../../blueprintNodeI18n";
 
 type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
 type BlueprintNodeParamPatch = (
@@ -128,15 +134,15 @@ export type BlueprintFlowNodeData = {
     onBindElementLiteral?: (nodeId: string) => void;
 };
 
-const EXEC_HANDLE_CLASS = "!h-2 !w-2 !border border-white/30 !bg-cyan-500";
+const EXEC_HANDLE_CLASS = "!h-2 !w-2 !border border-edge-strong !bg-cyan-500";
 const DATA_HANDLE_CLASS = "!h-2 !w-2 !border border-amber-200/35 !bg-amber-500";
-const PIN_LABEL_CLASS = "text-gray-400";
-const OPTIONAL_UNWIRED_PIN_LABEL_CLASS = "text-gray-500 italic";
+const PIN_LABEL_CLASS = "text-fg-muted";
+const OPTIONAL_UNWIRED_PIN_LABEL_CLASS = "text-fg-subtle italic";
 
 const CARD_INPUT =
-    "rounded border-white/15 bg-[#111418] px-1.5 py-1 font-mono text-[10px]";
+    "rounded border-edge bg-[#111418] px-1.5 py-1 font-mono text-2xs";
 const CARD_ICON_BUTTON =
-    "nodrag !h-4 !w-4 shrink-0 !gap-0 rounded !p-0.5 text-gray-400 hover:bg-white/5 hover:text-gray-300";
+    "nodrag !h-4 !w-4 shrink-0 !gap-0 rounded !p-0.5 text-fg-muted hover:bg-fill-subtle hover:text-fg-muted";
 
 /** Hide native number steppers — keep same look as other card fields (WebKit + Firefox). */
 const INPUT_NUMBER_NO_SPINNER =
@@ -146,10 +152,6 @@ const INPUT_NUMBER_NO_SPINNER =
 const BLUEPRINT_CARD_PIN_BODY_CLASS = "min-w-[200px] max-w-[280px]";
 const COMMENT_DEFAULT_WIDTH = 360;
 const COMMENT_DEFAULT_HEIGHT = 180;
-
-function shortAssetId(assetId: string): string {
-    return assetId.length > 10 ? `${assetId.slice(0, 8)}...` : assetId;
-}
 
 function useImageAssetDisplayName(assetId: string | null): string | null {
     let context: ReturnType<typeof useWorkspace>["context"] | null = null;
@@ -178,14 +180,16 @@ function ImageAssetPickerCard({
     disabled?: boolean;
     compact?: boolean;
 }) {
+    const { t } = useTranslation();
     const normalized = normalizeBlueprintImageAssetValue(value);
     const assetId = normalized?.assetId ?? null;
     const assetName = useImageAssetDisplayName(assetId);
     const { url, loading, error } = useAssetObjectUrl(assetId);
     const [selectorOpen, setSelectorOpen] = useState(false);
     const anchorRef = useRef<HTMLButtonElement | null>(null);
-    const label = assetId ? assetName ?? shortAssetId(assetId) : "Select image";
-    const detail = assetId ? (error ? "Missing image asset" : "ImageAsset") : "No image asset";
+    const label = assetId ? assetName ?? t("blueprint.image.fallback") : t("blueprint.image.select");
+    // "ImageAsset" is the value-type token shown when a valid asset is bound; it stays untranslated.
+    const detail = assetId ? (error ? t("blueprint.image.missing") : "ImageAsset") : t("blueprint.image.none");
     const heightClass = compact ? "h-[58px]" : "h-[82px]";
 
     const handleConfirm = (assets: Asset[]) => {
@@ -205,10 +209,10 @@ function ImageAssetPickerCard({
                     ref={anchorRef}
                     type="button"
                     disabled={disabled}
-                    className={`group relative flex w-full min-w-0 overflow-hidden rounded border border-white/10 bg-[#0f1115] text-left transition-colors ${
-                        disabled ? "cursor-default opacity-80" : "hover:border-cyan-300/35 hover:bg-white/[0.04]"
+                    className={`group relative flex w-full min-w-0 overflow-hidden rounded border border-edge bg-surface text-left transition-colors ${
+                        disabled ? "cursor-default opacity-80" : "hover:border-cyan-300/35 hover:bg-fill-subtle"
                     } ${heightClass}`}
-                    title={assetId ? `${label} (${assetId})` : "Select image asset"}
+                    title={assetId ? `${label} (${assetId})` : t("blueprint.image.selectAsset")}
                     onClick={e => {
                         e.stopPropagation();
                         if (!disabled) {
@@ -225,19 +229,19 @@ function ImageAssetPickerCard({
                                 draggable={false}
                             />
                         ) : (
-                            <div className="flex h-full w-full items-center justify-center text-gray-500">
+                            <div className="flex h-full w-full items-center justify-center text-fg-subtle">
                                 <ImageIcon className="h-5 w-5" aria-hidden />
                             </div>
                         )}
                         {loading ? (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-[9px] text-gray-100">
-                                Loading
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-2xs text-fg">
+                                {t("common.loading")}
                             </div>
                         ) : null}
                     </div>
                     <div className="flex min-w-0 flex-1 flex-col justify-center px-2 py-1">
-                        <div className="truncate text-[11px] font-medium text-gray-100">{label}</div>
-                        <div className={`truncate text-[9px] ${error ? "text-amber-300" : "text-gray-500"}`}>
+                        <div className="truncate text-2xs font-medium text-fg">{label}</div>
+                        <div className={`truncate text-2xs ${error ? "text-amber-300" : "text-fg-subtle"}`}>
                             {detail}
                         </div>
                     </div>
@@ -248,9 +252,9 @@ function ImageAssetPickerCard({
                 {assetId && !disabled ? (
                     <button
                         type="button"
-                        className="absolute right-1 top-1 rounded bg-black/55 p-0.5 text-gray-300 hover:bg-black/80 hover:text-white"
-                        title="Clear image asset"
-                        aria-label="Clear image asset"
+                        className="absolute right-1 top-1 rounded bg-black/55 p-0.5 text-fg-muted hover:bg-black/80 hover:text-white"
+                        title={t("blueprint.image.clear")}
+                        aria-label={t("blueprint.image.clear")}
                         onMouseDown={stopFlowNodePointerBubble}
                         onPointerDown={stopFlowNodePointerBubble}
                         onClick={e => {
@@ -267,7 +271,7 @@ function ImageAssetPickerCard({
                 assetType={AssetType.Image}
                 selectedIds={assetId ? [assetId] : []}
                 anchorRef={anchorRef}
-                title="Select Image Asset"
+                title={t("blueprint.image.selectAssetTitle")}
                 multiple={false}
                 onClose={() => setSelectorOpen(false)}
                 onConfirm={handleConfirm}
@@ -279,7 +283,6 @@ function ImageAssetPickerCard({
 const COMMENT_COLORS: Record<
     string,
     {
-        label: string;
         border: string;
         selectedBorder: string;
         background: string;
@@ -289,7 +292,6 @@ const COMMENT_COLORS: Record<
     }
 > = {
     amber: {
-        label: "Amber",
         border: "rgba(245, 158, 11, 0.55)",
         selectedBorder: "rgba(251, 191, 36, 0.95)",
         background: "rgba(120, 78, 18, 0.28)",
@@ -298,7 +300,6 @@ const COMMENT_COLORS: Record<
         swatch: "#f59e0b",
     },
     cyan: {
-        label: "Cyan",
         border: "rgba(34, 211, 238, 0.55)",
         selectedBorder: "rgba(103, 232, 249, 0.95)",
         background: "rgba(8, 85, 102, 0.28)",
@@ -307,7 +308,6 @@ const COMMENT_COLORS: Record<
         swatch: "#06b6d4",
     },
     violet: {
-        label: "Violet",
         border: "rgba(167, 139, 250, 0.55)",
         selectedBorder: "rgba(196, 181, 253, 0.95)",
         background: "rgba(76, 29, 149, 0.26)",
@@ -316,7 +316,6 @@ const COMMENT_COLORS: Record<
         swatch: "#8b5cf6",
     },
     slate: {
-        label: "Slate",
         border: "rgba(148, 163, 184, 0.5)",
         selectedBorder: "rgba(203, 213, 225, 0.92)",
         background: "rgba(51, 65, 85, 0.32)",
@@ -325,6 +324,22 @@ const COMMENT_COLORS: Record<
         swatch: "#64748b",
     },
 };
+
+/** Localized swatch labels for comment colors, keyed by the same ids as {@link COMMENT_COLORS}. */
+function commentColorLabel(key: string, t: UseTranslation["t"]): string {
+    switch (key) {
+        case "amber":
+            return t("blueprint.comment.color.amber");
+        case "cyan":
+            return t("blueprint.comment.color.cyan");
+        case "violet":
+            return t("blueprint.comment.color.violet");
+        case "slate":
+            return t("blueprint.comment.color.slate");
+        default:
+            return key;
+    }
+}
 
 type CatalogPin = BlueprintNodeEditorCatalogEntry["pins"][number] & { removable?: boolean };
 
@@ -353,12 +368,13 @@ function readDynamicPinLabelValues(params: Record<string, unknown>, key: string 
     return out;
 }
 
-function pinLabelOnly(pin: CatalogPin): string {
-    return pin.label?.trim() || pin.id;
+function pinLabelOnly(pin: CatalogPin, t: UseTranslation["t"]): string {
+    const raw = pin.label?.trim();
+    return raw ? resolveBlueprintLabel(raw, t) : pin.id;
 }
 
-function pinCaption(pin: CatalogPin, semantic: "exec" | "data"): string {
-    const name = pinLabelOnly(pin);
+function pinCaption(pin: CatalogPin, semantic: "exec" | "data", t: UseTranslation["t"]): string {
+    const name = pinLabelOnly(pin, t);
     if (semantic === "data" && pin.valueType && pin.valueType !== "any") {
         return `${name} · ${pin.valueType}`;
     }
@@ -382,7 +398,8 @@ function DynamicPinLabelInput({
     labels: Record<string, string>;
     onPatchNodeParam: (nodeId: string, key: string, value: unknown) => void;
 }) {
-    const committed = labels[pin.id] ?? pinLabelOnly(pin);
+    const { t } = useTranslation();
+    const committed = labels[pin.id] ?? pinLabelOnly(pin, t);
     const [draft, setDraft] = useState(committed);
 
     useEffect(() => {
@@ -399,13 +416,13 @@ function DynamicPinLabelInput({
 
     return (
         <Input
-            className={`${CARD_INPUT} min-h-[20px] min-w-[5rem] max-w-[8rem] flex-1 py-0.5 ${
+            className={`nodrag ${CARD_INPUT} min-h-[20px] min-w-[5rem] max-w-[8rem] flex-1 py-0.5 ${
                 isInvalid ? "border-red-400/70 text-red-100" : ""
             }`}
             type="text"
             value={draft}
             size="sm"
-            title={isInvalid ? "Field names must be non-empty and unique" : "JSON object field name"}
+            title={isInvalid ? t("blueprint.json.fieldNameInvalid") : t("blueprint.pin.jsonFieldName")}
             onMouseDown={stopFlowNodePointerBubble}
             onPointerDown={stopFlowNodePointerBubble}
             onChange={e => {
@@ -424,6 +441,45 @@ function DynamicPinLabelInput({
     );
 }
 
+function DynamicPinTypeSelect({
+    pin,
+    nodeId,
+    typeParamKey,
+    types,
+    typeOptions,
+    fallbackValueType,
+    onPatchNodeParam,
+}: {
+    pin: CatalogPin;
+    nodeId: string;
+    typeParamKey: string;
+    types: Record<string, string>;
+    typeOptions: readonly string[];
+    fallbackValueType?: string;
+    onPatchNodeParam: (nodeId: string, key: string, value: unknown) => void;
+}) {
+    const current = types[pin.id] ?? pin.valueType ?? fallbackValueType ?? typeOptions[0] ?? "any";
+    return (
+        <div
+            className="nodrag shrink-0"
+            onMouseDown={stopFlowNodePointerBubble}
+            onPointerDown={stopFlowNodePointerBubble}
+        >
+            <Select
+                size="sm"
+                className="min-w-[4.5rem]"
+                options={typeOptions.map(t => ({ value: t, label: t }))}
+                value={current}
+                onChange={value => {
+                    onPatchNodeParam(nodeId, typeParamKey, { ...types, [pin.id]: String(value) });
+                }}
+                portalMenu
+                menuPlacement="below"
+            />
+        </div>
+    );
+}
+
 function PinInlineLiteralInput({
     pin,
     nodeId,
@@ -439,7 +495,9 @@ function PinInlineLiteralInput({
 }) {
     const vt = pin.valueType;
     const raw = pin.id in params ? params[pin.id] : undefined;
-    const baseClass = className ?? CARD_INPUT;
+    // `nodrag` exempts the field from React Flow node dragging (native d3-drag listeners
+    // ignore React's stopPropagation, so text-selection drags would otherwise move the card).
+    const baseClass = `nodrag ${className ?? CARD_INPUT}`;
     const numberClass = `${baseClass} ${INPUT_NUMBER_NO_SPINNER}`.trim();
 
     if (vt === BLUEPRINT_VALUE_TYPE_IMAGE_ASSET || vt === BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE) {
@@ -541,6 +599,9 @@ function InputPinRow({
     onRemovePin,
     dynamicLabelParamKey,
     dynamicLabelValues,
+    dynamicTypeParamKey,
+    dynamicTypeValues,
+    dynamicTypeOptions,
 }: {
     pin: CatalogPin;
     semantic: "exec" | "data";
@@ -553,7 +614,22 @@ function InputPinRow({
     onRemovePin?: (nodeId: string, pinId: string) => void;
     dynamicLabelParamKey?: string;
     dynamicLabelValues: Record<string, string>;
+    dynamicTypeParamKey?: string;
+    dynamicTypeValues?: Record<string, string>;
+    dynamicTypeOptions?: readonly string[];
 }) {
+    const { t } = useTranslation();
+    const typeEditor =
+        removable && dynamicTypeParamKey && dynamicTypeOptions?.length && onPatchNodeParam ? (
+            <DynamicPinTypeSelect
+                pin={pin}
+                nodeId={nodeId}
+                typeParamKey={dynamicTypeParamKey}
+                types={dynamicTypeValues ?? {}}
+                typeOptions={dynamicTypeOptions}
+                onPatchNodeParam={onPatchNodeParam}
+            />
+        ) : null;
     const handleClass = semantic === "exec" ? EXEC_HANDLE_CLASS : DATA_HANDLE_CLASS;
     const labelClass = pinLabelClass(pin, isWired);
     const canInlineLiteral =
@@ -595,10 +671,10 @@ function InputPinRow({
                 />
             ) : (
                 <span
-                    className={`shrink-0 text-[9px] leading-tight ${labelClass}`}
-                    title={pinLabelOnly(pin)}
+                    className={`shrink-0 text-2xs leading-tight ${labelClass}`}
+                    title={pinLabelOnly(pin, t)}
                 >
-                    {pinLabelOnly(pin)}
+                    {pinLabelOnly(pin, t)}
                 </span>
             );
         return (
@@ -607,11 +683,11 @@ function InputPinRow({
                     {removable && onRemovePin ? (
                         <Button
                             type="button"
-                            title="Remove input pin"
-                            aria-label="Remove input pin"
+                            title={t("blueprint.pin.removeInput")}
+                            aria-label={t("blueprint.pin.removeInput")}
                             variant="ghost"
                             size="sm"
-                            className={`${CARD_ICON_BUTTON} text-gray-500`}
+                            className={`${CARD_ICON_BUTTON} text-fg-subtle`}
                             onMouseDown={stopFlowNodePointerBubble}
                             onPointerDown={stopFlowNodePointerBubble}
                             onClick={e => {
@@ -623,6 +699,7 @@ function InputPinRow({
                         </Button>
                     ) : null}
                     {labelEditor}
+                    {typeEditor}
                     <PinInlineLiteralInput
                         pin={pin}
                         nodeId={nodeId}
@@ -632,8 +709,8 @@ function InputPinRow({
                     />
                     <Button
                         type="button"
-                        title="Show input pin"
-                        aria-label="Show input pin"
+                        title={t("blueprint.pin.showInput")}
+                        aria-label={t("blueprint.pin.showInput")}
                         variant="ghost"
                         size="sm"
                         className={CARD_ICON_BUTTON}
@@ -664,10 +741,10 @@ function InputPinRow({
             />
         ) : (
             <span
-                className={`min-w-0 shrink truncate text-[9px] leading-tight ${labelClass}`}
-                title={pinCaption(pin, semantic)}
+                className={`min-w-0 shrink truncate text-2xs leading-tight ${labelClass}`}
+                title={pinCaption(pin, semantic, t)}
             >
-                {pinCaption(pin, semantic)}
+                {pinCaption(pin, semantic, t)}
             </span>
         );
     return (
@@ -677,18 +754,18 @@ function InputPinRow({
                 position={Position.Left}
                 id={pin.id}
                 className={`${handleClass} !left-0 !top-1/2 !-translate-y-1/2`}
-                title={pinCaption(pin, semantic)}
+                title={pinCaption(pin, semantic, t)}
             />
             <div className="flex min-w-0 flex-1 items-center pl-3.5">
                 <div className="flex min-w-0 max-w-full items-center gap-0.5">
                     {removable && onRemovePin ? (
                         <Button
                             type="button"
-                            title="Remove input pin"
-                            aria-label="Remove input pin"
+                            title={t("blueprint.pin.removeInput")}
+                            aria-label={t("blueprint.pin.removeInput")}
                             variant="ghost"
                             size="sm"
-                            className={`${CARD_ICON_BUTTON} text-gray-500`}
+                            className={`${CARD_ICON_BUTTON} text-fg-subtle`}
                             onMouseDown={stopFlowNodePointerBubble}
                             onPointerDown={stopFlowNodePointerBubble}
                             onClick={e => {
@@ -700,11 +777,12 @@ function InputPinRow({
                         </Button>
                     ) : null}
                     {labelEditor}
+                    {typeEditor}
                     {canInlineLiteral && selected ? (
                         <Button
                             type="button"
-                            title="Edit value on card"
-                            aria-label="Edit value on card"
+                            title={t("blueprint.pin.editValue")}
+                            aria-label={t("blueprint.pin.editValue")}
                             variant="ghost"
                             size="sm"
                             className={`${CARD_ICON_BUTTON} opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100`}
@@ -724,22 +802,104 @@ function InputPinRow({
     );
 }
 
-function OutputPinRow({ pin, semantic }: { pin: CatalogPin; semantic: "exec" | "data" }) {
+function OutputPinRow({
+    pin,
+    semantic,
+    nodeId,
+    onPatchNodeParam,
+    removable,
+    onRemovePin,
+    dynamicLabelParamKey,
+    dynamicLabelValues,
+    dynamicTypeParamKey,
+    dynamicTypeValues,
+    dynamicTypeOptions,
+}: {
+    pin: CatalogPin;
+    semantic: "exec" | "data";
+    nodeId?: string;
+    onPatchNodeParam?: (nodeId: string, key: string, value: unknown) => void;
+    removable?: boolean;
+    onRemovePin?: (nodeId: string, pinId: string) => void;
+    dynamicLabelParamKey?: string;
+    dynamicLabelValues?: Record<string, string>;
+    dynamicTypeParamKey?: string;
+    dynamicTypeValues?: Record<string, string>;
+    dynamicTypeOptions?: readonly string[];
+}) {
+    const { t } = useTranslation();
     const handleClass = semantic === "exec" ? EXEC_HANDLE_CLASS : DATA_HANDLE_CLASS;
+    const editable = Boolean(removable && nodeId && onPatchNodeParam);
+    if (editable && nodeId && onPatchNodeParam) {
+        // Editable dynamic output pin (e.g. Fn head parameters): remove + rename + type cluster.
+        return (
+            <div className="relative flex min-h-[20px] w-full min-w-0 items-center justify-end gap-0.5 pl-0.5 pr-1">
+                {onRemovePin ? (
+                    <Button
+                        type="button"
+                        title={t("blueprint.pin.removeOutput")}
+                        aria-label={t("blueprint.pin.removeOutput")}
+                        variant="ghost"
+                        size="sm"
+                        className={`${CARD_ICON_BUTTON} text-fg-subtle`}
+                        onMouseDown={stopFlowNodePointerBubble}
+                        onPointerDown={stopFlowNodePointerBubble}
+                        onClick={e => {
+                            e.stopPropagation();
+                            onRemovePin(nodeId, pin.id);
+                        }}
+                    >
+                        <Minus className="h-3 w-3" aria-hidden />
+                    </Button>
+                ) : null}
+                {dynamicLabelParamKey ? (
+                    <DynamicPinLabelInput
+                        pin={pin}
+                        nodeId={nodeId}
+                        labelParamKey={dynamicLabelParamKey}
+                        labels={dynamicLabelValues ?? {}}
+                        onPatchNodeParam={onPatchNodeParam}
+                    />
+                ) : (
+                    <span className="min-w-0 shrink truncate text-2xs leading-tight text-fg-muted">
+                        {pinLabelOnly(pin, t)}
+                    </span>
+                )}
+                {dynamicTypeParamKey && dynamicTypeOptions?.length ? (
+                    <DynamicPinTypeSelect
+                        pin={pin}
+                        nodeId={nodeId}
+                        typeParamKey={dynamicTypeParamKey}
+                        types={dynamicTypeValues ?? {}}
+                        typeOptions={dynamicTypeOptions}
+                        onPatchNodeParam={onPatchNodeParam}
+                    />
+                ) : null}
+                <div className="w-2.5 shrink-0" aria-hidden />
+                <Handle
+                    type="source"
+                    position={Position.Right}
+                    id={pin.id}
+                    className={`${handleClass} !right-0 !top-1/2 !-translate-y-1/2`}
+                    title={pinCaption(pin, semantic, t)}
+                />
+            </div>
+        );
+    }
     return (
         <div className="relative flex min-h-[20px] w-full min-w-0 items-center justify-end pl-0.5 pr-1">
             <span
-                className="min-w-0 flex-1 truncate pr-3.5 text-right text-[9px] leading-tight text-gray-400"
-                title={pinCaption(pin, semantic)}
+                className="min-w-0 flex-1 truncate pr-3.5 text-right text-2xs leading-tight text-fg-muted"
+                title={pinCaption(pin, semantic, t)}
             >
-                {pinCaption(pin, semantic)}
+                {pinCaption(pin, semantic, t)}
             </span>
             <Handle
                 type="source"
                 position={Position.Right}
                 id={pin.id}
                 className={`${handleClass} !right-0 !top-1/2 !-translate-y-1/2`}
-                title={pinCaption(pin, semantic)}
+                title={pinCaption(pin, semantic, t)}
             />
         </div>
     );
@@ -771,6 +931,7 @@ function KeyboardBindingCardControl({
     value: unknown;
     onChange: (value: string | undefined) => void;
 }) {
+    const { t } = useTranslation();
     const rootRef = useRef<HTMLDivElement | null>(null);
     const [listening, setListening] = useState(false);
     const [preview, setPreview] = useState("");
@@ -856,10 +1017,10 @@ function KeyboardBindingCardControl({
         <div ref={rootRef} className="nodrag relative min-w-0">
             {listening ? (
                 <div className="absolute bottom-full left-0 z-[60] mb-1 w-full rounded border border-cyan-300/35 bg-[#0b1016] px-2 py-1.5 text-left shadow-lg ring-1 ring-black/35">
-                    <div className="truncate font-mono text-[11px] text-cyan-100">
-                        {preview || "Press a key"}
+                    <div className="truncate font-mono text-2xs text-cyan-100">
+                        {preview || t("blueprint.keyboard.pressKey")}
                     </div>
-                    <div className="mt-0.5 truncate text-[9px] text-gray-400">Any key or combo</div>
+                    <div className="mt-0.5 truncate text-2xs text-fg-muted">{t("blueprint.keyboard.anyCombo")}</div>
                 </div>
             ) : null}
             <button
@@ -867,10 +1028,10 @@ function KeyboardBindingCardControl({
                 className={`flex min-h-[26px] w-full min-w-0 items-center gap-1.5 rounded border px-2 py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50 ${
                     listening
                         ? "border-cyan-300/45 bg-cyan-400/10 text-cyan-100"
-                        : "border-white/15 bg-[#111418] text-gray-200 hover:border-cyan-300/35 hover:bg-white/[0.04]"
+                        : "border-edge bg-[#111418] text-fg hover:border-cyan-300/35 hover:bg-fill-subtle"
                 } ${displayValue ? "pr-7" : ""}`}
-                title={displayValue ? `Bound to ${displayValue}` : "Bind keyboard"}
-                aria-label={displayValue ? `Bound to ${displayValue}` : "Bind keyboard"}
+                title={displayValue ? t("blueprint.keyboard.boundTo", { key: displayValue }) : t("blueprint.keyboard.bind")}
+                aria-label={displayValue ? t("blueprint.keyboard.boundTo", { key: displayValue }) : t("blueprint.keyboard.bind")}
                 aria-pressed={listening}
                 onMouseDown={stopFlowNodePointerBubble}
                 onPointerDown={stopFlowNodePointerBubble}
@@ -882,16 +1043,16 @@ function KeyboardBindingCardControl({
                 }}
             >
                 <KeyboardIcon className="h-3.5 w-3.5 shrink-0 text-cyan-300/80" aria-hidden />
-                <span className={`min-w-0 flex-1 truncate font-mono text-[10px] ${displayValue ? "" : "text-gray-500"}`}>
-                    {displayValue || "Unbound"}
+                <span className={`min-w-0 flex-1 truncate font-mono text-2xs ${displayValue ? "" : "text-fg-subtle"}`}>
+                    {displayValue || t("blueprint.keyboard.unbound")}
                 </span>
             </button>
             {displayValue ? (
                 <button
                     type="button"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-500 hover:bg-white/10 hover:text-gray-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50"
-                    title="Clear binding"
-                    aria-label="Clear binding"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-fg-subtle hover:bg-fill hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50"
+                    title={t("blueprint.keyboard.clear")}
+                    aria-label={t("blueprint.keyboard.clear")}
                     onMouseDown={event => {
                         event.stopPropagation();
                         event.preventDefault();
@@ -932,6 +1093,7 @@ function InspectorParamOnCard({
     persistentVariables?: BlueprintFlowNodeData["persistentVariables"];
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>;
 }) {
+    const { t } = useTranslation();
     const raw = spec.key in params ? params[spec.key] : undefined;
     const variableSelectValue =
         spec.kind === "variableRef"
@@ -958,8 +1120,8 @@ function InspectorParamOnCard({
             : rawSelectOptions;
     const selectComponentOptions: SelectOption[] | undefined = selectOptions
         ? [
-              { value: "", label: spec.emptyOptionLabel ?? "-" },
-              ...selectOptions.map(opt => ({ value: opt.value, label: opt.label })),
+              { value: "", label: resolveBlueprintLabel(spec.emptyOptionLabel ?? "-", t) },
+              ...selectOptions.map(opt => ({ value: opt.value, label: resolveBlueprintLabel(opt.label, t) })),
           ]
         : undefined;
     const variableComponentOptions: SelectOption[] = [
@@ -988,11 +1150,11 @@ function InspectorParamOnCard({
     return (
         <div
             key={spec.key}
-            className="mt-1.5 border-t border-white/5 pt-1.5"
+            className="mt-1.5 border-t border-edge-subtle pt-1.5"
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
-            <div className="mb-0.5 text-[9px] uppercase tracking-wide text-gray-500">{spec.label}</div>
+            <div className="mb-0.5 text-2xs tracking-wide text-fg-subtle">{resolveBlueprintLabel(spec.label, t)}</div>
             {spec.kind === "select" && selectComponentOptions ? (
                 <Select
                     fullWidth
@@ -1034,7 +1196,7 @@ function InspectorParamOnCard({
                 />
             ) : isReadonlyAnyDefaultValue ? (
                 <Input
-                    className={`${CARD_INPUT} cursor-not-allowed text-gray-500`}
+                    className={`${CARD_INPUT} cursor-not-allowed text-fg-subtle`}
                     type="text"
                     value="null"
                     size="sm"
@@ -1091,67 +1253,81 @@ function InspectorParamOnCard({
     );
 }
 
-const DISPLAYABLE_ANIMATE_PROPERTY_OPTIONS: SelectOption[] = [
-    { value: "opacity", label: "Opacity" },
-    { value: "offsetX", label: "Offset X" },
-    { value: "offsetY", label: "Offset Y" },
-    { value: "x", label: "X" },
-    { value: "y", label: "Y" },
-    { value: "scale", label: "Scale" },
-    { value: "rotation", label: "Rotation" },
-];
+function buildDisplayableAnimatePropertyOptions(t: UseTranslation["t"]): SelectOption[] {
+    return [
+        { value: "opacity", label: t("blueprint.displayable.property.opacity") },
+        { value: "offsetX", label: t("blueprint.displayable.property.offsetX") },
+        { value: "offsetY", label: t("blueprint.displayable.property.offsetY") },
+        { value: "x", label: t("blueprint.displayable.property.x") },
+        { value: "y", label: t("blueprint.displayable.property.y") },
+        { value: "scale", label: t("blueprint.displayable.property.scale") },
+        { value: "rotation", label: t("blueprint.displayable.property.rotation") },
+    ];
+}
 
-const DISPLAYABLE_ANIMATE_EASING_OPTIONS: SelectOption[] = [
-    { value: "linear", label: "Linear" },
-    { value: "easeIn", label: "Ease In" },
-    { value: "easeOut", label: "Ease Out" },
-    { value: "easeInOut", label: "Ease In Out" },
-    { value: "circIn", label: "Circ In" },
-    { value: "circOut", label: "Circ Out" },
-    { value: "circInOut", label: "Circ In Out" },
-];
+function buildDisplayableAnimateEasingOptions(t: UseTranslation["t"]): SelectOption[] {
+    return [
+        { value: "linear", label: t("blueprint.displayable.easing.linear") },
+        { value: "easeIn", label: t("blueprint.displayable.easing.easeIn") },
+        { value: "easeOut", label: t("blueprint.displayable.easing.easeOut") },
+        { value: "easeInOut", label: t("blueprint.displayable.easing.easeInOut") },
+        { value: "circIn", label: t("blueprint.displayable.easing.circIn") },
+        { value: "circOut", label: t("blueprint.displayable.easing.circOut") },
+        { value: "circInOut", label: t("blueprint.displayable.easing.circInOut") },
+    ];
+}
 
-const DISPLAYABLE_ANIMATE_AFTER_OPTIONS: SelectOption[] = [
-    { value: "hold", label: "Hold" },
-    { value: "reset", label: "Reset" },
-];
+function buildDisplayableAnimateAfterOptions(t: UseTranslation["t"]): SelectOption[] {
+    return [
+        { value: "hold", label: t("blueprint.displayable.after.hold") },
+        { value: "reset", label: t("common.reset") },
+    ];
+}
 
-const DISPLAYABLE_GET_PROPERTY_OPTIONS: SelectOption[] = [
-    { value: "position", label: "Position" },
-    { value: "size", label: "Size" },
-    { value: "bounds", label: "Bounds" },
-    { value: "x", label: "X" },
-    { value: "y", label: "Y" },
-    { value: "offsetX", label: "Offset X" },
-    { value: "offsetY", label: "Offset Y" },
-    { value: "width", label: "Width" },
-    { value: "height", label: "Height" },
-    { value: "rotation", label: "Rotation" },
-    { value: "opacity", label: "Opacity" },
-    { value: "visible", label: "Visible" },
-];
+function buildDisplayableGetPropertyOptions(t: UseTranslation["t"]): SelectOption[] {
+    return [
+        { value: "position", label: t("blueprint.displayable.property.position") },
+        { value: "size", label: t("blueprint.displayable.property.size") },
+        { value: "bounds", label: t("blueprint.displayable.property.bounds") },
+        { value: "x", label: t("blueprint.displayable.property.x") },
+        { value: "y", label: t("blueprint.displayable.property.y") },
+        { value: "offsetX", label: t("blueprint.displayable.property.offsetX") },
+        { value: "offsetY", label: t("blueprint.displayable.property.offsetY") },
+        { value: "width", label: t("blueprint.displayable.property.width") },
+        { value: "height", label: t("blueprint.displayable.property.height") },
+        { value: "rotation", label: t("blueprint.displayable.property.rotation") },
+        { value: "opacity", label: t("blueprint.displayable.property.opacity") },
+        { value: "visible", label: t("blueprint.displayable.property.visible") },
+    ];
+}
 
-const DISPLAYABLE_SET_PROPERTY_OPTIONS: SelectOption[] = [
-    { value: "x", label: "X" },
-    { value: "y", label: "Y" },
-    { value: "offsetX", label: "Offset X" },
-    { value: "offsetY", label: "Offset Y" },
-    { value: "width", label: "Width" },
-    { value: "height", label: "Height" },
-    { value: "rotation", label: "Rotation" },
-    { value: "opacity", label: "Opacity" },
-    { value: "visible", label: "Visible" },
-];
+function buildDisplayableSetPropertyOptions(t: UseTranslation["t"]): SelectOption[] {
+    return [
+        { value: "x", label: t("blueprint.displayable.property.x") },
+        { value: "y", label: t("blueprint.displayable.property.y") },
+        { value: "offsetX", label: t("blueprint.displayable.property.offsetX") },
+        { value: "offsetY", label: t("blueprint.displayable.property.offsetY") },
+        { value: "width", label: t("blueprint.displayable.property.width") },
+        { value: "height", label: t("blueprint.displayable.property.height") },
+        { value: "rotation", label: t("blueprint.displayable.property.rotation") },
+        { value: "opacity", label: t("blueprint.displayable.property.opacity") },
+        { value: "visible", label: t("blueprint.displayable.property.visible") },
+    ];
+}
 
-const DISPLAYABLE_VISIBLE_OPTIONS: SelectOption[] = [
-    { value: "true", label: "Visible" },
-    { value: "false", label: "Hidden" },
-];
+function buildDisplayableVisibleOptions(t: UseTranslation["t"]): SelectOption[] {
+    return [
+        { value: "true", label: t("blueprint.displayable.visibleState.visible") },
+        { value: "false", label: t("blueprint.displayable.visibleState.hidden") },
+    ];
+}
 
-const DISPLAYABLE_SET_VARIANT_WAIT_OPTIONS: SelectOption[] = [
-    { value: "continue", label: "No" },
-    { value: "wait", label: "Yes" },
-];
+function buildDisplayableSetVariantWaitOptions(t: UseTranslation["t"]): SelectOption[] {
+    return [
+        { value: "continue", label: t("common.no") },
+        { value: "wait", label: t("common.yes") },
+    ];
+}
 
 function numericParam(params: Record<string, unknown>, key: string, fallback: number): string {
     const value = params[key];
@@ -1176,7 +1352,7 @@ function opacityPercentParam(params: Record<string, unknown>, key: string, fallb
 }
 
 function CardFieldLabel({ children }: { children: ReactNode }) {
-    return <div className="mb-0.5 text-[9px] uppercase tracking-wide text-gray-500">{children}</div>;
+    return <div className="mb-0.5 text-2xs tracking-wide text-fg-subtle">{children}</div>;
 }
 
 function CardNumberInput({
@@ -1250,7 +1426,7 @@ function CardNumberInput({
     return (
         <div className="relative">
             <input
-                className={`nodrag block w-full rounded border border-white/15 bg-[#111418] px-1.5 py-1 font-mono text-[10px] text-gray-200 transition-colors focus:border-[#40a8c4] focus:outline-none ${
+                className={`nodrag block w-full rounded border border-edge bg-[#111418] px-1.5 py-1 font-mono text-2xs text-fg transition-colors focus:border-primary focus:outline-none ${
                     unit ? "pr-8" : ""
                 } ${disabled ? "cursor-not-allowed opacity-55" : ""} ${INPUT_NUMBER_NO_SPINNER}`}
                 type="text"
@@ -1278,7 +1454,7 @@ function CardNumberInput({
                 }}
             />
             {unit ? (
-                <span className="pointer-events-none absolute inset-y-0 right-1.5 flex items-center font-mono text-[9px] text-gray-500">
+                <span className="pointer-events-none absolute inset-y-0 right-1.5 flex items-center font-mono text-2xs text-fg-subtle">
                     {unit}
                 </span>
             ) : null}
@@ -1361,18 +1537,20 @@ function DisplayableGetPropertyCard({
     params: Record<string, unknown>;
     onPatchNodeParam: BlueprintNodeParamPatch;
 }) {
+    const { t } = useTranslation();
+    const propertyOptions = useMemo(() => buildDisplayableGetPropertyOptions(t), [t]);
     const property = typeof params.property === "string" ? params.property : "position";
     return (
         <div
-            className="mt-1.5 border-t border-white/5 pt-1.5"
+            className="mt-1.5 border-t border-edge-subtle pt-1.5"
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
-            <CardFieldLabel>Property</CardFieldLabel>
+            <CardFieldLabel>{t("blueprint.displayable.propertyLabel")}</CardFieldLabel>
             <Select
                 fullWidth
                 size="sm"
-                options={DISPLAYABLE_GET_PROPERTY_OPTIONS}
+                options={propertyOptions}
                 value={property}
                 onChange={value => onPatchNodeParam(nodeId, "property", String(value) || "position")}
                 portalMenu
@@ -1393,6 +1571,9 @@ function DisplayableSetPropertyCard({
     valueWired: boolean;
     onPatchNodeParam: BlueprintNodeParamPatch;
 }) {
+    const { t } = useTranslation();
+    const propertyOptions = useMemo(() => buildDisplayableSetPropertyOptions(t), [t]);
+    const visibleOptions = useMemo(() => buildDisplayableVisibleOptions(t), [t]);
     const property = typeof params.property === "string" ? params.property : "opacity";
     const isVisible = property === "visible";
     const isOpacity = property === "opacity";
@@ -1428,27 +1609,27 @@ function DisplayableSetPropertyCard({
 
     return (
         <div
-            className="mt-1.5 border-t border-white/5 pt-1.5"
+            className="mt-1.5 border-t border-edge-subtle pt-1.5"
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
-            <CardFieldLabel>Property</CardFieldLabel>
+            <CardFieldLabel>{t("blueprint.displayable.propertyLabel")}</CardFieldLabel>
             <Select
                 fullWidth
                 size="sm"
-                options={DISPLAYABLE_SET_PROPERTY_OPTIONS}
+                options={propertyOptions}
                 value={property}
                 onChange={onChangeProperty}
                 portalMenu
                 menuPlacement="below"
             />
             <div className="mt-1.5">
-                <CardFieldLabel>Value</CardFieldLabel>
+                <CardFieldLabel>{t("blueprint.displayable.valueLabel")}</CardFieldLabel>
                 {isVisible ? (
                     <Select
                         fullWidth
                         size="sm"
-                        options={DISPLAYABLE_VISIBLE_OPTIONS}
+                        options={visibleOptions}
                         value={booleanParam(params, "value", true)}
                         disabled={valueWired}
                         onChange={value => onPatchNodeParam(nodeId, "value", value === "true")}
@@ -1471,7 +1652,7 @@ function DisplayableSetPropertyCard({
                                   )
                         }
                         unit={valueUnit}
-                        ariaLabel="Displayable property value"
+                        ariaLabel={t("blueprint.displayable.valueAria")}
                         disabled={valueWired}
                         onCommit={patchNumber}
                     />
@@ -1494,6 +1675,8 @@ function DisplayableSetVariantCard({
     elementTarget: boolean;
     targetVariants?: BlueprintFlowNodeData["displayableTargetVariants"];
 }) {
+    const { t } = useTranslation();
+    const waitOptions = useMemo(() => buildDisplayableSetVariantWaitOptions(t), [t]);
     const variantId = typeof params.variantId === "string" ? params.variantId : "";
     const waitForTransition = params.waitForTransition === "wait" || params.waitForTransition === true
         ? "wait"
@@ -1509,12 +1692,12 @@ function DisplayableSetVariantCard({
             ? targetVariants.supported
                 ? options.length > 0
                     ? targetVariants.targetLabel
-                    : "Target has no variants"
-                : "Target does not support variants"
+                    : t("blueprint.displayable.variant.noVariants")
+                : t("blueprint.displayable.variant.unsupported")
             : elementTarget
-              ? "Connect an Element ref to preview variants"
-              : "Current widget variants unavailable")
-    ) || "Variant target unavailable";
+              ? t("blueprint.displayable.variant.connectElement")
+              : t("blueprint.displayable.variant.widgetUnavailable"))
+    ) || t("blueprint.displayable.variant.unavailable");
     const disabled = !targetVariants?.supported || options.length === 0;
     const selectOptions: SelectOption[] = disabled
         ? [{ value: "", label: message, disabled: true }]
@@ -1522,28 +1705,28 @@ function DisplayableSetVariantCard({
 
     return (
         <div
-            className="mt-1.5 border-t border-white/5 pt-1.5"
+            className="mt-1.5 border-t border-edge-subtle pt-1.5"
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
-            <CardFieldLabel>Variant</CardFieldLabel>
+            <CardFieldLabel>{t("blueprint.displayable.variantLabel")}</CardFieldLabel>
             <Select
                 fullWidth
                 size="sm"
                 options={selectOptions}
                 value={disabled ? "" : selectedValue}
-                placeholder="Select variant"
+                placeholder={t("blueprint.displayable.selectVariant")}
                 disabled={disabled}
                 onChange={value => onPatchNodeParam(nodeId, "variantId", String(value))}
                 portalMenu
                 menuPlacement="below"
             />
             <div className="mt-1.5">
-                <CardFieldLabel>Wait For Animation</CardFieldLabel>
+                <CardFieldLabel>{t("blueprint.displayable.waitForAnimation")}</CardFieldLabel>
                 <Select
                     fullWidth
                     size="sm"
-                    options={DISPLAYABLE_SET_VARIANT_WAIT_OPTIONS}
+                    options={waitOptions}
                     value={waitForTransition}
                     onChange={value => onPatchNodeParam(nodeId, "waitForTransition", String(value) || "continue")}
                     portalMenu
@@ -1552,8 +1735,8 @@ function DisplayableSetVariantCard({
             </div>
             {message ? (
                 <div
-                    className={`mt-1 truncate text-[9px] ${
-                        targetVariants?.supported === false ? "text-amber-300" : "text-gray-500"
+                    className={`mt-1 truncate text-2xs ${
+                        targetVariants?.supported === false ? "text-amber-300" : "text-fg-subtle"
                     }`}
                     title={message}
                 >
@@ -1573,6 +1756,10 @@ function DisplayableAnimatePropertyCard({
     params: Record<string, unknown>;
     onPatchNodeParam: BlueprintNodeParamPatch;
 }) {
+    const { t } = useTranslation();
+    const propertyOptions = useMemo(() => buildDisplayableAnimatePropertyOptions(t), [t]);
+    const easingOptions = useMemo(() => buildDisplayableAnimateEasingOptions(t), [t]);
+    const afterOptions = useMemo(() => buildDisplayableAnimateAfterOptions(t), [t]);
     const property = typeof params.property === "string" ? params.property : "opacity";
     const easing = typeof params.easing === "string" ? params.easing : "easeOut";
     const after = typeof params.after === "string" ? params.after : "hold";
@@ -1600,16 +1787,16 @@ function DisplayableAnimatePropertyCard({
 
     return (
         <div
-            className="mt-1.5 border-t border-white/5 pt-1.5"
+            className="mt-1.5 border-t border-edge-subtle pt-1.5"
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
             <div>
-                <CardFieldLabel>Property</CardFieldLabel>
+                <CardFieldLabel>{t("blueprint.displayable.propertyLabel")}</CardFieldLabel>
                 <Select
                     fullWidth
                     size="sm"
-                    options={DISPLAYABLE_ANIMATE_PROPERTY_OPTIONS}
+                    options={propertyOptions}
                     value={property}
                     onChange={value => onPatchNodeParam(nodeId, "property", String(value) || "opacity")}
                     portalMenu
@@ -1618,7 +1805,7 @@ function DisplayableAnimatePropertyCard({
             </div>
             <div className="mt-1.5 grid grid-cols-2 gap-1.5">
                 <div>
-                    <CardFieldLabel>From</CardFieldLabel>
+                    <CardFieldLabel>{t("blueprint.displayable.from")}</CardFieldLabel>
                     <CardNumberInput
                         value={
                             isLegacyAbsolutePositionFromDefault
@@ -1626,45 +1813,45 @@ function DisplayableAnimatePropertyCard({
                                 : optionalNumericParam(params, "from")
                         }
                         unit={valueUnit}
-                        ariaLabel="Animation start value"
+                        ariaLabel={t("blueprint.displayable.animationStart")}
                         onCommit={raw => patchOptionalNumber("from", raw)}
                     />
                 </div>
                 <div>
-                    <CardFieldLabel>To</CardFieldLabel>
+                    <CardFieldLabel>{t("blueprint.displayable.to")}</CardFieldLabel>
                     <CardNumberInput
                         value={numericParam(params, "to", toFallback)}
                         unit={valueUnit}
-                        ariaLabel="Animation target value"
+                        ariaLabel={t("blueprint.displayable.animationTarget")}
                         onCommit={raw => patchNumber("to", raw, toFallback)}
                     />
                 </div>
                 <div>
-                    <CardFieldLabel>Duration</CardFieldLabel>
+                    <CardFieldLabel>{t("blueprint.displayable.duration")}</CardFieldLabel>
                     <CardNumberInput
                         value={numericParam(params, "duration", 0.3)}
                         unit="s"
-                        ariaLabel="Animation duration"
+                        ariaLabel={t("blueprint.displayable.animationDuration")}
                         onCommit={raw => patchNumber("duration", raw, 0.3)}
                     />
                 </div>
                 <div>
-                    <CardFieldLabel>Delay</CardFieldLabel>
+                    <CardFieldLabel>{t("blueprint.displayable.delay")}</CardFieldLabel>
                     <CardNumberInput
                         value={numericParam(params, "delay", 0)}
                         unit="s"
-                        ariaLabel="Animation delay"
+                        ariaLabel={t("blueprint.displayable.animationDelay")}
                         onCommit={raw => patchNumber("delay", raw, 0)}
                     />
                 </div>
             </div>
             <div className="mt-1.5 grid grid-cols-2 gap-1.5">
                 <div>
-                    <CardFieldLabel>Easing</CardFieldLabel>
+                    <CardFieldLabel>{t("blueprint.displayable.easingLabel")}</CardFieldLabel>
                     <Select
                         fullWidth
                         size="sm"
-                        options={DISPLAYABLE_ANIMATE_EASING_OPTIONS}
+                        options={easingOptions}
                         value={easing}
                         onChange={value => onPatchNodeParam(nodeId, "easing", String(value) || "easeOut")}
                         portalMenu
@@ -1672,11 +1859,11 @@ function DisplayableAnimatePropertyCard({
                     />
                 </div>
                 <div>
-                    <CardFieldLabel>After</CardFieldLabel>
+                    <CardFieldLabel>{t("blueprint.displayable.afterLabel")}</CardFieldLabel>
                     <Select
                         fullWidth
                         size="sm"
-                        options={DISPLAYABLE_ANIMATE_AFTER_OPTIONS}
+                        options={afterOptions}
                         value={after}
                         onChange={value => onPatchNodeParam(nodeId, "after", String(value) || "hold")}
                         portalMenu
@@ -1713,6 +1900,7 @@ function BlueprintCommentNodeCard({
     selected?: boolean;
     onPatchNodeParam?: BlueprintNodeParamPatch;
 }) {
+    const { t } = useTranslation();
     const { getZoom } = useReactFlow();
     const colorKey = typeof params.color === "string" && COMMENT_COLORS[params.color] ? params.color : "amber";
     const color = COMMENT_COLORS[colorKey] ?? COMMENT_COLORS.amber;
@@ -1791,7 +1979,7 @@ function BlueprintCommentNodeCard({
                 style={{ borderColor: color.border, background: color.header }}
             >
                 <div
-                    className="min-w-0 flex-1 truncate text-[10px] font-semibold uppercase"
+                    className="min-w-0 flex-1 truncate text-2xs font-semibold"
                     style={{ color: color.text }}
                 >
                     {displayName}
@@ -1805,11 +1993,11 @@ function BlueprintCommentNodeCard({
                             key={key}
                             type="button"
                             className={`h-4 w-4 rounded-full border ${
-                                key === colorKey ? "border-white/85" : "border-white/20"
+                                key === colorKey ? "border-white/85" : "border-edge-strong"
                             }`}
                             style={{ background: item.swatch }}
-                            title={item.label}
-                            aria-label={item.label}
+                            title={commentColorLabel(key, t)}
+                            aria-label={commentColorLabel(key, t)}
                             onClick={e => {
                                 e.stopPropagation();
                                 onPatchNodeParam?.(nodeId, "color", key);
@@ -1823,8 +2011,8 @@ function BlueprintCommentNodeCard({
                                 ? "border-slate-300 bg-slate-400/30"
                                 : "border-slate-500 bg-transparent"
                         }`}
-                        title={backgroundEnabled ? "Background layer on" : "Background layer off"}
-                        aria-label={backgroundEnabled ? "Send comment behind nodes" : "Restore normal comment layer"}
+                        title={backgroundEnabled ? t("blueprint.comment.backgroundOn") : t("blueprint.comment.backgroundOff")}
+                        aria-label={backgroundEnabled ? t("blueprint.comment.sendBehind") : t("blueprint.comment.restoreLayer")}
                         aria-pressed={backgroundEnabled}
                         onClick={e => {
                             e.stopPropagation();
@@ -1838,7 +2026,7 @@ function BlueprintCommentNodeCard({
                 </div>
             </div>
             <TextArea
-                className="nodrag min-h-0 flex-1 resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed text-gray-100 placeholder-white/35 focus:border-transparent"
+                className="nodrag min-h-0 flex-1 resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed text-fg placeholder-white/35 focus:border-transparent"
                 value={typeof params.text === "string" ? params.text : ""}
                 rows={4}
                 placeholder={displayName}
@@ -1847,8 +2035,8 @@ function BlueprintCommentNodeCard({
                 onChange={e => onPatchNodeParam?.(nodeId, "text", e.target.value)}
             />
             <div
-                className="nodrag absolute bottom-1 right-1 h-4 w-4 cursor-nwse-resize rounded-sm border border-white/25 bg-black/20"
-                title="Resize comment"
+                className="nodrag absolute bottom-1 right-1 h-4 w-4 cursor-nwse-resize rounded-sm border border-edge-strong bg-black/20"
+                title={t("blueprint.comment.resize")}
                 onPointerDown={startResize}
             >
                 <div className="absolute bottom-1 right-1 h-2 w-2 border-b border-r border-white/50" />
@@ -1874,10 +2062,11 @@ function BlueprintElementLiteralNodeCard({
     elementPreview?: BlueprintFlowNodeData["elementPreview"];
     onBindElementLiteral?: (nodeId: string) => void;
 }) {
+    const { t } = useTranslation();
     const elementId = typeof params.elementId === "string" ? params.elementId : "";
     const elementType = typeof params.elementType === "string" ? params.elementType : "";
-    const boundLabel = elementPreview?.name || (elementId ? elementId : "Select element");
-    const typeLabel = elementPreview?.type || elementType || "Unbound";
+    const boundLabel = elementPreview?.name || (elementId ? elementId : t("blueprint.element.select"));
+    const typeLabel = elementPreview?.type || elementType || t("blueprint.element.unbound");
     const outputPins = catalog.pins.filter(p => p.kind === "output");
     return (
         <div
@@ -1886,22 +2075,22 @@ function BlueprintElementLiteralNodeCard({
                     ? "border-red-400/85 ring-1 ring-red-500/40"
                     : selected
                       ? "border-yellow-300/90 ring-1 ring-yellow-500/45 shadow-[0_0_20px_rgba(234,179,8,0.18)]"
-                      : "border-white/15"
+                      : "border-edge"
             }`}
             title={firstNodeError?.message}
             aria-invalid={Boolean(firstNodeError)}
         >
-            <div className="border-b border-white/10 px-2 py-1.5">
-                <div className="text-[10px] uppercase text-gray-500">{catalog.category}</div>
-                <div className="font-medium leading-tight text-gray-100">{catalog.displayName}</div>
-                <div className="mt-1 min-w-0 truncate text-[11px] text-gray-300">{boundLabel}</div>
-                <div className="min-w-0 truncate font-mono text-[10px] text-gray-500">{typeLabel}</div>
+            <div className="border-b border-edge px-2 py-1.5">
+                <div className="text-2xs text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
+                <div className="font-medium leading-tight text-fg">{resolveBlueprintNodeTitle(catalog.displayName, t)}</div>
+                <div className="mt-1 min-w-0 truncate text-2xs text-fg-muted">{boundLabel}</div>
+                <div className="min-w-0 truncate font-mono text-2xs text-fg-subtle">{typeLabel}</div>
             </div>
             <div className="mx-2 my-1.5">
                 <button
                     type="button"
-                    className="nodrag block w-full overflow-hidden rounded border border-white/10 bg-black/20 p-1.5 text-left transition-colors hover:border-cyan-300/35 hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50"
-                    aria-label={elementPreview ? `Select element ${boundLabel}` : "Select element"}
+                    className="nodrag block w-full overflow-hidden rounded border border-edge bg-black/20 p-1.5 text-left transition-colors hover:border-cyan-300/35 hover:bg-fill-subtle focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50"
+                    aria-label={elementPreview ? t("blueprint.element.selectNamed", { name: boundLabel }) : t("blueprint.element.select")}
                     onMouseDown={stopFlowNodePointerBubble}
                     onPointerDown={stopFlowNodePointerBubble}
                     onClick={e => {
@@ -1912,8 +2101,8 @@ function BlueprintElementLiteralNodeCard({
                     {elementPreview?.preview ? (
                         elementPreview.preview
                     ) : (
-                        <div className="flex h-[72px] w-full items-center justify-center rounded-sm border border-dashed border-white/10 bg-[#0d1117] text-[11px] text-gray-400">
-                            Select element
+                        <div className="flex h-[72px] w-full items-center justify-center rounded-sm border border-dashed border-edge bg-[#0d1117] text-2xs text-fg-muted">
+                            {t("blueprint.element.select")}
                         </div>
                     )}
                 </button>
@@ -1946,6 +2135,7 @@ function BlueprintImageAssetLiteralNodeCard({
     firstNodeError?: BlueprintFlowNodeDiagnostic;
     onPatchNodeParam?: BlueprintNodeParamPatch;
 }) {
+    const { t } = useTranslation();
     const outputPins = catalog.pins.filter(p => p.kind === "output");
     return (
         <div
@@ -1954,14 +2144,14 @@ function BlueprintImageAssetLiteralNodeCard({
                     ? "border-red-400/85 ring-1 ring-red-500/40"
                     : selected
                       ? "border-cyan-400/80 ring-1 ring-cyan-500/40"
-                      : "border-white/15"
+                      : "border-edge"
             }`}
             title={firstNodeError?.message}
             aria-invalid={Boolean(firstNodeError)}
         >
-            <div className="border-b border-white/10 px-2 py-1.5">
-                <div className="text-[10px] uppercase tracking-wide text-gray-500">{catalog.category}</div>
-                <div className="font-medium leading-tight text-gray-100">{catalog.displayName}</div>
+            <div className="border-b border-edge px-2 py-1.5">
+                <div className="text-2xs tracking-wide text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
+                <div className="font-medium leading-tight text-fg">{resolveBlueprintNodeTitle(catalog.displayName, t)}</div>
             </div>
             <div className="mx-2 my-1.5">
                 <ImageAssetPickerCard
@@ -1984,6 +2174,7 @@ function BlueprintImageAssetLiteralNodeCard({
 }
 
 export function BlueprintFlowNode({ data, selected }: NodeProps) {
+    const { t } = useTranslation();
     const {
         catalog,
         nodeId,
@@ -2006,12 +2197,15 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
     const dataIns = catalog.pins.filter(p => p.kind === "input" && p.semantic === "data");
     const dataOuts = catalog.pins.filter(p => p.kind === "output" && p.semantic === "data");
 
-    const isEventHead = catalog.role === "eventHead";
+    const isEventHead = catalog.role === "eventHead" || catalog.role === "fnHead";
     const isVarDeclare = catalog.type === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR;
     const isTerminalNode = execIns.length > 0 && execOuts.length === 0;
     const firstNodeError = nodeDiagnostics?.find(d => d.severity === "error");
-    const showAddInputRow =
+    const showAddPinRow =
         Boolean(catalog.supportsDynamicInputPins) && Boolean(onAddDynamicInputPin);
+    // Fn head parameters are output pins: keep the add button beside them in the output column.
+    const addPinInOutputColumn = showAddPinRow && Boolean(catalog.dynamicPinsGenerateOutputs);
+    const showAddInInputColumn = showAddPinRow && !addPinInOutputColumn;
     const inspectorParams = catalog.inspectorParams ?? [];
     const showAnimatePropertyCard =
         Boolean(onPatchNodeParam) &&
@@ -2036,6 +2230,10 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
         () => readDynamicPinLabelValues(params, catalog.dynamicInputPinLabelParamKey),
         [catalog.dynamicInputPinLabelParamKey, params],
     );
+    const dynamicTypeValues = useMemo(
+        () => readDynamicPinLabelValues(params, catalog.dynamicInputPinTypeParamKey),
+        [catalog.dynamicInputPinTypeParamKey, params],
+    );
 
     const leftPins: Array<{ pin: CatalogPin; semantic: "exec" | "data" }> = [
         ...execIns.map(pin => ({ pin, semantic: "exec" as const })),
@@ -2045,11 +2243,12 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
         ...execOuts.map(pin => ({ pin, semantic: "exec" as const })),
         ...dataOuts.map(pin => ({ pin, semantic: "data" as const })),
     ];
-    const hasLeftColumn = leftPins.length > 0 || showAddInputRow;
+    const hasLeftColumn = leftPins.length > 0 || showAddInInputColumn;
+    const hasRightColumn = rightPins.length > 0 || addPinInOutputColumn;
 
     /** When only one side has pins, that column must span full card width so handles align to the true edge. */
-    const onlyRightPins = !hasLeftColumn && rightPins.length > 0;
-    const onlyLeftPins = hasLeftColumn && rightPins.length === 0;
+    const onlyRightPins = !hasLeftColumn && hasRightColumn;
+    const onlyLeftPins = hasLeftColumn && !hasRightColumn;
     const rightPinSpacerRows =
         catalog.type === BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING
             ? 2
@@ -2061,7 +2260,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
         return (
             <BlueprintCommentNodeCard
                 nodeId={nodeId}
-                displayName={catalog.displayName}
+                displayName={resolveBlueprintNodeTitle(catalog.displayName, t)}
                 params={params}
                 selected={Boolean(selected)}
                 onPatchNodeParam={onPatchNodeParam}
@@ -2096,6 +2295,25 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
         );
     }
 
+    const addPinButton = (
+        <Button
+            type="button"
+            title={catalog.dynamicInputPinAddLabel ?? t("blueprint.pin.addInput")}
+            className="nodrag mt-0.5 flex w-full items-center justify-center rounded border border-dashed border-edge !py-0.5 text-fg-subtle hover:border-edge-strong hover:bg-fill-subtle hover:text-fg-muted"
+            variant="ghost"
+            size="sm"
+            aria-label={catalog.dynamicInputPinAddLabel ?? t("blueprint.pin.addInput")}
+            onMouseDown={stopFlowNodePointerBubble}
+            onPointerDown={stopFlowNodePointerBubble}
+            onClick={e => {
+                e.stopPropagation();
+                onAddDynamicInputPin?.(nodeId);
+            }}
+        >
+            <Plus className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
+        </Button>
+    );
+
     return (
         <div
             className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-[#1a1d21] text-xs shadow-md ${
@@ -2105,7 +2323,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                     ? "border-red-400/85 ring-1 ring-red-500/40"
                     : selected
                       ? "border-cyan-400/80 ring-1 ring-cyan-500/40"
-                      : "border-white/15"
+                      : "border-edge"
             } ${!firstNodeError && isEventHead ? "border-l-cyan-400/70" : ""} ${
                 !firstNodeError && isVarDeclare ? "border-l-amber-500/80" : ""
             } ${
@@ -2114,9 +2332,9 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
             title={firstNodeError?.message}
             aria-invalid={Boolean(firstNodeError)}
         >
-            <div className="border-b border-white/5 px-2 py-1.5">
-                <div className="text-[10px] uppercase tracking-wide text-gray-500">{catalog.category}</div>
-                <div className="font-medium leading-tight text-gray-100">{catalog.displayName}</div>
+            <div className="border-b border-edge-subtle px-2 py-1.5">
+                <div className="text-2xs tracking-wide text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
+                <div className="font-medium leading-tight text-fg">{resolveBlueprintNodeTitle(catalog.displayName, t)}</div>
                 {showAnimatePropertyCard && onPatchNodeParam ? (
                     <DisplayableAnimatePropertyCard
                         nodeId={nodeId}
@@ -2164,7 +2382,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                       ))
                     : null}
             </div>
-            {hasLeftColumn || rightPins.length > 0 ? (
+            {hasLeftColumn || hasRightColumn ? (
                 <div className="flex items-start gap-1 px-1 py-1.5">
                     {hasLeftColumn ? (
                         <div
@@ -2184,31 +2402,17 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                                     onRemovePin={onRemoveDynamicInputPin}
                                     dynamicLabelParamKey={catalog.dynamicInputPinLabelParamKey}
                                     dynamicLabelValues={dynamicLabelValues}
+                                    dynamicTypeParamKey={catalog.dynamicInputPinTypeParamKey}
+                                    dynamicTypeValues={dynamicTypeValues}
+                                    dynamicTypeOptions={catalog.dynamicInputPinTypeOptions}
                                 />
                             ))}
-                            {showAddInputRow ? (
-                                <Button
-                                    type="button"
-                                    title={catalog.dynamicInputPinAddLabel ?? "Add input pin"}
-                                    className="nodrag mt-0.5 flex w-full items-center justify-center rounded border border-dashed border-white/10 !py-0.5 text-gray-500 hover:border-white/20 hover:bg-white/[0.03] hover:text-gray-400"
-                                    variant="ghost"
-                                    size="sm"
-                                    aria-label={catalog.dynamicInputPinAddLabel ?? "Add input pin"}
-                                    onMouseDown={stopFlowNodePointerBubble}
-                                    onPointerDown={stopFlowNodePointerBubble}
-                                    onClick={e => {
-                                        e.stopPropagation();
-                                        onAddDynamicInputPin?.(nodeId);
-                                    }}
-                                >
-                                    <Plus className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
-                                </Button>
-                            ) : null}
+                            {showAddInInputColumn ? addPinButton : null}
                         </div>
                     ) : (
                         <div className="w-0 shrink-0" aria-hidden />
                     )}
-                    {rightPins.length > 0 ? (
+                    {hasRightColumn ? (
                         <div
                             className={`flex min-w-0 flex-col gap-0.5 ${onlyRightPins ? "w-full min-w-0 flex-1" : "shrink-0"}`}
                         >
@@ -2216,8 +2420,22 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                                 <div key={`right-pin-spacer-${index}`} className="min-h-[20px]" aria-hidden />
                             ))}
                             {rightPins.map(({ pin, semantic }) => (
-                                <OutputPinRow key={`out-${pin.id}`} pin={pin} semantic={semantic} />
+                                <OutputPinRow
+                                    key={`out-${pin.id}`}
+                                    pin={pin}
+                                    semantic={semantic}
+                                    nodeId={nodeId}
+                                    onPatchNodeParam={onPatchNodeParam}
+                                    removable={Boolean(pin.removable)}
+                                    onRemovePin={onRemoveDynamicInputPin}
+                                    dynamicLabelParamKey={catalog.dynamicInputPinLabelParamKey}
+                                    dynamicLabelValues={dynamicLabelValues}
+                                    dynamicTypeParamKey={catalog.dynamicInputPinTypeParamKey}
+                                    dynamicTypeValues={dynamicTypeValues}
+                                    dynamicTypeOptions={catalog.dynamicInputPinTypeOptions}
+                                />
                             ))}
+                            {addPinInOutputColumn ? addPinButton : null}
                         </div>
                     ) : null}
                 </div>

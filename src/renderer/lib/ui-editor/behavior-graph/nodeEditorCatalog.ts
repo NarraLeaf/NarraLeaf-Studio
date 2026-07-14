@@ -6,6 +6,7 @@
 
 import type { BlueprintGraphKind } from "@shared/types/blueprint/graph";
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
+import { isStorySyncValueOwner } from "@shared/types/blueprint/document";
 import { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import {
     isValidBlueprintExecConnection as isValidBlueprintPinConnectionInner,
@@ -56,6 +57,7 @@ export function buildBlueprintPaletteContext(input: {
         hasEventHead: input.hasEventHead,
         hasFunctionEntry: input.hasFunctionEntry,
         isBlueprintValueGraph: input.isBlueprintValueGraph,
+        isSyncOnlyGraph: isStorySyncValueOwner(input.owner),
         listItemContextAvailable: input.listItemContextAvailable,
         magicElementRefs: input.magicElementRefs,
         isComponentDefinitionGraph: input.isComponentDefinitionGraph,

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Music } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { PropertyEditorProps } from "./PropertyEditorBase";
 import { BasePropertyEditor } from "./BasePropertyEditor";
 import { AssetType, AssetData } from "@/lib/workspace/services/assets/assetTypes";
@@ -12,6 +13,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
  * Allows editing name, tags, and description for audio assets
  */
 export function AudioPropertyEditor({ asset, onChange }: PropertyEditorProps<AssetType.Audio>) {
+    const { t, tn } = useTranslation();
     const { context } = useWorkspace();
     const [audioData, setAudioData] = useState<AssetData<AssetType.Audio> | null>(null);
 
@@ -45,16 +47,16 @@ export function AudioPropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
         <BasePropertyEditor asset={asset} onChange={onChange}>
             {/* Preview */}
             {audioData && (
-                <div className="bg-[#1e1f22] rounded-md p-3 border border-white/10">
+                <div className="bg-surface-raised rounded-md p-3 border border-edge">
                     <div className="flex items-center gap-2 mb-2">
-                        <Music className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm font-medium text-gray-300">Audio Info</span>
+                        <Music className="w-4 h-4 text-fg-muted" />
+                        <span className="text-sm font-medium text-fg-muted">{t("properties.asset.audio.preview")}</span>
                     </div>
-                    <div className="flex items-center justify-center bg-[#0f1115] rounded p-2">
-                        <div className="text-xs text-gray-500 text-center">
+                    <div className="flex items-center justify-center bg-surface rounded p-2">
+                        <div className="text-xs text-fg-subtle text-center">
                             {formatDuration(audioData.metadata.duration)}
                             <br />
-                            {audioData.metadata.channels} channel{audioData.metadata.channels > 1 ? 's' : ''}
+                            {tn("properties.asset.audio.channelCount", audioData.metadata.channels)}
                             <br />
                             {audioData.metadata.sampleRate} Hz
                         </div>
@@ -65,33 +67,33 @@ export function AudioPropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
             {/* Technical Info (Read-only) */}
             {audioData && (
                 <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">
-                        Audio Information
+                    <label className="block text-xs font-medium text-fg-muted mb-1">
+                        {t("properties.asset.audio.info")}
                     </label>
-                    <div className="bg-[#1e1f22] border border-white/10 rounded-md p-3 space-y-1">
+                    <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-1">
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Duration:</span>
-                            <span className="text-gray-300">{formatDuration(audioData.metadata.duration)}</span>
+                            <span className="text-fg-muted">{t("properties.asset.info.duration")}:</span>
+                            <span className="text-fg-muted">{formatDuration(audioData.metadata.duration)}</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Sample Rate:</span>
-                            <span className="text-gray-300">{audioData.metadata.sampleRate} Hz</span>
+                            <span className="text-fg-muted">{t("properties.asset.info.sampleRate")}:</span>
+                            <span className="text-fg-muted">{audioData.metadata.sampleRate} Hz</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Channels:</span>
-                            <span className="text-gray-300">{audioData.metadata.channels}</span>
+                            <span className="text-fg-muted">{t("properties.asset.info.channels")}:</span>
+                            <span className="text-fg-muted">{audioData.metadata.channels}</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Format:</span>
-                            <span className="text-gray-300">{audioData.metadata.format.toUpperCase()}</span>
+                            <span className="text-fg-muted">{t("properties.asset.info.format")}:</span>
+                            <span className="text-fg-muted">{audioData.metadata.format.toUpperCase()}</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Size:</span>
-                            <span className="text-gray-300">{(audioData.metadata.size / 1024).toFixed(1)} KB</span>
+                            <span className="text-fg-muted">{t("properties.asset.info.size")}:</span>
+                            <span className="text-fg-muted">{(audioData.metadata.size / 1024).toFixed(1)} KB</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Hash:</span>
-                            <span className="text-gray-300 font-mono text-[10px]">{asset.hash.slice(0, 16)}...</span>
+                            <span className="text-fg-muted">{t("properties.asset.info.hash")}:</span>
+                            <span className="text-fg-muted font-mono text-2xs">{asset.hash.slice(0, 16)}...</span>
                         </div>
                     </div>
                 </div>

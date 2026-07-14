@@ -8,6 +8,7 @@ const distRootDir = path.join(distRoot, 'builtin-plugins');
 
 const pluginExternals = [
     'narraleaf-studio/plugin',
+    'narraleaf-studio/runtime',
     'react',
     'react-dom',
     'react-dom/client',
@@ -32,10 +33,21 @@ function readManifest(pluginDir) {
     return JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
 }
 
-function resolveSourceEntry(pluginDir, manifest) {
-    const entry = typeof manifest.entry === 'string' && manifest.entry.trim()
-        ? manifest.entry.trim()
-        : 'main.js';
+function resolveManifestEntries(pluginDir, manifest) {
+    const entries = manifest.entries;
+    if (!entries || typeof entries !== 'object' || Array.isArray(entries)) {
+        throw new Error(`Built-in plugin manifest must declare "entries" (manifestVersion 2): ${path.relative(rootDir, pluginDir)}`);
+    }
+    const declared = ['studio', 'runtime']
+        .map(target => ({ target, entry: typeof entries[target] === 'string' ? entries[target].trim() : '' }))
+        .filter(item => item.entry);
+    if (declared.length === 0) {
+        throw new Error(`Built-in plugin manifest declares no entries: ${path.relative(rootDir, pluginDir)}`);
+    }
+    return declared;
+}
+
+function resolveSourceEntry(pluginDir, manifest, entry) {
     const parsed = path.parse(entry);
     const candidates = [
         path.join(pluginDir, `${parsed.name}.tsx`),
@@ -57,43 +69,48 @@ function resolveSourceEntry(pluginDir, manifest) {
 async function buildBuiltInPlugin(pluginDir, options = {}) {
     const dev = options.dev ?? isDev();
     const manifest = readManifest(pluginDir);
-    const entry = typeof manifest.entry === 'string' && manifest.entry.trim()
-        ? manifest.entry.trim()
-        : 'main.js';
-    const sourceEntry = resolveSourceEntry(pluginDir, manifest);
+    const declaredEntries = resolveManifestEntries(pluginDir, manifest);
     const pluginName = path.basename(pluginDir);
     const outDir = path.join(distRootDir, pluginName);
-    const outfile = path.join(outDir, entry);
 
     fs.rmSync(outDir, { recursive: true, force: true });
-    fs.mkdirSync(path.dirname(outfile), { recursive: true });
+    fs.mkdirSync(outDir, { recursive: true });
 
-    await esbuild.build({
-        entryPoints: [sourceEntry],
-        outfile,
-        bundle: true,
-        platform: 'browser',
-        format: 'esm',
-        sourcemap: dev,
-        minify: !dev,
-        jsx: 'automatic',
-        target: ['chrome114'],
-        external: pluginExternals,
-        loader: {
-            '.ts': 'ts',
-            '.tsx': 'tsx',
-            '.jsx': 'jsx',
-            '.js': 'js',
-            '.css': 'css',
-        },
-    });
+    const outfiles = [];
+    for (const { entry } of declaredEntries) {
+        const sourceEntry = resolveSourceEntry(pluginDir, manifest, entry);
+        const outfile = path.join(outDir, entry);
+        fs.mkdirSync(path.dirname(outfile), { recursive: true });
+
+        await esbuild.build({
+            entryPoints: [sourceEntry],
+            outfile,
+            bundle: true,
+            platform: 'browser',
+            format: 'esm',
+            sourcemap: dev,
+            minify: !dev,
+            jsx: 'automatic',
+            target: ['chrome114'],
+            external: pluginExternals,
+            loader: {
+                '.ts': 'ts',
+                '.tsx': 'tsx',
+                '.jsx': 'jsx',
+                '.js': 'js',
+                '.css': 'css',
+            },
+        });
+        outfiles.push(outfile);
+    }
 
     fs.copyFileSync(path.join(pluginDir, 'manifest.json'), path.join(outDir, 'manifest.json'));
     return {
         id: manifest.id || pluginName,
         sourceDir: pluginDir,
         outDir,
-        outfile,
+        outfile: outfiles[0],
+        outfiles,
     };
 }
 

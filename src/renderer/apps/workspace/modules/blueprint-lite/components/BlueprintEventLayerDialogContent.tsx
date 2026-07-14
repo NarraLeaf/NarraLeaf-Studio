@@ -23,6 +23,8 @@ import {
 import { Input, InputGroup } from "@/lib/components/elements/Input";
 import { Select, type SelectOption } from "@/lib/components/elements/Select";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/blueprint-nodes/types";
+import { useTranslation } from "@/lib/i18n";
+import { resolveBlueprintNodeTitle } from "../blueprintNodeI18n";
 
 export type BlueprintEventLayerEntry = Pick<BlueprintNodeEditorCatalogEntry, "type" | "displayName">;
 
@@ -85,6 +87,7 @@ type Props = {
 };
 
 export function BlueprintEventLayerDialogContent({ entries, defaultName, onChange }: Props) {
+    const { t } = useTranslation();
     const sortedEntries = useMemo(() => sortBlueprintEventLayerEntries(entries), [entries]);
     const [nodeType, setNodeType] = useState("");
     const [name, setName] = useState(defaultName);
@@ -94,15 +97,15 @@ export function BlueprintEventLayerDialogContent({ entries, defaultName, onChang
             { value: "", label: "-" },
             ...sortedEntries.map(entry => ({
                 value: entry.type,
-                label: entry.displayName,
+                label: resolveBlueprintNodeTitle(entry.displayName, t),
                 secondaryLabel: entry.type,
             })),
         ],
-        [sortedEntries],
+        [sortedEntries, t],
     );
 
     const trimmedName = name.trim();
-    const nameError = trimmedName.length === 0 ? "Name is required" : undefined;
+    const nameError = trimmedName.length === 0 ? t("blueprint.validation.nameRequired") : undefined;
     const valid = !nameError && (nodeType === "" || Boolean(entryByType.get(nodeType)));
 
     useEffect(() => {
@@ -111,7 +114,7 @@ export function BlueprintEventLayerDialogContent({ entries, defaultName, onChang
 
     return (
         <div className="space-y-4">
-            <InputGroup label="Event">
+            <InputGroup label={t("blueprint.eventLayer.event")}>
                 <Select
                     fullWidth
                     options={selectOptions}
@@ -120,14 +123,15 @@ export function BlueprintEventLayerDialogContent({ entries, defaultName, onChang
                         const nextType = String(value);
                         setNodeType(nextType);
                         if (nextType) {
-                            setName(entryByType.get(nextType)?.displayName ?? name);
+                            const nextEntry = entryByType.get(nextType);
+                            setName(nextEntry ? resolveBlueprintNodeTitle(nextEntry.displayName, t) : name);
                         }
                     }}
                     placeholder="-"
                     portalMenu
                 />
             </InputGroup>
-            <InputGroup label="Layer name" required error={nameError}>
+            <InputGroup label={t("blueprint.eventLayer.layerName")} required error={nameError}>
                 <Input
                     value={name}
                     onChange={event => setName(event.target.value)}

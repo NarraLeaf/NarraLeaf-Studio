@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "@/lib/i18n";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { IconButtonSegGroup } from "@/apps/workspace/modules/properties/framework/fields/IconButtonSegGroup";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
@@ -20,7 +21,7 @@ import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEdito
 
 const BORDER_STYLE_SELECT_OPTIONS = BORDER_STYLE_OPTIONS.map(o => ({
     value: o.value,
-    label: o.label,
+    labelKey: o.labelKey,
 }));
 
 function coerceBorderStyleSelectValue(raw: string): string {
@@ -68,6 +69,7 @@ export function BorderStrokeCompactRows({
     moreMenu,
     moreMenuAriaLabel,
 }: BorderStrokeCompactRowsProps) {
+    const { t } = useTranslation();
     const [sidesExpanded, setSidesExpanded] = useState(false);
 
     useEffect(() => {
@@ -108,7 +110,7 @@ export function BorderStrokeCompactRows({
                             type="number"
                             min={0}
                             unit="px"
-                            leftIcon={<Square className="w-4 h-4 text-gray-400" />}
+                            leftIcon={<Square className="w-4 h-4 text-fg-muted" />}
                             className="w-full min-w-0"
                         />
                         {motionVisible ? (
@@ -123,8 +125,8 @@ export function BorderStrokeCompactRows({
                 </div>
                 <button
                     type="button"
-                    title="Border sides"
-                    aria-label="Expand border sides"
+                    title={t("widgetAppearance.border.sidesTitle")}
+                    aria-label={t("widgetAppearance.border.sidesExpandAria")}
                     aria-pressed={sidesExpanded}
                     onClick={toggleSidesExpanded}
                     className={controlButtonClass(sidesExpanded)}
@@ -185,7 +187,7 @@ export function BorderStrokeCompactRows({
                             min={0}
                             max={100}
                             precision={null}
-                            leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                            leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                             className="w-full min-w-0"
                         />
                         {motionVisible ? (

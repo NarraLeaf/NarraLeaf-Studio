@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Star } from "lucide-react";
 import type { PanelComponentProps } from "../../types";
+import { useTranslation } from "@/lib/i18n";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
@@ -8,11 +9,14 @@ import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsSe
 import {
     ACTION_COMMAND_CATEGORIES,
     ACTION_COMMANDS,
+    actionCommandMatchesQuery,
     getActionCommandCategory,
-    type ActionCommand,
+    localizeActionCommand,
+    translateActionCommandCategoryLabel,
     type ActionCommandCategory,
-    type ActionCommandId,
+    type PaletteActionCommand,
 } from "./storyActionCommands";
+import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import {
     dispatchStoryActionCreateRequest,
     type StoryActionCreatorPanelPayload,
@@ -29,6 +33,7 @@ type SidebarCategory = ActionCommandCategory | {
 };
 
 export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryActionCreatorPanelPayload>) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const settingsService = useMemo(
         () => context && isInitialized ? context.services.get<GlobalSettingsService>(Services.GlobalSettings) : null,
@@ -36,17 +41,18 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
     );
     const [query, setQuery] = useState("");
     const [activeCategoryId, setActiveCategoryId] = useState<SidebarCategory["id"]>("all");
-    const [starredIds, setStarredIds] = useState<Set<ActionCommandId>>(() => new Set());
+    const [starredIds, setStarredIds] = useState<Set<string>>(() => new Set());
+    const pluginCommands = useStoryPluginActionCommands();
 
     useEffect(() => {
         if (!settingsService) {
             return;
         }
         const stored = settingsService.getSync<string[]>(FAVORITES_SETTING_KEY, []) ?? [];
-        setStarredIds(new Set(stored.filter(isActionCommandId)));
+        setStarredIds(new Set(stored.filter(id => typeof id === "string")));
     }, [settingsService]);
 
-    const persistStarredIds = useCallback((next: Set<ActionCommandId>) => {
+    const persistStarredIds = useCallback((next: Set<string>) => {
         if (!settingsService) {
             return;
         }
@@ -55,7 +61,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
         });
     }, [settingsService]);
 
-    const toggleStarred = useCallback((commandId: ActionCommandId) => {
+    const toggleStarred = useCallback((commandId: string) => {
         setStarredIds(previous => {
             const next = new Set(previous);
             next.has(commandId) ? next.delete(commandId) : next.add(commandId);
@@ -65,30 +71,28 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
     }, [persistStarredIds]);
 
     const categories = useMemo<SidebarCategory[]>(() => [
-        { id: STARRED_CATEGORY_ID, label: "Starred", icon: Star, iconColor: "#c8b06e" },
-        ...ACTION_COMMAND_CATEGORIES,
-    ], []);
+        { id: STARRED_CATEGORY_ID, label: t("story.actionCreator.starred"), icon: Star, iconColor: "#c8b06e" },
+        ...ACTION_COMMAND_CATEGORIES.map(category => ({ ...category, label: translateActionCommandCategoryLabel(category, t) })),
+    ], [t]);
+
+    const allCommands = useMemo<PaletteActionCommand[]>(() => [
+        ...ACTION_COMMANDS,
+        ...pluginCommands,
+    ].map(command => localizeActionCommand(command, t)), [pluginCommands, t]);
 
     const filteredCommands = useMemo(() => {
-        const normalizedQuery = query.trim().toLowerCase();
-        return ACTION_COMMANDS.filter(command => {
+        return allCommands.filter(command => {
             if (activeCategoryId === STARRED_CATEGORY_ID && !starredIds.has(command.id)) {
                 return false;
             }
             if (activeCategoryId !== STARRED_CATEGORY_ID && activeCategoryId !== "all" && command.category !== activeCategoryId) {
                 return false;
             }
-            if (!normalizedQuery) {
-                return true;
-            }
-            return command.label.toLowerCase().includes(normalizedQuery) ||
-                command.id.toLowerCase().includes(normalizedQuery) ||
-                command.detail.toLowerCase().includes(normalizedQuery) ||
-                command.nlrCapability?.toLowerCase().includes(normalizedQuery);
+            return actionCommandMatchesQuery(command, query);
         });
-    }, [activeCategoryId, query, starredIds]);
+    }, [activeCategoryId, allCommands, query, starredIds]);
 
-    const createAction = useCallback((commandId: ActionCommandId) => {
+    const createAction = useCallback((commandId: string) => {
         if (!payload?.tabId) {
             return;
         }
@@ -97,11 +101,11 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
 
     return (
         <div className="flex h-full min-h-0 flex-col bg-[#101318]">
-            <div className="border-b border-white/10 bg-[#0f1115] px-3 py-3">
+            <div className="border-b border-edge bg-surface px-3 py-3">
                 <SearchBox
                     value={query}
                     onChange={setQuery}
-                    placeholder="Search actions"
+                    placeholder={t("story.actionCreator.searchPlaceholder")}
                     className="w-full"
                 />
                 <div
@@ -125,7 +129,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                                     "flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors",
                                     active
                                         ? "border-primary/45 bg-primary/15 text-white"
-                                        : "border-white/10 bg-white/[0.03] text-slate-400 hover:bg-white/[0.06] hover:text-slate-100",
+                                        : "border-edge bg-fill-subtle text-fg-muted hover:bg-fill hover:text-fg",
                                 ].join(" ")}
                                 onClick={() => setActiveCategoryId(category.id)}
                             >
@@ -139,8 +143,8 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
 
             <div className="min-h-0 flex-1 overflow-auto p-2">
                 {filteredCommands.length === 0 ? (
-                    <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-500">
-                        No action found.
+                    <div className="rounded-md border border-edge bg-fill-subtle px-3 py-3 text-sm text-fg-subtle">
+                        {t("story.actionCreator.noActions")}
                     </div>
                 ) : (
                     <div className="grid gap-1">
@@ -161,35 +165,36 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
 }
 
 function ActionCreatorRow(props: {
-    command: ActionCommand;
+    command: PaletteActionCommand;
     starred: boolean;
-    onToggleStarred: (commandId: ActionCommandId) => void;
-    onCreate: (commandId: ActionCommandId) => void;
+    onToggleStarred: (commandId: string) => void;
+    onCreate: (commandId: string) => void;
 }) {
+    const { t } = useTranslation();
     const category = getActionCommandCategory(props.command.category);
     const Icon = props.command.icon;
     return (
-        <div className="group flex items-center rounded-md transition-colors hover:bg-white/[0.06]">
+        <div className="group flex items-center rounded-md transition-colors hover:bg-fill">
             <button
                 type="button"
                 className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-2 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
                 onClick={() => props.onCreate(props.command.id)}
             >
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04]">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle">
                     <Icon className="h-4 w-4" style={{ color: category.iconColor }} />
                 </span>
                 <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-slate-100">{props.command.label}</span>
-                    <span className="block truncate text-[11px] text-slate-500">{props.command.detail}</span>
+                    <span className="block truncate text-sm text-fg">{props.command.label}</span>
+                    <span className="block truncate text-2xs text-fg-subtle">{props.command.detail}</span>
                 </span>
             </button>
             <button
                 type="button"
                 className={[
-                    "mr-1 grid h-7 w-7 shrink-0 place-items-center rounded text-slate-500 transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50",
+                    "mr-1 grid h-7 w-7 shrink-0 place-items-center rounded text-fg-subtle transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50",
                     props.starred ? "opacity-100 text-[#c8b06e]" : "opacity-0 hover:text-[#c8b06e] group-hover:opacity-100",
                 ].join(" ")}
-                title={props.starred ? "Remove from starred" : "Add to starred"}
+                title={props.starred ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")}
                 onClick={() => props.onToggleStarred(props.command.id)}
             >
                 <Star className="h-3.5 w-3.5" fill={props.starred ? "currentColor" : "none"} />
@@ -198,6 +203,3 @@ function ActionCreatorRow(props: {
     );
 }
 
-function isActionCommandId(value: string): value is ActionCommandId {
-    return ACTION_COMMANDS.some(command => command.id === value);
-}

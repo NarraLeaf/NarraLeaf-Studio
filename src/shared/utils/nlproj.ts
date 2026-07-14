@@ -1,5 +1,6 @@
 import msgpack from "msgpack-lite";
 import { transliterate } from "transliteration";
+import type { ProjectDependencyTable } from "../types/pluginDependencies";
 import { join } from "./path";
 
 /**
@@ -10,6 +11,8 @@ export interface ProjectConfigData {
     name: string;
     identifier: string;
     metadata: Record<string, unknown>;
+    app?: Record<string, unknown>;
+    dependencies?: ProjectDependencyTable;
 }
 
 const NLPROJ_EXT = ".nlproj";

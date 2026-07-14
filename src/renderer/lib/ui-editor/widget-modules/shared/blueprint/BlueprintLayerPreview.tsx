@@ -1,5 +1,6 @@
 import "@xyflow/react/dist/style.css";
 import { memo } from "react";
+import { useTranslation } from "@/lib/i18n";
 import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/blueprint/document";
@@ -26,11 +27,16 @@ type MiniPreviewNodeData = {
     role: MiniPreviewRole;
     width: number;
     height: number;
+    /** Real node title + data-pin labels, shown only in the `detailed` variant. */
+    title?: string;
+    inputs?: string[];
+    outputs?: string[];
+    detailed?: boolean;
 };
 
 export type BlueprintLayerPreviewModel = {
     graphName: string | null;
-    emptyLabel?: string;
+    emptyReason?: "noLayer" | "emptyLayer";
     nodes: Node<MiniPreviewNodeData>[];
     edges: Edge[];
 };
@@ -70,23 +76,35 @@ function inferEdgeColor(fromPort: string, toPort: string): string {
     return port.includes("value") || port.includes("result") || port.includes("data") ? "#f59e0b" : "#22d3ee";
 }
 
-function resolvePreviewNodeSize(
+type PreviewNodeDescriptor = {
+    width: number;
+    height: number;
+    title?: string;
+    inputs?: string[];
+    outputs?: string[];
+};
+
+function describePreviewNode(
     node: BlueprintGraphNode,
     nodeCatalog: BlueprintNodeCatalogService | null,
-): { width: number; height: number } {
+): PreviewNodeDescriptor {
     const entry = nodeCatalog?.resolveCatalogEntryForNode(node.type, node.params ?? {});
     if (!entry) {
-        return FALLBACK_NODE_SIZE;
+        return { ...FALLBACK_NODE_SIZE };
     }
 
-    const leftPins = entry.pins.filter(pin => pin.kind === "input").length;
-    const rightPins = entry.pins.filter(pin => pin.kind === "output").length;
-    const pinRows = Math.max(leftPins, rightPins, entry.supportsDynamicInputPins ? 1 : 0);
+    const inputPins = entry.pins.filter(pin => pin.kind === "input");
+    const outputPins = entry.pins.filter(pin => pin.kind === "output");
+    const pinRows = Math.max(inputPins.length, outputPins.length, entry.supportsDynamicInputPins ? 1 : 0);
     const inspectorRows = entry.inspectorParams?.length ?? 0;
     const width = entry.role === "eventHead" ? 240 : entry.role === "dataLiteral" ? 200 : 220;
     const height = Math.max(58, 44 + pinRows * 22 + inspectorRows * 28);
 
-    return { width, height };
+    // Data-pin labels only — exec pins are rendered as the header accent, not as text rows.
+    const inputs = inputPins.filter(pin => pin.semantic === "data").map(pin => pin.label ?? pin.id);
+    const outputs = outputPins.filter(pin => pin.semantic === "data").map(pin => pin.label ?? pin.id);
+
+    return { width, height, title: entry.displayName ?? node.type, inputs, outputs };
 }
 
 function buildPreviewModel(
@@ -98,23 +116,27 @@ function buildPreviewModel(
     if (graphNodes.length === 0) {
         return {
             graphName: graphName ?? null,
-            emptyLabel: "Empty layer",
+            emptyReason: "emptyLayer",
             nodes: [],
             edges: [],
         };
     }
 
     const nodes: Node<MiniPreviewNodeData>[] = graphNodes.map((node, index) => {
-        const size = resolvePreviewNodeSize(node, nodeCatalog);
+        const descriptor = describePreviewNode(node, nodeCatalog);
         return {
             id: node.id,
             type: PREVIEW_NODE_TYPE,
             position: readLayout(node, index, graphNodes.length),
-            width: size.width,
-            height: size.height,
+            width: descriptor.width,
+            height: descriptor.height,
             data: {
                 role: inferNodeRole(node),
-                ...size,
+                width: descriptor.width,
+                height: descriptor.height,
+                title: descriptor.title,
+                inputs: descriptor.inputs,
+                outputs: descriptor.outputs,
             },
             draggable: false,
             selectable: false,
@@ -170,7 +192,7 @@ export function resolveFirstBlueprintLayerPreview(
     if (!firstLayer) {
         return {
             graphName: null,
-            emptyLabel: "No layer",
+            emptyReason: "noLayer",
             nodes: [],
             edges: [],
         };
@@ -191,12 +213,23 @@ function miniNodeClass(role: MiniPreviewRole): string {
     return "border-slate-200/70 bg-slate-500/80";
 }
 
+function detailedHeaderClass(role: MiniPreviewRole): string {
+    if (role === "event") {
+        return "bg-cyan-500/85 text-cyan-50";
+    }
+    if (role === "function") {
+        return "bg-violet-500/80 text-violet-50";
+    }
+    if (role === "data") {
+        return "bg-amber-500/80 text-amber-950";
+    }
+    return "bg-slate-500/85 text-slate-50";
+}
+
 const MiniBlueprintNode = memo(function MiniBlueprintNode({ data }: NodeProps<Node<MiniPreviewNodeData>>) {
-    return (
-        <div
-            className={`rounded-[5px] border shadow-sm ${miniNodeClass(data.role)}`}
-            style={{ width: data.width, height: data.height }}
-        >
+    const { t } = useTranslation();
+    const handles = (
+        <>
             <Handle
                 type="target"
                 id={PREVIEW_TARGET_HANDLE}
@@ -211,6 +244,52 @@ const MiniBlueprintNode = memo(function MiniBlueprintNode({ data }: NodeProps<No
                 isConnectable={false}
                 className="!h-0 !w-0 !border-0 !bg-transparent"
             />
+        </>
+    );
+
+    if (data.detailed) {
+        const inputs = data.inputs ?? [];
+        const outputs = data.outputs ?? [];
+        const rows = Math.max(inputs.length, outputs.length);
+        return (
+            <div
+                className="flex flex-col overflow-hidden rounded-md border border-slate-200/25 bg-[#1b1f27] shadow-md"
+                style={{ width: data.width, height: data.height }}
+            >
+                {handles}
+                <div className={`truncate px-2 py-1 text-[13px] font-medium ${detailedHeaderClass(data.role)}`}>
+                    {data.title ?? t("widgetChrome.blueprint.node")}
+                </div>
+                {rows > 0 ? (
+                    <div className="flex flex-1 justify-between gap-2 px-2 py-1.5">
+                        <div className="flex min-w-0 flex-col gap-1">
+                            {inputs.map((label, index) => (
+                                <span key={`in-${index}`} className="flex items-center gap-1 truncate text-[11px] text-slate-300">
+                                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400" />
+                                    {label}
+                                </span>
+                            ))}
+                        </div>
+                        <div className="flex min-w-0 flex-col items-end gap-1">
+                            {outputs.map((label, index) => (
+                                <span key={`out-${index}`} className="flex items-center gap-1 truncate text-[11px] text-slate-300">
+                                    {label}
+                                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                ) : null}
+            </div>
+        );
+    }
+
+    return (
+        <div
+            className={`rounded-[5px] border shadow-sm ${miniNodeClass(data.role)}`}
+            style={{ width: data.width, height: data.height }}
+        >
+            {handles}
         </div>
     );
 });
@@ -221,14 +300,25 @@ const miniNodeTypes: NodeTypes = {
 
 export function BlueprintLayerPreview({
     model,
-    heightClassName = "h-[112px]",
+    heightClassName,
+    variant = "mini",
 }: {
     model: BlueprintLayerPreviewModel | null;
     heightClassName?: string;
+    /**
+     * "mini" (default): abstract role-colored boxes — compact entry cards. "detailed": each box shows
+     * the real node title + data-pin labels, sized larger so the graph is actually readable.
+     */
+    variant?: "mini" | "detailed";
 }) {
+    const { t } = useTranslation();
+    const detailed = variant === "detailed";
+    const resolvedHeight = heightClassName ?? (detailed ? "h-[200px]" : "h-[112px]");
     const hasLayer = model !== null;
     const hasNodes = Boolean(model?.nodes.length);
-    const nodes = model?.nodes ?? [];
+    const nodes = detailed
+        ? (model?.nodes ?? []).map(node => ({ ...node, data: { ...node.data, detailed: true } }))
+        : (model?.nodes ?? []);
     const edges = model?.edges ?? [];
     const flowKey = `${nodes
         .map(node => `${node.id}:${node.position.x}:${node.position.y}:${node.width}:${node.height}`)
@@ -236,7 +326,7 @@ export function BlueprintLayerPreview({
 
     return (
         <div
-            className={`relative ${heightClassName} w-full overflow-hidden rounded-md border border-white/10 bg-[#05060a]`}
+            className={`relative ${resolvedHeight} w-full overflow-hidden rounded-md border border-edge bg-surface-canvas`}
         >
             <ReactFlowProvider>
                 <ReactFlow
@@ -245,9 +335,9 @@ export function BlueprintLayerPreview({
                     edges={edges}
                     nodeTypes={miniNodeTypes}
                     fitView
-                    fitViewOptions={{ padding: 0.22, minZoom: 0.08, maxZoom: 0.85, duration: 0 }}
+                    fitViewOptions={{ padding: 0.22, minZoom: 0.08, maxZoom: detailed ? 1 : 0.85, duration: 0 }}
                     minZoom={0.08}
-                    maxZoom={0.85}
+                    maxZoom={detailed ? 1 : 0.85}
                     nodesDraggable={false}
                     nodesConnectable={false}
                     elementsSelectable={false}
@@ -260,18 +350,22 @@ export function BlueprintLayerPreview({
                     preventScrolling={false}
                     proOptions={{ hideAttribution: true }}
                     onlyRenderVisibleElements
-                    className="pointer-events-none bg-[#05060a]"
+                    className="pointer-events-none bg-surface-canvas"
                 >
                     <Background color="rgba(148, 163, 184, 0.18)" gap={18} size={1} />
                 </ReactFlow>
             </ReactFlowProvider>
             {!hasLayer || !hasNodes ? (
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-[11px] text-slate-500">
-                    {!hasLayer ? "No blueprint" : model?.emptyLabel ?? "Empty layer"}
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-2xs text-fg-subtle">
+                    {!hasLayer
+                        ? t("widgetChrome.blueprint.noBlueprint")
+                        : model?.emptyReason === "noLayer"
+                          ? t("widgetChrome.blueprint.noLayer")
+                          : t("widgetChrome.blueprint.emptyLayer")}
                 </div>
             ) : null}
             {model?.graphName ? (
-                <div className="pointer-events-none absolute bottom-2 left-2 max-w-[calc(100%-16px)] truncate text-[10px] text-slate-500">
+                <div className="pointer-events-none absolute bottom-2 left-2 max-w-[calc(100%-16px)] truncate text-2xs text-fg-subtle">
                     {model.graphName}
                 </div>
             ) : null}

@@ -257,13 +257,14 @@ export class DevModeManager {
         const uidocPath = path.join(session.projectPath, "editor", "ui", "uidoc.json");
         const uigraphsPath = path.join(session.projectPath, "editor", "ui", "uigraphs.json");
         const storyRoot = path.join(session.projectPath, "editor", "story");
+        const localizationRoot = path.join(session.projectPath, "editor", "localization");
         const characterStorePath = path.join(session.projectPath, "editor", "services", "character.json");
         const assetsRoot = path.join(session.projectPath, "assets");
         const blueprintMetaPath = path.join(assetsRoot, "assets.metadata.blueprint.json");
         const assetsContentRoot = path.join(assetsRoot, "content");
         this.emitVerbose(session, "watching project files for Dev Mode reload");
         session.watcher = chokidar.watch(
-            [uidocPath, uigraphsPath, storyRoot, characterStorePath, blueprintMetaPath, assetsContentRoot],
+            [uidocPath, uigraphsPath, storyRoot, localizationRoot, characterStorePath, blueprintMetaPath, assetsContentRoot],
             { ignoreInitial: true },
         );
         session.watcher.on("add", file => this.scheduleReload(session, "add", file));

@@ -23,6 +23,11 @@ import {
     Volume2,
 } from "lucide-react";
 import type { StoryBlock } from "@shared/types/story";
+import type { TranslationKey } from "@shared/i18n";
+import { translate } from "@/lib/i18n";
+
+/** Minimal translate signature (from `useTranslation().t`) accepted by the label resolvers below. */
+type ActionCommandTranslate = (key: TranslationKey) => string;
 
 export type ActionCommandId =
     | "narration"
@@ -31,6 +36,10 @@ export type ActionCommandId =
     | "choiceOption"
     | "condition"
     | "conditionBranch"
+    | "repeat"
+    | "parallel"
+    | "race"
+    | "sequence"
     | "background"
     | "characterEnter"
     | "characterMove"
@@ -45,6 +54,7 @@ export type ActionCommandId =
     | "soundRate"
     | "muteSound"
     | "setVariable"
+    | "executeScript"
     | "imageCreate"
     | "imageSetSource"
     | "imageShow"
@@ -52,6 +62,7 @@ export type ActionCommandId =
     | "displayableTransform"
     | "displayableShow"
     | "displayableHide"
+    | "displayableEffect"
     | "textCreate"
     | "textSet"
     | "textShow"
@@ -104,7 +115,70 @@ export type ActionCommand = {
     icon: typeof Settings2;
     nlrCapability?: string;
     status?: "ready" | "comingSoon";
+    /** Slash aliases that jump straight to this command, e.g. "//" → Note. */
+    aliases?: string[];
 };
+
+/**
+ * A palette command from any source: built-in ({@link ActionCommand}) or a
+ * plugin story action (namespaced string id). Structurally identical to
+ * ActionCommand except the id is not restricted to the built-in union.
+ */
+export type PaletteActionCommand = Omit<ActionCommand, "id"> & { id: string };
+
+export function isActionCommandId(value: string): value is ActionCommandId {
+    return ACTION_COMMANDS.some(command => command.id === value);
+}
+
+/** Project a plugin story action registration onto the palette command shape. */
+export function pluginActionToPaletteCommand(registration: {
+    id: string;
+    label: string;
+    detail?: string;
+}): PaletteActionCommand {
+    return {
+        id: registration.id,
+        category: "plugin",
+        label: registration.label,
+        detail: registration.detail ?? translate("story.pluginActionFallbackDetail"),
+        icon: Puzzle,
+    };
+}
+
+/**
+ * Display label for a palette command in the active locale. Built-in commands map by their stable
+ * id to `story.actionCommand.<id>.label`; plugin commands (author-supplied ids) keep their
+ * registered label. Resolve at render time — never snapshot at import.
+ */
+export function translateActionCommandLabel(command: PaletteActionCommand, t: ActionCommandTranslate): string {
+    return isActionCommandId(command.id)
+        ? t(`story.actionCommand.${command.id}.label` as TranslationKey)
+        : command.label;
+}
+
+/** Display detail for a palette command in the active locale. See {@link translateActionCommandLabel}. */
+export function translateActionCommandDetail(command: PaletteActionCommand, t: ActionCommandTranslate): string {
+    return isActionCommandId(command.id)
+        ? t(`story.actionCommand.${command.id}.detail` as TranslationKey)
+        : command.detail;
+}
+
+/**
+ * A palette command whose `label`/`detail` are swapped to the active locale, so both display and
+ * {@link actionCommandMatchesQuery} search operate on translated text (id/capability still match).
+ */
+export function localizeActionCommand(command: PaletteActionCommand, t: ActionCommandTranslate): PaletteActionCommand {
+    return {
+        ...command,
+        label: translateActionCommandLabel(command, t),
+        detail: translateActionCommandDetail(command, t),
+    };
+}
+
+/** Localized label for an action category. */
+export function translateActionCommandCategoryLabel(category: ActionCommandCategory, t: ActionCommandTranslate): string {
+    return t(`story.actionCategory.${category.id}` as TranslationKey);
+}
 
 export const ACTION_COMMAND_CATEGORIES: ActionCommandCategory[] = [
     { id: "all", label: "All", icon: Settings2, iconColor: "#a8adb5" },
@@ -131,20 +205,24 @@ export const ACTION_COMMANDS: ActionCommand[] = [
     { id: "characterExit", category: "character", label: "Character exit", detail: "Hide a character image", icon: EyeOff, nlrCapability: "Displayable.hide" },
     { id: "background", category: "scene", label: "Background", detail: "Scene.setBackground asset or color", icon: Image, nlrCapability: "Scene.setBackground" },
     { id: "jump", category: "scene", label: "Jump scene", detail: "Scene.jumpTo another scene", icon: Route, nlrCapability: "Scene.jumpTo" },
-    { id: "choice", category: "control", label: "Menu choice", detail: "Menu.prompt choice container", icon: Route, nlrCapability: "Menu.prompt" },
-    { id: "choiceOption", category: "control", label: "Menu option", detail: "Menu.choose option", icon: Route, nlrCapability: "Menu.choose" },
-    { id: "condition", category: "control", label: "Condition", detail: "Condition.If branch container", icon: Settings2, nlrCapability: "Condition.If" },
-    { id: "conditionBranch", category: "control", label: "Condition branch", detail: "If / else-if / else branch", icon: Settings2, nlrCapability: "Condition.ElseIf/Else" },
-    { id: "waitDuration", category: "control", label: "Wait duration", detail: "Control.sleep milliseconds", icon: Clock, nlrCapability: "Control.sleep" },
-    { id: "waitClick", category: "control", label: "Wait click", detail: "Control.waitForClick", icon: Clock, nlrCapability: "Control.waitForClick" },
+    { id: "choice", category: "control", label: "Menu", detail: "Let the player choose between options", icon: Route, nlrCapability: "Menu.prompt" },
+    { id: "condition", category: "control", label: "Condition (if…)", detail: "Run actions only when a condition is met", icon: Settings2, nlrCapability: "Condition.If" },
+    { id: "repeat", category: "control", label: "Repeat", detail: "Run the enclosed actions a number of times", icon: Settings2, nlrCapability: "Control.repeat" },
+    { id: "parallel", category: "control", label: "Run at the same time", detail: "Run all enclosed actions together", icon: Settings2, nlrCapability: "Control.all" },
+    { id: "race", category: "control", label: "Race — first to finish", detail: "Run all, continue when the first finishes", icon: Settings2, nlrCapability: "Control.any" },
+    { id: "sequence", category: "control", label: "In order", detail: "Run the enclosed actions one after another", icon: Settings2, nlrCapability: "Control.do" },
+    { id: "waitDuration", category: "control", label: "Wait duration", detail: "Pause for a number of milliseconds", icon: Clock, nlrCapability: "Control.sleep" },
+    { id: "waitClick", category: "control", label: "Wait for click", detail: "Pause until the player clicks", icon: Clock, nlrCapability: "Control.waitForClick" },
     { id: "setVariable", category: "data", label: "Set variable", detail: "Scene local or Story persistent value", icon: Variable, nlrCapability: "Persistent.set" },
+    { id: "executeScript", category: "data", label: "Execute Script", detail: "Run a Story Action Blueprint", icon: Puzzle, nlrCapability: "Script.execute" },
     { id: "imageCreate", category: "image", label: "Image", detail: "Create or update a named stage image", icon: Image, nlrCapability: "Image" },
     { id: "imageSetSource", category: "image", label: "Image source", detail: "Change a named image source", icon: Image, nlrCapability: "Image.char" },
     { id: "imageShow", category: "image", label: "Image show", detail: "Show a named image", icon: Eye, nlrCapability: "Displayable.show" },
     { id: "imageHide", category: "image", label: "Image hide", detail: "Hide a named image", icon: EyeOff, nlrCapability: "Displayable.hide" },
-    { id: "displayableTransform", category: "image", label: "Transform", detail: "Move, scale, rotate, opacity, or effect preset", icon: Move, nlrCapability: "Displayable.transform" },
+    { id: "displayableTransform", category: "image", label: "Transform displayable", detail: "Move, scale, rotate, opacity, or effect preset", icon: Move, nlrCapability: "Displayable.transform" },
     { id: "displayableShow", category: "image", label: "Displayable show", detail: "Show any named displayable", icon: Eye, nlrCapability: "Displayable.show" },
     { id: "displayableHide", category: "image", label: "Displayable hide", detail: "Hide any named displayable", icon: EyeOff, nlrCapability: "Displayable.hide" },
+    { id: "displayableEffect", category: "effects", label: "Displayable effect", detail: "Mask, filter, clip, darken, circle reveal/close, or wipe", icon: Sparkles, nlrCapability: "Displayable.mask/filter/wipe" },
     { id: "textCreate", category: "text", label: "Text", detail: "Create or update named stage text", icon: Type, nlrCapability: "Text" },
     { id: "textSet", category: "text", label: "Set text", detail: "Change a named text overlay", icon: Type, nlrCapability: "Text.setText" },
     { id: "textShow", category: "text", label: "Text show", detail: "Show text overlay", icon: Eye, nlrCapability: "Text.show" },
@@ -167,8 +245,34 @@ export const ACTION_COMMANDS: ActionCommand[] = [
     { id: "soundVolume", category: "media", label: "Sound volume", detail: "Set sound volume", icon: Volume2, nlrCapability: "Sound.setVolume" },
     { id: "soundRate", category: "media", label: "Sound rate", detail: "Set playback rate", icon: Volume2, nlrCapability: "Sound.setRate" },
     { id: "muteSound", category: "media", label: "Mute sound", detail: "Mute or unmute sound", icon: Volume2, nlrCapability: "Sound.mute" },
-    { id: "note", category: "utils", label: "Note", detail: "Studio-only note", icon: StickyNote },
+    { id: "note", category: "utils", label: "Note", detail: "Studio-only note", icon: StickyNote, aliases: ["//"] },
 ];
+
+/**
+ * Shared match used by both the inline "/" creator and the sidebar action palette.
+ *
+ * A query that begins with "/" means the author is typing a slash alias (e.g. "//" for Note). In the
+ * inline creator the leading "/" is consumed as the action trigger, so the alias arrives here as "/";
+ * in the sidebar search box it arrives as "//". Either way we match aliases exclusively so the alias
+ * lands directly on its command instead of every action whose label/detail happens to contain "/".
+ */
+export function actionCommandMatchesQuery(command: PaletteActionCommand, rawQuery: string): boolean {
+    const query = rawQuery.trim().toLowerCase();
+    if (!query) {
+        return true;
+    }
+    if (query.startsWith("/")) {
+        return (command.aliases ?? []).some(alias => {
+            const normalized = alias.toLowerCase();
+            return normalized.startsWith(query) || query.startsWith(normalized);
+        });
+    }
+    return command.label.toLowerCase().includes(query) ||
+        command.id.toLowerCase().includes(query) ||
+        command.detail.toLowerCase().includes(query) ||
+        Boolean(command.nlrCapability?.toLowerCase().includes(query)) ||
+        (command.aliases ?? []).some(alias => alias.toLowerCase().includes(query));
+}
 
 export function getActionCommandCategory(categoryId: ActionCommandCategoryId): ActionCommandCategory {
     return ACTION_COMMAND_CATEGORIES.find(category => category.id === categoryId) ?? ACTION_COMMAND_CATEGORIES[0];
@@ -190,6 +294,14 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
             return { ...base, kind: "control", payload: { control: "condition" } };
         case "conditionBranch":
             return { ...base, kind: "control", payload: { control: "conditionBranch", branch: "if" } };
+        case "repeat":
+            return { ...base, kind: "control", payload: { control: "repeat", times: 2 } };
+        case "parallel":
+            return { ...base, kind: "control", payload: { control: "parallel", mode: "all" } };
+        case "race":
+            return { ...base, kind: "control", payload: { control: "race", mode: "any" } };
+        case "sequence":
+            return { ...base, kind: "control", payload: { control: "sequence", mode: "do" } };
         case "background":
             return { ...base, kind: "action", payload: { action: "setBackground" } };
         case "characterEnter":
@@ -217,7 +329,9 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
         case "muteSound":
             return { ...base, kind: "action", payload: { action: "audio", operation: "muteSound", objectName: "sound", muted: true } };
         case "setVariable":
-            return { ...base, kind: "action", payload: { action: "setVariable", target: { scope: "sceneLocal", key: "variable" }, value: initialText || true } };
+            return { ...base, kind: "action", payload: { action: "setVariable", target: { scope: "scene", variableId: "" }, value: initialText || true } };
+        case "executeScript":
+            return { ...base, kind: "action", payload: { action: "blueprint", blueprintId: "" } };
         case "imageCreate":
             return { ...base, kind: "action", payload: { action: "image", operation: "create", objectName: "image", transform: { preset: "center" } } };
         case "imageSetSource":
@@ -232,6 +346,8 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
             return { ...base, kind: "action", payload: { action: "displayable", operation: "show", target: { name: "image" }, transform: { preset: "fadeIn", durationMs: 250 } } };
         case "displayableHide":
             return { ...base, kind: "action", payload: { action: "displayable", operation: "hide", target: { name: "image" }, transform: { preset: "fadeOut", durationMs: 250 } } };
+        case "displayableEffect":
+            return { ...base, kind: "action", payload: { action: "displayable", operation: "circleReveal", target: { name: "image" }, durationMs: 600 } };
         case "textCreate":
             return { ...base, kind: "action", payload: { action: "text", operation: "create", objectName: "text", text: initialText || "Text", fontSize: 32, fontColor: "#ffffff", transform: { preset: "center" } } };
         case "textSet":
@@ -245,7 +361,7 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
         case "layerCreate":
             return { ...base, kind: "action", payload: { action: "layer", operation: "create", objectName: "layer", zIndex: 1 } };
         case "layerZIndex":
-            return { ...base, kind: "action", payload: { action: "layer", operation: "setZIndex", objectName: "layer", zIndex: 1 } };
+            return { ...base, kind: "action", payload: { action: "layer", operation: "setZIndex", objectName: "", target: { kind: "default", layer: "displayable" }, zIndex: 1 } };
         case "videoCreate":
             return { ...base, kind: "action", payload: { action: "video", operation: "create", objectName: "video", muted: false } };
         case "videoShow":

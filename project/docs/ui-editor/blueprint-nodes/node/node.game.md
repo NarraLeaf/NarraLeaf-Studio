@@ -2,7 +2,7 @@
 
 Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时、Dialog 推进，以及访问当前 Studio 项目隔离的本地存档。除非额外声明，所有参数均为传入引脚值；标注（传出引脚）的参数为传出值。
 
-本页节点均通过 Blueprint Host API 执行。`Get Nametag`、`Is In Game`、`Is Game Overlay` 与 Preference Getter 是纯读取节点，可用于 Blueprint Value；Preference Setter、Dialog 控制、推进、存档写入/删除等执行节点都是 latent 节点，只用于 `event` 和 `macro` 图，不用于 `function` 图。
+本页节点均通过 Blueprint Host API 执行。`Get Nametag`、`Get Notifications`、`Get Choice Count`、`Is NVL Mode`、`Is In Game`、`Is Game Overlay` 与 Preference Getter 是纯读取节点，可用于 Blueprint Value；Preference Setter、Dialog 控制、推进、`Select Choice`、存档写入/删除等执行节点都是 latent 节点，只用于 `event` 和 `macro` 图，不用于 `function` 图。
 
 Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(...)` / `setPreference(...)` 访问当前活动 `LiveGame`。它们需要 NarraLeaf React 游戏环境已经准备就绪；在新游戏启动时初始化偏好，请使用全局蓝图的 `On Game Ready`，不要依赖可能早于 `LiveGame` 创建的 `App Boot`。
 
@@ -25,6 +25,48 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 - `nametag` - `string | null`（传出引脚），当前说话人名字；没有说话人时为 `null`
 
 该节点是 pure 节点，可放入 Blueprint Value 或普通事件图。默认 Dialog 模板会创建普通 `nl.text` Nametag，并在它自己的 widgetMain 蓝图中用 `Init` / `On Flush -> Get Nametag -> Not Null -> If` 自动更新文本与透明度；不再需要特殊私有 `Nametag` widget，也不再依赖 Blueprint Value。Dialog 控件不重新挂载时，游戏推进产生的 Dialog hook 变化仍会触发该 flush 路径。
+
+## Get Notifications
+
+`blueprint.game.getNotifications` - Get Notifications
+
+读取当前 NarraLeaf 通知数组。Notification slot bridge 会把 NLR notification 组件收到的通知镜像到 Blueprint runtime（每项 `{ id: string, message: string }`），并在变化时对 Notification surface 内带 Blueprint Value 或 `On Flush` 逻辑的元素派发 flush。没有通知时返回空数组。
+
+- `notifications` - `array`（传出引脚），当前通知列表，每项为 `{ id, message }` JSON 对象
+
+该节点是 pure 节点，可放入 Blueprint Value 或普通事件图。默认 Notification 模板不使用该节点：通知内容由 Notification List 的 item 模板通过 `Get List Item Props -> Get JSON Field("message")` 的 Blueprint Value 读取。
+
+## Get Choice Count
+
+`blueprint.game.getChoiceCount` - Get Choice Count
+
+读取当前 NarraLeaf 选择菜单的可见选项数量（hidden 选项不计入）。Choice slot bridge 在菜单挂载时镜像该数量，菜单关闭后恢复为 `0`。
+
+- `count` - `integer`（传出引脚），当前可见选项数量；没有活动菜单时为 `0`
+
+该节点是 pure 节点，可放入 Blueprint Value 或普通事件图。
+
+## Is NVL Mode
+
+`blueprint.game.isNvlMode` - Is NVL Mode
+
+读取当前 NarraLeaf 游戏是否处于 NVL（novel）模式。NVL slot bridge 会在 NVL 状态变化时同步该值并派发 flush；也可直接从 live game 的 NVL state 读取。
+
+- `isNvlMode` - `boolean`（传出引脚），当前是否处于 NVL 模式
+
+该节点是 pure 节点，可放入 Blueprint Value 或普通事件图。
+
+## Select Choice
+
+`blueprint.game.choose` - Select Choice
+
+按原始选项序号选择当前 NarraLeaf 选择菜单中的选项。默认 Choice 模板在 Choice List 的 widgetMain 蓝图中预接 `Item Click -> Select Choice`：Choice item 数据中的 `index` 是原始选项序号（hidden 选项被过滤后序号不连续），Item Click 事件输出的 `index` 直接连入本节点。宿主实现会重新校验目标选项的 hidden/disabled 状态，不合法时静默拒绝。
+
+- `in` - 执行入口
+- `index` - `integer` 输入，原始选项序号，支持节点卡片 inline literal 或接线覆盖；必须是非负整数
+- `next` - 选择请求完成后的执行出口
+
+没有活动选择菜单时执行失败。
 
 ## Is In Game
 

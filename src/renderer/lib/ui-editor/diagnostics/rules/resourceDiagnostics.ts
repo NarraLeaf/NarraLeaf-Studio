@@ -9,6 +9,7 @@ import {
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
 import { getRectangleLikeProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
+import { translate } from "@/lib/i18n";
 import type { UISurfaceDiagnostic } from "../types";
 
 function imageFillMissingAsset(fill: ImageFill | undefined): boolean {
@@ -44,8 +45,8 @@ export function collectResourceDiagnostics(elements: UIElement[]): UISurfaceDiag
                     id: `res:image:${el.id}`,
                     severity: "warning",
                     source: "resource",
-                    message: `Image widget “${el.name ?? el.id}” has no image asset`,
-                    hint: "Assign an image asset in the inspector.",
+                    message: translate("blueprint.diagnostics.resource.imageMissing", { name: el.name ?? el.type }),
+                    hint: translate("blueprint.diagnostics.resource.imageMissingHint"),
                     elementId: el.id,
                 });
             }
@@ -59,8 +60,8 @@ export function collectResourceDiagnostics(elements: UIElement[]): UISurfaceDiag
                         id: `res:container-image:${el.id}`,
                         severity: "warning",
                         source: "resource",
-                        message: `Container “${el.name ?? el.id}” uses image fill without an asset`,
-                        hint: "Pick an image asset or switch fill type.",
+                        message: translate("blueprint.diagnostics.resource.containerImageMissing", { name: el.name ?? el.type }),
+                        hint: translate("blueprint.diagnostics.resource.containerImageMissingHint"),
                         elementId: el.id,
                     });
                 }
@@ -81,8 +82,8 @@ export function collectResourceDiagnostics(elements: UIElement[]): UISurfaceDiag
                         id: `res:button-image:${el.id}`,
                         severity: "warning",
                         source: "resource",
-                        message: `Button “${el.name ?? el.id}” uses image background without an asset`,
-                        hint: "Pick an image asset or switch background type.",
+                        message: translate("blueprint.diagnostics.resource.buttonImageMissing", { name: el.name ?? el.type }),
+                        hint: translate("blueprint.diagnostics.resource.buttonImageMissingHint"),
                         elementId: el.id,
                     });
                 }

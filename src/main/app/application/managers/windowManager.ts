@@ -1,64 +1,9 @@
 import { EventEmitter } from "events";
+import { Namespace } from "@shared/types/ipc";
 import { BaseApp } from "../baseApp";
 import { AppWindow } from "./window/appWindow";
-import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppInfoHandler, AppPlatformInfoHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowGetControlHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler } from "./window/handlers/appAction";
-import { AppSettingsWindowLaunchHandler } from "./window/handlers/settingAction";
-import {
-    FsStatHandler, FsListHandler, FsDetailsHandler, FsRequestReadHandler, FsRequestWriteHandler,
-    FsCreateDirHandler, FsEnsureRegularFileHandler, FsWriteFileNoFollowHandler, FsRecoverCorruptedJsonFileHandler, FsDeleteFileHandler, FsDeleteDirHandler, FsRenameHandler,
-    FsCopyFileHandler, FsCopyDirHandler, FsMoveFileHandler, FsMoveDirHandler,
-    FsFileExistsHandler, FsDirExistsHandler, FsIsFileHandler, FsIsDirHandler,
-    FsSelectFileHandler, FsSelectDirectoryHandler, FsGrantFileAccessHandler, FsHashHandler,
-} from "./window/handlers/fsAction";
-import { IPCHost } from "./window/ipcHost";
-import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./window/handlers/projectWizardAction";
-import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./window/handlers/projectPackageAction";
-import { WorkspaceLaunchHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler } from "./window/handlers/workspaceAction";
-import {
-    DevModeGetStatusHandler,
-    DevModeLaunchHandler,
-    DevModeOpenBlueprintInWorkspaceHandler,
-    DevModeReloadHandler,
-    DevModeStopHandler,
-    DevModeResolveAssetUrlHandler,
-    DevModeResolveImageAssetUrlHandler,
-    DevModeForwardBlueprintDebugEventHandler,
-} from "./window/handlers/devModeAction";
-import {
-    DevModeSaveDeleteHandler,
-    DevModeSaveListIdsHandler,
-    DevModeSaveReadHandler,
-    DevModeSaveReadPreviewHandler,
-    DevModeSaveWriteHandler,
-} from "./window/handlers/devModeSaveAction";
-import {
-    PreviewGetStatusHandler,
-    PreviewLaunchHandler,
-    PreviewStopHandler,
-} from "./window/handlers/previewAction";
-import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./window/handlers/pluginPermissionAction";
-import {
-    PluginApproveHandler,
-    PluginInstallLocalHandler,
-    PluginListHandler,
-    PluginReportLoadErrorHandler,
-    PluginRevokeHandler,
-    PluginSetEnabledHandler,
-    PluginUninstallHandler,
-    PluginWorkspaceListHandler,
-} from "./window/handlers/pluginManagerAction";
-import {
-    BlueprintPersistenceGetAllHandler,
-    BlueprintPersistenceGetValueHandler,
-    BlueprintPersistenceRemoveValueHandler,
-    BlueprintPersistenceSetValueHandler,
-} from "./window/handlers/blueprintPersistenceAction";
-import {
-    PrivilegedBashExecuteHandler,
-    PrivilegedFsCallHandler,
-    PrivilegedPermissionRevokePluginHandler,
-    PrivilegedPermissionRequestHandler,
-} from "./window/handlers/privilegedAction";
+import { createDefaultIPCHandlers } from "./window/defaultHandlers";
+import { IPCRegistry } from "./window/ipcRegistry";
 
 type WindowManagerEvents = {
     "window-created": [window: AppWindow];
@@ -68,6 +13,8 @@ type WindowManagerEvents = {
 
 export class WindowManager {
     private windows: AppWindow[] = [];
+    private readonly byWebContentsId = new Map<number, AppWindow>();
+    private registry: IPCRegistry | null = null;
 
     public events: EventEmitter<WindowManagerEvents>;
 
@@ -78,15 +25,28 @@ export class WindowManager {
     }
 
     public initialize(): void {
+        // All IPC handlers are stateless and registered once per process;
+        // requests are routed to the window owning the sender webContents.
+        this.registry = new IPCRegistry(
+            Namespace.NarraLeafStudio,
+            sender => this.getWindowByWebContents(sender),
+        );
+        this.registry.initialize(createDefaultIPCHandlers());
     }
 
     public registerWindow(win: AppWindow): void {
         this.windows.push(win);
+        this.byWebContentsId.set(win.getWebContents().id, win);
     }
 
     public unregisterWindow(win: AppWindow): void {
         this.app.storageManager.revokeWindowFileSystemAccess(win);
         this.windows = this.windows.filter(w => w !== win);
+        for (const [id, mapped] of this.byWebContentsId) {
+            if (mapped === win) {
+                this.byWebContentsId.delete(id);
+            }
+        }
     }
 
     public emitWindowClosed(win: AppWindow): void {
@@ -101,110 +61,7 @@ export class WindowManager {
         return this.windows.length > 0;
     }
 
-    public registerDefaultIPCHandlers(win: AppWindow): void {
-        win.registerIPCHandler(new AppPlatformInfoHandler());
-        win.registerIPCHandler(new AppInfoHandler());
-
-        win.registerIPCHandler(new AppPropsHandler());
-        win.registerIPCHandler(new AppWindowControlHandler());
-        win.registerIPCHandler(new AppWindowCloseHandler());
-        win.registerIPCHandler(new AppWindowCloseWithHandler());
-        win.registerIPCHandler(new AppWindowGetControlHandler());
-        win.registerIPCHandler(new AppWindowControlAbilityHandler());
-        win.registerIPCHandler(new AppWindowReadyHandler());
-        win.registerIPCHandler(new AppTerminateHandler());
-        win.registerIPCHandler(new AppGlobalStateGetHandler());
-        win.registerIPCHandler(new AppGlobalStateSetHandler());
-        win.registerIPCHandler(new AppGlobalStateGetAllHandler());
-        win.registerIPCHandler(new AppAddRecentProjectHandler());
-        win.registerIPCHandler(new AppSystemPathHandler());
-
-        win.registerIPCHandler(new AppSettingsWindowLaunchHandler());
-
-        // Register project wizard handlers
-        win.registerIPCHandler(new ProjectWizardLaunchHandler());
-        win.registerIPCHandler(new ProjectWizardSelectDirectoryHandler());
-        win.registerIPCHandler(new ProjectWizardGetDefaultDirectoryHandler());
-
-        // Register workspace handlers
-        win.registerIPCHandler(new WorkspaceLaunchHandler());
-        win.registerIPCHandler(new WorkspaceSelectFolderHandler());
-        win.registerIPCHandler(new WorkspaceCloseHandler());
-        win.registerIPCHandler(new WorkspaceExportProjectPackageHandler());
-        win.registerIPCHandler(new WorkspaceImportProjectPackageHandler());
-
-        // Register dev mode handlers
-        win.registerIPCHandler(new DevModeLaunchHandler());
-        win.registerIPCHandler(new DevModeStopHandler());
-        win.registerIPCHandler(new DevModeReloadHandler());
-        win.registerIPCHandler(new DevModeGetStatusHandler());
-        win.registerIPCHandler(new DevModeOpenBlueprintInWorkspaceHandler());
-        win.registerIPCHandler(new DevModeForwardBlueprintDebugEventHandler());
-        win.registerIPCHandler(new DevModeResolveAssetUrlHandler());
-        win.registerIPCHandler(new DevModeResolveImageAssetUrlHandler());
-        win.registerIPCHandler(new DevModeSaveWriteHandler());
-        win.registerIPCHandler(new DevModeSaveReadHandler());
-        win.registerIPCHandler(new DevModeSaveListIdsHandler());
-        win.registerIPCHandler(new DevModeSaveReadPreviewHandler());
-        win.registerIPCHandler(new DevModeSaveDeleteHandler());
-
-        // Register preview runtime handlers
-        win.registerIPCHandler(new PreviewLaunchHandler());
-        win.registerIPCHandler(new PreviewStopHandler());
-        win.registerIPCHandler(new PreviewGetStatusHandler());
-
-        // Register blueprint persistent variable storage handlers
-        win.registerIPCHandler(new BlueprintPersistenceGetAllHandler());
-        win.registerIPCHandler(new BlueprintPersistenceGetValueHandler());
-        win.registerIPCHandler(new BlueprintPersistenceSetValueHandler());
-        win.registerIPCHandler(new BlueprintPersistenceRemoveValueHandler());
-
-        // Register plugin permission handlers
-        win.registerIPCHandler(new PluginPermissionPromptLaunchHandler());
-        win.registerIPCHandler(new PluginPermissionGrantHandler());
-        win.registerIPCHandler(new PluginListHandler());
-        win.registerIPCHandler(new PluginInstallLocalHandler());
-        win.registerIPCHandler(new PluginSetEnabledHandler());
-        win.registerIPCHandler(new PluginApproveHandler());
-        win.registerIPCHandler(new PluginUninstallHandler());
-        win.registerIPCHandler(new PluginRevokeHandler());
-        win.registerIPCHandler(new PluginWorkspaceListHandler());
-        win.registerIPCHandler(new PluginReportLoadErrorHandler());
-
-        // Register actor-aware privileged facade handlers
-        win.registerIPCHandler(new PrivilegedFsCallHandler());
-        win.registerIPCHandler(new PrivilegedPermissionRequestHandler());
-        win.registerIPCHandler(new PrivilegedPermissionRevokePluginHandler());
-        win.registerIPCHandler(new PrivilegedBashExecuteHandler());
-
-        // Register file system handlers
-        win.registerIPCHandler(new FsStatHandler());
-        win.registerIPCHandler(new FsListHandler());
-        win.registerIPCHandler(new FsDetailsHandler());
-        win.registerIPCHandler(new FsRequestReadHandler());
-        win.registerIPCHandler(new FsRequestWriteHandler());
-        win.registerIPCHandler(new FsEnsureRegularFileHandler());
-        win.registerIPCHandler(new FsWriteFileNoFollowHandler());
-        win.registerIPCHandler(new FsRecoverCorruptedJsonFileHandler());
-        win.registerIPCHandler(new FsCreateDirHandler());
-        win.registerIPCHandler(new FsDeleteFileHandler());
-        win.registerIPCHandler(new FsDeleteDirHandler());
-        win.registerIPCHandler(new FsRenameHandler());
-        win.registerIPCHandler(new FsCopyFileHandler());
-        win.registerIPCHandler(new FsCopyDirHandler());
-        win.registerIPCHandler(new FsMoveFileHandler());
-        win.registerIPCHandler(new FsMoveDirHandler());
-        win.registerIPCHandler(new FsFileExistsHandler());
-        win.registerIPCHandler(new FsDirExistsHandler());
-        win.registerIPCHandler(new FsIsFileHandler());
-        win.registerIPCHandler(new FsIsDirHandler());
-        win.registerIPCHandler(new FsSelectFileHandler());
-        win.registerIPCHandler(new FsSelectDirectoryHandler());
-        win.registerIPCHandler(new FsGrantFileAccessHandler());
-        win.registerIPCHandler(new FsHashHandler());
-    }
-
-    public unregisterIPCHandlers(win: AppWindow): void {
-        IPCHost.unregisterWindow(win);
+    public getWindowByWebContents(sender: Electron.WebContents): AppWindow | undefined {
+        return this.byWebContentsId.get(sender.id);
     }
 }

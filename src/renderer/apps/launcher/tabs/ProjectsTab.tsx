@@ -2,10 +2,12 @@
 import { getInterface } from "@/lib/app/bridge";
 import { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
 import { Button } from "@/lib/components/elements";
+import { useTranslation } from "@/lib/i18n";
 import { FolderOpen, Plus, Upload, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export function ProjectsTab() {
+    const { t } = useTranslation();
     const [isOpening, setIsOpening] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const [operationError, setOperationError] = useState<string | null>(null);
@@ -75,7 +77,7 @@ export function ProjectsTab() {
         setOperationError(null);
         const result = await getInterface().app.launchProjectWizard({});
         if (!result.success) {
-            setOperationError(result.error || "Failed to create project.");
+            setOperationError(result.error || t("launcher.projects.errorCreate"));
             return;
         }
         if (result.success && result.data?.created) {
@@ -98,7 +100,7 @@ export function ProjectsTab() {
             
             if (!result.success) {
                 console.error("Failed to select folder:", result.error);
-                setOperationError(result.error || "Failed to open folder.");
+                setOperationError(result.error || t("launcher.projects.errorOpenFolder"));
                 return;
             }
 
@@ -128,7 +130,7 @@ export function ProjectsTab() {
         try {
             const result = await getInterface().workspace.importProjectPackage();
             if (!result.success) {
-                setOperationError(result.error || "Failed to import project.");
+                setOperationError(result.error || t("launcher.projects.errorImport"));
                 return;
             }
             if (result.data.canceled || !result.data.projectPath) {
@@ -148,18 +150,18 @@ export function ProjectsTab() {
     };
 
     return (
-        <div className="h-full w-full pt-6 px-8 pb-8 text-gray-200">
+        <div className="h-full w-full pt-6 px-8 pb-8 text-fg">
             <div className="flex items-center justify-between mb-6">
-                <div className="text-lg font-semibold">Projects</div>
+                <div className="text-lg font-semibold">{t("launcher.projects.title")}</div>
                 <div className="flex items-center gap-2">
                     <Button
                         variant="ghost"
                         size="md"
                         onClick={handleOpenFolder}
                         disabled={isBusy}
-                        className="h-9 w-9 px-0 text-gray-300"
-                        title="Open Folder"
-                        aria-label="Open Folder"
+                        className="h-9 w-9 px-0 text-fg-muted"
+                        title={t("launcher.projects.openFolder")}
+                        aria-label={t("launcher.projects.openFolder")}
                     >
                         <FolderOpen className="w-5 h-5" />
                     </Button>
@@ -168,9 +170,9 @@ export function ProjectsTab() {
                         size="md"
                         onClick={handleImportProject}
                         disabled={isBusy}
-                        className="h-9 w-9 px-0 text-gray-300"
-                        title="Import Project"
-                        aria-label="Import Project"
+                        className="h-9 w-9 px-0 text-fg-muted"
+                        title={t("launcher.projects.importProject")}
+                        aria-label={t("launcher.projects.importProject")}
                     >
                         <Upload className="w-5 h-5" />
                     </Button>
@@ -179,11 +181,11 @@ export function ProjectsTab() {
                         size="md"
                         onClick={handleNewProject}
                         disabled={isBusy}
-                        className="text-gray-300"
-                        title="New Project"
+                        className="text-fg-muted"
+                        title={t("launcher.projects.newProject")}
                     >
                         <Plus className="w-4 h-4" />
-                        <span>New Project</span>
+                        <span>{t("launcher.projects.newProject")}</span>
                     </Button>
                 </div>
             </div>
@@ -196,7 +198,7 @@ export function ProjectsTab() {
 
             {recentProjects.length > 0 && (
                 <div className="mb-6">
-                    {/* <div className="flex items-center gap-2 mb-3 text-sm text-gray-400">
+                    {/* <div className="flex items-center gap-2 mb-3 text-sm text-fg-muted">
                         <Clock className="w-4 h-4" />
                         <span>Recent Projects</span>
                     </div> */}
@@ -204,17 +206,17 @@ export function ProjectsTab() {
                         {recentProjects.map((project, index) => (
                             <div
                                 key={`${project.path}-${index}`}
-                                className="relative group rounded-md bg-white/5 hover:bg-white/10 transition-colors"
+                                className="relative group rounded-md bg-fill-subtle hover:bg-fill transition-colors"
                             >
                                 <button
                                     type="button"
                                     onClick={() => handleOpenRecentProject(project)}
                                     disabled={isOpening}
                                     className="w-full p-3 pr-11 text-left rounded-md transition-colors cursor-default disabled:opacity-50 disabled:cursor-not-allowed"
-                                    title={`Open ${project.name}`}
+                                    title={t("launcher.projects.openNamed", { name: project.name })}
                                 >
                                     <div className="flex items-center gap-3">
-                                        <div className="flex-shrink-0 w-8 h-8 bg-white/10 rounded-md flex items-center justify-center">
+                                        <div className="flex-shrink-0 w-8 h-8 bg-fill rounded-md flex items-center justify-center">
                                             {project.icon ? (
                                                 <img
                                                     src={project.icon}
@@ -222,14 +224,14 @@ export function ProjectsTab() {
                                                     className="w-5 h-5 object-contain"
                                                 />
                                             ) : (
-                                                <FolderOpen className="w-4 h-4 text-gray-400" />
+                                                <FolderOpen className="w-4 h-4 text-fg-muted" />
                                             )}
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <div className="text-sm font-medium text-gray-200 truncate">
+                                            <div className="text-sm font-medium text-fg truncate">
                                                 {project.name}
                                             </div>
-                                            <div className="text-xs text-gray-500 truncate">
+                                            <div className="text-xs text-fg-subtle truncate">
                                                 {project.path}
                                             </div>
                                         </div>
@@ -241,9 +243,9 @@ export function ProjectsTab() {
                                         e.stopPropagation();
                                         void handleRemoveRecentProject(project);
                                     }}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-gray-400 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 transition-opacity cursor-default"
-                                    title="Remove from recent"
-                                    aria-label={`Remove ${project.name} from recent projects`}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-fg-muted opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 transition-opacity cursor-default"
+                                    title={t("launcher.projects.removeFromRecent")}
+                                    aria-label={t("launcher.projects.removeNamedFromRecent", { name: project.name })}
                                 >
                                     <X className="w-4 h-4" />
                                 </button>

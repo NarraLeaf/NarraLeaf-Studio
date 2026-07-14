@@ -1,3 +1,4 @@
+import { translate } from "@/lib/i18n";
 import type { DockerBarContext, DockerBarItem } from "@/lib/ui-editor/widget-modules/types";
 import type { ImageFill, ImageFillMode } from "@shared/types/ui-editor/imageFill";
 import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
@@ -9,13 +10,15 @@ import { resolveImageRectangleLike } from "@/lib/ui-editor/runtime/appearance/Ap
 import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
 import { getImageWidgetRectangleProps } from "./helpers";
 
-const FIT_OPTIONS: { value: ImageFillMode; label: string }[] = [
-    { value: "cover", label: "Cover" },
-    { value: "contain", label: "Contain" },
-    { value: "stretch", label: "Stretch" },
-    { value: "crop", label: "Crop" },
-    { value: "tile", label: "Tile" },
-];
+const FIT_OPTION_VALUES: readonly ImageFillMode[] = ["cover", "contain", "stretch", "crop", "tile"];
+
+const FIT_OPTION_LABEL_KEYS = {
+    cover: "widgetChrome.dockerItems.cover",
+    contain: "widgetChrome.dockerItems.contain",
+    stretch: "widgetChrome.dockerItems.stretch",
+    crop: "widgetChrome.dockerItems.crop",
+    tile: "widgetChrome.dockerItems.tile",
+} as const;
 
 const DEFAULT_APPEARANCE_RESOLVE_CONTEXT = {
     variantOverrideId: null,
@@ -35,10 +38,13 @@ export function createImageDockerBarItems(ctx: DockerBarContext): DockerBarItem[
         {
             kind: "select",
             id: "docker-image-fill-mode",
-            label: "Fit",
-            tooltip: "Image fill mode",
+            label: translate("widgetChrome.dockerItems.fit"),
+            tooltip: translate("widgetChrome.dockerItems.fitHint"),
             value: mode,
-            options: FIT_OPTIONS,
+            options: FIT_OPTION_VALUES.map(value => ({
+                value,
+                label: translate(FIT_OPTION_LABEL_KEYS[value]),
+            })),
             onChange: (value: string | number) => {
                 const nextMode = String(value) as ImageFillMode;
                 const liveElement = documentService.getDocument().elements[element.id] ?? element;

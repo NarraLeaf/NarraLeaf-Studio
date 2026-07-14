@@ -1,5 +1,6 @@
 import { MousePointerClick } from "lucide-react";
 import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import { translate } from "@/lib/i18n";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { ButtonRenderer } from "./button/renderer";
 import { createButtonInspector } from "./button/inspector";
@@ -10,12 +11,14 @@ import { createInitialButtonAppearance } from "@/lib/ui-editor/widget-modules/sh
 export const ButtonWidgetModule: UIWidgetModule = {
     type: "nl.button",
     logicApi: getWidgetLogicApi("nl.button"),
-    displayName: "Button",
+    get displayName() {
+        return translate("widgets.defaults.button.name");
+    },
     icon: MousePointerClick,
 
     createDefaultElement: () => ({
         type: "nl.button",
-        name: "Button",
+        name: translate("widgets.defaults.button.name"),
         layout: {
             x: 0,
             y: 0,
@@ -27,7 +30,7 @@ export const ButtonWidgetModule: UIWidgetModule = {
         props: {
             ...defaultButtonWidgetProps,
             appearance: createInitialButtonAppearance(defaultButtonWidgetProps),
-            label: "Button",
+            label: translate("widgets.defaults.button.label"),
         },
     }),
 

@@ -1,4 +1,5 @@
 import type { AppearanceSystemCondition } from "@shared/types/ui-editor/appearance";
+import { useTranslation } from "@/lib/i18n";
 
 const KEYS: (keyof AppearanceSystemCondition)[] = ["hovered", "active", "disabled", "focused"];
 
@@ -12,6 +13,7 @@ type Props = {
  * When all toggles off, conditions become null (matches any — use only for non-default rows).
  */
 export function ConditionRowToggles({ conditions, disabled, onChange }: Props) {
+    const { t } = useTranslation();
     const c = conditions ?? {};
 
     const toggle = (key: keyof AppearanceSystemCondition) => {
@@ -29,17 +31,18 @@ export function ConditionRowToggles({ conditions, disabled, onChange }: Props) {
     };
 
     return (
-        <div className="flex flex-wrap gap-1.5 items-center text-[11px] text-gray-400">
-            <span className="text-gray-500 mr-1">When</span>
+        <div className="flex flex-wrap gap-1.5 items-center text-2xs text-fg-muted">
+            <span className="text-fg-subtle mr-1">{t("widgetAppearance.conditions.when")}</span>
             {KEYS.map(key => {
                 const state = c[key];
                 const active = state === true || state === false;
+                const conditionLabel = t(`widgetAppearance.conditions.${key}`);
                 return (
                     <button
                         key={key}
                         type="button"
                         disabled={disabled}
-                        title={`Require ${key} = true (cycle: unset → true → false)`}
+                        title={t("widgetAppearance.conditions.toggleTitle", { condition: conditionLabel })}
                         onClick={() => toggle(key)}
                         className={[
                             "rounded px-1.5 py-0.5 border transition",
@@ -47,10 +50,10 @@ export function ConditionRowToggles({ conditions, disabled, onChange }: Props) {
                                 ? state === true
                                     ? "border-primary/60 bg-primary/15 text-primary"
                                     : "border-amber-500/40 bg-amber-500/10 text-amber-200"
-                                : "border-white/10 bg-white/5 text-gray-500 hover:bg-white/10",
+                                : "border-edge bg-fill-subtle text-fg-subtle hover:bg-fill",
                         ].join(" ")}
                     >
-                        {key}
+                        {conditionLabel}
                         {active ? (state === true ? "=T" : "=F") : ""}
                     </button>
                 );

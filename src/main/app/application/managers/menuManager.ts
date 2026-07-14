@@ -3,6 +3,7 @@ import { BaseApp } from "../baseApp";
 import { IPCEventType, WorkspaceMenuAction } from "@shared/types/ipcEvents";
 import { WindowAppType } from "@shared/types/window";
 import { APP_DISPLAY_NAME } from "@shared/constants/app";
+import { getMainTranslator } from "../i18n";
 
 export class MenuManager {
     private static readonly DocumentationUrl = "https://www.narraleaf.com/docs/studio";
@@ -75,6 +76,11 @@ export class MenuManager {
             return [];
         }
 
+        // Built fresh on every rebuild so the menu re-localizes when the language
+        // changes (AppGlobalStateSetHandler calls updateMenu()). System `role`
+        // items are localized by Electron/macOS itself and stay untranslated here.
+        const { t } = getMainTranslator(this.app);
+
         return [
             {
                 label: APP_DISPLAY_NAME,
@@ -82,7 +88,7 @@ export class MenuManager {
                     { role: "about" },
                     { type: "separator" },
                     {
-                        label: "Preferences\u2026",
+                        label: t("menu.app.preferences"),
                         accelerator: "Cmd+,",
                         click: () => {
                             this.openPreferencesForFocusedWindow();
@@ -99,17 +105,17 @@ export class MenuManager {
                 ],
             },
             {
-                label: "File",
+                label: t("menu.file.title"),
                 submenu: [
                     {
-                        label: "New Workspace",
+                        label: t("menu.file.new"),
                         accelerator: "Cmd+N",
                         click: () => {
                             this.sendActionToFocusedWindow(WorkspaceMenuAction.NewWorkspace);
                         },
                     },
                     {
-                        label: "Open Workspace",
+                        label: t("menu.file.open"),
                         accelerator: "Cmd+O",
                         click: () => {
                             this.sendActionToFocusedWindow(WorkspaceMenuAction.OpenWorkspace);
@@ -117,7 +123,7 @@ export class MenuManager {
                     },
                     { type: "separator" },
                     {
-                        label: "Export Project",
+                        label: t("menu.file.export"),
                         accelerator: "Cmd+Shift+E",
                         click: () => {
                             this.sendActionToFocusedWindow(WorkspaceMenuAction.ExportProject);
@@ -125,7 +131,7 @@ export class MenuManager {
                     },
                     { type: "separator" },
                     {
-                        label: "Close Workspace",
+                        label: t("menu.file.close"),
                         accelerator: "Cmd+Shift+W",
                         click: () => {
                             this.sendActionToFocusedWindow(WorkspaceMenuAction.CloseWorkspace);
@@ -135,7 +141,7 @@ export class MenuManager {
             },
             { role: "editMenu" },
             {
-                label: "View",
+                label: t("menu.view.title"),
                 submenu: [
                     { role: "reload" },
                     { role: "forceReload" },
@@ -150,7 +156,7 @@ export class MenuManager {
             },
             {
                 role: "windowMenu",
-                label: "Window",
+                label: t("menu.window.title"),
                 submenu: [
                     { role: "minimize" },
                     { role: "zoom" },
@@ -160,17 +166,17 @@ export class MenuManager {
             },
             {
                 role: "help",
-                label: "Help",
+                label: t("menu.help.title"),
                 submenu: [
                     {
-                        label: "Open Welcome",
+                        label: t("menu.help.welcome"),
                         click: () => {
                             this.sendActionToFocusedWindow(WorkspaceMenuAction.OpenWelcome);
                         },
                     },
                     { type: "separator" },
                     {
-                        label: "Documentation",
+                        label: t("menu.help.docs"),
                         click: () => {
                             void this.openDocumentation();
                         },

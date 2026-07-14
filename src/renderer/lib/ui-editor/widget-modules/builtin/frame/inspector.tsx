@@ -6,6 +6,7 @@ import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/
 import { findUIElementSurfaceId, getUIFrameTargetInvalidReason } from "@shared/types/ui-editor/frame";
 import { normalizeUIPageAnimationSettings, type UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 import { PageAnimationEditor } from "@/lib/ui-editor/widget-modules/shared/page-animation/PageAnimationEditor";
+import { i18nStore, translate, useTranslation } from "@/lib/i18n";
 import { getFrameProps, type FrameWidgetProps } from "./helpers";
 
 const NO_PAGE_VALUE = "__nl-frame-no-page__";
@@ -23,13 +24,17 @@ const FrameParamsBlueprintValueField = createBlueprintValueField({
     propPath: "params",
     valueType: "json",
     valueLabel: "params",
-    title: "Page Props Value",
-    clearLabel: "Static",
-    getDisplayName: ({ liveElement }) => `${liveElement.name ?? "Page"} props`,
+    title: "widgets.blueprintValue.pagePropsTitle",
+    clearLabel: "widgets.blueprintValue.static",
+    getDisplayName: ({ liveElement }) =>
+        translate("widgets.blueprintValue.nameProps", {
+            name: liveElement.name ?? translate("widgets.defaults.frame.name"),
+        }),
     getLiteralValue: ({ liveElement }) => getFrameProps(liveElement).params,
 });
 
 function FrameAnimationField({ data }: CustomFieldProps<UIInspectorData>) {
+    const { t } = useTranslation();
     const frame = getFrameProps(data.element);
     const target = frame.targetSurfaceId
         ? data.documentService.getDocument().surfaces.find(surface => surface.id === frame.targetSurfaceId)
@@ -50,18 +55,18 @@ function FrameAnimationField({ data }: CustomFieldProps<UIInspectorData>) {
             settings={ownSettings ?? inheritedSettings}
             inherited={inherited}
             inheritedSettings={inheritedSettings}
-            inheritLabel="Use Page animation"
+            inheritLabel={t("widgets.frame.usePageAnimation")}
             onChange={update}
             onInheritedChange={updateInherited}
         />
     );
 }
 
-function pageOptions(data: UIInspectorData) {
+function pageOptions(data: UIInspectorData, noneLabel: string) {
     const document = data.documentService.getDocument();
     const sourceSurfaceId = data.surfaceId || findUIElementSurfaceId(document, data.element.id) || "";
     return [
-        { value: NO_PAGE_VALUE, label: "None" },
+        { value: NO_PAGE_VALUE, label: noneLabel },
         ...document
             .surfaces
             .filter(surface => surface.kind === "appSurface")
@@ -80,22 +85,23 @@ function pageOptions(data: UIInspectorData) {
 
 export function createFrameInspector(ctx: InspectorContext) {
     type D = UIInspectorData;
+    const { t } = i18nStore.getTranslator();
     const { element } = ctx;
 
     return createPropertyEditorSchema<D>({
         id: `ui-inspector:nl.frame:${element.id}`,
-        title: element.name ?? "Page",
+        title: element.name ?? t("widgets.frame.title"),
         fields: [],
         tabs: [
             {
                 id: "properties",
-                title: "Properties",
+                title: t("widgets.tabs.properties"),
                 fields: [
                     defineField<D, SelectFieldDefinition<D>>({
                         id: "frame.targetSurfaceId",
                         type: "select",
-                        label: "Page",
-                        options: pageOptions,
+                        label: t("widgets.frame.page"),
+                        options: data => pageOptions(data, t("common.none")),
                         getValue: data => getFrameProps(data.element).targetSurfaceId ?? NO_PAGE_VALUE,
                         setValue: (data, value) => {
                             const targetSurfaceId = value === NO_PAGE_VALUE ? null : String(value);
@@ -116,13 +122,13 @@ export function createFrameInspector(ctx: InspectorContext) {
                     defineField<D, any>({
                         id: "frame.params",
                         type: "custom",
-                        label: "Props",
+                        label: t("widgets.frame.props"),
                         component: FrameParamsBlueprintValueField,
                     }),
                     defineField<D, any>({
                         id: "section.frameAnimation",
                         type: "section",
-                        title: "Animation",
+                        title: t("widgets.frame.animation"),
                         fields: [
                             defineField<D, any>({
                                 id: "frame.animation",
@@ -134,7 +140,7 @@ export function createFrameInspector(ctx: InspectorContext) {
                     defineField<D, any>({
                         id: "interaction.blueprint.readonly",
                         type: "custom",
-                        label: "Page component logic",
+                        label: t("widgets.frame.pageLogic"),
                         component: ReadonlyBlueprintSection,
                     }),
                 ],

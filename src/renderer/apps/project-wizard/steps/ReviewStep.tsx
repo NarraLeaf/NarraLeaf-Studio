@@ -1,3 +1,4 @@
+import { useTranslation } from "@/lib/i18n";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/lib/components/elements";
 import { ProjectData } from "../types";
 import { projectTemplates } from "../constants";
@@ -10,15 +11,16 @@ interface ReviewStepProps {
  * Project review step to confirm settings before creation
  */
 export function ReviewStep({ projectData }: ReviewStepProps) {
-    const selectedTemplate = projectTemplates.find(t => t.id === projectData.template);
+    const { t } = useTranslation();
+    const selectedTemplate = projectTemplates.find(tpl => tpl.id === projectData.template);
 
     return (
         <div className="p-6">
             <div className="space-y-6">
                 <div className="space-y-2">
-                    <h2 className="text-lg font-semibold text-gray-200">Review Project</h2>
-                    <p className="text-sm text-gray-400">
-                        Review your project settings before creating it.
+                    <h2 className="text-lg font-semibold text-fg">{t("wizard.review.title")}</h2>
+                    <p className="text-sm text-fg-muted">
+                        {t("wizard.review.subtitle")}
                     </p>
                 </div>
 
@@ -26,36 +28,36 @@ export function ReviewStep({ projectData }: ReviewStepProps) {
                     {/* Project Summary */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Project Summary</CardTitle>
+                            <CardTitle>{t("wizard.review.summary.title")}</CardTitle>
                             <CardDescription>
-                                Overview of your project configuration.
+                                {t("wizard.review.summary.description")}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <label className="text-sm font-medium text-gray-400">Name</label>
-                                    <p className="text-sm text-gray-200">{projectData.name || "Not specified"}</p>
+                                    <label className="text-sm font-medium text-fg-muted">{t("common.name")}</label>
+                                    <p className="text-sm text-fg">{projectData.name || t("wizard.review.notSpecified")}</p>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-sm font-medium text-gray-400">Author</label>
-                                    <p className="text-sm text-gray-200">{projectData.author || "Not specified"}</p>
+                                    <label className="text-sm font-medium text-fg-muted">{t("wizard.fields.author")}</label>
+                                    <p className="text-sm text-fg">{projectData.author || t("wizard.review.notSpecified")}</p>
                                 </div>
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-sm font-medium text-gray-400">License</label>
-                                <p className="text-sm text-gray-200">
+                                <label className="text-sm font-medium text-fg-muted">{t("wizard.fields.license")}</label>
+                                <p className="text-sm text-fg">
                                     {projectData.license === "Other"
-                                        ? (projectData.licenseCustom || "Custom")
-                                        : (projectData.license || "Not specified")}
+                                        ? (projectData.licenseCustom || t("wizard.review.custom"))
+                                        : (projectData.license || t("wizard.review.notSpecified"))}
                                 </p>
                             </div>
 
                             {projectData.description && (
                                 <div className="space-y-1">
-                                    <label className="text-sm font-medium text-gray-400">Description</label>
-                                    <p className="text-sm text-gray-200">{projectData.description}</p>
+                                    <label className="text-sm font-medium text-fg-muted">{t("common.description")}</label>
+                                    <p className="text-sm text-fg">{projectData.description}</p>
                                 </div>
                             )}
                         </CardContent>
@@ -65,25 +67,25 @@ export function ReviewStep({ projectData }: ReviewStepProps) {
                     {selectedTemplate && (
                         <Card>
                             <CardHeader>
-                                <CardTitle>Selected Template</CardTitle>
+                                <CardTitle>{t("wizard.review.selectedTemplate.title")}</CardTitle>
                                 <CardDescription>
-                                    Project template that will be used.
+                                    {t("wizard.review.selectedTemplate.description")}
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <div className="flex items-start gap-3">
-                                    <div className="text-2xl text-gray-400">
+                                    <div className="text-2xl text-fg-muted">
                                         <selectedTemplate.icon className="w-6 h-6" />
                                     </div>
                                     <div className="flex-1">
-                                        <h3 className="text-sm font-medium text-gray-200">
-                                            {selectedTemplate.name}
+                                        <h3 className="text-sm font-medium text-fg">
+                                            {selectedTemplate.nameKey ? t(selectedTemplate.nameKey) : selectedTemplate.name}
                                         </h3>
-                                        <p className="text-sm text-gray-400 mt-1">
-                                            {selectedTemplate.description}
+                                        <p className="text-sm text-fg-muted mt-1">
+                                            {selectedTemplate.descriptionKey ? t(selectedTemplate.descriptionKey) : selectedTemplate.description}
                                         </p>
-                                        <span className="text-xs text-gray-500 bg-white/10 px-2 py-1 rounded mt-2 inline-block">
-                                            {selectedTemplate.category}
+                                        <span className="text-xs text-fg-subtle bg-fill px-2 py-1 rounded mt-2 inline-block">
+                                            {selectedTemplate.categoryKey ? t(selectedTemplate.categoryKey) : selectedTemplate.category}
                                         </span>
                                     </div>
                                 </div>
@@ -94,32 +96,30 @@ export function ReviewStep({ projectData }: ReviewStepProps) {
                     {/* Project Settings */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Project Settings</CardTitle>
+                            <CardTitle>{t("wizard.settings.title")}</CardTitle>
                             <CardDescription>
-                                Configuration that will be applied to your project.
+                                {t("wizard.review.settings.description")}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             <div className="grid grid-cols-2 gap-4 text-sm">
                                 <div className="space-y-1">
-                                    <label className="font-medium text-gray-400">Location</label>
-                                    <p className="text-gray-200">{projectData.location}</p>
+                                    <label className="font-medium text-fg-muted">{t("wizard.fields.location")}</label>
+                                    <p className="text-fg">{projectData.location}</p>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="font-medium text-gray-400">Version Control</label>
-                                    <p className="text-gray-200">
-                                        {projectData.versionControl === "git" ? "Git" :
-                                         projectData.versionControl === "none" ? "None" :
-                                         "Git"}
+                                    <label className="font-medium text-fg-muted">{t("wizard.fields.versionControl")}</label>
+                                    <p className="text-fg">
+                                        {projectData.versionControl === "none" ? t("common.none") : "Git"}
                                     </p>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="font-medium text-gray-400">Resolution</label>
-                                    <p className="text-gray-200">{projectData.resolution || "Not specified"}</p>
+                                    <label className="font-medium text-fg-muted">{t("wizard.fields.resolution")}</label>
+                                    <p className="text-fg">{projectData.resolution || t("wizard.review.notSpecified")}</p>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="font-medium text-gray-400">App ID</label>
-                                    <p className="text-gray-200">{projectData.appId || "Not specified"}</p>
+                                    <label className="font-medium text-fg-muted">{t("wizard.fields.appId")}</label>
+                                    <p className="text-fg">{projectData.appId || t("wizard.review.notSpecified")}</p>
                                 </div>
                             </div>
                         </CardContent>

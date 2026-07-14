@@ -97,6 +97,11 @@ export interface PanelDefinition<TPayload = any> {
 export interface EditorTabComponentProps<TPayload = any> {
     tabId: string;
     payload?: TPayload;
+    /**
+     * Whether this tab is the group's visible/focused tab. Kept-alive tabs stay mounted while
+     * hidden; components use this to restore focus/scroll when shown and pause work while hidden.
+     */
+    active: boolean;
 }
 
 /**

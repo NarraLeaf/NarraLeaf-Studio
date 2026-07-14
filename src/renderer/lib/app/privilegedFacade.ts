@@ -21,6 +21,9 @@ function createBoundPrivilegedFacade(token: PrivilegedFacadeToken) {
         fs: {
             selectFile: (filters: string[], multiple: boolean): Promise<RequestStatus<FsRequestResult<string[]>>> =>
                 privileged().fs.selectFile(actor(), filters, multiple),
+            /** Native save dialog; resolves to the chosen path, or null when cancelled. */
+            selectSaveFile: (defaultFileName: string, filters: string[]): Promise<RequestStatus<FsRequestResult<string | null>>> =>
+                privileged().fs.selectSaveFile(actor(), defaultFileName, filters),
             stat: (path: string): Promise<RequestStatus<FsRequestResult<FileStat>>> =>
                 privileged().fs.stat(actor(), path),
             list: (path: string): Promise<RequestStatus<FsRequestResult<FileStat[]>>> =>

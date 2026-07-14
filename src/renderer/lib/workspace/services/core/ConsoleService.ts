@@ -5,7 +5,8 @@ import { Services, type WorkspaceContext } from "../services";
 import { EventEmitter } from "../ui/EventEmitter";
 import { DevModeService } from "./DevModeService";
 
-export type ConsoleChannelId = "blueprint" | "build";
+/** A console channel id. Built-ins are seeded; feature areas register their own via registerChannel. */
+export type ConsoleChannelId = string;
 
 export type ConsoleLogLevel = "verbose" | "info" | "success" | "warning" | "error";
 
@@ -52,13 +53,22 @@ type ConsoleServiceEvents = {
         reason: "append" | "clear";
         entry?: ConsoleEntry;
     };
+    /** The set of registered channels (tabs) changed — a channel was registered or removed. */
+    channelsChanged: {
+        channels: readonly ConsoleChannelDefinition[];
+    };
 };
 
 export const MAX_CONSOLE_ENTRIES_PER_CHANNEL = 500;
 export const MAX_CONSOLE_ENTRY_CHARS = 8192;
 const TRUNCATED_ENTRY_SUFFIX = "... [truncated]";
 
-export const CONSOLE_CHANNELS: readonly ConsoleChannelDefinition[] = [
+/**
+ * Always-present channels seeded at startup. Additional channels (e.g. the story preview's "Story"
+ * tab) are contributed at runtime through {@link ConsoleService.registerChannel} and appear as tabs
+ * for as long as at least one producer keeps them registered.
+ */
+export const BUILTIN_CONSOLE_CHANNELS: readonly ConsoleChannelDefinition[] = [
     {
         id: "blueprint",
         label: "Blueprint",
@@ -71,11 +81,27 @@ export const CONSOLE_CHANNELS: readonly ConsoleChannelDefinition[] = [
     },
 ] as const;
 
-function createEntryStore(): Record<ConsoleChannelId, ConsoleEntry[]> {
-    return {
-        blueprint: [],
-        build: [],
-    };
+/** One registered channel: its definition plus a ref-count so multiple producers can share it. */
+type RegisteredChannel = {
+    definition: ConsoleChannelDefinition;
+    builtin: boolean;
+    refs: number;
+};
+
+function createChannelRegistry(): Map<ConsoleChannelId, RegisteredChannel> {
+    const registry = new Map<ConsoleChannelId, RegisteredChannel>();
+    for (const definition of BUILTIN_CONSOLE_CHANNELS) {
+        registry.set(definition.id, { definition, builtin: true, refs: 0 });
+    }
+    return registry;
+}
+
+function createEntryStore(): Map<ConsoleChannelId, ConsoleEntry[]> {
+    const store = new Map<ConsoleChannelId, ConsoleEntry[]>();
+    for (const definition of BUILTIN_CONSOLE_CHANNELS) {
+        store.set(definition.id, []);
+    }
+    return store;
 }
 
 function normalizeCssColor(color: string | undefined): string | undefined {
@@ -202,6 +228,7 @@ function formatBlueprintDebugEvent(event: BlueprintDebugEvent): string {
  */
 export class ConsoleService extends Service<ConsoleService> {
     private entries = createEntryStore();
+    private channelRegistry = createChannelRegistry();
     private readonly events = new EventEmitter<ConsoleServiceEvents>();
     private sequence = 0;
     private devModeStatusUnsubscribe: (() => void) | null = null;
@@ -243,11 +270,33 @@ export class ConsoleService extends Service<ConsoleService> {
     }
 
     public getChannels(): readonly ConsoleChannelDefinition[] {
-        return CONSOLE_CHANNELS;
+        return [...this.channelRegistry.values()].map(channel => channel.definition);
+    }
+
+    /**
+     * Register a channel so it shows up as a console tab. Ref-counted and idempotent by id: N
+     * registrations of the same id take N disposals before a non-builtin channel (and its buffered
+     * entries) are removed. Built-in channels are permanent — registering their id is a no-op that
+     * still returns a (no-op) disposer, so callers can register uniformly.
+     */
+    public registerChannel(definition: ConsoleChannelDefinition): () => void {
+        const existing = this.channelRegistry.get(definition.id);
+        if (existing) {
+            if (!existing.builtin) {
+                existing.refs += 1;
+            }
+            return this.makeChannelDisposer(definition.id);
+        }
+        this.channelRegistry.set(definition.id, { definition, builtin: false, refs: 1 });
+        if (!this.entries.has(definition.id)) {
+            this.entries.set(definition.id, []);
+        }
+        this.emitChannelsChanged();
+        return this.makeChannelDisposer(definition.id);
     }
 
     public getEntries(channel: ConsoleChannelId): ConsoleEntry[] {
-        return [...this.entries[channel]];
+        return [...(this.entries.get(channel) ?? [])];
     }
 
     public append(channel: ConsoleChannelId, input: ConsoleAppendInput): ConsoleEntry {
@@ -263,7 +312,11 @@ export class ConsoleService extends Service<ConsoleService> {
             color: normalizeCssColor(input.color),
         };
 
-        const list = this.entries[channel];
+        let list = this.entries.get(channel);
+        if (!list) {
+            list = [];
+            this.entries.set(channel, list);
+        }
         list.push(entry);
         if (list.length > MAX_CONSOLE_ENTRIES_PER_CHANNEL) {
             list.splice(0, list.length - MAX_CONSOLE_ENTRIES_PER_CHANNEL);
@@ -298,19 +351,23 @@ export class ConsoleService extends Service<ConsoleService> {
 
     public clear(channel?: ConsoleChannelId): void {
         if (channel) {
-            this.entries[channel] = [];
+            this.entries.set(channel, []);
             this.emitChanged(channel, "clear");
             return;
         }
 
-        for (const item of CONSOLE_CHANNELS) {
-            this.entries[item.id] = [];
-            this.emitChanged(item.id, "clear");
+        for (const id of [...this.entries.keys()]) {
+            this.entries.set(id, []);
+            this.emitChanged(id, "clear");
         }
     }
 
     public onEntriesChanged(handler: (event: ConsoleServiceEvents["entriesChanged"]) => void): () => void {
         return this.events.on("entriesChanged", handler);
+    }
+
+    public onChannelsChanged(handler: (event: ConsoleServiceEvents["channelsChanged"]) => void): () => void {
+        return this.events.on("channelsChanged", handler);
     }
 
     public override dispose(_ctx: WorkspaceContext): void {
@@ -322,7 +379,32 @@ export class ConsoleService extends Service<ConsoleService> {
         this.devModeBlueprintDebugUnsubscribe = null;
         this.events.clear();
         this.entries = createEntryStore();
+        this.channelRegistry = createChannelRegistry();
         this.sequence = 0;
+    }
+
+    private makeChannelDisposer(channel: ConsoleChannelId): () => void {
+        let disposed = false;
+        return () => {
+            if (disposed) {
+                return;
+            }
+            disposed = true;
+            const entry = this.channelRegistry.get(channel);
+            if (!entry || entry.builtin) {
+                return;
+            }
+            entry.refs -= 1;
+            if (entry.refs <= 0) {
+                this.channelRegistry.delete(channel);
+                this.entries.delete(channel);
+                this.emitChannelsChanged();
+            }
+        };
+    }
+
+    private emitChannelsChanged(): void {
+        this.events.emit("channelsChanged", { channels: this.getChannels() });
     }
 
     private emitChanged(

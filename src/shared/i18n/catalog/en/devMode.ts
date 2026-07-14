@@ -1,0 +1,44 @@
+/** `devMode` — the Dev Mode window/overlay: run surface, session status, and the live-debug tools. */
+export const devMode = {
+    title: "Dev Mode",
+    dismiss: "Dismiss",
+    surfaceUnavailable: "Surface not available",
+    waitingPayload: "Waiting for Dev Mode payload…",
+    surfaceNotFound: "Surface not found: {surfaceId}",
+    devtools: {
+        title: "Blueprint DevTools",
+        menuAria: "Preview debug tools",
+        openMenu: "Open preview debug tools menu",
+        closeMenu: "Close preview debug tools menu",
+        panelsAria: "Debug panels",
+    },
+    tabs: {
+        blueprints: "Blueprints",
+        output: "Output",
+        scope: "Scope",
+    },
+    blueprints: {
+        empty: "No blueprints",
+        openWorkspace: "Workspace",
+        cannotOpen: "This blueprint cannot be opened from preview.",
+        openFailed: "Unable to open blueprint.",
+    },
+    output: {
+        logLevel: "Log Level",
+        empty: "No output",
+        level: {
+            log: "Log",
+            verbose: "Verbose",
+        },
+    },
+    scope: {
+        surface: "Surface",
+        global: "Global",
+        persistence: "Persistence",
+        widget: "Widget",
+        hover: "hover",
+        active: "active",
+        focus: "focus",
+        variants: "variants",
+    },
+} as const;

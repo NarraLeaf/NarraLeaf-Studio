@@ -34,6 +34,8 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN = "blueprint.event.head
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP = "blueprint.event.head.anyKeyUp" as const;
 /** Persisted on On Key event heads: keyboard binding string to match, case-insensitive. */
 export const BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME = "key" as const;
+/** Inspector param key selecting which Game Preference field an `On Preference Changed` head watches. */
+export const BLUEPRINT_NODE_PARAM_EVENT_HEAD_PREFERENCE_KEY = "preferenceKey" as const;
 /** Entry for widget `focus` UI event. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS = "blueprint.event.head.focus" as const;
 /** Entry for widget `blur` UI event. */
@@ -65,6 +67,16 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY = "blueprint.event.head.g
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT = "blueprint.event.head.surfaceInit" as const;
 /** Entry for surface `surfaceUnmount` lifecycle event (page left). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT = "blueprint.event.head.surfaceUnmount" as const;
+/** Entry for a specific NarraLeaf game preference change (e.g. BGM Volume) on the active live game. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED = "blueprint.event.head.preferenceChanged" as const;
+/** Entry for any NarraLeaf game preference change on the active live game. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED = "blueprint.event.head.anyPreferenceChanged" as const;
+/**
+ * Entry for a Story Action Blueprint's single "On Call" event. Deliberately kept OUT of
+ * EVENT_DISPATCH_HEAD_TYPES — story-action graphs run via the story compiler's Script wrapper,
+ * never through the UI dispatch paths.
+ */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL = "blueprint.event.head.onCall" as const;
 
 const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -106,6 +118,8 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED,
 ]);
 
 /**
@@ -367,14 +381,29 @@ function isFilteredKeyboardEventHeadType(nodeType: string): boolean {
     return nodeType === BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN || nodeType === BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP;
 }
 
+function matchesPreferenceChangeDispatch(
+    node: { params?: Record<string, unknown> },
+    eventPayload?: Record<string, unknown>,
+): boolean {
+    const selectedKey = String(node.params?.[BLUEPRINT_NODE_PARAM_EVENT_HEAD_PREFERENCE_KEY] ?? "").trim();
+    if (!selectedKey) {
+        // An unconfigured head watches nothing; use `On Any Preference Changed` for the wildcard.
+        return false;
+    }
+    return selectedKey === String(eventPayload?.key ?? "");
+}
+
 function matchesDispatchPayload(
     node: { type: string; params?: Record<string, unknown> },
     eventPayload?: Record<string, unknown>,
 ): boolean {
-    if (!isFilteredKeyboardEventHeadType(node.type)) {
-        return true;
+    if (isFilteredKeyboardEventHeadType(node.type)) {
+        return blueprintKeyboardBindingMatchesEvent(node.params?.[BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME], eventPayload);
     }
-    return blueprintKeyboardBindingMatchesEvent(node.params?.[BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME], eventPayload);
+    if (node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED) {
+        return matchesPreferenceChangeDispatch(node, eventPayload);
+    }
+    return true;
 }
 
 /** All node type ids that may start an event graph chain (for validation / normalization). */
@@ -458,6 +487,26 @@ export function collectGlobalEventHeadNodeIdsForDispatch(
         .map(([id]) => id)
         .sort();
 }
+
+/** True if this node type is the Story Action Blueprint "On Call" entry head. */
+export function isStoryActionCallHeadType(nodeType: string): boolean {
+    return nodeType === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL;
+}
+
+/**
+ * Pick graph node ids that are valid "On Call" entry heads for a Story Action Blueprint.
+ * Kept separate from the UI dispatch collectors so the story-action world never leaks into them.
+ */
+export function collectStoryActionEventHeadNodeIdsForDispatch(
+    nodes: Record<string, { type: string; params?: Record<string, unknown> }> | undefined,
+): string[] {
+    const n = nodes ?? {};
+    return Object.entries(n)
+        .filter(([, node]) => isStoryActionCallHeadType(node.type))
+        .map(([id]) => id)
+        .sort();
+}
+
 export const BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY = "blueprint.function.entry" as const;
 export const BLUEPRINT_NODE_TYPE_LITERAL = "blueprint.data.literal" as const;
 export const BLUEPRINT_NODE_TYPE_LITERAL_STRING = "blueprint.data.stringLiteral" as const;
@@ -542,6 +591,14 @@ export const BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR = "blueprint.local.declareVar
 export const BLUEPRINT_NODE_TYPE_PERSISTENT_GET = "blueprint.persistent.get" as const;
 /** Async write to project-level persistent storage. */
 export const BLUEPRINT_NODE_TYPE_PERSISTENT_SET = "blueprint.persistent.set" as const;
+/** Read a Story scene variable (NLR Scene.local); story-action blueprints only. */
+export const BLUEPRINT_NODE_TYPE_SCENE_GET = "blueprint.scene.get" as const;
+/** Write a Story scene variable (NLR Scene.local); story-action blueprints only. */
+export const BLUEPRINT_NODE_TYPE_SCENE_SET = "blueprint.scene.set" as const;
+/** Read a Story saved variable (NLR Storable, per save-file); story-action blueprints only. */
+export const BLUEPRINT_NODE_TYPE_SAVED_GET = "blueprint.saved.get" as const;
+/** Write a Story saved variable (NLR Storable, per save-file); story-action blueprints only. */
+export const BLUEPRINT_NODE_TYPE_SAVED_SET = "blueprint.saved.set" as const;
 /** Persisted helper param for variableRef nodes whose pin type follows the selected variable. */
 export const BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE = "__variableValueType" as const;
 /** Console log from wired data pin (Studio / Dev Mode). */
@@ -620,6 +677,82 @@ export const BLUEPRINT_NODE_TYPE_STRING_NORMALIZE_LINE_BREAKS = "blueprint.strin
 
 export const BLUEPRINT_NODE_TYPE_BROADCAST_SEND = "blueprint.broadcast.send" as const;
 export const BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT = "blueprint.broadcast.getListenerCount" as const;
+
+/**
+ * Fn nodes: surface-scoped callable functions declared by a head node in event graphs.
+ * The fn identity is the head node id; callers reference it via an encoded fnRef param.
+ * Deliberately NOT part of EVENT_DISPATCH_HEAD_TYPES — fn bodies only run via explicit invocation.
+ */
+export const BLUEPRINT_NODE_TYPE_FN_HEAD = "blueprint.fn.head" as const;
+export const BLUEPRINT_NODE_TYPE_FN_CALL = "blueprint.fn.call" as const;
+export const BLUEPRINT_NODE_TYPE_FN_RETURN = "blueprint.fn.return" as const;
+/** Fn head inspector param: user-visible function name. */
+export const BLUEPRINT_NODE_PARAM_FN_NAME = "name" as const;
+/** Call Fn inspector param: encoded (blueprintId, headNodeId) reference. */
+export const BLUEPRINT_NODE_PARAM_FN_REF = "fnRef" as const;
+/** Call Fn cached signature { name, params[], returns[] } used to render pins without document access. */
+export const BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT = "__fnSignatureSnapshot" as const;
+/** Fn head dynamic parameter pins: ordered ids / labels by id / value types by id. */
+export const BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_IDS = "__fnParamPinIds" as const;
+export const BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_LABELS = "__fnParamPinLabels" as const;
+export const BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_TYPES = "__fnParamPinTypes" as const;
+/** Fn Return dynamic result pins: ordered ids / labels by id / value types by id. */
+export const BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_IDS = "__fnReturnPinIds" as const;
+export const BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_LABELS = "__fnReturnPinLabels" as const;
+export const BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_TYPES = "__fnReturnPinTypes" as const;
+
+export type BlueprintFnPinSnapshot = {
+    pinId: string;
+    name: string;
+    valueType: string;
+};
+
+/** Serialized on Call Fn node params so pins render without resolving the target fn. */
+export type BlueprintFnSignatureSnapshot = {
+    name: string;
+    params: BlueprintFnPinSnapshot[];
+    returns: BlueprintFnPinSnapshot[];
+};
+
+function sanitizeBlueprintFnPinSnapshots(raw: unknown): BlueprintFnPinSnapshot[] {
+    if (!Array.isArray(raw)) {
+        return [];
+    }
+    const out: BlueprintFnPinSnapshot[] = [];
+    for (const entry of raw) {
+        if (!entry || typeof entry !== "object") {
+            continue;
+        }
+        const pinId = (entry as { pinId?: unknown }).pinId;
+        if (typeof pinId !== "string" || pinId.trim().length === 0) {
+            continue;
+        }
+        const name = (entry as { name?: unknown }).name;
+        const valueType = (entry as { valueType?: unknown }).valueType;
+        out.push({
+            pinId,
+            name: typeof name === "string" && name.trim().length > 0 ? name : pinId,
+            valueType: typeof valueType === "string" && valueType.trim().length > 0 ? valueType : "any",
+        });
+    }
+    return out;
+}
+
+/** Tolerant reader for the Call Fn signature snapshot param (serialized user data). */
+export function readBlueprintFnSignatureSnapshot(
+    params: Record<string, unknown> | undefined,
+): BlueprintFnSignatureSnapshot | undefined {
+    const raw = params?.[BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return undefined;
+    }
+    const name = (raw as { name?: unknown }).name;
+    return {
+        name: typeof name === "string" && name.trim().length > 0 ? name : "Fn",
+        params: sanitizeBlueprintFnPinSnapshots((raw as { params?: unknown }).params),
+        returns: sanitizeBlueprintFnPinSnapshots((raw as { returns?: unknown }).returns),
+    };
+}
 export const BLUEPRINT_NODE_TYPE_PAGE_GO = "blueprint.page.go" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS = "blueprint.page.getProps" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING = "blueprint.page.isSurfaceExiting" as const;
@@ -636,7 +769,14 @@ export const BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS = "blueprint.game.save.listI
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW = "blueprint.game.save.getPreview" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE = "blueprint.game.save.delete" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA = "blueprint.game.save.getMetadata" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET = "blueprint.game.history.get" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE = "blueprint.game.history.restore" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST = "blueprint.game.history.undoLast" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG = "blueprint.game.getNametag" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS = "blueprint.game.getNotifications" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT = "blueprint.game.getChoiceCount" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE = "blueprint.game.isNvlMode" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_CHOOSE = "blueprint.game.choose" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_NEXT = "blueprint.game.next" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SKIP = "blueprint.game.skip" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SHOW_DIALOG = "blueprint.game.showDialog" as const;

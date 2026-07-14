@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "@/lib/i18n";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/lib/components/elements";
 import { Input, InputGroup } from "@/lib/components/elements";
 import { TextArea } from "@/lib/components/elements";
@@ -18,8 +19,14 @@ interface DetailsStepProps {
  * Project details step for basic project information
  */
 export function DetailsStep({ projectData, updateProjectData, updateProjectName, updateAppId }: DetailsStepProps) {
+    const { t } = useTranslation();
     const [showCustomLicense, setShowCustomLicense] = useState(false);
     const [appIdError, setAppIdError] = useState("");
+
+    const localizedLicenseOptions = licenseOptions.map((option) => ({
+        ...option,
+        label: option.labelKey ? t(option.labelKey) : option.label,
+    }));
 
     /**
      * Validate app ID and update error state
@@ -28,9 +35,9 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
         updateAppId(value);
 
         if (value.trim() === "") {
-            setAppIdError("App ID is required");
+            setAppIdError(t("wizard.details.appIdRequired"));
         } else if (!/^[a-z0-9-]+$/.test(value)) {
-            setAppIdError("App ID can only contain lowercase letters, numbers, and hyphens");
+            setAppIdError(t("wizard.details.appIdInvalid"));
         } else {
             setAppIdError("");
         }
@@ -51,9 +58,9 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
         <div className="p-6">
             <div className="space-y-6">
                 <div className="space-y-2">
-                    <h2 className="text-lg font-semibold text-gray-200">Project Details</h2>
-                    <p className="text-sm text-gray-400">
-                        Provide basic information about your project.
+                    <h2 className="text-lg font-semibold text-fg">{t("wizard.details.title")}</h2>
+                    <p className="text-sm text-fg-muted">
+                        {t("wizard.details.subtitle")}
                     </p>
                 </div>
 
@@ -61,66 +68,66 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
                     {/* Basic Information Section */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Basic Information</CardTitle>
+                            <CardTitle>{t("wizard.details.basicInfo.title")}</CardTitle>
                             <CardDescription>
-                                Essential project details and metadata
+                                {t("wizard.details.basicInfo.description")}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <InputGroup label="Project Name" required>
+                            <InputGroup label={t("wizard.details.projectName")} required>
                                 <Input
-                                    placeholder="Enter project name..."
+                                    placeholder={t("wizard.details.projectNamePlaceholder")}
                                     value={projectData.name}
                                     onChange={async (e) => await updateProjectName(e.target.value)}
                                 />
                             </InputGroup>
 
                             <InputGroup
-                                label="App ID"
+                                label={t("wizard.fields.appId")}
                                 required
                                 error={appIdError}
-                                helper="Only lowercase letters, numbers, and hyphens allowed."
+                                helper={t("wizard.details.appIdHelper")}
                             >
                                 <Input
-                                    placeholder="Enter app identifier..."
+                                    placeholder={t("wizard.details.appIdPlaceholder")}
                                     value={projectData.appId}
                                     onChange={async (e) => await handleAppIdChange(e.target.value)}
                                     variant={appIdError ? "error" : "default"}
                                     pattern="[a-z0-9-]*"
-                                    title="App ID can only contain lowercase letters, numbers, and hyphens"
+                                    title={t("wizard.details.appIdInvalid")}
                                 />
                             </InputGroup>
 
-                            <InputGroup label="Author">
+                            <InputGroup label={t("wizard.fields.author")}>
                                 <Input
-                                    placeholder="Author Email / Organization / Project"
+                                    placeholder={t("wizard.details.authorPlaceholder")}
                                     value={projectData.author}
                                     onChange={(e) => updateProjectData({ author: e.target.value })}
                                 />
                             </InputGroup>
 
-                            <InputGroup label="License">
+                            <InputGroup label={t("wizard.fields.license")}>
                                 <Select
-                                    options={licenseOptions}
+                                    options={localizedLicenseOptions}
                                     value={projectData.license}
                                     onChange={async (value) => await handleLicenseChange(value)}
-                                    placeholder="Select license..."
+                                    placeholder={t("wizard.details.licensePlaceholder")}
                                 />
                             </InputGroup>
 
                             {showCustomLicense && (
-                                <InputGroup label="Custom License">
+                                <InputGroup label={t("wizard.details.customLicense")}>
                                     <Input
-                                        placeholder="Enter custom license..."
+                                        placeholder={t("wizard.details.customLicensePlaceholder")}
                                         value={projectData.licenseCustom || ""}
                                         onChange={(e) => updateProjectData({ licenseCustom: e.target.value })}
                                     />
                                 </InputGroup>
                             )}
 
-                            <InputGroup label="Description">
+                            <InputGroup label={t("common.description")}>
                                 <TextArea
-                                    placeholder="Describe your project..."
+                                    placeholder={t("wizard.details.descriptionPlaceholder")}
                                     value={projectData.description}
                                     onChange={(e) => updateProjectData({ description: e.target.value })}
                                     rows={3}
@@ -132,18 +139,18 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
                     {/* Application Section */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Application</CardTitle>
+                            <CardTitle>{t("wizard.details.application.title")}</CardTitle>
                             <CardDescription>
-                                Common application settings. Most of these settings cannot be changed after project initialization.
+                                {t("wizard.details.application.description")}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <InputGroup label="Resolution" required>
+                            <InputGroup label={t("wizard.fields.resolution")} required>
                                 <Select
                                     options={resolutionOptions}
                                     value={projectData.resolution}
                                     onChange={(value) => updateProjectData({ resolution: String(value) })}
-                                    placeholder="Select resolution..."
+                                    placeholder={t("wizard.details.resolutionPlaceholder")}
                                 />
                             </InputGroup>
                         </CardContent>
@@ -161,10 +168,10 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
                             </div>
                             <div>
                                 <h3 className="text-sm font-medium text-yellow-200">
-                                    Required Fields
+                                    {t("wizard.details.requiredFieldsTitle")}
                                 </h3>
                                 <p className="text-sm text-yellow-300 mt-1">
-                                    Please fill in the required fields: Project Name, App ID, and Resolution.
+                                    {t("wizard.details.requiredFieldsMessage")}
                                     {appIdError && ` ${appIdError}`}
                                 </p>
                             </div>
