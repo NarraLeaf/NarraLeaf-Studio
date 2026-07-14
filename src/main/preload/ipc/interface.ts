@@ -175,6 +175,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.workspaceExportProjectPackage, { projectPath }),
         importProjectPackage: () =>
             ipcClient.invoke(IPCEventType.workspaceImportProjectPackage, {}),
+        exportConsoleLogs: (defaultFileName: string, content: string) =>
+            ipcClient.invoke(IPCEventType.workspaceExportConsoleLogs, { defaultFileName, content }),
         onResolveAssetUrl: (handler: (payload: { assetId: string; assetType?: string }) => Promise<RequestStatus<{ url: string }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceResolveAssetUrl, handler),
         onResolveImageAssetUrl: (handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>) =>

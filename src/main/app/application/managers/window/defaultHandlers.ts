@@ -11,7 +11,7 @@ import {
 } from "./handlers/fsAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
 import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./handlers/projectPackageAction";
-import { WorkspaceLaunchHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler } from "./handlers/workspaceAction";
+import { WorkspaceLaunchHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceExportConsoleLogsHandler } from "./handlers/workspaceAction";
 import {
     DevModeGetStatusHandler,
     DevModeLaunchHandler,
@@ -96,6 +96,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new WorkspaceCloseHandler(),
         new WorkspaceExportProjectPackageHandler(),
         new WorkspaceImportProjectPackageHandler(),
+        new WorkspaceExportConsoleLogsHandler(),
 
         // Dev mode handlers
         new DevModeLaunchHandler(),

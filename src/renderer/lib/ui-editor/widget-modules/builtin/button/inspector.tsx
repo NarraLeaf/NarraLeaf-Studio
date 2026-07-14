@@ -16,7 +16,7 @@ import type {
     InlineRowItemContext,
 } from "@/apps/workspace/modules/properties/framework/types";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
-import { listLocalizationKeyOptions } from "@/lib/ui-editor/widget-modules/shared/localizationKeyOptions";
+import { createLocalizationKeyField } from "@/lib/ui-editor/widget-modules/shared/LocalizationKeyField";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
@@ -93,6 +93,14 @@ const ButtonLabelBlueprintValueField = createBlueprintValueField({
                 }}
             />
         );
+    },
+});
+
+const ButtonLocalizationKeyField = createLocalizationKeyField({
+    getKey: element => getButtonProps(element).localizationKey ?? "",
+    setKey: (data, value) => {
+        const live = data.documentService.getDocument().elements[data.element.id] ?? data.element;
+        data.documentService.updateElementProps(live.id, { localizationKey: value });
     },
 });
 
@@ -389,11 +397,9 @@ export function createButtonInspector(ctx: InspectorContext) {
                             }),
                             defineField<D, any>({
                                 id: "button.localizationKey",
-                                type: "select",
+                                type: "custom",
                                 label: t("widgets.localization.textKey"),
-                                options: () => listLocalizationKeyOptions(),
-                                getValue: (d: D) => getButtonProps(d.element).localizationKey ?? "",
-                                setValue: (_d: D, v: string | number) => patch({ localizationKey: String(v).trim() || undefined }),
+                                component: ButtonLocalizationKeyField,
                             }),
                         ],
                     }),

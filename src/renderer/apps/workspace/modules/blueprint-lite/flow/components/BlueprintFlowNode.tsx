@@ -2314,6 +2314,57 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
         </Button>
     );
 
+    // Pair each input row with its aligned output row so both share the SAME flex row.
+    // Alignment then comes from the shared row height (not from every row being a fixed
+    // 20px), so expanding a pin into an inline-literal card grows that one row on both
+    // sides and never drifts the outputs below it. `rightPinSpacerRows` offsets the
+    // outputs so e.g. Switch String's "Case 0" output lands beside its "Case 0" value input.
+    const leftRowItems: ReactNode[] = [
+        ...leftPins.map(({ pin, semantic }) => (
+            <InputPinRow
+                key={`in-${pin.id}`}
+                pin={pin}
+                semantic={semantic}
+                selected={Boolean(selected)}
+                nodeId={nodeId}
+                params={params}
+                onPatchNodeParam={onPatchNodeParam}
+                isWired={wired.has(pin.id)}
+                removable={Boolean(pin.removable)}
+                onRemovePin={onRemoveDynamicInputPin}
+                dynamicLabelParamKey={catalog.dynamicInputPinLabelParamKey}
+                dynamicLabelValues={dynamicLabelValues}
+                dynamicTypeParamKey={catalog.dynamicInputPinTypeParamKey}
+                dynamicTypeValues={dynamicTypeValues}
+                dynamicTypeOptions={catalog.dynamicInputPinTypeOptions}
+            />
+        )),
+        ...(showAddInInputColumn ? [addPinButton] : []),
+    ];
+    const rightRowItems: ReactNode[] = [
+        ...Array.from({ length: rightPinSpacerRows }, (_, index) => (
+            <div key={`right-pin-spacer-${index}`} className="min-h-[20px]" aria-hidden />
+        )),
+        ...rightPins.map(({ pin, semantic }) => (
+            <OutputPinRow
+                key={`out-${pin.id}`}
+                pin={pin}
+                semantic={semantic}
+                nodeId={nodeId}
+                onPatchNodeParam={onPatchNodeParam}
+                removable={Boolean(pin.removable)}
+                onRemovePin={onRemoveDynamicInputPin}
+                dynamicLabelParamKey={catalog.dynamicInputPinLabelParamKey}
+                dynamicLabelValues={dynamicLabelValues}
+                dynamicTypeParamKey={catalog.dynamicInputPinTypeParamKey}
+                dynamicTypeValues={dynamicTypeValues}
+                dynamicTypeOptions={catalog.dynamicInputPinTypeOptions}
+            />
+        )),
+        ...(addPinInOutputColumn ? [addPinButton] : []),
+    ];
+    const pinRowCount = Math.max(leftRowItems.length, rightRowItems.length);
+
     return (
         <div
             className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-[#1a1d21] text-xs shadow-md ${
@@ -2383,61 +2434,30 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                     : null}
             </div>
             {hasLeftColumn || hasRightColumn ? (
-                <div className="flex items-start gap-1 px-1 py-1.5">
-                    {hasLeftColumn ? (
-                        <div
-                            className={`flex min-w-0 flex-col gap-0.5 ${onlyLeftPins ? "w-full flex-1" : "flex-1"}`}
-                        >
-                            {leftPins.map(({ pin, semantic }) => (
-                                <InputPinRow
-                                    key={`in-${pin.id}`}
-                                    pin={pin}
-                                    semantic={semantic}
-                                    selected={Boolean(selected)}
-                                    nodeId={nodeId}
-                                    params={params}
-                                    onPatchNodeParam={onPatchNodeParam}
-                                    isWired={wired.has(pin.id)}
-                                    removable={Boolean(pin.removable)}
-                                    onRemovePin={onRemoveDynamicInputPin}
-                                    dynamicLabelParamKey={catalog.dynamicInputPinLabelParamKey}
-                                    dynamicLabelValues={dynamicLabelValues}
-                                    dynamicTypeParamKey={catalog.dynamicInputPinTypeParamKey}
-                                    dynamicTypeValues={dynamicTypeValues}
-                                    dynamicTypeOptions={catalog.dynamicInputPinTypeOptions}
-                                />
-                            ))}
-                            {showAddInInputColumn ? addPinButton : null}
+                <div className="flex flex-col gap-0.5 px-1 py-1.5">
+                    {Array.from({ length: pinRowCount }).map((_, rowIndex) => (
+                        // items-stretch makes both cells take the row height; each cell centers
+                        // its pin row, so the left/right handles share a vertical center and stay
+                        // aligned even when one side is a taller inline-literal card.
+                        <div key={`pin-row-${rowIndex}`} className="flex items-stretch gap-1">
+                            {hasLeftColumn ? (
+                                <div
+                                    className={`flex min-w-0 flex-col justify-center ${onlyLeftPins ? "w-full flex-1" : "flex-1"}`}
+                                >
+                                    {leftRowItems[rowIndex] ?? null}
+                                </div>
+                            ) : (
+                                <div className="w-0 shrink-0" aria-hidden />
+                            )}
+                            {hasRightColumn ? (
+                                <div
+                                    className={`flex min-w-0 flex-col justify-center ${onlyRightPins ? "w-full min-w-0 flex-1" : "shrink-0"}`}
+                                >
+                                    {rightRowItems[rowIndex] ?? null}
+                                </div>
+                            ) : null}
                         </div>
-                    ) : (
-                        <div className="w-0 shrink-0" aria-hidden />
-                    )}
-                    {hasRightColumn ? (
-                        <div
-                            className={`flex min-w-0 flex-col gap-0.5 ${onlyRightPins ? "w-full min-w-0 flex-1" : "shrink-0"}`}
-                        >
-                            {Array.from({ length: rightPinSpacerRows }).map((_, index) => (
-                                <div key={`right-pin-spacer-${index}`} className="min-h-[20px]" aria-hidden />
-                            ))}
-                            {rightPins.map(({ pin, semantic }) => (
-                                <OutputPinRow
-                                    key={`out-${pin.id}`}
-                                    pin={pin}
-                                    semantic={semantic}
-                                    nodeId={nodeId}
-                                    onPatchNodeParam={onPatchNodeParam}
-                                    removable={Boolean(pin.removable)}
-                                    onRemovePin={onRemoveDynamicInputPin}
-                                    dynamicLabelParamKey={catalog.dynamicInputPinLabelParamKey}
-                                    dynamicLabelValues={dynamicLabelValues}
-                                    dynamicTypeParamKey={catalog.dynamicInputPinTypeParamKey}
-                                    dynamicTypeValues={dynamicTypeValues}
-                                    dynamicTypeOptions={catalog.dynamicInputPinTypeOptions}
-                                />
-                            ))}
-                            {addPinInOutputColumn ? addPinButton : null}
-                        </div>
-                    ) : null}
+                    ))}
                 </div>
             ) : null}
         </div>

@@ -151,8 +151,11 @@ export function BlueprintAddNodeMenu({
     }, [anchor.x, anchor.y]);
 
     const filteredEntries = useMemo(
-        () => filterBlueprintAddNodeEntries(entries, activeCategoryId, query),
-        [activeCategoryId, entries, query],
+        () => filterBlueprintAddNodeEntries(entries, activeCategoryId, query, {
+            title: displayName => resolveBlueprintNodeTitle(displayName, t),
+            category: category => resolveBlueprintCategoryLabel(category, t),
+        }),
+        [activeCategoryId, entries, query, t],
     );
     const itemCount = filteredEntries.length;
     const listMaxHeight = Math.max(120, Math.min(MENU_MAX_H - MENU_CHROME_H, layout.maxHeight - MENU_CHROME_H));
