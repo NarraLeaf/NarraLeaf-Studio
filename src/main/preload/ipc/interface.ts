@@ -6,6 +6,7 @@ import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalSta
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults } from "@shared/types/window";
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
+import type { GameBuildRequest, GameBuildStateSnapshot } from "@shared/types/gameBuild";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
@@ -264,6 +265,17 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.previewStop, { projectPath }) as Promise<RequestStatus<{ status: PreviewStatus }>>,
         getStatus: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.previewGetStatus, { projectPath }) as Promise<RequestStatus<{ status: PreviewStatus }>>,
+    },
+
+    gameBuild: {
+        start: (projectPath: string, entry: GameRuntimeLaunchEntry, request: GameBuildRequest) =>
+            ipcClient.invoke(IPCEventType.gameBuildStart, { projectPath, entry, request }) as Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>,
+        cancel: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.gameBuildCancel, { projectPath }) as Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>,
+        getStatus: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.gameBuildGetStatus, { projectPath }) as Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>,
+        selectOutputDir: (defaultPath?: string) =>
+            ipcClient.invoke(IPCEventType.gameBuildSelectOutputDir, { defaultPath }) as Promise<RequestStatus<{ path: string | null }>>,
     },
 
     blueprintPersistence: {

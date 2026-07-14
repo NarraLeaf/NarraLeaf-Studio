@@ -8,10 +8,6 @@ export const actions = {
     },
     build: {
         tooltip: "Build project",
-        source: "Build",
-        requested: "Build requested for {name}.",
-        notWiredTitle: "Project build pipeline is not wired to the toolbar yet.",
-        notWiredDetail: " Packaging output will stream here once the build runner is connected.",
     },
     file: {
         label: "File",

@@ -9,10 +9,6 @@ export const actions = {
     },
     build: {
         tooltip: "构建项目",
-        source: "构建",
-        requested: "已请求构建 {name}。",
-        notWiredTitle: "项目构建流程尚未接入工具栏。",
-        notWiredDetail: " 构建运行器接通后，打包输出将在此处实时显示。",
     },
     file: {
         label: "文件",

@@ -16,7 +16,7 @@ import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph"
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY } from "@shared/types/blueprint/graph";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
-import { compileGameRuntimePreviewArtifact } from "./gameRuntimeArtifactCompiler";
+import { compileGameRuntimeArtifact, type GameRuntimeArtifactCompileInput } from "./gameRuntimeArtifactCompiler";
 
 const ASSET_ID = "00000000-0000-4000-8000-000000000123";
 const REMOTE_ASSET_ID = "00000000-0000-4000-8000-000000000456";
@@ -46,21 +46,11 @@ describe("game runtime artifact compiler", () => {
         await writeAsset(projectPath, ASSET_ID, "local image bytes");
         await writeProjectIcon(projectPath, "configured icon bytes");
 
-        const result = await compileGameRuntimePreviewArtifact({
-            projectPath,
-            runtimeDistDir,
-            runtimeVersion: "0.0.1-test",
-            entry: {
-                kind: "surface",
-                surfaceId: "surface-main",
-            },
-            controlPort: 47321,
-            controlToken: "token",
-        });
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47321));
 
-        expect(result.previewRoot).toBe(path.join(projectPath, ".nlstudio", "preview"));
-        expect(result.appDir).toBe(path.join(result.previewRoot, "app"));
-        expect(result.userDataDir).toBe(path.join(result.previewRoot, "userData"));
+        expect(result.outputRoot).toBe(path.join(projectPath, ".nlstudio", "preview"));
+        expect(result.appDir).toBe(path.join(result.outputRoot, "app"));
+        expect(result.userDataDir).toBe(path.join(result.outputRoot, "userData"));
         expect(result.copiedAssetCount).toBe(1);
         await expect(fs.readFile(path.join(result.appDir, "main.js"), "utf-8")).resolves.toBe("// main");
         await expect(fs.readFile(path.join(result.appDir, "preload.js"), "utf-8")).resolves.toBe("// preload");
@@ -143,16 +133,8 @@ describe("game runtime artifact compiler", () => {
             contributes: { blueprintNodes: ["acme.sample-plugin.node"], widgets: [] },
             permissions: [],
         };
-        const result = await compileGameRuntimePreviewArtifact({
-            projectPath,
-            runtimeDistDir,
-            runtimeVersion: "0.0.1-test",
-            entry: {
-                kind: "surface",
-                surfaceId: "surface-main",
-            },
-            controlPort: 47324,
-            controlToken: "token",
+        const result = await compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47324),
             runtimePlugins: [{
                 manifest,
                 entry: "runtime.js",
@@ -178,17 +160,7 @@ describe("game runtime artifact compiler", () => {
         await writeAsset(projectPath, ASSET_ID, "local image bytes");
         await writeProjectIcon(projectPath, "configured icon bytes");
 
-        const result = await compileGameRuntimePreviewArtifact({
-            projectPath,
-            runtimeDistDir,
-            runtimeVersion: "0.0.1-test",
-            entry: {
-                kind: "surface",
-                surfaceId: "surface-main",
-            },
-            controlPort: 47325,
-            controlToken: "token",
-        });
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47325));
 
         expect(result.pack.plugins).toEqual([]);
     });
@@ -208,17 +180,8 @@ describe("game runtime artifact compiler", () => {
             },
         });
 
-        await expect(compileGameRuntimePreviewArtifact({
-            projectPath,
-            runtimeDistDir,
-            runtimeVersion: "0.0.1-test",
-            entry: {
-                kind: "surface",
-                surfaceId: "surface-main",
-            },
-            controlPort: 47322,
-            controlToken: "token",
-        })).rejects.toThrow(/remote cache "remote-hero\.jpg"/);
+        await expect(compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47322)))
+            .rejects.toThrow(/remote cache "remote-hero\.jpg"/);
     });
 
     it("preserves authored Animate opacity percent params in the preview pack", async () => {
@@ -282,17 +245,7 @@ describe("game runtime artifact compiler", () => {
         });
         await writeProjectIcon(projectPath, "configured icon bytes");
 
-        const result = await compileGameRuntimePreviewArtifact({
-            projectPath,
-            runtimeDistDir,
-            runtimeVersion: "0.0.1-test",
-            entry: {
-                kind: "surface",
-                surfaceId: "surface-main",
-            },
-            controlPort: 47323,
-            controlToken: "token",
-        });
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47323));
 
         const blueprint = result.pack.bundle.ui.localBlueprints.blueprints["surface-main-blueprint"];
         const nodeParams = blueprint?.program.kind === "graph"
@@ -331,13 +284,8 @@ describe("game runtime artifact compiler", () => {
             permissions: [],
         };
 
-        const result = await compileGameRuntimePreviewArtifact({
-            projectPath,
-            runtimeDistDir,
-            runtimeVersion: "0.0.1-test",
-            entry: { kind: "surface", surfaceId: "surface-main" },
-            controlPort: 47330,
-            controlToken: "token",
+        const result = await compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47330),
             encryptionKey: packKey,
             runtimePlugins: [{
                 manifest,
@@ -380,7 +328,99 @@ describe("game runtime artifact compiler", () => {
             await reader.close();
         }
     });
+
+    it("writes a production app without a control channel or sibling userData", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const outputRoot = path.join(projectPath, ".nlstudio", "build", "staging");
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: {
+                kind: "surface",
+                surfaceId: "surface-main",
+            },
+            outputRoot,
+            mode: "production",
+        });
+
+        expect(result.outputRoot).toBe(outputRoot);
+        expect(result.appDir).toBe(path.join(outputRoot, "app"));
+        expect(result.userDataDir).toBeNull();
+        await expect(fs.access(path.join(outputRoot, "userData"))).rejects.toThrow();
+
+        const packOnDisk = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(packOnDisk.mode).toBe("production");
+        expect(packOnDisk.preview).toBeUndefined();
+
+        const manifest = JSON.parse(await fs.readFile(path.join(result.appDir, "package.json"), "utf-8"));
+        expect(manifest).toMatchObject({
+            name: "fixture.project",
+            productName: "Fixture Project",
+            version: "1.2.3",
+            author: "NarraLeaf",
+            main: "main.js",
+            narraleaf: { mode: "production" },
+        });
+    });
+
+    it("marks preview app manifests with the preview mode", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47326));
+
+        const manifest = JSON.parse(await fs.readFile(path.join(result.appDir, "package.json"), "utf-8"));
+        expect(manifest).toMatchObject({
+            name: "narraleaf-preview-runtime",
+            narraleaf: { mode: "preview" },
+        });
+    });
+
+    it("rejects mode/control-channel mismatches", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+
+        const base = previewCompileInput(projectPath, runtimeDistDir, 47327);
+        await expect(compileGameRuntimeArtifact({ ...base, mode: "production" }))
+            .rejects.toThrow(/must not carry a preview control channel/);
+        await expect(compileGameRuntimeArtifact({ ...base, preview: undefined }))
+            .rejects.toThrow(/requires a preview control channel/);
+    });
 });
+
+function previewCompileInput(
+    projectPath: string,
+    runtimeDistDir: string,
+    controlPort: number,
+): GameRuntimeArtifactCompileInput {
+    return {
+        projectPath,
+        runtimeDistDir,
+        runtimeVersion: "0.0.1-test",
+        entry: {
+            kind: "surface",
+            surfaceId: "surface-main",
+        },
+        outputRoot: path.join(projectPath, ".nlstudio", "preview"),
+        preview: {
+            controlPort,
+            controlToken: "token",
+        },
+    };
+}
 
 async function createRuntimeDist(runtimeDistDir: string): Promise<void> {
     await fs.mkdir(runtimeDistDir, { recursive: true });

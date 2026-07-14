@@ -1,7 +1,8 @@
+import fsSync from "fs";
 import fs from "fs/promises";
 import path from "path";
 import { nativeImage } from "electron";
-import { app, BrowserWindow, ipcMain, protocol, session } from "electron/main";
+import { app, BrowserWindow, ipcMain, Menu, protocol, session } from "electron/main";
 import { WebSocketServer } from "ws";
 import {
     GAME_RUNTIME_PROTOCOL,
@@ -21,7 +22,32 @@ import {
 } from "./runtimeStorage";
 
 const appDir = __dirname;
-const userDataDir = path.resolve(appDir, "..", "userData");
+
+/**
+ * Early mode marker from the loose app manifest, readable synchronously before
+ * app-ready so path setup and the debugger guard run before Chromium does any
+ * work. The pack's own `mode` (which may live in the consolidated store) stays
+ * authoritative for everything decided after the pack is open; a stripped or
+ * tampered manifest only ever downgrades to the stricter checks below.
+ */
+function readShellMode(): "preview" | "production" {
+    try {
+        const manifest = JSON.parse(fsSync.readFileSync(path.join(appDir, "package.json"), "utf-8")) as {
+            narraleaf?: { mode?: unknown };
+        };
+        return manifest.narraleaf?.mode === "production" ? "production" : "preview";
+    } catch {
+        return "preview";
+    }
+}
+
+const shellMode = readShellMode();
+
+// Preview keeps saves next to the compiled app; a shipped game has no sibling
+// userData dir and uses the OS per-user location derived from the app name.
+const previewUserDataDir = path.resolve(appDir, "..", "userData");
+const useSiblingUserData = shellMode !== "production" && fsSync.existsSync(previewUserDataDir);
+const userDataDir = useSiblingUserData ? previewUserDataDir : app.getPath("userData");
 
 /**
  * Build-time placeholder. The compiler substitutes the real value when asset
@@ -77,9 +103,23 @@ protocol.registerSchemesAsPrivileged([
     },
 ]);
 
-app.setPath("userData", userDataDir);
+if (useSiblingUserData) {
+    app.setPath("userData", userDataDir);
+}
+
+// Earliest possible refusal to run a production game under an attached
+// debugger/CDP: before app-ready, before any window or session exists. The
+// post-pack-read check below stays as the authoritative (tamper-resistant on
+// asar-integrity platforms) second gate.
+const startupBlocked = shellMode === "production" && hasDebuggingSwitch();
+if (startupBlocked) {
+    app.quit();
+}
 
 void app.whenReady().then(async () => {
+    if (startupBlocked) {
+        return;
+    }
     resources = await createRuntimeResources(appDir, PACK_KEY);
     const pack = await readPack();
     if (pack.mode === "production" && hasDebuggingSwitch()) {
@@ -89,6 +129,7 @@ void app.whenReady().then(async () => {
     }
     const allowHttp = pack.network?.allowHttp === true;
     applyRuntimeAppIdentity(pack);
+    applyRuntimeMenu(pack);
     registerRuntimeProtocol(allowHttp);
     registerRuntimeIpc();
     startPreviewControlServer(pack);
@@ -160,6 +201,28 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         });
     }
     return win;
+}
+
+/**
+ * Production ships without Electron's default menu: it carries Reload and
+ * DevTools items (and their accelerators) that have no place in a shipped
+ * game. macOS keeps a minimal menu so quit/copy/paste stay reachable; other
+ * platforms drop the menu bar entirely. Preview keeps the default menu as a
+ * developer affordance.
+ */
+function applyRuntimeMenu(pack: GameRuntimePackV1): void {
+    if (pack.mode !== "production") {
+        return;
+    }
+    if (process.platform === "darwin") {
+        Menu.setApplicationMenu(Menu.buildFromTemplate([
+            { role: "appMenu" },
+            { role: "editMenu" },
+            { role: "windowMenu" },
+        ]));
+    } else {
+        Menu.setApplicationMenu(null);
+    }
 }
 
 function applyRuntimeAppIdentity(pack: GameRuntimePackV1): void {

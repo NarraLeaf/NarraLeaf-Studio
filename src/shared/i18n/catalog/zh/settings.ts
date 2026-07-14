@@ -54,5 +54,10 @@ export const settings = {
             description:
                 "同时保持加载的编辑器标签数，切换标签时保留其滚动位置与焦点（{min}–{max}）。超出的标签会在重新打开时重新加载。",
         },
+        electronMirror: {
+            label: "Electron 下载镜像",
+            description:
+                "为其他平台构建游戏时下载 Electron 所用的镜像地址。留空则使用官方源。",
+        },
     },
 } satisfies LocaleNamespace<"settings">;
