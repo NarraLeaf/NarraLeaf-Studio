@@ -35,6 +35,30 @@ export type ConsoleChannelDefinition = {
     description: string;
 };
 
+/**
+ * Per-channel progress descriptor rendered as a thin bar along the bottom of the
+ * console panel. Any producer (build/package pipeline, long imports, …) can drive
+ * it through {@link ConsoleService.setProgress}.
+ */
+export type ConsoleProgress = {
+    /** Fraction complete in [0, 1]. Ignored while `indeterminate` is true. */
+    value: number;
+    /** Animated "in progress, no known fraction" bar; `value` is ignored while true. */
+    indeterminate: boolean;
+    /** Render in the warning colour instead of the primary colour to flag a problem. */
+    error: boolean;
+    /** Optional short label surfaced as the bar's tooltip / accessible name. */
+    label?: string;
+};
+
+/** Partial progress update; omitted fields keep their previous value (see setProgress). */
+export type ConsoleProgressInput = {
+    value?: number;
+    indeterminate?: boolean;
+    error?: boolean;
+    label?: string;
+};
+
 export type ConsoleAppendInput = {
     level?: ConsoleLogLevel;
     source?: string;
@@ -56,6 +80,11 @@ type ConsoleServiceEvents = {
     /** The set of registered channels (tabs) changed — a channel was registered or removed. */
     channelsChanged: {
         channels: readonly ConsoleChannelDefinition[];
+    };
+    /** A channel's progress bar was updated or cleared (`progress` is null when cleared). */
+    progressChanged: {
+        channel: ConsoleChannelId;
+        progress: ConsoleProgress | null;
     };
 };
 
@@ -102,6 +131,13 @@ function createEntryStore(): Map<ConsoleChannelId, ConsoleEntry[]> {
         store.set(definition.id, []);
     }
     return store;
+}
+
+function clamp01(value: number): number {
+    if (!Number.isFinite(value)) {
+        return 0;
+    }
+    return value < 0 ? 0 : value > 1 ? 1 : value;
 }
 
 function normalizeCssColor(color: string | undefined): string | undefined {
@@ -229,6 +265,7 @@ function formatBlueprintDebugEvent(event: BlueprintDebugEvent): string {
 export class ConsoleService extends Service<ConsoleService> {
     private entries = createEntryStore();
     private channelRegistry = createChannelRegistry();
+    private progress = new Map<ConsoleChannelId, ConsoleProgress>();
     private readonly events = new EventEmitter<ConsoleServiceEvents>();
     private sequence = 0;
     private devModeStatusUnsubscribe: (() => void) | null = null;
@@ -322,6 +359,13 @@ export class ConsoleService extends Service<ConsoleService> {
             list.splice(0, list.length - MAX_CONSOLE_ENTRIES_PER_CHANNEL);
         }
         this.emitChanged(channel, "append", entry);
+
+        // An error logged while a progress bar is running flips it to the warning
+        // colour automatically, so producers that already log errors get the visual
+        // signal without a separate setProgress call.
+        if (entry.level === "error" && this.progress.get(channel)?.error === false) {
+            this.setProgress(channel, { error: true });
+        }
         return entry;
     }
 
@@ -347,6 +391,41 @@ export class ConsoleService extends Service<ConsoleService> {
             source: event.type === "devtools.log" ? "Blueprint Log" : "Blueprint",
             message: formatBlueprintDebugEvent(event),
         });
+    }
+
+    /** Current progress bar for a channel, or null when none is running. */
+    public getProgress(channel: ConsoleChannelId): ConsoleProgress | null {
+        return this.progress.get(channel) ?? null;
+    }
+
+    /**
+     * Drive (or clear) a channel's progress bar. Passing `null` removes the bar.
+     * Otherwise the given fields are merged over the channel's current progress, so
+     * callers can nudge a single field — e.g. `setProgress("build", { error: true })`
+     * flips the colour while keeping the current value. A brand-new bar defaults to
+     * value 0, determinate, non-error.
+     */
+    public setProgress(channel: ConsoleChannelId, input: ConsoleProgressInput | null): void {
+        if (input === null) {
+            if (this.progress.delete(channel)) {
+                this.events.emit("progressChanged", { channel, progress: null });
+            }
+            return;
+        }
+
+        const previous = this.progress.get(channel);
+        const next: ConsoleProgress = {
+            value: clamp01(input.value ?? previous?.value ?? 0),
+            indeterminate: input.indeterminate ?? previous?.indeterminate ?? false,
+            error: input.error ?? previous?.error ?? false,
+            label: input.label ?? previous?.label,
+        };
+        this.progress.set(channel, next);
+        this.events.emit("progressChanged", { channel, progress: next });
+    }
+
+    public onProgressChanged(handler: (event: ConsoleServiceEvents["progressChanged"]) => void): () => void {
+        return this.events.on("progressChanged", handler);
     }
 
     public clear(channel?: ConsoleChannelId): void {
@@ -380,6 +459,7 @@ export class ConsoleService extends Service<ConsoleService> {
         this.events.clear();
         this.entries = createEntryStore();
         this.channelRegistry = createChannelRegistry();
+        this.progress = new Map();
         this.sequence = 0;
     }
 

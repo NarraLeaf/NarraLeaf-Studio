@@ -71,11 +71,26 @@ module.exports = {
                     '0%': { transform: 'scale(0.95)', opacity: '0' },
                     '100%': { transform: 'scale(1)', opacity: '1' },
                 },
+                // Two-bar indeterminate progress (the familiar Material pattern): each
+                // bar grows/shrinks as it sweeps via animated left/right, and the two
+                // are offset in time so the track is never empty. Reads clearly as "busy".
+                'progress-indeterminate-1': {
+                    '0%': { left: '-35%', right: '100%' },
+                    '60%': { left: '100%', right: '-90%' },
+                    '100%': { left: '100%', right: '-90%' },
+                },
+                'progress-indeterminate-2': {
+                    '0%': { left: '-200%', right: '100%' },
+                    '60%': { left: '107%', right: '-8%' },
+                    '100%': { left: '107%', right: '-8%' },
+                },
             },
             animation: {
                 'slide-in-right': 'slide-in-right 0.3s ease-out',
                 'fade-in': 'fade-in 0.2s ease-out',
                 'scale-in': 'scale-in 0.2s ease-out',
+                'progress-indeterminate-1': 'progress-indeterminate-1 2.1s cubic-bezier(0.65,0.815,0.735,0.395) infinite',
+                'progress-indeterminate-2': 'progress-indeterminate-2 2.1s cubic-bezier(0.165,0.84,0.44,1) 1.15s infinite',
             },
         }
     },

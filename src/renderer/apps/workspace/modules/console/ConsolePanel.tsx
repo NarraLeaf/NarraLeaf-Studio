@@ -13,6 +13,7 @@ import {
     type ConsoleEntry,
     type ConsoleLineSegment,
     type ConsoleLogLevel,
+    type ConsoleProgress,
 } from "@/lib/workspace/services/core/ConsoleService";
 import { Services } from "@/lib/workspace/services/services";
 import { useWorkspace } from "../../context";
@@ -154,6 +155,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
     const [entriesByChannel, setEntriesByChannel] = useState<Record<ConsoleChannelId, ConsoleEntry[]>>(() =>
         readServiceEntries(consoleService),
     );
+    const [progressByChannel, setProgressByChannel] = useState<Record<ConsoleChannelId, ConsoleProgress | null>>({});
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const filterMenuRef = useRef<HTMLDivElement | null>(null);
     const panelStateLoadedRef = useRef(false);
@@ -191,12 +193,27 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
             setChannels(consoleService.getChannels());
             setEntriesByChannel(readServiceEntries(consoleService));
         };
+        const syncProgress = () => {
+            const next: Record<ConsoleChannelId, ConsoleProgress | null> = {};
+            for (const channel of consoleService.getChannels()) {
+                next[channel.id] = consoleService.getProgress(channel.id);
+            }
+            setProgressByChannel(next);
+        };
         sync();
+        syncProgress();
         const offEntries = consoleService.onEntriesChanged(sync);
-        const offChannels = consoleService.onChannelsChanged(sync);
+        const offChannels = consoleService.onChannelsChanged(() => {
+            sync();
+            syncProgress();
+        });
+        const offProgress = consoleService.onProgressChanged(({ channel, progress }) => {
+            setProgressByChannel(prev => ({ ...prev, [channel]: progress }));
+        });
         return () => {
             offEntries();
             offChannels();
+            offProgress();
         };
     }, [consoleService]);
 
@@ -395,6 +412,45 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                     <ConsoleEntryGrid entries={visibleEntries} />
                 )}
             </div>
+
+            <ConsoleProgressBar progress={progressByChannel[activeChannel] ?? null} />
+        </div>
+    );
+}
+
+/**
+ * Thin progress bar pinned to the bottom of the console panel. Renders nothing when
+ * the active channel has no running progress. Determinate progress fills left→right;
+ * indeterminate work animates two sweeping bars (the familiar "busy" pattern). Both
+ * switch to the warning colour once `error` is set.
+ */
+function ConsoleProgressBar({ progress }: { progress: ConsoleProgress | null }) {
+    if (!progress) {
+        return null;
+    }
+    const barColor = progress.error ? "bg-warning" : "bg-primary";
+    const pct = Math.round(progress.value * 100);
+    return (
+        <div
+            className="relative h-0.5 w-full shrink-0 overflow-hidden bg-white/[0.06]"
+            role="progressbar"
+            aria-label={progress.label}
+            aria-valuemin={progress.indeterminate ? undefined : 0}
+            aria-valuemax={progress.indeterminate ? undefined : 100}
+            aria-valuenow={progress.indeterminate ? undefined : pct}
+            title={progress.label}
+        >
+            {progress.indeterminate ? (
+                <>
+                    <div className={`absolute inset-y-0 animate-progress-indeterminate-1 rounded-full ${barColor}`} />
+                    <div className={`absolute inset-y-0 animate-progress-indeterminate-2 rounded-full ${barColor}`} />
+                </>
+            ) : (
+                <div
+                    className={`absolute inset-y-0 left-0 rounded-full transition-[width,background-color] duration-300 ease-out ${barColor}`}
+                    style={{ width: `${pct}%` }}
+                />
+            )}
         </div>
     );
 }
