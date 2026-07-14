@@ -11,8 +11,10 @@ export const assets = {
     importRemote: "远程导入",
     noTags: "无标签",
     preview: "预览",
+    unknownError: "未知错误",
     emptyType: "还没有{label}",
     itemCount: {
+        one: "{count} 项",
         other: "{count} 项",
     },
     view: {
@@ -32,32 +34,51 @@ export const assets = {
         noResults: "未找到匹配的素材",
         matchTag: "标签：{tag}",
         resultCount: {
+            one: "{count} 条结果",
             other: "{count} 条结果",
         },
     },
     list: {
-        emptyFiltered: "没有符合当前筛选的素材。",
+        emptyFiltered: "没有符合当前筛选的素材",
     },
     iconView: {
         updating: "正在更新…",
         assetCount: {
+            one: "{count} 个素材",
             other: "{count} 个素材",
         },
         tagCount: {
+            one: "+{count} 个标签",
             other: "+{count} 个标签",
         },
+    },
+    import: {
+        unableTitle: "无法导入",
+        failedTitle: "导入素材失败",
+        someFailedTitle: "部分素材导入失败",
+        moveFailedTitle: "移动已导入素材失败",
+        fileAccessFailed: "文件访问授权失败",
+        filePathParsingFailed: "文件路径解析失败",
+        moreFailures: "…还有 {count} 个",
+        remoteTitle: "导入远程素材",
+        remoteDescription: "粘贴远程素材的直接链接",
+        remoteInvalidUrl: "请输入有效的 URL",
+        remoteFailedTitle: "导入远程素材失败",
     },
     menu: {
         newGroup: "新建分组",
         newSubGroup: "新建子分组",
         importAssets: "导入素材…",
         copyCount: {
+            one: "复制 {count} 项",
             other: "复制 {count} 项",
         },
         cutCount: {
+            one: "剪切 {count} 项",
             other: "剪切 {count} 项",
         },
         deleteCount: {
+            one: "删除 {count} 项",
             other: "删除 {count} 项",
         },
     },
@@ -87,6 +108,8 @@ export const assets = {
         summary: "将为 {files} 个文件共添加 {tags} 个标签",
         applying: "正在应用…",
         applyTags: "应用标签",
+        parseFailedTitle: "魔法标签解析失败",
+        applyFailedTitle: "应用标签失败",
     },
     audio: {
         play: "播放",
@@ -99,6 +122,7 @@ export const assets = {
         loading: "正在加载音频…",
         loadError: "加载音频失败",
         channelCount: {
+            one: "{count} 声道",
             other: "{count} 声道",
         },
     },
@@ -108,5 +132,16 @@ export const assets = {
         zoomIn: "放大",
         zoomOut: "缩小",
         resetView: "重置视图",
+    },
+    shortcuts: {
+        copy: "复制选中的素材",
+        cut: "剪切选中的素材",
+        paste: "粘贴素材",
+        rename: "重命名选中的素材或分组",
+    },
+    lockReason: {
+        character: "素材正被某个角色使用",
+        scene: "素材正被某个场景使用",
+        editor: "素材正被编辑器使用",
     },
 } satisfies LocaleNamespace<"assets">;

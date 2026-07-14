@@ -23,6 +23,11 @@ import {
     Volume2,
 } from "lucide-react";
 import type { StoryBlock } from "@shared/types/story";
+import type { TranslationKey } from "@shared/i18n";
+import { translate } from "@/lib/i18n";
+
+/** Minimal translate signature (from `useTranslation().t`) accepted by the label resolvers below. */
+type ActionCommandTranslate = (key: TranslationKey) => string;
 
 export type ActionCommandId =
     | "narration"
@@ -135,9 +140,44 @@ export function pluginActionToPaletteCommand(registration: {
         id: registration.id,
         category: "plugin",
         label: registration.label,
-        detail: registration.detail ?? "Plugin story action",
+        detail: registration.detail ?? translate("story.pluginActionFallbackDetail"),
         icon: Puzzle,
     };
+}
+
+/**
+ * Display label for a palette command in the active locale. Built-in commands map by their stable
+ * id to `story.actionCommand.<id>.label`; plugin commands (author-supplied ids) keep their
+ * registered label. Resolve at render time — never snapshot at import.
+ */
+export function translateActionCommandLabel(command: PaletteActionCommand, t: ActionCommandTranslate): string {
+    return isActionCommandId(command.id)
+        ? t(`story.actionCommand.${command.id}.label` as TranslationKey)
+        : command.label;
+}
+
+/** Display detail for a palette command in the active locale. See {@link translateActionCommandLabel}. */
+export function translateActionCommandDetail(command: PaletteActionCommand, t: ActionCommandTranslate): string {
+    return isActionCommandId(command.id)
+        ? t(`story.actionCommand.${command.id}.detail` as TranslationKey)
+        : command.detail;
+}
+
+/**
+ * A palette command whose `label`/`detail` are swapped to the active locale, so both display and
+ * {@link actionCommandMatchesQuery} search operate on translated text (id/capability still match).
+ */
+export function localizeActionCommand(command: PaletteActionCommand, t: ActionCommandTranslate): PaletteActionCommand {
+    return {
+        ...command,
+        label: translateActionCommandLabel(command, t),
+        detail: translateActionCommandDetail(command, t),
+    };
+}
+
+/** Localized label for an action category. */
+export function translateActionCommandCategoryLabel(category: ActionCommandCategory, t: ActionCommandTranslate): string {
+    return t(`story.actionCategory.${category.id}` as TranslationKey);
 }
 
 export const ACTION_COMMAND_CATEGORIES: ActionCommandCategory[] = [

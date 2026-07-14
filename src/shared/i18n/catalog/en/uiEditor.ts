@@ -3,6 +3,8 @@ export const uiEditor = {
     surfaceKind: {
         page: "Page",
         gameUi: "Game UI",
+        pageDescription: "Pages are complete screens such as title, settings, save, history, or gallery.",
+        gameUiDescription: "Game UI belongs to active gameplay, such as dialog, choices, HUD, shortcuts, and notifications.",
     },
     panel: {
         interfaceType: "Interface Type",
@@ -77,6 +79,8 @@ export const uiEditor = {
         staticChecks: "Static checks (editor only): ",
         devModeHint: "Open Dev Mode for real execution, node traces, and Host API calls.",
         layerFallback: "Layer",
+        openComponent: "Open component",
+        unlinkComponent: "Unlink component",
     },
     snap: {
         label: "Smart snap",
@@ -86,5 +90,26 @@ export const uiEditor = {
         canvasLayout: "Canvas layout (edges & center)",
         elementBorders: "Element borders (edge to edge)",
         elementLayout: "Element layout (centers)",
+    },
+    contextMenu: {
+        pasteIntoContainer: "Paste into container",
+        insert: "Insert",
+        insertChild: "Insert child",
+        selectAll: "Select all",
+        expandAll: "Expand all",
+        collapseAll: "Collapse all",
+        copyElementId: "Copy Element ID",
+        rename: "Rename…",
+        showSelected: "Show selected",
+        hideSelected: "Hide selected",
+        addToComponentLibrary: "Add to Component Library",
+        addToGroup: "Add to group",
+        arrange: {
+            label: "Arrange",
+            bringToFront: "Bring to front",
+            sendToBack: "Send to back",
+            bringForward: "Bring forward",
+            sendBackward: "Send backward",
+        },
     },
 } as const;

@@ -77,6 +77,7 @@ export const characters = {
         },
     },
     properties: {
+        editorTitle: "Character Properties",
         thumbnail: "Thumbnail",
         preview: "Preview",
         select: "Select",

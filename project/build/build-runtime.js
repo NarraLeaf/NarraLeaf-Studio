@@ -46,6 +46,10 @@ function runtimeAliasPlugin() {
     const shim = name => path.join(runtimeSourceDir, 'renderer', 'shims', name);
     const exactAliases = new Map([
         [
+            '@/lib/i18n',
+            shim('i18n.ts'),
+        ],
+        [
             '@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant',
             shim('useEditorAppearanceInspectorVariant.ts'),
         ],

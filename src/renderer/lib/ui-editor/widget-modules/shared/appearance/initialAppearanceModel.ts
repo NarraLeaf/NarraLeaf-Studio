@@ -11,6 +11,7 @@ import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
+import { translate } from "@/lib/i18n";
 import type { ContainerWidgetProps } from "@shared/types/ui-editor/container";
 import type { ButtonWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/button/types";
 import type { TextWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/text/types";
@@ -406,7 +407,7 @@ export function createInitialContainerAppearance(props: ContainerWidgetProps): A
         variants: [
             {
                 id: DEFAULT_APPEARANCE_VARIANT_ID,
-                name: "Default",
+                name: translate("widgets.defaults.appearanceVariant"),
                 propertyGroups,
             },
         ],
@@ -423,7 +424,7 @@ export function createInitialButtonAppearance(props: ButtonWidgetProps): Appeara
         variants: [
             {
                 id: DEFAULT_APPEARANCE_VARIANT_ID,
-                name: "Default",
+                name: translate("widgets.defaults.appearanceVariant"),
                 propertyGroups,
             },
         ],
@@ -440,7 +441,7 @@ export function createInitialTextAppearance(props: TextWidgetProps): AppearanceM
         variants: [
             {
                 id: DEFAULT_APPEARANCE_VARIANT_ID,
-                name: "Default",
+                name: translate("widgets.defaults.appearanceVariant"),
                 propertyGroups,
             },
         ],
@@ -458,7 +459,7 @@ export function createInitialImageAppearance(rectangleLike: RectangleLikeProps):
         variants: [
             {
                 id: DEFAULT_APPEARANCE_VARIANT_ID,
-                name: "Default",
+                name: translate("widgets.defaults.appearanceVariant"),
                 propertyGroups,
             },
         ],

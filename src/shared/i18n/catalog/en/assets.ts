@@ -11,6 +11,7 @@ export const assets = {
     importRemote: "Import Remote",
     noTags: "No tags",
     preview: "Preview",
+    unknownError: "Unknown error",
     emptyType: "No {label} yet",
     itemCount: {
         one: "{count} item",
@@ -50,6 +51,19 @@ export const assets = {
             one: "+{count} tag",
             other: "+{count} tags",
         },
+    },
+    import: {
+        unableTitle: "Unable to import",
+        failedTitle: "Failed to import assets",
+        someFailedTitle: "Some assets failed to import",
+        moveFailedTitle: "Failed to move imported asset",
+        fileAccessFailed: "File access grant failed.",
+        filePathParsingFailed: "File path parsing failed.",
+        moreFailures: "…and {count} more.",
+        remoteTitle: "Import Remote Asset",
+        remoteDescription: "Paste a direct link to the remote asset",
+        remoteInvalidUrl: "Please enter a valid URL",
+        remoteFailedTitle: "Failed to import remote asset",
     },
     menu: {
         newGroup: "New Group",
@@ -94,6 +108,8 @@ export const assets = {
         summary: "Will add a total of {tags} tags to {files} files",
         applying: "Applying…",
         applyTags: "Apply Tags",
+        parseFailedTitle: "Magic Tags parsing failed",
+        applyFailedTitle: "Applying tags failed",
     },
     audio: {
         play: "Play",
@@ -116,5 +132,17 @@ export const assets = {
         zoomIn: "Zoom In",
         zoomOut: "Zoom Out",
         resetView: "Reset View",
+    },
+    shortcuts: {
+        copy: "Copy selected assets",
+        cut: "Cut selected assets",
+        paste: "Paste assets",
+        rename: "Rename selected asset or group",
+    },
+    // Human-readable reasons an asset is locked against deletion (keyed by AssetLockReason).
+    lockReason: {
+        character: "Asset is used by a character",
+        scene: "Asset is used by a scene",
+        editor: "Asset is used by the Editor",
     },
 } as const;
