@@ -23,6 +23,15 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOG,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    BLUEPRINT_NODE_PARAM_FN_NAME,
+    BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_IDS,
+    BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_LABELS,
+    BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_TYPES,
+    BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_IDS,
+    BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_LABELS,
+    BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_TYPES,
+    BLUEPRINT_NODE_TYPE_FN_HEAD,
+    BLUEPRINT_NODE_TYPE_FN_RETURN,
 } from "@shared/types/blueprint/graph";
 import {
     countBlueprintBroadcastListeners,
@@ -31,7 +40,10 @@ import {
     dispatchGlobalBlueprintEvent,
     dispatchSurfaceBlueprintEvent,
     dispatchBlueprintUiEvent,
+    invokeBlueprintFnCall,
+    MAX_BLUEPRINT_FN_CALL_DEPTH,
 } from "./BlueprintDispatcher";
+import { createBlueprintFnRef } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import {
     acquireBlueprintExecutionLocals,
     acquireBlueprintWidgetLocals,
@@ -2242,5 +2254,214 @@ describe("BlueprintDispatcher", () => {
         });
         expect(locals[pageVarRef]).toBe(7);
         expect(locals[globalVarRef]).toBe(true);
+    });
+});
+
+describe("invokeBlueprintFnCall", () => {
+    function fnEchoGraph(headId: string, withDelay?: boolean) {
+        const nodes: Record<string, { id: string; type: string; params?: Record<string, unknown> }> = {
+            [headId]: {
+                id: headId,
+                type: BLUEPRINT_NODE_TYPE_FN_HEAD,
+                params: {
+                    [BLUEPRINT_NODE_PARAM_FN_NAME]: "Echo",
+                    [BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_IDS]: ["param_1_value"],
+                    [BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_LABELS]: { param_1_value: "input" },
+                    [BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_TYPES]: { param_1_value: "string" },
+                },
+            },
+            ret: {
+                id: "ret",
+                type: BLUEPRINT_NODE_TYPE_FN_RETURN,
+                params: {
+                    [BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_IDS]: ["ret_1_value"],
+                    [BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_LABELS]: { ret_1_value: "result" },
+                    [BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_TYPES]: { ret_1_value: "string" },
+                },
+            },
+        };
+        const edges = [
+            { from: { nodeId: headId, port: "param_1_value" }, to: { nodeId: "ret", port: "ret_1_value" } },
+        ];
+        if (withDelay) {
+            nodes.delay = { id: "delay", type: BLUEPRINT_NODE_TYPE_FLOW_DELAY, params: { duration: 1 } };
+            edges.push(
+                { from: { nodeId: headId, port: "then" }, to: { nodeId: "delay", port: "in" } },
+                { from: { nodeId: "delay", port: "completed" }, to: { nodeId: "ret", port: "in" } },
+            );
+        } else {
+            edges.push({ from: { nodeId: headId, port: "then" }, to: { nodeId: "ret", port: "in" } });
+        }
+        return { nodes, edges };
+    }
+
+    function fnDocument(): BlueprintDocument {
+        return {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
+            blueprints: {
+                "bp-widget": {
+                    id: "bp-widget",
+                    name: "Widget Fns",
+                    owner: { kind: "widgetMain", surfaceId: "s1", elementId: "button" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: { variables: {}, fields: {}, functions: {} },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                main: { id: "main", graph: fnEchoGraph("w-head") },
+                                slow: { id: "slow", graph: fnEchoGraph("w-slow-head", true) },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+                "bp-global": {
+                    id: "bp-global",
+                    name: "Global Fns",
+                    owner: { kind: "globalMain" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: { variables: {}, fields: {}, functions: {} },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: { main: { id: "main", graph: fnEchoGraph("g-head") } },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {
+                globalMain: {
+                    activeBlueprintId: "bp-global",
+                    privateBlueprintIds: ["bp-global"],
+                    initializedFrontend: "visual",
+                },
+                "widgetMain:s1:button": {
+                    activeBlueprintId: "bp-widget",
+                    privateBlueprintIds: ["bp-widget"],
+                    initializedFrontend: "visual",
+                },
+            },
+        };
+    }
+
+    it("seeds args into head param pins and returns Fn Return values", async () => {
+        const result = await invokeBlueprintFnCall({
+            blueprintDocument: fnDocument(),
+            surfaceId: "s1",
+            fnRef: createBlueprintFnRef("bp-widget", "w-head"),
+            args: { param_1_value: "hello" },
+            depth: 0,
+            hostAdapter: { host: "player" },
+            debug: new DebugBridge(),
+        });
+        expect(result.returns).toEqual({ ret_1_value: "hello" });
+    });
+
+    it("allows global fns from any surface caller", async () => {
+        const result = await invokeBlueprintFnCall({
+            blueprintDocument: fnDocument(),
+            surfaceId: "s2",
+            fnRef: createBlueprintFnRef("bp-global", "g-head"),
+            args: { param_1_value: "global" },
+            depth: 0,
+            hostAdapter: { host: "player" },
+            debug: new DebugBridge(),
+        });
+        expect(result.returns).toEqual({ ret_1_value: "global" });
+    });
+
+    it("rejects surface-scoped fns from another surface", async () => {
+        await expect(
+            invokeBlueprintFnCall({
+                blueprintDocument: fnDocument(),
+                surfaceId: "s2",
+                fnRef: createBlueprintFnRef("bp-widget", "w-head"),
+                args: {},
+                depth: 0,
+                hostAdapter: { host: "player" },
+                debug: new DebugBridge(),
+            }),
+        ).rejects.toThrow(/not available in this scope/);
+    });
+
+    it("rejects unknown fn refs", async () => {
+        await expect(
+            invokeBlueprintFnCall({
+                blueprintDocument: fnDocument(),
+                surfaceId: "s1",
+                fnRef: createBlueprintFnRef("bp-widget", "missing-head"),
+                args: {},
+                depth: 0,
+                hostAdapter: { host: "player" },
+                debug: new DebugBridge(),
+            }),
+        ).rejects.toThrow(/does not exist/);
+    });
+
+    it("guards against runaway recursion depth", async () => {
+        await expect(
+            invokeBlueprintFnCall({
+                blueprintDocument: fnDocument(),
+                surfaceId: "s1",
+                fnRef: createBlueprintFnRef("bp-widget", "w-head"),
+                args: {},
+                depth: MAX_BLUEPRINT_FN_CALL_DEPTH,
+                hostAdapter: { host: "player" },
+                debug: new DebugBridge(),
+            }),
+        ).rejects.toThrow(/depth/);
+    });
+
+    it("awaits latent fn bodies before resolving with returns", async () => {
+        vi.useFakeTimers();
+        try {
+            let resolved = false;
+            const pending = invokeBlueprintFnCall({
+                blueprintDocument: fnDocument(),
+                surfaceId: "s1",
+                fnRef: createBlueprintFnRef("bp-widget", "w-slow-head"),
+                args: { param_1_value: "later" },
+                depth: 0,
+                hostAdapter: { host: "player" },
+                debug: new DebugBridge(),
+            }).then(result => {
+                resolved = true;
+                return result;
+            });
+
+            await Promise.resolve();
+            expect(resolved).toBe(false);
+
+            await vi.advanceTimersByTimeAsync(1000);
+            const result = await pending;
+            expect(resolved).toBe(true);
+            expect(result.returns).toEqual({ ret_1_value: "later" });
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("propagates the caller abort signal into the fn body", async () => {
+        const controller = new AbortController();
+        controller.abort();
+        await expect(
+            invokeBlueprintFnCall({
+                blueprintDocument: fnDocument(),
+                surfaceId: "s1",
+                fnRef: createBlueprintFnRef("bp-widget", "w-head"),
+                args: {},
+                depth: 0,
+                signal: controller.signal,
+                hostAdapter: { host: "player" },
+                debug: new DebugBridge(),
+            }),
+        ).rejects.toThrow();
     });
 });

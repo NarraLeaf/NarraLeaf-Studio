@@ -98,6 +98,8 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
+    BLUEPRINT_NODE_TYPE_FN_CALL,
+    BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
     BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
@@ -111,6 +113,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_END_MODE,
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION,
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET,
     BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
@@ -2277,14 +2280,24 @@ function resolveSelfOutput(
             selfNode.type === BLUEPRINT_NODE_TYPE_PERSISTENT_GET ||
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS ||
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA ||
-            selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW) &&
+            selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET) &&
         (portId === "index" ||
             portId === "item" ||
             portId === "value" ||
             portId === "ids" ||
             portId === "metadata" ||
-            portId === "preview")
+            portId === "preview" ||
+            portId === "entries" ||
+            portId === "count")
     ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    if (
+        (selfNode.type === BLUEPRINT_NODE_TYPE_FN_HEAD && portId !== "then") ||
+        (selfNode.type === BLUEPRINT_NODE_TYPE_FN_CALL && portId !== "next")
+    ) {
+        // Fn head param pins are seeded by the dispatcher; Call Fn return pins are written on completion.
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
     const mathOp = MATH_RESULT_OPS[selfNode.type];

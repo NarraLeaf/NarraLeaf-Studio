@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { ErrorBoundary } from "@/lib/app/errorHandling/ErrorBoundary";
 import type { ErrorFallbackProps } from "@/lib/app/errorHandling/errorHandling";
+import { useTranslation } from "@/lib/i18n";
 
 type WorkspacePanelErrorBoundaryProps = {
     children: React.ReactNode;
@@ -16,12 +17,13 @@ function createPanelErrorFallback(
     onRetry: () => void
 ): React.ComponentType<ErrorFallbackProps> {
     return function WorkspacePanelErrorFallback() {
+        const { t } = useTranslation();
         return (
-            <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-3 bg-[#0f1115] p-4 text-center">
+            <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-3 bg-surface p-4 text-center">
                 <AlertCircle className="h-8 w-8 shrink-0 text-red-400" aria-hidden />
                 <div>
-                    <p className="text-sm font-medium text-white">This panel hit a rendering error</p>
-                    <p className="mt-1 text-xs text-gray-500">{regionLabel}</p>
+                    <p className="text-sm font-medium text-white">{t("workspace.shell.panelRenderError")}</p>
+                    <p className="mt-1 text-xs text-fg-subtle">{regionLabel}</p>
                 </div>
                 <button
                     type="button"
@@ -29,7 +31,7 @@ function createPanelErrorFallback(
                     className="inline-flex h-9 cursor-default items-center gap-2 rounded-md bg-primary px-3 text-sm text-white transition-colors hover:bg-primary/80"
                 >
                     <RefreshCw className="h-4 w-4" aria-hidden />
-                    Retry
+                    {t("workspace.shell.retry")}
                 </button>
             </div>
         );

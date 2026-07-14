@@ -15,6 +15,7 @@ export interface GlobalStateType extends Record<string, any> {
     "editor.fontFamily": string;
     "editor.lineNumbers": boolean;
     "editor.softWrap": boolean;
+    "editor.maxActiveEditors": number;
     "workspace.restoreLastWorkspace": boolean;
     "workspace.confirmOnClose": boolean;
     "workspace.recentProjectsLimit": number;
@@ -45,9 +46,10 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "ui.compactMode": false,
     "ui.reduceMotion": false,
     "editor.fontSize": 14,
-    "editor.fontFamily": "inter",
+    "editor.fontFamily": "Default",
     "editor.lineNumbers": true,
     "editor.softWrap": false,
+    "editor.maxActiveEditors": 8,
     "workspace.restoreLastWorkspace": true,
     "workspace.confirmOnClose": true,
     "workspace.recentProjectsLimit": 10,

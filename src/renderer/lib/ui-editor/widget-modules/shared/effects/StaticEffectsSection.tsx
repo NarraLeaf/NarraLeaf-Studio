@@ -1,5 +1,6 @@
 import type { ElementEffectValues, VisualEffectKind } from "@shared/types/ui-editor/effects";
 import { EffectsStackEditor } from "./EffectsStackEditor";
+import { useTranslation } from "@/lib/i18n";
 
 export type StaticEffectsSectionProps = {
     effects: ElementEffectValues;
@@ -9,9 +10,10 @@ export type StaticEffectsSectionProps = {
 };
 
 export function StaticEffectsSection({ effects, onChange, supportedKinds, draftResetKey }: StaticEffectsSectionProps) {
+    const { t } = useTranslation();
     return (
-        <div className="rounded-lg border border-white/10 bg-black/20 p-2.5 space-y-2 min-w-0">
-            <div className="text-xs font-medium text-gray-300">Effects</div>
+        <div className="rounded-lg border border-edge bg-black/20 p-2.5 space-y-2 min-w-0">
+            <div className="text-xs font-medium text-fg-muted">{t("widgetChrome.effects.title")}</div>
             <EffectsStackEditor
                 values={effects}
                 onChange={onChange}

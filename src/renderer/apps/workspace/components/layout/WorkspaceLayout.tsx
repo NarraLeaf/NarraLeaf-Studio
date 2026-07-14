@@ -45,12 +45,21 @@ const SETTINGS_KEYS = {
     LEFT_SIDEBAR_VISIBLE: "ui.leftSidebar.visible",
     LEFT_SIDEBAR_WIDTH: "ui.leftSidebar.width",
     LEFT_SIDEBAR_ACTIVE_PANEL: "ui.leftSidebar.activePanel",
+    LEFT_SIDEBAR_ORDER: "ui.leftSidebar.order",
     RIGHT_SIDEBAR_VISIBLE: "ui.rightSidebar.visible",
     RIGHT_SIDEBAR_WIDTH: "ui.rightSidebar.width",
     RIGHT_SIDEBAR_ACTIVE_PANEL: "ui.rightSidebar.activePanel",
+    RIGHT_SIDEBAR_ORDER: "ui.rightSidebar.order",
     BOTTOM_PANEL_VISIBLE: "ui.bottomPanel.visible",
     BOTTOM_PANEL_HEIGHT: "ui.bottomPanel.height",
     BOTTOM_PANEL_ACTIVE_PANEL: "ui.bottomPanel.activePanel",
+    BOTTOM_PANEL_ORDER: "ui.bottomPanel.order",
+};
+
+const ORDER_SETTINGS_KEY_BY_POSITION: Record<PanelPosition, string> = {
+    [PanelPosition.Left]: SETTINGS_KEYS.LEFT_SIDEBAR_ORDER,
+    [PanelPosition.Right]: SETTINGS_KEYS.RIGHT_SIDEBAR_ORDER,
+    [PanelPosition.Bottom]: SETTINGS_KEYS.BOTTOM_PANEL_ORDER,
 };
 
 const REMOVED_PANEL_IDS = new Set(["narraleaf-studio:running-tasks"]);
@@ -84,6 +93,9 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const [activeLeftPanelId, setActiveLeftPanelId] = useState<string | null>(null);
     const [activeRightPanelId, setActiveRightPanelId] = useState<string | null>(null);
     const [activeBottomPanelId, setActiveBottomPanelId] = useState<string | null>(null);
+
+    // User-defined panel ordering per dock area (mirror of UIStore, persisted here)
+    const [panelOrders, setPanelOrders] = useState<Partial<Record<PanelPosition, string[]>>>({});
 
     // Sidebar sizes
     const [leftSidebarWidth, setLeftSidebarWidth] = useState(DEFAULT_LEFT_SIDEBAR_WIDTH);
@@ -121,12 +133,15 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     [SETTINGS_KEYS.LEFT_SIDEBAR_VISIBLE]: leftSidebarVisible,
                     [SETTINGS_KEYS.LEFT_SIDEBAR_WIDTH]: leftSidebarWidth,
                     [SETTINGS_KEYS.LEFT_SIDEBAR_ACTIVE_PANEL]: activeLeftPanelId,
+                    [SETTINGS_KEYS.LEFT_SIDEBAR_ORDER]: panelOrders[PanelPosition.Left] ?? null,
                     [SETTINGS_KEYS.RIGHT_SIDEBAR_VISIBLE]: rightSidebarVisible,
                     [SETTINGS_KEYS.RIGHT_SIDEBAR_WIDTH]: rightSidebarWidth,
                     [SETTINGS_KEYS.RIGHT_SIDEBAR_ACTIVE_PANEL]: activeRightPanelId,
+                    [SETTINGS_KEYS.RIGHT_SIDEBAR_ORDER]: panelOrders[PanelPosition.Right] ?? null,
                     [SETTINGS_KEYS.BOTTOM_PANEL_VISIBLE]: bottomPanelVisible,
                     [SETTINGS_KEYS.BOTTOM_PANEL_HEIGHT]: bottomPanelHeight,
                     [SETTINGS_KEYS.BOTTOM_PANEL_ACTIVE_PANEL]: activeBottomPanelId,
+                    [SETTINGS_KEYS.BOTTOM_PANEL_ORDER]: panelOrders[PanelPosition.Bottom] ?? null,
                 };
 
                 await settingsService.setBatch(settings);
@@ -145,6 +160,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         bottomPanelVisible,
         bottomPanelHeight,
         activeBottomPanelId,
+        panelOrders,
     ]);
 
     useEffect(() => {
@@ -200,6 +216,18 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 if (rightPanel !== undefined) setActiveRightPanelId(rightPanel);
                 if (bottomPanel !== undefined) setActiveBottomPanelId(bottomPanel);
 
+                // Load persisted panel ordering and apply it to the UIStore (source of truth).
+                const store = context?.services.get<UIService>(Services.UI).getStore();
+                const loadedOrders: Partial<Record<PanelPosition, string[]>> = {};
+                for (const position of [PanelPosition.Left, PanelPosition.Right, PanelPosition.Bottom]) {
+                    const savedOrder = await settingsService.get<string[]>(ORDER_SETTINGS_KEY_BY_POSITION[position]);
+                    if (Array.isArray(savedOrder) && savedOrder.length > 0) {
+                        loadedOrders[position] = savedOrder;
+                        store?.setPanelOrder(position, savedOrder);
+                    }
+                }
+                setPanelOrders(loadedOrders);
+
                 setSettingsLoaded(true);
                 console.log("[WorkspaceLayout] Settings loaded successfully");
             } catch (error) {
@@ -209,7 +237,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         };
 
         loadSettings();
-    }, [settingsService]);
+    }, [settingsService, context]);
 
     // Cleanup timeout on unmount
     useEffect(() => {
@@ -469,11 +497,17 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             }
         };
 
+        const handlePanelOrderChanged = ({ position, order }: { position: string; order: string[] }) => {
+            setPanelOrders(prev => ({ ...prev, [position as PanelPosition]: order }));
+        };
+
         const unsubscribeVisibility = uiService.getEvents().on("panelVisibilityChanged", handlePanelVisibilityChanged);
         const unsubscribeUnregistered = uiService.getEvents().on("panelUnregistered", handlePanelUnregistered);
+        const unsubscribeOrder = uiService.getEvents().on("panelOrderChanged", handlePanelOrderChanged);
         return () => {
             unsubscribeVisibility();
             unsubscribeUnregistered();
+            unsubscribeOrder();
         };
     }, [context]);
 
@@ -481,7 +515,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const hiddenActionGroupIds = isMac ? MACOS_NATIVE_MENU_GROUP_IDS : undefined;
 
     return (
-        <div className="h-screen w-screen flex flex-col bg-[#0f1115] text-gray-200">
+        <div className="h-screen w-screen flex flex-col bg-surface text-fg">
             {/* Title Bar with Action Bar and Control Bar */}
             <TitleBar
                 title=""
@@ -521,7 +555,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     <ResizableHandle
                         direction="horizontal"
                         onResize={handleLeftSidebarResize}
-                        className="w-1 border-r border-white/10 hover:bg-primary/20"
+                        className="w-1 border-r border-edge hover:bg-primary/20"
                     />
                 </div>
 
@@ -536,13 +570,13 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
                         {/* Bottom Panel - Always rendered, controlled by CSS visibility */}
                         <div 
-                            className={bottomPanelVisible && activeBottomPanelId ? "border-t border-white/10" : "hidden"}
+                            className={bottomPanelVisible && activeBottomPanelId ? "border-t border-edge" : "hidden"}
                             style={{ height: bottomPanelVisible && activeBottomPanelId ? `${bottomPanelHeight}px` : 0 }}
                         >
                             <ResizableHandle
                                 direction="vertical"
                                 onResize={handleBottomPanelResize}
-                                className="h-1 border-t border-white/10 hover:bg-primary/20"
+                                className="h-1 border-t border-edge hover:bg-primary/20"
                             />
                             <BottomPanel
                                 panelId={activeBottomPanelId || ""}
@@ -560,7 +594,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     <ResizableHandle
                         direction="horizontal"
                         onResize={handleRightSidebarResize}
-                        className="w-1 border-l border-white/10 hover:bg-primary/20"
+                        className="w-1 border-l border-edge hover:bg-primary/20"
                     />
                     <RightSidebar 
                         panelId={activeRightPanelId || ""} 

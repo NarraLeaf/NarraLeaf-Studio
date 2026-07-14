@@ -2,6 +2,8 @@
  * Asset Lock Manager
  * Manages locks on assets to prevent deletion of assets that are in use by services
  */
+import type { TranslationKey } from "@shared/i18n";
+import { translate } from "@/lib/i18n";
 
 export enum AssetLockReason {
     UsedByCharacter = "character",
@@ -9,12 +11,10 @@ export enum AssetLockReason {
     UsedByEditor = "editor",
 }
 
-// Hardcoded lock reason texts
-const LOCK_REASON_TEXTS: Record<AssetLockReason, string> = {
-    [AssetLockReason.UsedByCharacter]: "Asset is used by a character",
-    [AssetLockReason.UsedByScene]: "Asset is used by a scene",
-    [AssetLockReason.UsedByEditor]: "Asset is used by the Editor",
-};
+// Human-readable lock reason text, resolved against the active locale at call time.
+function lockReasonText(reason: AssetLockReason): string {
+    return translate(`assets.lockReason.${reason}` as TranslationKey);
+}
 
 export interface AssetLock {
     assetId: string;
@@ -103,7 +103,7 @@ export class AssetLockManager {
         const reasons = new Set<string>();
         
         for (const lock of locks) {
-            const text = LOCK_REASON_TEXTS[lock.reason];
+            const text = lockReasonText(lock.reason);
             reasons.add(text);
         }
         

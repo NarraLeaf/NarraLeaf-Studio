@@ -1,5 +1,10 @@
 import type { BlueprintGraphEdge, BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/blueprint/document";
-import { BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR } from "@shared/types/blueprint/graph";
+import {
+    BLUEPRINT_NODE_PARAM_FN_REF,
+    BLUEPRINT_NODE_TYPE_FN_CALL,
+    BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+} from "@shared/types/blueprint/graph";
+import { createBlueprintFnRef, parseBlueprintFnRef } from "./fnCatalog";
 import { readNodeEditorLayout, writeNodeEditorLayout } from "./graphEditing";
 
 export const BLUEPRINT_GRAPH_CLIPBOARD_VERSION = 1 as const;
@@ -121,6 +126,13 @@ export function pasteBlueprintGraphClipboardPayload(input: {
     payload: BlueprintGraphClipboardPayload | null;
     generateId: () => string;
     offset?: { x: number; y: number };
+    /**
+     * Blueprint that receives the paste. When a Call Fn node is pasted TOGETHER with its
+     * Fn head, the call is re-pointed at the pasted head (which got a fresh node id).
+     * A lone Call Fn keeps its fnRef untouched — validation reports fn.call_target_not_found
+     * when the target is not visible from the destination (e.g. another surface).
+     */
+    targetBlueprintId?: string;
 }): { ir: BlueprintGraphIr; newNodeIds: string[] } | null {
     const { payload } = input;
     if (!payload || payload.v !== BLUEPRINT_GRAPH_CLIPBOARD_VERSION || payload.nodeIds.length === 0) {
@@ -157,6 +169,25 @@ export function pasteBlueprintGraphClipboardPayload(input: {
 
     if (newNodeIds.length === 0) {
         return null;
+    }
+
+    for (const newNodeId of newNodeIds) {
+        const node = next.nodes[newNodeId];
+        if (node?.type !== BLUEPRINT_NODE_TYPE_FN_CALL) {
+            continue;
+        }
+        const parsed = parseBlueprintFnRef(node.params?.[BLUEPRINT_NODE_PARAM_FN_REF]);
+        const pastedHeadId = parsed ? idMap.get(parsed.headNodeId) : undefined;
+        if (!parsed || !pastedHeadId) {
+            continue;
+        }
+        node.params = {
+            ...(node.params ?? {}),
+            [BLUEPRINT_NODE_PARAM_FN_REF]: createBlueprintFnRef(
+                input.targetBlueprintId ?? parsed.blueprintId,
+                pastedHeadId,
+            ),
+        };
     }
 
     const remappedEdges = payload.edges.flatMap(edge => {

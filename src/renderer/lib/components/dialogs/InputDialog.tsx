@@ -1,7 +1,19 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { UIService } from "@/lib/workspace/services/ui";
+import { useTranslation, translate, i18nStore } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
 import { Input } from "../elements/Input";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+
+/**
+ * Resolve an item-type noun for interpolation into rename/create dialog titles.
+ * Known nouns (`dialogs.noun.*`) are translated; anything else (e.g. a computed
+ * surface label a caller passes) falls back to the raw string unchanged.
+ */
+function nounFor(itemType: string): string {
+    const key = `dialogs.noun.${itemType}`;
+    return i18nStore.getTranslator().has(key) ? translate(key as TranslationKey) : itemType;
+}
 
 export interface InputDialogOptions {
     title: string;
@@ -40,6 +52,7 @@ const InputDialogContent: React.FC<InputDialogContentProps> = ({
     onCancel,
     registerHandlers,
 }) => {
+    const { t } = useTranslation();
     const {
         placeholder = "",
         initialValue = "",
@@ -57,11 +70,11 @@ const InputDialogContent: React.FC<InputDialogContentProps> = ({
         const trimmed = rawValue.trim();
 
         if (!skipRequired && required && !trimmed) {
-            return "This field is required";
+            return t("dialogs.input.required");
         }
 
         if (maxLength && rawValue.length > maxLength) {
-            return `Maximum ${maxLength} characters allowed`;
+            return t("dialogs.input.maxLength", { max: maxLength });
         }
 
         if (validation) {
@@ -69,7 +82,7 @@ const InputDialogContent: React.FC<InputDialogContentProps> = ({
         }
 
         return null;
-    }, [required, maxLength, validation]);
+    }, [required, maxLength, validation, t]);
 
     useEffect(() => {
         setValue(initialValue);
@@ -129,7 +142,7 @@ const InputDialogContent: React.FC<InputDialogContentProps> = ({
             }}
         >
             {description && (
-                <div className="text-sm text-gray-300">{description}</div>
+                <div className="text-sm text-fg-muted">{description}</div>
             )}
 
             <Input
@@ -145,7 +158,7 @@ const InputDialogContent: React.FC<InputDialogContentProps> = ({
             />
 
             {validationError && (
-                <div className="text-sm text-red-400">{validationError}</div>
+                <div className="text-sm text-danger">{validationError}</div>
             )}
         </form>
     );
@@ -235,11 +248,11 @@ export class InputDialog {
                 }))
                 : [
                     {
-                        label: "Cancel",
+                        label: translate("common.cancel"),
                         onClick: invokeCancel,
                     },
                     {
-                        label: "OK",
+                        label: translate("common.ok"),
                         primary: true,
                         onClick: invokeSubmit,
                     },
@@ -266,30 +279,26 @@ export class InputDialog {
      * Convenience method for creating groups
      */
     async showCreateGroupDialog(assetType: AssetType, parentGroupId?: string): Promise<string | null> {
-        const typeNames = {
-            [AssetType.Image]: 'Image',
-            [AssetType.Audio]: 'Audio',
-            [AssetType.Video]: 'Video',
-            [AssetType.JSON]: 'JSON',
-            [AssetType.Blueprint]: 'Blueprint',
-            [AssetType.Font]: 'Font',
-            [AssetType.Other]: 'Other'
+        const typeNouns: Record<AssetType, string> = {
+            [AssetType.Image]: nounFor("image"),
+            [AssetType.Audio]: nounFor("audio"),
+            [AssetType.Video]: nounFor("video"),
+            [AssetType.JSON]: nounFor("json"),
+            [AssetType.Blueprint]: nounFor("blueprint"),
+            [AssetType.Font]: nounFor("font"),
+            [AssetType.Other]: nounFor("other"),
         };
 
         return this.show({
-            title: 'Create Group',
-            description: `Please enter a name for the ${typeNames[assetType]} group`,
-            placeholder: 'Enter group name...',
+            title: translate("dialogs.createGroup.title"),
+            description: translate("dialogs.createGroup.prompt", { type: typeNouns[assetType] }),
+            placeholder: translate("dialogs.createGroup.placeholder"),
             required: true,
             maxLength: 100,
             validation: (value) => {
                 if (!value.trim()) {
-                    return 'Group name cannot be empty';
+                    return translate("dialogs.createGroup.empty");
                 }
-                if (value.length < 1) {
-                    return 'Group name must be at least 1 characters';
-                }
-                // Add more validation rules as needed
                 return null;
             }
         });
@@ -299,19 +308,20 @@ export class InputDialog {
      * Convenience method for renaming items
      */
     async showRenameDialog(currentName: string, itemType: string = 'item'): Promise<string | null> {
+        const noun = nounFor(itemType);
         return this.show({
-            title: `Rename ${itemType}`,
-            description: `Please enter a new ${itemType} name`,
-            placeholder: 'Enter new name...',
+            title: translate("dialogs.rename.title", { type: noun }),
+            description: translate("dialogs.rename.prompt", { type: noun }),
+            placeholder: translate("dialogs.rename.placeholder"),
             initialValue: currentName,
             required: true,
             maxLength: 100,
             validation: (value) => {
                 if (!value.trim()) {
-                    return `${itemType} name cannot be empty`;
+                    return translate("dialogs.rename.empty", { type: noun });
                 }
                 if (value.trim() === currentName) {
-                    return 'New name cannot be the same as current name';
+                    return translate("dialogs.rename.sameName");
                 }
                 return null;
             }
@@ -325,7 +335,7 @@ export class InputDialog {
         return this.show({
             title,
             description,
-            placeholder: 'Enter password...',
+            placeholder: translate("dialogs.password.placeholder"),
             type: 'password',
             required: true
         });
@@ -338,13 +348,13 @@ export class InputDialog {
         return this.show({
             title,
             description,
-            placeholder: 'Enter email address...',
+            placeholder: translate("dialogs.email.placeholder"),
             type: 'email',
             required: true,
             validation: (value) => {
                 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                 if (!emailRegex.test(value)) {
-                    return 'Please enter a valid email address';
+                    return translate("dialogs.email.invalid");
                 }
                 return null;
             }

@@ -5,15 +5,33 @@ import type {
     BlueprintGraphIr,
     BlueprintOwnerRef,
 } from "@shared/types/blueprint/document";
+import { isStorySyncValueOwner } from "@shared/types/blueprint/document";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
+import { translate } from "@/lib/i18n";
 import {
+    BLUEPRINT_NODE_PARAM_FN_NAME,
+    BLUEPRINT_NODE_PARAM_FN_REF,
+    BLUEPRINT_NODE_TYPE_FN_CALL,
+    BLUEPRINT_NODE_TYPE_FN_HEAD,
+    BLUEPRINT_NODE_TYPE_FN_RETURN,
     BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
     isBlueprintEventDispatchHeadType,
+    isStoryActionCallHeadType,
+    readBlueprintFnSignatureSnapshot,
 } from "@shared/types/blueprint/graph";
+import {
+    collectDeclaredBlueprintFns,
+    collectExecReachableNodeIds,
+    findBlueprintFnByRef,
+    isBlueprintFnSnapshotStale,
+    isBlueprintFnVisibleToOwner,
+    readBlueprintFnReturnPinDecls,
+    type BlueprintFnDeclaration,
+} from "./fnCatalog";
 import { listUiSlotsWiredToBlueprintLayer } from "@/lib/ui-editor/blueprint-runtime/widgetBlueprintLayerSlots";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { pickBehaviorGraphEntry } from "@/lib/ui-editor/blueprint-runtime/pickBehaviorGraphEntry";
@@ -83,7 +101,12 @@ function reportDuplicatePinConnection(
         out.push({
             severity: "error",
             code: "edge.pin_multiple",
-            message: `Pin ${input.nodeId}.${input.port} has multiple ${input.direction} connections; each pin can only have one edge.`,
+            message: translate(
+                input.direction === "input"
+                    ? "blueprint.diagnostics.graph.pinMultipleInput"
+                    : "blueprint.diagnostics.graph.pinMultipleOutput",
+                { node: input.nodeId, port: input.port },
+            ),
             target: {
                 kind: "node",
                 graphKind: input.graphKind,
@@ -122,6 +145,25 @@ function collectBlueprintEventHooks(element: UIElement): BlueprintEventHook[] {
     return out;
 }
 
+/**
+ * Owners whose "On Call" graph produces a value via a Return Value node: widget value bindings and
+ * synchronous story blueprints (inline value interpolations + control-flow conditions).
+ */
+function isBlueprintValueGraphOwner(owner: BlueprintOwnerRef | undefined): boolean {
+    if (!owner) {
+        return false;
+    }
+    if (owner.kind === "widgetValue") {
+        return true;
+    }
+    return owner.kind === "storyAction" && (owner.mode === "value" || owner.mode === "condition");
+}
+
+/** True for a story condition blueprint whose Return Value must be typed boolean. */
+function isStoryConditionOwner(owner: BlueprintOwnerRef | undefined): boolean {
+    return owner?.kind === "storyAction" && owner.mode === "condition";
+}
+
 function buildNodeValidationPaletteContext(ctx: {
     graphKind: "event" | "function";
     blueprintOwner?: BlueprintOwnerRef;
@@ -140,7 +182,8 @@ function buildNodeValidationPaletteContext(ctx: {
         widgetElementType: ctx.widgetElementType,
         widgetBlueprintEvents: ctx.widgetBlueprintEvents,
         widgetEventLayerSlots: ctx.layerUiSlots,
-        isBlueprintValueGraph: ctx.isBlueprintValueGraph ?? ctx.blueprintOwner.kind === "widgetValue",
+        isBlueprintValueGraph: ctx.isBlueprintValueGraph ?? isBlueprintValueGraphOwner(ctx.blueprintOwner),
+        isSyncOnlyGraph: isStorySyncValueOwner(ctx.blueprintOwner),
         isComponentDefinitionGraph: ctx.isComponentDefinitionGraph,
         hasEventHead: false,
         hasFunctionEntry: false,
@@ -150,9 +193,212 @@ function buildNodeValidationPaletteContext(ctx: {
 function describeNodeContextError(def: BlueprintNodeDef, ctx: BlueprintPaletteContext): string {
     const valueGraphHint =
         def.role === "valueReturn"
-            ? " Return Value only belongs in Blueprint Value graphs."
+            ? translate("blueprint.diagnostics.node.contextValueReturnHint")
             : "";
-    return `Node "${def.displayName}" is not allowed in this ${ctx.owner.kind} ${ctx.graphKind} graph.${valueGraphHint}`;
+    return translate("blueprint.diagnostics.node.contextInvalid", {
+        name: def.displayName,
+        ownerKind: ctx.owner.kind,
+        graphKind: ctx.graphKind,
+        hint: valueGraphHint,
+    });
+}
+
+function fnPinDeclSignature(decls: ReturnType<typeof readBlueprintFnReturnPinDecls>): string {
+    return decls.map(d => `${d.pinId}\0${d.name}\0${d.valueType}`).join("\x1e");
+}
+
+/** fnRefs participating in a cycle of the document-wide fn call graph (fnRef transitively calls itself). */
+function collectRecursiveFnRefs(decls: readonly BlueprintFnDeclaration[]): ReadonlySet<string> {
+    const calleesByFnRef = new Map<string, string[]>();
+    for (const decl of decls) {
+        const reachable = collectExecReachableNodeIds(decl.ir, decl.headNodeId);
+        const callees: string[] = [];
+        for (const [nodeId, node] of Object.entries(decl.ir.nodes ?? {})) {
+            if (node.type !== BLUEPRINT_NODE_TYPE_FN_CALL || !reachable.has(nodeId)) {
+                continue;
+            }
+            const ref = node.params?.[BLUEPRINT_NODE_PARAM_FN_REF];
+            if (typeof ref === "string" && ref.trim().length > 0) {
+                callees.push(ref.trim());
+            }
+        }
+        calleesByFnRef.set(decl.fnRef, callees);
+    }
+    const recursive = new Set<string>();
+    for (const start of calleesByFnRef.keys()) {
+        const stack = [...(calleesByFnRef.get(start) ?? [])];
+        const visited = new Set<string>();
+        while (stack.length > 0) {
+            const current = stack.pop() as string;
+            if (current === start) {
+                recursive.add(start);
+                break;
+            }
+            if (visited.has(current)) {
+                continue;
+            }
+            visited.add(current);
+            stack.push(...(calleesByFnRef.get(current) ?? []));
+        }
+    }
+    return recursive;
+}
+
+/**
+ * Fn node rules: head naming, Return ownership/consistency, Call target resolution
+ * (incl. the paste-into-another-surface case), snapshot staleness, and static recursion.
+ */
+function validateBlueprintFnRules(
+    ir: BlueprintGraphIr,
+    ctx: {
+        blueprintId: string;
+        graphKind: "event" | "function";
+        graphId: string;
+        blueprintOwner?: BlueprintOwnerRef;
+        blueprintDocument?: BlueprintDocument;
+    },
+    out: BlueprintGraphEditorDiagnostic[],
+): void {
+    const doc = ctx.blueprintDocument;
+    if (!doc || ctx.graphKind !== "event") {
+        return;
+    }
+    const nodes = ir.nodes ?? {};
+    const headEntries = Object.entries(nodes)
+        .filter(([, n]) => n.type === BLUEPRINT_NODE_TYPE_FN_HEAD)
+        .sort(([a], [b]) => a.localeCompare(b));
+    const returnEntries = Object.entries(nodes)
+        .filter(([, n]) => n.type === BLUEPRINT_NODE_TYPE_FN_RETURN)
+        .sort(([a], [b]) => a.localeCompare(b));
+    const callEntries = Object.entries(nodes)
+        .filter(([, n]) => n.type === BLUEPRINT_NODE_TYPE_FN_CALL)
+        .sort(([a], [b]) => a.localeCompare(b));
+    if (headEntries.length === 0 && returnEntries.length === 0 && callEntries.length === 0) {
+        return;
+    }
+    const nodeTarget = (nodeId: string): BlueprintGraphDiagnosticTarget => ({
+        kind: "node",
+        graphKind: ctx.graphKind,
+        graphId: ctx.graphId,
+        nodeId,
+    });
+
+    const allDecls = collectDeclaredBlueprintFns(doc);
+    const visibleDecls = ctx.blueprintOwner
+        ? allDecls.filter(decl => isBlueprintFnVisibleToOwner(decl.owner, ctx.blueprintOwner!))
+        : allDecls;
+
+    for (const [nodeId, node] of headEntries) {
+        const name = String(node.params?.[BLUEPRINT_NODE_PARAM_FN_NAME] ?? "").trim();
+        if (!name) {
+            out.push({
+                severity: "warning",
+                code: "fn.name_missing",
+                message: translate("blueprint.diagnostics.fn.nameMissing", { node: nodeId }),
+                target: nodeTarget(nodeId),
+            });
+            continue;
+        }
+        const nameKey = name.toLowerCase();
+        const hasDuplicate = visibleDecls.some(
+            decl =>
+                decl.name.trim().toLowerCase() === nameKey &&
+                !(decl.blueprintId === ctx.blueprintId && decl.headNodeId === nodeId),
+        );
+        if (hasDuplicate) {
+            out.push({
+                severity: "warning",
+                code: "fn.duplicate_name",
+                message: translate("blueprint.diagnostics.fn.duplicateName", { name }),
+                target: nodeTarget(nodeId),
+            });
+        }
+    }
+
+    if (returnEntries.length > 0) {
+        const reachableByHead = new Map(
+            headEntries.map(([headId]) => [headId, collectExecReachableNodeIds(ir, headId)] as const),
+        );
+        for (const [nodeId] of returnEntries) {
+            const owners = headEntries.filter(([headId]) => reachableByHead.get(headId)?.has(nodeId));
+            if (owners.length === 0) {
+                out.push({
+                    severity: "error",
+                    code: "fn.return_orphan",
+                    message: translate("blueprint.diagnostics.fn.returnOrphan"),
+                    target: nodeTarget(nodeId),
+                });
+            } else if (owners.length > 1) {
+                out.push({
+                    severity: "error",
+                    code: "fn.return_orphan",
+                    message: translate("blueprint.diagnostics.fn.returnMultipleHeads"),
+                    target: nodeTarget(nodeId),
+                });
+            }
+        }
+        for (const [headId] of headEntries) {
+            const reachable = reachableByHead.get(headId);
+            const owned = returnEntries.filter(([returnId]) => reachable?.has(returnId));
+            if (owned.length < 2) {
+                continue;
+            }
+            const authoritative = fnPinDeclSignature(readBlueprintFnReturnPinDecls(owned[0][1].params));
+            for (const [returnId, returnNode] of owned.slice(1)) {
+                if (fnPinDeclSignature(readBlueprintFnReturnPinDecls(returnNode.params)) !== authoritative) {
+                    out.push({
+                        severity: "error",
+                        code: "fn.return_signature_conflict",
+                        message: translate("blueprint.diagnostics.fn.returnSignatureConflict", { node: returnId }),
+                        target: nodeTarget(returnId),
+                    });
+                }
+            }
+        }
+    }
+
+    const recursiveFnRefs = callEntries.length > 0 ? collectRecursiveFnRefs(allDecls) : new Set<string>();
+    for (const [nodeId, node] of callEntries) {
+        const fnRefRaw = node.params?.[BLUEPRINT_NODE_PARAM_FN_REF];
+        const fnRef = typeof fnRefRaw === "string" ? fnRefRaw.trim() : "";
+        if (!fnRef) {
+            out.push({
+                severity: "warning",
+                code: "fn.call_unset",
+                message: translate("blueprint.diagnostics.fn.callUnset", { node: nodeId }),
+                target: nodeTarget(nodeId),
+            });
+            continue;
+        }
+        const decl = findBlueprintFnByRef(doc, fnRef);
+        const visible = decl && (!ctx.blueprintOwner || isBlueprintFnVisibleToOwner(decl.owner, ctx.blueprintOwner));
+        if (!decl || !visible) {
+            const snapshotName = readBlueprintFnSignatureSnapshot(node.params)?.name;
+            out.push({
+                severity: "error",
+                code: "fn.call_target_not_found",
+                message: translate("blueprint.diagnostics.fn.callTargetNotFound", { name: snapshotName ?? fnRef }),
+                target: nodeTarget(nodeId),
+            });
+            continue;
+        }
+        if (isBlueprintFnSnapshotStale(readBlueprintFnSignatureSnapshot(node.params), decl)) {
+            out.push({
+                severity: "warning",
+                code: "fn.call_signature_stale",
+                message: translate("blueprint.diagnostics.fn.callSignatureStale", { name: decl.name }),
+                target: nodeTarget(nodeId),
+            });
+        }
+        if (recursiveFnRefs.has(decl.fnRef)) {
+            out.push({
+                severity: "warning",
+                code: "fn.recursive_call",
+                message: translate("blueprint.diagnostics.fn.recursiveCall", { name: decl.name }),
+                target: nodeTarget(nodeId),
+            });
+        }
+    }
 }
 
 /** Cross-checks widget private blueprint compatibility and any legacy event hooks (Workspace-only). */
@@ -182,7 +428,7 @@ export function validateBlueprintWidgetMainEventWiring(
             out.push({
                 severity: "warning",
                 code: "blueprint.widget_legacy_hooks_present",
-                message: "Legacy event hooks in uidoc (non-graph revision).",
+                message: translate("blueprint.diagnostics.widget.legacyHooksPresent"),
             });
         }
         return out;
@@ -193,7 +439,7 @@ export function validateBlueprintWidgetMainEventWiring(
             out.push({
                 severity: "warning",
                 code: "blueprint.widget_legacy_hook_wrong_blueprint",
-                message: `Legacy hook "${hook.slotName}" points to another blueprint.`,
+                message: translate("blueprint.diagnostics.widget.legacyHookWrongBlueprint", { slot: hook.slotName }),
             });
             continue;
         }
@@ -201,7 +447,7 @@ export function validateBlueprintWidgetMainEventWiring(
             out.push({
                 severity: "warning",
                 code: "blueprint.widget_legacy_hook_unsupported_slot",
-                message: `Legacy hook "${hook.slotName}" is not supported for ${element.type}.`,
+                message: translate("blueprint.diagnostics.widget.legacyHookUnsupported", { slot: hook.slotName, type: element.type }),
             });
             continue;
         }
@@ -227,6 +473,8 @@ export function validateBlueprintGraphIr(
         blueprintOwner?: BlueprintOwnerRef;
         isBlueprintValueGraph?: boolean;
         isComponentDefinitionGraph?: boolean;
+        /** Whole document; enables cross-blueprint checks such as Fn call target resolution. */
+        blueprintDocument?: BlueprintDocument;
     },
 ): BlueprintGraphEditorDiagnostic[] {
     const out: BlueprintGraphEditorDiagnostic[] = [];
@@ -242,20 +490,27 @@ export function validateBlueprintGraphIr(
         out.push({
             severity: "info",
             code: "graph.empty",
-            message: "Graph has no nodes yet.",
+            message: translate("blueprint.diagnostics.graph.noNodes"),
             target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
         });
         return out;
     }
 
     if (ctx.graphKind === "event") {
-        const headNodes = Object.entries(nodes).filter(([, n]) => isBlueprintEventDispatchHeadType(n.type));
+        // Fn heads are valid entry points too — a graph containing only fn declarations is fine.
+        // Story Action "On Call" is a valid head as well (it is deliberately kept out of the event
+        // dispatch head set, so it must be recognized explicitly here).
+        const headNodes = Object.entries(nodes).filter(
+            ([, n]) =>
+                isBlueprintEventDispatchHeadType(n.type) ||
+                isStoryActionCallHeadType(n.type) ||
+                n.type === BLUEPRINT_NODE_TYPE_FN_HEAD,
+        );
         if (headNodes.length === 0) {
             out.push({
                 severity: "error",
                 code: "event.missing_event_nodes",
-                message:
-                    "Add an event head (right-click canvas).",
+                message: translate("blueprint.diagnostics.event.missingHead"),
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         }
@@ -267,14 +522,14 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "error",
                 code: "function.missing_entry",
-                message: "Add a Function entry node.",
+                message: translate("blueprint.diagnostics.function.missingEntry"),
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         } else if (entries.length > 1) {
             out.push({
                 severity: "error",
                 code: "function.multiple_entries",
-                message: "Only one Function entry allowed.",
+                message: translate("blueprint.diagnostics.function.multipleEntries"),
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         }
@@ -290,7 +545,7 @@ export function validateBlueprintGraphIr(
                     out.push({
                         severity: "error",
                         code: "graph.entry_missing_node",
-                        message: `Entry points to missing node "${entry.start.nodeId}".`,
+                        message: translate("blueprint.diagnostics.graph.entryMissingNode", { node: entry.start.nodeId }),
                         target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
                     });
                 } else {
@@ -299,7 +554,7 @@ export function validateBlueprintGraphIr(
                         out.push({
                             severity: "error",
                             code: "function.entry_not_entry_node",
-                            message: "Function entry must be the entry node.",
+                            message: translate("blueprint.diagnostics.function.entryNotEntryNode"),
                             target: {
                                 kind: "node",
                                 graphKind: ctx.graphKind,
@@ -313,7 +568,7 @@ export function validateBlueprintGraphIr(
                 out.push({
                     severity: "error",
                     code: "graph.entry_invalid",
-                    message: "Function entry not found.",
+                    message: translate("blueprint.diagnostics.graph.entryInvalid"),
                     target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
                 });
             }
@@ -326,7 +581,7 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "error",
                 code: "edge.self_connection",
-                message: `Node "${edge.from.nodeId}" cannot connect to itself.`,
+                message: translate("blueprint.diagnostics.edge.selfConnection", { node: edge.from.nodeId }),
                 target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: edge.from.nodeId },
             });
         }
@@ -334,7 +589,7 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "error",
                 code: "edge.from_unknown",
-                message: `Missing source node "${edge.from.nodeId}".`,
+                message: translate("blueprint.diagnostics.edge.fromUnknown", { node: edge.from.nodeId }),
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         }
@@ -342,7 +597,7 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "error",
                 code: "edge.to_unknown",
-                message: `Missing target node "${edge.to.nodeId}".`,
+                message: translate("blueprint.diagnostics.edge.toUnknown", { node: edge.to.nodeId }),
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         }
@@ -367,7 +622,10 @@ export function validateBlueprintGraphIr(
                 out.push({
                     severity: "warning",
                     code: "edge.port_mismatch",
-                    message: `Pin mismatch on ${edge.from.nodeId}.${edge.from.port} → ${edge.to.nodeId}.${edge.to.port}.`,
+                    message: translate("blueprint.diagnostics.edge.portMismatch", {
+                        from: `${edge.from.nodeId}.${edge.from.port}`,
+                        to: `${edge.to.nodeId}.${edge.to.port}`,
+                    }),
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: edge.from.nodeId },
                 });
             } else if (
@@ -382,12 +640,19 @@ export function validateBlueprintGraphIr(
             ) {
                 const typeDetail =
                     outPin.semantic === "data" && inPin.semantic === "data" && outPin.valueType && inPin.valueType
-                        ? ` Type mismatch: ${outPin.valueType} -> ${inPin.valueType}.`
+                        ? translate("blueprint.diagnostics.edge.connectionTypeDetail", {
+                              from: outPin.valueType,
+                              to: inPin.valueType,
+                          })
                         : "";
                 out.push({
                     severity: "error",
                     code: "edge.connection_invalid",
-                    message: `Invalid connection ${edge.from.nodeId}.${edge.from.port} -> ${edge.to.nodeId}.${edge.to.port}.${typeDetail}`,
+                    message: translate("blueprint.diagnostics.edge.connectionInvalid", {
+                        from: `${edge.from.nodeId}.${edge.from.port}`,
+                        to: `${edge.to.nodeId}.${edge.to.port}`,
+                        detail: typeDetail,
+                    }),
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: edge.from.nodeId },
                 });
             }
@@ -443,7 +708,7 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "warning",
                 code: "node.no_runtime",
-                message: `Node "${nid}": no runtime for type "${n.type}".`,
+                message: translate("blueprint.diagnostics.node.noRuntime", { node: nid, type: n.type }),
                 target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
             });
         }
@@ -456,7 +721,7 @@ export function validateBlueprintGraphIr(
                 out.push({
                     severity: "warning",
                     code: "node.variable_id_invalid",
-                    message: `Node "${nid}": pick a variable.`,
+                    message: translate("blueprint.diagnostics.node.variableIdInvalid", { node: nid }),
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
                 });
             }
@@ -470,14 +735,79 @@ export function validateBlueprintGraphIr(
                 out.push({
                     severity: "warning",
                     code: "node.persistent_variable_id_invalid",
-                    message: `Node "${nid}": pick a persistent variable.`,
+                    message: translate("blueprint.diagnostics.node.persistentVariableIdInvalid", { node: nid }),
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
                 });
             }
         }
     }
 
+    validateBlueprintFnRules(ir, ctx, out);
+
+    if (ctx.graphKind === "event" && isStoryConditionOwner(ctx.blueprintOwner)) {
+        validateStoryConditionReturnType(ir, ctx, out);
+    }
+
     return out;
+}
+
+/**
+ * Story condition blueprints (`storyAction` owner, `condition` mode) must feed a boolean into their
+ * Return Value node. Any concretely-typed non-boolean source is a type error; an unwired Return Value
+ * is a warning (nothing to evaluate). `any`/unknown source types are left alone — they coerce fine.
+ */
+function validateStoryConditionReturnType(
+    ir: BlueprintGraphIr,
+    ctx: {
+        graphKind: "event" | "function";
+        graphId: string;
+        variableValueTypes?: readonly BlueprintVariableTypeOption[];
+        persistentVariableValueTypes?: readonly BlueprintVariableTypeOption[];
+    },
+    out: BlueprintGraphEditorDiagnostic[],
+): void {
+    const nodes = ir.nodes ?? {};
+    const edges = ir.edges ?? [];
+    const variableTypeContext = {
+        memberVariables: ctx.variableValueTypes,
+        persistentVariables: ctx.persistentVariableValueTypes,
+    };
+    for (const [nodeId, node] of Object.entries(nodes)) {
+        const entry = resolveBlueprintNodeEditorCatalogEntryForNode(node.type, node.params);
+        if (entry.role !== "valueReturn") {
+            continue;
+        }
+        const valueEdge = edges.find(edge => edge.to.nodeId === nodeId && edge.to.port === "value");
+        if (!valueEdge) {
+            out.push({
+                severity: "warning",
+                code: "condition.return_missing",
+                message: translate("blueprint.diagnostics.condition.returnMissing"),
+                target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId },
+            });
+            continue;
+        }
+        const sourceNode = nodes[valueEdge.from.nodeId];
+        if (!sourceNode) {
+            continue;
+        }
+        const sourceParams = withInferredBlueprintVariableValueTypeParam(
+            sourceNode.type,
+            sourceNode.params,
+            variableTypeContext,
+        );
+        const sourceEntry = resolveBlueprintNodeEditorCatalogEntryForNode(sourceNode.type, sourceParams);
+        const outPin = sourceEntry.pins.find(pin => pin.id === valueEdge.from.port && pin.kind === "output");
+        const valueType = outPin?.valueType;
+        if (valueType && valueType !== "boolean" && valueType !== "any") {
+            out.push({
+                severity: "error",
+                code: "condition.return_not_boolean",
+                message: translate("blueprint.diagnostics.condition.returnNotBoolean", { type: valueType }),
+                target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId },
+            });
+        }
+    }
 }
 
 export function validateBlueprintBindingsForBlueprint(doc: BlueprintDocument, blueprintId: string): BlueprintGraphEditorDiagnostic[] {
@@ -493,7 +823,7 @@ export function validateBlueprintBindingsForBlueprint(doc: BlueprintDocument, bl
             out.push({
                 severity: "error",
                 code: "binding.broken",
-                message: `Broken binding "${b.id}"${detail}`,
+                message: translate("blueprint.diagnostics.binding.broken", { id: b.id, detail }),
                 target: { kind: "binding", bindingId: b.id },
             });
             continue;
@@ -508,7 +838,7 @@ export function validateBlueprintBindingsForBlueprint(doc: BlueprintDocument, bl
             out.push({
                 severity: "error",
                 code: "binding.missing_field",
-                message: `Missing field "${b.source.fieldId}".`,
+                message: translate("blueprint.diagnostics.binding.missingField", { id: b.source.fieldId }),
                 target: { kind: "field", fieldId: b.source.fieldId },
             });
         }
@@ -570,8 +900,9 @@ export function validateBlueprintDocumentGraphs(
                 widgetElementType: options?.widgetElement?.type,
                 widgetBlueprintEvents: options?.widgetBlueprintEvents,
                 blueprintOwner: bp.owner,
-                isBlueprintValueGraph: bp.owner.kind === "widgetValue",
+                isBlueprintValueGraph: isBlueprintValueGraphOwner(bp.owner),
                 isComponentDefinitionGraph: options?.isComponentDefinitionGraph,
+                blueprintDocument: doc,
             }),
         );
     }
@@ -588,7 +919,7 @@ export function validateBlueprintDocumentGraphs(
                 widgetElementType: options?.widgetElement?.type,
                 widgetBlueprintEvents: options?.widgetBlueprintEvents,
                 blueprintOwner: bp.owner,
-                isBlueprintValueGraph: bp.owner.kind === "widgetValue",
+                isBlueprintValueGraph: isBlueprintValueGraphOwner(bp.owner),
                 isComponentDefinitionGraph: options?.isComponentDefinitionGraph,
             }),
         );

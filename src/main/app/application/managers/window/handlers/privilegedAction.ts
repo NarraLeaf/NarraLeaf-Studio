@@ -108,6 +108,46 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
                     return this.success(this.unknownError<string[]>(error));
                 }
             }
+            case "selectSaveFile": {
+                if (data.actor.kind !== "facade" || data.actor.id !== "default") {
+                    return this.success(unauthorizedResult<string | null>("Only the default facade can open the save dialog"));
+                }
+                const grantPolicy = getRuntimeGrantPolicy(window, "selectSaveFile");
+                if (!grantPolicy) {
+                    return this.success(unauthorizedResult<string | null>("Save dialog is not allowed for this window"));
+                }
+
+                try {
+                    const dialogOptions: Electron.SaveDialogOptions = {
+                        title: "Save File",
+                        defaultPath: data.defaultFileName,
+                        securityScopedBookmarks: true,
+                    };
+                    if (data.filters.length > 0) {
+                        dialogOptions.filters = [
+                            { name: "Files", extensions: data.filters },
+                            { name: "All Files", extensions: ["*"] },
+                        ];
+                    }
+
+                    const result = await dialog.showSaveDialog(window.win, dialogOptions);
+                    if (result.canceled || !result.filePath) {
+                        return this.success({ ok: true, data: null });
+                    }
+
+                    window.app.storageManager.grantFileSystemAccess(
+                        window,
+                        result.filePath,
+                        grantPolicy.mode,
+                        grantPolicy.recursive,
+                        result.bookmark,
+                    );
+
+                    return this.success({ ok: true, data: result.filePath });
+                } catch (error) {
+                    return this.success(this.unknownError<string | null>(error));
+                }
+            }
             case "stat": {
                 const denied = await ensureActorPathAllowed<FileStat>(window, data, data.path, "read");
                 return this.success(denied ?? await Fs.stat(data.path));

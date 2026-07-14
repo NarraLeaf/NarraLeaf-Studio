@@ -18,6 +18,7 @@ export type PrivilegedActor =
 
 export type PrivilegedFileSystemCall =
     | { operation: "selectFile"; filters: string[]; multiple: boolean }
+    | { operation: "selectSaveFile"; defaultFileName: string; filters: string[] }
     | { operation: "stat"; path: string }
     | { operation: "list"; path: string }
     | { operation: "details"; path: string }
@@ -52,6 +53,8 @@ export type PrivilegedFileSystemCallResult =
     | FsRequestResult<FileDetails>
     | FsRequestResult<string>
     | FsRequestResult<string[]>
+    /** selectSaveFile: the chosen path, or null when the dialog was cancelled. */
+    | FsRequestResult<string | null>
     | FsRequestResult<void>
     | FsRequestResult<boolean>;
 

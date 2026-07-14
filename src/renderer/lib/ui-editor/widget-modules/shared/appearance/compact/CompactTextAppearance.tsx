@@ -14,6 +14,7 @@ import type {
     TextAppearancePropertyKey,
 } from "@shared/types/ui-editor/appearance";
 import { getSupportedEffectKindsForWidgetType } from "@shared/types/ui-editor/effects";
+import { useTranslation } from "@/lib/i18n";
 import type { FontAssetFieldDefinition } from "@/apps/workspace/modules/properties/framework/types";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
@@ -60,7 +61,7 @@ function segButtonClass(active: boolean): string {
         "grid h-9 w-9 place-items-center rounded-md border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
         active
             ? "border-primary/50 bg-primary/20 text-white"
-            : "border-white/10 bg-[#1e1f22] text-gray-300 hover:bg-white/10 hover:text-white",
+            : "border-edge bg-surface-raised text-fg-muted hover:bg-fill hover:text-white",
     ].join(" ");
 }
 
@@ -77,6 +78,7 @@ export function CompactTextAppearance({
     setTextMotionVisible,
     motionFieldsConfigured,
 }: Props) {
+    const { t } = useTranslation();
     const typographyMode = textModuleModes.typography;
     const transformMode = textModuleModes.transform;
     const effectsMode = textModuleModes.effects;
@@ -115,7 +117,7 @@ export function CompactTextAppearance({
     const fontField: FontAssetFieldDefinition<UIInspectorData> = {
         id: "compact.text.fontAssetId",
         type: "fontAsset",
-        label: "Font",
+        label: t("widgetAppearance.typography.font"),
         getValue: () => {
             const value = getTypography("fontAssetId");
             return typeof value === "string" ? value : null;
@@ -131,7 +133,7 @@ export function CompactTextAppearance({
     return (
         <div className="space-y-3 min-w-0">
             <CompactModuleCard
-                title="Typography"
+                title={t("widgetAppearance.typography.title")}
                 headerHoverAction={
                     <ModuleMotionMenuButton
                         enabled={typographyMotionVisible}
@@ -163,7 +165,7 @@ export function CompactTextAppearance({
                                 min={8}
                                 max={256}
                                 unit="px"
-                                leftIcon={<Type className="w-4 h-4 text-gray-400" />}
+                                leftIcon={<Type className="w-4 h-4 text-fg-muted" />}
                                 className="w-full min-w-0"
                                 selectAllOnFocus
                             />
@@ -191,7 +193,7 @@ export function CompactTextAppearance({
                                 min={0.8}
                                 max={4}
                                 step={0.05}
-                                leftIcon={<Baseline className="w-4 h-4 text-gray-400" />}
+                                leftIcon={<Baseline className="w-4 h-4 text-fg-muted" />}
                                 className="w-full min-w-0"
                                 selectAllOnFocus
                             />
@@ -208,9 +210,13 @@ export function CompactTextAppearance({
                     <button
                         type="button"
                         className={segButtonClass(fontStyle === "italic")}
-                        aria-label={fontStyle === "italic" ? "Disable italic" : "Enable italic"}
+                        aria-label={
+                            fontStyle === "italic"
+                                ? t("widgetAppearance.typography.disableItalic")
+                                : t("widgetAppearance.typography.enableItalic")
+                        }
                         aria-pressed={fontStyle === "italic"}
-                        title="Italic"
+                        title={t("widgetAppearance.typography.italic")}
                         onClick={() => patchTypography("fontStyle", fontStyle === "italic" ? "normal" : "italic")}
                     >
                         <Italic className="h-4 w-4" />
@@ -219,13 +225,13 @@ export function CompactTextAppearance({
 
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-end min-w-0">
                     <div className="min-w-0">
-                        <span className="mb-1 block text-xs font-medium text-gray-400">Weight</span>
+                        <span className="mb-1 block text-xs font-medium text-fg-muted">{t("widgetAppearance.typography.weight")}</span>
                         <Select
                             value={fontWeight}
                             options={[
-                                { value: "normal", label: "Regular" },
-                                { value: "600", label: "Semibold" },
-                                { value: "bold", label: "Bold" },
+                                { value: "normal", label: t("widgetAppearance.typography.weightRegular") },
+                                { value: "600", label: t("widgetAppearance.typography.weightSemibold") },
+                                { value: "bold", label: t("widgetAppearance.typography.weightBold") },
                             ]}
                             fullWidth
                             onChange={next => patchTypography("fontWeight", String(next))}
@@ -251,7 +257,7 @@ export function CompactTextAppearance({
             </CompactModuleCard>
 
             <CompactModuleCard
-                title="Transform"
+                title={t("widgetAppearance.transform.title")}
                 headerHoverAction={
                     <ModuleMotionMenuButton
                         enabled={transformMotionVisible}
@@ -271,7 +277,7 @@ export function CompactTextAppearance({
             >
                 <div className="flex flex-wrap gap-2 min-w-0">
                     <div className="flex min-w-[6rem] flex-1 flex-col gap-1">
-                        <span className="text-xs font-medium text-gray-400">X offset</span>
+                        <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.xOffset")}</span>
                         <div className="flex items-center gap-1 min-w-0">
                             <NumericDraftEnhancedInput
                                 committedDisplay={String(readFiniteNumber(getTransform("transformOffsetX"), 0))}
@@ -280,7 +286,7 @@ export function CompactTextAppearance({
                                 inputMode="numeric"
                                 type="number"
                                 unit="px"
-                                leftIcon={<Move className="w-4 h-4 text-gray-400" />}
+                                leftIcon={<Move className="w-4 h-4 text-fg-muted" />}
                                 className="w-full min-w-0"
                                 selectAllOnFocus
                             />
@@ -295,7 +301,7 @@ export function CompactTextAppearance({
                         </div>
                     </div>
                     <div className="flex min-w-[6rem] flex-1 flex-col gap-1">
-                        <span className="text-xs font-medium text-gray-400">Y offset</span>
+                        <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.yOffset")}</span>
                         <div className="flex items-center gap-1 min-w-0">
                             <NumericDraftEnhancedInput
                                 committedDisplay={String(readFiniteNumber(getTransform("transformOffsetY"), 0))}
@@ -304,7 +310,7 @@ export function CompactTextAppearance({
                                 inputMode="numeric"
                                 type="number"
                                 unit="px"
-                                leftIcon={<Move className="w-4 h-4 text-gray-400" />}
+                                leftIcon={<Move className="w-4 h-4 text-fg-muted" />}
                                 className="w-full min-w-0"
                                 selectAllOnFocus
                             />
@@ -321,7 +327,7 @@ export function CompactTextAppearance({
                 </div>
 
                 <div className="mt-2 flex min-w-0 flex-col gap-1">
-                    <span className="text-xs font-medium text-gray-400">Zoom</span>
+                    <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.zoom")}</span>
                     <div className="flex items-center gap-1 min-w-0">
                         <NumericDraftEnhancedInput
                             committedDisplay={formatPercentDisplay(readFiniteNumber(getTransform("transformScale"), 1))}
@@ -350,7 +356,7 @@ export function CompactTextAppearance({
                 </div>
 
                 <div className="mt-2 flex min-w-0 flex-col gap-1">
-                    <span className="text-xs font-medium text-gray-400">Rotation</span>
+                    <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.rotation")}</span>
                     <div className="flex items-center gap-1 min-w-0">
                         <NumericDraftEnhancedInput
                             committedDisplay={String(readFiniteNumber(getTransform("transformRotation"), 0))}
@@ -374,7 +380,7 @@ export function CompactTextAppearance({
                 </div>
 
                 <div className="mt-2 flex min-w-0 flex-col gap-1">
-                    <span className="text-xs font-medium text-gray-400">Opacity</span>
+                    <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.opacity")}</span>
                     <div className="flex items-center gap-1 min-w-0">
                         <NumericDraftEnhancedInput
                             committedDisplay={formatPercentDisplay(
@@ -390,7 +396,7 @@ export function CompactTextAppearance({
                             min={0}
                             max={100}
                             precision={null}
-                            leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                            leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                             className="w-full min-w-0 flex-1"
                             selectAllOnFocus
                         />

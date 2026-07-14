@@ -55,8 +55,10 @@ export function useModuleLoader() {
                     store.registerAction({
                         id: action.id,
                         label: action.label,
+                        labelKey: action.labelKey,
                         icon: action.icon,
                         tooltip: action.tooltip,
+                        tooltipKey: action.tooltipKey,
                         onClick: action.onClick,
                         order: action.order,
                         disabled: action.disabled,
@@ -73,6 +75,7 @@ export function useModuleLoader() {
                     store.registerActionGroup({
                         id: group.id,
                         label: group.label,
+                        labelKey: group.labelKey,
                         icon: group.icon,
                         actions: group.actions,
                         order: group.order,
@@ -92,8 +95,10 @@ export function useModuleLoader() {
             store.registerAction({
                 id: action.id,
                 label: action.label,
+                labelKey: action.labelKey,
                 icon: action.icon,
                 tooltip: action.tooltip,
+                tooltipKey: action.tooltipKey,
                 onClick: action.onClick,
                 order: action.order,
                 disabled: action.disabled,
@@ -107,6 +112,7 @@ export function useModuleLoader() {
             store.registerActionGroup({
                 id: group.id,
                 label: group.label,
+                labelKey: group.labelKey,
                 icon: group.icon,
                 actions: group.actions,
                 order: group.order,

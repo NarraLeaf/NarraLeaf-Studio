@@ -1,6 +1,13 @@
 import { FsRequestResult } from "@shared/types/os";
 import { FileDetails, FileStat } from "@shared/utils/fs";
-import { Porject, ProjectConfig, ProjectIconConfig, ProjectIconPlatform } from "../project/project";
+import { Porject, ProjectConfig, ProjectIconConfig, ProjectIconPlatform, ProjectMetadata } from "../project/project";
+import type { NetworkConfiguration, SecurityConfiguration } from "../project/configuration";
+import type {
+    LocalizationConfiguration,
+    LocalizationDocument,
+    LocalizationLocaleEntry,
+} from "@shared/types/localization";
+import type { ProjectDependencyResolution, ProjectDependencyTable } from "@shared/types/pluginDependencies";
 import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import { ServiceRegistry } from "./serviceRegistry";
 import { AssetData, AssetType } from "./assets/assetTypes";
@@ -49,6 +56,7 @@ import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type {
     ConsoleAppendInput,
+    ConsoleChannelDefinition,
     ConsoleChannelId,
     ConsoleEntry,
     ConsoleLogLevel,
@@ -96,6 +104,7 @@ enum Services {
     GlobalSettings = "globalSettings",
     ServiceAssets = "serviceAssets",
     PanelState = "panelState",
+    RecentColors = "recentColors",
     UIDocument = "uiDocument",
     RuntimeBridge = "runtimeBridge",
     UIEditorState = "uiEditorState",
@@ -117,6 +126,8 @@ enum Services {
     Story = "story",
     Character = "character",
     Assets = "assets",
+    /** Per-project plugin dependency table: scan, persist, and resolve compatibility */
+    ProjectDependency = "projectDependency",
     // Texture = "texture",
     // Audio = "audio",
     // Video = "video",
@@ -124,7 +135,7 @@ enum Services {
     // Runtime = "runtime",
     // Build = "build",
     // Debug = "debug",
-    // Localization = "localization",
+    Localization = "localization",
     // VersionControl = "versionControl",
     // Plugin = "plugin",
 }
@@ -134,6 +145,11 @@ interface IProjectService extends IService {
     getProjectConfig(): ProjectConfig;
     updateProjectConfig(updater: (config: ProjectConfig) => ProjectConfig): Promise<ProjectConfig>;
     updateProjectName(name: string): Promise<ProjectConfig>;
+    updateProjectMetadata(patch: Partial<ProjectMetadata>): Promise<ProjectConfig>;
+    getNetworkConfiguration(): NetworkConfiguration;
+    updateNetworkConfiguration(patch: Partial<NetworkConfiguration>): Promise<ProjectConfig>;
+    getSecurityConfiguration(): SecurityConfiguration;
+    updateSecurityConfiguration(patch: Partial<SecurityConfiguration>): Promise<ProjectConfig>;
     importProjectIcon(platform: ProjectIconPlatform): Promise<{
         platform: ProjectIconPlatform;
         sourcePath: string;
@@ -143,6 +159,8 @@ interface IProjectService extends IService {
         bytes: Uint8Array;
     } | null>;
     readProjectIcon(platform: ProjectIconPlatform): Promise<Uint8Array | null>;
+    getDependencyTable(): ProjectDependencyTable | undefined;
+    setDependencyTable(table: ProjectDependencyTable | undefined): Promise<ProjectConfig>;
 }
 
 interface IUuidService extends IService {
@@ -607,6 +625,8 @@ interface IDevModeService extends IService {
 }
 
 interface IConsoleService extends IService {
+    getChannels(): readonly ConsoleChannelDefinition[];
+    registerChannel(definition: ConsoleChannelDefinition): () => void;
     getEntries(channel: ConsoleChannelId): ConsoleEntry[];
     append(channel: ConsoleChannelId, input: ConsoleAppendInput): ConsoleEntry;
     log(
@@ -621,6 +641,9 @@ interface IConsoleService extends IService {
         entries: ConsoleEntry[];
         reason: "append" | "clear";
         entry?: ConsoleEntry;
+    }) => void): () => void;
+    onChannelsChanged(handler: (event: {
+        channels: readonly ConsoleChannelDefinition[];
     }) => void): () => void;
 }
 
@@ -792,12 +815,38 @@ interface IBuildService extends IService { }
 interface IDebugService extends IService { }
 
 // Helper Services
-interface ILocalizationService extends IService { }
+
+/**
+ * Game localization (player-facing multi-language). Owns the project's
+ * localization configuration and the per-locale translation library.
+ * Unrelated to the Studio UI i18n framework.
+ */
+interface ILocalizationService extends IService {
+    getConfiguration(): LocalizationConfiguration;
+    onConfigChanged(handler: (config: LocalizationConfiguration) => void): () => void;
+    addLocale(entry: LocalizationLocaleEntry): Promise<LocalizationConfiguration>;
+    removeLocale(code: string): Promise<LocalizationConfiguration>;
+    setSourceLocale(code: string): Promise<LocalizationConfiguration>;
+    loadDocument(locale: string): Promise<LocalizationDocument>;
+    getDocumentIfLoaded(locale: string): LocalizationDocument | undefined;
+    onDocumentChanged(handler: (event: { locale: string; document: LocalizationDocument }) => void): () => void;
+    flushPendingChanges(): Promise<void>;
+}
 
 interface IVersionControlService extends IService { }
 
 // Plugin Services
 interface IPluginService extends IService { }
+
+interface IProjectDependencyService extends IService {
+    getResolution(): ProjectDependencyResolution | null;
+    getSuppressedPluginIds(): string[];
+    onResolutionChanged(handler: () => void): () => void;
+    resolve(): Promise<ProjectDependencyResolution>;
+    previewResolve(): Promise<ProjectDependencyResolution>;
+    rescan(): Promise<ProjectDependencyTable>;
+    rescanAndPersist(): Promise<ProjectDependencyResolution>;
+}
 
 export {
     IAssetService, IAudioService, IBlueprintNodeCatalogService, IBuildService, ICommandService, IDebugService,
@@ -807,6 +856,7 @@ export {
     ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
     ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
+    IProjectDependencyService,
     Services, WorkspaceContext
 };
 

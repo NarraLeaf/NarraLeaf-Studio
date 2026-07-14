@@ -8,6 +8,7 @@ import {
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { Select } from "@/lib/components/elements/Select";
+import { translate } from "@/lib/i18n";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import type { ColorValue, InlineRowItemContext } from "@/apps/workspace/modules/properties/framework/types";
@@ -41,7 +42,7 @@ export type RectangleInspectorOptions = {
 export function createRectangleInspector(ctx: InspectorContext, options?: RectangleInspectorOptions) {
   const { element, documentService } = ctx;
   const resolveProps = options?.getProps ?? getRectangleLikeProps;
-  const titleFallback = options?.titleFallback ?? "Container";
+  const titleFallback = options?.titleFallback ?? translate("widgets.container.title");
   const schemaTypeKey = options?.schemaTypeKey ?? "nl.container";
 
   const patchProps = (patch: Partial<RectangleLikeProps>) => {
@@ -60,10 +61,10 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
   const buildStrokeMenu = (props: RectangleLikeProps): ContextMenuDef => [
     {
       id: "stroke-style",
-      label: "Border Style",
+      label: translate("widgets.rectangleInspector.borderStyle"),
       submenu: BORDER_STYLE_OPTIONS.map(option => ({
         id: `stroke-style-${option.value}`,
-        label: option.label,
+        label: translate(option.labelKey),
         icon: option.icon,
         onClick: () => patchProps({ borderStyle: option.value }),
       })),
@@ -74,10 +75,10 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
     },
     {
       id: "stroke-join",
-      label: "Corner join",
+      label: translate("widgets.rectangleInspector.cornerJoin"),
       submenu: STROKE_JOIN_OPTIONS.map(option => ({
         id: `stroke-join-${option.value}`,
-        label: option.label,
+        label: translate(option.labelKey),
         onClick: () =>
           patchProps({
             borderJoin: option.value as StrokeJoin,
@@ -95,13 +96,13 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
     tabs: [
       {
         id: "properties",
-        title: "Properties",
+        title: translate("widgets.tabs.properties"),
         fields: [
           ...((options?.leadingPropertyFields ?? []) as ReturnType<typeof defineField<D, any>>[]),
           defineField<D, any>({
             id: "section.cornerRadius",
             type: "section",
-            title: "Corner Radius",
+            title: translate("widgets.rectangleInspector.cornerRadius"),
             fields: [
               defineField<D, any>({
                 id: "props.cornerRadiusInline",
@@ -194,7 +195,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           type="button"
                           onClick={toggle}
                           aria-pressed={current.cornerAdvanced}
-                          aria-label="Toggle corner breakdown"
+                          aria-label={translate("widgets.rectangleInspector.toggleCornerBreakdown")}
                           className={controlButtonClass(current.cornerAdvanced)}
                         >
                           <Maximize2 className="w-4 h-4" />
@@ -215,7 +216,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                 inputs: [
                   {
                     id: "props.borderRadiusTL",
-                    label: "TL",
+                    label: translate("widgets.rectangleInspector.cornerTL"),
                     icon: <CornerIcon position="tl" />,
                     selectAllOnFocus: true,
                     getValue: (data: D) => String(resolveProps(data.element).borderRadiusTL),
@@ -227,7 +228,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                   },
                   {
                     id: "props.borderRadiusTR",
-                    label: "TR",
+                    label: translate("widgets.rectangleInspector.cornerTR"),
                     icon: <CornerIcon position="tr" />,
                     selectAllOnFocus: true,
                     getValue: (data: D) => String(resolveProps(data.element).borderRadiusTR),
@@ -250,7 +251,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                 inputs: [
                   {
                     id: "props.borderRadiusBL",
-                    label: "BL",
+                    label: translate("widgets.rectangleInspector.cornerBL"),
                     icon: <CornerIcon position="bl" />,
                     selectAllOnFocus: true,
                     getValue: (data: D) => String(resolveProps(data.element).borderRadiusBL),
@@ -262,7 +263,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                   },
                   {
                     id: "props.borderRadiusBR",
-                    label: "BR",
+                    label: translate("widgets.rectangleInspector.cornerBR"),
                     icon: <CornerIcon position="br" />,
                     selectAllOnFocus: true,
                     getValue: (data: D) => String(resolveProps(data.element).borderRadiusBR),
@@ -279,7 +280,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
           defineField<D, any>({
             id: "section.layer",
             type: "section",
-            title: "Layer",
+            title: translate("widgets.rectangleInspector.layer"),
             fields: [
               defineField<D, any>({
                 id: "layout.layerControls",
@@ -312,7 +313,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           min={0}
                           max={100}
                           precision={null}
-                          leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                          leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                           className="w-full min-w-0"
                         />
                       );
@@ -336,7 +337,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                         <button
                           type="button"
                           onClick={toggle}
-                          aria-label="Toggle layer visibility"
+                          aria-label={translate("widgets.rectangleInspector.toggleLayerVisibility")}
                           aria-pressed={visible}
                           className={controlButtonClass(visible)}
                         >
@@ -352,12 +353,12 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
           defineField<D, any>({
             id: "section.fill",
             type: "section",
-            title: "Fill",
+            title: translate("widgets.rectangleInspector.fill"),
             fields: [
               defineField<D, any>({
                 id: "props.fillType",
                 type: "select",
-                label: "Fill Type",
+                label: translate("widgets.rectangleInspector.fillType"),
                 options: FILL_TYPE_OPTIONS,
                 getValue: (data: D) => resolveProps(data.element).fillType,
                 setValue: (_data: D, value: string | number) =>
@@ -428,7 +429,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           min={0}
                           max={100}
                           precision={null}
-                          leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                          leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                         />
                       );
                     },
@@ -454,7 +455,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           type="button"
                           onClick={toggle}
                           aria-pressed={visible}
-                          aria-label="Toggle fill visibility"
+                          aria-label={translate("widgets.rectangleInspector.toggleFillVisibility")}
                           className={controlButtonClass(visible)}
                         >
                           {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
@@ -467,7 +468,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
               defineField<D, any>({
                 id: "props.imageFill",
                 type: "imageFill",
-                label: "Image Fill",
+                label: translate("widgets.rectangleInspector.imageFill"),
                 hidden: (data: D) => resolveProps(data.element).fillType !== "image",
                 getValue: (data: D) => normalizeImageFill(resolveProps(data.element)),
                 setValue: (_data: D, value: RectangleLikeProps["imageFill"]) =>
@@ -510,7 +511,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           min={0}
                           max={100}
                           precision={null}
-                          leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                          leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                         />
                       );
                     },
@@ -536,7 +537,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           type="button"
                           onClick={toggle}
                           aria-pressed={visible}
-                          aria-label="Toggle fill visibility"
+                          aria-label={translate("widgets.rectangleInspector.toggleFillVisibility")}
                           className={controlButtonClass(visible)}
                         >
                           {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
@@ -551,7 +552,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
           defineField<D, any>({
             id: "section.stroke",
             type: "section",
-            title: "Border",
+            title: translate("widgets.rectangleInspector.border"),
             fields: [
               defineField<D, any>({
                 id: "props.strokeControls",
@@ -606,7 +607,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           min={0}
                           unit="px"
                           precision={2}
-                          leftIcon={<Square className="w-4 h-4 text-gray-400" />}
+                          leftIcon={<Square className="w-4 h-4 text-fg-muted" />}
                           className="w-full min-w-0"
                         />
                       );
@@ -620,7 +621,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                       return (
                         <InlineMenuTriggerButton
                           menu={buildStrokeMenu(current)}
-                          ariaLabel="More border options"
+                          ariaLabel={translate("widgets.rectangleInspector.moreBorderOptions")}
                           className="z-10"
                         />
                       );
@@ -633,7 +634,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                 type: "iconButtonGroup",
                 mode: "multipleExclusivePrimary",
                 exclusivePrimaryId: "all",
-                label: "Border sides",
+                label: translate("widgets.rectangleInspector.borderSides"),
                 showLabels: false,
                 density: "compact",
                 className: "mt-2",
@@ -713,7 +714,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           min={0}
                           max={100}
                           precision={null}
-                          leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                          leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                           disabled={!strokeVisible}
                           className="w-full min-w-0"
                         />
@@ -741,7 +742,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           type="button"
                           onClick={toggle}
                           aria-pressed={visible}
-                          aria-label="Toggle border visibility"
+                          aria-label={translate("widgets.rectangleInspector.toggleBorderVisibility")}
                           className={controlButtonClass(visible)}
                         >
                           {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
@@ -757,12 +758,12 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
       },
       {
         id: "interaction",
-        title: "Interaction",
+        title: translate("widgets.tabs.interaction"),
         fields: [
           defineField<D, any>({
             id: "interaction.blueprint.deferred",
             type: "custom",
-            label: "Control blueprint",
+            label: translate("widgets.blueprint.controlLabel"),
             component: ReadonlyBlueprintSection,
           }),
         ],

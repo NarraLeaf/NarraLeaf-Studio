@@ -1,4 +1,5 @@
 import { Music } from "lucide-react";
+import { translate } from "@/lib/i18n";
 import { EditorModule } from "../../types";
 import { AudioPreviewEditor } from "./AudioPreviewEditor";
 
@@ -9,7 +10,7 @@ import { AudioPreviewEditor } from "./AudioPreviewEditor";
 export const audioPreviewModule: EditorModule = {
     metadata: {
         id: "narraleaf-studio:audio-preview",
-        title: "Audio Preview",
+        get title() { return translate("placeholders.moduleTitles.audioPreview"); },
         icon: <Music className="w-4 h-4" />,
         closable: true,
     },

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, ReactNode, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { ChevronRight } from "lucide-react";
+import { cn } from "../../utils/cn";
 
 // Menu item types
 export interface ContextMenuItemDef {
@@ -214,7 +215,7 @@ export function ContextMenu({
         <div
             ref={menuRef}
             data-context-menu="true"
-            className="fixed z-50 min-w-48 bg-[#1e1f22] border border-white/10 rounded-md shadow-lg py-1"
+            className="fixed z-50 min-w-48 bg-surface-raised border border-edge rounded-md shadow-lg py-1"
             style={{
                 left: `${adjustedPosition.x}px`,
                 top: `${adjustedPosition.y}px`,
@@ -327,16 +328,15 @@ function ContextMenuItem({
         <>
             <div
                 ref={itemRef}
-                className={`
-                    px-3 py-1.5 flex items-center gap-2 text-sm cursor-default
-                    transition-colors duration-150
-                    ${item.disabled
-                        ? 'opacity-50 cursor-not-allowed text-gray-300'
+                className={cn(
+                    "px-3 py-1.5 flex items-center gap-2 text-sm cursor-default",
+                    "transition-colors duration-150",
+                    item.disabled
+                        ? "opacity-50 cursor-not-allowed text-fg-muted"
                         : isFocused
-                        ? 'bg-primary/20 text-white'
-                        : 'text-gray-300 hover:bg-white/10 hover:text-white'
-                    }
-                `}
+                        ? "bg-primary/20 text-white"
+                        : "text-fg-muted hover:bg-fill hover:text-white",
+                )}
                 onClick={handleClick}
                 onMouseEnter={handleMouseEnter}
                 onMouseDown={(e) => e.stopPropagation()}
@@ -378,7 +378,7 @@ function ContextMenuItem({
 
 // ContextMenuSeparator component
 export function ContextMenuSeparator() {
-    return <div className="my-1 border-t border-white/10" />;
+    return <div className="my-1 border-t border-edge" />;
 }
 
 // Hook for managing context menu state

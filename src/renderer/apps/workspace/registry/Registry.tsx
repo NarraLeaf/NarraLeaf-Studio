@@ -28,6 +28,8 @@ interface RegistryContextValue {
     registerPanel: <TPayload = any>(panel: PanelDefinition<TPayload>) => void;
     unregisterPanel: (id: string) => void;
     getPanelsByPosition: (position: PanelPosition) => PanelDefinition[];
+    /** Set the user-defined ordering for a dock area (panel ids, first shown first). */
+    reorderPanels: (position: PanelPosition, orderedIds: string[]) => void;
     updatePanelPayload: <TPayload = any>(panelId: string, payload: TPayload) => void;
 
     // Action management
@@ -86,6 +88,10 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
 
     const unregisterPanel = useCallback((id: string) => {
         uiService.getStore().unregisterPanel(id);
+    }, [uiService]);
+
+    const reorderPanels = useCallback((position: PanelPosition, orderedIds: string[]) => {
+        uiService.getStore().setPanelOrder(position, orderedIds);
     }, [uiService]);
 
     const updatePanelPayload = useCallback(<TPayload = any>(panelId: string, payload: TPayload) => {
@@ -219,6 +225,7 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
                 registerPanel,
                 unregisterPanel,
                 getPanelsByPosition,
+                reorderPanels,
                 updatePanelPayload,
                 actions,
                 actionGroups,

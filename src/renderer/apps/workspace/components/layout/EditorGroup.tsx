@@ -8,9 +8,10 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui";
 import type { FocusContext } from "@/lib/workspace/services/ui/types";
 import { isMacPlatform } from "@/lib/app/platform";
-import { useKeybinding, contextual, whenEditorTabsFocused } from "../../hooks";
+import { useKeybinding, contextual, whenEditorTabsFocused, useMaxActiveEditors } from "../../hooks";
 import { useEditorGroupAssetDrop } from "./useEditorGroupAssetDrop";
 import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
+import { useTranslation } from "@/lib/i18n";
 
 interface EditorGroupProps {
     group: EditorGroupType;
@@ -22,14 +23,58 @@ interface EditorGroupProps {
  * Manages focus state and visual focus indicator
  */
 export function EditorGroup({ group }: EditorGroupProps) {
+    const { t } = useTranslation();
     const { closeEditorTab, closeEditorTabs, setActiveEditorTab } = useRegistry();
     const { context } = useWorkspace();
-    const [isEditorBodyFocused, setIsEditorBodyFocused] = useState(false);
+    // True when THIS group owns the active editor focus — either the editor body (a tab is
+    // focused) or its tab strip. Drives the accent edge on this group's active tab so the whole
+    // workspace shows exactly one "globally active" tab.
+    const [isEditorGroupActive, setIsEditorGroupActive] = useState(false);
     const [selectedTabIds, setSelectedTabIds] = useState<Set<string>>(() => new Set());
     const rangeAnchorTabIdRef = useRef<string | null>(null);
     const { dropTargetProps, overlayClassName } = useEditorGroupAssetDrop(group.id);
 
     const activeTab = group.tabs.find((tab) => tab.id === group.focus);
+
+    const maxActiveEditors = useMaxActiveEditors();
+
+    // Keep-alive: keep up to `maxActiveEditors` most-recently-active tabs mounted (hidden with
+    // display:none) so their DOM scroll position, focus, and in-memory state survive a tab switch
+    // instead of being reconstructed on a cold remount. The active tab is always mounted; the
+    // least-recently-active tabs beyond the cap are unmounted and cold-restore when reopened.
+    const [mru, setMru] = useState<string[]>(() => (group.focus ? [group.focus] : []));
+
+    useEffect(() => {
+        setMru((prev) => {
+            const existing = new Set(group.tabs.map((t) => t.id));
+            const ordered: string[] = [];
+            const seen = new Set<string>();
+            for (const id of [group.focus, ...prev]) {
+                if (id && existing.has(id) && !seen.has(id)) {
+                    seen.add(id);
+                    ordered.push(id);
+                }
+            }
+            if (ordered.length === prev.length && ordered.every((id, i) => id === prev[i])) {
+                return prev;
+            }
+            return ordered;
+        });
+    }, [group.focus, group.tabs]);
+
+    const mountedTabIds = useMemo(() => {
+        const set = new Set<string>();
+        if (group.focus) {
+            set.add(group.focus);
+        }
+        for (const id of mru) {
+            if (set.size >= maxActiveEditors) {
+                break;
+            }
+            set.add(id);
+        }
+        return set;
+    }, [group.focus, mru, maxActiveEditors]);
 
     const tabIds = useMemo(() => new Set(group.tabs.map((t) => t.id)), [group.tabs]);
     const closeTabShortcut = useMemo(() => isMacPlatform() ? "cmd+w" : "ctrl+w", []);
@@ -51,11 +96,14 @@ export function EditorGroup({ group }: EditorGroupProps) {
         const uiService = context.services.get<UIService>(Services.UI);
 
         const sync = (focusContext: FocusContext) => {
-            setIsEditorBodyFocused(
+            const bodyFocused =
                 focusContext.area === FocusArea.Editor &&
-                    focusContext.targetId !== undefined &&
-                    tabIds.has(focusContext.targetId)
-            );
+                focusContext.targetId !== undefined &&
+                tabIds.has(focusContext.targetId);
+            const tabStripFocused =
+                focusContext.area === FocusArea.EditorTabs &&
+                focusContext.targetId === group.id;
+            setIsEditorGroupActive(bodyFocused || tabStripFocused);
         };
 
         sync(uiService.focus.getFocus());
@@ -181,20 +229,17 @@ export function EditorGroup({ group }: EditorGroupProps) {
         enabled: group.tabs.length > 0,
     });
 
-    // Outer chrome border only when editor content has logical focus; tab strip focus is invisible.
-    const isGroupChromeFocused = isEditorBodyFocused;
-
+    // The accent edge now lives on the single globally-active TAB, not on the whole group chrome,
+    // so the group frame stays neutral.
     return (
         <div
             {...dropTargetProps}
-            className={`h-full flex flex-col border transition-colors ${
-                isGroupChromeFocused ? "border-primary" : "border-transparent border-b-white/10"
-            } ${overlayClassName}`}
+            className={`h-full flex flex-col border border-transparent border-b-white/10 transition-colors ${overlayClassName}`}
         >
             {/* Tab Bar */}
             {group.tabs.length > 0 && (
                 <div
-                    className="relative bg-[#0b0d12] border-b border-white/10 overflow-x-auto outline-none"
+                    className="relative bg-surface-sunken border-b border-edge overflow-x-auto outline-none"
                     tabIndex={0}
                     onMouseDown={(e) => {
                         e.stopPropagation();
@@ -210,27 +255,33 @@ export function EditorGroup({ group }: EditorGroupProps) {
                         {group.tabs.map((tab) => {
                             const isActive = tab.id === group.focus;
                             const isSelected = selectedTabIds.has(tab.id);
+                            // The single globally-active tab: this group's current tab AND this
+                            // group owns editor focus. It gets the accent edge; every group's
+                            // current tab gets the low-contrast themed fill.
+                            const isGloballyActive = isActive && isEditorGroupActive;
                             const closable = tab.closable !== false;
 
                             return (
                                 <div
                                     key={tab.id}
                                     className={`
-                                        group relative flex items-center gap-2 px-3 h-9 border-r border-white/10 cursor-default
+                                        group relative flex items-center gap-2 px-3 h-9 border-r border-edge cursor-default
                                         transition-colors
                                         ${
-                                            isActive
-                                                ? "bg-[#12151c] text-white"
-                                                : isSelected
-                                                  ? "bg-[#10141b] text-gray-100"
-                                                  : "bg-[#0b0d12] text-gray-400 hover:bg-[#0f1115] hover:text-white"
+                                            isGloballyActive
+                                                ? "bg-primary/[0.15] text-white"
+                                                : isActive
+                                                  ? "bg-primary/[0.08] text-fg"
+                                                  : isSelected
+                                                    ? "bg-fill text-fg"
+                                                    : "bg-surface-sunken text-fg-muted hover:bg-surface hover:text-white"
                                         }
                                     `}
                                     onClick={(e) => handleTabClick(tab.id, e)}
                                 >
-                                    {isSelected && (
+                                    {isGloballyActive && (
                                         <span
-                                            className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-0.5 bg-primary/70"
+                                            className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-0.5 bg-primary"
                                             aria-hidden
                                         />
                                     )}
@@ -250,11 +301,11 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                                 w-4 h-4 rounded flex items-center justify-center transition-colors
                                                 ${
                                                     isActive
-                                                        ? "hover:bg-white/20"
-                                                        : "opacity-0 group-hover:opacity-100 hover:bg-white/10"
+                                                        ? "hover:bg-fill-strong"
+                                                        : "opacity-0 group-hover:opacity-100 hover:bg-fill"
                                                 }
                                             `}
-                                            aria-label={`Close ${tab.title}`}
+                                            aria-label={t("workspace.shell.closeTab", { name: String(tab.title) })}
                                         >
                                             <X className="w-3 h-3" />
                                         </button>
@@ -273,16 +324,30 @@ export function EditorGroup({ group }: EditorGroupProps) {
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={handleEditorBodyClick}
             >
-                {activeTab ? (
-                    <WorkspacePanelErrorBoundary
-                        regionLabel={String(activeTab.title)}
-                        isolationKey={activeTab.id}
-                    >
-                        <activeTab.component tabId={activeTab.id} payload={activeTab.payload} />
-                    </WorkspacePanelErrorBoundary>
-                ) : (
-                    <div className="h-full flex items-center justify-center text-gray-500">
-                        <p>No active editor</p>
+                {group.tabs.map((tab) => {
+                    if (!mountedTabIds.has(tab.id)) {
+                        return null;
+                    }
+                    const isActive = tab.id === group.focus;
+                    return (
+                        <div
+                            key={tab.id}
+                            className="h-full w-full"
+                            style={{ display: isActive ? undefined : "none" }}
+                            aria-hidden={isActive ? undefined : true}
+                        >
+                            <WorkspacePanelErrorBoundary
+                                regionLabel={String(tab.title)}
+                                isolationKey={tab.id}
+                            >
+                                <tab.component tabId={tab.id} payload={tab.payload} active={isActive} />
+                            </WorkspacePanelErrorBoundary>
+                        </div>
+                    );
+                })}
+                {!activeTab && (
+                    <div className="h-full flex items-center justify-center text-fg-subtle">
+                        <p>{t("workspace.shell.noActiveEditor")}</p>
                     </div>
                 )}
             </div>

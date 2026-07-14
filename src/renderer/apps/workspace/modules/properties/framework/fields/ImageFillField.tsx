@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { Select } from "@/lib/components/elements/Select";
+import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { useWorkspace } from "@/apps/workspace/context";
@@ -14,14 +15,6 @@ import type { ImageFillFieldDefinition } from "../types";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { computeCoverCropPlacement } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
-
-const MODE_OPTIONS: { value: ImageFillMode; label: string }[] = [
-    { value: "cover", label: "Cover" },
-    { value: "contain", label: "Contain" },
-    { value: "stretch", label: "Stretch" },
-    { value: "crop", label: "Crop" },
-    { value: "tile", label: "Tile" },
-];
 
 const PANEL_WIDTH = 360;
 const PANEL_SPACING = 12;
@@ -44,7 +37,18 @@ export function ImageFillField<TData extends UIInspectorData>({
     data,
     onSaving,
 }: ImageFillFieldProps<TData>) {
+    const { t } = useTranslation();
     const { context } = useWorkspace();
+    const MODE_OPTIONS = useMemo<{ value: ImageFillMode; label: string }[]>(
+        () => [
+            { value: "cover", label: t("properties.imageFill.mode.cover") },
+            { value: "contain", label: t("properties.imageFill.mode.contain") },
+            { value: "stretch", label: t("properties.imageFill.mode.stretch") },
+            { value: "crop", label: t("properties.imageFill.mode.crop") },
+            { value: "tile", label: t("properties.imageFill.mode.tile") },
+        ],
+        [t],
+    );
     const stateService =
         context?.services.get<UIEditorStateService>(Services.UIEditorState) ?? null;
     const selection = stateService?.getSelection();
@@ -71,7 +75,7 @@ export function ImageFillField<TData extends UIInspectorData>({
             return MODE_OPTIONS;
         }
         return MODE_OPTIONS.filter(option => allowedModes.includes(option.value));
-    }, [allowedModes]);
+    }, [allowedModes, MODE_OPTIONS]);
 
     const { url, metadata, loading, error: assetResolveError } = useAssetObjectUrl(normalizedFill.assetId ?? null);
     const [isOpen, setIsOpen] = useState(false);
@@ -254,8 +258,8 @@ export function ImageFillField<TData extends UIInspectorData>({
             normalizedFill.mode,
         [modeOptionsForUi, normalizedFill.mode],
     );
-    const panelTitle = field.label?.trim() ? field.label : "Image Fill";
-    const previewLabel = normalizedFill.assetId ? "Image selected" : "No image";
+    const panelTitle = field.label?.trim() ? field.label : t("properties.imageFill.title");
+    const previewLabel = normalizedFill.assetId ? t("properties.imageFill.imageSelected") : t("properties.imageFill.noImage");
 
     const togglePanel = useCallback(() => {
         setIsOpen(true);
@@ -281,7 +285,7 @@ export function ImageFillField<TData extends UIInspectorData>({
             ? createPortal(
                   <div
                       ref={panelRef}
-                      className="fixed z-50 rounded-2xl border border-white/20 bg-[#0b0d12] shadow-2xl p-4 text-gray-200"
+                      className="fixed z-50 rounded-2xl border border-edge-strong bg-surface-sunken shadow-2xl p-4 text-fg"
                       style={{
                           top: panelPosition.top,
                           left: panelPosition.left,
@@ -293,8 +297,8 @@ export function ImageFillField<TData extends UIInspectorData>({
                           <button
                               type="button"
                               onClick={() => setIsOpen(false)}
-                              className="p-1 rounded-full hover:bg-white/10"
-                              aria-label="Close image fill editor"
+                              className="p-1 rounded-full hover:bg-fill"
+                              aria-label={t("properties.imageFill.close")}
                           >
                               <X className="w-4 h-4" />
                           </button>
@@ -302,7 +306,7 @@ export function ImageFillField<TData extends UIInspectorData>({
 
                       <div className="space-y-3">
                           <div>
-                              <span className="text-xs text-gray-400 uppercase tracking-widest">Mode</span>
+                              <span className="text-xs text-fg-muted tracking-widest">{t("properties.imageFill.modeLabel")}</span>
                               <Select
                                   options={modeOptionsForUi.map(option => ({ value: option.value, label: option.label }))}
                                   value={normalizedFill.mode}
@@ -310,41 +314,41 @@ export function ImageFillField<TData extends UIInspectorData>({
                                   fullWidth
                                   size="md"
                                   className="mt-1"
-                                  placeholder="Select mode"
+                                  placeholder={t("properties.imageFill.selectMode")}
                               />
                           </div>
 
                           <div>
-                              <span className="text-xs text-gray-400 uppercase tracking-widest">Preview</span>
+                              <span className="text-xs text-fg-muted tracking-widest">{t("properties.preview")}</span>
                               <button
                                   ref={previewRef}
                                   type="button"
                                   onClick={() => setSelectorOpen(true)}
-                                  className="relative mt-2 w-full aspect-[4/3] rounded-xl border border-white/10 bg-[#13161b] overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary/70"
+                                  className="relative mt-2 w-full aspect-[4/3] rounded-xl border border-edge bg-[#13161b] overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary/70"
                               >
                                   {url ? (
                                       <img
                                           src={url}
-                                          alt="Fill preview"
+                                          alt={t("properties.imageFill.previewAlt")}
                                           className="absolute inset-0 h-full w-full object-cover"
                                           draggable={false}
                                       />
                                   ) : (
-                                      <div className="flex h-full w-full flex-col items-center justify-center text-xs text-gray-500">
-                                          <span className="font-semibold">Select an image</span>
-                                          <span>Asset browser opens on click</span>
+                                      <div className="flex h-full w-full flex-col items-center justify-center text-xs text-fg-subtle">
+                                          <span className="font-semibold">{t("properties.imageFill.selectImage")}</span>
+                                          <span>{t("properties.imageFill.selectHint")}</span>
                                       </div>
                                   )}
                                   {loading && (
-                                      <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-xs text-gray-100">
-                                          Loading…
+                                      <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-xs text-fg">
+                                          {t("common.loading")}
                                       </div>
                                   )}
-                                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 text-[10px] uppercase tracking-[0.3em] text-white transition hover:opacity-100">
-                                      Change image
+                                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 text-2xs tracking-[0.3em] text-white transition hover:opacity-100">
+                                      {t("properties.imageFill.changeImage")}
                                   </div>
                               </button>
-                              <div className="mt-2 flex items-center justify-between text-xs text-gray-400">
+                              <div className="mt-2 flex items-center justify-between text-xs text-fg-muted">
                                   <span>{previewLabel}</span>
                                   <span>{panelModeLabel}</span>
                               </div>
@@ -356,7 +360,7 @@ export function ImageFillField<TData extends UIInspectorData>({
             : null;
 
     const previewFallback = (
-        <div className="flex h-28 w-full items-center justify-center rounded-lg border border-white/10 bg-[#0f1115] text-xs text-gray-500">
+        <div className="flex h-28 w-full items-center justify-center rounded-lg border border-edge bg-surface text-xs text-fg-subtle">
             {previewLabel}
         </div>
     );
@@ -370,29 +374,28 @@ export function ImageFillField<TData extends UIInspectorData>({
                     onClick={togglePanel}
                     className="w-full text-left"
                 >
-                    <div className="rounded-xl border border-white/10 bg-[#0f1115] p-3 space-y-2">
+                    <div className="rounded-xl border border-edge bg-surface p-3 space-y-2">
                         {url ? (
                             <img
                                 src={url}
-                                alt="Fill preview"
+                                alt={t("properties.imageFill.previewAlt")}
                                 className="h-28 w-full rounded-lg object-cover"
                                 draggable={false}
                             />
                         ) : (
                             previewFallback
                         )}
-                        <div className="flex items-center justify-between text-xs text-gray-400">
+                        <div className="flex items-center justify-between text-xs text-fg-muted">
                             <span>{previewLabel}</span>
-                            <span className="uppercase tracking-[0.2em]">{panelModeLabel}</span>
+                            <span className="tracking-[0.2em]">{panelModeLabel}</span>
                         </div>
-                        <div className="text-[10px] text-gray-500">Click to open editor</div>
+                        <div className="text-2xs text-fg-subtle">{t("properties.imageFill.openEditor")}</div>
                     </div>
                 </button>
             </FieldLayout>
             {normalizedFill.assetId && assetResolveError ? (
-                <p className="mt-1 text-[11px] text-amber-400/90 leading-snug">
-                    Static check: image asset could not be resolved ({assetResolveError}). Preview may be wrong until the
-                    asset exists; verify in Dev Mode.
+                <p className="mt-1 text-2xs text-amber-400/90 leading-snug">
+                    {t("properties.imageFill.resolveError", { error: assetResolveError })}
                 </p>
             ) : null}
 
@@ -405,7 +408,7 @@ export function ImageFillField<TData extends UIInspectorData>({
                 onConfirm={handleSelectImage}
                 selectedIds={normalizedFill.assetId ? [normalizedFill.assetId] : []}
                 anchorRef={previewRef}
-                title="Select Fill Image"
+                title={t("properties.imageFill.selectFillImage")}
                 multiple={false}
             />
         </>

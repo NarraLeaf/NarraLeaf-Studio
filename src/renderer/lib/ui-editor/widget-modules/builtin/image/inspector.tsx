@@ -10,6 +10,7 @@ import {
     isUsableAppearanceModel,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
+import { i18nStore } from "@/lib/i18n";
 
 /** Module-level so FieldRenderer keeps a stable component identity across schema rebuilds (preserves variant selection). */
 function ImageAppearanceField(props: CustomFieldProps<UIInspectorData>) {
@@ -52,24 +53,25 @@ function ImageAppearanceField(props: CustomFieldProps<UIInspectorData>) {
 
 export function createImageInspector(ctx: InspectorContext) {
     type D = UIInspectorData;
+    const { t } = i18nStore.getTranslator();
     const { element } = ctx;
 
     return createPropertyEditorSchema<D>({
         id: `ui-inspector:nl.image:${element.id}`,
-        title: element.name ?? "Image",
+        title: element.name ?? t("widgets.image.title"),
         fields: [],
         tabs: [
             {
                 id: "properties",
-                title: "Properties",
+                title: t("widgets.tabs.properties"),
                 fields: [
                     defineField<D, any>({
                         id: "section.appearanceAuthoring",
                         type: "section",
-                        title: "Appearance",
+                        title: t("widgets.appearance.title"),
                         collapsible: true,
                         defaultCollapsed: true,
-                        helpText: "Compact modules with per-module state overrides (header menu: add or remove).",
+                        helpText: t("widgets.appearance.modulesHelp"),
                         fields: [
                             defineField<D, any>({
                                 id: "image.appearance.panel",
@@ -82,12 +84,12 @@ export function createImageInspector(ctx: InspectorContext) {
             },
             {
                 id: "interaction",
-                title: "Interaction",
+                title: t("widgets.tabs.interaction"),
                 fields: [
                     defineField<D, any>({
                         id: "interaction.blueprint.readonly",
                         type: "custom",
-                        label: "Control blueprint",
+                        label: t("widgets.blueprint.controlLabel"),
                         component: ReadonlyBlueprintSection,
                     }),
                 ],

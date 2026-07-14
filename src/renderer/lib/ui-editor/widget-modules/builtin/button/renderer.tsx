@@ -40,6 +40,7 @@ import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared
 import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
 import { BLUEPRINT_EVENTS_DISABLED_ATTR } from "@/lib/ui-editor/runtime/blueprintEventTargeting";
+import { useLocalizedWidgetText } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import { getButtonProps } from "./helpers";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import {
@@ -248,7 +249,15 @@ export function ButtonRenderer(props: WidgetRendererProps) {
         [BLUEPRINT_EVENTS_DISABLED_ATTR]: interactionDisabled || isEditing ? "true" : undefined,
     } as Record<string, string | undefined>;
 
-    const showLabel = p.label.trim().length > 0;
+    // Localized display label (runtime only; design time and inline editing keep the source label).
+    const displayLabel = useLocalizedWidgetText({
+        elementId: element.id,
+        prop: "label",
+        sourceText: p.label,
+        localizable: p.localizable,
+        localizationKey: p.localizationKey,
+    });
+    const showLabel = displayLabel.trim().length > 0;
     const hasChildNodes = children != null && Children.count(children) > 0;
 
     const color = colorValueToCss({ hex: p.color, alpha: 1 });
@@ -425,10 +434,10 @@ export function ButtonRenderer(props: WidgetRendererProps) {
                         animate={labelTextAnimate}
                         transition={labelTextTransition}
                     >
-                        {p.label}
+                        {displayLabel}
                     </motion.p>
                 ) : (
-                    <p style={{ ...labelTypography, flexShrink: 0 }}>{p.label}</p>
+                    <p style={{ ...labelTypography, flexShrink: 0 }}>{displayLabel}</p>
                 )}
             </div>
         ) : null;

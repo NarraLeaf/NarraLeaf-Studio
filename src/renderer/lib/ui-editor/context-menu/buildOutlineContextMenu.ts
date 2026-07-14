@@ -3,6 +3,7 @@ import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryIns
 import { appendArrangeSubmenu } from "./appendArrangeSubmenu";
 import type { BuildOutlineContextMenuInput } from "./types";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
+import { translate } from "@/lib/i18n";
 
 const ROOT = "nl.root";
 
@@ -23,7 +24,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
     if (hasClipboard) {
         items.push({
             id: "paste",
-            label: "Paste",
+            label: translate("common.paste"),
             onClick: () => {
                 actions.hideMenu();
                 actions.paste();
@@ -32,7 +33,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         if (rowElement && insertParentIdForRow) {
             items.push({
                 id: "paste-into",
-                label: "Paste into container",
+                label: translate("uiEditor.contextMenu.pasteIntoContainer"),
                 onClick: () => {
                     actions.hideMenu();
                     actions.pasteIntoParent(insertParentIdForRow);
@@ -53,14 +54,14 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         if (insertSubmenu.length > 0) {
             items.push({
                 id: "insert",
-                label: "Insert",
+                label: translate("uiEditor.contextMenu.insert"),
                 submenu: insertSubmenu,
             });
         }
         items.push(
             {
                 id: "select-all",
-                label: "Select all",
+                label: translate("uiEditor.contextMenu.selectAll"),
                 onClick: () => {
                     actions.hideMenu();
                     actions.selectAll();
@@ -68,7 +69,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
             },
             {
                 id: "expand-all",
-                label: "Expand all",
+                label: translate("uiEditor.contextMenu.expandAll"),
                 onClick: () => {
                     actions.hideMenu();
                     actions.expandAllBranches();
@@ -76,7 +77,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
             },
             {
                 id: "collapse-all",
-                label: "Collapse all",
+                label: translate("uiEditor.contextMenu.collapseAll"),
                 onClick: () => {
                     actions.hideMenu();
                     actions.collapseAllBranches();
@@ -99,7 +100,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         }));
         items.push({
             id: "insert-child",
-            label: "Insert child",
+            label: translate("uiEditor.contextMenu.insertChild"),
             submenu: insertSubmenu,
         });
         items.push({ separator: true, id: "sep-ins" });
@@ -114,7 +115,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
     items.push(
         {
             id: "copy-element-id",
-            label: "Copy Element ID",
+            label: translate("uiEditor.contextMenu.copyElementId"),
             onClick: () => {
                 actions.hideMenu();
                 actions.copyElementId(rowElement.id);
@@ -122,7 +123,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         },
         {
             id: "copy",
-            label: "Copy",
+            label: translate("common.copy"),
             disabled: !hasEditable,
             onClick: () => {
                 actions.hideMenu();
@@ -131,7 +132,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         },
         {
             id: "cut",
-            label: "Cut",
+            label: translate("common.cut"),
             disabled: !hasEditable,
             onClick: () => {
                 actions.hideMenu();
@@ -140,7 +141,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         },
         {
             id: "duplicate",
-            label: "Duplicate",
+            label: translate("common.duplicate"),
             disabled: !hasEditable,
             onClick: () => {
                 actions.hideMenu();
@@ -161,7 +162,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         { separator: true, id: "sep-row" },
         {
             id: "rename",
-            label: "Rename…",
+            label: translate("uiEditor.contextMenu.rename"),
             disabled: isRoot,
             onClick: () => {
                 actions.hideMenu();
@@ -170,7 +171,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         },
         {
             id: "toggle-visible",
-            label: rowElement.layout.visible === false ? "Show" : "Hide",
+            label: rowElement.layout.visible === false ? translate("common.show") : translate("common.hide"),
             disabled: isRoot,
             onClick: () => {
                 actions.hideMenu();
@@ -189,7 +190,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         items.push(
             {
                 id: "show-selected",
-                label: "Show selected",
+                label: translate("uiEditor.contextMenu.showSelected"),
                 onClick: () => {
                     actions.hideMenu();
                     actions.setSelectedVisible(true);
@@ -197,7 +198,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
             },
             {
                 id: "hide-selected",
-                label: "Hide selected",
+                label: translate("uiEditor.contextMenu.hideSelected"),
                 onClick: () => {
                     actions.hideMenu();
                     actions.setSelectedVisible(false);
@@ -209,7 +210,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
     if (input.allowAddToComponentLibrary !== false) {
         items.push({
             id: "add-to-component-library",
-            label: "Add to Component Library",
+            label: translate("uiEditor.contextMenu.addToComponentLibrary"),
             disabled: !hasEditable,
             onClick: () => {
                 actions.hideMenu();
@@ -220,7 +221,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
 
     items.push({
         id: "delete",
-        label: "Delete",
+        label: translate("common.delete"),
         disabled: !hasEditable,
         onClick: () => {
             actions.hideMenu();
@@ -230,7 +231,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
 
     items.push({
         id: "add-to-group",
-        label: "Add to group",
+        label: translate("uiEditor.contextMenu.addToGroup"),
         disabled: !canAddToGroup,
         onClick: () => {
             actions.hideMenu();

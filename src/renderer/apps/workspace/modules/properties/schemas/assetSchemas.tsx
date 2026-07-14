@@ -15,6 +15,10 @@ import {
     InfoItem,
     createPropertyEditorSchema,
 } from "../framework";
+import type { Translator } from "@shared/i18n";
+
+/** Translator function, threaded into schema builders since they run outside React. */
+type TranslateFn = Translator["t"];
 
 /**
  * Context for asset property editors
@@ -29,13 +33,13 @@ export interface AssetEditorContext<T extends AssetType = AssetType> {
 /**
  * Common fields shared by all asset editors
  */
-function createCommonAssetFields<T extends AssetType>(): FieldDefinition<AssetEditorContext<T>>[] {
+function createCommonAssetFields<T extends AssetType>(t: TranslateFn): FieldDefinition<AssetEditorContext<T>>[] {
     return [
         {
             id: "name",
             type: "text",
-            label: "Name",
-            placeholder: "Asset name",
+            label: t("common.name"),
+            placeholder: t("properties.asset.namePlaceholder"),
             getValue: (ctx) => ctx.asset.name,
             setValue: async (ctx, value) => {
                 await ctx.onUpdate("name", value);
@@ -45,8 +49,8 @@ function createCommonAssetFields<T extends AssetType>(): FieldDefinition<AssetEd
         {
             id: "tags",
             type: "tags",
-            label: "Tags",
-            addPlaceholder: "Add tag...",
+            label: t("properties.tags.label"),
+            addPlaceholder: t("properties.tags.addPlaceholder"),
             getValue: (ctx) => ctx.asset.tags,
             addTag: async (ctx, tag) => {
                 const newTags = [...ctx.asset.tags, tag];
@@ -61,8 +65,8 @@ function createCommonAssetFields<T extends AssetType>(): FieldDefinition<AssetEd
         {
             id: "description",
             type: "textarea",
-            label: "Description",
-            placeholder: "Enter description...",
+            label: t("common.description"),
+            placeholder: t("properties.asset.descriptionPlaceholder"),
             rows: 4,
             getValue: (ctx) => ctx.asset.description,
             setValue: async (ctx, value) => {
@@ -93,10 +97,10 @@ function formatDuration(seconds: number): string {
 
 // ==================== Image Schema ====================
 
-function createImageInfoItems(): InfoItem<AssetEditorContext<AssetType.Image>>[] {
+function createImageInfoItems(t: TranslateFn): InfoItem<AssetEditorContext<AssetType.Image>>[] {
     return [
         {
-            label: "Dimensions",
+            label: t("properties.asset.info.dimensions"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as ImageAssetMetadata | undefined;
                 return meta ? `${meta.width} × ${meta.height}` : "-";
@@ -104,7 +108,7 @@ function createImageInfoItems(): InfoItem<AssetEditorContext<AssetType.Image>>[]
             hidden: (ctx) => !ctx.metadata,
         },
         {
-            label: "Format",
+            label: t("properties.asset.info.format"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as ImageAssetMetadata | undefined;
                 return meta?.format?.toUpperCase() || "-";
@@ -112,7 +116,7 @@ function createImageInfoItems(): InfoItem<AssetEditorContext<AssetType.Image>>[]
             hidden: (ctx) => !ctx.metadata,
         },
         {
-            label: "Size",
+            label: t("properties.asset.info.size"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as ImageAssetMetadata | undefined;
                 return meta ? formatSize(meta.size) : "-";
@@ -120,36 +124,37 @@ function createImageInfoItems(): InfoItem<AssetEditorContext<AssetType.Image>>[]
             hidden: (ctx) => !ctx.metadata,
         },
         {
-            label: "Hash",
+            label: t("properties.asset.info.hash"),
             getValue: (ctx) => (
-                <span className="font-mono text-[10px]">{ctx.asset.hash.slice(0, 16)}...</span>
+                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}...</span>
             ),
         },
     ];
 }
 
-export const imagePropertySchema = createPropertyEditorSchema<AssetEditorContext<AssetType.Image>>({
-    id: "asset:image",
-    title: "Image Properties",
-    fields: [
-        {
-            id: "imageInfo",
-            type: "info",
-            label: "Image Information",
-            items: createImageInfoItems(),
-            order: 10,
-        },
-        ...createCommonAssetFields<AssetType.Image>(),
-    ],
-    showSavingIndicator: true,
-});
+export const imagePropertySchema = (t: TranslateFn) =>
+    createPropertyEditorSchema<AssetEditorContext<AssetType.Image>>({
+        id: "asset:image",
+        title: t("properties.asset.image.title"),
+        fields: [
+            {
+                id: "imageInfo",
+                type: "info",
+                label: t("properties.asset.image.info"),
+                items: createImageInfoItems(t),
+                order: 10,
+            },
+            ...createCommonAssetFields<AssetType.Image>(t),
+        ],
+        showSavingIndicator: true,
+    });
 
 // ==================== Audio Schema ====================
 
-function createAudioInfoItems(): InfoItem<AssetEditorContext<AssetType.Audio>>[] {
+function createAudioInfoItems(t: TranslateFn): InfoItem<AssetEditorContext<AssetType.Audio>>[] {
     return [
         {
-            label: "Duration",
+            label: t("properties.asset.info.duration"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as AudioAssetMetadata | undefined;
                 return meta ? formatDuration(meta.duration) : "-";
@@ -157,7 +162,7 @@ function createAudioInfoItems(): InfoItem<AssetEditorContext<AssetType.Audio>>[]
             hidden: (ctx) => !ctx.metadata,
         },
         {
-            label: "Sample Rate",
+            label: t("properties.asset.info.sampleRate"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as AudioAssetMetadata | undefined;
                 return meta ? `${meta.sampleRate} Hz` : "-";
@@ -165,7 +170,7 @@ function createAudioInfoItems(): InfoItem<AssetEditorContext<AssetType.Audio>>[]
             hidden: (ctx) => !ctx.metadata,
         },
         {
-            label: "Channels",
+            label: t("properties.asset.info.channels"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as AudioAssetMetadata | undefined;
                 return meta ? String(meta.channels) : "-";
@@ -173,7 +178,7 @@ function createAudioInfoItems(): InfoItem<AssetEditorContext<AssetType.Audio>>[]
             hidden: (ctx) => !ctx.metadata,
         },
         {
-            label: "Format",
+            label: t("properties.asset.info.format"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as AudioAssetMetadata | undefined;
                 return meta?.format?.toUpperCase() || "-";
@@ -181,7 +186,7 @@ function createAudioInfoItems(): InfoItem<AssetEditorContext<AssetType.Audio>>[]
             hidden: (ctx) => !ctx.metadata,
         },
         {
-            label: "Size",
+            label: t("properties.asset.info.size"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as AudioAssetMetadata | undefined;
                 return meta ? formatSize(meta.size) : "-";
@@ -189,36 +194,37 @@ function createAudioInfoItems(): InfoItem<AssetEditorContext<AssetType.Audio>>[]
             hidden: (ctx) => !ctx.metadata,
         },
         {
-            label: "Hash",
+            label: t("properties.asset.info.hash"),
             getValue: (ctx) => (
-                <span className="font-mono text-[10px]">{ctx.asset.hash.slice(0, 16)}...</span>
+                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}...</span>
             ),
         },
     ];
 }
 
-export const audioPropertySchema = createPropertyEditorSchema<AssetEditorContext<AssetType.Audio>>({
-    id: "asset:audio",
-    title: "Audio Properties",
-    fields: [
-        {
-            id: "audioInfo",
-            type: "info",
-            label: "Audio Information",
-            items: createAudioInfoItems(),
-            order: 10,
-        },
-        ...createCommonAssetFields<AssetType.Audio>(),
-    ],
-    showSavingIndicator: true,
-});
+export const audioPropertySchema = (t: TranslateFn) =>
+    createPropertyEditorSchema<AssetEditorContext<AssetType.Audio>>({
+        id: "asset:audio",
+        title: t("properties.asset.audio.title"),
+        fields: [
+            {
+                id: "audioInfo",
+                type: "info",
+                label: t("properties.asset.audio.info"),
+                items: createAudioInfoItems(t),
+                order: 10,
+            },
+            ...createCommonAssetFields<AssetType.Audio>(t),
+        ],
+        showSavingIndicator: true,
+    });
 
 // ==================== Video Schema ====================
 
-function createVideoInfoItems(): InfoItem<AssetEditorContext<AssetType.Video>>[] {
+function createVideoInfoItems(t: TranslateFn): InfoItem<AssetEditorContext<AssetType.Video>>[] {
     return [
         {
-            label: "Duration",
+            label: t("properties.asset.info.duration"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as VideoAssetMetadata | undefined;
                 return meta ? formatDuration(meta.duration) : "-";
@@ -226,7 +232,7 @@ function createVideoInfoItems(): InfoItem<AssetEditorContext<AssetType.Video>>[]
             hidden: (ctx) => !ctx.metadata,
         },
         {
-            label: "Dimensions",
+            label: t("properties.asset.info.dimensions"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as VideoAssetMetadata | undefined;
                 return meta ? `${meta.width} × ${meta.height}` : "-";
@@ -234,7 +240,7 @@ function createVideoInfoItems(): InfoItem<AssetEditorContext<AssetType.Video>>[]
             hidden: (ctx) => !ctx.metadata,
         },
         {
-            label: "Frame Rate",
+            label: t("properties.asset.info.frameRate"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as VideoAssetMetadata | undefined;
                 return meta?.frameRate ? `${meta.frameRate} FPS` : "-";
@@ -242,7 +248,7 @@ function createVideoInfoItems(): InfoItem<AssetEditorContext<AssetType.Video>>[]
             hidden: (ctx) => !ctx.metadata || !(ctx.metadata.metadata as VideoAssetMetadata).frameRate,
         },
         {
-            label: "Format",
+            label: t("properties.asset.info.format"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as VideoAssetMetadata | undefined;
                 return meta?.format?.toUpperCase() || "-";
@@ -250,7 +256,7 @@ function createVideoInfoItems(): InfoItem<AssetEditorContext<AssetType.Video>>[]
             hidden: (ctx) => !ctx.metadata,
         },
         {
-            label: "Size",
+            label: t("properties.asset.info.size"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as VideoAssetMetadata | undefined;
                 return meta ? formatSize(meta.size) : "-";
@@ -258,36 +264,37 @@ function createVideoInfoItems(): InfoItem<AssetEditorContext<AssetType.Video>>[]
             hidden: (ctx) => !ctx.metadata,
         },
         {
-            label: "Hash",
+            label: t("properties.asset.info.hash"),
             getValue: (ctx) => (
-                <span className="font-mono text-[10px]">{ctx.asset.hash.slice(0, 16)}...</span>
+                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}...</span>
             ),
         },
     ];
 }
 
-export const videoPropertySchema = createPropertyEditorSchema<AssetEditorContext<AssetType.Video>>({
-    id: "asset:video",
-    title: "Video Properties",
-    fields: [
-        {
-            id: "videoInfo",
-            type: "info",
-            label: "Video Information",
-            items: createVideoInfoItems(),
-            order: 10,
-        },
-        ...createCommonAssetFields<AssetType.Video>(),
-    ],
-    showSavingIndicator: true,
-});
+export const videoPropertySchema = (t: TranslateFn) =>
+    createPropertyEditorSchema<AssetEditorContext<AssetType.Video>>({
+        id: "asset:video",
+        title: t("properties.asset.video.title"),
+        fields: [
+            {
+                id: "videoInfo",
+                type: "info",
+                label: t("properties.asset.video.info"),
+                items: createVideoInfoItems(t),
+                order: 10,
+            },
+            ...createCommonAssetFields<AssetType.Video>(t),
+        ],
+        showSavingIndicator: true,
+    });
 
 // ==================== Font Schema ====================
 
-function createFontInfoItems(): InfoItem<AssetEditorContext<AssetType.Font>>[] {
+function createFontInfoItems(t: TranslateFn): InfoItem<AssetEditorContext<AssetType.Font>>[] {
     return [
         {
-            label: "Family",
+            label: t("properties.asset.info.family"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as FontAssetMetadata | undefined;
                 return meta?.family || "-";
@@ -295,7 +302,7 @@ function createFontInfoItems(): InfoItem<AssetEditorContext<AssetType.Font>>[] {
             hidden: (ctx) => !ctx.metadata || !(ctx.metadata.metadata as FontAssetMetadata).family,
         },
         {
-            label: "Style",
+            label: t("properties.asset.info.style"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as FontAssetMetadata | undefined;
                 return meta?.style || "-";
@@ -303,7 +310,7 @@ function createFontInfoItems(): InfoItem<AssetEditorContext<AssetType.Font>>[] {
             hidden: (ctx) => !ctx.metadata || !(ctx.metadata.metadata as FontAssetMetadata).style,
         },
         {
-            label: "Weight",
+            label: t("properties.asset.info.weight"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as FontAssetMetadata | undefined;
                 return meta?.weight || "-";
@@ -311,7 +318,7 @@ function createFontInfoItems(): InfoItem<AssetEditorContext<AssetType.Font>>[] {
             hidden: (ctx) => !ctx.metadata || !(ctx.metadata.metadata as FontAssetMetadata).weight,
         },
         {
-            label: "Format",
+            label: t("properties.asset.info.format"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as FontAssetMetadata | undefined;
                 return meta?.format?.toUpperCase() || "-";
@@ -319,7 +326,7 @@ function createFontInfoItems(): InfoItem<AssetEditorContext<AssetType.Font>>[] {
             hidden: (ctx) => !ctx.metadata,
         },
         {
-            label: "Size",
+            label: t("properties.asset.info.size"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as FontAssetMetadata | undefined;
                 return meta ? formatSize(meta.size) : "-";
@@ -327,44 +334,45 @@ function createFontInfoItems(): InfoItem<AssetEditorContext<AssetType.Font>>[] {
             hidden: (ctx) => !ctx.metadata,
         },
         {
-            label: "Hash",
+            label: t("properties.asset.info.hash"),
             getValue: (ctx) => (
-                <span className="font-mono text-[10px]">{ctx.asset.hash.slice(0, 16)}...</span>
+                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}...</span>
             ),
         },
     ];
 }
 
-export const fontPropertySchema = createPropertyEditorSchema<AssetEditorContext<AssetType.Font>>({
-    id: "asset:font",
-    title: "Font Properties",
-    fields: [
-        {
-            id: "fontInfo",
-            type: "info",
-            label: "Font Information",
-            items: createFontInfoItems(),
-            order: 10,
-        },
-        ...createCommonAssetFields<AssetType.Font>(),
-    ],
-    showSavingIndicator: true,
-});
+export const fontPropertySchema = (t: TranslateFn) =>
+    createPropertyEditorSchema<AssetEditorContext<AssetType.Font>>({
+        id: "asset:font",
+        title: t("properties.asset.font.title"),
+        fields: [
+            {
+                id: "fontInfo",
+                type: "info",
+                label: t("properties.asset.font.info"),
+                items: createFontInfoItems(t),
+                order: 10,
+            },
+            ...createCommonAssetFields<AssetType.Font>(t),
+        ],
+        showSavingIndicator: true,
+    });
 
 // ==================== JSON Schema ====================
 
-function createJSONInfoItems(): InfoItem<AssetEditorContext<AssetType.JSON>>[] {
+function createJSONInfoItems(t: TranslateFn): InfoItem<AssetEditorContext<AssetType.JSON>>[] {
     return [
         {
-            label: "Schema",
+            label: t("properties.asset.info.schema"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as JSONAssetMetadata | undefined;
-                return meta?.schema || "No schema";
+                return meta?.schema || t("properties.asset.json.noSchema");
             },
             hidden: (ctx) => !ctx.metadata,
         },
         {
-            label: "Size",
+            label: t("properties.asset.info.size"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as JSONAssetMetadata | undefined;
                 return meta ? formatSize(meta.size) : "-";
@@ -372,51 +380,52 @@ function createJSONInfoItems(): InfoItem<AssetEditorContext<AssetType.JSON>>[] {
             hidden: (ctx) => !ctx.metadata,
         },
         {
-            label: "Hash",
+            label: t("properties.asset.info.hash"),
             getValue: (ctx) => (
-                <span className="font-mono text-[10px]">{ctx.asset.hash.slice(0, 16)}...</span>
+                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}...</span>
             ),
         },
     ];
 }
 
-export const jsonPropertySchema = createPropertyEditorSchema<AssetEditorContext<AssetType.JSON>>({
-    id: "asset:json",
-    title: "JSON Properties",
-    fields: [
-        {
-            id: "jsonInfo",
-            type: "info",
-            label: "JSON Information",
-            items: createJSONInfoItems(),
-            order: 10,
-        },
-        ...createCommonAssetFields<AssetType.JSON>(),
-    ],
-    showSavingIndicator: true,
-});
+export const jsonPropertySchema = (t: TranslateFn) =>
+    createPropertyEditorSchema<AssetEditorContext<AssetType.JSON>>({
+        id: "asset:json",
+        title: t("properties.asset.json.title"),
+        fields: [
+            {
+                id: "jsonInfo",
+                type: "info",
+                label: t("properties.asset.json.info"),
+                items: createJSONInfoItems(t),
+                order: 10,
+            },
+            ...createCommonAssetFields<AssetType.JSON>(t),
+        ],
+        showSavingIndicator: true,
+    });
 
 // ==================== Other Schema ====================
 
-function createOtherInfoItems(): InfoItem<AssetEditorContext<AssetType.Other>>[] {
+function createOtherInfoItems(t: TranslateFn): InfoItem<AssetEditorContext<AssetType.Other>>[] {
     return [
         {
-            label: "MIME Type",
+            label: t("properties.asset.info.mimeType"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as OtherAssetMetadata | undefined;
-                return meta?.mimeType || "Unknown";
+                return meta?.mimeType || t("properties.asset.other.unknown");
             },
             hidden: (ctx) => !ctx.metadata || !(ctx.metadata.metadata as OtherAssetMetadata).mimeType,
         },
         {
-            label: "Extension",
+            label: t("properties.asset.info.extension"),
             getValue: (ctx) => {
                 const parts = ctx.asset.name.split(".");
-                return parts.length > 1 ? parts[parts.length - 1].toUpperCase() : "Unknown";
+                return parts.length > 1 ? parts[parts.length - 1].toUpperCase() : t("properties.asset.other.unknown");
             },
         },
         {
-            label: "Size",
+            label: t("properties.asset.info.size"),
             getValue: (ctx) => {
                 const meta = ctx.metadata?.metadata as OtherAssetMetadata | undefined;
                 return meta ? formatSize(meta.size) : "-";
@@ -424,50 +433,53 @@ function createOtherInfoItems(): InfoItem<AssetEditorContext<AssetType.Other>>[]
             hidden: (ctx) => !ctx.metadata,
         },
         {
-            label: "Hash",
+            label: t("properties.asset.info.hash"),
             getValue: (ctx) => (
-                <span className="font-mono text-[10px]">{ctx.asset.hash.slice(0, 16)}...</span>
+                <span className="font-mono text-2xs">{ctx.asset.hash.slice(0, 16)}...</span>
             ),
         },
     ];
 }
 
-export const otherPropertySchema = createPropertyEditorSchema<AssetEditorContext<AssetType.Other>>({
-    id: "asset:other",
-    title: "File Properties",
-    fields: [
-        {
-            id: "otherInfo",
-            type: "info",
-            label: "File Information",
-            items: createOtherInfoItems(),
-            order: 10,
-        },
-        ...createCommonAssetFields<AssetType.Other>(),
-    ],
-    showSavingIndicator: true,
-});
+export const otherPropertySchema = (t: TranslateFn) =>
+    createPropertyEditorSchema<AssetEditorContext<AssetType.Other>>({
+        id: "asset:other",
+        title: t("properties.asset.other.title"),
+        fields: [
+            {
+                id: "otherInfo",
+                type: "info",
+                label: t("properties.asset.other.info"),
+                items: createOtherInfoItems(t),
+                order: 10,
+            },
+            ...createCommonAssetFields<AssetType.Other>(t),
+        ],
+        showSavingIndicator: true,
+    });
 
 /**
- * Get the appropriate schema for an asset type
+ * Get the appropriate schema for an asset type. Schemas are built lazily with a
+ * translator since their labels are localized (they run outside React).
  */
 export function getAssetPropertySchema(
-    assetType: AssetType
+    assetType: AssetType,
+    t: TranslateFn
 ): PropertyEditorSchema<AssetEditorContext<any>> {
     switch (assetType) {
         case AssetType.Image:
-            return imagePropertySchema;
+            return imagePropertySchema(t);
         case AssetType.Audio:
-            return audioPropertySchema;
+            return audioPropertySchema(t);
         case AssetType.Video:
-            return videoPropertySchema;
+            return videoPropertySchema(t);
         case AssetType.Font:
-            return fontPropertySchema;
+            return fontPropertySchema(t);
         case AssetType.JSON:
-            return jsonPropertySchema;
+            return jsonPropertySchema(t);
         case AssetType.Other:
         default:
-            return otherPropertySchema;
+            return otherPropertySchema(t);
     }
 }
 

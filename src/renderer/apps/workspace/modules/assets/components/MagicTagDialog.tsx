@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { X, Wand2, AlertCircle, Check } from 'lucide-react';
 import { MagicTagTemplate, MagicTagPreview } from '@/lib/workspace/services/core/MagicTagManager';
 import { Asset } from '@/lib/workspace/services/assets/types';
+import { useTranslation } from '@/lib/i18n';
 
 export interface MagicTagDialogProps {
     visible: boolean;
@@ -12,6 +13,7 @@ export interface MagicTagDialogProps {
 }
 
 export function MagicTagDialog({ visible, assets, template, onClose, onApply }: MagicTagDialogProps) {
+    const { t } = useTranslation();
     const [categoryMapping, setCategoryMapping] = useState<Record<number, string>>({});
     const [selectedDelimiters, setSelectedDelimiters] = useState<string[]>([]);
     const [preview, setPreview] = useState<MagicTagPreview[]>([]);
@@ -98,21 +100,21 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
 
             {/* Dialog */}
             <div
-                className="relative bg-[#1e1e1e] border border-white/10 rounded-lg shadow-2xl w-[90vw] max-w-4xl max-h-[90vh] flex flex-col"
+                className="relative bg-surface-overlay border border-edge rounded-lg shadow-2xl w-[90vw] max-w-4xl max-h-[90vh] flex flex-col"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-edge">
                     <div className="flex items-center gap-2">
                         <Wand2 className="w-5 h-5 text-primary" />
-                        <h2 className="text-lg font-semibold">Create Tags</h2>
+                        <h2 className="text-lg font-semibold">{t("assets.magicTag.title")}</h2>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-1 rounded hover:bg-white/10 transition-colors"
-                        aria-label="Close"
+                        className="p-1 rounded hover:bg-fill transition-colors"
+                        aria-label={t("common.close")}
                     >
-                        <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="w-5 h-5 text-fg-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                     </button>
@@ -123,7 +125,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                     {/* Delimiter Selection (Auto mode only) */}
                     {template.mode === 'auto' && template.delimiters && template.delimiters.length > 0 && (
                         <div className="space-y-3">
-                            <label className="text-sm font-medium text-gray-300">Detected Delimiters</label>
+                            <label className="text-sm font-medium text-fg-muted">{t("assets.magicTag.detectedDelimiters")}</label>
                             <div className="flex flex-wrap gap-2">
                                 {template.delimiters.map((delim) => (
                                     <button
@@ -138,7 +140,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                                         className={`px-3 py-1.5 rounded text-sm transition-colors ${
                                             selectedDelimiters.includes(delim.char)
                                                 ? 'bg-primary text-white'
-                                                : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                                                : 'bg-fill text-fg-muted hover:bg-fill-strong'
                                         }`}
                                     >
                                         <span className="font-mono">{delim.char === ' ' ? '␣' : delim.char}</span>
@@ -154,34 +156,34 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                     {/* Pattern Description */}
                     {template.mode === 'regex' && template.regex && (
                         <div className="space-y-3">
-                            <label className="text-sm font-medium text-gray-300">Regular Expression Pattern</label>
-                            <div className="bg-white/10 rounded p-3 font-mono text-sm text-gray-300">
+                            <label className="text-sm font-medium text-fg-muted">{t("assets.magicTag.regexPattern")}</label>
+                            <div className="bg-fill rounded p-3 font-mono text-sm text-fg-muted">
                                 {template.regex.pattern}
                             </div>
-                            <p className="text-xs text-gray-400">
-                                Capture Groups: {template.regex.captureGroups.join(', ')}
+                            <p className="text-xs text-fg-muted">
+                                {t("assets.magicTag.captureGroups", { groups: template.regex.captureGroups.join(', ') })}
                             </p>
                         </div>
                     )}
 
                     {/* Segment Input Bubbles */}
                     <div className="space-y-4">
-                        <label className="text-sm font-medium text-gray-300">Tag Category Mapping</label>
-                        <div className="bg-white/10 rounded-lg p-4 space-y-4">
+                        <label className="text-sm font-medium text-fg-muted">{t("assets.magicTag.categoryMapping")}</label>
+                        <div className="bg-fill rounded-lg p-4 space-y-4">
                             {/* Example display */}
-                            <div className="pb-4 border-b border-white/10">
-                                <div className="text-xs text-gray-400 mb-3">Example Filename: {template.example}</div>
+                            <div className="pb-4 border-b border-edge">
+                                <div className="text-xs text-fg-muted mb-3">{t("assets.magicTag.exampleFilename", { filename: template.example })}</div>
                                 <div className="flex flex-wrap items-center gap-2">
                                     {template.exampleSegments.map((segment, index) => (
                                         <div key={index} className="flex items-center gap-1">
                                             {index > 0 && (
-                                                <span className="text-gray-500 text-sm">
+                                                <span className="text-fg-subtle text-sm">
                                                     {template.mode === 'auto' && selectedDelimiters.length > 0
                                                         ? selectedDelimiters[0]
                                                         : '_'}
                                                 </span>
                                             )}
-                                            <div className="bg-white/15 rounded-full px-3 py-1.5 text-sm border border-white/20">
+                                            <div className="bg-fill-strong rounded-full px-3 py-1.5 text-sm border border-edge-strong">
                                                 {segment}
                                             </div>
                                         </div>
@@ -194,17 +196,17 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                                 {template.exampleSegments.map((segment, index) => (
                                     <div key={index} className="flex items-center gap-4">
                                         <div className="flex items-center gap-3 flex-1">
-                                            <span className="text-sm text-gray-400 w-12 text-center font-mono">{index}</span>
-                                            <div className="bg-white/15 rounded px-3 py-1.5 text-sm min-w-[100px] text-center border border-white/20">
+                                            <span className="text-sm text-fg-muted w-12 text-center font-mono">{index}</span>
+                                            <div className="bg-fill-strong rounded px-3 py-1.5 text-sm min-w-[100px] text-center border border-edge-strong">
                                                 {segment}
                                             </div>
-                                            <span className="text-gray-400 text-lg">→</span>
+                                            <span className="text-fg-muted text-lg">→</span>
                                             <input
                                                 type="text"
-                                                placeholder="Tag Category (e.g.: char, emo)"
+                                                placeholder={t("assets.magicTag.categoryPlaceholder")}
                                                 value={categoryMapping[index] || ''}
                                                 onChange={(e) => handleCategoryChange(index, e.target.value)}
-                                                className="flex-1 bg-white/10 border border-white/20 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-primary transition-colors"
+                                                className="flex-1 bg-fill border border-edge-strong rounded px-3 py-1.5 text-sm focus:outline-none focus:border-primary transition-colors"
                                             />
                                         </div>
                                     </div>
@@ -216,11 +218,11 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                     {/* Preview Section */}
                     {Object.keys(categoryMapping).length > 0 && (
                         <div className="space-y-3">
-                            <label className="text-sm font-medium text-gray-300">Preview</label>
-                            <div className="bg-white/10 rounded-lg p-4 max-h-64 overflow-y-auto space-y-3">
+                            <label className="text-sm font-medium text-fg-muted">{t("assets.preview")}</label>
+                            <div className="bg-fill rounded-lg p-4 max-h-64 overflow-y-auto space-y-3">
                                 {preview.slice(0, 10).map((item, idx) => (
                                     <div key={idx} className="text-sm">
-                                        <div className="text-gray-400 mb-2 font-mono text-xs">{item.filename}</div>
+                                        <div className="text-fg-muted mb-2 font-mono text-xs">{item.filename}</div>
                                         <div className="flex flex-wrap gap-2 ml-2">
                                             {item.tags.length > 0 ? (
                                                 item.tags.map((tag, tagIdx) => (
@@ -232,39 +234,39 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                                                     </span>
                                                 ))
                                             ) : (
-                                                <span className="text-gray-500 text-xs italic">No tags</span>
+                                                <span className="text-fg-subtle text-xs italic">{t("assets.noTags")}</span>
                                             )}
                                         </div>
                                     </div>
                                 ))}
                                 {preview.length > 10 && (
-                                    <div className="text-xs text-gray-500 italic pt-2 border-t border-white/10">
-                                        ... and {preview.length - 10} more files
+                                    <div className="text-xs text-fg-subtle italic pt-2 border-t border-edge">
+                                        {t("assets.magicTag.moreFiles", { count: preview.length - 10 })}
                                     </div>
                                 )}
                             </div>
-                            <div className="flex items-center gap-2 text-sm text-gray-400">
+                            <div className="flex items-center gap-2 text-sm text-fg-muted">
                                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                                <span>Will add a total of {totalTagsToAdd} tags to {preview.length} files</span>
+                                <span>{t("assets.magicTag.summary", { tags: totalTagsToAdd, files: preview.length })}</span>
                             </div>
                         </div>
                     )}
                 </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-white/10 bg-[#252525]">
+                <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-edge bg-surface-overlay">
                     <button
                         onClick={onClose}
                         disabled={applying}
                         className={`
                             px-4 py-2 text-sm rounded transition-colors
                             ${applying
-                                ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                                : "bg-white/5 hover:bg-white/10 text-gray-300"
+                                ? "bg-gray-700 text-fg-subtle cursor-not-allowed"
+                                : "bg-fill-subtle hover:bg-fill text-fg-muted"
                             }
                         `}
                     >
-                        Cancel
+                        {t("common.cancel")}
                     </button>
                     <button
                         onClick={handleApply}
@@ -272,20 +274,20 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                         className={`
                             px-4 py-2 text-sm rounded transition-colors
                             ${applying || Object.keys(categoryMapping).length === 0
-                                ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                                ? "bg-gray-700 text-fg-subtle cursor-not-allowed"
                                 : "bg-primary hover:bg-primary/80 text-white font-medium"
                             }
                         `}
                     >
                         {applying ? (
                             <div className="flex items-center gap-2">
-                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                <span>Applying...</span>
+                                <div className="w-4 h-4 border-2 border-edge-strong border-t-white rounded-full animate-spin" />
+                                <span>{t("assets.magicTag.applying")}</span>
                             </div>
                         ) : (
                             <div className="flex items-center gap-2">
                                 <Check className="w-4 h-4" />
-                                <span>Apply Tags</span>
+                                <span>{t("assets.magicTag.applyTags")}</span>
                             </div>
                         )}
                     </button>

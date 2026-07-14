@@ -1,4 +1,5 @@
 import { LayoutList, Minus } from "lucide-react";
+import { translate } from "@/lib/i18n";
 import type { DockerBarContext, DockerBarItem } from "@/lib/ui-editor/widget-modules/types";
 import {
     clampContainerStackSpacingPx,
@@ -24,13 +25,13 @@ export function createContainerDockerBarItems(ctx: DockerBarContext): DockerBarI
         {
             kind: "select",
             id: "docker-container-layout-kind",
-            label: "Layout",
-            tooltip: "How children are positioned",
+            label: translate("widgetChrome.dockerItems.layout"),
+            tooltip: translate("widgetChrome.dockerItems.layoutHint"),
             value: props.layoutKind,
             options: [
-                { value: "free", label: "Free" },
-                { value: "stack", label: "Stack" },
-                { value: "scroll", label: "Scroll" },
+                { value: "free", label: translate("widgetChrome.dockerItems.free") },
+                { value: "stack", label: translate("widgetChrome.dockerItems.stack") },
+                { value: "scroll", label: translate("widgetChrome.dockerItems.scroll") },
             ],
             onChange: (value: string | number) => {
                 patch({ layoutKind: String(value) as ContainerLayoutKind });
@@ -44,8 +45,8 @@ export function createContainerDockerBarItems(ctx: DockerBarContext): DockerBarI
                   {
                       kind: "number",
                       id: "docker-container-stack-gap",
-                      label: "Gap",
-                      tooltip: "Space between children",
+                      label: translate("widgetChrome.dockerItems.gap"),
+                      tooltip: translate("widgetChrome.dockerItems.gapChildrenHint"),
                       value: props.stackGap,
                       min: -CONTAINER_STACK_SPACING_ABS_MAX_PX,
                       max: CONTAINER_STACK_SPACING_ABS_MAX_PX,
@@ -57,12 +58,12 @@ export function createContainerDockerBarItems(ctx: DockerBarContext): DockerBarI
                   {
                       kind: "select",
                       id: "docker-container-stack-direction",
-                      label: "Axis",
-                      tooltip: "Stack direction",
+                      label: translate("widgetChrome.dockerItems.axis"),
+                      tooltip: translate("widgetChrome.dockerItems.axisHint"),
                       value: props.stackDirection,
                       options: [
-                          { value: "vertical", label: "Vertical" },
-                          { value: "horizontal", label: "Horizontal" },
+                          { value: "vertical", label: translate("widgetChrome.dockerItems.vertical") },
+                          { value: "horizontal", label: translate("widgetChrome.dockerItems.horizontal") },
                       ],
                       onChange: (value: string | number) => {
                           patch({ stackDirection: String(value) as ContainerStackDirection });
@@ -77,12 +78,12 @@ export function createContainerDockerBarItems(ctx: DockerBarContext): DockerBarI
                   {
                       kind: "select",
                       id: "docker-container-scroll-axis",
-                      label: "Scroll",
-                      tooltip: "Scroll axis",
+                      label: translate("widgetChrome.dockerItems.scrollAxis"),
+                      tooltip: translate("widgetChrome.dockerItems.scrollAxisHint"),
                       value: props.scrollAxis,
                       options: [
-                          { value: "y", label: "Vertical" },
-                          { value: "x", label: "Horizontal" },
+                          { value: "y", label: translate("widgetChrome.dockerItems.vertical") },
+                          { value: "x", label: translate("widgetChrome.dockerItems.horizontal") },
                       ],
                       onChange: (value: string | number) => {
                           patch({ scrollAxis: String(value) as ContainerScrollAxis });

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 
 type Props = {
     header: ReactNode;
@@ -22,6 +23,7 @@ export function BlueprintEditorLayout({
     onMemberPanelCollapsedChange,
     onMemberPanelFocusContainedChange,
 }: Props) {
+    const { t } = useTranslation();
     const [uncontrolledLeftCollapsed, setUncontrolledLeftCollapsed] = useState(false);
     const memberPanelScrollRef = useRef<HTMLDivElement>(null);
     const isLeftCollapsed = memberPanelCollapsed ?? uncontrolledLeftCollapsed;
@@ -56,24 +58,24 @@ export function BlueprintEditorLayout({
         };
     }, [onMemberPanelFocusContainedChange]);
 
-    const leftPanelClasses = `absolute inset-y-0 left-0 z-10 flex w-56 shrink-0 flex-col border-r border-white/10 bg-[#0b0d12] transition-transform duration-200 ease-out ${
+    const leftPanelClasses = `absolute inset-y-0 left-0 z-10 flex w-56 shrink-0 flex-col border-r border-edge bg-surface-sunken transition-transform duration-200 ease-out ${
         isLeftCollapsed ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100 pointer-events-auto"
     }`;
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-[#0f1115] text-sm text-gray-200">
-            <header className="flex shrink-0 items-center border-b border-white/10 px-3 py-2">
+        <div className="flex h-full min-h-0 flex-col bg-surface text-sm text-fg">
+            <header className="flex shrink-0 items-center border-b border-edge px-3 py-2">
                 <div className="min-w-0 flex-1">{header}</div>
             </header>
             <div className="relative flex min-h-0 min-w-0 flex-1">
                 <aside className={leftPanelClasses}>
-                    <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-2 py-1.5">
-                        <span className="text-[11px] font-medium text-gray-500">Blueprint</span>
+                    <div className="flex shrink-0 items-center justify-between border-b border-edge px-2 py-1.5">
+                        <span className="text-2xs font-medium text-fg-subtle">{t("blueprint.panelLabel")}</span>
                         <button
                             type="button"
-                            className="text-gray-400 transition-colors hover:text-white"
+                            className="text-fg-muted transition-colors hover:text-white"
                             onClick={() => setLeftCollapsed(!isLeftCollapsed)}
-                            title={isLeftCollapsed ? "Expand side panel" : "Collapse side panel"}
+                            title={isLeftCollapsed ? t("blueprint.sidePanel.expand") : t("blueprint.sidePanel.collapse")}
                         >
                             {isLeftCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
                         </button>
@@ -85,14 +87,14 @@ export function BlueprintEditorLayout({
                 {isLeftCollapsed ? (
                     <button
                         type="button"
-                        className="absolute left-3 top-3 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-[#05060a]/85 text-gray-300 hover:text-white focus:outline-none"
+                        className="absolute left-3 top-3 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-edge-strong bg-surface-canvas/85 text-fg-muted hover:text-white focus:outline-none"
                         onClick={() => setLeftCollapsed(false)}
-                        title="Expand side panel"
+                        title={t("blueprint.sidePanel.expand")}
                     >
                         <ChevronDown className="h-4 w-4" />
                     </button>
                 ) : null}
-                <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#0f1115]">{canvas}</main>
+                <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface">{canvas}</main>
             </div>
             {diagnostics}
         </div>

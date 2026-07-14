@@ -1,6 +1,7 @@
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { ownerRefToIndexKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import type { Blueprint } from "@shared/types/blueprint/document";
+import { useTranslation } from "@/lib/i18n";
 
 type Props = {
     blueprint: Blueprint;
@@ -13,9 +14,10 @@ type Props = {
  * Lists private blueprint revisions for the same owner slot and supports active switch + new sibling.
  */
 export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevision }: Props) {
+    const { t } = useTranslation();
     if (blueprint.owner.kind === "sharedAsset") {
         return (
-            <p className="text-[11px] text-gray-500">One revision per shared asset.</p>
+            <p className="text-2xs text-fg-subtle">{t("blueprint.revisions.sharedAssetSingle")}</p>
         );
     }
 
@@ -26,8 +28,8 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
     const allowTypeScriptRevision = blueprint.owner.kind !== "widgetValue";
 
     return (
-        <div className="space-y-2 text-[11px] text-gray-300">
-            <p className="text-[10px] uppercase tracking-wide text-gray-500">Revisions</p>
+        <div className="space-y-2 text-2xs text-fg-muted">
+            <p className="text-2xs tracking-wide text-fg-subtle">{t("blueprint.revisions.title")}</p>
             <ul className="space-y-1">
                 {ids.map(id => {
                     const b = doc.blueprints[id];
@@ -36,7 +38,7 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                         <li key={id} className="flex items-center gap-2">
                             <button
                                 type="button"
-                                className={`truncate text-left font-mono text-[10px] ${active ? "text-cyan-300" : "text-gray-400 hover:text-gray-200"}`}
+                                className={`truncate text-left font-mono text-2xs ${active ? "text-cyan-300" : "text-fg-muted hover:text-fg"}`}
                                 onClick={() => {
                                     if (!active) {
                                         localBp.setActivePrivateBlueprintForOwnerKey(ownerKey, id);
@@ -44,7 +46,7 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                                     }
                                 }}
                             >
-                                {b?.name ?? id} {active ? "· active" : ""}
+                                {b?.name ?? id} {active ? t("blueprint.revisions.active") : ""}
                             </button>
                         </li>
                     );
@@ -54,24 +56,24 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                 {allowTypeScriptRevision ? (
                     <button
                         type="button"
-                        className="rounded border border-white/15 bg-white/5 px-2 py-1 text-[10px] text-gray-200 hover:bg-white/10"
+                        className="rounded border border-edge bg-fill-subtle px-2 py-1 text-2xs text-fg hover:bg-fill"
                         onClick={() => {
                             const newId = localBp.createSiblingPrivateBlueprintForOwnerKey(ownerKey, "typescript");
                             onReopenRevision?.(newId);
                         }}
                     >
-                        New TypeScript revision
+                        {t("blueprint.revisions.newTypeScript")}
                     </button>
                 ) : null}
                 <button
                     type="button"
-                    className="rounded border border-white/15 bg-white/5 px-2 py-1 text-[10px] text-gray-200 hover:bg-white/10"
+                    className="rounded border border-edge bg-fill-subtle px-2 py-1 text-2xs text-fg hover:bg-fill"
                     onClick={() => {
                         const newId = localBp.createSiblingPrivateBlueprintForOwnerKey(ownerKey, "visual");
                         onReopenRevision?.(newId);
                     }}
                 >
-                    New Visual revision
+                    {t("blueprint.revisions.newVisual")}
                 </button>
             </div>
         </div>

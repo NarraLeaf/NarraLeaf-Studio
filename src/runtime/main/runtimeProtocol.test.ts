@@ -5,7 +5,7 @@ import { resolveInsideRoot, resolveRuntimeAssetPath, resolveRuntimeStaticPath } 
 
 function createPack(): GameRuntimePackV1 {
     return {
-        schemaVersion: 1,
+        schemaVersion: 2,
         generatedAt: "2026-01-01T00:00:00.000Z",
         mode: "preview",
         runtimeVersion: "0.0.1",
@@ -67,6 +67,7 @@ function createPack(): GameRuntimePackV1 {
                 },
             },
         },
+        plugins: [],
     };
 }
 

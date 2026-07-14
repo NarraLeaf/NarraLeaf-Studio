@@ -12,6 +12,8 @@ import {
     type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "@/lib/i18n";
+import { cn } from "../../utils/cn";
 
 export interface EnhancedInputProps
     extends Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> {
@@ -48,6 +50,7 @@ export function EnhancedInput({
     popoverZIndex,
     ...rest
 }: EnhancedInputProps) {
+    const { t } = useTranslation();
     const [hasFocus, setHasFocus] = useState(false);
     const [isPopoverOpen, setIsPopoverOpen] = useState(false);
     const [containerWidth, setContainerWidth] = useState<number | null>(null);
@@ -241,16 +244,18 @@ export function EnhancedInput({
     const numberNoSpinnerClass = useNumericChrome
         ? "[appearance:textfield] [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
         : "";
-    const rootClassName = `
-        relative flex min-w-0 max-w-full items-center bg-[#1e1f22] border border-white/10 rounded-md text-sm h-9 min-h-[34px] overflow-hidden
-        focus-within:border-primary/70 transition focus-within:ring-1 focus-within:ring-primary/30
-        ${className}
-    `;
-    const inputElementClassName = `
-        min-w-0 flex-1 h-full bg-transparent border-none placeholder:text-gray-500 text-gray-100 focus:outline-none leading-none overflow-x-auto whitespace-nowrap
-        ${numberNoSpinnerClass}
-        ${paddingLeftClass} ${paddingRightClass} ${inputClassName}
-    `;
+    const rootClassName = cn(
+        "relative flex min-w-0 max-w-full items-center bg-surface-raised border border-edge rounded-md text-sm h-9 min-h-[34px] overflow-hidden",
+        "focus-within:border-primary/70 transition focus-within:ring-1 focus-within:ring-primary/30",
+        className,
+    );
+    const inputElementClassName = cn(
+        "min-w-0 flex-1 h-full bg-transparent border-none placeholder:text-fg-subtle text-fg focus:outline-none leading-none overflow-x-auto whitespace-nowrap",
+        numberNoSpinnerClass,
+        paddingLeftClass,
+        paddingRightClass,
+        inputClassName,
+    );
     const hasDisplayText = displayValue.length > 0;
 
     if (shouldUsePopover) {
@@ -259,12 +264,10 @@ export function EnhancedInput({
                 ? createPortal(
                       <div
                           ref={panelRef}
-                          className={[
-                              "fixed rounded-xl border border-white/10 bg-[#17181c] p-2 shadow-2xl",
-                              popoverZIndex === undefined ? "z-[70]" : "",
-                          ]
-                              .filter(Boolean)
-                              .join(" ")}
+                          className={cn(
+                              "fixed rounded-xl border border-edge bg-surface-raised p-2 shadow-2xl",
+                              popoverZIndex === undefined && "z-[70]",
+                          )}
                           style={{
                               left: popoverPosition.left,
                               top: popoverPosition.top,
@@ -276,7 +279,7 @@ export function EnhancedInput({
                       >
                           <div className={rootClassName}>
                               {leftIcon && (
-                                  <span className="absolute left-2 text-gray-400 pointer-events-none flex items-center">
+                                  <span className="absolute left-2 text-fg-muted pointer-events-none flex items-center">
                                       {leftIcon}
                                   </span>
                               )}
@@ -292,7 +295,7 @@ export function EnhancedInput({
                               />
 
                               {unit && !hasFocus && (
-                                  <span className="absolute right-2 text-xs text-gray-500 pointer-events-none select-none">
+                                  <span className="absolute right-2 text-xs text-fg-subtle pointer-events-none select-none">
                                       {unit}
                                   </span>
                               )}
@@ -313,21 +316,22 @@ export function EnhancedInput({
                     title={hasDisplayText ? displayValue : rest.placeholder}
                 >
                     {leftIcon && (
-                        <span className="absolute left-2 text-gray-400 pointer-events-none flex items-center">
+                        <span className="absolute left-2 text-fg-muted pointer-events-none flex items-center">
                             {leftIcon}
                         </span>
                     )}
                     <span
-                        className={`
-                            min-w-0 flex-1 truncate text-left leading-none
-                            ${hasDisplayText ? "text-gray-100" : "text-gray-500"}
-                            ${paddingLeftClass} ${paddingRightClass}
-                        `}
+                        className={cn(
+                            "min-w-0 flex-1 truncate text-left leading-none",
+                            hasDisplayText ? "text-fg" : "text-fg-subtle",
+                            paddingLeftClass,
+                            paddingRightClass,
+                        )}
                     >
-                        {hasDisplayText ? displayValue : rest.placeholder ?? "Edit value"}
+                        {hasDisplayText ? displayValue : rest.placeholder ?? t("dialogs.input.editValue")}
                     </span>
                     {unit && hasDisplayText && (
-                        <span className="absolute right-2 text-xs text-gray-500 pointer-events-none select-none">
+                        <span className="absolute right-2 text-xs text-fg-subtle pointer-events-none select-none">
                             {unit}
                         </span>
                     )}
@@ -343,7 +347,7 @@ export function EnhancedInput({
             className={rootClassName}
         >
             {leftIcon && (
-                <span className="absolute left-2 text-gray-400 pointer-events-none flex items-center">
+                <span className="absolute left-2 text-fg-muted pointer-events-none flex items-center">
                     {leftIcon}
                 </span>
             )}
@@ -359,7 +363,7 @@ export function EnhancedInput({
             />
 
             {unit && !hasFocus && (
-                <span className="absolute right-2 text-xs text-gray-500 pointer-events-none select-none">
+                <span className="absolute right-2 text-xs text-fg-subtle pointer-events-none select-none">
                     {unit}
                 </span>
             )}

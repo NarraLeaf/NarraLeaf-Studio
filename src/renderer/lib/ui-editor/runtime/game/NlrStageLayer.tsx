@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, type ReactNode } from "react";
 import {
     DevTools,
     GameProviders,
@@ -16,6 +16,8 @@ export type NlrStageSession = {
     compiled: CompiledNlrStory;
     width: number;
     height: number;
+    /** On-Stage Game UI node rendered as Player children (mounted inside NLR's RootLayout). */
+    onStageNode?: ReactNode;
 };
 
 const devToolsWithStaticId = DevTools as typeof DevTools & { setStaticId?: unknown };
@@ -25,7 +27,7 @@ function nextAnimationFrame(): Promise<void> {
     return new Promise(resolve => requestAnimationFrame(() => resolve()));
 }
 
-async function waitForPaintFrames(count: number): Promise<void> {
+export async function waitForPaintFrames(count: number): Promise<void> {
     for (let i = 0; i < count; i += 1) {
         await nextAnimationFrame();
     }
@@ -99,7 +101,12 @@ async function waitForStageVisualReady(root: HTMLElement): Promise<void> {
     await waitForPaintFrames(2);
 }
 
-async function waitForStageVisualReadyWithTimeout(root: HTMLElement): Promise<void> {
+/**
+ * Resolve once every image inside `root` (elements and CSS backgrounds) has loaded and decoded and
+ * the result has been painted, bounded by a timeout. Hosts double-buffering stage sessions use this
+ * on the hidden buffer before revealing it, so the swap never shows half-loaded content.
+ */
+export async function waitForStageVisualReadyWithTimeout(root: HTMLElement): Promise<void> {
     await Promise.race([
         waitForStageVisualReady(root),
         new Promise<void>(resolve => {
@@ -112,11 +119,35 @@ async function waitForStageVisualReadyWithTimeout(root: HTMLElement): Promise<vo
 export function NlrStageLayer(props: {
     session: NlrStageSession | null;
     interactive: boolean;
-    onFirstSceneReady: (sessionId: string) => void;
+    /**
+     * Whether the On-Stage Game UI (Player children) should render. Gated on the game stage being
+     * visible so on-stage elements never show during the pre-game boot preload or between app
+     * page transitions before a story is entered.
+     */
+    renderOnStage: boolean;
+    /**
+     * The Player has initialised and the `LiveGame` is available (Player `onReady`). This is the
+     * "environment ready" signal used to dispatch the `gameReady` blueprint event and store the
+     * live game. The game has NOT entered any story yet — `liveGame.newGame()` is only called by
+     * the host when the game is actually started.
+     */
     onLiveGameReady: (sessionId: string, liveGame: LiveGame) => Promise<void> | void;
-    onError: (error: Error) => void;
+    /**
+     * The Player's initial preload pass has completed (Player `onPreloadComplete`). Assets for the
+     * mounted story are warm; still nothing has entered the game.
+     */
+    onEnvironmentReady: (sessionId: string) => void;
+    /**
+     * The first scene has mounted and painted after the game was entered (`newGame()`).
+     */
+    onFirstSceneReady: (sessionId: string) => void;
+    /**
+     * A stage error surfaced from this session's Player. `sessionId` identifies the emitting
+     * session so hosts can ignore teardown noise from an already-replaced session.
+     */
+    onError: (error: Error, sessionId: string) => void;
 }) {
-    const { session, interactive, onFirstSceneReady, onLiveGameReady, onError } = props;
+    const { session, interactive, renderOnStage, onFirstSceneReady, onEnvironmentReady, onLiveGameReady, onError } = props;
     const startedSessionRef = useRef<string | null>(null);
     const stageRootRef = useRef<HTMLDivElement>(null);
 
@@ -131,18 +162,19 @@ export function NlrStageLayer(props: {
                 DevTools.setActionId(binding.action, binding.staticId);
             }
         }
-        void (async () => {
-            try {
-                await onLiveGameReady(sessionId, ctx.liveGame);
-            } catch (error) {
-                onError(error instanceof Error ? error : new Error(String(error)));
-            } finally {
-                if (startedSessionRef.current === sessionId) {
-                    ctx.liveGame.newGame();
-                }
-            }
-        })();
+        // Initialise the environment only (dispatch gameReady, hand back the LiveGame).
+        // Entering the game (newGame) is the host's decision, made when the player starts a game.
+        void Promise.resolve(onLiveGameReady(sessionId, ctx.liveGame)).catch(error => {
+            onError(error instanceof Error ? error : new Error(String(error)), sessionId);
+        });
     }, [onError, onLiveGameReady, session]);
+
+    const handlePreloadComplete = useCallback((_ctx: PlayerLifecycleEventContext) => {
+        if (!session) {
+            return;
+        }
+        onEnvironmentReady(session.id);
+    }, [onEnvironmentReady, session]);
 
     const handleFirstSceneReady = useCallback((_ctx: PlayerLifecycleEventContext) => {
         if (!session) {
@@ -173,7 +205,10 @@ export function NlrStageLayer(props: {
             className="absolute inset-0 z-0 overflow-hidden bg-black"
             style={{ pointerEvents: interactive ? "auto" : "none" }}
         >
-            <GameProviders game={session.game}>
+            {/* Key the providers by session id: NLR's GameProvider captures the `game` instance
+                once via useState and never reacts to a changed prop, so a new Game (e.g. the
+                story preview recompiling per row) needs the whole provider subtree to remount. */}
+            <GameProviders key={session.id} game={session.game}>
                 <Player
                     key={session.id}
                     story={session.compiled.story}
@@ -182,9 +217,12 @@ export function NlrStageLayer(props: {
                     className="block h-full w-full overflow-hidden"
                     active={true}
                     onReady={handleReady}
+                    onPreloadComplete={handlePreloadComplete}
                     onFirstSceneReady={handleFirstSceneReady}
-                    onError={(error) => onError(error)}
-                />
+                    onError={(error) => onError(error, session.id)}
+                >
+                    {renderOnStage ? session.onStageNode ?? null : null}
+                </Player>
             </GameProviders>
         </div>
     );

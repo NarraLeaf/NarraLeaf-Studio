@@ -6,7 +6,6 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 const ROOT_WIDGET_TYPE = "nl.root";
-const PROPERTIES_PANEL_ID = "narraleaf-studio:properties";
 
 /** First id in `elementIds` is the stable "leader" for group operations (per product spec). */
 export function getSelectionLeaderId(selection: UIElementSelection): string | undefined {
@@ -21,12 +20,22 @@ export function filterSelectionToTopLevelMovers(document: UIDocument, selection:
     return filterToTopLevelMovers(document, selection.elementIds);
 }
 
+/**
+ * Sets the surface (scene root) as the properties target.
+ *
+ * This only updates the selection — it intentionally does NOT open the properties panel.
+ * Every caller reaches here on deselect / lose-focus (clicking empty canvas, a marquee that
+ * hits nothing, Escape, after delete/cut, restoring a surface tab, etc.); auto-opening the
+ * panel on those is surprising. The panel is opened only by explicit user action — see
+ * `focusSceneProperties` in UISurfacesPanel and `useFocusProperty`.
+ *
+ * `_uiService` is retained for call-site compatibility with the many deselect paths.
+ */
 export function selectSurfaceForProperties(
     stateService: UIEditorStateService,
     surfaceId: string,
-    uiService?: UIService | null,
+    _uiService?: UIService | null,
 ): void {
-    uiService?.panels.show(PROPERTIES_PANEL_ID);
     const current = stateService.getSelection();
     const currentSceneId =
         current.type === "scene"

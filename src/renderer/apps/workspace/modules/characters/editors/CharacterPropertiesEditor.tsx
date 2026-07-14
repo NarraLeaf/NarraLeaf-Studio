@@ -10,6 +10,7 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { ImageCropper } from "@/apps/workspace/modules/assets/components/ImageCropper";
 import { X, Plus } from "lucide-react";
 import { Select } from "@/lib/components/elements";
+import { useTranslation } from "@/lib/i18n";
 
 const secondaryGhostButtonClass = "px-3 py-1.5 rounded-md border border-primary/30 bg-primary/5 text-sm text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
 const secondaryGhostIconButtonClass = "inline-flex items-center justify-center p-1.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
@@ -80,6 +81,7 @@ type CharacterPropertiesEditorProps = {
 };
 
 export function CharacterPropertiesEditor({ character }: CharacterPropertiesEditorProps) {
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const profile = character.profile;
     const snapshot = profile.getProfile();
@@ -124,10 +126,10 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
     }, [profile]);
     const defaultFormOptions = useMemo(
         () => [
-            { value: "", label: "Follow first form" },
+            { value: "", label: t("characters.properties.followFirstForm") },
             ...forms.map(form => ({ value: form.name, label: form.name })),
         ],
-        [forms, formsVersion]
+        [forms, formsVersion, t]
     );
 
     const normalizeTag = useCallback((tag: string) => tag.trim().toLowerCase(), []);
@@ -176,18 +178,18 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
     const handleSelectThumbnail = async (assets: Asset[]) => {
         const selected = assets[0];
         if (!selected || !assetsService) {
-            setThumbnailError("Workspace not ready");
+            setThumbnailError(t("characters.properties.error.workspaceNotReady"));
             return;
         }
 
         if (selected.type !== AssetType.Image) {
-            setThumbnailError("Please select an image asset");
+            setThumbnailError(t("characters.properties.error.selectImageAsset"));
             return;
         }
 
         const result = await assetsService.fetch<AssetType.Image>(selected as Asset<AssetType.Image>);
         if (!result.success) {
-            setThumbnailError(result.error || "Failed to load asset");
+            setThumbnailError(result.error || t("characters.errors.assetLoad"));
             return;
         }
 
@@ -226,13 +228,13 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
         }
 
         if (!serviceAssets) {
-            setThumbnailError("Workspace not ready");
+            setThumbnailError(t("characters.properties.error.workspaceNotReady"));
             return;
         }
 
         const result = await serviceAssets.deleteFile(currentId);
         if (!result.ok) {
-            setThumbnailError(result.error?.message || "Failed to delete thumbnail");
+            setThumbnailError(result.error?.message || t("characters.properties.error.deleteThumbnailFailed"));
         }
     };
 
@@ -283,7 +285,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
 
     const handleCropConfirm = async (selection: CropRect) => {
         if (!serviceAssets || !croppingAsset || !cropperImageUrl) {
-            setThumbnailError("Workspace not ready");
+            setThumbnailError(t("characters.properties.error.workspaceNotReady"));
             return;
         }
         setSavingThumbnail(true);
@@ -295,7 +297,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
             const arrayBuffer = await blob.arrayBuffer();
             const writeResult = await serviceAssets.writeFile(new Uint8Array(arrayBuffer));
             if (!writeResult.ok) {
-                setThumbnailError(writeResult.error?.message || "Failed to save thumbnail");
+                setThumbnailError(writeResult.error?.message || t("characters.properties.error.saveThumbnailFailed"));
                 return;
             }
             const newId = writeResult.data;
@@ -303,7 +305,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
             profile.setThumbnail(newId);
             resetCropper();
         } catch (error) {
-            setThumbnailError(error instanceof Error ? error.message : "Unknown error");
+            setThumbnailError(error instanceof Error ? error.message : t("characters.properties.error.unknown"));
         } finally {
             setSavingThumbnail(false);
         }
@@ -414,21 +416,21 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
     }, [serviceAssets, thumbnailId]);
 
     return (
-        <div className="p-4 space-y-4 text-gray-200">
+        <div className="p-4 space-y-4 text-fg">
             <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
-                    Thumbnail
+                <label className="block text-xs font-medium text-fg-muted mb-1">
+                    {t("characters.properties.thumbnail")}
                 </label>
-                <div className="bg-[#1e1f22] border border-white/10 rounded-md p-3 space-y-3">
+                <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-3">
                     <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm text-gray-200">Preview</span>
+                        <span className="text-sm text-fg">{t("characters.properties.preview")}</span>
                         <div className="flex items-center gap-2">
                             {thumbnailId && (
                                 <button
                                     className="text-xs text-red-400 hover:text-red-300"
                                     onClick={handleClearThumbnail}
                                 >
-                                    Clear
+                                    {t("common.clear")}
                                 </button>
                             )}
                             <button
@@ -436,19 +438,19 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
                                 className={secondaryGhostButtonClass}
                                 onClick={() => setSelectorOpen(true)}
                             >
-                                Select
+                                {t("characters.properties.select")}
                             </button>
                         </div>
                     </div>
-                    <div className="relative w-full aspect-square rounded-md border border-white/10 bg-[#0f1115] text-xs text-gray-400 overflow-hidden">
+                    <div className="relative w-full aspect-square rounded-md border border-edge bg-surface text-xs text-fg-muted overflow-hidden">
                         {thumbnailUrl ? (
-                            <img src={thumbnailUrl} alt="thumbnail" className="absolute inset-0 w-full h-full object-cover" />
+                            <img src={thumbnailUrl} alt={t("characters.properties.thumbnailAlt")} className="absolute inset-0 w-full h-full object-cover" />
                         ) : thumbnailId ? (
-                            <div className="absolute inset-0 flex items-center justify-center text-gray-300"></div>
+                            <div className="absolute inset-0 flex items-center justify-center text-fg-muted"></div>
                         ) : (
                             <div className="absolute inset-0 flex flex-col items-center justify-center space-y-1">
-                                <div>No thumbnail yet</div>
-                                <div className="text-[11px] text-gray-500">Click Select to choose one</div>
+                                <div>{t("characters.properties.noThumbnail")}</div>
+                                <div className="text-2xs text-fg-subtle">{t("characters.properties.selectHint")}</div>
                             </div>
                         )}
                     </div>
@@ -457,35 +459,35 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
             </div>
 
             <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
-                    Name
+                <label className="block text-xs font-medium text-fg-muted mb-1">
+                    {t("common.name")}
                 </label>
                 <input
-                    className="w-full px-3 py-2 rounded-md bg-[#1e1f22] border border-white/10 text-sm text-gray-300 focus:outline-none focus:border-primary/50 transition-colors"
+                    className="w-full px-3 py-2 rounded-md bg-surface-raised border border-edge text-sm text-fg-muted focus:outline-none focus:border-primary/50 transition-colors"
                     value={name}
                     onChange={e => setName(e.target.value)}
                     onBlur={handleNameBlur}
-                    placeholder="Character name"
+                    placeholder={t("characters.properties.namePlaceholder")}
                 />
             </div>
 
             <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
-                    Description
+                <label className="block text-xs font-medium text-fg-muted mb-1">
+                    {t("common.description")}
                 </label>
                 <textarea
-                    className="w-full px-3 py-2 rounded-md bg-[#1e1f22] border border-white/10 text-sm text-gray-300 focus:outline-none focus:border-primary/50 transition-colors resize-none"
+                    className="w-full px-3 py-2 rounded-md bg-surface-raised border border-edge text-sm text-fg-muted focus:outline-none focus:border-primary/50 transition-colors resize-none"
                     rows={4}
                     value={description}
                     onChange={e => setDescription(e.target.value)}
                     onBlur={handleDescriptionBlur}
-                    placeholder="Character description..."
+                    placeholder={t("characters.properties.descriptionPlaceholder")}
                 />
             </div>
 
             <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
-                    Tags
+                <label className="block text-xs font-medium text-fg-muted mb-1">
+                    {t("characters.properties.tags")}
                 </label>
                 <TagEditor
                     tags={tags}
@@ -498,15 +500,15 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
             </div>
 
             <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
-                    Default Form
+                <label className="block text-xs font-medium text-fg-muted mb-1">
+                    {t("characters.properties.defaultForm")}
                 </label>
                 <Select
                     fullWidth
                     options={defaultFormOptions}
                     value={defaultForm ?? ""}
                     onChange={handleDefaultFormChange}
-                    placeholder="Select default form"
+                    placeholder={t("characters.properties.selectDefaultForm")}
                 />
             </div>
 
@@ -520,7 +522,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
                     void handleSelectThumbnail(assets);
                 }}
                 anchorRef={thumbnailAnchorRef}
-                title="Select Thumbnail"
+                title={t("characters.properties.selectThumbnailTitle")}
                 multiple={false}
             />
             <ImageCropper
@@ -529,7 +531,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
                 initialSelection={initialCrop}
                 aspectRatio={1}
                 anchorRef={thumbnailAnchorRef}
-                title="Crop Thumbnail"
+                title={t("characters.properties.cropThumbnailTitle")}
                 onClose={resetCropper}
                 onConfirm={handleCropConfirm}
                 className={savingThumbnail ? "pointer-events-none opacity-90" : ""}
@@ -548,6 +550,7 @@ type TagEditorProps = {
 };
 
 function TagEditor({ tags, hasTags, newTag, onChangeNewTag, onAdd, onRemove }: TagEditorProps) {
+    const { t } = useTranslation();
     return (
         <div className="space-y-2">
             <div className="flex flex-wrap gap-1">
@@ -560,13 +563,13 @@ function TagEditor({ tags, hasTags, newTag, onChangeNewTag, onAdd, onRemove }: T
                         <button
                             onClick={() => onRemove(tag)}
                             className="hover:text-primary"
-                            title="Remove tag"
-                            aria-label={`Remove tag ${tag}`}
+                            title={t("characters.properties.removeTag")}
+                            aria-label={t("characters.properties.removeTagAria", { tag })}
                         >
                             <X className="w-3 h-3" />
                         </button>
                     </span>
-                )) : <span className="text-xs text-gray-500">No tags yet</span>}
+                )) : <span className="text-xs text-fg-subtle">{t("characters.properties.noTags")}</span>}
             </div>
             <div className="flex gap-1">
                 <input
@@ -579,15 +582,15 @@ function TagEditor({ tags, hasTags, newTag, onChangeNewTag, onAdd, onRemove }: T
                             onAdd();
                         }
                     }}
-                    placeholder="Add tag..."
-                    className="flex-1 px-3 py-1.5 bg-[#1e1f22] border border-white/10 rounded-md text-sm text-gray-300 focus:outline-none focus:border-primary/50 transition-colors"
+                    placeholder={t("characters.properties.addTagPlaceholder")}
+                    className="flex-1 px-3 py-1.5 bg-surface-raised border border-edge rounded-md text-sm text-fg-muted focus:outline-none focus:border-primary/50 transition-colors"
                 />
                 <button
                     onClick={onAdd}
                     disabled={!newTag.trim()}
                     className={secondaryGhostIconButtonClass}
-                    title="Add tag"
-                    aria-label="Add tag"
+                    title={t("characters.properties.addTag")}
+                    aria-label={t("characters.properties.addTag")}
                 >
                     <Plus className="w-4 h-4" />
                 </button>

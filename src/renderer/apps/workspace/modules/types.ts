@@ -3,6 +3,7 @@ import { ActionSeparator } from "@/apps/workspace/registry/types";
 import { PanelPosition } from "../registry/types";
 import { FocusContext } from "@/lib/workspace/services/ui";
 import { Workspace } from "@/lib/workspace/workspace";
+import { TranslationKey } from "@shared/i18n";
 
 /**
  * Base module metadata
@@ -28,10 +29,14 @@ export interface ModuleAction {
     id: string;
     /** Display label (for menu items) */
     label?: string;
+    /** i18n key; when set, it overrides `label` at render time (falls back to `label`). */
+    labelKey?: TranslationKey;
     /** Icon component or element */
     icon?: ReactNode;
     /** Tooltip text */
     tooltip?: string;
+    /** i18n key; when set, it overrides `tooltip` at render time (falls back to `tooltip`). */
+    tooltipKey?: TranslationKey;
     /** Action handler */
     onClick: (workspace: Workspace) => void;
     /** Sort order within group */
@@ -55,6 +60,8 @@ export interface ModuleActionGroup {
     id: string;
     /** Display label */
     label: string;
+    /** i18n key; when set, it overrides `label` at render time (falls back to `label`). */
+    labelKey?: TranslationKey;
     /** Icon component or element */
     icon?: ReactNode;
     /** Actions in this group */
@@ -130,6 +137,12 @@ export interface EditorComponentProps<TPayload = any> {
     tabId: string;
     /** Optional payload data */
     payload?: TPayload;
+    /**
+     * Whether this tab is the group's visible/focused tab. Kept-alive tabs stay mounted while
+     * hidden (`display:none`); components use this to restore focus/scroll when shown again and to
+     * pause background work (playback, media, global listeners) while hidden.
+     */
+    active: boolean;
 }
 
 /**

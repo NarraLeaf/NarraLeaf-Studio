@@ -8,6 +8,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ActionDefinition, useRegistry } from "../../../registry";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
+import { useTranslation } from "@/lib/i18n";
 import {
     ImagePixelPreview,
     type ImagePixelPreviewControls,
@@ -18,23 +19,25 @@ interface ImagePreviewPayload {
 }
 
 function LoadingState() {
+    const { t } = useTranslation();
     return (
-        <div className="h-full flex items-center justify-center bg-[#0f1115]">
-            <div className="flex items-center gap-2 text-gray-400">
+        <div className="h-full flex items-center justify-center bg-surface">
+            <div className="flex items-center gap-2 text-fg-muted">
                 <RefreshCw className="w-5 h-5 animate-spin" />
-                <span>Loading image...</span>
+                <span>{t("assets.image.loading")}</span>
             </div>
         </div>
     );
 }
 
 function ErrorState({ error }: { error: string }) {
+    const { t } = useTranslation();
     return (
-        <div className="h-full flex items-center justify-center bg-[#0f1115] p-4">
+        <div className="h-full flex items-center justify-center bg-surface p-4">
             <div className="flex items-start gap-2 text-red-400 bg-red-500/10 rounded-md p-4 max-w-md">
                 <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
                 <div>
-                    <p className="font-medium">Failed to load image</p>
+                    <p className="font-medium">{t("assets.image.loadError")}</p>
                     <p className="text-sm mt-1 text-red-300">{error}</p>
                 </div>
             </div>
@@ -49,18 +52,19 @@ function PreviewToolbar({
     imageData: AssetData<AssetType.Image>;
     controls: ImagePixelPreviewControls;
 }) {
+    const { t } = useTranslation();
     const size = controls.imageSize ?? imageData.metadata;
 
     return (
-        <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#1e1f22]">
+        <div className="flex items-center justify-between px-4 py-2 border-b border-edge bg-surface-raised">
             <div className="flex items-center gap-4">
-                <span className="text-sm text-gray-300">
+                <span className="text-sm text-fg-muted">
                     {size.width} x {size.height}
                 </span>
-                <span className="text-sm text-gray-400">
+                <span className="text-sm text-fg-muted">
                     {imageData.metadata.format.toUpperCase()}
                 </span>
-                <span className="text-sm text-gray-400">
+                <span className="text-sm text-fg-muted">
                     {(imageData.metadata.size / 1024).toFixed(1)} KB
                 </span>
             </div>
@@ -68,25 +72,25 @@ function PreviewToolbar({
             <div className="flex items-center gap-2">
                 <button
                     onClick={controls.zoomOut}
-                    className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-default"
-                    title="Zoom Out"
+                    className="p-1 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors cursor-default"
+                    title={t("assets.image.zoomOut")}
                 >
                     <ZoomOut className="w-4 h-4" />
                 </button>
-                <span className="text-sm text-gray-400 min-w-16 text-center">
+                <span className="text-sm text-fg-muted min-w-16 text-center">
                     {controls.zoomLabel}
                 </span>
                 <button
                     onClick={controls.zoomIn}
-                    className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-default"
-                    title="Zoom In"
+                    className="p-1 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors cursor-default"
+                    title={t("assets.image.zoomIn")}
                 >
                     <ZoomIn className="w-4 h-4" />
                 </button>
                 <button
                     onClick={controls.resetView}
-                    className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-default ml-2"
-                    title="Reset View"
+                    className="p-1 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors cursor-default ml-2"
+                    title={t("assets.image.resetView")}
                 >
                     <RefreshCw className="w-4 h-4" />
                 </button>
@@ -100,6 +104,7 @@ function PreviewToolbar({
  * Displays image with zoom and pan controls
  */
 export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<ImagePreviewPayload>) {
+    const { t } = useTranslation();
     const { context } = useWorkspace();
     const { registerActionGroup, unregisterActionGroup } = useRegistry();
     const controlsRef = useRef<ImagePixelPreviewControls | null>(null);
@@ -130,7 +135,7 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
         const zoomInAction: ActionDefinition = {
             id: `${namespace}:${groupId}-zoom-in`,
             icon: <ZoomIn className="w-4 h-4" />,
-            label: "Zoom In",
+            label: t("assets.image.zoomIn"),
             shortcut: "ctrl+=",
             onClick: handleZoomIn,
             order: 1,
@@ -140,7 +145,7 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
         const zoomOutAction: ActionDefinition = {
             id: `${namespace}:${groupId}-zoom-out`,
             icon: <ZoomOut className="w-4 h-4" />,
-            label: "Zoom Out",
+            label: t("assets.image.zoomOut"),
             shortcut: "ctrl+-",
             onClick: handleZoomOut,
             order: 2,
@@ -150,7 +155,7 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
         const resetViewAction: ActionDefinition = {
             id: `${namespace}:${groupId}-reset-view`,
             icon: <RefreshCw className="w-4 h-4" />,
-            label: "Reset View",
+            label: t("assets.image.resetView"),
             shortcut: "ctrl+0",
             onClick: handleResetView,
             order: 3,
@@ -159,14 +164,14 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
 
         registerActionGroup({
             id: groupId,
-            label: "Preview",
+            label: t("assets.preview"),
             actions: [zoomOutAction, zoomInAction, resetViewAction],
         });
 
         return () => {
             unregisterActionGroup(groupId);
         };
-    }, [handleResetView, handleZoomIn, handleZoomOut, registerActionGroup, tabId, unregisterActionGroup]);
+    }, [handleResetView, handleZoomIn, handleZoomOut, registerActionGroup, tabId, unregisterActionGroup, t]);
 
     useEffect(() => {
         if (!context || !asset) return;
@@ -188,7 +193,7 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
                     setState({
                         imageData: null,
                         loading: false,
-                        error: result.error || "Failed to load image",
+                        error: result.error || t("assets.image.loadError"),
                         url: null,
                     });
                     return;

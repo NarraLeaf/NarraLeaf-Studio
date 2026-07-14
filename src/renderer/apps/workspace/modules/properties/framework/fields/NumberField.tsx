@@ -41,7 +41,7 @@ function NumberFieldInner<TData>({ field, data, onSaving }: NumberFieldProps<TDa
     return (
         <div>
             {field.label && (
-                <label className="block text-xs font-medium text-gray-400 mb-1">
+                <label className="block text-xs font-medium text-fg-muted mb-1">
                     {field.label}
                 </label>
             )}
@@ -54,7 +54,7 @@ function NumberFieldInner<TData>({ field, data, onSaving }: NumberFieldProps<TDa
                 placeholder={field.placeholder}
                 disabled={isDisabled}
                 readOnly={isReadOnly}
-                inputClassName={`w-full px-3 py-2 bg-[#1e1f22] border border-white/10 rounded-md text-sm text-gray-300 
+                inputClassName={`w-full px-3 py-2 bg-surface-raised border border-edge rounded-md text-sm text-fg-muted 
                     focus:outline-none focus:border-primary/50 transition-colors 
                     [appearance:textfield] [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
                     disabled:opacity-50 disabled:cursor-not-allowed ${field.className || ""}`}
@@ -62,7 +62,7 @@ function NumberFieldInner<TData>({ field, data, onSaving }: NumberFieldProps<TDa
                 formatValue={formatValue}
             />
             {field.helpText && (
-                <p className="mt-1 text-xs text-gray-500">{field.helpText}</p>
+                <p className="mt-1 text-xs text-fg-subtle">{field.helpText}</p>
             )}
         </div>
     );

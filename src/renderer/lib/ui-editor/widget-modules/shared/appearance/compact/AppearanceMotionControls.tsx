@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "@/lib/i18n";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { Select } from "@/lib/components/elements/Select";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
@@ -44,7 +45,7 @@ const MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX = 90;
 function motionIconTriggerClass(active: boolean): string {
     return [
         "grid h-7 w-7 shrink-0 place-items-center rounded border-0 bg-transparent p-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
-        active ? "text-primary hover:text-primary" : "text-gray-500 hover:text-gray-200",
+        active ? "text-primary hover:text-primary" : "text-fg-subtle hover:text-fg",
     ].join(" ");
 }
 
@@ -67,35 +68,36 @@ export function ModuleMotionMenuButton({
     hasConfiguredFields,
     onEnabledChange,
 }: ModuleMotionMenuButtonProps) {
+    const { t } = useTranslation();
     const menu = useMemo((): ContextMenuDef => {
         return [
             {
                 id: "motion-controls",
-                label: "Animated fields",
+                label: t("widgetAppearance.motion.animatedFields"),
                 submenuIconsEnabled: true,
                 submenu: [
                     {
                         id: "motion-controls-on",
-                        label: "On",
+                        label: t("widgetAppearance.motion.on"),
                         icon: enabled ? <Check className="w-4 h-4 text-primary" /> : undefined,
                         onClick: () => onEnabledChange(true),
                     },
                     {
                         id: "motion-controls-off",
-                        label: "Off",
+                        label: t("widgetAppearance.motion.off"),
                         icon: !enabled ? <Check className="w-4 h-4 text-primary" /> : undefined,
                         onClick: () => onEnabledChange(false),
                     },
                 ],
             },
         ];
-    }, [enabled, onEnabledChange]);
+    }, [enabled, onEnabledChange, t]);
 
     return (
         <InlineMenuTriggerButton
             buttonStyle="iconGhost"
             menu={menu}
-            ariaLabel="Open animated field menu"
+            ariaLabel={t("widgetAppearance.motion.openMenuAria")}
             icon={<Settings2 className="w-4 h-4" strokeWidth={1.75} />}
             className={hasConfiguredFields ? "text-primary hover:text-primary" : ""}
         />
@@ -108,6 +110,7 @@ export function AppearanceFieldMotionButton({
     groupKey,
     draftResetKey,
 }: AppearanceFieldMotionButtonProps) {
+    const { t } = useTranslation();
     const buttonRef = useRef<HTMLButtonElement | null>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
     const [open, setOpen] = useState(false);
@@ -202,14 +205,14 @@ export function AppearanceFieldMotionButton({
         ? createPortal(
               <div
                   ref={panelRef}
-                  className="fixed z-[80] w-[280px] rounded-xl border border-white/10 bg-[#17181c] p-3 shadow-2xl"
+                  className="fixed z-[80] w-[280px] rounded-xl border border-edge bg-[#17181c] p-3 shadow-2xl"
                   style={{ left: position.left, top: position.top, maxWidth: "calc(100vw - 16px)" }}
                   onMouseDown={event => event.stopPropagation()}
               >
                   <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                          <div className="text-xs font-medium text-gray-100">{label}</div>
-                          <div className="mt-1 text-[10px] text-gray-500">
+                          <div className="text-xs font-medium text-fg">{label}</div>
+                          <div className="mt-1 text-2xs text-fg-subtle">
                               {formatAppearanceTransitionSummary(transition)}
                           </div>
                       </div>
@@ -217,8 +220,8 @@ export function AppearanceFieldMotionButton({
                           <button
                               type="button"
                               onClick={() => commitTransition(null)}
-                              className="grid h-7 w-7 place-items-center rounded-md border border-white/10 bg-white/5 text-gray-400 transition hover:bg-red-500/10 hover:text-red-200"
-                              title="Clear motion for this field"
+                              className="grid h-7 w-7 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted transition hover:bg-red-500/10 hover:text-red-200"
+                              title={t("widgetAppearance.motion.clearFieldTitle")}
                           >
                               <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -227,28 +230,28 @@ export function AppearanceFieldMotionButton({
 
                   {!transition ? (
                       <div className="mt-3 space-y-3">
-                          <p className="text-xs leading-relaxed text-gray-400">
-                              Motion is off for this field. Turn it on to configure timing and easing.
+                          <p className="text-xs leading-relaxed text-fg-muted">
+                              {t("widgetAppearance.motion.offHint")}
                           </p>
                           <button
                               type="button"
                               onClick={() => ensureTransition()}
                               className="inline-flex h-8 items-center rounded-md border border-primary/40 bg-primary/15 px-3 text-xs font-medium text-primary transition hover:bg-primary/20"
                           >
-                              Enable motion
+                              {t("widgetAppearance.motion.enable")}
                           </button>
                       </div>
                   ) : (
                       <div className="mt-3 space-y-3">
                           <div>
-                              <label className="mb-1 block text-[10px] uppercase tracking-wide text-gray-500">
-                                  Type
+                              <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
+                                  {t("widgetAppearance.motion.type")}
                               </label>
                               <Select
                                   value={transition.type}
                                   options={APPEARANCE_TRANSITION_TYPE_OPTIONS.map(option => ({
                                       value: option.value,
-                                      label: option.label,
+                                      labelKey: option.labelKey,
                                   }))}
                                   fullWidth
                                   onChange={next =>
@@ -265,8 +268,8 @@ export function AppearanceFieldMotionButton({
                               <>
                                   <div className="grid grid-cols-2 gap-2">
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-[10px] uppercase tracking-wide text-gray-500">
-                                              Duration
+                                          <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
+                                              {t("widgetAppearance.motion.duration")}
                                           </label>
                                           <NumericDraftEnhancedInput
                                               popoverZIndex={MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX}
@@ -288,8 +291,8 @@ export function AppearanceFieldMotionButton({
                                           />
                                       </div>
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-[10px] uppercase tracking-wide text-gray-500">
-                                              Delay
+                                          <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
+                                              {t("widgetAppearance.motion.delay")}
                                           </label>
                                           <NumericDraftEnhancedInput
                                               popoverZIndex={MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX}
@@ -312,14 +315,14 @@ export function AppearanceFieldMotionButton({
                                       </div>
                                   </div>
                                   <div>
-                                      <label className="mb-1 block text-[10px] uppercase tracking-wide text-gray-500">
-                                          Easing
+                                      <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
+                                          {t("widgetAppearance.motion.easing")}
                                       </label>
                                       <Select
                                           value={transition.easing}
                                           options={APPEARANCE_TWEEN_EASING_OPTIONS.map(option => ({
                                               value: option.value,
-                                              label: option.label,
+                                              labelKey: option.labelKey,
                                           }))}
                                           fullWidth
                                           onChange={next =>
@@ -336,8 +339,8 @@ export function AppearanceFieldMotionButton({
                               <>
                                   <div className="grid grid-cols-2 gap-2">
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-[10px] uppercase tracking-wide text-gray-500">
-                                              Stiffness
+                                          <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
+                                              {t("widgetAppearance.motion.stiffness")}
                                           </label>
                                           <NumericDraftEnhancedInput
                                               popoverZIndex={MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX}
@@ -358,8 +361,8 @@ export function AppearanceFieldMotionButton({
                                           />
                                       </div>
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-[10px] uppercase tracking-wide text-gray-500">
-                                              Damping
+                                          <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
+                                              {t("widgetAppearance.motion.damping")}
                                           </label>
                                           <NumericDraftEnhancedInput
                                               popoverZIndex={MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX}
@@ -382,8 +385,8 @@ export function AppearanceFieldMotionButton({
                                   </div>
                                   <div className="grid grid-cols-2 gap-2">
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-[10px] uppercase tracking-wide text-gray-500">
-                                              Mass
+                                          <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
+                                              {t("widgetAppearance.motion.mass")}
                                           </label>
                                           <NumericDraftEnhancedInput
                                               popoverZIndex={MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX}
@@ -405,8 +408,8 @@ export function AppearanceFieldMotionButton({
                                           />
                                       </div>
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-[10px] uppercase tracking-wide text-gray-500">
-                                              Delay
+                                          <label className="mb-1 block text-2xs tracking-wide text-fg-subtle">
+                                              {t("widgetAppearance.motion.delay")}
                                           </label>
                                           <NumericDraftEnhancedInput
                                               popoverZIndex={MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX}
@@ -443,8 +446,8 @@ export function AppearanceFieldMotionButton({
                 ref={buttonRef}
                 type="button"
                 onClick={() => setOpen(prev => !prev)}
-                aria-label={`Configure motion for ${label}`}
-                title={`${label} motion`}
+                aria-label={t("widgetAppearance.motion.configureFieldAria", { field: label })}
+                title={t("widgetAppearance.motion.fieldMotionTitle", { field: label })}
                 className={motionIconTriggerClass(Boolean(transition))}
             >
                 <Settings2 className="w-4 h-4" strokeWidth={1.75} />

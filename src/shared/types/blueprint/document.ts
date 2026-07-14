@@ -15,7 +15,30 @@ export type BlueprintOwnerRef =
     | { kind: "widgetMain"; surfaceId: string; elementId: string }
     | { kind: "widgetValue"; surfaceId: string; elementId: string; propPath: string }
     | { kind: "componentWidgetMain"; componentId: string; elementId: string }
-    | { kind: "sharedAsset"; assetId: string };
+    | { kind: "sharedAsset"; assetId: string }
+    /**
+     * Story Action Blueprint: an implicit project resource bound 1:1 to a single story action.
+     * Self-referential — the owner key equals the blueprint id. Has no surface; its only event is
+     * "On Call". Scene membership is derived at compile time, not baked into identity.
+     *
+     * `mode` distinguishes how the "On Call" graph is consumed:
+     *  - "action" (default when absent): a story action block; the graph runs for its side effects
+     *     and may use async ("latent") nodes.
+     *  - "value": an inline text interpolation; the graph's Return Value is rendered inline and is
+     *     therefore evaluated synchronously, so async nodes are disallowed while authoring.
+     *  - "condition": a control-flow condition (if / else-if); the graph's Return Value is a boolean
+     *     evaluated synchronously each time the branch is tested. Async nodes are disallowed and the
+     *     return is type-checked to boolean while authoring.
+     */
+    | { kind: "storyAction"; blueprintId: string; mode?: "action" | "value" | "condition" };
+
+/**
+ * True for synchronous story blueprints whose "On Call" graph must be evaluated inline with no async
+ * nodes — both inline value interpolations and control-flow conditions.
+ */
+export function isStorySyncValueOwner(owner: BlueprintOwnerRef | undefined): boolean {
+    return owner?.kind === "storyAction" && (owner.mode === "value" || owner.mode === "condition");
+}
 
 export type BlueprintFrontendKind = "visual" | "typescript";
 

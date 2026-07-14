@@ -157,6 +157,55 @@ describe("ConsoleService", () => {
         expect(entry.segments[0].text).toBe("bundle assembly started");
     });
 
+    it("exposes the built-in channels by default", () => {
+        const service = new ConsoleService();
+        expect(service.getChannels().map(channel => channel.id)).toEqual(["blueprint", "build"]);
+    });
+
+    it("registers a runtime channel and emits a channelsChanged event", () => {
+        const service = new ConsoleService();
+        const changed = vi.fn();
+        service.onChannelsChanged(changed);
+
+        const dispose = service.registerChannel({ id: "story", label: "Story", description: "" });
+
+        expect(service.getChannels().map(channel => channel.id)).toEqual(["blueprint", "build", "story"]);
+        expect(changed).toHaveBeenCalledTimes(1);
+
+        const entry = service.append("story", { level: "warning", message: "dangling ref" });
+        expect(service.getEntries("story")).toEqual([entry]);
+
+        dispose();
+        expect(service.getChannels().map(channel => channel.id)).toEqual(["blueprint", "build"]);
+        expect(service.getEntries("story")).toEqual([]);
+        expect(changed).toHaveBeenCalledTimes(2);
+    });
+
+    it("ref-counts a shared channel so it survives until the last producer disposes", () => {
+        const service = new ConsoleService();
+        const definition = { id: "story", label: "Story", description: "" };
+
+        const disposeA = service.registerChannel(definition);
+        const disposeB = service.registerChannel(definition);
+        expect(service.getChannels().some(channel => channel.id === "story")).toBe(true);
+
+        disposeA();
+        expect(service.getChannels().some(channel => channel.id === "story")).toBe(true);
+
+        disposeB();
+        expect(service.getChannels().some(channel => channel.id === "story")).toBe(false);
+        // Idempotent: a second dispose from the same producer is a no-op.
+        disposeB();
+        expect(service.getChannels().some(channel => channel.id === "story")).toBe(false);
+    });
+
+    it("never removes a built-in channel", () => {
+        const service = new ConsoleService();
+        const dispose = service.registerChannel({ id: "build", label: "Build", description: "" });
+        dispose();
+        expect(service.getChannels().map(channel => channel.id)).toEqual(["blueprint", "build"]);
+    });
+
     it("routes forwarded Dev Mode blueprint debug events into the blueprint channel", async () => {
         const service = new ConsoleService();
         let blueprintDebugHandler: (payload: { type: "devtools.log"; level: string; message: string }) => void = () => {

@@ -1,5 +1,6 @@
 import { MessageSquareText } from "lucide-react";
 import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import { translate } from "@/lib/i18n";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { createInitialTextAppearance } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { createTextInspector } from "./text/inspector";
@@ -10,9 +11,17 @@ import { DialogSentenceRenderer } from "./dialog/renderer";
 const DIALOG_SENTENCE_TYPE = "nl.dialog.sentence";
 
 function createDialogTextDefault() {
+    const textProps = {
+        ...defaultTextWidgetProps,
+        text: translate("widgets.defaults.dialog.text"),
+        fontSize: 24,
+        color: "#f8fafc",
+        fontWeight: "normal" as const,
+        lineHeight: 1.45,
+    };
     return {
         type: DIALOG_SENTENCE_TYPE,
-        name: "Sentence",
+        name: translate("widgets.defaults.dialog.name"),
         layout: {
             x: 0,
             y: 0,
@@ -22,20 +31,8 @@ function createDialogTextDefault() {
             visible: true,
         },
         props: {
-            ...defaultTextWidgetProps,
-            text: "The current line will appear here.",
-            fontSize: 24,
-            color: "#f8fafc",
-            fontWeight: "normal",
-            lineHeight: 1.45,
-            appearance: createInitialTextAppearance({
-                ...defaultTextWidgetProps,
-                text: "The current line will appear here.",
-                fontSize: 24,
-                color: "#f8fafc",
-                fontWeight: "normal",
-                lineHeight: 1.45,
-            }),
+            ...textProps,
+            appearance: createInitialTextAppearance(textProps),
         },
     } as const;
 }
@@ -43,7 +40,9 @@ function createDialogTextDefault() {
 export const DialogSentenceWidgetModule: UIWidgetModule = {
     type: DIALOG_SENTENCE_TYPE,
     logicApi: getWidgetLogicApi(DIALOG_SENTENCE_TYPE),
-    displayName: "Sentence",
+    get displayName() {
+        return translate("widgets.defaults.dialog.name");
+    },
     icon: MessageSquareText,
     createDefaultElement: createDialogTextDefault,
     render: DialogSentenceRenderer,

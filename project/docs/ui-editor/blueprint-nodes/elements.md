@@ -55,6 +55,42 @@
 - List
 - Broadcast
 
+## Notification List
+
+- `nl.notification.list`
+
+`Notification List` 是 Notification slot 的私有包装控件，由 `nl.list` 机制驱动；运行时 items（`{id, message}`）由 Notification slot bridge 注入。默认拥有以下节点组：
+- Displayable
+- List
+- Broadcast
+
+## Choice List
+
+- `nl.choice.list`
+
+`Choice List` 是 Choice slot 的私有包装控件，由 `nl.list` 机制驱动；运行时 items（`{text, index, disabled}`，hidden 已过滤）由 Choice slot bridge 注入，`Item Click` 事件默认接 Game `Select Choice`。默认拥有以下节点组：
+- Displayable
+- List
+- Broadcast
+
+## NVL List
+
+- `nl.nvl.list`
+
+`NVL List` 是 NVL slot 的私有包装控件，由 `nl.list` 机制驱动；运行时 items（`{nametag, isActive, index}`）由 NVL slot bridge 注入，条目增加时自动滚动到底。默认拥有以下节点组：
+- Displayable
+- List
+- Broadcast
+
+## NVL Texts
+
+- `nl.nvl.texts`
+
+`NVL Texts` 是 NVL slot 的私有叶子控件，在 item 模板内通过当前条目渲染 NarraLeaf React `<Texts />` 打字效果（引擎耦合，用户无法用普通 Text 实现）。编辑器中回退为普通文本占位。默认拥有以下节点组：
+- Displayable
+- Text
+- Broadcast
+
 ## Slider
 
 - `nl.slider`

@@ -1,8 +1,11 @@
 export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
-export const STORY_DOCUMENT_SCHEMA_VERSION = 1 as const;
+export const STORY_DOCUMENT_SCHEMA_VERSION = 3 as const;
+/** Story animation index/asset schema version (independent of the story document version). */
+export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
 export type StoryLibraryIndexVersion = typeof STORY_LIBRARY_INDEX_SCHEMA_VERSION;
 export type StoryDocumentVersion = typeof STORY_DOCUMENT_SCHEMA_VERSION;
+export type StoryAnimationSchemaVersion = typeof STORY_ANIMATION_SCHEMA_VERSION;
 
 export type StoryId = string;
 export type StoryAnimationAssetId = string;
@@ -47,8 +50,8 @@ export type StoryDocument = {
     entrySceneId?: StorySceneId;
     chapters: StoryChapter[];
     scenes: Record<StorySceneId, StoryScene>;
-    studioGlobals?: Record<string, StoryVariableDefinition>;
-    gamePersistents?: Record<string, StoryPersistentDefinition>;
+    /** Document-level saved variables (per save-file, backed by NLR Storable). */
+    savedVariables?: Record<string, StorySavedVariableDefinition>;
     meta?: StoryMeta;
 };
 
@@ -73,7 +76,8 @@ export type StoryScene = {
     defaultBackgroundAssetId?: string;
     rootBlockIds: StoryBlockId[];
     blocks: Record<StoryBlockId, StoryBlock>;
-    localVariables?: Record<string, StoryVariableDefinition>;
+    /** Per-scene variables (backed by NLR Scene.local). */
+    sceneVariables?: Record<string, StorySceneVariableDefinition>;
     meta?: StoryMeta;
 };
 
@@ -83,27 +87,61 @@ export type StorySceneUpdate = {
     defaultBackgroundAssetId?: string | null;
 };
 
-export type StoryVariableScope = "studioGlobal" | "gamePersistent" | "sceneLocal";
+/**
+ * Story-declarable variable classes:
+ *  - "scene": per-scene, backed by NLR `Scene.local` (survives save/load); declared on `StoryScene`.
+ *  - "saved": per save-file, backed by NLR `Storable`; declared on `StoryDocument`; serializable-only.
+ *  - "persistent": app-level, shared with UI blueprints (`BlueprintDocument.persistentVariables`),
+ *     referenced by stable `storageKey`; serializable-only. Not stored in the story document.
+ * The blueprint-local "var" class is a Blueprint concern (`Blueprint.members.variables`), not a story scope.
+ */
+export type StoryVariableScope = "scene" | "saved" | "persistent";
 export type StoryVariableValueType = "boolean" | "number" | "string" | "json";
 export type StoryStageObjectKind = "image" | "text" | "layer" | "video";
 export type StoryDisplayableTargetKind = Exclude<StoryStageObjectKind, "video"> | "character";
 
-export type StoryVariableDefinition = {
+/** Declaration for a scene variable (backed by NLR `Scene.local`). */
+export type StorySceneVariableDefinition = {
+    id: string;
+    /** Author-facing, proper-case label. Displayed to users; the id/storageKey are never shown. */
+    name: string;
+    valueType: StoryVariableValueType;
+    defaultValue?: StoryLiteralValue;
+    /** Stable runtime key; defaults to `id` and never changes on rename so saves stay valid. */
+    storageKey: string;
+    meta?: StoryMeta;
+};
+
+/** Declaration for a saved variable (per save-file, backed by NLR `Storable`). Serializable-only. */
+export type StorySavedVariableDefinition = {
     id: string;
     name: string;
-    scope: StoryVariableScope;
+    valueType: StoryVariableValueType;
+    defaultValue?: StoryLiteralValue;
+    /** Stable runtime key within the saved namespace; defaults to `id`, unchanged on rename. */
+    storageKey: string;
+    meta?: StoryMeta;
+};
+
+export type StoryLiteralValue = string | number | boolean | null | StoryLiteralValue[] | { [key: string]: StoryLiteralValue };
+
+// --- Legacy (schema v1) shapes, retained only as migration input. ---
+export type StoryVariableScopeLegacy = "studioGlobal" | "gamePersistent" | "sceneLocal";
+
+export type StoryVariableDefinitionLegacy = {
+    id: string;
+    name: string;
+    scope: StoryVariableScopeLegacy;
     valueType: StoryVariableValueType;
     defaultValue?: StoryLiteralValue;
     meta?: StoryMeta;
 };
 
-export type StoryPersistentDefinition = {
+export type StoryPersistentDefinitionLegacy = {
     namespace: string;
     defaultContent: Record<string, StoryLiteralValue>;
     meta?: StoryMeta;
 };
-
-export type StoryLiteralValue = string | number | boolean | null | StoryLiteralValue[] | { [key: string]: StoryLiteralValue };
 
 export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "code" | "note";
 
@@ -141,6 +179,8 @@ export type StoryNodeActionPayload =
           characterId?: string;
           text: StoryTextSegment;
           voiceAssetId?: string;
+          /** Auto-pause after the line: `true` waits for a click, a number waits that many ms. */
+          pauseAfter?: boolean | number;
       }
     | {
           action: "choice";
@@ -206,16 +246,42 @@ export type StoryActionPayload =
           objectName: string;
           assetId?: string;
           color?: string;
-          layerName?: string;
+          layer?: StoryLayerRef;
           autoFit?: boolean;
           transition?: StoryTransitionRef;
           transform?: StoryTransformRef;
       }
     | {
           action: "displayable";
-          operation: "show" | "hide" | "transform";
+          operation:
+              | "show"
+              | "hide"
+              | "transform"
+              | "mask"
+              | "clearMask"
+              | "clip"
+              | "clearClip"
+              | "filter"
+              | "clearFilter"
+              | "darken"
+              | "circleReveal"
+              | "circleClose"
+              | "wipe";
           target: StoryDisplayableTargetRef;
           transform?: StoryTransformRef;
+          /** Image mask source (image asset) for the `mask` operation. */
+          maskAssetId?: string;
+          /** CSS clip-path for the `clip` operation. */
+          clipPath?: string;
+          /** CSS filter for the `filter` operation. */
+          filter?: string;
+          /** Darkness 0..1 for the `darken` operation (image/character targets only). */
+          darkness?: number;
+          /** Shared effect timing. */
+          durationMs?: number;
+          easing?: string;
+          /** Effect-specific params, e.g. circle center/from/to or wipe direction/reverse. */
+          effectProps?: Record<string, StoryLiteralValue>;
       }
     | {
           action: "text";
@@ -224,13 +290,18 @@ export type StoryActionPayload =
           text?: string;
           fontSize?: number;
           fontColor?: string;
-          layerName?: string;
+          layer?: StoryLayerRef;
           transform?: StoryTransformRef;
       }
     | {
           action: "layer";
           operation: "create" | "setZIndex" | "show" | "hide" | "transform";
           objectName: string;
+          /**
+           * Which layer non-`create` ops act on — a built-in (`background`/`displayable`) or a custom
+           * layer bound by its create block. `create` names a new custom layer via `objectName`.
+           */
+          target?: StoryLayerRef;
           zIndex?: number;
           transform?: StoryTransformRef;
       }
@@ -253,6 +324,11 @@ export type StoryActionPayload =
           color?: string;
           opacity?: number;
           easing?: string;
+      }
+    | {
+          action: "blueprint";
+          /** Owner blueprint id of the implicit Story Action Blueprint bound 1:1 to this action. */
+          blueprintId: string;
       };
 
 export type StoryControlPayload =
@@ -288,20 +364,92 @@ export type StoryNotePayload = {
 
 export type StoryTextSegment = {
     textId: StoryTextId;
+    /** Plain-text projection of the segment (concatenation of rich text runs). Always kept in sync. */
     value: string;
     role: "narration" | "dialogue" | "choicePrompt" | "choiceText" | "note";
+    /**
+     * Optional rich-text runs. When absent the segment is plain (`value`). When present, `value`
+     * is the derived plain-text projection and `rich` is the source of truth for styling. Maps to
+     * NarraLeaf `Sentence`/`Word`/`Pause` at compile time.
+     */
+    rich?: StoryRichRun[];
 };
 
-export type StoryVariableRef = {
-    scope: StoryVariableScope;
+export type StoryTextMarks = {
+    bold?: boolean;
+    italic?: boolean;
+    color?: string;
+    ruby?: string;
+    cps?: number;
+    fontSize?: number;
+};
+
+/**
+ * Inline text interpolation (phase 2): a rich-text run that renders a computed value.
+ *  - "variable": the current value of a scene/saved/persistent variable (NLR dynamic word).
+ *  - "blueprint": the Return Value of a Story Action Blueprint's On Call graph.
+ */
+export type StoryInterpolationRef =
+    | { kind: "variable"; target: StoryVariableRef }
+    | { kind: "blueprint"; blueprintId: string };
+
+export type StoryRichRun =
+    | { text: string; marks?: StoryTextMarks }
+    | { pause: number | true }
+    /** An inline value (variable/blueprint), stylable like a word: bold/italic/color apply to its text. */
+    | { interpolation: StoryInterpolationRef; marks?: StoryTextMarks };
+
+export type StoryVariableRef =
+    | { scope: "scene"; variableId: string }
+    | { scope: "saved"; variableId: string }
+    | { scope: "persistent"; storageKey: string };
+
+/** Legacy (schema v1) free-form variable reference, retained for migration + picker safety-net. */
+export type StoryVariableRefLegacy = {
+    scope: StoryVariableScopeLegacy;
     namespace?: string;
     key: string;
 };
 
+/**
+ * The stage singletons every scene has without a creator block: the scene background image
+ * (`Scene.background`) and NarraLeaf-React's two built-in layers. All are Displayables, so any of
+ * them can be a transform / show / hide / effect target.
+ */
+export type StoryDisplayableBuiltin = "background" | "backgroundLayer" | "displayableLayer";
+
 export type StoryDisplayableTargetRef = {
     kind?: StoryDisplayableTargetKind;
     name: string;
+    /**
+     * Stable identity of the displayable: the id of the action block that introduced it
+     * (character enter / image / text / layer). Displayables can only be declared statically,
+     * so this always points at a real creator block. When present it is the source of truth —
+     * the current stage name is resolved from that block, so the reference survives renames.
+     * `name` remains as a legacy fallback and last-known label when the source is unresolvable.
+     */
+    sourceBlockId?: StoryBlockId;
+    /**
+     * A built-in stage singleton (scene background / built-in layer) that has no creator block.
+     * When set it is the source of truth; `name`/`kind`/`sourceBlockId` are display fallbacks only.
+     */
+    builtin?: StoryDisplayableBuiltin;
 };
+
+/**
+ * Reference to the render layer an image/text is placed on. Layers can only be declared statically
+ * (by a `layer` create block) or be one of NarraLeaf-React's two built-in scene layers, so every
+ * valid target is discoverable by scanning the scene — never free-text.
+ *  - "default": one of NLR `Scene.backgroundLayer` (z-index -1) / `Scene.displayableLayer` (z-index
+ *    0, the default). An absent ref is equivalent to `{ kind: "default", layer: "displayable" }`.
+ *  - "custom": a user-declared layer, bound to the stable id of the `layer` create block. The
+ *    block's current name is resolved at every read site so the reference survives renames; `name`
+ *    is only a legacy fallback / last-known label (also the sole binding for pre-v3 documents whose
+ *    layer name never matched a create block).
+ */
+export type StoryLayerRef =
+    | { kind: "default"; layer: "background" | "displayable" }
+    | { kind: "custom"; sourceBlockId?: StoryBlockId; name?: string };
 
 export type StoryCharacterVariantSelection = string[] | Record<string, string>;
 
@@ -311,6 +459,16 @@ export type StoryConditionRef =
           target: StoryVariableRef;
           operator: "isTrue" | "isFalse" | "equals" | "notEquals" | "exists";
           value?: StoryLiteralValue;
+      }
+    | {
+          /**
+           * Blueprint-backed condition: the boolean is computed by an implicit Story Action Blueprint's
+           * "On Call" graph (owner kind `storyAction`, mode `condition`), mirroring how a blueprint
+           * interpolation evaluates a value. The graph's `Return Value` is typed boolean and coerced
+           * with `Boolean(...)` at evaluation. `blueprintId` is created lazily on first edit.
+           */
+          kind: "blueprint";
+          blueprintId: string;
       }
     | {
           kind: "expression";
@@ -348,7 +506,20 @@ export type StoryTransformRef = {
 };
 
 export type StoryTransitionRef = {
-    kind: "none" | "dissolve" | "fadeIn" | "maskCircle" | "maskWipe" | "darkness" | "custom";
+    kind:
+        | "none"
+        | "dissolve"
+        | "fadeIn"
+        | "maskCircle"
+        | "maskWipe"
+        | "softWipe"
+        | "blinds"
+        | "slide"
+        | "softIris"
+        | "blurDissolve"
+        | "throughColor"
+        | "darkness"
+        | "custom";
     durationMs?: number;
     easing?: string;
     props?: Record<string, StoryLiteralValue>;
@@ -361,7 +532,7 @@ export type StoryDiagnosticsMeta = {
 };
 
 export type StoryAnimationIndex = {
-    schemaVersion: StoryDocumentVersion;
+    schemaVersion: StoryAnimationSchemaVersion;
     animations: StoryAnimationIndexEntry[];
     meta?: StoryMeta;
 };
@@ -376,13 +547,21 @@ export type StoryAnimationIndexEntry = {
 };
 
 export type StoryAnimationAsset = {
-    schemaVersion: StoryDocumentVersion;
+    schemaVersion: StoryAnimationSchemaVersion;
     id: StoryAnimationAssetId;
     name: string;
     targetKind: StoryDisplayableTargetKind;
     timeline?: StoryAnimationTimeline;
     sequences: StoryAnimationSequence[];
     config?: StoryAnimationConfig;
+    /**
+     * Editor-only image asset rendered as the motion target in the Story Motion preview.
+     * This is a visualization hint and is NOT an animation target binding — it is
+     * ignored by the compiler and never affects the produced Transform.
+     */
+    previewAssetId?: string;
+    /** Editor-only image asset rendered as the stage background in the Story Motion preview. */
+    previewBackgroundAssetId?: string;
     meta?: StoryMeta;
 };
 

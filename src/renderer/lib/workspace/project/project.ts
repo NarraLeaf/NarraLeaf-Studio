@@ -1,4 +1,6 @@
 import { join } from "@shared/utils/path";
+import type { ProjectDependencyTable } from "@shared/types/pluginDependencies";
+import type { ProjectAppConfiguration } from "./configuration";
 
 export type Resolution = {
     width: number;
@@ -35,6 +37,19 @@ export interface ProjectConfig {
     name: string;
     identifier: string;
     metadata: Partial<ProjectMetadata>;
+    /**
+     * Application-level configuration that affects how the game runs and is
+     * packaged (network policy, etc.). Optional for backward compatibility with
+     * projects created before this field existed.
+     */
+    app?: ProjectAppConfiguration;
+    /**
+     * Machine-managed table of the plugins this project depends on, bound by
+     * plugin id. Derived by scanning plugin usage (see ProjectDependencyService);
+     * travels with the `.nlproj` on export so dependencies can be resolved on
+     * import and across Studio updates. Absent on projects that use no plugins.
+     */
+    dependencies?: ProjectDependencyTable;
 }
 
 export class Porject {

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Image as ImageIcon } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { PropertyEditorProps } from "./PropertyEditorBase";
 import { BasePropertyEditor } from "./BasePropertyEditor";
 import { AssetType, AssetData } from "@/lib/workspace/services/assets/assetTypes";
@@ -12,6 +13,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
  * Allows editing name, tags, and description for image assets
  */
 export function ImagePropertyEditor({ asset, onChange }: PropertyEditorProps<AssetType.Image>) {
+    const { t } = useTranslation();
     const { context } = useWorkspace();
     const [imageData, setImageData] = useState<AssetData<AssetType.Image> | null>(null);
 
@@ -40,27 +42,27 @@ export function ImagePropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
             {/* Technical Info (Read-only) */}
             {imageData && (
                 <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">
-                        Image Information
+                    <label className="block text-xs font-medium text-fg-muted mb-1">
+                        {t("properties.asset.image.info")}
                     </label>
-                    <div className="bg-[#1e1f22] border border-white/10 rounded-md p-3 space-y-1">
+                    <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-1">
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Dimensions:</span>
-                            <span className="text-gray-300">
+                            <span className="text-fg-muted">{t("properties.asset.info.dimensions")}:</span>
+                            <span className="text-fg-muted">
                                 {imageData.metadata.width} × {imageData.metadata.height}
                             </span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Format:</span>
-                            <span className="text-gray-300">{imageData.metadata.format.toUpperCase()}</span>
+                            <span className="text-fg-muted">{t("properties.asset.info.format")}:</span>
+                            <span className="text-fg-muted">{imageData.metadata.format.toUpperCase()}</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Size:</span>
-                            <span className="text-gray-300">{(imageData.metadata.size / 1024).toFixed(1)} KB</span>
+                            <span className="text-fg-muted">{t("properties.asset.info.size")}:</span>
+                            <span className="text-fg-muted">{(imageData.metadata.size / 1024).toFixed(1)} KB</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Hash:</span>
-                            <span className="text-gray-300 font-mono text-[10px]">{asset.hash.slice(0, 16)}...</span>
+                            <span className="text-fg-muted">{t("properties.asset.info.hash")}:</span>
+                            <span className="text-fg-muted font-mono text-2xs">{asset.hash.slice(0, 16)}...</span>
                         </div>
                     </div>
                 </div>

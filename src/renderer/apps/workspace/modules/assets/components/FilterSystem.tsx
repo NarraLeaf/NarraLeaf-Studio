@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Filter, ChevronDown, X, Tag, FileImage } from "lucide-react";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { useTranslation } from "@/lib/i18n";
 
 export interface FilterConfig {
     id: string;
@@ -33,6 +34,7 @@ export interface FilterSystemProps {
  * Extensible filter system component
  */
 export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilterOpen, className = "" }: FilterSystemProps) {
+    const { t } = useTranslation();
     const [isExpanded, setIsExpanded] = useState(false);
 
     const hasActiveFilters = activeFilters.length > 0;
@@ -85,13 +87,13 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
                     flex items-center gap-2 px-3 py-2 rounded-md border transition-colors
                     ${hasActiveFilters
                         ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-white/20 bg-white/5 hover:bg-white/10'
+                        : 'border-edge-strong bg-fill-subtle hover:bg-fill'
                     }
                 `}
             >
                 <Filter className="w-4 h-4" />
                 <span className="text-sm">
-                    Filters {hasActiveFilters && `(${activeFilters.length})`}
+                    {t("assets.filter.label")} {hasActiveFilters && `(${activeFilters.length})`}
                 </span>
                 <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
             </button>
@@ -112,18 +114,18 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
                         className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 transition-colors"
                     >
                         <X className="w-3 h-3" />
-                        Clear
+                        {t("common.clear")}
                     </button>
                 </div>
             )}
 
             {/* Filter Options Panel */}
             {isExpanded && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-[#0b0d12] border border-white/20 rounded-lg shadow-xl z-10">
+                <div className="absolute top-full left-0 right-0 mt-2 bg-surface-sunken border border-edge-strong rounded-lg shadow-xl z-10">
                     <div className="p-3 space-y-3">
                         {filters.map(filter => (
                             <div key={filter.id} className="space-y-2">
-                                <div className="flex items-center gap-2 text-sm text-gray-300">
+                                <div className="flex items-center gap-2 text-sm text-fg-muted">
                                     {filter.icon}
                                     <span>{filter.label}</span>
                                 </div>
@@ -138,7 +140,7 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
                                                     px-2 py-1 text-xs rounded transition-colors
                                                     ${isActive
                                                         ? 'bg-primary text-white'
-                                                        : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                                                        : 'bg-fill text-fg-muted hover:bg-fill-strong'
                                                     }
                                                 `}
                                             >

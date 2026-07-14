@@ -21,6 +21,7 @@ import type {
     PluginApproveResult,
     PluginInstallResult,
     PluginListItem,
+    RuntimePluginDescriptor,
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type {
@@ -32,6 +33,8 @@ import { AppEventToken } from "./app";
 export interface RendererPrivilegedInterface {
     fs: {
         selectFile(actor: PrivilegedActor, filters: string[], multiple: boolean): Promise<RequestStatus<FsRequestResult<string[]>>>;
+        /** Native save dialog; resolves to the chosen path, or null when cancelled. */
+        selectSaveFile(actor: PrivilegedActor, defaultFileName: string, filters: string[]): Promise<RequestStatus<FsRequestResult<string | null>>>;
         stat(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileStat>>>;
         list(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileStat[]>>>;
         details(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileDetails>>>;
@@ -160,6 +163,8 @@ export interface RendererPreloadedInterface {
             getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<{ value: GlobalStateValue<K> }>>;
             setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;
             getAllGlobalState(): Promise<RequestStatus<{ settings: Record<string, any> }>>;
+            /** Subscribe to global-state changes broadcast by the main process. */
+            onGlobalStateChanged(handler: (change: { key: GlobalStateKeys; value: any }) => void): AppEventToken;
         };
         addRecentProject(name: string, path: string): Promise<RequestStatus<void>>;
         getSystemPath(name: "desktop"): Promise<RequestStatus<{ path: string }>>;
@@ -228,6 +233,7 @@ export interface RendererPreloadedInterface {
         uninstall(pluginId: string): Promise<RequestStatus<void>>;
         revoke(pluginId: string): Promise<RequestStatus<PluginListItem>>;
         getWorkspacePlugins(): Promise<RequestStatus<{ plugins: WorkspacePluginDescriptor[] }>>;
+        getRuntimePlugins(): Promise<RequestStatus<{ plugins: RuntimePluginDescriptor[] }>>;
         reportLoadError(pluginId: string, error: string | null): Promise<RequestStatus<PluginListItem>>;
     };
 

@@ -1,4 +1,5 @@
 import React from "react";
+import { cn } from "../../utils/cn";
 
 export type SwitchSize = "sm" | "md" | "lg";
 export type SwitchVariant = "default";
@@ -60,27 +61,25 @@ export function Switch({
             aria-checked={checked}
             disabled={disabled || loading}
             onClick={handleClick}
-            className={`
-                relative inline-flex shrink-0 items-center rounded-full border p-0 transition-colors duration-200
-                appearance-none
-                focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#40a8c4]
-                ${disabled && !loading ? "opacity-50 cursor-not-allowed" : ""}
-                ${
-                    checked
-                        ? "bg-[#40a8c4]/70 border-transparent"
-                        : "bg-white/10 border-white/20 hover:bg-white/15"
-                }
-                ${currentSize.track}
-                ${className}
-            `}
+            className={cn(
+                "relative inline-flex shrink-0 items-center rounded-full border p-0 transition-colors duration-200",
+                "appearance-none",
+                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                disabled && !loading && "opacity-50 cursor-not-allowed",
+                checked
+                    ? "bg-primary/70 border-transparent"
+                    : "bg-fill border-edge-strong hover:bg-fill-strong",
+                currentSize.track,
+                className,
+            )}
             {...props}
         >
             <span
-                className={`
-                    pointer-events-none absolute left-1 top-1/2 block -translate-y-1/2 rounded-full bg-white/95 shadow-sm transition-transform duration-200
-                    ${currentSize.thumb}
-                    ${currentSize.thumbOffset}
-                `}
+                className={cn(
+                    "pointer-events-none absolute left-1 top-1/2 block -translate-y-1/2 rounded-full bg-fg shadow-sm transition-transform duration-200",
+                    currentSize.thumb,
+                    currentSize.thumbOffset,
+                )}
             />
         </button>
     );

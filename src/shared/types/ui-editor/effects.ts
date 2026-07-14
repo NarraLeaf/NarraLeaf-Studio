@@ -213,7 +213,11 @@ export const EFFECT_APPEARANCE_KEY_BY_KIND: Record<VisualEffectKind, keyof Eleme
 export const WIDGET_EFFECT_KINDS_BY_TYPE: Record<string, readonly VisualEffectKind[]> = {
     "nl.text": ["blur", "textShadow", "blend", "filter"],
     "nl.dialog.sentence": ["blur", "textShadow", "blend", "filter"],
+    "nl.nvl.texts": ["blur", "textShadow", "blend", "filter"],
     "nl.list": ["blur", "backgroundBlur", "shadow", "innerShadow", "blend", "glow", "filter"],
+    "nl.notification.list": ["blur", "backgroundBlur", "shadow", "innerShadow", "blend", "glow", "filter"],
+    "nl.choice.list": ["blur", "backgroundBlur", "shadow", "innerShadow", "blend", "glow", "filter"],
+    "nl.nvl.list": ["blur", "backgroundBlur", "shadow", "innerShadow", "blend", "glow", "filter"],
     "nl.container": [
         "blur",
         "backgroundBlur",

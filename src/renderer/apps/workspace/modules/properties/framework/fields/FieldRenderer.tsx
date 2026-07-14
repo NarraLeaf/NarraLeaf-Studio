@@ -158,7 +158,7 @@ function FieldRendererInner<TData>({ field, data, onSaving }: FieldRendererProps
             return (
                 <div className={field.className}>
                     {field.label && (
-                        <label className="block text-xs font-medium text-gray-400 mb-1">
+                        <label className="block text-xs font-medium text-fg-muted mb-1">
                             {field.label}
                         </label>
                     )}

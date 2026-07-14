@@ -1,5 +1,5 @@
 import { useCallback, type ClipboardEvent, type Dispatch, type SetStateAction } from "react";
-import type { StoryBlockId, StoryScene } from "@shared/types/story";
+import type { StoryBlockId, StoryScene, StorySceneId } from "@shared/types/story";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
@@ -24,6 +24,7 @@ export function useStorySceneClipboardHandlers(params: {
     storyId: string | undefined;
     sceneId: string | undefined;
     scene: StoryScene | null;
+    scenes: Record<StorySceneId, StoryScene> | undefined;
     characters: Character[];
     selectedBlockIds: Set<StoryBlockId>;
     activeBlockId: StoryBlockId | null;
@@ -91,7 +92,7 @@ export function useStorySceneClipboardHandlers(params: {
         if (isTextInputActive()) {
             return;
         }
-        const { scene, selectedBlockIds, activeBlockId, characters } = params;
+        const { scene, scenes, selectedBlockIds, activeBlockId, characters } = params;
         if (!scene) {
             return;
         }
@@ -107,7 +108,7 @@ export function useStorySceneClipboardHandlers(params: {
         };
         event.preventDefault();
         event.clipboardData.setData(STORY_ACTIONS_MIME, JSON.stringify(payload));
-        event.clipboardData.setData("text/plain", roots.map(id => exportBlockPlainText(scene.blocks[id], characters)).join("\n"));
+        event.clipboardData.setData("text/plain", roots.map(id => exportBlockPlainText(scene.blocks[id], characters, scenes)).join("\n"));
         params.setStatusText(`Copied ${roots.length} raw action row${roots.length === 1 ? "" : "s"}.`);
     }, [params]);
 

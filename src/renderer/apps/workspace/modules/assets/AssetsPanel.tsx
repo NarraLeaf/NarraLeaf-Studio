@@ -32,19 +32,18 @@ import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { AssetsListView } from "./views/AssetsListView";
 import { AssetsIconView } from "./views/AssetsIconView";
 import { useWorkspaceAssetDragOptional } from "@/apps/workspace/dnd/WorkspaceAssetDragProvider";
+import { useTranslation } from "@/lib/i18n";
 
 export type AssetViewMode = "list" | "icons";
 
-const VIEW_MODE_OPTIONS: { id: AssetViewMode; icon: ComponentType<any>; label: string }[] = [
+const VIEW_MODE_OPTIONS: { id: AssetViewMode; icon: ComponentType<any> }[] = [
     {
         id: "list",
         icon: LayoutList,
-        label: "List view",
     },
     {
         id: "icons",
         icon: LayoutGrid,
-        label: "Icon view",
     },
 ];
 
@@ -108,6 +107,7 @@ function resolveAssetGroupPathIds(pathIds: string[], groups: Record<AssetType, A
 }
 
 export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPanelPayload>) {
+    const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { registerActionGroup, unregisterActionGroup } = useRegistry();
     const searchBoxRef = useRef<HTMLInputElement>(null);
@@ -388,14 +388,14 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
 
         registerActionGroup({
             id: groupId,
-            label: "Edit",
+            label: t("common.edit"),
             order: 20,
             actions: [
                 {
                     id: `${groupId}-copy`,
-                    label: "Copy",
+                    label: t("common.copy"),
                     icon: <Copy className="w-4 h-4" />,
-                    tooltip: "Copy selected assets or groups",
+                    tooltip: t("assets.actions.copyTooltip"),
                     shortcut: "ctrl+c",
                     onClick: (_workspace) => handleCopyRef.current(),
                     disabled: !hasSelection || actionLoading,
@@ -404,9 +404,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                 },
                 {
                     id: `${groupId}-cut`,
-                    label: "Cut",
+                    label: t("common.cut"),
                     icon: <Scissors className="w-4 h-4" />,
-                    tooltip: "Cut selected assets or groups",
+                    tooltip: t("assets.actions.cutTooltip"),
                     shortcut: "ctrl+x",
                     onClick: (_workspace) => handleCutRef.current(),
                     disabled: !hasSelection || actionLoading,
@@ -415,9 +415,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                 },
                 {
                     id: `${groupId}-paste`,
-                    label: "Paste",
+                    label: t("common.paste"),
                     icon: <Clipboard className="w-4 h-4" />,
-                    tooltip: "Paste assets or groups",
+                    tooltip: t("assets.actions.pasteTooltip"),
                     shortcut: "ctrl+v",
                     onClick: (_workspace) => handlePasteRef.current(),
                     disabled: !hasClipboardContent || actionLoading,
@@ -426,9 +426,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                 },
                 {
                     id: `${groupId}-delete`,
-                    label: "Delete",
+                    label: t("common.delete"),
                     icon: <Trash className="w-4 h-4" />,
-                    tooltip: "Delete selected assets or groups",
+                    tooltip: t("assets.actions.deleteTooltip"),
                     shortcut: "delete",
                     onClick: (_workspace) => handleDeleteRef.current(),
                     disabled: !hasSelection || actionLoading,
@@ -441,7 +441,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         return () => {
             unregisterActionGroup(groupId);
         };
-    }, [context, panelId, selectedItems.size, clipboard?.assets.length, clipboard?.groups.length, actionLoading, focusArea]);
+    }, [context, panelId, selectedItems.size, clipboard?.assets.length, clipboard?.groups.length, actionLoading, focusArea, t]);
 
     useEffect(() => {
         if (showHeader) {
@@ -450,11 +450,11 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     }, [showHeader]);
 
     if (loading && !hasLoaded && Object.values(assets).every(arr => arr.length === 0)) {
-        return <div className="p-4 flex items-center gap-2 text-gray-400"><RefreshCw className="w-4 h-4 animate-spin" /> <span>Loading assets...</span></div>;
+        return <div className="p-4 flex items-center gap-2 text-fg-muted"><RefreshCw className="w-4 h-4 animate-spin" /> <span>{t("assets.loading")}</span></div>;
     }
 
     if (error) {
-        return <div className="p-4 text-red-400 flex items-start gap-2"><AlertCircle className="w-4 h-4" /> <div><p>Failed to load assets</p><p className="text-xs">{error}</p></div></div>;
+        return <div className="p-4 text-red-400 flex items-start gap-2"><AlertCircle className="w-4 h-4" /> <div><p>{t("assets.loadError")}</p><p className="text-xs">{error}</p></div></div>;
     }
 
     const contextValue = {
@@ -478,14 +478,14 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                 onClick={setFocusToPanel}
             >
                 {showHeader ? (
-                    <div className="px-3 py-2 border-b border-white/10 space-y-2">
-                        <SearchBox ref={searchBoxRef} value={searchQuery} onChange={setSearchQuery} className="w-full" placeholder="Search assets..." />
+                    <div className="px-3 py-2 border-b border-edge space-y-2">
+                        <SearchBox ref={searchBoxRef} value={searchQuery} onChange={setSearchQuery} className="w-full" placeholder={t("assets.searchPlaceholder")} />
                         <div className="flex items-center justify-between">
                             <FilterSystem filters={filterConfigs} activeFilters={activeFilters} onFiltersChange={setActiveFilters} onFilterOpen={handleFilterOpen} />
                             <div className="flex items-center gap-2">
-                                <span className="text-xs text-gray-400">{Object.values(filteredAssets).flat().length} items</span>
+                                <span className="text-xs text-fg-muted">{tn("assets.itemCount", Object.values(filteredAssets).flat().length)}</span>
                                 <ViewModeToggle mode={viewMode} onChange={setViewMode} />
-                                <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-white/10"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
+                                <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
                             </div>
                         </div>
                     </div>
@@ -493,10 +493,10 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     <div
                         className={
                             isSearchActive
-                                ? "px-3 py-2 border-b border-white/10 flex items-center gap-2 overflow-hidden"
+                                ? "px-3 py-2 border-b border-edge flex items-center gap-2 overflow-hidden"
                                 : assetsIconToolbarCenter
-                                  ? "px-3 py-2 border-b border-white/10 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 overflow-hidden"
-                                  : "px-3 py-2 border-b border-white/10 flex items-center justify-between gap-2 overflow-hidden"
+                                  ? "px-3 py-2 border-b border-edge grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 overflow-hidden"
+                                  : "px-3 py-2 border-b border-edge flex items-center justify-between gap-2 overflow-hidden"
                         }
                     >
                         <div
@@ -515,7 +515,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                         value={searchQuery}
                                         onChange={setSearchQuery}
                                         className="flex-1 min-w-0"
-                                        placeholder="Search assets..."
+                                        placeholder={t("assets.searchPlaceholder")}
                                     />
                                     <button
                                         onClick={() => {
@@ -523,8 +523,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                             setSearchQuery("");
                                             setSearchResultsVisible(false);
                                         }}
-                                        className="h-9 w-9 flex items-center justify-center rounded-md border border-white/20 bg-white/5 text-gray-400 hover:bg-white/10"
-                                        title="Close search"
+                                        className="h-9 w-9 flex items-center justify-center rounded-md border border-edge-strong bg-fill-subtle text-fg-muted hover:bg-fill"
+                                        title={t("assets.closeSearch")}
                                     >
                                         <X className="w-4 h-4" />
                                     </button>
@@ -548,9 +548,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                         className={`h-9 w-9 flex items-center justify-center rounded-md border transition-colors ${
                                             searchQuery
                                                 ? "border-primary bg-primary/10 text-primary"
-                                                : "border-white/20 bg-white/5 text-gray-400 hover:bg-white/10"
+                                                : "border-edge-strong bg-fill-subtle text-fg-muted hover:bg-fill"
                                         }`}
-                                        title="Search assets"
+                                        title={t("assets.searchTooltip")}
                                     >
                                         <Search className="w-4 h-4" />
                                     </button>
@@ -562,8 +562,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                 <button
                                     type="button"
                                     onClick={assetsIconToolbarCenter.onBack}
-                                    className="p-1 rounded hover:bg-white/10 shrink-0"
-                                    title="Back to parent group"
+                                    className="p-1 rounded hover:bg-fill shrink-0"
+                                    title={t("assets.backToParent")}
                                 >
                                     <ChevronLeft className="w-4 h-4" />
                                 </button>
@@ -578,9 +578,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                         : "flex items-center gap-2 shrink-0"
                                 }
                             >
-                                <span className="text-[10px] text-gray-500 hidden sm:inline">{Object.values(filteredAssets).flat().length} items</span>
+                                <span className="text-2xs text-fg-subtle hidden sm:inline">{tn("assets.itemCount", Object.values(filteredAssets).flat().length)}</span>
                                 <ViewModeToggle mode={viewMode} onChange={setViewMode} />
-                                <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-white/10"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
+                                <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
                             </div>
                         )}
                     </div>
@@ -632,20 +632,24 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
 }
 
 function ViewModeToggle({ mode, onChange }: { mode: AssetViewMode; onChange: (mode: AssetViewMode) => void }) {
+    const { t } = useTranslation();
     return (
-        <div className="inline-flex items-center gap-1 rounded-md border border-white/20 bg-white/5 p-1">
-            {VIEW_MODE_OPTIONS.map(({ id, icon: Icon, label }) => (
+        <div className="inline-flex items-center gap-1 rounded-md border border-edge-strong bg-fill-subtle p-1">
+            {VIEW_MODE_OPTIONS.map(({ id, icon: Icon }) => {
+                const label = id === "list" ? t("assets.view.list") : t("assets.view.icons");
+                return (
                 <button
                     key={id}
                     type="button"
                     title={label}
                     aria-pressed={mode === id}
                     onClick={() => onChange(id)}
-                    className={`p-1 rounded ${mode === id ? "bg-primary/80 text-white" : "text-gray-400 hover:bg-white/10"}`}
+                    className={`p-1 rounded ${mode === id ? "bg-primary/80 text-white" : "text-fg-muted hover:bg-fill"}`}
                 >
                     <Icon className="w-4 h-4" />
                 </button>
-            ))}
+                );
+            })}
         </div>
     );
 }

@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { getInterface, hardenRendererBridge, initializeRendererBridge } from "./app/bridge";
 import { CriticalErrorBoundary } from "./app/errorHandling/CriticalErrorBoundary";
 import { RenderingStatusAnnouncer } from "./components/announcers/RenderingStatusAnnouncer";
+import { initI18n } from "./i18n";
 
 import "@/styles/styles.css";
 
@@ -46,6 +47,10 @@ async function renderApp(children: React.ReactNode) {
         throw new Error("Failed to get app info");
     }
     appInfo = appResult.data;
+
+    // Load the persisted language + subscribe to live changes before the first
+    // paint, so every window renders in the right language with no flash.
+    await initI18n();
 
     console.log("[renderer] platformInfo", platformInfo);
     console.log("[renderer] appInfo", appInfo);

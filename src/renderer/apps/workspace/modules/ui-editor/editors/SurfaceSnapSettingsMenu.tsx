@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import type { SmartSnapDetailSettings } from "@/lib/ui-editor/snapping/types";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { SurfaceEditorToolbarSegButton, SurfaceEditorToolbarSegSlot } from "./SurfaceEditorToolbarButtonGroup";
@@ -51,6 +52,7 @@ function computeSnapSettingsPanelClientPosition(trigger: DOMRect, panel: DOMRect
  * Dropdown trigger + panel for per-category smart snap toggles (project settings).
  */
 export function SurfaceSnapSettingsTrigger({ stateService, detail }: Props) {
+    const { t } = useTranslation();
     const [open, setOpen] = useState(false);
     const [adjusted, setAdjusted] = useState({ x: 0, y: 0 });
     const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -137,40 +139,40 @@ export function SurfaceSnapSettingsTrigger({ stateService, detail }: Props) {
             <div
                 ref={panelRef}
                 data-snap-settings-panel="true"
-                className="fixed z-50 min-w-[220px] rounded-md border border-white/10 bg-[#1e1f22] py-2 shadow-lg"
+                className="fixed z-50 min-w-[220px] rounded-md border border-edge bg-surface-raised py-2 shadow-lg"
                 style={{ left: adjusted.x, top: adjusted.y }}
                 onMouseDown={e => e.stopPropagation()}
             >
-                <div className="border-b border-white/10 px-3 pb-2 text-[10px] font-medium uppercase tracking-wide text-gray-500">
-                    Snap targets
+                <div className="border-b border-edge px-3 pb-2 text-2xs font-medium tracking-wide text-fg-subtle">
+                    {t("uiEditor.snap.targets")}
                 </div>
                 <div className="pt-1">
-                    <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-gray-200 hover:bg-white/5">
+                    <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-fg hover:bg-fill-subtle">
                         <input
                             type="checkbox"
-                            className="h-3.5 w-3.5 rounded border border-white/20 bg-[#0b0d12] text-primary focus:ring-primary/40"
+                            className="h-3.5 w-3.5 rounded border border-edge-strong bg-surface-sunken text-primary focus:ring-primary/40"
                             checked={detail.snapCanvasLayout}
                             onChange={() => patch({ snapCanvasLayout: !stateService.getSmartSnapDetailSettings().snapCanvasLayout })}
                         />
-                        <span>Canvas layout (edges &amp; center)</span>
+                        <span>{t("uiEditor.snap.canvasLayout")}</span>
                     </label>
-                    <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-gray-200 hover:bg-white/5">
+                    <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-fg hover:bg-fill-subtle">
                         <input
                             type="checkbox"
-                            className="h-3.5 w-3.5 rounded border border-white/20 bg-[#0b0d12] text-primary focus:ring-primary/40"
+                            className="h-3.5 w-3.5 rounded border border-edge-strong bg-surface-sunken text-primary focus:ring-primary/40"
                             checked={detail.snapElementBorder}
                             onChange={() => patch({ snapElementBorder: !stateService.getSmartSnapDetailSettings().snapElementBorder })}
                         />
-                        <span>Element borders (edge to edge)</span>
+                        <span>{t("uiEditor.snap.elementBorders")}</span>
                     </label>
-                    <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-gray-200 hover:bg-white/5">
+                    <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-fg hover:bg-fill-subtle">
                         <input
                             type="checkbox"
-                            className="h-3.5 w-3.5 rounded border border-white/20 bg-[#0b0d12] text-primary focus:ring-primary/40"
+                            className="h-3.5 w-3.5 rounded border border-edge-strong bg-surface-sunken text-primary focus:ring-primary/40"
                             checked={detail.snapElementLayout}
                             onChange={() => patch({ snapElementLayout: !stateService.getSmartSnapDetailSettings().snapElementLayout })}
                         />
-                        <span>Element layout (centers)</span>
+                        <span>{t("uiEditor.snap.elementLayout")}</span>
                     </label>
                 </div>
             </div>,
@@ -185,7 +187,7 @@ export function SurfaceSnapSettingsTrigger({ stateService, detail }: Props) {
                     type="button"
                     active={open}
                     onClick={toggle}
-                    title="Snap settings"
+                    title={t("uiEditor.snap.settings")}
                     aria-expanded={open}
                     aria-haspopup="dialog"
                 >

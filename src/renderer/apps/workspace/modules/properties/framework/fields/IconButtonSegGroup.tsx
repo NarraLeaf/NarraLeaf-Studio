@@ -8,9 +8,9 @@ import type {
 
 const groupColors = {
     base: "bg-[#1c1d20]",
-    border: "border border-white/10",
-    active: "bg-white/10 text-white",
-    idle: "bg-transparent text-gray-300 hover:bg-white/10",
+    border: "border border-edge",
+    active: "bg-fill text-white",
+    idle: "bg-transparent text-fg-muted hover:bg-fill",
 };
 
 export type IconButtonSegGroupProps = {
@@ -112,7 +112,7 @@ export function IconButtonSegGroup({
 
     return (
         <div
-            className={`flex divide-x divide-white/10 rounded-md overflow-hidden ${groupColors.border} ${groupColors.base} ${className}`}
+            className={`flex divide-x divide-edge rounded-md overflow-hidden ${groupColors.border} ${groupColors.base} ${className}`}
         >
             {options.map(option => {
                 const isActive =
@@ -139,7 +139,7 @@ export function IconButtonSegGroup({
                         >
                             <span className="text-base leading-none">{option.icon}</span>
                             {showLabels && option.label ? (
-                                <span className="text-xs uppercase tracking-wide">{option.label}</span>
+                                <span className="text-xs tracking-wide">{option.label}</span>
                             ) : null}
                         </div>
                     </button>

@@ -21,6 +21,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { Services } from "@/lib/workspace/services/services";
 import { useWorkspace } from "../../../context";
+import { useTranslation } from "@/lib/i18n";
 import { SearchBox } from "./SearchBox";
 import { FilterSystem } from "./FilterSystem";
 import { useAssetData } from "../state/useAssetData";
@@ -106,6 +107,7 @@ export function AssetSelector({
     onClose,
     onConfirm,
 }: AssetSelectorProps) {
+    const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { assets, groups, loading, hasLoaded, error, loadAssets } = useAssetData({ context, isInitialized });
     const { filterConfigs, activeFilters, setActiveFilters, handleFilterOpen, filteredAssets, filteredGroups } = useAssetFilters({ assets, groups });
@@ -440,13 +442,13 @@ export function AssetSelector({
                         <div key={group.id} className="mb-1">
                             <button
                                 onClick={() => toggleGroup(group.id)}
-                                className="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-white/5 transition-colors text-left"
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-fill-subtle transition-colors text-left"
                                 style={{ paddingLeft: `${paddingLeft + 8}px` }}
                             >
                                 <ChevronRight
-                                    className={`w-3 h-3 text-gray-400 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                                    className={`w-3 h-3 text-fg-muted transition-transform ${isExpanded ? "rotate-90" : ""}`}
                                 />
-                                <span className="text-sm flex-1 truncate text-gray-100">{group.name}</span>
+                                <span className="text-sm flex-1 truncate text-fg">{group.name}</span>
                             </button>
                             {isExpanded && (
                                 <div className="space-y-1">{renderGroup(group.id, level + 1)}</div>
@@ -488,16 +490,16 @@ export function AssetSelector({
                 onClick={() => handleItemClick(asset)}
                 onMouseEnter={(e) => handlePreviewEnter(asset, e.currentTarget)}
                 onMouseLeave={hidePreview}
-                className={`w-full text-left rounded-md px-3 py-2 flex items-center gap-2 transition-colors hover:bg-white/5 ${
+                className={`w-full text-left rounded-md px-3 py-2 flex items-center gap-2 transition-colors hover:bg-fill-subtle ${
                     isSelected ? "bg-primary/20 border border-primary/60" : "border border-transparent"
                 }`}
                 style={{ paddingLeft: `${20 + level * 12}px` }}
             >
-                <ItemIcon className="w-4 h-4 text-gray-400" />
+                <ItemIcon className="w-4 h-4 text-fg-muted" />
                 <div className="flex-1 min-w-0">
                     <div className="text-sm truncate">{asset.name}</div>
-                    <div className="text-[11px] text-gray-500 truncate">
-                        {asset.tags?.length ? asset.tags.join(", ") : "No tags"}
+                    <div className="text-2xs text-fg-subtle truncate">
+                        {asset.tags?.length ? asset.tags.join(", ") : t("assets.noTags")}
                     </div>
                 </div>
                 {isSelected && <Check className="w-4 h-4 text-primary flex-shrink-0" />}
@@ -518,13 +520,13 @@ export function AssetSelector({
                             <button
                                 type="button"
                                 onClick={() => toggleVirtualGroup(group.id)}
-                                className="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-white/5 transition-colors text-left"
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-fill-subtle transition-colors text-left"
                                 style={{ paddingLeft: `${rootHeaderPad}px` }}
                             >
                                 <ChevronRight
-                                    className={`w-3 h-3 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? "rotate-90" : ""}`}
+                                    className={`w-3 h-3 text-fg-muted transition-transform flex-shrink-0 ${isExpanded ? "rotate-90" : ""}`}
                                 />
-                                <span className="text-sm flex-1 truncate text-gray-100">{group.title}</span>
+                                <span className="text-sm flex-1 truncate text-fg">{group.title}</span>
                             </button>
                             {isExpanded && (
                                 <div className="space-y-1">
@@ -596,7 +598,7 @@ export function AssetSelector({
     }
 
     const Icon = ASSET_TYPE_ICONS[assetType];
-    const headerLabel = title ?? `Select ${ASSET_TYPE_LABELS[assetType]}`;
+    const headerLabel = title ?? t("assets.selector.selectType", { type: ASSET_TYPE_LABELS[assetType] });
 
     const panel = (
         <div
@@ -610,16 +612,16 @@ export function AssetSelector({
             <div
                 ref={panelRef}
                 style={anchorRef?.current ? { position: "fixed", top: anchorStyle.top, left: anchorStyle.left, width: anchorStyle.width } : { width: anchorStyle.width }}
-                className={`${anchorRef?.current ? "" : "mt-12 mx-auto"} bg-[#0b0d12] border border-white/20 rounded-lg shadow-2xl text-gray-200 max-h-[560px] flex flex-col ${className}`}
+                className={`${anchorRef?.current ? "" : "mt-12 mx-auto"} bg-surface-sunken border border-edge-strong rounded-lg shadow-2xl text-fg max-h-[560px] flex flex-col ${className}`}
                 onMouseDown={(e) => e.stopPropagation()}
             >
-                <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-edge">
                     <div className="flex items-center gap-2">
                         <Icon className="w-4 h-4 text-primary" />
                         <div className="flex flex-col">
                             <span className="text-sm font-semibold">{headerLabel}</span>
-                            <span className="text-xs text-gray-400">
-                                {virtualAssetCount > 0 ? `${typeAssets.length + virtualAssetCount} items` : `${typeAssets.length} items`}
+                            <span className="text-xs text-fg-muted">
+                                {virtualAssetCount > 0 ? tn("assets.itemCount", typeAssets.length + virtualAssetCount) : tn("assets.itemCount", typeAssets.length)}
                             </span>
                         </div>
                     </div>
@@ -627,23 +629,23 @@ export function AssetSelector({
                         <button
                             onClick={handleImportAssets}
                             disabled={loading}
-                            className="p-1 rounded hover:bg-white/10 disabled:opacity-50"
-                            title="Import from disk"
+                            className="p-1 rounded hover:bg-fill disabled:opacity-50"
+                            title={t("assets.selector.importFromDisk")}
                         >
                             <FolderOpen className="w-4 h-4" />
                         </button>
                         <button
                             onClick={onClose}
-                            className="p-1 rounded hover:bg-white/10"
-                            title="Close"
+                            className="p-1 rounded hover:bg-fill"
+                            title={t("common.close")}
                         >
                             <X className="w-4 h-4" />
                         </button>
                     </div>
                 </div>
 
-                <div className="p-4 space-y-3 border-b border-white/10">
-                    <SearchBox value={searchQuery} onChange={setSearchQuery} placeholder="Search assets..." />
+                <div className="p-4 space-y-3 border-b border-edge">
+                    <SearchBox value={searchQuery} onChange={setSearchQuery} placeholder={t("assets.searchPlaceholder")} />
                     <FilterSystem
                         filters={filterConfigs}
                         activeFilters={activeFilters}
@@ -653,21 +655,21 @@ export function AssetSelector({
                 </div>
 
                 {loading && !hasLoaded ? (
-                    <div className="flex items-center justify-center py-8 text-gray-400 gap-2">
+                    <div className="flex items-center justify-center py-8 text-fg-muted gap-2">
                         <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Loading assets...</span>
+                        <span>{t("assets.loading")}</span>
                     </div>
                 ) : error ? (
                     <div className="flex items-start gap-2 px-4 py-6 text-red-400">
                         <AlertCircle className="w-4 h-4 mt-0.5" />
                         <div className="text-sm">
-                            <div>Failed to load assets</div>
+                            <div>{t("assets.loadError")}</div>
                             <div className="text-xs text-red-300/80">{error}</div>
                         </div>
                     </div>
                 ) : displayedAssets.length === 0 && !hasVisibleVirtualAssets ? (
-                    <div className="px-4 py-8 text-center text-sm text-gray-500">
-                        No assets match the current filters
+                    <div className="px-4 py-8 text-center text-sm text-fg-subtle">
+                        {t("assets.selector.noAssets")}
                     </div>
                 ) : (
                     <div className="flex-1 overflow-y-auto px-2 py-3 space-y-2">
@@ -695,31 +697,31 @@ export function AssetSelector({
                 )}
 
                 {multiple && (
-                    <div className="px-4 py-3 border-t border-white/10 flex items-center justify-between bg-black/20">
-                        <div className="text-xs text-gray-400">
-                            {selection.size} selected
+                    <div className="px-4 py-3 border-t border-edge flex items-center justify-between bg-black/20">
+                        <div className="text-xs text-fg-muted">
+                            {t("assets.selector.selectedCount", { count: selection.size })}
                             {selection.size > 0 && (
                                 <button
                                     onClick={() => setSelection(new Set())}
                                     className="ml-2 text-red-400 hover:text-red-300"
                                 >
-                                    Clear
+                                    {t("common.clear")}
                                 </button>
                             )}
                         </div>
                         <div className="flex gap-2">
                             <button
                                 onClick={onClose}
-                                className="px-3 py-1.5 text-sm rounded-md bg-white/5 hover:bg-white/10 text-gray-200"
+                                className="px-3 py-1.5 text-sm rounded-md bg-fill-subtle hover:bg-fill text-fg"
                             >
-                                Cancel
+                                {t("common.cancel")}
                             </button>
                             <button
                                 onClick={handleConfirm}
                                 disabled={selection.size === 0}
                                 className="px-3 py-1.5 text-sm rounded-md bg-primary text-white hover:bg-primary/90 disabled:opacity-60"
                             >
-                                Choose
+                                {t("assets.selector.choose")}
                             </button>
                         </div>
                     </div>
@@ -740,7 +742,7 @@ export function AssetSelector({
                         width: 240,
                         height: 240,
                     }}
-                    className="z-50 pointer-events-none border border-white/20 rounded-lg shadow-2xl bg-black/70 overflow-hidden backdrop-blur"
+                    className="z-50 pointer-events-none border border-edge-strong rounded-lg shadow-2xl bg-black/70 overflow-hidden backdrop-blur"
                 >
                     <img src={previewState.url} alt={previewState.asset.name} className="w-full h-full object-contain bg-black/60" />
                 </div>

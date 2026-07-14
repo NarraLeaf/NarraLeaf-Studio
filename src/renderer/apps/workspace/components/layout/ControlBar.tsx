@@ -2,6 +2,7 @@ import React from "react";
 import { Settings, PanelLeft, PanelRight, PanelBottom } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
 import { WindowAppType } from "@shared/types/window";
+import { useTranslation } from "@/lib/i18n";
 
 interface ControlBarProps {
     leftSidebarVisible: boolean;
@@ -24,6 +25,7 @@ export function ControlBar({
     onToggleRightSidebar,
     onToggleBottomPanel,
 }: ControlBarProps) {
+    const { t } = useTranslation();
     const handleOpenSettings = async () => {
         await getInterface().app.launchSettings({});
     };
@@ -36,12 +38,12 @@ export function ControlBar({
                 className={`
                     w-8 h-8 rounded flex items-center justify-center transition-colors cursor-default
                     ${leftSidebarVisible
-                        ? "bg-white/15 text-white"
-                        : "text-gray-400 hover:bg-white/10 hover:text-white"
+                        ? "bg-fill-strong text-white"
+                        : "text-fg-muted hover:bg-fill hover:text-white"
                     }
                 `}
-                title="Toggle Left Sidebar"
-                aria-label="Toggle Left Sidebar"
+                title={t("workspace.shell.toggleLeftSidebar")}
+                aria-label={t("workspace.shell.toggleLeftSidebar")}
             >
                 <PanelLeft className="w-4 h-4" />
             </button>
@@ -52,12 +54,12 @@ export function ControlBar({
                 className={`
                     w-8 h-8 rounded flex items-center justify-center transition-colors cursor-default
                     ${bottomPanelVisible
-                        ? "bg-white/15 text-white"
-                        : "text-gray-400 hover:bg-white/10 hover:text-white"
+                        ? "bg-fill-strong text-white"
+                        : "text-fg-muted hover:bg-fill hover:text-white"
                     }
                 `}
-                title="Toggle Bottom Panel"
-                aria-label="Toggle Bottom Panel"
+                title={t("workspace.shell.toggleBottomPanel")}
+                aria-label={t("workspace.shell.toggleBottomPanel")}
             >
                 <PanelBottom className="w-4 h-4" />
             </button>
@@ -68,12 +70,12 @@ export function ControlBar({
                 className={`
                     w-8 h-8 rounded flex items-center justify-center transition-colors cursor-default
                     ${rightSidebarVisible
-                        ? "bg-white/15 text-white"
-                        : "text-gray-400 hover:bg-white/10 hover:text-white"
+                        ? "bg-fill-strong text-white"
+                        : "text-fg-muted hover:bg-fill hover:text-white"
                     }
                 `}
-                title="Toggle Right Sidebar"
-                aria-label="Toggle Right Sidebar"
+                title={t("workspace.shell.toggleRightSidebar")}
+                aria-label={t("workspace.shell.toggleRightSidebar")}
             >
                 <PanelRight className="w-4 h-4" />
             </button>
@@ -81,9 +83,9 @@ export function ControlBar({
             {/* Settings Button */}
             <button
                 onClick={handleOpenSettings}
-                className="w-8 h-8 rounded flex items-center justify-center text-gray-400 hover:bg-white/10 hover:text-white transition-colors cursor-default"
-                title="Open Settings"
-                aria-label="Open Settings"
+                className="w-8 h-8 rounded flex items-center justify-center text-fg-muted hover:bg-fill hover:text-white transition-colors cursor-default"
+                title={t("workspace.shell.openSettings")}
+                aria-label={t("workspace.shell.openSettings")}
             >
                 <Settings className="w-4 h-4" />
             </button>

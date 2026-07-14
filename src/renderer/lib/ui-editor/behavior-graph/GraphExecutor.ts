@@ -33,6 +33,7 @@ export type ExecuteGraphOptions = {
     persistentVariables?: Record<string, BlueprintPersistentVariable>;
     valueExecution?: Pick<NonNullable<BehaviorNodeExecutionContext["valueExecution"]>, "trackDependency">;
     signal?: AbortSignal;
+    fnCallDepth?: number;
 };
 
 export type ExecuteGraphResult = {
@@ -120,6 +121,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
             executionOwner: options.executionOwner,
             persistentVariables: options.persistentVariables,
             valueExecution,
+            fnCallDepth: options.fnCallDepth,
         };
 
         let result: BehaviorNodeExecuteResult | void;

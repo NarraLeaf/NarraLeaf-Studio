@@ -2,6 +2,9 @@
 export { useModuleLoader } from "./useModuleLoader";
 export { useWorkspacePlugins } from "./useWorkspacePlugins";
 
+// Editor layout preferences
+export { useMaxActiveEditors } from "./useMaxActiveEditors";
+
 // UI Service hooks
 export {
     useUIService,

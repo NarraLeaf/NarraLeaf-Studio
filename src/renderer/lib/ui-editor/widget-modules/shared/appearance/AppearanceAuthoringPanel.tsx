@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, Star, Trash2 } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type {
     AppearanceFieldTransition,
@@ -133,6 +134,7 @@ export function AppearanceAuthoringPanel({
     inspectorData,
     draftResetKey,
 }: AppearanceAuthoringPanelProps) {
+    const { t } = useTranslation();
     const elementId = inspectorData.element.id;
     const [selectedVariantId, setSelectedVariantId] = useState<string>(() => {
         if (!isUsableAppearanceModel(appearance)) {
@@ -283,13 +285,15 @@ export function AppearanceAuthoringPanel({
     if (!isUsableAppearanceModel(model)) {
         return (
             <p className="text-xs text-amber-200/90 leading-relaxed px-1 py-2">
-                Appearance data is missing or invalid for this element. This editor requires a serialized appearance
-                model. Create a new element from the palette to get a valid appearance block.
+                {t("widgetAppearance.panel.invalidModel")}
             </p>
         );
     }
 
-    const variantOptions = model.variants.map(v => ({ value: v.id, label: v.name || v.id }));
+    const variantOptions = model.variants.map(v => ({
+        value: v.id,
+        label: v.name || t("widgetAppearance.variant.untitled"),
+    }));
 
     const handleAddVariant = () => {
         const base = selectedVariant ?? model.variants[0];
@@ -297,7 +301,7 @@ export function AppearanceAuthoringPanel({
             return;
         }
         const id = newVariantId();
-        const nextName = `Variant ${model.variants.length + 1}`;
+        const nextName = t("widgetAppearance.variant.defaultName", { index: model.variants.length + 1 });
         const variant = cloneVariantShallow(base, id, nextName);
         onReplace(addVariant(model, variant));
         setSelectedVariantId(id);
@@ -352,34 +356,34 @@ export function AppearanceAuthoringPanel({
                 </div>
                 <button
                     type="button"
-                    title="Add variant (duplicate current)"
+                    title={t("widgetAppearance.variant.addTitle")}
                     onClick={handleAddVariant}
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/5 text-gray-300 hover:bg-white/10"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-edge bg-fill-subtle text-fg-muted hover:bg-fill"
                 >
                     <Plus className="w-4 h-4" />
                 </button>
                 <button
                     type="button"
-                    title="Set as default variant"
+                    title={t("widgetAppearance.variant.setDefaultTitle")}
                     onClick={handleSetDefault}
                     disabled={!selectedVariant || model.defaultVariantId === selectedVariant.id}
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/5 text-gray-300 hover:bg-white/10 disabled:opacity-40"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-edge bg-fill-subtle text-fg-muted hover:bg-fill disabled:opacity-40"
                 >
                     <Star className="w-4 h-4" />
                 </button>
                 <button
                     type="button"
-                    title="Delete variant"
+                    title={t("widgetAppearance.variant.deleteTitle")}
                     onClick={handleRemoveVariant}
                     disabled={model.variants.length <= 1}
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/5 text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-edge bg-fill-subtle text-red-300 hover:bg-red-500/10 disabled:opacity-40"
                 >
                     <Trash2 className="w-4 h-4" />
                 </button>
             </div>
 
             <div className="min-w-0">
-                <label className="text-[10px] uppercase tracking-wide text-gray-500 block mb-1">Variant name</label>
+                <label className="text-2xs tracking-wide text-fg-subtle block mb-1">{t("widgetAppearance.variant.nameLabel")}</label>
                 <EnhancedInput
                     key={selectedVariant?.id}
                     value={selectedVariant?.name ?? ""}

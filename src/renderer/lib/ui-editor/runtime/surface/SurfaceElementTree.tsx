@@ -8,7 +8,7 @@ import {
     getUIComponentLink,
     isUIElementFlowLayoutChild,
 } from "@shared/types/ui-editor/document";
-import type { UIListItemScope } from "@shared/types/ui-editor/list";
+import { isListLikeWidgetType, type UIListItemScope } from "@shared/types/ui-editor/list";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { EditorNodeWrapper } from "@/lib/ui-editor/runtime/EditorNodeWrapper";
@@ -197,7 +197,7 @@ function renderSurfaceElementTreeWithValueRuntime(
 
 function NestedSurfacePlaceholder({ label }: { label: string }) {
     return (
-        <div className="flex h-full w-full items-center justify-center bg-black/20 px-3 text-center text-xs text-gray-400">
+        <div className="flex h-full w-full items-center justify-center bg-black/20 px-3 text-center text-xs text-fg-muted">
             {label}
         </div>
     );
@@ -671,10 +671,10 @@ function cloneElementRenderSnapshot(element: UIElement): UIElement {
     };
 }
 
-function ComponentInstancePlaceholder({ label }: { label: string }) {
+function ComponentInstancePlaceholder({ message }: { message: string }) {
     return (
-        <div className="flex h-full w-full items-center justify-center border border-dashed border-white/20 bg-black/20 px-3 text-center text-xs text-gray-400">
-            {label}
+        <div className="flex h-full w-full items-center justify-center border border-dashed border-edge-strong bg-black/20 px-3 text-center text-xs text-fg-muted">
+            {message}
         </div>
     );
 }
@@ -701,14 +701,14 @@ function renderLinkedComponentInstanceContent(input: {
     }
     const component = input.document.components?.find(item => item.id === link.componentId);
     if (!component) {
-        return <ComponentInstancePlaceholder label="Missing component" />;
+        return <ComponentInstancePlaceholder message="Missing component" />;
     }
     if (input.componentPath.includes(component.id)) {
-        return <ComponentInstancePlaceholder label="Component loop blocked" />;
+        return <ComponentInstancePlaceholder message="Component loop blocked" />;
     }
     const root = component.elements[component.rootElementId];
     if (!root) {
-        return <ComponentInstancePlaceholder label="Component root missing" />;
+        return <ComponentInstancePlaceholder message="Component root missing" />;
     }
 
     const rootWidth = Math.max(1, Math.abs(root.layout.width));
@@ -873,7 +873,7 @@ function renderElementTree(
         .filter((node): node is ReactNode => node !== null);
     };
 
-    const children = resolved.type === "nl.list" || resolved.type === "nl.slider" ? [] : renderChildren();
+    const children = isListLikeWidgetType(resolved.type) || resolved.type === "nl.slider" ? [] : renderChildren();
 
     const renderer = rendererRegistry.get(resolved.type);
     const linkedComponentContent = renderLinkedComponentInstanceContent({
@@ -918,6 +918,7 @@ function renderElementTree(
                   />
               ),
               instanceKey,
+              listItemScope: listItemScope ?? null,
               runtimeData: blueprintBindingContext
                   ? {
                         surfaceState: blueprintBindingContext.surfaceState,

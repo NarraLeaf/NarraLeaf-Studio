@@ -17,15 +17,17 @@ Unlike traditional lightweight editors, NarraLeaf Studio does not require users 
 - An easy-to-learn, command-based story editing system that requires no knowledge of external programming languages
 - WYSIWYG application previews, along with cross-platform production and packaging capabilities
 
-## Features
-
-### Studio
+## Studio
 
 ### NarraLeaf Team
 
 ### Game Compatibility
 
 For game compatibility, see [docs/game-compatibility.md](docs/game-compatibility.md).
+
+## Asset protection
+
+NarraLeaf Studio is open source, with one exception: an optional asset-protection component that is **not** open source. For details, see [docs/asset-protection.md](docs/asset-protection.md).
 
 ## Development
 

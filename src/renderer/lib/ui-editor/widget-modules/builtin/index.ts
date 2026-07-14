@@ -8,6 +8,10 @@ import { ListWidgetModule } from "./list";
 import { FrameWidgetModule } from "./frame";
 import { SliderWidgetModule } from "./slider";
 import { DialogSentenceWidgetModule } from "./dialog";
+import { NotificationListWidgetModule } from "./notificationList";
+import { ChoiceListWidgetModule } from "./choiceList";
+import { NvlListWidgetModule } from "./nvlList";
+import { NvlTextsWidgetModule } from "./nvl";
 
 /**
  * All built-in widget modules registered at startup (includes internal `nl.root`).
@@ -23,6 +27,10 @@ export const BuiltinWidgetModules: UIWidgetModule[] = [
     ListWidgetModule,
     FrameWidgetModule,
     DialogSentenceWidgetModule,
+    NotificationListWidgetModule,
+    ChoiceListWidgetModule,
+    NvlListWidgetModule,
+    NvlTextsWidgetModule,
 ];
 
 /** Runs optional `registerBlueprintNodes` on each built-in module (idempotent per module). */

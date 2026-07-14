@@ -14,10 +14,10 @@ type Props = {
  */
 export function CompactModuleCard({ title, headerRight, headerHoverAction, children }: Props) {
     return (
-        <div className="group rounded-lg border border-white/10 bg-black/20 p-2.5 space-y-2 min-w-0">
+        <div className="group rounded-lg border border-edge bg-black/20 p-2.5 space-y-2 min-w-0">
             <div className="flex items-start justify-between gap-2 min-w-0">
                 <div className="flex items-center gap-1.5 min-w-0 shrink">
-                    <div className="text-xs font-medium text-gray-200 shrink-0 pt-0.5">{title}</div>
+                    <div className="text-xs font-medium text-fg shrink-0 pt-0.5">{title}</div>
                     {headerHoverAction ? (
                         <div className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                             {headerHoverAction}

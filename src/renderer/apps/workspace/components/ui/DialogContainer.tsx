@@ -4,11 +4,13 @@ import { useWorkspace } from "../../context";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
+import { useTranslation } from "@/lib/i18n";
 
 /**
  * Individual dialog component
  */
 function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => void }) {
+    const { t } = useTranslation();
     const dialogRef = useRef<HTMLDivElement | null>(null);
     const defaultButtonRef = useRef<HTMLButtonElement | null>(null);
     const defaultButtonIndex = dialog.buttons?.findIndex(button => button.primary && !button.disabled) ?? -1;
@@ -53,7 +55,7 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
                 tabIndex={-1}
                 role="dialog"
                 aria-modal="true"
-                className="relative bg-[#1e1e1e] border border-white/10 rounded-lg shadow-2xl max-h-[90vh] overflow-hidden animate-scale-in"
+                className="relative bg-surface-overlay border border-edge rounded-lg shadow-2xl max-h-[90vh] overflow-hidden animate-scale-in"
                 style={{
                     width: dialog.width ?? 500,
                     height: dialog.height,
@@ -78,15 +80,15 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
                 }}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-edge">
                     <h2 className="text-lg font-semibold text-white">{dialog.title}</h2>
                     {dialog.closable && (
                         <button
                             onClick={onClose}
-                            className="p-1 rounded hover:bg-white/10 transition-colors"
-                            aria-label="Close"
+                            className="p-1 rounded hover:bg-fill transition-colors"
+                            aria-label={t("common.close")}
                         >
-                            <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="w-5 h-5 text-fg-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
                         </button>
@@ -96,16 +98,16 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
                 {/* Content */}
                 <div className="px-6 py-4 overflow-y-auto" style={{ maxHeight: dialog.height ? `calc(${dialog.height}px - 140px)` : 'calc(90vh - 140px)' }}>
                     {dialog.message && (
-                        <p className="text-sm text-gray-200 whitespace-pre-wrap">{dialog.message}</p>
+                        <p className="text-sm text-fg whitespace-pre-wrap">{dialog.message}</p>
                     )}
                     {dialog.content && (
-                        <div className="text-gray-200">{dialog.content}</div>
+                        <div className="text-fg">{dialog.content}</div>
                     )}
                 </div>
 
                 {/* Footer with buttons */}
                 {dialog.buttons && dialog.buttons.length > 0 && (
-                    <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-white/10 bg-[#252525]">
+                    <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-edge bg-surface-overlay">
                         {dialog.buttons.map((button, index) => (
                             <button
                                 key={index}
@@ -119,10 +121,10 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
                                 className={`
                                     px-4 py-2 text-sm rounded transition-colors
                                     ${button.disabled
-                                        ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                                        ? "bg-gray-700 text-fg-subtle cursor-not-allowed"
                                         : button.primary
                                             ? "bg-primary hover:bg-primary/80 text-white font-medium"
-                                            : "bg-white/5 hover:bg-white/10 text-gray-300"
+                                            : "bg-fill-subtle hover:bg-fill text-fg-muted"
                                     }
                                 `}
                             >

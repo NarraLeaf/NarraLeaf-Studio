@@ -1,3 +1,4 @@
+import { translate } from "@/lib/i18n";
 import type { DockerBarContext, DockerBarItem } from "@/lib/ui-editor/widget-modules/types";
 import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
@@ -46,8 +47,8 @@ export function createTextDockerBarItems(ctx: DockerBarContext): DockerBarItem[]
     {
       kind: "number",
       id: "docker-text-font-size",
-      label: "Size",
-      tooltip: "Font size",
+      label: translate("widgetChrome.dockerItems.size"),
+      tooltip: translate("widgetChrome.dockerItems.fontSize"),
       value: props.fontSize,
       min: 8,
       max: 256,
@@ -65,13 +66,13 @@ export function createTextDockerBarItems(ctx: DockerBarContext): DockerBarItem[]
     {
       kind: "select",
       id: "docker-text-align",
-      label: "Align",
-      tooltip: "Text alignment",
+      label: translate("widgetChrome.dockerItems.align"),
+      tooltip: translate("widgetChrome.dockerItems.textAlign"),
       value: props.textAlign,
       options: [
-        { value: "left", label: "Left" },
-        { value: "center", label: "Center" },
-        { value: "right", label: "Right" },
+        { value: "left", label: translate("widgetChrome.dockerItems.left") },
+        { value: "center", label: translate("widgetChrome.dockerItems.center") },
+        { value: "right", label: translate("widgetChrome.dockerItems.right") },
       ],
       onChange: (value: string | number) => {
         patchTextDockerProps(ctx, {

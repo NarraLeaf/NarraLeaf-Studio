@@ -9,6 +9,27 @@
     --narraleaf-accent-weak: color-mix(in srgb, var(--narraleaf-accent) 60%, transparent);
     --narraleaf-accent-tint: rgba(64, 168, 196, 0.18);
     --narraleaf-accent-tint: color-mix(in srgb, var(--narraleaf-accent) 18%, transparent);
+
+    /*
+     * Design-system color tokens (space-separated RGB channels).
+     * Single source of truth: tailwind.config.js maps these into the
+     * `surface`/`fg`/`binding`/… utilities via rgb(var(--x) / <alpha-value>),
+     * and raw CSS / inline styles can reference them with rgb(var(--x)).
+     * See docs/design-system.md.
+     */
+    --nl-surface-canvas: 5 6 10;      /* #05060a */
+    --nl-surface-sunken: 11 13 18;    /* #0b0d12 */
+    --nl-surface: 15 17 21;           /* #0f1115 */
+    --nl-surface-raised: 30 31 34;    /* #1e1f22 */
+    --nl-surface-overlay: 34 36 42;   /* #22242a */
+    --nl-fg: 238 241 245;             /* #eef1f5 */
+    --nl-fg-muted: 154 163 174;       /* #9aa3ae */
+    --nl-fg-subtle: 107 116 128;      /* #6b7480 */
+    --nl-binding: 126 112 194;        /* #7e70c2 */
+    --nl-danger: 218 105 88;          /* #da6958 */
+    --nl-success: 109 176 148;        /* #6db094 */
+    --nl-warning: 204 170 92;         /* #ccaa5c */
+
     --nl-window-titlebar-height: 40px;
     --nl-window-content-height: calc(100vh - var(--nl-window-titlebar-height));
 }
@@ -312,4 +333,44 @@ input[type="radio"]:focus {
 
 .ui-editor-node[data-ui-crop-dim="true"] {
     filter: brightness(0.5);
+}
+
+/*
+ * Container-responsive field grid used by the Story action property cards.
+ *
+ * Columns collapse based on the card's OWN width (auto-fit), not the window
+ * width, so a docked/narrow editor pane no longer forces multi-column rows.
+ * The `min(<track>, 100%)` guard clamps a single column to the available
+ * width, which guarantees the grid can never overflow horizontally; `> *
+ * { min-width: 0 }` lets each field's content truncate instead of pushing
+ * the row wider.
+ */
+.nl-field-grid {
+    display: grid;
+    column-gap: 0.75rem;
+    row-gap: 0.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
+}
+
+.nl-field-grid-2 {
+    grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+}
+
+.nl-field-grid-4 {
+    grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
+}
+
+.nl-field-grid > * {
+    min-width: 0;
+}
+
+/*
+ * Inline value / pause chips are contentEditable=false, so the browser draws no selection highlight
+ * on them. When the rich-text editor flags a chip as selected (`data-selected`), give it a themed
+ * highlight behind the whole chip, matching a text selection.
+ */
+.story-rt-interp[data-selected="true"],
+.story-rt-pause[data-selected="true"] {
+    background-color: var(--narraleaf-accent-weak);
+    box-shadow: inset 0 0 0 1px var(--narraleaf-accent-strong);
 }

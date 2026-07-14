@@ -1,3 +1,4 @@
+import { useTranslation } from "@/lib/i18n";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { ImageFillField } from "@/apps/workspace/modules/properties/framework/fields/ImageFillField";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
@@ -86,6 +87,7 @@ export function CompactBackgroundAppearance({
     moduleMotionFieldsConfigured,
     setFieldTransition,
 }: CompactBackgroundAppearanceProps) {
+    const { t } = useTranslation();
     const getBg = (key: string) => getRowValueForModuleEdit(variant, key, editMode);
 
     const patchBg = (key: string, value: AppearanceRowValue) => {
@@ -98,7 +100,7 @@ export function CompactBackgroundAppearance({
     const imageFillFieldDef: ImageFillFieldDefinition<UIInspectorData> = {
         type: "imageFill",
         id: imageFillFieldId,
-        label: "Image fill",
+        label: t("widgetAppearance.fields.imageFill"),
         getValue: () => {
             const raw = getBg("imageFill");
             if (raw && typeof raw === "object" && "mode" in (raw as object)) {
@@ -118,7 +120,7 @@ export function CompactBackgroundAppearance({
 
     return (
         <CompactModuleCard
-            title="Background"
+            title={t("widgetAppearance.background.title")}
             headerHoverAction={
                 <ModuleMotionMenuButton
                     enabled={motionVisible}
@@ -180,7 +182,7 @@ export function CompactBackgroundAppearance({
                                 min={0}
                                 max={100}
                                 precision={null}
-                                leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                                leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                                 className="w-full min-w-0"
                             />
                             {motionVisible ? (
@@ -198,7 +200,7 @@ export function CompactBackgroundAppearance({
                             type="button"
                             onClick={() => patchBg("fillVisible", !Boolean(getBg("fillVisible") ?? true))}
                             aria-pressed={Boolean(getBg("fillVisible") ?? true)}
-                            aria-label="Toggle background visibility"
+                            aria-label={t("widgetAppearance.background.toggleVisibilityAria")}
                             className={controlButtonClass(Boolean(getBg("fillVisible") ?? true))}
                         >
                             {Boolean(getBg("fillVisible") ?? true) ? (
@@ -237,7 +239,7 @@ export function CompactBackgroundAppearance({
                                     min={0}
                                     max={100}
                                     precision={null}
-                                    leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                                    leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                                     className="w-full min-w-0"
                                 />
                                 {motionVisible ? (
@@ -255,7 +257,7 @@ export function CompactBackgroundAppearance({
                                 type="button"
                                 onClick={() => patchBg("fillVisible", !Boolean(getBg("fillVisible") ?? true))}
                                 aria-pressed={Boolean(getBg("fillVisible") ?? true)}
-                                aria-label="Toggle background visibility"
+                                aria-label={t("widgetAppearance.background.toggleVisibilityAria")}
                                 className={controlButtonClass(Boolean(getBg("fillVisible") ?? true))}
                             >
                                 {Boolean(getBg("fillVisible") ?? true) ? (

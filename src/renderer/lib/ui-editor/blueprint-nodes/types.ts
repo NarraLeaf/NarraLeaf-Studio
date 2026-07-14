@@ -89,6 +89,12 @@ export type BlueprintNodeDynamicInputPinsConfig = {
     pinLabelParamKey?: string;
     /** Optional prefix used when initializing labels in pinLabelParamKey. */
     defaultPinLabelPrefix?: string;
+    /** Optional param key storing per-pin valueType overrides (Record<pinId, valueType>). */
+    pinValueTypeParamKey?: string;
+    /** Allowed valueTypes for the on-card per-pin type picker; presence enables the picker. */
+    pinValueTypeOptions?: readonly string[];
+    /** When true, generated OUTPUT pins also get remove/label/type controls (default: inputs only). */
+    editableGeneratedOutputPins?: boolean;
 };
 
 export type BlueprintJsonValueSchema = {
@@ -113,6 +119,8 @@ export type BlueprintInspectorParamKind =
     | "literal"
     | "variableRef"
     | "persistentVariableRef"
+    | "sceneVariableRef"
+    | "savedVariableRef"
     | "select"
     | "imageAsset"
     | "buttonCursor";
@@ -171,6 +179,7 @@ export type BlueprintNodeScope = {
 export type BlueprintNodeRole =
     | "normal"
     | "eventHead"
+    | "fnHead"
     | "functionEntry"
     | "reroute"
     | "dataLiteral"
@@ -252,6 +261,12 @@ export type BlueprintPaletteContext = {
     hasFunctionEntry?: boolean;
     /** Blueprint Value graphs have a restricted palette and value-return sink. */
     isBlueprintValueGraph?: boolean;
+    /**
+     * Sync-only graphs (e.g. inline story value blueprints) forbid async/"latent" nodes but still
+     * allow synchronous exec nodes (branches, Get/Set var). Distinct from `isBlueprintValueGraph`,
+     * which additionally restricts to the pure widget-value node whitelist.
+     */
+    isSyncOnlyGraph?: boolean;
     /** Current widget owner is rendered inside an nl.list item template. */
     listItemContextAvailable?: boolean;
     /** Bound Element Literal nodes in the active graph, same Surface only. */
@@ -288,6 +303,12 @@ export type BlueprintNodeEditorCatalogEntry = {
     dynamicInputPinAddLabel?: string;
     /** Param key storing user-visible labels for dynamic input pins, if editable. */
     dynamicInputPinLabelParamKey?: string;
+    /** Param key storing per-pin valueType overrides for dynamic pins, if editable. */
+    dynamicInputPinTypeParamKey?: string;
+    /** Allowed valueTypes for the on-card per-pin type picker. */
+    dynamicInputPinTypeOptions?: readonly string[];
+    /** When true, generated dynamic pins are outputs; the add-pin button renders in the output column. */
+    dynamicPinsGenerateOutputs?: boolean;
     /** Present when this palette entry was derived from a bound Element output. */
     magicElementRef?: BlueprintMagicElementRefPaletteEntry;
 };

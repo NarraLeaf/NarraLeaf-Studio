@@ -26,10 +26,10 @@ export function Item({
             className={`
                 w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors
                 ${disabled
-                    ? "text-gray-500 cursor-not-allowed opacity-50"
+                    ? "text-fg-subtle cursor-not-allowed opacity-50"
                     : active
-                        ? "bg-white/10 text-white cursor-default"
-                        : "text-gray-300 hover:bg-white/10 hover:text-white cursor-default"
+                        ? "bg-fill text-white cursor-default"
+                        : "text-fg-muted hover:bg-fill hover:text-white cursor-default"
                 }
                 ${className}
             `}

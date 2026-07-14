@@ -8,6 +8,7 @@ import { ListRenderer } from "@/lib/ui-editor/widget-modules/builtin/list/render
 import { FrameRenderer } from "@/lib/ui-editor/widget-modules/builtin/frame/renderer";
 import { SliderRenderer } from "@/lib/ui-editor/widget-modules/builtin/slider/renderer";
 import { DialogSentenceRenderer } from "@/lib/ui-editor/widget-modules/builtin/dialog/renderer";
+import { NvlTextsRenderer } from "@/lib/ui-editor/widget-modules/builtin/nvl/renderer";
 import type { ElementRendererDefinition } from "../ElementRendererRegistry";
 
 /**
@@ -52,5 +53,21 @@ export const BuiltinElementRenderers: ElementRendererDefinition[] = [
     {
         type: "nl.dialog.sentence",
         render: props => createElement(DialogSentenceRenderer, props),
+    },
+    {
+        type: "nl.notification.list",
+        render: props => createElement(ListRenderer, props),
+    },
+    {
+        type: "nl.choice.list",
+        render: props => createElement(ListRenderer, props),
+    },
+    {
+        type: "nl.nvl.list",
+        render: props => createElement(ListRenderer, props),
+    },
+    {
+        type: "nl.nvl.texts",
+        render: props => createElement(NvlTextsRenderer, props),
     },
 ];

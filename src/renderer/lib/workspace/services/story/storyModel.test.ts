@@ -404,6 +404,132 @@ describe("storyModel", () => {
         }
     });
 
+    it("preserves dialogue pause and displayable effect fields through normalization", () => {
+        const now = "2026-06-08T00:00:00.000Z";
+        const document = createEmptyStoryDocument({
+            id: STORY_ID_1,
+            name: "Story",
+            now,
+            generateId: idFactory(),
+        });
+        const scene = document.scenes[document.entrySceneId!];
+        insertBlockInScene(scene, {
+            id: "say",
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "dialogue",
+                characterId: "char-1",
+                pauseAfter: 400,
+                text: { textId: "t1", role: "dialogue", value: "Hi" },
+            },
+        }, { parentId: null });
+        insertBlockInScene(scene, {
+            id: "fx",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "displayable",
+                operation: "wipe",
+                target: { name: "hero", kind: "image" },
+                durationMs: 500,
+                easing: "easeOut",
+                effectProps: { direction: "right", reverse: true },
+            },
+        }, { parentId: null });
+
+        const normalized = normalizeStoryDocument(document, now);
+        const normalizedScene = normalized.scenes[document.entrySceneId!];
+
+        expect((normalizedScene.blocks.say.payload as any).pauseAfter).toBe(400);
+        expect((normalizedScene.blocks.fx.payload as any).operation).toBe("wipe");
+        expect((normalizedScene.blocks.fx.payload as any).effectProps).toEqual({ direction: "right", reverse: true });
+        expect((normalizedScene.blocks.fx.payload as any).durationMs).toBe(500);
+    });
+
+    it("migrates legacy image/text layerName strings to stable layer refs (v2 → v3)", () => {
+        const now = "2026-06-08T00:00:00.000Z";
+        const document = createEmptyStoryDocument({
+            id: STORY_ID_1,
+            name: "Story",
+            now,
+            generateId: idFactory(),
+        });
+        const scene = document.scenes[document.entrySceneId!];
+        insertBlockInScene(scene, {
+            id: "layer-block",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: { action: "layer", operation: "create", objectName: "Foreground", zIndex: 2 },
+        }, { parentId: null });
+        insertBlockInScene(scene, {
+            id: "img-bound",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            // Legacy free-text layer name matching the layer block (case-insensitively).
+            payload: { action: "image", operation: "create", objectName: "hero", layerName: "foreground" },
+        } as unknown as StoryBlock, { parentId: null });
+        insertBlockInScene(scene, {
+            id: "text-orphan",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            // Legacy layer name with no matching layer block — keeps the last-known name only.
+            payload: { action: "text", operation: "create", objectName: "caption", layerName: "ghost" },
+        } as unknown as StoryBlock, { parentId: null });
+        (document as { schemaVersion: number }).schemaVersion = 2;
+
+        const normalized = normalizeStoryDocument(document, now);
+        const migratedScene = normalized.scenes[document.entrySceneId!];
+
+        expect(normalized.schemaVersion).toBe(3);
+        expect((migratedScene.blocks["img-bound"].payload as Record<string, unknown>).layerName).toBeUndefined();
+        expect((migratedScene.blocks["img-bound"].payload as Record<string, unknown>).layer).toEqual({
+            kind: "custom",
+            sourceBlockId: "layer-block",
+            name: "foreground",
+        });
+        expect((migratedScene.blocks["text-orphan"].payload as Record<string, unknown>).layer).toEqual({
+            kind: "custom",
+            name: "ghost",
+        });
+    });
+
+    it("preserves rich text runs through normalization", () => {
+        const now = "2026-06-08T00:00:00.000Z";
+        const document = createEmptyStoryDocument({
+            id: STORY_ID_2,
+            name: "Story",
+            now,
+            generateId: idFactory(),
+        });
+        const scene = document.scenes[document.entrySceneId!];
+        insertBlockInScene(scene, {
+            id: "say",
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "dialogue",
+                text: {
+                    textId: "t",
+                    role: "dialogue",
+                    value: "Hi there",
+                    rich: [{ text: "Hi " }, { text: "there", marks: { bold: true } }],
+                },
+            },
+        }, { parentId: null });
+
+        const normalized = normalizeStoryDocument(document, now);
+
+        expect((normalized.scenes[document.entrySceneId!].blocks.say.payload as any).text.rich)
+            .toEqual([{ text: "Hi " }, { text: "there", marks: { bold: true } }]);
+    });
+
     it("does not allow jump blocks to own children", () => {
         const document = createEmptyStoryDocument({
             id: STORY_ID_3,

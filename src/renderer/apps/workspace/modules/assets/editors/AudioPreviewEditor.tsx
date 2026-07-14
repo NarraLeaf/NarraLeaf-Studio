@@ -8,6 +8,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ActionDefinition, useRegistry } from "../../../registry";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
+import { useTranslation } from "@/lib/i18n";
 
 interface AudioPreviewPayload {
     asset: Asset<AssetType.Audio>;
@@ -26,7 +27,8 @@ function formatDuration(seconds: number): string {
  * Audio preview editor component
  * Displays audio with playback controls and metadata
  */
-export function AudioPreviewEditor({ tabId, payload }: EditorComponentProps<AudioPreviewPayload>) {
+export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentProps<AudioPreviewPayload>) {
+    const { t, tn } = useTranslation();
     const { context } = useWorkspace();
     const [audioData, setAudioData] = useState<AssetData<AssetType.Audio> | null>(null);
     const [loading, setLoading] = useState(true);
@@ -49,7 +51,7 @@ export function AudioPreviewEditor({ tabId, payload }: EditorComponentProps<Audi
         const playAction: ActionDefinition = {
             id: `${namespace}:${groupId}-play`,
             icon: <Play className="w-4 h-4" />,
-            label: "Play",
+            label: t("assets.audio.play"),
             shortcut: "Space",
             onClick: () => {
                 const el = audioRef.current;
@@ -64,12 +66,12 @@ export function AudioPreviewEditor({ tabId, payload }: EditorComponentProps<Audi
 
         registerActionGroup({
             id: groupId,
-            label: "Playback",
+            label: t("assets.audio.playback"),
             actions: [playAction],
         });
 
         return () => unregisterActionGroup(groupId);
-    }, [registerActionGroup, unregisterActionGroup, tabId]);
+    }, [registerActionGroup, unregisterActionGroup, tabId, t]);
 
     const asset = payload?.asset;
 
@@ -92,7 +94,7 @@ export function AudioPreviewEditor({ tabId, payload }: EditorComponentProps<Audi
                 const result = await assetsService.fetch(asset);
 
                 if (!result.success) {
-                    setError(result.error || "Failed to load audio");
+                    setError(result.error || t("assets.audio.loadError"));
                     return;
                 }
 
@@ -173,12 +175,21 @@ export function AudioPreviewEditor({ tabId, payload }: EditorComponentProps<Audi
         };
     }, []);
 
+    // Kept-alive tabs stay mounted while hidden; pause playback when this tab isn't visible, since
+    // display:none does not stop an <audio> element.
+    useEffect(() => {
+        if (!active) {
+            audioRef.current?.pause();
+            setIsPlaying(false);
+        }
+    }, [active]);
+
     if (loading) {
         return (
-            <div className="h-full flex items-center justify-center bg-[#0f1115]">
-                <div className="flex items-center gap-2 text-gray-400">
+            <div className="h-full flex items-center justify-center bg-surface">
+                <div className="flex items-center gap-2 text-fg-muted">
                     <RefreshCw className="w-5 h-5 animate-spin" />
-                    <span>Loading audio...</span>
+                    <span>{t("assets.audio.loading")}</span>
                 </div>
             </div>
         );
@@ -186,11 +197,11 @@ export function AudioPreviewEditor({ tabId, payload }: EditorComponentProps<Audi
 
     if (error) {
         return (
-            <div className="h-full flex items-center justify-center bg-[#0f1115] p-4">
+            <div className="h-full flex items-center justify-center bg-surface p-4">
                 <div className="flex items-start gap-2 text-red-400 bg-red-500/10 rounded-md p-4 max-w-md">
                     <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
                     <div>
-                        <p className="font-medium">Failed to load audio</p>
+                        <p className="font-medium">{t("assets.audio.loadError")}</p>
                         <p className="text-sm mt-1 text-red-300">{error}</p>
                     </div>
                 </div>
@@ -205,31 +216,31 @@ export function AudioPreviewEditor({ tabId, payload }: EditorComponentProps<Audi
     const { metadata } = audioData;
 
     return (
-        <div className="h-full flex flex-col bg-[#0f1115]">
+        <div className="h-full flex flex-col bg-surface">
             {/* Toolbar */}
-            <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#1e1f22]">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-edge bg-surface-raised">
                 <div className="flex items-center gap-4">
-                    <span className="text-sm text-gray-300">
+                    <span className="text-sm text-fg-muted">
                         {formatDuration(metadata.duration)}
                     </span>
-                    <span className="text-sm text-gray-400">
+                    <span className="text-sm text-fg-muted">
                         {metadata.sampleRate} Hz
                     </span>
-                    <span className="text-sm text-gray-400">
-                        {metadata.channels} channel{metadata.channels > 1 ? "s" : ""}
+                    <span className="text-sm text-fg-muted">
+                        {tn("assets.audio.channelCount", metadata.channels)}
                     </span>
-                    <span className="text-sm text-gray-400">
+                    <span className="text-sm text-fg-muted">
                         {metadata.format.toUpperCase()}
                     </span>
-                    <span className="text-sm text-gray-400">
+                    <span className="text-sm text-fg-muted">
                         {(metadata.size / 1024).toFixed(1)} KB
                     </span>
                 </div>
 
                 <button
                     onClick={handlePlayPause}
-                    className="p-2 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
-                    title={isPlaying ? "Pause" : "Play"}
+                    className="p-2 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors"
+                    title={isPlaying ? t("assets.audio.pause") : t("assets.audio.play")}
                 >
                     {isPlaying ? (
                         <Pause className="w-5 h-5" />
@@ -251,12 +262,12 @@ export function AudioPreviewEditor({ tabId, payload }: EditorComponentProps<Audi
                     onLoadedMetadata={handleLoadedMetadata}
                     onTimeUpdate={handleTimeUpdate}
                 />
-                <div className="w-full max-w-2xl bg-[#15171c] border border-white/10 rounded-md px-4 py-3">
+                <div className="w-full max-w-2xl bg-[#15171c] border border-edge rounded-md px-4 py-3">
                     <div className="flex items-center gap-3">
                         <button
                             onClick={handlePlayPause}
-                            className="p-2 rounded hover:bg-white/10 text-gray-300 hover:text-white transition-colors"
-                            title={isPlaying ? "Pause" : "Play"}
+                            className="p-2 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors"
+                            title={isPlaying ? t("assets.audio.pause") : t("assets.audio.play")}
                         >
                             {isPlaying ? (
                                 <Pause className="w-4 h-4" />
@@ -264,7 +275,7 @@ export function AudioPreviewEditor({ tabId, payload }: EditorComponentProps<Audi
                                 <Play className="w-4 h-4" />
                             )}
                         </button>
-                        <span className="text-xs text-gray-400 w-12 text-right">
+                        <span className="text-xs text-fg-muted w-12 text-right">
                             {formatDuration(currentTime)}
                         </span>
                         <input
@@ -274,16 +285,16 @@ export function AudioPreviewEditor({ tabId, payload }: EditorComponentProps<Audi
                             step={0.01}
                             value={Math.min(currentTime, duration || 0)}
                             onChange={(event) => handleSeek(Number(event.target.value))}
-                            className="flex-1 h-1 rounded bg-white/10 accent-white/70"
-                            aria-label="Seek"
+                            className="flex-1 h-1 rounded bg-fill accent-white/70"
+                            aria-label={t("assets.audio.seek")}
                         />
-                        <span className="text-xs text-gray-400 w-12">
+                        <span className="text-xs text-fg-muted w-12">
                             {formatDuration(duration)}
                         </span>
                         <button
                             onClick={toggleMute}
-                            className="p-2 rounded hover:bg-white/10 text-gray-300 hover:text-white transition-colors"
-                            title={isMuted ? "Unmute" : "Mute"}
+                            className="p-2 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors"
+                            title={isMuted ? t("assets.audio.unmute") : t("assets.audio.mute")}
                         >
                             {isMuted || volume === 0 ? (
                                 <VolumeX className="w-4 h-4" />
@@ -304,12 +315,12 @@ export function AudioPreviewEditor({ tabId, payload }: EditorComponentProps<Audi
                                     setIsMuted(false);
                                 }
                             }}
-                            className="w-24 h-1 rounded bg-white/10 accent-white/70"
-                            aria-label="Volume"
+                            className="w-24 h-1 rounded bg-fill accent-white/70"
+                            aria-label={t("assets.audio.volume")}
                         />
                     </div>
                 </div>
-                <p className="mt-3 text-sm text-gray-500">{asset?.name}</p>
+                <p className="mt-3 text-sm text-fg-subtle">{asset?.name}</p>
             </div>
         </div>
     );
