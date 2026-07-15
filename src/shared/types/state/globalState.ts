@@ -17,7 +17,16 @@ export interface GlobalStateType extends Record<string, any> {
     "editor.softWrap": boolean;
     "editor.maxActiveEditors": number;
     "workspace.restoreLastWorkspace": boolean;
-    "workspace.confirmOnClose": boolean;
+    /**
+     * Ask for confirmation before a workspace window closes.
+     *
+     * Replaces the legacy `workspace.confirmOnClose`, which shipped as an unread placeholder
+     * defaulting to true and is therefore already persisted as true in existing profiles —
+     * defaulting *this* feature to off was only possible under a key nobody has on disk.
+     */
+    "workspace.confirmBeforeClose": boolean;
+    /** Closing the last workspace reopens the launcher; when false, the app quits instead. */
+    "workspace.returnToLauncherOnClose": boolean;
     "workspace.recentProjectsLimit": number;
     "workspace.autoSave": boolean;
     "sync.autoBackup": boolean;
@@ -53,7 +62,8 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "editor.softWrap": false,
     "editor.maxActiveEditors": 8,
     "workspace.restoreLastWorkspace": true,
-    "workspace.confirmOnClose": true,
+    "workspace.confirmBeforeClose": false,
+    "workspace.returnToLauncherOnClose": true,
     "workspace.recentProjectsLimit": 10,
     "workspace.autoSave": true,
     "sync.autoBackup": true,

@@ -40,8 +40,6 @@ export const menu = {
     view: {
         title: "View",
         reload: "Reload",
-        forceReload: "Force Reload",
-        toggleDevTools: "Toggle Developer Tools",
         resetZoom: "Actual Size",
         zoomIn: "Zoom In",
         zoomOut: "Zoom Out",

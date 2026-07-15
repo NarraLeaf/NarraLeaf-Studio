@@ -12,7 +12,7 @@ export const assets = {
     noTags: "无标签",
     preview: "预览",
     unknownError: "未知错误",
-    emptyType: "还没有{label}",
+    emptyType: "还没有 {label}",
     types: {
         image: "图片",
         audio: "音频",
