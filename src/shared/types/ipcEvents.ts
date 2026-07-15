@@ -6,7 +6,7 @@ import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbilit
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
-import type { GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
+import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
@@ -124,6 +124,7 @@ export enum IPCEventType {
     gameBuildCancel = "gameBuild.cancel",
     gameBuildGetStatus = "gameBuild.getStatus",
     gameBuildSelectOutputDir = "gameBuild.selectOutputDir",
+    gameBuildPreflight = "gameBuild.preflight",
 
     blueprintPersistenceGetAll = "blueprintPersistence.getAll",
     blueprintPersistenceGetValue = "blueprintPersistence.getValue",
@@ -930,6 +931,17 @@ export type IPCGameBuildEvents = {
         };
         response: {
             path: string | null;
+        };
+    };
+    [IPCEventType.gameBuildPreflight]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            request: GameBuildRequest;
+        };
+        response: {
+            findings: BuildPreflightFinding[];
         };
     };
 };

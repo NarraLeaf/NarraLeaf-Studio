@@ -39,6 +39,7 @@ import {
 import {
     GameBuildCancelHandler,
     GameBuildGetStatusHandler,
+    GameBuildPreflightHandler,
     GameBuildSelectOutputDirHandler,
     GameBuildStartHandler,
 } from "./handlers/gameBuildAction";
@@ -135,6 +136,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new GameBuildCancelHandler(),
         new GameBuildGetStatusHandler(),
         new GameBuildSelectOutputDirHandler(),
+        new GameBuildPreflightHandler(),
 
         // Blueprint persistent variable storage handlers
         new BlueprintPersistenceGetAllHandler(),

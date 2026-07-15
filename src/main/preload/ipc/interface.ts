@@ -7,7 +7,7 @@ import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalSta
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults } from "@shared/types/window";
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
-import type { GameBuildRequest, GameBuildStateSnapshot } from "@shared/types/gameBuild";
+import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "@shared/types/gameBuild";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
@@ -288,6 +288,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.gameBuildGetStatus, { projectPath }) as Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>,
         selectOutputDir: (defaultPath?: string) =>
             ipcClient.invoke(IPCEventType.gameBuildSelectOutputDir, { defaultPath }) as Promise<RequestStatus<{ path: string | null }>>,
+        preflight: (projectPath: string, request: GameBuildRequest) =>
+            ipcClient.invoke(IPCEventType.gameBuildPreflight, { projectPath, request }) as Promise<RequestStatus<{ findings: BuildPreflightFinding[] }>>,
     },
 
     blueprintPersistence: {

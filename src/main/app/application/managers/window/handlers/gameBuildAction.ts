@@ -43,6 +43,20 @@ export class GameBuildGetStatusHandler extends IPCHandler<IPCEventType.gameBuild
     }
 }
 
+export class GameBuildPreflightHandler extends IPCHandler<IPCEventType.gameBuildPreflight> {
+    readonly name = IPCEventType.gameBuildPreflight;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, request }: IPCEvents[IPCEventType.gameBuildPreflight]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.gameBuildPreflight]["response"]>> {
+        return this.tryUse(async () => ({
+            findings: await window.getApp().getGameBuildManager().preflight(projectPath, request),
+        }));
+    }
+}
+
 export class GameBuildSelectOutputDirHandler extends IPCHandler<IPCEventType.gameBuildSelectOutputDir> {
     readonly name = IPCEventType.gameBuildSelectOutputDir;
     readonly type = IPCMessageType.request;

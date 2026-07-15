@@ -9,7 +9,7 @@ import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
-import type { GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
+import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
@@ -229,6 +229,8 @@ export interface RendererPreloadedInterface {
         cancel(projectPath: string): Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>;
         getStatus(projectPath: string): Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>;
         selectOutputDir(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
+        /** Run the build's checks without building; advisory, `start` re-checks. */
+        preflight(projectPath: string, request: GameBuildRequest): Promise<RequestStatus<{ findings: BuildPreflightFinding[] }>>;
     };
 
     blueprintPersistence: {

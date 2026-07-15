@@ -2,7 +2,13 @@ import { Service } from "../Service";
 import { Services, type WorkspaceContext } from "../services";
 import { getInterface } from "@/lib/app/bridge";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
-import type { GameBuildRequest, GameBuildStateSnapshot, GameBuildStatus } from "@shared/types/gameBuild";
+import type {
+    BuildPreflightFinding,
+    BuildPreflightSection,
+    GameBuildRequest,
+    GameBuildStateSnapshot,
+    GameBuildStatus,
+} from "@shared/types/gameBuild";
 import { EventEmitter } from "../ui/EventEmitter";
 import { ConsoleService } from "./ConsoleService";
 import { CharacterService } from "./CharacterService";
@@ -12,6 +18,16 @@ import { UIGraphService } from "../ui-editor/UIGraphService";
 
 type BuildServiceEvents = {
     stateChanged: GameBuildStateSnapshot;
+};
+
+/**
+ * A build dialog session the user has not committed yet. Lives on the service
+ * (see getDraft) so closing the dialog mid-configuration does not discard it.
+ */
+export type BuildDialogDraft = {
+    request: GameBuildRequest;
+    /** Section the dialog was showing, so reopening lands where the user left. */
+    section: BuildPreflightSection;
 };
 
 const IDLE_STATE: GameBuildStateSnapshot = { status: "idle" };
@@ -42,6 +58,7 @@ export class BuildService extends Service<BuildService> {
     private timer: ReturnType<typeof setInterval> | null = null;
     private clearProgressTimer: ReturnType<typeof setTimeout> | null = null;
     private refreshInFlight = false;
+    private draft: BuildDialogDraft | null = null;
     private readonly events = new EventEmitter<BuildServiceEvents>();
 
     protected async init(_ctx: WorkspaceContext): Promise<void> {
@@ -58,11 +75,44 @@ export class BuildService extends Service<BuildService> {
             clearTimeout(this.clearProgressTimer);
             this.clearProgressTimer = null;
         }
+        this.draft = null;
         this.events.clear();
+    }
+
+    /**
+     * The build dialog's in-flight selection, parked here rather than in the
+     * dialog component so it survives the dialog closing. That round trip is a
+     * real flow: the icon rows close the dialog to open the project panel's
+     * asset settings, and the user expects to come back to what they had.
+     *
+     * Deliberately memory-only and never persisted — only starting a build
+     * writes BuildConfiguration to the project. A draft is a half-finished
+     * thought, not a preference.
+     */
+    public getDraft(): BuildDialogDraft | null {
+        return this.draft;
+    }
+
+    public setDraft(draft: BuildDialogDraft): void {
+        this.draft = draft;
+    }
+
+    public clearDraft(): void {
+        this.draft = null;
     }
 
     public getState(): GameBuildStateSnapshot {
         return this.state;
+    }
+
+    /**
+     * Ask the main process what this selection would complain about. Advisory:
+     * the pipeline re-runs every check, so a preflight that misses something
+     * (or fails outright) can only cost a late error, never a bad build.
+     */
+    public async preflight(request: GameBuildRequest): Promise<BuildPreflightFinding[]> {
+        const result = await getInterface().gameBuild.preflight(this.projectPath(), request);
+        return result.success ? result.data.findings : [];
     }
 
     public getStatus(): GameBuildStatus {
@@ -101,6 +151,9 @@ export class BuildService extends Service<BuildService> {
             this.updateState({ status: "error", error: "Failed to save the project before building" });
             return this.state;
         }
+        // Committed: the selection is now persisted as BuildConfiguration, so
+        // the draft has served its purpose and must not shadow it next time.
+        this.clearDraft();
         this.updateState({ status: "preparing", startedAt: Date.now() });
         const result = await getInterface().gameBuild.start(this.projectPath(), {
             kind: "surface",
