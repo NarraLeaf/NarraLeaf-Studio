@@ -223,8 +223,10 @@ function broadcastReload(target = 'all') {
         platform: 'node',
         format: 'cjs',
         bundle: true,
-        // electron-builder reads template files relative to itself at runtime.
-        external: ['electron', 'electron-builder'],
+        // electron-builder reads template files relative to itself at runtime;
+        // 7zip-bin resolves its 7za binary relative to its own __dirname. Both
+        // break if inlined, so keep this list in sync with build-main.js.
+        external: ['electron', 'electron-builder', '7zip-bin'],
         sourcemap: true,
         target: ['node18'],
     }, () => {

@@ -1,4 +1,3 @@
-import fs from "fs/promises";
 import crypto from "crypto";
 import path from "path";
 import { shell, utilityProcess, type UtilityProcess } from "electron";
@@ -8,8 +7,13 @@ import type { DevModeConsoleLogPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
 import {
     currentGameBuildPlatform,
+    deriveGameAppId,
     GAME_BUILD_FORMATS_BY_PLATFORM,
     hostCanBuildTarget,
+    normalizeGameBuildArch,
+    webExportDirName,
+    webExportZipName,
+    type BuildPreflightFinding,
     type GameBuildDesktopPlatform,
     type GameBuildRequest,
     type GameBuildStateSnapshot,
@@ -17,6 +21,14 @@ import {
 } from "@shared/types/gameBuild";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
+import {
+    checkIcon,
+    checkOutputDir,
+    isValidProjectVersion,
+    MIN_ICON_SIZE,
+    readProjectIdentifier,
+    readProjectVersion,
+} from "./preflight";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
@@ -41,8 +53,6 @@ type BuildSession = {
 };
 
 const DEFAULT_OUTPUT_DIR_NAME = "dist";
-const SEMVER_PATTERN =
-    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 /** Reverse-domain identifiers usable as a bundle/app id verbatim. */
 const APP_ID_PATTERN = /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$/;
 
@@ -68,18 +78,10 @@ export function resolveElectronDistDirForApp(
     return path.dirname(currentExecutable);
 }
 
-/** Derive the packager app id from the project identifier. */
-export function deriveGameAppId(identifier: string | undefined, projectName: string): string {
-    const trimmed = identifier?.trim();
-    if (trimmed && APP_ID_PATTERN.test(trimmed)) {
-        return trimmed;
-    }
-    const sanitized = sanitizeProjectFileName(trimmed || projectName)
-        .toLowerCase()
-        .replace(/[^a-z0-9-]+/g, "-")
-        .replace(/^-+|-+$/g, "") || "game";
-    return `com.narraleaf.games.${sanitized}`;
-}
+// Moved to @shared/types/gameBuild so the build dialog derives the displayed
+// app id with the same function that packages it. Re-exported here for callers
+// that already knew this address.
+export { deriveGameAppId };
 
 /**
  * Fixed hardening fuse set for shipped games; not user-configurable.
@@ -118,6 +120,118 @@ export class GameBuildManager {
 
     public getStatus(projectPath: string): GameBuildStateSnapshot {
         return this.sessions.get(this.projectKey(projectPath))?.snapshot ?? { status: "idle" };
+    }
+
+    /**
+     * Run the build's own checks without building, so the dialog can show what
+     * would go wrong before the user commits. Advisory only: `run` re-checks
+     * everything and stays the authority (see preflight.ts).
+     */
+    public async preflight(projectPath: string, request: GameBuildRequest): Promise<BuildPreflightFinding[]> {
+        const normalizedProjectPath = path.resolve(projectPath);
+        const projectConfig = await readProjectConfigFromDir(normalizedProjectPath).catch(() => null);
+        const hostPlatform = currentGameBuildPlatform();
+        const targets = normalizeTargets(request.targets);
+        const findings: BuildPreflightFinding[] = [];
+
+        if (targets.length === 0) {
+            findings.push({ code: "no-targets", severity: "error", section: "targets" });
+        }
+        const desktopTargets = targets.filter(isDesktopTarget);
+        for (const target of desktopTargets) {
+            if (!hostCanBuildTarget(hostPlatform, target.platform)) {
+                findings.push({
+                    code: "unbuildable-platform",
+                    severity: "error",
+                    section: "targets",
+                    detail: { platform: target.platform },
+                });
+            }
+        }
+        const crossTargets = desktopTargets.filter(
+            target => target.platform !== hostPlatform && hostCanBuildTarget(hostPlatform, target.platform),
+        );
+        if (crossTargets.length > 0) {
+            findings.push({
+                code: "cross-build-download",
+                severity: "warning",
+                section: "targets",
+                detail: { platforms: crossTargets.map(target => target.platform).join(", ") },
+            });
+        }
+
+        const version = readProjectVersion(projectConfig);
+        if (!version) {
+            findings.push({ code: "version-missing", severity: "warning", section: "identity" });
+        } else if (!isValidProjectVersion(version)) {
+            findings.push({
+                code: "version-invalid",
+                severity: "error",
+                section: "identity",
+                detail: { version },
+            });
+        }
+        if (!readProjectIdentifier(projectConfig)) {
+            findings.push({
+                code: "identifier-missing",
+                severity: "warning",
+                section: "identity",
+                detail: {
+                    appId: deriveGameAppId(undefined, projectConfig?.name?.trim() || path.basename(normalizedProjectPath)),
+                },
+            });
+        }
+        // Only icons for platforms actually being built are worth reporting.
+        for (const target of desktopTargets) {
+            const icon = await checkIcon(normalizedProjectPath, projectConfig, target.platform);
+            if (icon.status === "ok") {
+                continue;
+            }
+            findings.push({
+                code: icon.status === "missing" ? "icon-missing" : "icon-unusable",
+                severity: "warning",
+                section: "identity",
+                detail: { platform: target.platform },
+            });
+        }
+
+        const pluginSelection = await this.selectRuntimePlugins(normalizedProjectPath, projectConfig);
+        if (pluginSelection.errors.length > 0) {
+            findings.push({
+                code: "plugins-invalid",
+                severity: "error",
+                section: "content",
+                detail: { errors: pluginSelection.errors.join("\n") },
+            });
+        }
+        if (desktopTargets.length > 0 && this.encryptAssetsEnabled(projectConfig)) {
+            const key = await this.resolveEncryptionKey(normalizedProjectPath, projectConfig).catch(() => undefined);
+            if (!key) {
+                findings.push({ code: "encryption-key-unavailable", severity: "error", section: "content" });
+            }
+        }
+        if (targets.some(target => target.platform === "web") && this.encryptAssetsEnabled(projectConfig)) {
+            findings.push({ code: "web-unprotected", severity: "warning", section: "content" });
+        }
+        if (desktopTargets.length > 0) {
+            findings.push({ code: "unsigned", severity: "warning", section: "content" });
+        }
+
+        const outputDir = request.outputDir?.trim()
+            ? path.resolve(request.outputDir.trim())
+            : path.join(normalizedProjectPath, DEFAULT_OUTPUT_DIR_NAME);
+        const outputCheck = await checkOutputDir(outputDir);
+        if (outputCheck === "not-writable") {
+            findings.push({
+                code: "output-not-writable",
+                severity: "error",
+                section: "output",
+                detail: { outputDir },
+            });
+        } else if (outputCheck === "not-empty") {
+            findings.push({ code: "output-not-empty", severity: "warning", section: "output" });
+        }
+        return findings;
     }
 
     /**
@@ -284,11 +398,14 @@ export class GameBuildManager {
             productName: identity.productName,
             artifactBaseName: identity.artifactBaseName,
             electronVersion: process.versions.electron,
+            ...(identity.copyright ? { copyright: identity.copyright } : {}),
+            ...(request.compression ? { compression: request.compression } : {}),
             ...(electronMirror ? { electronMirror } : {}),
             asarUnpack: buildAsarUnpackPatterns(Boolean(encryptionKey)),
             targets: await Promise.all(desktopTargets.map(async target => ({
                 platform: target.platform,
                 formats: target.formats,
+                arch: normalizeGameBuildArch(target.platform, target.arch),
                 fuses: gameFusesForPlatform(target.platform, hasSigningIdentity),
                 ...(target.platform === hostPlatform
                     ? { electronDist: resolveElectronDistDirForApp(this.app) }
@@ -299,8 +416,8 @@ export class GameBuildManager {
                 web: {
                     sourceDir: webArtifact.appDir,
                     formats: webFormats,
-                    dirName: `${identity.artifactBaseName}-${identity.version}-web`,
-                    zipName: `${identity.artifactBaseName}-${identity.version}-web.zip`,
+                    dirName: webExportDirName(identity.artifactBaseName, identity.version),
+                    zipName: webExportZipName(identity.artifactBaseName, identity.version),
                 },
             } : {}),
         };
@@ -326,7 +443,11 @@ export class GameBuildManager {
                 ? `build finished:\n${artifacts.map(a => path.relative(session.projectPath, a)).join("\n")}`
                 : `build finished: ${path.relative(session.projectPath, outputDir)}`,
         });
-        this.revealOutput(outputDir);
+        // Absent (older stored selections, non-UI callers) keeps the pre-setting
+        // behaviour of always revealing.
+        if (request.openWhenDone !== false) {
+            this.revealOutput(outputDir);
+        }
     }
 
     private revealOutput(outputDir: string): void {
@@ -345,36 +466,18 @@ export class GameBuildManager {
         projectConfig: ProjectConfigData | null,
         platform: GameBuildDesktopPlatform,
     ): Promise<{ iconPath?: string }> {
-        const configuredPath = readIconPath(projectConfig, platform);
-        if (!configuredPath) {
-            this.emit(session, {
-                level: "warning",
-                source: "Build",
-                message: `no ${platform} app icon configured; using the default Electron icon`,
-            });
-            return {};
+        const icon = await checkIcon(projectPath, projectConfig, platform);
+        if (icon.status === "ok") {
+            return { iconPath: icon.iconPath };
         }
-        let iconPath: string;
-        try {
-            iconPath = resolveInsideProject(projectPath, configuredPath);
-            await fs.access(iconPath);
-        } catch {
-            this.emit(session, {
-                level: "warning",
-                source: "Build",
-                message: `configured ${platform} icon is missing (${configuredPath}); using the default Electron icon`,
-            });
-            return {};
-        }
-        if (await pngIconIsUnusable(iconPath)) {
-            this.emit(session, {
-                level: "warning",
-                source: "Build",
-                message: `${platform} icon ${configuredPath} is invalid or smaller than 512×512; using the default Electron icon`,
-            });
-            return {};
-        }
-        return { iconPath };
+        this.emit(session, {
+            level: "warning",
+            source: "Build",
+            message: icon.status === "missing"
+                ? `no usable ${platform} app icon configured; using the default Electron icon`
+                : `the ${platform} icon is invalid or smaller than ${MIN_ICON_SIZE}×${MIN_ICON_SIZE}; using the default Electron icon`,
+        });
+        return {};
     }
 
     private runWorker(session: BuildSession, config: GameBuildWorkerConfig): Promise<string[]> {
@@ -434,11 +537,10 @@ export class GameBuildManager {
         session: BuildSession,
         projectConfig: ProjectConfigData | null,
         projectPath: string,
-    ): { appId: string; productName: string; artifactBaseName: string; version: string } {
+    ): { appId: string; productName: string; artifactBaseName: string; version: string; copyright?: string } {
         const productName = projectConfig?.name?.trim() || path.basename(projectPath) || "NarraLeaf Game";
-        const rawVersion = projectConfig?.metadata?.version;
-        const version = typeof rawVersion === "string" && rawVersion.trim() ? rawVersion.trim() : undefined;
-        if (version && !SEMVER_PATTERN.test(version)) {
+        const version = readProjectVersion(projectConfig);
+        if (version && !isValidProjectVersion(version)) {
             throw new Error(
                 `Project version "${version}" is not a valid semantic version. Fix it in the project settings.`,
             );
@@ -450,7 +552,7 @@ export class GameBuildManager {
                 message: "project has no version; building as 0.0.0",
             });
         }
-        const identifier = projectConfig?.identifier?.trim() || undefined;
+        const identifier = readProjectIdentifier(projectConfig);
         const appId = deriveGameAppId(identifier, productName);
         if (!identifier) {
             this.emit(session, {
@@ -459,6 +561,10 @@ export class GameBuildManager {
                 message: `project has no identifier; using app id ${appId}`,
             });
         }
+        const rawCopyright = projectConfig?.metadata?.copyright;
+        const copyright = typeof rawCopyright === "string" && rawCopyright.trim()
+            ? rawCopyright.trim()
+            : undefined;
         return {
             appId,
             productName,
@@ -466,6 +572,7 @@ export class GameBuildManager {
             // Same fallback electron-builder applies via the app manifest, so
             // web artifact names line up with the desktop ones.
             version: version ?? "0.0.0",
+            ...(copyright ? { copyright } : {}),
         };
     }
 
@@ -567,53 +674,6 @@ function isDesktopTarget(target: GameBuildTarget): target is GameBuildDesktopTar
     return target.platform !== "web";
 }
 
-/** Read the configured icon path for a platform from project metadata. */
-function readIconPath(projectConfig: ProjectConfigData | null, platform: GameBuildDesktopPlatform): string | undefined {
-    const icons = (projectConfig?.metadata as { icons?: Record<string, { path?: unknown }> } | undefined)?.icons;
-    const raw = icons?.[platform]?.path;
-    return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
-}
-
-/** Resolve a project-relative path, refusing to escape the project root. */
-function resolveInsideProject(projectPath: string, relativePath: string): string {
-    const root = path.resolve(projectPath);
-    const resolved = path.resolve(root, relativePath.replace(/^[/\\]+/, ""));
-    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
-        throw new Error(`Path escapes project root: ${relativePath}`);
-    }
-    return resolved;
-}
-
-/**
- * Whether a PNG icon is unusable for electron-builder's conversion — either
- * smaller than its 512×512 minimum, or corrupt/truncated so its dimensions
- * cannot be read. Both cases warn + fall back rather than hand a bad file to
- * electron-builder (which would hard-fail the whole build). Non-PNG files
- * (.ico/.icns are native, multi-resolution) are assumed fine.
- */
-async function pngIconIsUnusable(iconPath: string): Promise<boolean> {
-    if (path.extname(iconPath).toLowerCase() !== ".png") {
-        return false;
-    }
-    let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
-    try {
-        handle = await fs.open(iconPath, "r");
-        const header = Buffer.alloc(24);
-        const { bytesRead } = await handle.read(header, 0, 24, 0);
-        // PNG signature (8) + IHDR length/type (8) + width (4) + height (4).
-        if (bytesRead < 24 || header.toString("ascii", 12, 16) !== "IHDR") {
-            return true;
-        }
-        const width = header.readUInt32BE(16);
-        const height = header.readUInt32BE(20);
-        return width < 512 || height < 512;
-    } catch {
-        return true;
-    } finally {
-        await handle?.close();
-    }
-}
-
 function normalizeTargets(targets: GameBuildTarget[] | undefined): GameBuildTarget[] {
     if (!Array.isArray(targets)) {
         return [];
@@ -622,6 +682,7 @@ function normalizeTargets(targets: GameBuildTarget[] | undefined): GameBuildTarg
         .map(target => ({
             platform: target.platform,
             formats: [...new Set(target.formats)],
+            ...(target.arch ? { arch: target.arch } : {}),
         }))
         .filter(target => target.formats.length > 0);
 }

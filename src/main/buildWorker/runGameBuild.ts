@@ -1,7 +1,8 @@
 import path from "path";
 import { build, Platform, Arch, type Configuration } from "electron-builder";
 import {
-    currentGameBuildPlatform,
+    gameBuildArtifactNamePattern,
+    type GameBuildArch,
     type GameBuildDesktopPlatform,
     type GameBuildFormat,
 } from "@shared/types/gameBuild";
@@ -32,13 +33,11 @@ const BUILDER_TARGET_NAMES: Record<GameBuildFormat, string> = {
     appimage: "AppImage",
 };
 
-function targetArch(target: GameBuildWorkerTarget): Arch {
-    if (target.platform === currentGameBuildPlatform()) {
-        return process.arch === "arm64" ? Arch.arm64 : Arch.x64;
-    }
-    // Cross builds default to x64, the broadest player base.
-    return Arch.x64;
-}
+const BUILDER_ARCHS: Record<GameBuildArch, Arch> = {
+    x64: Arch.x64,
+    arm64: Arch.arm64,
+    universal: Arch.universal,
+};
 
 function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWorkerTarget): Configuration {
     return {
@@ -47,6 +46,8 @@ function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWo
         electronVersion: config.electronVersion,
         ...(target.electronDist ? { electronDist: target.electronDist } : {}),
         ...(target.iconPath ? { icon: target.iconPath } : {}),
+        ...(config.copyright ? { copyright: config.copyright } : {}),
+        ...(config.compression ? { compression: config.compression } : {}),
         ...(config.electronMirror
             ? { electronDownload: { mirror: config.electronMirror } }
             : {}),
@@ -57,7 +58,7 @@ function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWo
         asar: true,
         asarUnpack: config.asarUnpack,
         electronFuses: target.fuses,
-        artifactName: `${config.artifactBaseName}-\${version}-\${os}-\${arch}.\${ext}`,
+        artifactName: gameBuildArtifactNamePattern(config.artifactBaseName),
         npmRebuild: false,
         publish: null,
     };
@@ -86,7 +87,10 @@ export async function runGameBuild(config: GameBuildWorkerConfig, log: GameBuild
         const targetNames = target.formats.map(format => BUILDER_TARGET_NAMES[format]);
         log("info", `packaging ${target.platform} (${target.formats.join(", ")})`);
         const produced = await build({
-            targets: platform.createTarget(targetNames, targetArch(target)),
+            // Exactly one arch per target: a multi-arch NSIS request would be
+            // folded into a single installer whose name drops the ${arch} macro,
+            // which the dialog's artifact preview could not have predicted.
+            targets: platform.createTarget(targetNames, BUILDER_ARCHS[target.arch]),
             projectDir: appDir,
             config: builderConfiguration(config, target),
         });

@@ -1,6 +1,10 @@
 import type { LocalizationConfiguration } from "@shared/types/localization";
 import {
     GAME_BUILD_FORMATS_BY_PLATFORM,
+    normalizeGameBuildArch,
+    type GameBuildArch,
+    type GameBuildCompression,
+    type GameBuildDesktopPlatform,
     type GameBuildFormat,
     type GameBuildPlatform,
 } from "@shared/types/gameBuild";
@@ -34,9 +38,23 @@ export type SecurityConfiguration = {
 export type BuildConfiguration = {
     platforms: GameBuildPlatform[];
     formats: Partial<Record<GameBuildPlatform, GameBuildFormat[]>>;
+    /** Arch chosen per desktop platform; the web export has none. */
+    archs: Partial<Record<GameBuildDesktopPlatform, GameBuildArch>>;
     /** Absolute output directory chosen last time; empty means the default. */
     outputDir: string;
+    compression: GameBuildCompression;
+    /** Reveal the output folder when a build finishes. */
+    openWhenDone: boolean;
 };
+
+/** Compression levels offered, in display order (slowest/smallest first). */
+export const BUILD_COMPRESSIONS: GameBuildCompression[] = ["maximum", "normal", "store"];
+
+/**
+ * electron-builder's own default compression, and the level every build used
+ * before the setting existed.
+ */
+export const DEFAULT_BUILD_COMPRESSION: GameBuildCompression = "maximum";
 
 export type ProjectAppConfiguration = {
     network: NetworkConfiguration;
@@ -139,9 +157,28 @@ export function normalizeBuildConfiguration(value: unknown): BuildConfiguration 
     if (platforms.length === 0) {
         return null;
     }
+    // Projects built before arch/compression/openWhenDone existed have none of
+    // these keys; each falls back to the behaviour that build would have had.
+    const rawArchs = (record.archs && typeof record.archs === "object")
+        ? record.archs as Record<string, unknown>
+        : {};
+    const archs: Partial<Record<GameBuildDesktopPlatform, GameBuildArch>> = {};
+    for (const platform of platforms) {
+        if (platform === "web") {
+            continue;
+        }
+        const stored = rawArchs[platform];
+        if (stored === undefined) {
+            continue;
+        }
+        archs[platform] = normalizeGameBuildArch(platform, stored);
+    }
     return {
         platforms,
         formats,
+        archs,
         outputDir: typeof record.outputDir === "string" ? record.outputDir.trim() : "",
+        compression: BUILD_COMPRESSIONS.find(level => level === record.compression) ?? DEFAULT_BUILD_COMPRESSION,
+        openWhenDone: typeof record.openWhenDone === "boolean" ? record.openWhenDone : true,
     };
 }
