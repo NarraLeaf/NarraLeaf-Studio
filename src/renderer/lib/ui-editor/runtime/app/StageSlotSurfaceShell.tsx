@@ -65,6 +65,10 @@ export type GameUiSlotHostOptions = {
     getNotificationsInGame: () => BlueprintGameNotification[];
     getChoiceCountInGame: () => number;
     isNvlModeInGame: () => boolean;
+    /** Optional: hosts without a text-read tracker (story preview) fall back to the mirrored state key. */
+    isCurrentTextReadInGame?: () => boolean;
+    /** Optional: hosts without a text-read tracker fall back to wiping the persistence key directly. */
+    clearTextReadInGame?: () => Promise<void>;
     selectChoiceInGame: (index: number) => Promise<void>;
     isInGame: () => boolean;
     quitGame: (surfaceId: string) => Promise<void>;
@@ -170,6 +174,8 @@ export function useStageSlotSurfaceRuntime(input: {
             onGetNotifications: options.getNotificationsInGame,
             onGetChoiceCount: options.getChoiceCountInGame,
             onIsNvlMode: options.isNvlModeInGame,
+            onIsCurrentTextRead: options.isCurrentTextReadInGame,
+            onClearTextRead: options.clearTextReadInGame,
             onSelectChoice: options.selectChoiceInGame,
             onIsInGame: options.isInGame,
             onIsGameOverlay: () => true,
