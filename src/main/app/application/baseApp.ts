@@ -58,12 +58,16 @@ export class BaseApp {
 
     private initialized: boolean = false;
     private readyError: Error | null = null;
+    private quitting: boolean = false;
     protected appInfo: AppInfo | null = null;
     private readonly commandLine = parseMainCommandLine(process.argv);
 
     constructor(config: BaseAppConfig) {
         this.config = config;
         this.electronApp = app;
+        this.electronApp.on("before-quit", () => {
+            this.quitting = true;
+        });
         this.electronApp.setName(APP_DISPLAY_NAME);
         this.electronApp.setAboutPanelOptions({
             applicationName: APP_DISPLAY_NAME,
@@ -213,6 +217,14 @@ export class BaseApp {
 
     public quit(): void {
         this.electronApp.quit();
+    }
+
+    /**
+     * True once the whole app is on its way out (Quit menu item, Cmd+Q, session logout).
+     * Window close guards must stand aside in that case, or they would cancel the quit.
+     */
+    public isQuitting(): boolean {
+        return this.quitting;
     }
 
     public crash(error: string | Error): void {

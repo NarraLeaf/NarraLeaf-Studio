@@ -1,10 +1,12 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { getInterface } from "@/lib/app/bridge";
 import { Workspace } from "@/lib/workspace/workspace";
 import { createWorkspaceAssetUrlResolver } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
 import { Services, WorkspaceContext as WorkspaceCtx } from "@/lib/workspace/services/services";
 import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
+import { UIService } from "@/lib/workspace/services/core/UIService";
+import { translate } from "@/lib/i18n";
 import { Service } from "@/lib/workspace/services/Service";
 import { ensureWorkspaceProjectCanStart } from "@/lib/workspace/startup/workspaceProjectPreflight";
 
@@ -41,6 +43,8 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
     const [context, setContext] = useState<WorkspaceCtx | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
     const [error, setError] = useState<Error | null>(null);
+    const contextRef = useRef<WorkspaceCtx | null>(null);
+    contextRef.current = context;
 
     useEffect(() => {
         let mounted = true;
@@ -139,6 +143,33 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
             imageToken.cancel();
         };
     }, [context]);
+
+    // The window's close guard lives in the main process, but the prompt has to look like every
+    // other Studio dialog, so main asks us to render it and waits for the answer.
+    //
+    // Registered on mount rather than with the context, because main blocks the close until this
+    // replies: closing while the workspace is still starting up must not hang on a handler that
+    // does not exist yet. Until there is a context there is also nothing to lose, so it just
+    // agrees to close.
+    useEffect(() => {
+        const token = getInterface().workspace.onConfirmClose(async () => {
+            const currentContext = contextRef.current;
+            if (!currentContext) {
+                return { success: true, data: { confirmed: true } };
+            }
+
+            const uiService = currentContext.services.get<UIService>(Services.UI);
+            const confirmed = await uiService.showConfirm(
+                translate("workspace.shell.closeConfirm.message"),
+                translate("workspace.shell.closeConfirm.detail"),
+            );
+            return { success: true, data: { confirmed } };
+        });
+
+        return () => {
+            token.cancel();
+        };
+    }, []);
 
     return (
         <WorkspaceContext.Provider value={{ workspace, context, isInitialized, error }}>

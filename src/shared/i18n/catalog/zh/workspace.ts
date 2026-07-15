@@ -93,5 +93,9 @@ export const workspace = {
         stopPreview: "停止预览",
         logoAlt: "NarraLeaf Studio 徽标",
         editorTabsLabel: "编辑器标签页",
+        closeConfirm: {
+            message: "确定要关闭当前工作区吗？",
+            detail: "将会自动保存已作出的更改",
+        },
     },
 } satisfies LocaleNamespace<"workspace">;

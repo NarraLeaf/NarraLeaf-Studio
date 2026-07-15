@@ -57,5 +57,13 @@ export const settings = {
             label: "Electron 下载镜像",
             description: "为其他平台构建游戏时下载 Electron 所用的镜像地址，留空则使用官方源",
         },
+        confirmBeforeClose: {
+            label: "关闭工作区时弹出提示",
+            description: "关闭工作区窗口时先询问确认",
+        },
+        returnToLauncherOnClose: {
+            label: "关闭工作区后返回首页",
+            description: "关闭工作区后回到首页，关闭此项则在没有其他窗口时直接退出 NarraLeaf Studio",
+        },
     },
 } satisfies LocaleNamespace<"settings">;
