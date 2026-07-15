@@ -21,7 +21,6 @@ export const dialogs = {
         maxLength: "最多允许 {max} 个字符",
         editValue: "编辑值",
     },
-    // Imperative InputDialog service (non-hook; uses translate()).
     createGroup: {
         title: "创建分组",
         prompt: "请输入{type}分组的名称",

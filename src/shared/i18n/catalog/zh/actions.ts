@@ -36,11 +36,11 @@ export const actions = {
         },
     },
     export: {
-        chooseFolder: "请选择导出项目包的存放文件夹。",
-        failed: "导出项目失败。",
+        chooseFolder: "请选择导出项目包的存放文件夹",
+        failed: "导出项目失败",
         success: {
-            one: "已导出包含 {count} 个文件的项目包。",
-            other: "已导出包含 {count} 个文件的项目包。",
+            one: "已导出包含 {count} 个文件的项目包",
+            other: "已导出包含 {count} 个文件的项目包",
         },
     },
 } satisfies LocaleNamespace<"actions">;
