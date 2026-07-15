@@ -33,6 +33,26 @@ export const menu = {
             stopSpeaking: "停止朗读",
         },
     },
+    dev: {
+        title: "开发",
+        devMode: "开发模式",
+        preview: "预览模式",
+        build: "构建发行版本",
+    },
+    window: {
+        title: "窗口",
+        minimize: "最小化",
+        zoom: "缩放",
+        front: "全部置于顶层",
+        leftSidebar: "显示侧边栏",
+        bottomPanel: "显示底边栏",
+        rightSidebar: "显示右边栏",
+    },
+    help: {
+        title: "帮助",
+        welcome: "打开欢迎页",
+        docs: "文档",
+    },
     view: {
         title: "视图",
         reload: "重新加载",
@@ -40,16 +60,5 @@ export const menu = {
         zoomIn: "放大",
         zoomOut: "缩小",
         toggleFullScreen: "切换全屏",
-    },
-    window: {
-        title: "窗口",
-        minimize: "最小化",
-        zoom: "缩放",
-        front: "全部置于顶层",
-    },
-    help: {
-        title: "帮助",
-        welcome: "打开欢迎页",
-        docs: "文档",
     },
 } satisfies LocaleNamespace<"menu">;

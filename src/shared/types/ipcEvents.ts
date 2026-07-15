@@ -27,20 +27,93 @@ import type {
     PrivilegedPermissionRequestPayload,
 } from "./privileged";
 
+/**
+ * Renderer action ids the native menu drives directly. These are the ids of actions registered
+ * in the renderer's action registry — the native menu only names them, the renderer owns what
+ * they do (see `useMenuActionHandler`).
+ */
 export const WorkspaceMenuAction = {
     NewWorkspace: "narraleaf-studio:file-new",
     OpenWorkspace: "narraleaf-studio:file-open",
     ExportProject: "narraleaf-studio:file-export-project",
     CloseWorkspace: "narraleaf-studio:file-close-workspace",
     OpenWelcome: "narraleaf-studio:open-welcome",
+    DevMode: "narraleaf-studio:dev-mode",
+    Preview: "narraleaf-studio:preview",
+    Build: "narraleaf-studio:build",
+    ToggleLeftSidebar: "narraleaf-studio:toggle-left-sidebar",
+    ToggleBottomPanel: "narraleaf-studio:toggle-bottom-panel",
+    ToggleRightSidebar: "narraleaf-studio:toggle-right-sidebar",
 } as const;
 
 export type WorkspaceMenuAction = typeof WorkspaceMenuAction[keyof typeof WorkspaceMenuAction];
+
+/**
+ * Any registered renderer action id. Menu items synced up from the renderer carry ids that the
+ * main process cannot know ahead of time (image preview actions are keyed by tab), so the menu
+ * channel is typed as a plain id string; `WorkspaceMenuAction` lists the well-known ones.
+ */
+export type MenuActionId = string;
+
+/** Group id whose items are spliced into the native Window menu instead of a top-level menu. */
+export const WINDOW_PANELS_MENU_GROUP_ID = "narraleaf-studio:window-panels";
+
+/**
+ * Group id whose items are appended to the native Edit menu instead of becoming a top-level
+ * menu. The assets panel calls its group "Edit" too, and two menus of the same name sitting next
+ * to each other reads as a bug; macOS convention is to hang context-specific entries under the
+ * standard Edit items.
+ */
+export const EDIT_MENU_GROUP_ID = "narraleaf-studio:assets-edit";
+
+/**
+ * Group id carrying only checkbox state for the native Develop menu (is Dev Mode / Preview
+ * running?). Not rendered as a menu of its own — the Develop menu is built in the main process;
+ * this feeds its checkmarks, since runtime status lives in renderer services.
+ */
+export const DEV_STATUS_MENU_GROUP_ID = "narraleaf-studio:dev-status";
+
+/**
+ * Standard Edit-menu commands a renderer action can stand in for. When the focused surface
+ * provides an action tagged with one of these, the native Edit menu routes that command to the
+ * action instead of the built-in webContents role — one 复制 in the menu, not two.
+ */
+export type EditMenuRole = "copy" | "cut" | "paste" | "delete";
+
+/**
+ * Serializable mirror of one renderer action-registry menu item. Only what a native menu needs:
+ * no icons, no React, no callbacks — clicks travel back as `id`.
+ */
+export type NativeMenuItem =
+    | { kind: "separator" }
+    | {
+        kind: "action";
+        id: MenuActionId;
+        label: string;
+        enabled: boolean;
+        /** Present for toggles; renders as a native checkbox item. */
+        checked?: boolean;
+        /** Present when this action replaces a standard Edit-menu command (see EditMenuRole). */
+        role?: EditMenuRole;
+    }
+    | {
+        kind: "submenu";
+        label: string;
+        items: NativeMenuItem[];
+    };
+
+/** Serializable mirror of one renderer action group, already filtered to the current focus. */
+export type NativeMenuGroup = {
+    id: string;
+    label: string;
+    items: NativeMenuItem[];
+};
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
     appTerminate = "app.terminate",
     appWindowControl = "app.window.setControl",
+    appWindowEditCommand = "app.window.editCommand",
     appWindowClose = "app.window.close",
     appWindowCloseWith = "app.window.closeWith",
     appWindowGetControl = "app.window.getControl",
@@ -149,6 +222,7 @@ export enum IPCEventType {
     privilegedBashExecute = "privileged.bash.execute",
 
     menuAction = "app.menu.action",
+    workspaceMenuSync = "workspace.menu.sync",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -189,6 +263,19 @@ export type IPCEvents = {
             control: "minimize" | "maximize" | "unmaximize" | "close",
         },
         response: void;
+    };
+    /**
+     * Run a built-in webContents editing command (copy/cut/paste/delete) on the sending window.
+     * Used by the renderer when a native Edit-menu command routed to a surface action should
+     * fall back to normal text editing because the user is in a text field.
+     */
+    [IPCEventType.appWindowEditCommand]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            command: EditMenuRole,
+        },
+        response: never;
     };
     [IPCEventType.appWindowClose]: {
         type: IPCMessageType.message,
@@ -1063,7 +1150,18 @@ export type IPCMenuEvents = {
     [IPCEventType.menuAction]: {
         type: IPCMessageType.message,
         consumer: IPCType.Client,
-        data: { action: WorkspaceMenuAction },
+        data: { action: MenuActionId },
+        response: never;
+    };
+    /**
+     * The renderer pushing its current, focus-filtered menu model up so the native menu bar can
+     * mirror it. Sent on every registry/focus change; the main process rebuilds the menu when
+     * the sending window is the focused one.
+     */
+    [IPCEventType.workspaceMenuSync]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: { groups: NativeMenuGroup[] },
         response: never;
     };
 };
