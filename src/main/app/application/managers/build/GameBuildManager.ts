@@ -562,16 +562,20 @@ function normalizeTargets(targets: GameBuildTarget[] | undefined): GameBuildTarg
 }
 
 /**
- * Everything the running game must read as a real file stays outside the
- * asar; the runtime's own code lives inside it (and is what the integrity
- * fuse protects).
+ * Only payload that must exist as a real file on disk leaves the asar. The
+ * sealed pair does: the codec addon is dlopen'ed by the OS loader, and it then
+ * reads the bundle through its own native file I/O — neither goes through
+ * Electron's asar-aware fs. native.js (the addon's loader sidecar) and icons
+ * (consumed by native image/shell APIs) stay loose for the same reason.
+ * Unencrypted assets have no such constraint: the runtime reads them with
+ * readFile/stat/ranged createReadStream, which Electron serves from inside
+ * app.asar transparently — so they ship in the archive instead of as a loose
+ * per-file tree on disk.
  */
 function buildAsarUnpackPatterns(sealed: boolean): string[] {
     const patterns = ["native.js", "icons/**"];
     if (sealed) {
         patterns.push(RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME);
-    } else {
-        patterns.push("assets/**");
     }
     return patterns;
 }
