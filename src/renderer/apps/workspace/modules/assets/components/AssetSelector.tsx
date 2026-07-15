@@ -37,16 +37,6 @@ const ASSET_TYPE_ICONS = {
     [AssetType.Other]: File,
 };
 
-const ASSET_TYPE_LABELS = {
-    [AssetType.Image]: "Images",
-    [AssetType.Audio]: "Audio",
-    [AssetType.Video]: "Videos",
-    [AssetType.JSON]: "JSON Files",
-    [AssetType.Blueprint]: "Blueprints",
-    [AssetType.Font]: "Fonts",
-    [AssetType.Other]: "Other",
-};
-
 const ASSET_SELECTOR_STATE_ID = "narraleaf-studio:asset-selector";
 const WINDOW_TITLEBAR_HEIGHT = 40;
 
@@ -598,7 +588,7 @@ export function AssetSelector({
     }
 
     const Icon = ASSET_TYPE_ICONS[assetType];
-    const headerLabel = title ?? t("assets.selector.selectType", { type: ASSET_TYPE_LABELS[assetType] });
+    const headerLabel = title ?? t("assets.selector.selectType", { type: t(`assets.types.${assetType}`) });
 
     const panel = (
         <div
