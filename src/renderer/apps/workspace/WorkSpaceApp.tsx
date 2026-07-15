@@ -5,6 +5,7 @@ import { WorkspaceProvider, useWorkspace } from "./context";
 import { useModuleLoader } from "./hooks/useModuleLoader";
 import { useWorkspaceEditorSession } from "./hooks/useWorkspaceEditorSession";
 import { useMenuActionHandler } from "./hooks/useMenuActionHandler";
+import { useNativeMenuSync } from "./hooks/useNativeMenuSync";
 import { useWorkspacePlugins } from "./hooks/useWorkspacePlugins";
 import { RegistryProvider } from "./registry";
 import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
@@ -21,6 +22,7 @@ function WorkspaceContent() {
     useWorkspacePlugins();
     useWorkspaceEditorSession();
     useMenuActionHandler();
+    useNativeMenuSync();
 
     return (
         <>

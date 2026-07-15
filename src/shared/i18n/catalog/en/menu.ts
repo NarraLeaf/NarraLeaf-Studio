@@ -37,6 +37,22 @@ export const menu = {
             stopSpeaking: "Stop Speaking",
         },
     },
+    dev: {
+        title: "Develop",
+        devMode: "Dev Mode",
+        preview: "Preview Mode",
+        build: "Build Release",
+    },
+    window: {
+        title: "Window",
+        minimize: "Minimize",
+        zoom: "Zoom",
+        front: "Bring All to Front",
+        leftSidebar: "Show Sidebar",
+        bottomPanel: "Show Bottom Bar",
+        rightSidebar: "Show Right Bar",
+    },
+    // The View menu was removed from the menu bar; the strings stay for future use.
     view: {
         title: "View",
         reload: "Reload",
@@ -44,12 +60,6 @@ export const menu = {
         zoomIn: "Zoom In",
         zoomOut: "Zoom Out",
         toggleFullScreen: "Toggle Full Screen",
-    },
-    window: {
-        title: "Window",
-        minimize: "Minimize",
-        zoom: "Zoom",
-        front: "Bring All to Front",
     },
     help: {
         title: "Help",

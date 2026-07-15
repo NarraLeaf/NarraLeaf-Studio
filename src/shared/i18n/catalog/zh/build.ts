@@ -2,7 +2,7 @@ import type { LocaleNamespace } from "../types";
 
 export const build = {
     dialog: {
-        title: "构建分发版本",
+        title: "构建发行版本",
         start: "开始构建",
         runningTitle: "构建进行中",
         runningBody: "该项目已有一个构建在运行，请在控制台查看进度",
