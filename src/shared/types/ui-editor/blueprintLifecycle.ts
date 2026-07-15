@@ -48,6 +48,23 @@ const GAME_PREFERENCE_EVENTS: readonly LifecycleEventDef[] = [
     },
 ];
 
+/**
+ * Fires when the application window enters or leaves fullscreen. Backed by the
+ * Electron main process (`enter-full-screen` / `leave-full-screen`), so it also
+ * catches fullscreen toggled outside the game (macOS green button, OS shortcuts).
+ * Shared by the global and surface owners so a settings page can track the state
+ * without owning the global blueprint.
+ */
+const WINDOW_FULLSCREEN_EVENTS: readonly LifecycleEventDef[] = [
+    {
+        id: "windowFullscreenChanged",
+        displayName: "Fullscreen changed",
+        description: "Fires when the application window enters or leaves fullscreen.",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.fullscreenChanged"],
+    },
+];
+
 // ---------------------------------------------------------------------------
 // Global (app-level) lifecycle
 // ---------------------------------------------------------------------------
@@ -68,6 +85,7 @@ export const GLOBAL_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
     },
     ...KEYBOARD_EVENTS,
     ...GAME_PREFERENCE_EVENTS,
+    ...WINDOW_FULLSCREEN_EVENTS,
 ];
 
 export const GLOBAL_LIFECYCLE_API: OwnerLifecycleApi = {
@@ -121,6 +139,7 @@ export const SURFACE_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
     },
     ...KEYBOARD_EVENTS,
     ...GAME_PREFERENCE_EVENTS,
+    ...WINDOW_FULLSCREEN_EVENTS,
 ];
 
 export const SURFACE_LIFECYCLE_API: OwnerLifecycleApi = {

@@ -71,6 +71,8 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT = "blueprint.event.h
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED = "blueprint.event.head.preferenceChanged" as const;
 /** Entry for any NarraLeaf game preference change on the active live game. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED = "blueprint.event.head.anyPreferenceChanged" as const;
+/** Entry for application window fullscreen transitions (entered or left fullscreen). */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED = "blueprint.event.head.fullscreenChanged" as const;
 /**
  * Entry for a Story Action Blueprint's single "On Call" event. Deliberately kept OUT of
  * EVENT_DISPATCH_HEAD_TYPES — story-action graphs run via the story compiler's Script wrapper,
@@ -120,6 +122,7 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
 ]);
 
 /**
@@ -759,6 +762,10 @@ export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING = "blueprint.page.isSur
 export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING = "blueprint.page.isSurfaceEntering" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING = "blueprint.page.isSurfaceTransitioning" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_QUIT = "blueprint.page.quit" as const;
+// App window nodes. The older node types in this group keep their `blueprint.page.*`
+// ids from when the category was named "Page"; only the palette label changed.
+export const BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN = "blueprint.app.getFullscreen" as const;
+export const BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN = "blueprint.app.setFullscreen" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_START_STORY = "blueprint.game.startStory" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME = "blueprint.game.isInGame" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY = "blueprint.game.isGameOverlay" as const;

@@ -50,6 +50,7 @@ import {
 import {
     dispatchGlobalBlueprintEvent,
     dispatchSurfaceBlueprintEvent,
+    dispatchWidgetsBlueprintEvent,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import { subscribeGamePreferenceChanges } from "@/lib/ui-editor/blueprint-runtime/gamePreferenceSubscription";
 import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
@@ -709,6 +710,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             openSurfaceWithTransition: openSurface,
             closeLayerWithTransition: closeLayer,
             quitApplication: host.quitApplication,
+            getFullscreen: host.getFullscreen,
+            setFullscreen: host.setFullscreen,
             startStoryInGame: request =>
                 startStoryInGameRef.current?.(request) ??
                 Promise.reject(new Error("Start Game: runtime is not ready")),
@@ -794,6 +797,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         hideDialogInGame,
         host.id,
         host.quitApplication,
+        host.getFullscreen,
+        host.setFullscreen,
         isCurrentTextReadInGame,
         clearTextReadInGame,
         isInGame,
@@ -899,6 +904,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             onOpenSurface: openSurface,
             onCloseLayer: closeLayer,
             onQuitApplication: host.quitApplication,
+            onGetFullscreen: host.getFullscreen,
+            onSetFullscreen: host.setFullscreen,
             onStartStory: startStoryInGame,
             onIsInGame: isInGame,
             onIsGameOverlay: () => entry.presentation === "gameOverlay",
@@ -983,6 +990,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         getSavePreview,
         hideDialogInGame,
         host.quitApplication,
+        host.getFullscreen,
+        host.setFullscreen,
         isCurrentTextReadInGame,
         clearTextReadInGame,
         isInGame,
@@ -1116,6 +1125,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onOpenSurface: openSurface,
                     onCloseLayer: closeLayer,
                     onQuitApplication: host.quitApplication,
+                    onGetFullscreen: host.getFullscreen,
+                    onSetFullscreen: host.setFullscreen,
                     onStartStory: startStoryInGame,
                     onIsInGame: isInGame,
                     onIsGameOverlay: () =>
@@ -1231,6 +1242,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         getSavePreview,
         hideDialogInGame,
         host.quitApplication,
+        host.getFullscreen,
+        host.setFullscreen,
         isCurrentTextReadInGame,
         clearTextReadInGame,
         isInGame,
@@ -1454,6 +1467,52 @@ export function GameApp(props: GameAppProps): ReactNode {
         return () => {
             dispatchPreferenceChangeRef.current = null;
         };
+    }, [activeSurface, bundle, core, host, hostAdapterBundle]);
+
+    // Window fullscreen transitions come from the main process, so they also cover
+    // fullscreen toggled outside the game. Unlike the preference subscription this
+    // one is owned by the host, so the effect can subscribe directly.
+    useEffect(() => {
+        if (!host.ready || !core || !hostAdapterBundle || !activeSurface || !host.subscribeFullscreenChanged) {
+            return;
+        }
+        return host.subscribeFullscreenChanged(isFullscreen => {
+            const eventPayload = { isFullscreen };
+            const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
+            void dispatchGlobalBlueprintEvent({
+                blueprintDocument: bundle.ui.localBlueprints,
+                eventName: "windowFullscreenChanged",
+                eventPayload,
+                hostAdapter: hostAdapterBundle.hostAdapter,
+                debug: core.debug,
+                getSurfaceState: stateKey => surfaceStore.get(stateKey),
+                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
+                executionManager: core.executionManager,
+            }).then(() => dispatchSurfaceBlueprintEvent({
+                blueprintDocument: bundle.ui.localBlueprints,
+                surfaceId: activeSurface.id,
+                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
+                eventName: "windowFullscreenChanged",
+                eventPayload,
+                hostAdapter: hostAdapterBundle.hostAdapter,
+                debug: core.debug,
+                getSurfaceState: stateKey => surfaceStore.get(stateKey),
+                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
+                executionManager: core.executionManager,
+            })).then(() => dispatchWidgetsBlueprintEvent({
+                document: bundle.ui.uidoc,
+                blueprintDocument: bundle.ui.localBlueprints,
+                surfaceId: activeSurface.id,
+                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
+                eventName: "windowFullscreenChanged",
+                eventPayload,
+                hostAdapter: hostAdapterBundle.hostAdapter,
+                debug: core.debug,
+                getSurfaceState: stateKey => surfaceStore.get(stateKey),
+                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
+                executionManager: core.executionManager,
+            })).catch(err => host.log("error", normalizeError(err)));
+        });
     }, [activeSurface, bundle, core, host, hostAdapterBundle]);
 
     if (!activeSurface || !activeEntry) {

@@ -198,6 +198,8 @@ export type BlueprintHostApiRuntime = {
         getPageProps: () => Record<string, unknown>;
         closeLayer: () => Promise<void>;
         quitApplication: () => Promise<void>;
+        getFullscreen: () => Promise<boolean>;
+        setFullscreen: (fullscreen: boolean) => Promise<void>;
     };
     widget: {
         setVisible: (elementId: string, visible: boolean) => Promise<void>;
@@ -333,6 +335,9 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
     onCloseLayer: () => void | Promise<void>;
     onQuitApplication?: () => void | Promise<void>;
+    /** Hosts without a real application window (story preview) leave these unset. */
+    onGetFullscreen?: () => boolean | Promise<boolean>;
+    onSetFullscreen?: (fullscreen: boolean) => void | Promise<void>;
     onWidgetPatch: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
     onElementFlush?: (elementId: string, payload: BlueprintElementFlushPayload) => Promise<void> | void;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -1347,6 +1352,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onOpenSurface,
         onCloseLayer,
         onQuitApplication,
+        onGetFullscreen,
+        onSetFullscreen,
         onWidgetPatch,
         onElementFlush,
         widgetRuntimeStore,
@@ -1535,6 +1542,30 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("quitApplication: application runtime is not available");
                     }
                     await onQuitApplication();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getFullscreen: async () => {
+                const cap = "navigation.getFullscreen";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onGetFullscreen) {
+                        throw new Error("getFullscreen: application window is not available");
+                    }
+                    return (await onGetFullscreen()) === true;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setFullscreen: async (fullscreen: boolean) => {
+                const cap = "navigation.setFullscreen";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onSetFullscreen) {
+                        throw new Error("setFullscreen: application window is not available");
+                    }
+                    await onSetFullscreen(fullscreen === true);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

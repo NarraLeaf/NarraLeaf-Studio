@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintPaletteContext } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
+    AppWindow,
     Box,
     Bug,
     Database,
@@ -72,6 +73,8 @@ function getCategoryVisual(categoryId: string): CategoryVisual {
             return { icon: Box, color: "#b9c47a" };
         case "Navigation":
             return { icon: MapIcon, color: "#7ec7c1" };
+        case "App":
+            return { icon: AppWindow, color: "#8fb8c7" };
         case "Backlog":
             return { icon: HistoryIcon, color: "#c7a98f" };
         case "Variables":

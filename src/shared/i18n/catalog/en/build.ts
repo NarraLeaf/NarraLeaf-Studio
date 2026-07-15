@@ -12,11 +12,13 @@ export const build = {
         windows: "Windows",
         macos: "macOS",
         linux: "Linux",
+        web: "Web",
     },
     unavailable: {
         windows: "Cannot build Windows apps on this machine.",
         macos: "macOS apps can only be built on a Mac.",
         linux: "Cannot build Linux apps on this machine.",
+        web: "Web builds are available on every machine.",
     },
     format: {
         zip: "Portable ZIP",
@@ -33,6 +35,7 @@ export const build = {
         protectionOn: "On",
         protectionOff: "Off",
     },
+    webStaticNotice: "The Web build is a static site you can host on any web server. Asset encryption and the HTTP restriction do not apply to it.",
     unsignedNotice: "Builds are not code-signed. Players may see a security warning from macOS Gatekeeper or Windows SmartScreen the first time they open the game; a signing certificate is needed for a warning-free install.",
     selectAtLeastOne: "Select at least one platform and format.",
     toast: {

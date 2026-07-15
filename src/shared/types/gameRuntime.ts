@@ -7,6 +7,8 @@ import type { UISurfaceId } from "./ui-editor/document";
 export const GAME_RUNTIME_PACK_SCHEMA_VERSION = 2 as const;
 export const GAME_RUNTIME_BRIDGE_KEY = "__NLS_GAME_RUNTIME__" as const;
 export const GAME_RUNTIME_PROTOCOL = "nlgame" as const;
+/** Main -> renderer push when the window enters or leaves fullscreen. */
+export const GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL = "runtime:fullscreen:changed" as const;
 
 export type GameRuntimeLaunchEntry =
     | {
@@ -124,8 +126,19 @@ export type GameRuntimePersistenceBridge = {
 export type GameRuntimePreloadBridge = {
     readPack(): Promise<GameRuntimePackV1>;
     assetUrl(assetId: string): string;
+    /**
+     * Resolve a pack plugin runtime entry (`GameRuntimePackPluginEntry.
+     * entryRelativePath`) to a loadable URL. Each shell maps it onto its own
+     * transport (custom protocol on desktop, a relative URL on the web), so
+     * the renderer never hardcodes a scheme.
+     */
+    pluginEntryUrl(entryRelativePath: string): string;
     log(level: "info" | "warning" | "error", message: string): void;
     close(): Promise<void>;
+    getFullscreen(): Promise<boolean>;
+    setFullscreen(fullscreen: boolean): Promise<void>;
+    /** Subscribe to window fullscreen transitions. Returns an unsubscribe function. */
+    onFullscreenChanged(listener: (isFullscreen: boolean) => void): () => void;
     save: GameRuntimeSaveBridge;
     persistence: GameRuntimePersistenceBridge;
 };

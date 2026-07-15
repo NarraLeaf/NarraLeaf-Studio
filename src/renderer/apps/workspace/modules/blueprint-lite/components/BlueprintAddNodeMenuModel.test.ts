@@ -87,7 +87,7 @@ describe("BlueprintAddNodeMenuModel", () => {
             entry({
                 type: "blueprint.frame.emit",
                 displayName: "Emit Page Event",
-                category: "Page",
+                category: "App",
                 keywords: ["page"],
                 isPure: false,
                 inputs: 1,
@@ -108,7 +108,7 @@ describe("BlueprintAddNodeMenuModel", () => {
             "all",
             "Events",
             "Flow",
-            "Page",
+            "App",
             "Variables",
             "Data",
             "Math",

@@ -4,11 +4,18 @@
  */
 
 /** Platforms a project can be packaged for. */
-export type GameBuildPlatform = "windows" | "macos" | "linux";
+export type GameBuildPlatform = "windows" | "macos" | "linux" | "web";
 
 /**
- * Distribution formats. "dir" is the unpacked folder (fast local check),
- * "zip" a portable archive; the rest are per-platform installers.
+ * Desktop platforms package an Electron shell through electron-builder; the
+ * "web" platform emits a static site instead and never touches the packager.
+ */
+export type GameBuildDesktopPlatform = Exclude<GameBuildPlatform, "web">;
+
+/**
+ * Distribution formats. "dir" is the unpacked folder (fast local check; for
+ * web it is the deployable site folder), "zip" a portable archive; the rest
+ * are per-platform installers.
  */
 export type GameBuildFormat = "dir" | "zip" | "nsis" | "dmg" | "appimage";
 
@@ -51,15 +58,16 @@ export const GAME_BUILD_FORMATS_BY_PLATFORM: Record<GameBuildPlatform, GameBuild
     windows: ["zip", "nsis", "dir"],
     macos: ["zip", "dmg", "dir"],
     linux: ["zip", "appimage", "dir"],
+    web: ["zip", "dir"],
 };
 
 /** The platform value describing the machine Studio itself runs on. */
-export function currentGameBuildPlatform(): GameBuildPlatform {
+export function currentGameBuildPlatform(): GameBuildDesktopPlatform {
     return platformFromSystem(process.platform);
 }
 
 /** Map a Node `process.platform` string to a build platform. */
-export function platformFromSystem(system: string): GameBuildPlatform {
+export function platformFromSystem(system: string): GameBuildDesktopPlatform {
     if (system === "darwin") {
         return "macos";
     }
@@ -73,9 +81,13 @@ export function platformFromSystem(system: string): GameBuildPlatform {
  * Whether `host` can package for `target`. macOS targets need Apple tooling
  * (mac host only); Linux packaging (AppImage) needs a Unix host; Windows
  * targets build from any host. Mirrors electron-builder's cross-build support
- * for unsigned artifacts.
+ * for unsigned artifacts. The web target is plain file copying/zipping and
+ * builds everywhere.
  */
 export function hostCanBuildTarget(host: GameBuildPlatform, target: GameBuildPlatform): boolean {
+    if (target === "web") {
+        return true;
+    }
     if (target === "macos") {
         return host === "macos";
     }

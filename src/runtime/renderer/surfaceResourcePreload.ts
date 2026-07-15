@@ -190,11 +190,21 @@ function preloadImage(url: string): Promise<void> {
     return new Promise((resolve, reject) => {
         const image = new Image();
         image.onload = () => {
-            if (typeof image.decode !== "function") {
+            // decode() pre-rasterizes so the reveal doesn't jank, but the
+            // decode queue is tied to rendering: in a hidden page (a web
+            // export opened in a background tab) it can stay pending until
+            // the tab is fronted, stalling the whole preload into its
+            // timeout. The bytes are already loaded here, so when nothing
+            // can paint anyway, loading is all that matters.
+            const pageHidden = typeof document !== "undefined" && document.visibilityState === "hidden";
+            if (typeof image.decode !== "function" || pageHidden) {
                 resolve();
                 return;
             }
-            void image.decode().then(resolve).catch(reject);
+            // A rejected decode() with loaded bytes is environmental
+            // (decoder pressure, hidden-page aborts) — truly corrupt images
+            // already failed via onerror. Count it preloaded either way.
+            void image.decode().then(resolve).catch(() => resolve());
         };
         image.onerror = () => reject(new Error(`Image failed to load: ${url}`));
         image.src = url;
