@@ -15,7 +15,6 @@ import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "../../modules/ac
 import { useTranslation } from "@/lib/i18n";
 
 interface ActionBarProps {
-    hiddenGroupIds?: string[];
     /**
      * Drop every dropdown menu, keeping only the standalone icon buttons. Used on macOS, where
      * the menus live on the system menu bar instead (see `useNativeMenuSync`).
@@ -28,7 +27,7 @@ interface ActionBarProps {
  * Displays dynamically registered actions in the top-left area
  * Filters actions based on focus context and when conditions
  */
-export function ActionBar({ hiddenGroupIds = [], hideAllGroups = false }: ActionBarProps) {
+export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
     const { t } = useTranslation();
     const { actions, actionGroups } = useRegistry();
     const { workspace, context } = useWorkspace();
@@ -74,13 +73,9 @@ export function ActionBar({ hiddenGroupIds = [], hideAllGroups = false }: Action
 
     // Filter visible actions that are not part of any group
     const standaloneActions = actions.filter((action) => !action.group && isActionVisible(action, focusContext));
-    const hiddenGroupIdSet = new Set(hiddenGroupIds);
-    const visibleActionGroups = hideAllGroups ? [] : actionGroups.filter((group) => {
-        if (hiddenGroupIdSet.has(group.id)) {
-            return false;
-        }
-        return getVisibleActionMenuItems(getActionGroupItems(group), focusContext).length > 0;
-    });
+    const visibleActionGroups = hideAllGroups
+        ? []
+        : actionGroups.filter((group) => getVisibleActionMenuItems(getActionGroupItems(group), focusContext).length > 0);
 
     if (standaloneActions.length === 0 && visibleActionGroups.length === 0) {
         return <div className="flex items-center gap-1" />;

@@ -22,7 +22,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { isMacPlatform } from "@/lib/app/platform";
 import { useTranslation } from "@/lib/i18n";
-import { WINDOW_PANELS_MENU_GROUP_ID, WorkspaceMenuAction } from "@shared/types/ipcEvents";
+import { WorkspaceMenuAction } from "@shared/types/menu";
 import {
     DOCK_REGIONS,
     EDITOR_FLOOR,
@@ -64,6 +64,9 @@ const ORDER_SETTINGS_KEY_BY_POSITION: Record<PanelPosition, string> = {
 };
 
 const REMOVED_PANEL_IDS = new Set(["narraleaf-studio:running-tasks"]);
+
+/** The dock toggles this layout publishes; a private id, since the group declares its own slot. */
+const PANEL_TOGGLES_GROUP_ID = "narraleaf-studio:window-panels";
 
 function normalizeStoredPanelId(panelId: string | null | undefined): string | null | undefined {
     if (panelId && REMOVED_PANEL_IDS.has(panelId)) {
@@ -386,15 +389,16 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
     // Publish the dock toggles to the macOS Window menu. Registered only on macOS: elsewhere the
     // ControlBar buttons are the only entry point and this group would just clutter the in-app
-    // action bar. The main process splices this well-known group id into the Window menu.
+    // action bar.
     useEffect(() => {
         if (!isMacPlatform()) {
             return;
         }
 
         registerActionGroup({
-            id: WINDOW_PANELS_MENU_GROUP_ID,
+            id: PANEL_TOGGLES_GROUP_ID,
             label: t("menu.window.title"),
+            menuSlot: "window",
             items: [
                 {
                     id: WorkspaceMenuAction.ToggleLeftSidebar,
@@ -421,7 +425,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         });
 
         return () => {
-            unregisterActionGroup(WINDOW_PANELS_MENU_GROUP_ID);
+            unregisterActionGroup(PANEL_TOGGLES_GROUP_ID);
         };
     }, [t, leftSidebarVisible, bottomPanelVisible, rightSidebarVisible, registerActionGroup, unregisterActionGroup]);
 

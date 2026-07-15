@@ -23,8 +23,8 @@ export const launcher = {
         errorOpenFolder: "打开文件夹失败",
         errorImport: "导入项目失败",
     },
+    // 中文只有一种复数形式，只需给出 other。
     recentCount: {
-        one: "{count} 个最近项目",
         other: "{count} 个最近项目",
     },
     plugins: {

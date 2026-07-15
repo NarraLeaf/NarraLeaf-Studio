@@ -4,7 +4,6 @@ import { isMacPlatform } from "@/lib/app/platform";
 import { useWorkspace } from "../context";
 import { useRegistry } from "../registry";
 import { getActionGroupItems, getVisibleActionMenuItems, isActionMenuAction, isActionMenuSeparator } from "../components/ui/actionMenuModel";
-import { NATIVE_MENU_OWNED_GROUP_IDS } from "../nativeMenu";
 import type { ActionMenuItem } from "../registry/types";
 import { UIService } from "@/lib/workspace/services/ui";
 import { Services } from "@/lib/workspace/services/services";
@@ -15,8 +14,7 @@ import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "../modules/actio
 import type { DevModeStatus } from "@shared/types/devMode";
 import type { PreviewStatus } from "@shared/types/gameRuntime";
 import { useTranslation } from "@/lib/i18n";
-import { DEV_STATUS_MENU_GROUP_ID, WorkspaceMenuAction } from "@shared/types/ipcEvents";
-import type { NativeMenuGroup, NativeMenuItem } from "@shared/types/ipcEvents";
+import type { NativeMenuGroup, NativeMenuItem, NativeMenuModel, NativeMenuSlot } from "@shared/types/menu";
 
 /**
  * Mirrors the workspace's action-registry menus onto the macOS menu bar.
@@ -27,7 +25,8 @@ import type { NativeMenuGroup, NativeMenuItem } from "@shared/types/ipcEvents";
  * dropdowns use — and pushes it up whenever it changes.
  *
  * Only the shape is sent. Clicks come back as action ids and are dispatched by
- * `useMenuActionHandler`, so behaviour stays in one place.
+ * `useMenuActionHandler`, so behaviour stays in one place. Each group carries the `menuSlot` it
+ * declared, so the main process places it without recognising any particular group.
  */
 export function useNativeMenuSync(): void {
     const { t } = useTranslation();
@@ -73,59 +72,40 @@ export function useNativeMenuSync(): void {
         };
     }, [context]);
 
-    const groups = useMemo<NativeMenuGroup[]>(() => {
-        const registryGroups = actionGroups
-            // File and Help are built natively with their own accelerators; syncing them too
-            // would duplicate those menus.
-            .filter(group => !NATIVE_MENU_OWNED_GROUP_IDS.includes(group.id))
-            .map(group => {
-                const items = serializeItems(getVisibleActionMenuItems(getActionGroupItems(group), focusContext), focusContext, t);
-                return {
-                    id: group.id,
-                    label: group.labelKey ? t(group.labelKey) : group.label,
-                    items,
-                };
-            })
+    const model = useMemo<NativeMenuModel>(() => {
+        const groups: NativeMenuGroup[] = actionGroups
+            // `none` is for groups the main process builds natively itself (File, Help);
+            // mirroring them too would leave the menu bar with two of each.
+            .filter(group => (group.menuSlot ?? "top-level") !== "none")
+            .map(group => ({
+                id: group.id,
+                label: group.labelKey ? t(group.labelKey) : group.label,
+                slot: (group.menuSlot ?? "top-level") as Exclude<NativeMenuSlot, "none">,
+                items: serializeItems(getVisibleActionMenuItems(getActionGroupItems(group), focusContext), focusContext, t),
+            }))
             .filter(group => group.items.some(item => item.kind !== "separator"));
 
-        // Checkmark state for the Develop menu, which the main process builds itself. Labels
-        // here are for the debug log only; the menu keeps its own.
-        const devStatusGroup: NativeMenuGroup = {
-            id: DEV_STATUS_MENU_GROUP_ID,
-            label: t("menu.dev.title"),
-            items: [
-                {
-                    kind: "action",
-                    id: WorkspaceMenuAction.DevMode,
-                    label: t("menu.dev.devMode"),
-                    enabled: true,
-                    checked: isDevModeRuntimeActive(devModeStatus),
-                },
-                {
-                    kind: "action",
-                    id: WorkspaceMenuAction.Preview,
-                    label: t("menu.dev.preview"),
-                    enabled: true,
-                    checked: isPreviewRuntimeActive(previewStatus),
-                },
-            ],
+        return {
+            groups,
+            runtime: {
+                devModeActive: isDevModeRuntimeActive(devModeStatus),
+                previewActive: isPreviewRuntimeActive(previewStatus),
+            },
         };
-
-        return [...registryGroups, devStatusGroup];
     }, [actionGroups, focusContext, devModeStatus, previewStatus, t]);
 
     useEffect(() => {
         if (!isMacPlatform()) return;
 
         // Focus changes fire often; only cross the IPC boundary when the menu actually differs.
-        const serialized = JSON.stringify(groups);
+        const serialized = JSON.stringify(model);
         if (lastSentRef.current === serialized) {
             return;
         }
         lastSentRef.current = serialized;
 
-        getInterface().workspace.syncNativeMenu(groups);
-    }, [groups]);
+        getInterface().workspace.syncNativeMenu(model);
+    }, [model]);
 }
 
 function serializeItems(

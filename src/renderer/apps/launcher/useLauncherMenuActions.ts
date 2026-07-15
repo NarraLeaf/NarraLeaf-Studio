@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { getInterface } from "@/lib/app/bridge";
 import { isMacPlatform } from "@/lib/app/platform";
-import { WorkspaceMenuAction } from "@shared/types/ipcEvents";
+import { WorkspaceMenuAction } from "@shared/types/menu";
 import { createProjectFromWizard, openProjectFromFolder } from "./projectActions";
 
 /**

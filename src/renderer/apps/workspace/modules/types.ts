@@ -4,6 +4,7 @@ import { PanelPosition } from "../registry/types";
 import { FocusContext } from "@/lib/workspace/services/ui";
 import { Workspace } from "@/lib/workspace/workspace";
 import { TranslationKey } from "@shared/i18n";
+import { NativeMenuSlot } from "@shared/types/menu";
 
 /**
  * Base module metadata
@@ -68,6 +69,8 @@ export interface ModuleActionGroup {
     actions: (ModuleAction | ActionSeparator)[];
     /** Sort order */
     order?: number;
+    /** Where the group lands on the macOS menu bar; see `ActionGroup.menuSlot`. */
+    menuSlot?: NativeMenuSlot;
 }
 
 /**

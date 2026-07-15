@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { Check, ChevronDown, ChevronRight } from "lucide-react";
 import { ActionDefinition, ActionGroup, ActionMenuItem } from "../../registry/types";
 import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
@@ -366,6 +366,13 @@ function MenuLevel(props: MenuLevelProps) {
                         >
                             <span className="flex items-center gap-2">
                                 {isActionMenuAction(item) ? null : (item.icon ? <span className="w-4 h-4">{item.icon}</span> : null)}
+                                {/* A toggle keeps its checkmark column even while unchecked, so
+                                    the labels in a group of toggles stay on one line. */}
+                                {isActionMenuAction(item) && item.checked !== undefined ? (
+                                    <span className="w-3 flex-none">
+                                        {item.checked ? <Check className="w-3 h-3" /> : null}
+                                    </span>
+                                ) : null}
                                 <span>{String(item.labelKey ? t(item.labelKey) : item.label)}</span>
                             </span>
                             {/* Right side: shortcut + badge/chevron */}

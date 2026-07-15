@@ -94,6 +94,11 @@ export class AppWindowEditCommandHandler extends IPCHandler<IPCEventType.appWind
             case "delete":
                 webContents.delete();
                 break;
+            default:
+                // A message channel has no reply to fail with, so say so in the log rather than
+                // dropping it silently.
+                window.app.logger.warn(`[Window] Ignoring unknown edit command: ${String(data.command)}`);
+                break;
         }
         return this.success(void 0 as never);
     }

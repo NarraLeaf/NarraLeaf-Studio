@@ -53,12 +53,4 @@ export const menu = {
         welcome: "打开欢迎页",
         docs: "文档",
     },
-    view: {
-        title: "视图",
-        reload: "重新加载",
-        resetZoom: "实际大小",
-        zoomIn: "放大",
-        zoomOut: "缩小",
-        toggleFullScreen: "切换全屏",
-    },
 } satisfies LocaleNamespace<"menu">;

@@ -212,6 +212,9 @@ export const fileActionGroup: ModuleActionGroup = {
     label: "File",
     labelKey: "actions.file.label",
     order: 10,
+    // The macOS File menu is built natively so it can carry Cmd+N/Cmd+O; mirroring this group
+    // would leave the menu bar with two File menus.
+    menuSlot: "none",
     actions: [
         {
             id: "narraleaf-studio:file-new",
@@ -314,6 +317,8 @@ export const helpActionGroup: ModuleActionGroup = {
     label: "Help",
     labelKey: "actions.help.label",
     order: 30,
+    // Built natively as the standard macOS Help menu (see fileActionGroup).
+    menuSlot: "none",
     actions: [
         {
             id: "narraleaf-studio:open-welcome",

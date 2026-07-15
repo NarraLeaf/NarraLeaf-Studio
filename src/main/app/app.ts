@@ -95,21 +95,36 @@ export class App extends BaseApp {
         );
     }
 
+    /** In-flight launcher startup, shared by concurrent callers. See {@link ensureLauncher}. */
+    private launcherStartup: Promise<void> | null = null;
+
     /**
      * Bring back the launcher, unless one is already open. Resolves once its window exists, so
      * callers can close whatever they are leaving without the app ever running windowless.
+     *
+     * Concurrent callers share one startup: `hasAliveLauncher` only turns true once the window
+     * has been built, so two workspaces closing at the same time would otherwise each open a
+     * launcher of their own.
      */
     async ensureLauncher(): Promise<void> {
         if (this.hasAliveLauncher()) {
             return;
         }
+        if (this.launcherStartup) {
+            return this.launcherStartup;
+        }
 
-        const launcher = await this.launchLauncher({
+        this.launcherStartup = this.launchLauncher({
             backgroundColor: "#0f1115",
+        }).then(launcher => {
+            launcher.onKeyUp("F12", () => {
+                launcher.toggleDevTools();
+            });
+        }).finally(() => {
+            this.launcherStartup = null;
         });
-        launcher.onKeyUp("F12", () => {
-            launcher.toggleDevTools();
-        });
+
+        return this.launcherStartup;
     }
 
     /**
@@ -168,7 +183,11 @@ export class App extends BaseApp {
             try {
                 await this.ensureLauncher();
             } catch (error) {
-                this.logger.error("Failed to launch launcher window:", error);
+                // Closing now would take the app down with it — this was probably the last
+                // window, and the home the user asked to return to is the thing that failed.
+                // Keeping the workspace open loses nothing and leaves them somewhere to work.
+                this.logger.error("[Workspace] Keeping the window open, the launcher failed to start:", error);
+                return;
             }
         }
 
@@ -234,16 +253,23 @@ export class App extends BaseApp {
         // and re-issue it via forceClose() once settled.
         let closeRequestPending = false;
         window.setCloseGuard(() => {
-            if (!closeRequestPending) {
-                closeRequestPending = true;
-                void this.handleWorkspaceCloseRequest(window)
-                    .catch(error => {
-                        this.logger.error("Failed to handle workspace close request:", error);
-                    })
-                    .finally(() => {
-                        closeRequestPending = false;
-                    });
+            if (closeRequestPending) {
+                // Closing again while the last request is still settling would stack up
+                // confirmation sheets. The usual reason for the second attempt is that the
+                // sheet is not where the user is looking, so bring it to them instead of
+                // swallowing the click without a trace.
+                window.focus();
+                return true;
             }
+
+            closeRequestPending = true;
+            void this.handleWorkspaceCloseRequest(window)
+                .catch(error => {
+                    this.logger.error("Failed to handle workspace close request:", error);
+                })
+                .finally(() => {
+                    closeRequestPending = false;
+                });
             return true;
         });
 

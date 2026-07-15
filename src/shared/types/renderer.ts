@@ -1,7 +1,8 @@
 import { FileDetails, FileStat } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
-import { BlueprintPersistenceProjectRef, EditMenuRole, MenuActionId, NativeMenuGroup, RequestStatus } from "./ipcEvents";
+import { BlueprintPersistenceProjectRef, RequestStatus } from "./ipcEvents";
+import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
 import { FsRequestResult, PlatformInfo } from "./os";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults } from "./window";
 import { GlobalStateValue } from "./state/globalState";
@@ -161,7 +162,7 @@ export interface RendererPreloadedInterface {
         onResolveImageAssetUrl(handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
         onBlueprintNavigateFromPreview(handler: (payload: PreviewStudioBlueprintOpenPayload) => void): AppEventToken;
         onMenuAction(handler: (action: MenuActionId) => void): AppEventToken;
-        syncNativeMenu(groups: NativeMenuGroup[]): void;
+        syncNativeMenu(model: NativeMenuModel): void;
     };
 
     // App
