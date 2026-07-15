@@ -2,6 +2,7 @@ import path from "path";
 import { build, Platform, Arch, type Configuration } from "electron-builder";
 import { currentGameBuildPlatform, type GameBuildFormat, type GameBuildPlatform } from "@shared/types/gameBuild";
 import type { GameBuildWorkerConfig, GameBuildWorkerTarget } from "./protocol";
+import { ensureWinCodeSignCache } from "./winCodeSignCache";
 
 /**
  * The electron-builder invocation behind a production game build. Pure with
@@ -58,6 +59,9 @@ function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWo
 }
 
 export async function runGameBuild(config: GameBuildWorkerConfig, log: GameBuildLogger): Promise<string[]> {
+    if (config.targets.some(target => target.platform === "windows")) {
+        await ensureWinCodeSignCache(log);
+    }
     const artifacts: string[] = [];
     for (const target of config.targets) {
         const platform = BUILDER_PLATFORMS[target.platform];

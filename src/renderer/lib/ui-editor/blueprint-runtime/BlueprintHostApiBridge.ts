@@ -11,6 +11,8 @@ import {
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
     BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY,
     BLUEPRINT_GAME_NVL_MODE_STATE_KEY,
+    BLUEPRINT_GAME_TEXT_READ_STATE_KEY,
+    BLUEPRINT_TEXT_READ_PERSISTENCE_KEY,
 } from "@shared/types/blueprint/hostApi";
 import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/localization";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
@@ -264,6 +266,10 @@ export type BlueprintHostApiRuntime = {
         getNotifications: () => BlueprintGameNotification[];
         getChoiceCount: () => number;
         isNvlMode: () => boolean;
+        /** True while a dialog line is on screen and its message is marked read. */
+        isCurrentTextRead: () => boolean;
+        /** Wipe the persisted text-read record (all stories). */
+        clearTextRead: () => Promise<void>;
         choose: (index: number) => Promise<void>;
         next: () => Promise<void>;
         skip: () => Promise<void>;
@@ -312,6 +318,8 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onGetNotifications?: () => BlueprintGameNotification[];
     onGetChoiceCount?: () => number;
     onIsNvlMode?: () => boolean;
+    onIsCurrentTextRead?: () => boolean;
+    onClearTextRead?: () => Promise<void> | void;
     onSelectChoice?: (index: number) => Promise<void> | void;
     onNext?: () => Promise<void> | void;
     onSkip?: () => Promise<void> | void;
@@ -1324,6 +1332,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onGetNotifications,
         onGetChoiceCount,
         onIsNvlMode,
+        onIsCurrentTextRead,
+        onClearTextRead,
         onSelectChoice,
         onNext,
         onSkip,
@@ -2486,6 +2496,34 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         ? onIsNvlMode()
                         : scope.globalGet(BLUEPRINT_GAME_NVL_MODE_STATE_KEY);
                     return value === true;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isCurrentTextRead: () => {
+                const cap = "game.isCurrentTextRead";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const value = onIsCurrentTextRead
+                        ? onIsCurrentTextRead()
+                        : scope.globalGet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY);
+                    return value === true;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            clearTextRead: async () => {
+                const cap = "game.clearTextRead";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (onClearTextRead) {
+                        await onClearTextRead();
+                        return;
+                    }
+                    // No tracker installed (e.g. story preview): wipe the record
+                    // directly and drop the mirrored flag.
+                    await scope.persistenceSetAsync(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
+                    scope.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, false);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

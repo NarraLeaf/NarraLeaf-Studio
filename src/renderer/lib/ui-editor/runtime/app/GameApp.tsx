@@ -21,7 +21,11 @@ import {
 } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
-import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
+import {
+    BLUEPRINT_GAME_NAMETAG_STATE_KEY,
+    BLUEPRINT_GAME_TEXT_READ_STATE_KEY,
+    BLUEPRINT_TEXT_READ_PERSISTENCE_KEY,
+} from "@shared/types/blueprint/hostApi";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type {
@@ -72,6 +76,12 @@ import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
 import { readNlrCharacterName } from "./nlrDialogReaders";
+import {
+    createNlrDialogReadHooks,
+    createReadKeyResolver,
+    createTextReadTracker,
+    type TextReadTracker,
+} from "./textReadTracker";
 import { waitForAnimationFrame } from "./frameTiming";
 import { NavigationController } from "./navigation/NavigationController";
 import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
@@ -235,6 +245,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
     const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
     const nlrPreferenceTokenRef = useRef<{ cancel(): void } | null>(null);
+    const textReadTrackerRef = useRef<TextReadTracker | null>(null);
     const preferenceSnapshotRef = useRef<Record<string, unknown>>({});
     const dispatchPreferenceChangeRef = useRef<
         ((key: string, value: unknown, previousValue: unknown) => void) | null
@@ -472,6 +483,30 @@ export function GameApp(props: GameAppProps): ReactNode {
         return Boolean(gameStageVisible && nlrSession?.id);
     }, [gameStageVisible, nlrSession?.id]);
 
+    const detachTextReadTracker = useCallback(() => {
+        textReadTrackerRef.current?.detach();
+        textReadTrackerRef.current = null;
+    }, []);
+
+    const isCurrentTextReadInGame = useCallback((): boolean => {
+        return textReadTrackerRef.current?.isCurrentTextRead() === true;
+    }, []);
+
+    const clearTextReadInGame = useCallback(async (): Promise<void> => {
+        const tracker = textReadTrackerRef.current;
+        if (tracker) {
+            // The live tracker owns the write path; a direct wipe would race
+            // its debounced persistence.
+            tracker.clearAll();
+            return;
+        }
+        if (!core) {
+            throw new Error("Clear Text Read: runtime is not ready");
+        }
+        await core.scopeBridge.persistenceSetAsync(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
+        core.scopeBridge.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, false);
+    }, [core]);
+
     const setNlrDialogVirtualClickTarget = useCallback((target: HTMLElement | null): void => {
         nlrDialogVirtualClickTargetRef.current = target;
     }, []);
@@ -520,6 +555,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
         nlrPreferenceTokenRef.current = null;
+        detachTextReadTracker();
         preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
         gameReadyFiredRef.current = null;
@@ -531,7 +567,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         await openSurface(targetSurfaceId, undefined, { presentation: "appPage" });
         setNlrSession(null);
         clearGameHiddenStudioPages();
-    }, [clearCurrentDialogNametag, clearGameHiddenStudioPages, openSurface, rejectPendingGameStarts]);
+    }, [clearCurrentDialogNametag, clearGameHiddenStudioPages, detachTextReadTracker, openSurface, rejectPendingGameStarts]);
 
     const writeSave = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
         const liveGame = requireActiveLiveGame("Save Game");
@@ -688,6 +724,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             getNotificationsInGame,
             getChoiceCountInGame,
             isNvlModeInGame,
+            isCurrentTextReadInGame,
+            clearTextReadInGame,
             selectChoiceInGame,
             isInGame,
             quitGame,
@@ -756,6 +794,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         hideDialogInGame,
         host.id,
         host.quitApplication,
+        isCurrentTextReadInGame,
+        clearTextReadInGame,
         isInGame,
         isNvlModeInGame,
         listSaveIds,
@@ -875,6 +915,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             onGetNotifications: getNotificationsInGame,
             onGetChoiceCount: getChoiceCountInGame,
             onIsNvlMode: isNvlModeInGame,
+            onIsCurrentTextRead: isCurrentTextReadInGame,
+            onClearTextRead: clearTextReadInGame,
             onSelectChoice: selectChoiceInGame,
             onNext: nextInGame,
             onSkip: skipInGame,
@@ -941,6 +983,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         getSavePreview,
         hideDialogInGame,
         host.quitApplication,
+        isCurrentTextReadInGame,
+        clearTextReadInGame,
         isInGame,
         isNvlModeInGame,
         listSaveIds,
@@ -1089,6 +1133,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onGetNotifications: getNotificationsInGame,
                     onGetChoiceCount: getChoiceCountInGame,
                     onIsNvlMode: isNvlModeInGame,
+                    onIsCurrentTextRead: isCurrentTextReadInGame,
+                    onClearTextRead: clearTextReadInGame,
                     onSelectChoice: selectChoiceInGame,
                     onNext: nextInGame,
                     onSkip: skipInGame,
@@ -1185,6 +1231,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         getSavePreview,
         hideDialogInGame,
         host.quitApplication,
+        isCurrentTextReadInGame,
+        clearTextReadInGame,
         isInGame,
         isNvlModeInGame,
         listSaveIds,
@@ -1255,6 +1303,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
         nlrPreferenceTokenRef.current = null;
+        detachTextReadTracker();
         preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
         gameReadyFiredRef.current = null;
@@ -1273,6 +1322,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         bundle.bundleId,
         clearCurrentDialogNametag,
         clearGameHiddenStudioPages,
+        detachTextReadTracker,
         rejectPendingGameStarts,
     ]);
 
@@ -1281,6 +1331,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
         nlrPreferenceTokenRef.current = null;
+        detachTextReadTracker();
         preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
         gameReadyFiredRef.current = null;
@@ -1288,7 +1339,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrLiveGameSessionIdRef.current = null;
         choiceRuntimeRef.current = null;
         clearCurrentDialogNametag();
-    }, [clearCurrentDialogNametag, nlrSession?.id]);
+    }, [clearCurrentDialogNametag, detachTextReadTracker, nlrSession?.id]);
 
     useEffect(() => {
         if (!host.ready || !core || !hostAdapterBundle) {
@@ -1461,6 +1512,17 @@ export function GameApp(props: GameAppProps): ReactNode {
                     preferenceSnapshotRef,
                     (key, value, previousValue) => dispatchPreferenceChangeRef.current?.(key, value, previousValue),
                 );
+                detachTextReadTracker();
+                const dialogGameState = liveGame.getGameState();
+                if (dialogGameState) {
+                    textReadTrackerRef.current = createTextReadTracker({
+                        ...createNlrDialogReadHooks(dialogGameState),
+                        persistenceGetAsync: key => core.scopeBridge.persistenceGetAsync(key),
+                        persistenceSet: (key, value) => core.scopeBridge.persistenceSet(key, value),
+                        setMirror: value => core.scopeBridge.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, value),
+                        resolveReadKey: createReadKeyResolver(nlrSession?.compiled.actionIdBindings ?? []),
+                    });
+                }
                 nlrLiveGameRef.current = liveGame;
                 nlrLiveGameSessionIdRef.current = sessionId;
                 try {

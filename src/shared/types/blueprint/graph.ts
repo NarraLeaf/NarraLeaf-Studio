@@ -776,6 +776,10 @@ export const BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG = "blueprint.game.getNametag" 
 export const BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS = "blueprint.game.getNotifications" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT = "blueprint.game.getChoiceCount" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE = "blueprint.game.isNvlMode" as const;
+/** True while a dialog line is on screen and its message is read (seen before, or display finished). */
+export const BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ = "blueprint.game.isTextRead" as const;
+/** Wipe the persisted text-read record (all stories); works with or without a running game. */
+export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ = "blueprint.game.clearTextRead" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_CHOOSE = "blueprint.game.choose" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_NEXT = "blueprint.game.next" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SKIP = "blueprint.game.skip" as const;

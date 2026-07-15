@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 21 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 23 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -12,6 +12,20 @@ export const BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY = "game.choice.count" as cons
 
 /** Global runtime state key mirrored from the NarraLeaf NVL slot bridge. */
 export const BLUEPRINT_GAME_NVL_MODE_STATE_KEY = "game.nvl.active" as const;
+
+/**
+ * Global runtime state key mirrored from the Studio text-read tracker:
+ * true while a dialog line is on screen AND its message is marked read
+ * (previously seen, or the current display finished).
+ */
+export const BLUEPRINT_GAME_TEXT_READ_STATE_KEY = "game.dialog.textRead" as const;
+
+/**
+ * Project-persistence key holding the read text UUIDs (string[]). Shared so
+ * hosts without a live tracker (e.g. a settings page before any game starts)
+ * can still wipe the record.
+ */
+export const BLUEPRINT_TEXT_READ_PERSISTENCE_KEY = "nlr.textRead" as const;
 
 export type BlueprintHostApiContractVersion = typeof BLUEPRINT_HOST_API_CONTRACT_VERSION;
 
@@ -332,6 +346,22 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             async: false,
             input: {},
             output: false,
+        },
+        isCurrentTextRead: {
+            capabilityId: "game.isCurrentTextRead",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: false,
+        },
+        clearTextRead: {
+            capabilityId: "game.clearTextRead",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: null,
         },
         choose: {
             capabilityId: "game.choose",

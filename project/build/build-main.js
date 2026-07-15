@@ -37,8 +37,10 @@ const { rootDir, isDev } = require('./utils');
         format: 'cjs',
         bundle: true,
         // electron-builder stays a real node_modules require: its module tree
-        // reads template/resource files relative to itself at runtime.
-        external: ['electron', 'electron-builder'],
+        // reads template/resource files relative to itself at runtime. 7zip-bin
+        // (already in electron-builder's closure) resolves its bundled 7za.exe
+        // relative to its own __dirname, so it must not be inlined either.
+        external: ['electron', 'electron-builder', '7zip-bin'],
         sourcemap: isDev(),
         minify: !isDev(),
         target: ['node18'],

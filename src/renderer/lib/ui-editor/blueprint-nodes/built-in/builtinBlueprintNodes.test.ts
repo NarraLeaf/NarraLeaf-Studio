@@ -104,7 +104,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
     BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
+    BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ,
     BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
+    BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ,
     BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
@@ -326,6 +328,8 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getNotifications: () => [],
                     getChoiceCount: () => 0,
                     isNvlMode: () => false,
+                    isCurrentTextRead: () => false,
+                    clearTextRead: async () => undefined,
                     choose: async () => undefined,
                     next: async () => undefined,
                     skip: async () => undefined,
@@ -437,6 +441,8 @@ function createPageNavigationHostAdapter(
                     getNotifications: () => [],
                     getChoiceCount: () => 0,
                     isNvlMode: () => false,
+                    isCurrentTextRead: () => false,
+                    clearTextRead: async () => undefined,
                     choose: async () => undefined,
                     next: async () => undefined,
                     skip: async () => undefined,
@@ -470,6 +476,8 @@ function createGameSaveHostAdapter(options: {
     notifications?: Array<{ id: string; message: string }>;
     choiceCount?: number;
     nvlMode?: boolean;
+    textRead?: boolean;
+    clearTextReadCalls?: boolean[];
     chosenIndexes?: number[];
     isInGame?: boolean;
     isGameOverlay?: boolean;
@@ -545,6 +553,10 @@ function createGameSaveHostAdapter(options: {
                     getNotifications: () => options.notifications ?? [],
                     getChoiceCount: () => options.choiceCount ?? 0,
                     isNvlMode: () => options.nvlMode ?? false,
+                    isCurrentTextRead: () => options.textRead ?? false,
+                    clearTextRead: async () => {
+                        options.clearTextReadCalls?.push(true);
+                    },
                     choose: async (index: number) => {
                         options.chosenIndexes?.push(index);
                     },
@@ -4518,6 +4530,18 @@ describe("built-in blueprint nodes", () => {
             gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE)?.pins.map(pin => pin.id),
         ).toEqual(["isNvlMode"]);
         expect(
+            gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ)?.pins.map(pin => pin.id),
+        ).toEqual(["isRead"]);
+        expect(
+            gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ)?.isPure,
+        ).toBe(true);
+        expect(
+            gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ)?.pins.map(pin => pin.id),
+        ).toEqual(["in", "next"]);
+        expect(
+            gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ)?.isPure,
+        ).toBe(false);
+        expect(
             gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_CHOOSE)?.pins.map(pin => pin.id),
         ).toEqual(["in", "next", "index"]);
 
@@ -4532,6 +4556,8 @@ describe("built-in blueprint nodes", () => {
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_CHOOSE)).toBe(false);
 
         for (const widgetElementType of ["nl.notification.list", "nl.choice.list", "nl.nvl.list"]) {
@@ -4566,6 +4592,25 @@ describe("built-in blueprint nodes", () => {
             hostAdapter: createGameSaveHostAdapter({ chosenIndexes }),
         });
         expect(chosenIndexes).toEqual([2]);
+
+        const clearTextReadCalls: boolean[] = [];
+        await executeGraph({
+            graph: {
+                id: "clear-text-read",
+                entries: { main: { start: { nodeId: "clear", port: "in" } } },
+                nodes: {
+                    clear: {
+                        id: "clear",
+                        type: BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ,
+                        params: {},
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "clear", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ clearTextReadCalls }),
+        });
+        expect(clearTextReadCalls).toEqual([true]);
 
         await expect(executeGraph({
             graph: {
