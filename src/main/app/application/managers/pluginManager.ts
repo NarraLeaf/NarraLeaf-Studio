@@ -367,9 +367,36 @@ export class PluginManager {
         await fs.mkdir(this.pluginsDir, { recursive: true });
         const tempPath = `${installPath}.builtin-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         await fs.rm(tempPath, { recursive: true, force: true });
-        await fs.cp(sourcePath, tempPath, { recursive: true });
+        await this.copyDirectoryFromAsar(sourcePath, tempPath);
         await fs.rm(installPath, { recursive: true, force: true });
         await fs.rename(tempPath, installPath);
+    }
+
+    /**
+     * Recursively copy a plugin package out of the built-in plugins directory.
+     *
+     * When Studio is packaged the source lives inside app.asar. Electron's asar
+     * shim patches `readdir`/`readFile` to work transparently on the virtual
+     * archive, but it does NOT patch directory streaming (`opendir`), which is
+     * what `fs.cp({ recursive: true })` relies on — so `fs.cp` fails with
+     * `ENOTDIR` on asar-packed built-in plugins. Walking the tree with
+     * `readdir` + `readFile`/`writeFile` keeps the copy asar-safe in both the
+     * packaged and unpacked (dev) layouts.
+     */
+    private async copyDirectoryFromAsar(sourceDir: string, destDir: string): Promise<void> {
+        await fs.mkdir(destDir, { recursive: true });
+        const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+        for (const entry of entries) {
+            const sourceEntry = path.join(sourceDir, entry.name);
+            const destEntry = path.join(destDir, entry.name);
+            if (entry.isDirectory()) {
+                await this.copyDirectoryFromAsar(sourceEntry, destEntry);
+            } else if (entry.isFile()) {
+                await fs.writeFile(destEntry, await fs.readFile(sourceEntry));
+            }
+            // Plugin packages contain only regular files and directories; other
+            // entry types (symlinks, sockets) are intentionally skipped.
+        }
     }
 
     private grantBuiltInManifestPermissions(
