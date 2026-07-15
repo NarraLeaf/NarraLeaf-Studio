@@ -208,6 +208,10 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         this.getBrowserWindow().unmaximize();
     }
 
+    public focus(): void {
+        this.getBrowserWindow().focus();
+    }
+
     public getControl(): WindowVisibilityStatus {
         if (this.getBrowserWindow().isMinimized()) {
             return "minimized";

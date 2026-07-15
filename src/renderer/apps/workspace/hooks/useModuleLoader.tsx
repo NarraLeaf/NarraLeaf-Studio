@@ -79,6 +79,7 @@ export function useModuleLoader() {
                         icon: group.icon,
                         actions: group.actions,
                         order: group.order,
+                        menuSlot: group.menuSlot,
                     });
                 });
             }
@@ -116,6 +117,7 @@ export function useModuleLoader() {
                 icon: group.icon,
                 actions: group.actions,
                 order: group.order,
+                menuSlot: group.menuSlot,
             });
         });
 

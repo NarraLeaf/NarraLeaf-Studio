@@ -53,14 +53,6 @@ export const menu = {
         rightSidebar: "Show Right Bar",
     },
     // The View menu was removed from the menu bar; the strings stay for future use.
-    view: {
-        title: "View",
-        reload: "Reload",
-        resetZoom: "Actual Size",
-        zoomIn: "Zoom In",
-        zoomOut: "Zoom Out",
-        toggleFullScreen: "Toggle Full Screen",
-    },
     help: {
         title: "Help",
         welcome: "Open Welcome",

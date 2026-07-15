@@ -2,7 +2,7 @@ import { EditorTabComponentProps, FocusContext, PanelComponentProps } from "@/li
 import { Workspace } from "@/lib/workspace/workspace";
 import { ComponentType, ReactNode } from "react";
 import { TranslationKey } from "@shared/i18n";
-import { EditMenuRole } from "@shared/types/ipcEvents";
+import { EditMenuRole, NativeMenuSlot } from "@shared/types/menu";
 
 /**
  * Position where a panel can be displayed
@@ -72,6 +72,12 @@ export interface ActionGroup {
      */
     items?: ActionMenuItem[];
     order?: number;
+    /**
+     * Where this group lands on the macOS menu bar (default `top-level`). The group declares its
+     * own placement so the main process never has to recognise it by id. Ignored elsewhere: on
+     * other platforms the group is only ever an in-app dropdown.
+     */
+    menuSlot?: NativeMenuSlot;
 }
 
 /**
@@ -92,14 +98,19 @@ export interface ActionDefinition {
     disabled?: boolean;
     visible?: boolean;
     /**
-     * Marks the action as a toggle and carries its current state. Only consumed by the macOS
-     * native menu today, where it renders as a checkbox item.
+     * Marks the action as a toggle and carries its current state. Renders as a checkmark in the
+     * in-app dropdown and as a native checkbox item on the macOS menu bar.
      */
     checked?: boolean;
     /**
      * Declares that this action is the focused surface's version of a standard Edit-menu
-     * command. The macOS Edit menu then routes that command (复制/剪切/粘贴/删除) here instead
+     * command. The macOS Edit menu then routes that command (Copy/Cut/Paste/Delete) here instead
      * of listing the action a second time below the built-in items.
+     *
+     * This is also how the action becomes reachable by Cmd+C/X/V on macOS, where those keys are
+     * Edit-menu key equivalents and never reach `shortcut`'s `ctrl+*` binding. Use it only for
+     * the four standard commands; any other Cmd shortcut needs an explicit `meta+…` keybinding
+     * (see BlueprintEntryTab), since the native menu has nowhere to hang it.
      */
     menuRole?: EditMenuRole;
     when?: (context: FocusContext) => boolean;
