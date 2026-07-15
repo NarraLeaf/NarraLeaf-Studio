@@ -261,4 +261,47 @@ describe("runtime surface asset preload", () => {
             "nlgame://asset/credits-bg",
         ]);
     });
+
+    it("skips decode() in hidden pages so background-tab boots do not stall", async () => {
+        const pack = makePack();
+        delete pack.assets.items["component-font"];
+        const home = pack.bundle.ui.uidoc.surfaces.find(surface => surface.id === "home")!;
+        const decoded: string[] = [];
+
+        class FakeImage {
+            onload: (() => void) | null = null;
+            onerror: (() => void) | null = null;
+            private currentSrc = "";
+
+            set src(value: string) {
+                this.currentSrc = value;
+                queueMicrotask(() => this.onload?.());
+            }
+
+            get src(): string {
+                return this.currentSrc;
+            }
+
+            decode(): Promise<void> {
+                decoded.push(this.currentSrc);
+                // A hidden page's decode queue is tied to rendering and may
+                // never settle; the preload must not depend on it.
+                return new Promise(() => undefined);
+            }
+        }
+
+        vi.stubGlobal("Image", FakeImage);
+        vi.stubGlobal("document", { visibilityState: "hidden" });
+
+        const result = await preloadRuntimePackAssets({
+            pack,
+            firstSurface: home,
+            assetUrl: assetId => `nlgame://asset/${assetId}`,
+            timeoutMs: 100,
+        });
+
+        expect(result.timedOut).toBe(false);
+        expect(result.loaded).toBe(3);
+        expect(decoded).toEqual([]);
+    });
 });

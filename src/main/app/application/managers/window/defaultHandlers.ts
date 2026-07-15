@@ -13,6 +13,8 @@ import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, Projec
 import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./handlers/projectPackageAction";
 import { WorkspaceLaunchHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceExportConsoleLogsHandler } from "./handlers/workspaceAction";
 import {
+    DevModeFullscreenGetHandler,
+    DevModeFullscreenSetHandler,
     DevModeGetStatusHandler,
     DevModeLaunchHandler,
     DevModeOpenBlueprintInWorkspaceHandler,
@@ -109,6 +111,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new DevModeStopHandler(),
         new DevModeReloadHandler(),
         new DevModeGetStatusHandler(),
+        new DevModeFullscreenGetHandler(),
+        new DevModeFullscreenSetHandler(),
         new DevModeOpenBlueprintInWorkspaceHandler(),
         new DevModeForwardBlueprintDebugEventHandler(),
         new DevModeResolveAssetUrlHandler(),

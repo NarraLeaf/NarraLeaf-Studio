@@ -1,31 +1,24 @@
 import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
+import type { DevModeSaveRecord } from "@shared/types/devModeSave";
 import {
-    DEV_MODE_SAVE_TYPE_NORMAL,
-    type DevModeSaveRecord,
-} from "@shared/types/devModeSave";
+    buildRuntimeSaveRecord,
+    normalizeRuntimeJsonValue,
+    normalizeRuntimeSaveId,
+    parseRuntimeSaveRecord,
+    type RuntimeSaveFileRecord,
+} from "@shared/utils/runtimeSaveRecord";
 
-type SaveFileRecord = DevModeSaveRecord & {
-    version: 1;
-};
+export { normalizeRuntimeSaveId };
+
+type SaveFileRecord = RuntimeSaveFileRecord;
 
 type PendingSaveOp =
     | { kind: "write"; record: SaveFileRecord }
     | { kind: "delete" };
 
 const SAVE_FILE_EXTENSION = ".json";
-
-export function normalizeRuntimeSaveId(id: string): string {
-    const safe = String(id ?? "").trim();
-    if (!safe) {
-        throw new Error("Save id is required");
-    }
-    if (safe === "." || safe === ".." || /[\\/]/.test(safe) || /[\u0000-\u001f\u007f]/.test(safe)) {
-        throw new Error("Save id cannot be a path segment");
-    }
-    return safe;
-}
 
 /**
  * Save records carry base64 captures that make each file expensive to read and
@@ -55,19 +48,14 @@ export class RuntimeSaveStore {
         return this.track((async () => {
             const normalizedId = normalizeRuntimeSaveId(id);
             const previous = await this.loadRecord(normalizedId);
-            const now = new Date().toISOString();
-            const record: SaveFileRecord = {
-                version: 1,
-                metadata: {
-                    id: normalizedId,
-                    type: DEV_MODE_SAVE_TYPE_NORMAL,
-                    createdAt: previous?.metadata.createdAt ?? now,
-                    updatedAt: now,
-                    ...(typeof capture === "string" && capture ? { capture } : {}),
-                    user: normalizeJsonValue(metadata),
-                },
-                savedGame: normalizeJsonValue(savedGame),
-            };
+            const record = buildRuntimeSaveRecord({
+                id: normalizedId,
+                savedGame,
+                capture,
+                metadata,
+                previous,
+                now: new Date().toISOString(),
+            });
             this.records.set(normalizedId, record);
             await this.schedule(normalizedId, { kind: "write", record });
         })());
@@ -104,7 +92,7 @@ export class RuntimeSaveStore {
             }
             try {
                 const raw = await fs.readFile(path.join(dir, name), "utf-8");
-                const record = parseSaveRecord(JSON.parse(raw));
+                const record = parseRuntimeSaveRecord(JSON.parse(raw));
                 if (record) {
                     ids.add(record.metadata.id);
                 }
@@ -168,7 +156,7 @@ export class RuntimeSaveStore {
         let record: SaveFileRecord | null = null;
         try {
             const raw = await fs.readFile(this.saveFilePath(normalizedId), "utf-8");
-            const parsed = parseSaveRecord(JSON.parse(raw));
+            const parsed = parseRuntimeSaveRecord(JSON.parse(raw));
             record = parsed ? { version: 1, ...parsed } : null;
         } catch {
             record = null;
@@ -263,7 +251,7 @@ export class RuntimePersistenceStore {
             if (value === undefined) {
                 delete store[key];
             } else {
-                store[key] = normalizeJsonValue(value);
+                store[key] = normalizeRuntimeJsonValue(value);
             }
             await this.scheduleFlush();
         })());
@@ -377,41 +365,7 @@ async function unlinkIgnoringMissing(filePath: string): Promise<void> {
     }
 }
 
-function parseSaveRecord(value: unknown): DevModeSaveRecord | null {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-        return null;
-    }
-    const record = value as Partial<SaveFileRecord>;
-    if (record.version !== 1 || !record.metadata || typeof record.metadata.id !== "string") {
-        return null;
-    }
-    if (record.metadata.type !== DEV_MODE_SAVE_TYPE_NORMAL) {
-        return null;
-    }
-    return {
-        metadata: {
-            id: normalizeRuntimeSaveId(record.metadata.id),
-            type: DEV_MODE_SAVE_TYPE_NORMAL,
-            createdAt: typeof record.metadata.createdAt === "string" ? record.metadata.createdAt : "",
-            updatedAt: typeof record.metadata.updatedAt === "string" ? record.metadata.updatedAt : "",
-            ...(typeof record.metadata.capture === "string" && record.metadata.capture ? { capture: record.metadata.capture } : {}),
-            user: normalizeJsonValue(record.metadata.user),
-        },
-        savedGame: record.savedGame,
-    };
-}
 
-function normalizeJsonValue(value: unknown): unknown {
-    if (value === undefined) {
-        return null;
-    }
-    try {
-        const serialized = JSON.stringify(value);
-        return serialized === undefined ? null : JSON.parse(serialized);
-    } catch {
-        return null;
-    }
-}
 
 function isNodeErrorCode(error: unknown, code: string): boolean {
     return Boolean(error && typeof error === "object" && "code" in error && error.code === code);

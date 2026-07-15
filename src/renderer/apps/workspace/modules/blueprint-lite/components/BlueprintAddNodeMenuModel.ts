@@ -13,7 +13,7 @@ const DOCUMENTED_CATEGORY_ORDER = [
     "Flow",
     "Element",
     "Displayable",
-    "Page",
+    "App",
     "Variables",
     "Data",
     "Math",

@@ -231,6 +231,21 @@ const BROADCAST_EVENTS: readonly WidgetLogicEventDef[] = [
     },
 ];
 
+/**
+ * Ambient application-window events. Like broadcasts these are not widget
+ * interactions, but any widget may listen to them — a settings-page control can
+ * track the window without owning the Page or Global blueprint.
+ */
+const WINDOW_EVENTS: readonly WidgetLogicEventDef[] = [
+    {
+        id: "windowFullscreenChanged",
+        displayName: "Fullscreen changed",
+        description: "Fires when the application window enters or leaves fullscreen.",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.fullscreenChanged"],
+    },
+];
+
 const FRAME_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
     FLUSH_EVENT,
@@ -244,6 +259,7 @@ const FRAME_EVENTS: readonly WidgetLogicEventDef[] = [
     },
     ...KEYBOARD_EVENTS,
     ...BROADCAST_EVENTS,
+    ...WINDOW_EVENTS,
 ];
 
 const SLIDER_EVENTS: readonly WidgetLogicEventDef[] = [
@@ -271,6 +287,7 @@ const SLIDER_EVENTS: readonly WidgetLogicEventDef[] = [
     },
     ...KEYBOARD_EVENTS,
     ...BROADCAST_EVENTS,
+    ...WINDOW_EVENTS,
 ];
 
 const DISPLAYABLE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
@@ -281,6 +298,7 @@ const DISPLAYABLE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     ...LIST_ITEM_CONTEXT_EVENTS,
     ...DISPLAYABLE_EVENTS,
     ...BROADCAST_EVENTS,
+    ...WINDOW_EVENTS,
 ];
 
 const COLLECTION_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
@@ -292,6 +310,7 @@ const COLLECTION_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     ...LIST_ITEM_EVENTS,
     ...KEYBOARD_EVENTS,
     ...BROADCAST_EVENTS,
+    ...WINDOW_EVENTS,
 ];
 
 const baseCommands: readonly WidgetLogicCommandDef[] = [

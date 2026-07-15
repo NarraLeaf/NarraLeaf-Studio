@@ -61,6 +61,11 @@ export type GameAppHost = {
     ) => Promise<string | null | undefined> | string | null | undefined;
     saveStore: GameAppSaveStore;
     quitApplication: () => Promise<void>;
+    /** Application window fullscreen. Hosts without a real window (story preview) omit these. */
+    getFullscreen?: () => Promise<boolean>;
+    setFullscreen?: (fullscreen: boolean) => Promise<void>;
+    /** Subscribe to fullscreen transitions; returns an unsubscribe function. */
+    subscribeFullscreenChanged?: (listener: (isFullscreen: boolean) => void) => () => void;
 };
 
 /** Context handed to host-rendered overlays (e.g. the Dev Mode debug panel). */

@@ -1,6 +1,11 @@
 import path from "path";
 import { build, Platform, Arch, type Configuration } from "electron-builder";
-import { currentGameBuildPlatform, type GameBuildFormat, type GameBuildPlatform } from "@shared/types/gameBuild";
+import {
+    currentGameBuildPlatform,
+    type GameBuildDesktopPlatform,
+    type GameBuildFormat,
+} from "@shared/types/gameBuild";
+import { packageWebSite } from "./packageWebSite";
 import type { GameBuildWorkerConfig, GameBuildWorkerTarget } from "./protocol";
 import { ensureWinCodeSignCache } from "./winCodeSignCache";
 
@@ -13,7 +18,7 @@ import { ensureWinCodeSignCache } from "./winCodeSignCache";
 
 export type GameBuildLogger = (level: "info" | "warning" | "error", message: string) => void;
 
-const BUILDER_PLATFORMS: Record<GameBuildPlatform, Platform> = {
+const BUILDER_PLATFORMS: Record<GameBuildDesktopPlatform, Platform> = {
     windows: Platform.WINDOWS,
     macos: Platform.MAC,
     linux: Platform.LINUX,
@@ -59,17 +64,30 @@ function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWo
 }
 
 export async function runGameBuild(config: GameBuildWorkerConfig, log: GameBuildLogger): Promise<string[]> {
+    const artifacts: string[] = [];
+    // The web job first: it is orders of magnitude faster than any
+    // electron-builder target, so its artifacts land even if a later desktop
+    // target fails.
+    if (config.web) {
+        artifacts.push(...await packageWebSite(config.web, config.outputDir, log));
+    }
+    if (config.targets.length === 0) {
+        return artifacts;
+    }
+    const appDir = config.appDir;
+    if (!appDir) {
+        throw new Error("Desktop packaging requires a compiled app dir");
+    }
     if (config.targets.some(target => target.platform === "windows")) {
         await ensureWinCodeSignCache(log);
     }
-    const artifacts: string[] = [];
     for (const target of config.targets) {
         const platform = BUILDER_PLATFORMS[target.platform];
         const targetNames = target.formats.map(format => BUILDER_TARGET_NAMES[format]);
         log("info", `packaging ${target.platform} (${target.formats.join(", ")})`);
         const produced = await build({
             targets: platform.createTarget(targetNames, targetArch(target)),
-            projectDir: config.appDir,
+            projectDir: appDir,
             config: builderConfiguration(config, target),
         });
         artifacts.push(...produced.map(artifact => path.resolve(artifact)));

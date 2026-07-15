@@ -17,6 +17,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -185,6 +186,14 @@ const PIN_PREFERENCE_PREVIOUS_VALUE: BlueprintNodePinDef = {
     semantic: "data",
     valueType: "json",
     label: "Previous Value",
+};
+
+const PIN_IS_FULLSCREEN: BlueprintNodePinDef = {
+    id: "isFullscreen",
+    kind: "output",
+    semantic: "data",
+    valueType: "boolean",
+    label: "Is Fullscreen",
 };
 
 // Inspector dropdown for `On Preference Changed`. Values mirror the NarraLeaf
@@ -662,4 +671,18 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         keywords: ["game", "preference", "setting", "changed", "any", "audio", "nlr"],
         pins: [THEN_PIN, PIN_KEY, PIN_PREFERENCE_VALUE, PIN_PREFERENCE_PREVIOUS_VALUE],
     }),
+    {
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
+        displayName: "On Fullscreen Changed",
+        category: "Events",
+        keywords: ["fullscreen", "full", "screen", "window", "app", "changed", "display", "maximize"],
+        graphKinds: ["event"],
+        isPure: false,
+        role: "eventHead",
+        // Ambient window event: widgets listen too (a settings control tracking the
+        // window), so the palette offers it wherever the widget logic API lists the slot.
+        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain"] },
+        pins: [THEN_PIN, PIN_IS_FULLSCREEN],
+        execute: eventHeadExecute,
+    },
 ];

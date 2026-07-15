@@ -142,6 +142,15 @@ export class DevModeManager {
             this.emitVerbose(session, "Dev Mode window ready");
             this.tryFlushPendingToDevWindow(session);
         });
+        // Feeds the `On Fullscreen Changed` blueprint head, so it also fires for
+        // fullscreen toggled outside the game (macOS green button, OS shortcuts).
+        const forwardFullscreen = (isFullscreen: boolean) => () => {
+            if (!window.isClosed() && !window.isDestroyed()) {
+                window.sendIpcEvent(IPCEventType.devModeFullscreenChanged, { isFullscreen });
+            }
+        };
+        window.win.on("enter-full-screen", forwardFullscreen(true));
+        window.win.on("leave-full-screen", forwardFullscreen(false));
     }
 
     private async compileAndSendBundle(session: DevModeSession, status: DevModeStatus): Promise<void> {

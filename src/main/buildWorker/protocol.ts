@@ -1,4 +1,4 @@
-import type { GameBuildFormat, GameBuildPlatform } from "@shared/types/gameBuild";
+import type { GameBuildDesktopPlatform, GameBuildFormat } from "@shared/types/gameBuild";
 
 /**
  * Message protocol between GameBuildManager (main process) and the packaging
@@ -18,7 +18,7 @@ export type GameBuildWorkerFuses = {
 };
 
 export type GameBuildWorkerTarget = {
-    platform: GameBuildPlatform;
+    platform: GameBuildDesktopPlatform;
     formats: GameBuildFormat[];
     /** Electron fuse set for this platform's binaries. */
     fuses: GameBuildWorkerFuses;
@@ -36,10 +36,29 @@ export type GameBuildWorkerTarget = {
     iconPath?: string;
 };
 
+/**
+ * Web export packaging job. The compiled static site is finished as-is —
+ * no electron-builder involved: "dir" copies it into the output directory,
+ * "zip" archives it (site files at the archive root, ready to upload).
+ */
+export type GameBuildWorkerWebJob = {
+    /** Compiled static-site dir (output of the web artifact compile). */
+    sourceDir: string;
+    /** Subset of ["zip", "dir"]. */
+    formats: GameBuildFormat[];
+    /** Folder name (under outputDir) the "dir" format is copied to. */
+    dirName: string;
+    /** File name (under outputDir) the "zip" format is written to. */
+    zipName: string;
+};
+
 export type GameBuildWorkerConfig = {
-    /** Compiled staging app dir (contains package.json + runtime + payload). */
-    appDir: string;
-    /** Absolute directory electron-builder writes artifacts into. */
+    /**
+     * Compiled staging app dir (contains package.json + runtime + payload).
+     * Required whenever `targets` is non-empty; a web-only build has none.
+     */
+    appDir?: string;
+    /** Absolute directory artifacts are written into. */
     outputDir: string;
     appId: string;
     productName: string;
@@ -50,7 +69,10 @@ export type GameBuildWorkerConfig = {
     electronMirror?: string;
     /** Glob patterns kept outside the asar as real files. */
     asarUnpack: string[];
+    /** Desktop packaging jobs, one per platform (electron-builder). */
     targets: GameBuildWorkerTarget[];
+    /** Optional web export job, packaged without electron-builder. */
+    web?: GameBuildWorkerWebJob;
 };
 
 export type GameBuildWorkerStartMessage = {

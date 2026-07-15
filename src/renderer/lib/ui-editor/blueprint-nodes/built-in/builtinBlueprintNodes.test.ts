@@ -72,6 +72,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
@@ -211,6 +212,8 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
+    BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
+    BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
     BLUEPRINT_NODE_TYPE_SAVED_GET,
@@ -286,6 +289,8 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getPageProps: () => ({}),
                     closeLayer: async () => undefined,
                     quitApplication: async () => undefined,
+                    getFullscreen: async () => false,
+                    setFullscreen: async () => undefined,
                 },
                 widget: {} as any,
                 state: {
@@ -362,6 +367,7 @@ function createPageNavigationHostAdapter(
     openedPageProps: unknown[] = [],
     pageProps: Record<string, unknown> = {},
     quitApplicationCalls: boolean[] = [],
+    fullscreen: { current: boolean; setCalls: boolean[] } = { current: false, setCalls: [] },
 ): UIHostAdapter {
     return {
         host: "player",
@@ -381,6 +387,11 @@ function createPageNavigationHostAdapter(
                     closeLayer: async () => undefined,
                     quitApplication: async () => {
                         quitApplicationCalls.push(true);
+                    },
+                    getFullscreen: async () => fullscreen.current,
+                    setFullscreen: async (next: boolean) => {
+                        fullscreen.setCalls.push(next);
+                        fullscreen.current = next;
                     },
                 },
                 widget: {
@@ -505,6 +516,8 @@ function createGameSaveHostAdapter(options: {
                     getPageProps: () => ({}),
                     closeLayer: async () => undefined,
                     quitApplication: async () => undefined,
+                    getFullscreen: async () => false,
+                    setFullscreen: async () => undefined,
                 },
                 widget: {} as any,
                 state: {
@@ -1380,6 +1393,73 @@ describe("built-in blueprint nodes", () => {
         ]);
     });
 
+    it("reads and writes the App window fullscreen state", async () => {
+        const readFullscreenInto = async (
+            fullscreen: { current: boolean; setCalls: boolean[] },
+        ): Promise<Record<string, unknown>> => {
+            const locals: Record<string, unknown> = {};
+            await executeGraph({
+                graph: {
+                    id: "getFullscreen",
+                    entries: { main: { start: { nodeId: "get", port: "in" } } },
+                    nodes: {
+                        get: { id: "get", type: BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN, params: {} },
+                        store: {
+                            id: "store",
+                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                            params: { variableId: "state" },
+                        },
+                    },
+                    edges: [
+                        { from: { nodeId: "get", port: "next" }, to: { nodeId: "store", port: "in" } },
+                        { from: { nodeId: "get", port: "isFullscreen" }, to: { nodeId: "store", port: "value" } },
+                    ],
+                },
+                entry: { start: { nodeId: "get", port: "in" } },
+                hostAdapter: createPageNavigationHostAdapter([], {}, [], [], [], {}, [], fullscreen),
+                blueprintLocals: locals,
+            });
+            return locals;
+        };
+
+        // Get Fullscreen is latent, so its data pin only resolves via the output passthrough.
+        expect(await readFullscreenInto({ current: true, setCalls: [] })).toMatchObject({ state: true });
+        expect(await readFullscreenInto({ current: false, setCalls: [] })).toMatchObject({ state: false });
+
+        const runSetFullscreen = async (
+            mode: unknown,
+            initial: boolean,
+        ): Promise<boolean[]> => {
+            const fullscreen = { current: initial, setCalls: [] as boolean[] };
+            await executeGraph({
+                graph: {
+                    id: "setFullscreen",
+                    entries: { main: { start: { nodeId: "set", port: "in" } } },
+                    nodes: {
+                        set: {
+                            id: "set",
+                            type: BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN,
+                            params: mode === undefined ? {} : { mode },
+                        },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "set", port: "in" } },
+                hostAdapter: createPageNavigationHostAdapter([], {}, [], [], [], {}, [], fullscreen),
+            });
+            return fullscreen.setCalls;
+        };
+
+        expect(await runSetFullscreen("enter", false)).toEqual([true]);
+        expect(await runSetFullscreen("enter", true)).toEqual([true]);
+        expect(await runSetFullscreen("exit", true)).toEqual([false]);
+        expect(await runSetFullscreen("toggle", false)).toEqual([true]);
+        expect(await runSetFullscreen("toggle", true)).toEqual([false]);
+        // An unset or unknown dropdown value falls back to toggle.
+        expect(await runSetFullscreen(undefined, false)).toEqual([true]);
+        expect(await runSetFullscreen("bogus", true)).toEqual([false]);
+    });
+
     it("executes Start Game as a terminal host API node", async () => {
         registerCoreBlueprintNodes();
 
@@ -2083,7 +2163,7 @@ describe("built-in blueprint nodes", () => {
 
         expect(eventHeadBlueprintNodes.every(def => def.category === "Events")).toBe(true);
         expect(broadcastBlueprintNodes.every(def => def.category === "Events")).toBe(true);
-        expect(frameBlueprintNodes.every(def => def.category === "Page")).toBe(true);
+        expect(frameBlueprintNodes.every(def => def.category === "App")).toBe(true);
         expect(gameBlueprintNodes.every(def => def.category === "Game")).toBe(true);
         // Backlog / dialogue-history nodes live under the shared "Game" category.
         expect(backlogBlueprintNodes.every(def => def.category === "Game")).toBe(true);
@@ -4744,6 +4824,7 @@ describe("built-in blueprint nodes", () => {
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT)).toBe(false);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY)).toBe(false);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT)).toBe(false);
@@ -4768,6 +4849,8 @@ describe("built-in blueprint nodes", () => {
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP)).toBe(true);
+        // Ambient window event: offered on widgets too, like broadcasts.
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL)).toBe(false);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)).toBe(false);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END)).toBe(false);

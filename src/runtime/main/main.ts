@@ -6,11 +6,16 @@ import { nativeImage } from "electron";
 import { app, BrowserWindow, ipcMain, Menu, protocol, session } from "electron/main";
 import { WebSocketServer } from "ws";
 import {
+    GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL,
     GAME_RUNTIME_PROTOCOL,
     type GameRuntimePackV1,
 } from "@shared/types/gameRuntime";
 import { getMimeType } from "@shared/utils/fs";
 import { buildGameRuntimeAssetVersionArg } from "@shared/utils/gameRuntimeAssetUrl";
+import {
+    resolveGameRuntimeEntrySurface,
+    resolveGameRuntimeInitialBackgroundColor,
+} from "@shared/utils/gameRuntimeEntrySurface";
 import { resolveSingleByteRange } from "@shared/utils/httpRange";
 import { createRuntimeResources, type RuntimeResources } from "./runtimeResources";
 import {
@@ -202,7 +207,7 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         // brief gap between first paint and the surface rendering its content.
         show: false,
         ...(icon ? { icon } : {}),
-        backgroundColor: resolveInitialBackgroundColor(pack),
+        backgroundColor: resolveGameRuntimeInitialBackgroundColor(pack),
         webPreferences: {
             preload: path.join(appDir, "preload.js"),
             contextIsolation: true,
@@ -233,6 +238,16 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             mainWindow = null;
         }
     });
+    // Push fullscreen transitions to the renderer so the `On Fullscreen Changed`
+    // blueprint head also fires for fullscreen toggled outside the game (macOS
+    // green button, OS shortcuts), not just via the Set Fullscreen node.
+    const emitFullscreen = (isFullscreen: boolean) => () => {
+        if (!win.isDestroyed()) {
+            win.webContents.send(GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL, isFullscreen);
+        }
+    };
+    win.on("enter-full-screen", emitFullscreen(true));
+    win.on("leave-full-screen", emitFullscreen(false));
     if (devToolsEnabled) {
         win.webContents.on("before-input-event", (_event, input) => {
             if (input.type === "keyUp" && input.key === "F12") {
@@ -296,15 +311,8 @@ function createProjectIcon(pack: GameRuntimePackV1): Electron.NativeImage | unde
     }
 }
 
-function resolveEntrySurface(pack: GameRuntimePackV1) {
-    const surfaceId = pack.entry.kind === "surface" ? pack.entry.surfaceId : null;
-    return surfaceId
-        ? pack.bundle.ui.uidoc.surfaces.find(item => item.id === surfaceId)
-        : pack.bundle.ui.uidoc.surfaces.find(item => item.kind === "appSurface");
-}
-
 function resolveInitialWindowSize(pack: GameRuntimePackV1): { width: number; height: number } {
-    const surface = resolveEntrySurface(pack);
+    const surface = resolveGameRuntimeEntrySurface(pack);
     const width = surface?.designSize.width;
     const height = surface?.designSize.height;
     if (Number.isFinite(width) && Number.isFinite(height) && width! > 0 && height! > 0) {
@@ -313,63 +321,6 @@ function resolveInitialWindowSize(pack: GameRuntimePackV1): { width: number; hei
     return { width: 1280, height: 720 };
 }
 
-/**
- * The native window background is visible until the renderer's first paint, so
- * it should match the entry surface instead of flashing black under a light
- * UI. Mirrors the renderer's surface background defaults: app surfaces are
- * white unless configured, stage surfaces are transparent — which has no
- * native equivalent and falls back to black, as does anything unparseable.
- */
-function resolveInitialBackgroundColor(pack: GameRuntimePackV1): string {
-    const surface = resolveEntrySurface(pack);
-    const configured = surface?.settings?.backgroundColor;
-    if (typeof configured === "string" && configured.trim()) {
-        return normalizeNativeBackgroundColor(configured) ?? "#000000";
-    }
-    return surface?.kind === "appSurface" ? "#ffffff" : "#000000";
-}
-
-/** Normalize a CSS color to an opaque form BrowserWindow accepts, or null. */
-function normalizeNativeBackgroundColor(value: string): string | null {
-    const color = value.trim().toLowerCase();
-    if (!color || color === "transparent") {
-        return null;
-    }
-    const hex = /^#([0-9a-f]{3,8})$/.exec(color)?.[1];
-    if (hex) {
-        if (hex.length === 3 || hex.length === 4) {
-            if (hex.length === 4 && hex[3] === "0") {
-                return null;
-            }
-            return `#${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`;
-        }
-        if (hex.length === 6) {
-            return `#${hex}`;
-        }
-        if (hex.length === 8) {
-            // Fully transparent falls through to the default; a translucent
-            // color keeps its RGB channels (the window cannot blend anyway).
-            return hex.slice(6) === "00" ? null : `#${hex.slice(0, 6)}`;
-        }
-        return null;
-    }
-    const fn = /^rgba?\(([^)]*)\)$/.exec(color);
-    if (fn) {
-        const parts = (fn[1] ?? "").split(",").map(part => Number(part.trim()));
-        const [r, g, b, a] = parts;
-        if (parts.length < 3 || [r, g, b].some(channel => !Number.isFinite(channel))) {
-            return null;
-        }
-        if (parts.length >= 4 && !(Number.isFinite(a) && a! > 0)) {
-            return null;
-        }
-        const toHex = (channel: number) =>
-            Math.round(Math.min(255, Math.max(0, channel))).toString(16).padStart(2, "0");
-        return `#${toHex(r!)}${toHex(g!)}${toHex(b!)}`;
-    }
-    // Named CSS colors pass through; Electron resolves them natively.
-    return /^[a-z]+$/.test(color) ? color : null;
-}
 
 /**
  * Version tag baked into every asset URL by the preload. The per-compile
@@ -584,6 +535,10 @@ function registerRuntimeIpc(): void {
     ipcMain.handle("runtime:read-pack", () => readPack());
     ipcMain.handle("runtime:close", () => {
         app.quit();
+    });
+    ipcMain.handle("runtime:fullscreen:get", () => mainWindow?.isFullScreen() === true);
+    ipcMain.handle("runtime:fullscreen:set", (_event, fullscreen: boolean) => {
+        mainWindow?.setFullScreen(fullscreen === true);
     });
     ipcMain.on("runtime:log", (_event, data: { level?: string; message?: string }) => {
         const level = data?.level === "error" ? "error" : data?.level === "warning" ? "warn" : "log";

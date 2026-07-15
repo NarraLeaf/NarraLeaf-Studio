@@ -19,17 +19,19 @@ import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { getInterface } from "@/lib/app/bridge";
 
 /** Platforms shown, in display order. */
-const PLATFORMS: GameBuildPlatform[] = ["windows", "macos", "linux"];
+const PLATFORMS: GameBuildPlatform[] = ["windows", "macos", "linux", "web"];
 
 /**
- * Formats offered per platform in the dialog: a portable ZIP plus the native
- * installer. "dir" (the unpacked folder) is a build-internal detail and is not
- * offered here.
+ * Formats offered per platform in the dialog. Desktop platforms get a portable
+ * ZIP plus the native installer; "dir" (the unpacked folder) is a
+ * build-internal detail there and is not offered. The web target has no
+ * installer — it offers the archive and the deployable site folder itself.
  */
 const OFFERED_FORMATS: Record<GameBuildPlatform, GameBuildFormat[]> = {
     windows: ["zip", "nsis"],
     macos: ["zip", "dmg"],
     linux: ["zip", "appimage"],
+    web: ["zip", "dir"],
 };
 
 export type BuildDialogSelection = {
@@ -235,6 +237,12 @@ export function BuildDialogContent({
                     </span>
                 </div>
             </div>
+
+            {formatState.web.size > 0 && (
+                <p className="text-xs text-fg-subtle leading-relaxed">
+                    {t("build.webStaticNotice")}
+                </p>
+            )}
 
             {info.unsigned && (
                 <p className="text-xs text-fg-subtle leading-relaxed">

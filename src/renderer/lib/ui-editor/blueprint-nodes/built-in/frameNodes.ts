@@ -1,8 +1,12 @@
 /**
- * Page component host nodes for frame params and child-to-parent events.
+ * App-level host nodes: page navigation, frame params and child-to-parent events,
+ * and application window state. The node types here are still prefixed
+ * `blueprint.page.*` from when this group was labelled "Page" in the palette.
  */
 
 import {
+    BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
+    BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_FRAME_EMIT,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
@@ -18,6 +22,11 @@ import { requireHostApi } from "./hostApi";
 import { resolveDataPinValue } from "./graphParamResolvers";
 
 const execIn: BlueprintNodePinDef = { id: "in", kind: "input", semantic: "exec", label: "In" };
+const execNext: BlueprintNodePinDef = { id: "next", kind: "output", semantic: "exec", label: "Next" };
+
+/** Modes offered by the `Set Fullscreen` node card dropdown. */
+const FULLSCREEN_MODES = ["enter", "exit", "toggle"] as const;
+type FullscreenMode = (typeof FULLSCREEN_MODES)[number];
 
 function readPin(ctx: Parameters<BlueprintNodeDef["execute"]>[0], pinId: string): unknown {
     return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
@@ -30,6 +39,12 @@ function readPin(ctx: Parameters<BlueprintNodeDef["execute"]>[0], pinId: string)
     });
 }
 
+/** An unset dropdown reads as "toggle", the useful default for a fullscreen button. */
+function toFullscreenMode(raw: unknown): FullscreenMode {
+    const value = String(raw ?? "");
+    return FULLSCREEN_MODES.includes(value as FullscreenMode) ? (value as FullscreenMode) : "toggle";
+}
+
 async function goToSurface(ctx: Parameters<BlueprintNodeDef["execute"]>[0], surfaceId: string) {
     const targetSurfaceId = surfaceId.trim();
     await requireHostApi(ctx).navigation.openSurface(targetSurfaceId, readPin(ctx, "props"));
@@ -40,7 +55,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_PAGE_GO,
         displayName: "Go Page",
-        category: "Page",
+        category: "App",
         keywords: ["page", "go", "navigate", "open", "surface"],
         graphKinds: ["event", "macro"],
         isPure: false,
@@ -70,7 +85,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
         displayName: "Get Page Props",
-        category: "Page",
+        category: "App",
         keywords: ["page", "props", "properties", "input"],
         graphKinds: ["event", "macro"],
         isPure: true,
@@ -83,7 +98,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
         displayName: "Is Surface Exiting",
-        category: "Page",
+        category: "App",
         keywords: ["page", "surface", "exit", "exiting", "animation", "transition"],
         graphKinds: ["event", "macro"],
         isPure: true,
@@ -96,7 +111,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
         displayName: "Is Surface Entering",
-        category: "Page",
+        category: "App",
         keywords: ["page", "surface", "enter", "entering", "animation", "transition"],
         graphKinds: ["event", "macro"],
         isPure: true,
@@ -109,7 +124,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
         displayName: "Is Surface Transitioning",
-        category: "Page",
+        category: "App",
         keywords: ["page", "surface", "enter", "exit", "animation", "transition", "transitioning"],
         graphKinds: ["event", "macro"],
         isPure: true,
@@ -122,7 +137,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_PAGE_QUIT,
         displayName: "Quit",
-        category: "Page",
+        category: "App",
         keywords: ["page", "quit", "exit", "application", "app"],
         graphKinds: ["event", "macro"],
         isPure: false,
@@ -134,9 +149,56 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     {
+        type: BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
+        displayName: "Get Fullscreen",
+        category: "App",
+        keywords: ["fullscreen", "full", "screen", "window", "app", "display", "state", "read"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            { id: "isFullscreen", kind: "output", semantic: "data", valueType: "boolean", label: "Is Fullscreen" },
+        ],
+        async execute(ctx) {
+            const isFullscreen = await requireHostApi(ctx).navigation.getFullscreen();
+            return { nextPort: "next", outputValues: { isFullscreen } };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN,
+        displayName: "Set Fullscreen",
+        category: "App",
+        keywords: ["fullscreen", "full", "screen", "window", "app", "display", "enter", "exit", "toggle", "maximize"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext],
+        inspectorParams: [
+            {
+                key: "mode",
+                label: "Mode",
+                kind: "select",
+                options: [
+                    { value: "enter", label: "Enter Fullscreen" },
+                    { value: "exit", label: "Exit Fullscreen" },
+                    { value: "toggle", label: "Toggle Fullscreen" },
+                ],
+            },
+        ],
+        async execute(ctx) {
+            const api = requireHostApi(ctx);
+            const mode = toFullscreenMode(ctx.params.mode);
+            const fullscreen = mode === "toggle" ? !(await api.navigation.getFullscreen()) : mode === "enter";
+            await api.navigation.setFullscreen(fullscreen);
+            return { nextPort: "next" };
+        },
+    },
+    {
         type: BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
         displayName: "Get Page Param",
-        category: "Page",
+        category: "App",
         keywords: ["page", "frame", "param", "input"],
         graphKinds: ["event", "macro"],
         hideInPalette: true,
@@ -158,7 +220,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_FRAME_EMIT,
         displayName: "Emit Page Event",
-        category: "Page",
+        category: "App",
         keywords: ["page", "frame", "emit", "event", "parent"],
         graphKinds: ["event", "macro"],
         isPure: false,

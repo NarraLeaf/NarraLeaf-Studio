@@ -20,10 +20,11 @@ describe("BuildDialogContent", () => {
         const { getAllByRole } = render(
             <BuildDialogContent info={INFO("macos")} config={null} onChange={vi.fn()} />,
         );
-        const switches = getAllByRole("switch"); // order: windows, macos, linux
+        const switches = getAllByRole("switch"); // order: windows, macos, linux, web
         expect(switches[0].getAttribute("aria-checked")).toBe("false"); // windows
         expect(switches[1].getAttribute("aria-checked")).toBe("true"); // macos (host)
         expect(switches[2].getAttribute("aria-checked")).toBe("false"); // linux
+        expect(switches[3].getAttribute("aria-checked")).toBe("false"); // web
     });
 
     it("disables platforms the host cannot build", () => {
@@ -34,6 +35,17 @@ describe("BuildDialogContent", () => {
         expect(switches[0].hasAttribute("disabled")).toBe(false); // windows
         expect(switches[1].hasAttribute("disabled")).toBe(true); // macos
         expect(switches[2].hasAttribute("disabled")).toBe(true); // linux
+        expect(switches[3].hasAttribute("disabled")).toBe(false); // web builds everywhere
+    });
+
+    it("offers zip and folder formats when the web target is switched on", () => {
+        const onChange = vi.fn<(selection: BuildDialogSelection) => void>();
+        const { getAllByRole } = render(
+            <BuildDialogContent info={INFO("macos")} config={null} onChange={onChange} />,
+        );
+        fireEvent.click(getAllByRole("switch")[3]); // web
+        const last = onChange.mock.calls.at(-1)?.[0];
+        expect(last?.targets.find(t => t.platform === "web")?.formats).toEqual(["zip", "dir"]);
     });
 
     it("reports the selected target when an off platform is switched on", () => {
@@ -55,6 +67,7 @@ describe("collectSelection", () => {
             windows: new Set<GameBuildFormat>(["zip"]),
             macos: new Set<GameBuildFormat>(),
             linux: new Set<GameBuildFormat>(),
+            web: new Set<GameBuildFormat>(),
         } as Record<GameBuildPlatform, Set<GameBuildFormat>>;
         const selection = collectSelection(state, "  ");
         expect(selection.targets).toEqual([{ platform: "windows", formats: ["zip"] }]);

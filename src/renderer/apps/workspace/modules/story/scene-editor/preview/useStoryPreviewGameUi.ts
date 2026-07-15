@@ -201,6 +201,9 @@ export function useStoryPreviewGameUi(input: {
             openSurfaceWithTransition: async () => undefined,
             closeLayerWithTransition: async () => undefined,
             quitApplication: async () => undefined,
+            // The preview renders into a Studio panel, not an application window.
+            getFullscreen: notAvailable("Get Fullscreen"),
+            setFullscreen: notAvailable("Set Fullscreen"),
             startStoryInGame: notAvailable("Start Story"),
             writeSaveInGame: notAvailable("Save Game"),
             loadSaveInGame: notAvailable("Load Save"),

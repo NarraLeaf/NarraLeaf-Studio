@@ -184,6 +184,15 @@ function createScriptExecutionContext(input: {
                     input.debug.emit({ type: "function.call", functionId: "navigation.quitApplication" });
                     input.debug.emit({ type: "function.return", functionId: "navigation.quitApplication" });
                 },
+                getFullscreen: async () => {
+                    input.debug.emit({ type: "function.call", functionId: "navigation.getFullscreen" });
+                    input.debug.emit({ type: "function.return", functionId: "navigation.getFullscreen" });
+                    return false;
+                },
+                setFullscreen: async (_fullscreen: boolean) => {
+                    input.debug.emit({ type: "function.call", functionId: "navigation.setFullscreen" });
+                    input.debug.emit({ type: "function.return", functionId: "navigation.setFullscreen" });
+                },
             },
             game: {
                 startStory: async (_request: { storyId: string; sceneId: string }) => {
@@ -902,6 +911,141 @@ export function countBlueprintBroadcastListeners(options: {
     eventName: string;
 }): number {
     return collectBroadcastTargets(options).reduce((sum, target) => sum + target.headIds.length, 0);
+}
+
+/**
+ * Fan an ambient event out to every widget blueprint on a surface that listens for it.
+ *
+ * Unlike broadcast this resolves heads through the widget logic API slot table
+ * (`collectBlueprintEventHeadNodeIdsForDispatch`), so registering a new ambient event
+ * in `widgetLogic.ts` is all it takes to route it here. Interaction events do NOT use
+ * this path — they reach a single widget through DOM targeting instead.
+ *
+ * Targets come from the document, not the mounted React tree (same as broadcast), and
+ * only cover the active surface. A failing widget graph is reported and skipped so one
+ * broken blueprint cannot stop the fan-out.
+ */
+export async function dispatchWidgetsBlueprintEvent(options: {
+    document: UIDocument;
+    blueprintDocument: BlueprintDocument;
+    surfaceId: string;
+    runtimeScopeId?: string;
+    eventName: string;
+    eventPayload?: Record<string, unknown>;
+    hostAdapter: UIHostAdapter;
+    debug: DebugBridge;
+    getSurfaceState: (key: string) => unknown;
+    setSurfaceState: (key: string, value: unknown) => void;
+    maxSteps?: number;
+} & CancellableDispatchOptions): Promise<void> {
+    const {
+        document,
+        blueprintDocument,
+        surfaceId,
+        runtimeScopeId,
+        eventName,
+        eventPayload,
+        hostAdapter,
+        debug,
+    } = options;
+
+    for (const elementId of collectSurfaceElementIds(document, surfaceId)) {
+        const element = document.elements[elementId];
+        if (!getWidgetLogicApi(element?.type)?.supportsPrivateBlueprint) {
+            continue;
+        }
+        const ownerKey = widgetMainOwnerKey(surfaceId, elementId);
+        const blueprintId = blueprintDocument.ownerRecords[ownerKey]?.activeBlueprintId;
+        const bp = blueprintId ? blueprintDocument.blueprints[blueprintId] : undefined;
+        if (!blueprintId || !bp || bp.program.kind !== "graph") {
+            continue;
+        }
+        for (const eventGraph of Object.values(bp.program.graphs.events ?? {})) {
+            const ir = eventGraph.graph;
+            const headIds = collectBlueprintEventHeadNodeIdsForDispatch(
+                ir?.nodes,
+                eventName,
+                element?.type,
+                eventPayload,
+            );
+            if (!ir || headIds.length === 0) {
+                continue;
+            }
+            const executionId = newExecutionId();
+            const execution = beginTrackedExecution({
+                executionManager: options.executionManager,
+                executionId,
+                runtimeScopeId,
+                blueprintId,
+                eventId: eventName,
+                allowClosedScopeExecution: options.allowClosedScopeExecution,
+            });
+            debug.emit({ type: "execution.started", executionId, blueprintId });
+            const blueprintLocals = acquireBlueprintExecutionLocals({
+                blueprintDocument,
+                currentBlueprintId: blueprintId,
+                surfaceId,
+                runtimeScopeId,
+                elementId,
+            });
+            try {
+                for (const headId of headIds) {
+                    const graph = adaptBlueprintGraphIr(ir, `widgetEvent:${blueprintId}:${eventGraph.id}`);
+                    const startNode = graph.nodes[headId];
+                    if (!startNode || !isBlueprintEventDispatchHeadType(startNode.type)) {
+                        continue;
+                    }
+                    await executeGraph({
+                        graph,
+                        entry: { start: { nodeId: headId, port: "then" as const } },
+                        hostAdapter,
+                        blueprintLocals,
+                        eventName,
+                        eventPayload,
+                        executionOwner: { surfaceId, elementId, blueprintId },
+                        persistentVariables: blueprintDocument.persistentVariables,
+                        maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
+                        signal: execution?.signal,
+                        trace: {
+                            executionId,
+                            graphId: graph.id,
+                            blueprintId,
+                            eventId: eventName,
+                            emit: e => debug.emit(e),
+                        },
+                    });
+                }
+                debug.emit({ type: "execution.finished", executionId, blueprintId });
+            } catch (err) {
+                if (isBlueprintGraphExecutionCancelledError(err)) {
+                    emitExecutionCancelled({
+                        debug,
+                        executionId,
+                        blueprintId,
+                        eventId: eventName,
+                        nodeId: err.nodeId,
+                        reason: err.message,
+                    });
+                    continue;
+                }
+                if (err instanceof BlueprintGraphExecutionError) {
+                    debug.emit({
+                        type: "execution.error",
+                        executionId,
+                        message: err.message,
+                        blueprintId,
+                        eventId: eventName,
+                        nodeId: err.nodeId,
+                    });
+                    continue;
+                }
+                const message = err instanceof Error ? err.message : String(err);
+                debug.emit({ type: "execution.error", executionId, message, blueprintId, eventId: eventName });
+            } finally {
+                execution?.finish();
+            }
+        }
+    }
 }
 
 export async function dispatchBlueprintBroadcastEvent(options: {
