@@ -75,6 +75,30 @@ export class AppWindowControlHandler extends IPCHandler<IPCEventType.appWindowCo
     }
 }
 
+export class AppWindowEditCommandHandler extends IPCHandler<IPCEventType.appWindowEditCommand> {
+    readonly name = IPCEventType.appWindowEditCommand;
+    readonly type = IPCMessageType.message;
+
+    public handle(window: AppWindow, data: IPCEvents[IPCEventType.appWindowEditCommand]["data"]) {
+        const webContents = window.getWebContents();
+        switch (data.command) {
+            case "copy":
+                webContents.copy();
+                break;
+            case "cut":
+                webContents.cut();
+                break;
+            case "paste":
+                webContents.paste();
+                break;
+            case "delete":
+                webContents.delete();
+                break;
+        }
+        return this.success(void 0 as never);
+    }
+}
+
 export class AppWindowCloseHandler extends IPCHandler<IPCEventType.appWindowClose> {
     readonly name = IPCEventType.appWindowClose;
     readonly type = IPCMessageType.message;

@@ -2,6 +2,7 @@ import { EditorTabComponentProps, FocusContext, PanelComponentProps } from "@/li
 import { Workspace } from "@/lib/workspace/workspace";
 import { ComponentType, ReactNode } from "react";
 import { TranslationKey } from "@shared/i18n";
+import { EditMenuRole } from "@shared/types/ipcEvents";
 
 /**
  * Position where a panel can be displayed
@@ -90,6 +91,17 @@ export interface ActionDefinition {
     order?: number;
     disabled?: boolean;
     visible?: boolean;
+    /**
+     * Marks the action as a toggle and carries its current state. Only consumed by the macOS
+     * native menu today, where it renders as a checkbox item.
+     */
+    checked?: boolean;
+    /**
+     * Declares that this action is the focused surface's version of a standard Edit-menu
+     * command. The macOS Edit menu then routes that command (复制/剪切/粘贴/删除) here instead
+     * of listing the action a second time below the built-in items.
+     */
+    menuRole?: EditMenuRole;
     when?: (context: FocusContext) => boolean;
     badge?: string | number; // Badge text/count
     group?: string; // Group ID this action belongs to

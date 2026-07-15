@@ -1,7 +1,7 @@
 import { FileDetails, FileStat } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
-import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceMenuAction } from "./ipcEvents";
+import { BlueprintPersistenceProjectRef, EditMenuRole, MenuActionId, NativeMenuGroup, RequestStatus } from "./ipcEvents";
 import { FsRequestResult, PlatformInfo } from "./os";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults } from "./window";
 import { GlobalStateValue } from "./state/globalState";
@@ -87,6 +87,7 @@ export interface RendererPreloadedInterface {
         ready(): void;
         close(): void;
         closeWith<T extends WindowAppType = WindowAppType>(result: WindowCloseResults[T]): void;
+        editCommand(command: EditMenuRole): void;
         control: {
             minimize(): Promise<RequestStatus<void>>;
             maximize(): Promise<RequestStatus<void>>;
@@ -159,7 +160,8 @@ export interface RendererPreloadedInterface {
         onResolveAssetUrl(handler: (payload: { assetId: string; assetType?: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
         onResolveImageAssetUrl(handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
         onBlueprintNavigateFromPreview(handler: (payload: PreviewStudioBlueprintOpenPayload) => void): AppEventToken;
-        onMenuAction(handler: (action: WorkspaceMenuAction) => void): AppEventToken;
+        onMenuAction(handler: (action: MenuActionId) => void): AppEventToken;
+        syncNativeMenu(groups: NativeMenuGroup[]): void;
     };
 
     // App
