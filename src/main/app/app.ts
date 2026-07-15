@@ -1,3 +1,4 @@
+import { IPCEventType } from "@shared/types/ipcEvents";
 import { WindowAppType, WindowControlPolicy, WindowProps } from "@shared/types/window";
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
 import { AppWindow, WindowConfig } from "./application/managers/window/appWindow";
@@ -87,6 +88,93 @@ export class App extends BaseApp {
         return window;
     }
 
+    /** True while a launcher window is open, i.e. the user still has a home to fall back to. */
+    hasAliveLauncher(): boolean {
+        return this.windowManager.getWindows().some(window =>
+            !window.isClosed() && window.getWindowType() === WindowAppType.Launcher
+        );
+    }
+
+    /**
+     * Bring back the launcher, unless one is already open. Resolves once its window exists, so
+     * callers can close whatever they are leaving without the app ever running windowless.
+     */
+    async ensureLauncher(): Promise<void> {
+        if (this.hasAliveLauncher()) {
+            return;
+        }
+
+        const launcher = await this.launchLauncher({
+            backgroundColor: "#0f1115",
+        });
+        launcher.onKeyUp("F12", () => {
+            launcher.toggleDevTools();
+        });
+    }
+
+    /**
+     * How long to wait for the workspace's answer. This is a human pressing a button, not a
+     * machine round-trip, so the default IPC timeout is far too short — timing out under a live
+     * dialog would close the workspace out from under someone who was still reading it.
+     */
+    private static readonly ConfirmCloseTimeoutMs = 10 * 60 * 1000;
+
+    /**
+     * Ask the user whether to close the workspace. The workspace renders the prompt itself, so it
+     * matches the rest of the Studio's dialogs instead of looking like a native message box.
+     *
+     * Anything other than an explicit "yes" keeps the window open: a confirmation that
+     * auto-confirms when it fails is worse than no confirmation at all. Quitting the app still
+     * works regardless, since the close guard stands aside once the app is quitting.
+     */
+    private async confirmWorkspaceClose(window: AppWindow<WindowAppType.Workspace>): Promise<boolean> {
+        try {
+            const result = await window.invokeIpcRequest(
+                IPCEventType.workspaceConfirmClose,
+                {},
+                { timeoutMs: App.ConfirmCloseTimeoutMs },
+            );
+            if (!result.success) {
+                this.logger.warn(`[Workspace] Close confirmation failed, keeping the window open: ${result.error}`);
+                return false;
+            }
+            return result.data.confirmed;
+        } catch (error) {
+            this.logger.warn(`[Workspace] No answer to the close confirmation, keeping the window open: ${String(error)}`);
+            return false;
+        }
+    }
+
+    /**
+     * Decide what closing a workspace means, honouring the user's preferences: confirm first if
+     * asked, then either fall back to the launcher or let the close stand (which quits the app
+     * when this was the last window).
+     */
+    private async handleWorkspaceCloseRequest(window: AppWindow<WindowAppType.Workspace>): Promise<void> {
+        if (this.globalState.get("workspace.confirmBeforeClose")) {
+            const confirmed = await this.confirmWorkspaceClose(window);
+            if (!confirmed) {
+                return;
+            }
+        }
+
+        // The app may have started quitting, or the window may be gone, while the sheet was up.
+        // Reopening the launcher now would resurrect a window in the middle of a quit.
+        if (this.isQuitting() || window.isClosed()) {
+            return;
+        }
+
+        if (this.globalState.get("workspace.returnToLauncherOnClose")) {
+            try {
+                await this.ensureLauncher();
+            } catch (error) {
+                this.logger.error("Failed to launch launcher window:", error);
+            }
+        }
+
+        window.forceClose();
+    }
+
     async launchSettings(
         parent: AppWindow<WindowAppType.Launcher>,
         props: WindowProps[WindowAppType.Settings],
@@ -140,6 +228,24 @@ export class App extends BaseApp {
         const window = new AppWindow<WindowAppType.Workspace>(this, config, props);
         window.setTitle("Workspace - NarraLeaf Studio");
         this.applyWindowIcon(window);
+
+        // Closing a workspace means "leave this project", not "quit the app". The decision needs
+        // to await a confirmation sheet and the launcher's window, so always take the close over
+        // and re-issue it via forceClose() once settled.
+        let closeRequestPending = false;
+        window.setCloseGuard(() => {
+            if (!closeRequestPending) {
+                closeRequestPending = true;
+                void this.handleWorkspaceCloseRequest(window)
+                    .catch(error => {
+                        this.logger.error("Failed to handle workspace close request:", error);
+                    })
+                    .finally(() => {
+                        closeRequestPending = false;
+                    });
+            }
+            return true;
+        });
 
         await window.loadFile(this.getAppEntry(WindowAppType.Workspace));
 

@@ -57,12 +57,12 @@ export const widgets = {
         createKeyTitle: "新建本地化键",
         keyName: "键名",
         keyNamePlaceholder: "menu.start…",
-        keyNameHint: "可包含字母、数字，以及位于其间的点 / 下划线 / 连字符。",
+        keyNameHint: "可包含字母、数字，以及位于其间的点 / 下划线 / 连字符",
         sourceText: "源文本",
         sourceTextPlaceholder: "无译文时显示的文本",
-        invalidKeyName: "键名只能包含字母、数字，以及位于其间的点 / 下划线 / 连字符。",
-        keyExists: "已存在名为“{name}”的键。",
-        keyServiceUnavailable: "当前环境不支持本地化。",
+        invalidKeyName: "键名只能包含字母、数字，以及位于其间的点 / 下划线 / 连字符",
+        keyExists: "已存在名为“{name}”的键",
+        keyServiceUnavailable: "当前环境不支持本地化",
     },
     list: {
         title: "列表",
@@ -214,19 +214,57 @@ export const widgets = {
         nameText: "{name} 文本",
     },
     defaults: {
-        button: { name: "按钮", label: "按钮" },
-        choiceList: { name: "选项列表", choiceA: "选项 A", choiceB: "选项 B", choiceC: "选项 C" },
-        container: { name: "容器" },
-        dialog: { name: "句子", text: "当前对话将显示在这里。" },
-        frame: { name: "页面" },
-        image: { name: "图片" },
-        list: { name: "列表" },
-        notificationList: { name: "通知列表", message1: "通知消息", message2: "另一条消息" },
-        nvl: { name: "NVL 文本", text: "对话条目文本将显示在这里。" },
-        nvlList: { name: "NVL 列表", speaker: "说话人" },
-        root: { name: "根" },
-        slider: { name: "滑块", track: "滑块轨道", handle: "滑块手柄" },
-        text: { name: "文本", text: "文本" },
+        button: {
+            name: "按钮",
+            label: "按钮",
+        },
+        choiceList: {
+            name: "选项列表",
+            choiceA: "选项 A",
+            choiceB: "选项 B",
+            choiceC: "选项 C",
+        },
+        container: {
+            name: "容器",
+        },
+        dialog: {
+            name: "句子",
+            text: "当前对话将显示在这里",
+        },
+        frame: {
+            name: "页面",
+        },
+        image: {
+            name: "图片",
+        },
+        list: {
+            name: "列表",
+        },
+        notificationList: {
+            name: "通知列表",
+            message1: "通知消息",
+            message2: "另一条消息",
+        },
+        nvl: {
+            name: "NVL 文本",
+            text: "对话条目文本将显示在这里",
+        },
+        nvlList: {
+            name: "NVL 列表",
+            speaker: "说话人",
+        },
+        root: {
+            name: "根",
+        },
+        slider: {
+            name: "滑块",
+            track: "滑块轨道",
+            handle: "滑块手柄",
+        },
+        text: {
+            name: "文本",
+            text: "文本",
+        },
         appearanceVariant: "默认",
     },
     unsupportedType: "不支持的类型：{type}",

@@ -96,5 +96,11 @@ export const workspace = {
         stopPreview: "Stop Preview",
         logoAlt: "NarraLeaf Studio logo",
         editorTabsLabel: "Editor tabs",
+        // In-app confirmation shown before a workspace closes, when `workspace.confirmBeforeClose`
+        // is on. The main process drives it over IPC; the dialog supplies its own title/buttons.
+        closeConfirm: {
+            message: "Close this workspace?",
+            detail: "Any changes you have made will be saved automatically.",
+        },
     },
 } as const;
