@@ -13,6 +13,15 @@ export const assets = {
     preview: "预览",
     unknownError: "未知错误",
     emptyType: "还没有{label}",
+    types: {
+        image: "图片",
+        audio: "音频",
+        video: "视频",
+        json: "JSON 文件",
+        blueprint: "蓝图",
+        font: "字体",
+        other: "其他",
+    },
     itemCount: {
         one: "{count} 项",
         other: "{count} 项",
