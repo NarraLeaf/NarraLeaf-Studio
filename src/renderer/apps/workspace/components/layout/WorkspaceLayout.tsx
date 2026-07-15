@@ -21,6 +21,8 @@ import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsSe
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { isMacPlatform } from "@/lib/app/platform";
+import { useTranslation } from "@/lib/i18n";
+import { WINDOW_PANELS_MENU_GROUP_ID, WorkspaceMenuAction } from "@shared/types/ipcEvents";
 import {
     DOCK_REGIONS,
     EDITOR_FLOOR,
@@ -34,7 +36,6 @@ interface WorkspaceLayoutProps {
     iconSrc: string;
 }
 
-const MACOS_NATIVE_MENU_GROUP_IDS = ["narraleaf-studio:file", "narraleaf-studio:help"];
 
 // Region sizing lives in ./dockLayoutModel (constraint table + solver). The persisted values
 // below are the user's *intended* sizes; the *effective* rendered sizes are derived each render
@@ -81,8 +82,9 @@ function normalizeStoredPanelId(panelId: string | null | undefined): string | nu
  * - Main editor area with tabs and split support
  */
 export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
-    const { getPanelsByPosition } = useRegistry();
+    const { getPanelsByPosition, registerActionGroup, unregisterActionGroup } = useRegistry();
     const { context } = useWorkspace();
+    const { t } = useTranslation();
 
     // Sidebar visibility states
     const [leftSidebarVisible, setLeftSidebarVisible] = useState(false);
@@ -377,6 +379,52 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         setBottomPanelVisible(!bottomPanelVisible);
     };
 
+    // The toggles close over render-scoped state, so the menu calls them through refs rather
+    // than re-registering the group on every render.
+    const panelTogglesRef = useRef({ toggleLeftSidebar, toggleBottomPanel, toggleRightSidebar });
+    panelTogglesRef.current = { toggleLeftSidebar, toggleBottomPanel, toggleRightSidebar };
+
+    // Publish the dock toggles to the macOS Window menu. Registered only on macOS: elsewhere the
+    // ControlBar buttons are the only entry point and this group would just clutter the in-app
+    // action bar. The main process splices this well-known group id into the Window menu.
+    useEffect(() => {
+        if (!isMacPlatform()) {
+            return;
+        }
+
+        registerActionGroup({
+            id: WINDOW_PANELS_MENU_GROUP_ID,
+            label: t("menu.window.title"),
+            items: [
+                {
+                    id: WorkspaceMenuAction.ToggleLeftSidebar,
+                    label: t("menu.window.leftSidebar"),
+                    checked: leftSidebarVisible,
+                    onClick: () => panelTogglesRef.current.toggleLeftSidebar(),
+                    order: 0,
+                },
+                {
+                    id: WorkspaceMenuAction.ToggleBottomPanel,
+                    label: t("menu.window.bottomPanel"),
+                    checked: bottomPanelVisible,
+                    onClick: () => panelTogglesRef.current.toggleBottomPanel(),
+                    order: 1,
+                },
+                {
+                    id: WorkspaceMenuAction.ToggleRightSidebar,
+                    label: t("menu.window.rightSidebar"),
+                    checked: rightSidebarVisible,
+                    onClick: () => panelTogglesRef.current.toggleRightSidebar(),
+                    order: 2,
+                },
+            ],
+        });
+
+        return () => {
+            unregisterActionGroup(WINDOW_PANELS_MENU_GROUP_ID);
+        };
+    }, [t, leftSidebarVisible, bottomPanelVisible, rightSidebarVisible, registerActionGroup, unregisterActionGroup]);
+
     const activateLeftPanelForDrop = useCallback(
         (panelId: string) => {
             setActiveLeftPanelId(panelId);
@@ -501,7 +549,6 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     }, [context]);
 
     const isMac = isMacPlatform();
-    const hiddenActionGroupIds = isMac ? MACOS_NATIVE_MENU_GROUP_IDS : undefined;
 
     return (
         <div className="h-screen w-screen flex flex-col bg-surface text-fg">
@@ -509,7 +556,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             <TitleBar
                 title=""
                 iconSrc={iconSrc}
-                actionBar={<ActionBar hiddenGroupIds={hiddenActionGroupIds} />}
+                actionBar={<ActionBar hideAllGroups={isMac} />}
                 controlBar={
                     <ControlBar
                         leftSidebarVisible={leftSidebarVisible}

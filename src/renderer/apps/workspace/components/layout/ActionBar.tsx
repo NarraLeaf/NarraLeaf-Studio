@@ -16,6 +16,11 @@ import { useTranslation } from "@/lib/i18n";
 
 interface ActionBarProps {
     hiddenGroupIds?: string[];
+    /**
+     * Drop every dropdown menu, keeping only the standalone icon buttons. Used on macOS, where
+     * the menus live on the system menu bar instead (see `useNativeMenuSync`).
+     */
+    hideAllGroups?: boolean;
 }
 
 /**
@@ -23,7 +28,7 @@ interface ActionBarProps {
  * Displays dynamically registered actions in the top-left area
  * Filters actions based on focus context and when conditions
  */
-export function ActionBar({ hiddenGroupIds = [] }: ActionBarProps) {
+export function ActionBar({ hiddenGroupIds = [], hideAllGroups = false }: ActionBarProps) {
     const { t } = useTranslation();
     const { actions, actionGroups } = useRegistry();
     const { workspace, context } = useWorkspace();
@@ -70,7 +75,7 @@ export function ActionBar({ hiddenGroupIds = [] }: ActionBarProps) {
     // Filter visible actions that are not part of any group
     const standaloneActions = actions.filter((action) => !action.group && isActionVisible(action, focusContext));
     const hiddenGroupIdSet = new Set(hiddenGroupIds);
-    const visibleActionGroups = actionGroups.filter((group) => {
+    const visibleActionGroups = hideAllGroups ? [] : actionGroups.filter((group) => {
         if (hiddenGroupIdSet.has(group.id)) {
             return false;
         }

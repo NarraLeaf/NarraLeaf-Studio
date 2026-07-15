@@ -41,6 +41,7 @@ export class WindowManager {
 
     public unregisterWindow(win: AppWindow): void {
         this.app.storageManager.revokeWindowFileSystemAccess(win);
+        this.app.menuManager.forgetWindow(win);
         this.windows = this.windows.filter(w => w !== win);
         for (const [id, mapped] of this.byWebContentsId) {
             if (mapped === win) {

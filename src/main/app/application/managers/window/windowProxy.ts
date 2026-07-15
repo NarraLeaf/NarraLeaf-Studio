@@ -74,7 +74,8 @@ export class WindowProxy implements IPCWindow {
     public invokeIpcRequest<K extends keyof OnlyRequest<IPCEvents, IPCType.Host>>(
         event: K,
         data: IPCEvents[K]["data"],
+        options?: { timeoutMs?: number },
     ): Promise<Exclude<IPCEvents[K]["response"], never>> {
-        return this.getIPC().getIPCHost().invoke(this, event, data);
+        return this.getIPC().getIPCHost().invoke(this, event, data, options);
     }
 } 

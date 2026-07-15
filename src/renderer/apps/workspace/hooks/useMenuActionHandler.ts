@@ -8,7 +8,7 @@ import type { ActionDefinition, ActionGroup } from "../registry/types";
 import { UIService } from "@/lib/workspace/services/ui";
 import { Services } from "@/lib/workspace/services/services";
 import type { FocusContext } from "@/lib/workspace/services/ui";
-import { WorkspaceMenuAction } from "@shared/types/ipcEvents";
+import { EditMenuRole, MenuActionId } from "@shared/types/ipcEvents";
 
 /**
  * Listens for macOS native menu actions and dispatches
@@ -32,10 +32,18 @@ export function useMenuActionHandler(): void {
     }, [context]);
 
     const dispatchMenuAction = useCallback(
-        (actionId: WorkspaceMenuAction) => {
+        (actionId: MenuActionId) => {
             const action = findRegisteredAction(actionId, actions, actionGroups, focusContext);
             if (!action) {
                 console.warn(`[MenuAction] Unregistered menu action: ${actionId}`);
+                return;
+            }
+            // An action standing in for an Edit-menu command also owns that command's Cmd
+            // shortcut, so it fires for plain text editing too. Route by what the user is
+            // actually doing: caret in a text field (or a live text selection for copy/cut)
+            // means text editing, not the surface action.
+            if (action.menuRole && shouldUseNativeEditCommand(action.menuRole)) {
+                getInterface().window.editCommand(action.menuRole);
                 return;
             }
             if (action.disabled) {
@@ -64,8 +72,29 @@ export function useMenuActionHandler(): void {
     }, [dispatchMenuAction]);
 }
 
+function isEditableElement(element: Element | null): boolean {
+    if (!element) {
+        return false;
+    }
+    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+        return !element.readOnly && !element.disabled;
+    }
+    return element instanceof HTMLElement && element.isContentEditable;
+}
+
+/** True when the standard text-editing behaviour is what the user means right now. */
+function shouldUseNativeEditCommand(role: EditMenuRole): boolean {
+    const editableFocused = isEditableElement(document.activeElement);
+    if (role === "copy" || role === "cut") {
+        const selection = window.getSelection();
+        return editableFocused || (selection !== null && !selection.isCollapsed);
+    }
+    // paste/delete only make sense as text commands inside an editable.
+    return editableFocused;
+}
+
 function findRegisteredAction(
-    actionId: WorkspaceMenuAction,
+    actionId: MenuActionId,
     actions: ActionDefinition[],
     actionGroups: ActionGroup[],
     focusContext: FocusContext | null,

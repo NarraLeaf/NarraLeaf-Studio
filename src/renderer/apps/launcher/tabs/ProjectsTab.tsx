@@ -5,6 +5,7 @@ import { Button } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { FolderOpen, Plus, Upload, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { createProjectFromWizard, openProjectFromFolder } from "../projectActions";
 
 export function ProjectsTab() {
     const { t } = useTranslation();
@@ -75,45 +76,22 @@ export function ProjectsTab() {
     const handleNewProject = async () => {
         if (isBusy) return;
         setOperationError(null);
-        const result = await getInterface().app.launchProjectWizard({});
-        if (!result.success) {
-            setOperationError(result.error || t("launcher.projects.errorCreate"));
-            return;
-        }
-        if (result.success && result.data?.created) {
-            // Open workspace with the selected folder
-            await getInterface().workspace.launch(
-                { projectPath: result.data.projectPath },
-                true // Close launcher window after opening workspace
-            );
+        const error = await createProjectFromWizard();
+        if (error !== null) {
+            setOperationError(error || t("launcher.projects.errorCreate"));
         }
     };
 
     const handleOpenFolder = async () => {
         if (isBusy) return;
-        
+
         setIsOpening(true);
         setOperationError(null);
         try {
-            // Select folder
-            const result = await getInterface().selectFolder();
-            
-            if (!result.success) {
-                console.error("Failed to select folder:", result.error);
-                setOperationError(result.error || t("launcher.projects.errorOpenFolder"));
-                return;
+            const error = await openProjectFromFolder();
+            if (error !== null) {
+                setOperationError(error || t("launcher.projects.errorOpenFolder"));
             }
-
-            if (!result.data.path) {
-                // User cancelled
-                return;
-            }
-
-            // Open workspace with the selected folder
-            await getInterface().workspace.launch(
-                { projectPath: result.data.path },
-                true // Close launcher window after opening workspace
-            );
         } catch (error) {
             console.error("Error opening folder:", error);
             setOperationError(error instanceof Error ? error.message : String(error));
