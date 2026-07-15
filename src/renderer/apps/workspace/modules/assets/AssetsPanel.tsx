@@ -390,6 +390,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
             id: groupId,
             label: t("common.edit"),
             order: 20,
+            // These are this panel's versions of the standard editing commands, so on macOS they
+            // belong under the system Edit menu rather than in a second menu also called Edit.
+            menuSlot: "edit",
             actions: [
                 {
                     id: `${groupId}-copy`,

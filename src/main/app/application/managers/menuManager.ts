@@ -1,16 +1,14 @@
 import { Menu, MenuItemConstructorOptions, BrowserWindow, shell } from "electron";
 import { BaseApp } from "../baseApp";
+import { IPCEventType } from "@shared/types/ipcEvents";
 import {
-    DEV_STATUS_MENU_GROUP_ID,
-    EDIT_MENU_GROUP_ID,
     EditMenuRole,
-    IPCEventType,
     MenuActionId,
     NativeMenuGroup,
     NativeMenuItem,
-    WINDOW_PANELS_MENU_GROUP_ID,
+    NativeMenuModel,
     WorkspaceMenuAction,
-} from "@shared/types/ipcEvents";
+} from "@shared/types/menu";
 import { WindowAppType } from "@shared/types/window";
 import { APP_DISPLAY_NAME } from "@shared/constants/app";
 import { getMainTranslator } from "../i18n";
@@ -24,6 +22,9 @@ import type { Translator } from "@shared/i18n";
  * runtime: which window is focused (home and a project get different menus), the language, and
  * the menu model the focused workspace pushes up over IPC (see `syncWindowMenu`). Menu items
  * only name renderer action ids — the renderer owns the behaviour (`useMenuActionHandler`).
+ *
+ * No group is recognised by id here: a synced group carries the `slot` it asked for, and this
+ * class only decides what each slot means. Which panel produced a group is none of its business.
  */
 export class MenuManager {
     private static readonly DocumentationUrl = "https://www.narraleaf.com/docs/studio";
@@ -34,7 +35,7 @@ export class MenuManager {
      * webContents id, the object stays safely usable after the BrowserWindow is destroyed,
      * and forgetWindow runs from the 'closed' handler where webContents access throws.
      */
-    private readonly syncedGroups = new Map<AppWindow, NativeMenuGroup[]>();
+    private readonly syncedModels = new Map<AppWindow, NativeMenuModel>();
     /**
      * The window the menu currently describes. Electron reports no focused window whenever the
      * app is not frontmost, and the menu must not collapse to the home shape just because the
@@ -50,14 +51,23 @@ export class MenuManager {
     public initialize(): void {
         this.buildMenu();
 
+        // Only macOS has an application menu to keep in sync; elsewhere buildMenuTemplate is
+        // empty and every rebuild would be busywork.
+        if (process.platform !== "darwin") {
+            return;
+        }
+
         // The menu shape follows the focused window. Only focus is tracked, not blur: blurring
         // means the app went to the background, which must not change the menu. Focus events
         // also fire on every app activation, so this path skips the rebuild when the menu
         // would come out identical — rebuilding closes any open menu under the user's pointer.
-        this.app.electronApp.on("browser-window-focus", () => {
-            this.updateMenuIfChanged();
-        });
+        this.app.electronApp.on("browser-window-focus", this.onBrowserWindowFocus);
     }
+
+    private readonly onBrowserWindowFocus = (): void => {
+        this.rememberFocus();
+        this.updateMenuIfChanged();
+    };
 
     public buildMenu(): Menu {
         const template: MenuItemConstructorOptions[] = this.buildMenuTemplate();
@@ -95,8 +105,8 @@ export class MenuManager {
         if (!target) {
             return `${locale}|<none>`;
         }
-        const groups = this.syncedGroups.get(target);
-        return `${locale}|${target.getWindowType()}|${groups ? JSON.stringify(groups) : ""}`;
+        const model = this.syncedModels.get(target);
+        return `${locale}|${target.getWindowType()}|${model ? JSON.stringify(model) : ""}`;
     }
 
     public setMenu(menu: Menu): void {
@@ -107,14 +117,14 @@ export class MenuManager {
      * Take the menu model a workspace renderer pushed up. Only rebuilds when that window is the
      * focused one — a background window's model is stored for when it comes forward.
      */
-    public syncWindowMenu(window: AppWindow, groups: NativeMenuGroup[]): void {
-        this.syncedGroups.set(window, groups);
-        this.app.logger.debug(`[Menu] Synced groups: ${groups.map(g => {
-            const checked = g.items
-                .filter(item => item.kind === "action" && item.checked === true)
-                .map(item => (item as Extract<NativeMenuItem, { kind: "action" }>).label);
-            return `${g.label}(${g.items.length}${checked.length ? ` ✓${checked.join("+")}` : ""})`;
-        }).join(", ") || "<none>"}`);
+    public syncWindowMenu(window: AppWindow, model: NativeMenuModel): void {
+        this.syncedModels.set(window, model);
+        const groupSummary = model.groups
+            .map(group => `${group.label}[${group.slot}](${group.items.length})`)
+            .join(", ") || "<none>";
+        this.app.logger.debug(
+            `[Menu] Synced: ${groupSummary} | devMode=${model.runtime.devModeActive} preview=${model.runtime.previewActive}`,
+        );
 
         if (this.getMenuTargetWindow() === window) {
             this.updateMenu();
@@ -127,7 +137,7 @@ export class MenuManager {
      * touch the window's webContents.
      */
     public forgetWindow(window: AppWindow): void {
-        this.syncedGroups.delete(window);
+        this.syncedModels.delete(window);
         if (this.lastFocusedWindow === window) {
             this.lastFocusedWindow = null;
         }
@@ -145,11 +155,13 @@ export class MenuManager {
     /**
      * The window the menu and its actions belong to: whatever is focused, or — while the app is
      * in the background — whatever was focused last, as long as it is still alive.
+     *
+     * Read-only, so it is safe to call from computeMenuKey and from a menu item's click. The
+     * fallback is kept current by rememberFocus/forgetWindow.
      */
     private getMenuTargetWindow(): AppWindow | null {
         const focused = this.getFocusedAppWindow();
         if (focused) {
-            this.lastFocusedWindow = focused;
             return focused;
         }
 
@@ -157,8 +169,15 @@ export class MenuManager {
             return this.lastFocusedWindow;
         }
 
-        this.lastFocusedWindow = null;
         return null;
+    }
+
+    /** Latch the focused window, so the menu survives the app going to the background. */
+    private rememberFocus(): void {
+        const focused = this.getFocusedAppWindow();
+        if (focused) {
+            this.lastFocusedWindow = focused;
+        }
     }
 
     /**
@@ -279,19 +298,14 @@ export class MenuManager {
     }
 
     private buildWorkspaceTemplate(t: Translator["t"], window: AppWindow): MenuItemConstructorOptions[] {
-        const groups = this.syncedGroups.get(window) ?? [];
-        const panelGroup = groups.find(group => group.id === WINDOW_PANELS_MENU_GROUP_ID);
-        const editGroup = groups.find(group => group.id === EDIT_MENU_GROUP_ID);
-        const devStatusGroup = groups.find(group => group.id === DEV_STATUS_MENU_GROUP_ID);
-        // Everything else becomes its own top-level menu; these are folded into the standard
-        // Edit, Develop and Window menus instead.
-        const SPLICED_GROUP_IDS: string[] = [WINDOW_PANELS_MENU_GROUP_ID, EDIT_MENU_GROUP_ID, DEV_STATUS_MENU_GROUP_ID];
-        const contextGroups = groups.filter(group => !SPLICED_GROUP_IDS.includes(group.id));
-
-        const isRunning = (actionId: MenuActionId): boolean =>
-            devStatusGroup?.items.some(item =>
-                item.kind === "action" && item.id === actionId && item.checked === true
-            ) ?? false;
+        const model = this.syncedModels.get(window);
+        const groups = model?.groups ?? [];
+        // Each group goes where it asked to go. A slot may hold more than one group — nothing
+        // stops two surfaces from both contributing Edit items — so these are filters, not finds.
+        const editGroups = groups.filter(group => group.slot === "edit");
+        const windowGroups = groups.filter(group => group.slot === "window");
+        const topLevelGroups = groups.filter(group => group.slot === "top-level");
+        const runtime = model?.runtime;
 
         return [
             this.buildAppMenu(t),
@@ -330,10 +344,10 @@ export class MenuManager {
                     },
                 ],
             },
-            this.buildEditMenu(t, editGroup),
+            this.buildEditMenu(t, editGroups),
             // Whatever else the workspace currently offers: an image tab's Preview, an audio
             // tab's Playback, plugin groups. These come and go with focus, hence the sync.
-            ...contextGroups.map(group => this.buildSyncedGroupMenu(group)),
+            ...topLevelGroups.map(group => this.buildSyncedGroupMenu(group)),
             {
                 label: t("menu.dev.title"),
                 submenu: [
@@ -345,7 +359,7 @@ export class MenuManager {
                     {
                         label: t("menu.dev.devMode"),
                         type: "checkbox",
-                        checked: isRunning(WorkspaceMenuAction.DevMode),
+                        checked: runtime?.devModeActive ?? false,
                         click: () => {
                             this.sendActionToFocusedWindow(WorkspaceMenuAction.DevMode);
                             this.updateMenu();
@@ -354,7 +368,7 @@ export class MenuManager {
                     {
                         label: t("menu.dev.preview"),
                         type: "checkbox",
-                        checked: isRunning(WorkspaceMenuAction.Preview),
+                        checked: runtime?.previewActive ?? false,
                         click: () => {
                             this.sendActionToFocusedWindow(WorkspaceMenuAction.Preview);
                             this.updateMenu();
@@ -375,12 +389,7 @@ export class MenuManager {
                 submenu: [
                     { role: "minimize", label: t("menu.window.minimize") },
                     { role: "zoom", label: t("menu.window.zoom") },
-                    ...(panelGroup && panelGroup.items.length > 0
-                        ? [
-                            { type: "separator" } as MenuItemConstructorOptions,
-                            ...panelGroup.items.map(item => this.buildSyncedMenuItem(item)),
-                        ]
-                        : []),
+                    ...this.buildSlottedItems(windowGroups.flatMap(group => group.items)),
                     { type: "separator" },
                     { role: "front", label: t("menu.window.front") },
                 ],
@@ -434,13 +443,13 @@ export class MenuManager {
 
     /**
      * The standard Edit menu. When the focused surface supplies its own version of a standard
-     * command (the assets panel's copy/cut/paste/delete, tagged with `role`), that command is
-     * routed to the surface's action instead of the built-in webContents role — the menu shows
-     * one 复制, and it does the right thing for what is focused. Untagged context entries are
-     * appended below a separator.
+     * command (a copy/cut/paste/delete tagged with `role`), that command is routed to the
+     * surface's action instead of the built-in webContents role — the menu shows one Copy, and
+     * it does the right thing for what is focused. Untagged entries are appended below a
+     * separator.
      */
-    private buildEditMenu(t: Translator["t"], contextGroup?: NativeMenuGroup): MenuItemConstructorOptions {
-        const contextItems = contextGroup?.items ?? [];
+    private buildEditMenu(t: Translator["t"], contextGroups: NativeMenuGroup[] = []): MenuItemConstructorOptions {
+        const contextItems = contextGroups.flatMap(group => group.items);
         const roleOverrides = new Map<EditMenuRole, Extract<NativeMenuItem, { kind: "action" }>>();
         for (const item of contextItems) {
             if (item.kind === "action" && item.role) {
@@ -498,12 +507,7 @@ export class MenuManager {
                         { role: "stopSpeaking", label: t("menu.edit.speech.stopSpeaking") },
                     ],
                 },
-                ...(extraItems.length > 0
-                    ? [
-                        { type: "separator" } as MenuItemConstructorOptions,
-                        ...extraItems.map(item => this.buildSyncedMenuItem(item)),
-                    ]
-                    : []),
+                ...this.buildSlottedItems(extraItems),
             ],
         };
     }
@@ -513,6 +517,20 @@ export class MenuManager {
             label: group.label,
             submenu: group.items.map(item => this.buildSyncedMenuItem(item)),
         };
+    }
+
+    /**
+     * Items to splice into a standard menu, behind a leading separator so they read as an
+     * addition rather than part of the built-in set. Nothing to splice means no separator either.
+     */
+    private buildSlottedItems(items: NativeMenuItem[]): MenuItemConstructorOptions[] {
+        if (items.length === 0) {
+            return [];
+        }
+        return [
+            { type: "separator" },
+            ...items.map(item => this.buildSyncedMenuItem(item)),
+        ];
     }
 
     /**
@@ -557,7 +575,9 @@ export class MenuManager {
     }
 
     public cleanup(): void {
+        this.app.electronApp.off("browser-window-focus", this.onBrowserWindowFocus);
         this.menu = null;
-        this.syncedGroups.clear();
+        this.syncedModels.clear();
+        this.lastFocusedWindow = null;
     }
 }

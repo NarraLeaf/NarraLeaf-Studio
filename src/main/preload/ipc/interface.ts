@@ -1,6 +1,7 @@
 import { RendererInterfaceKey } from "@shared/types/constants";
 import { Namespace } from "@shared/types/ipc";
-import { EditMenuRole, IPCEventType, MenuActionId, NativeMenuGroup, RequestStatus } from "@shared/types/ipcEvents";
+import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
+import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
 import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults } from "@shared/types/window";
@@ -189,8 +190,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.workspaceBlueprintNavigateFromPreview, handler),
         onMenuAction: (handler: (action: MenuActionId) => void) =>
             ipcClient.onMessage(IPCEventType.menuAction, (data) => handler(data.action)),
-        syncNativeMenu: (groups: NativeMenuGroup[]) =>
-            ipcClient.send(IPCEventType.workspaceMenuSync, { groups }),
+        syncNativeMenu: (model: NativeMenuModel) =>
+            ipcClient.send(IPCEventType.workspaceMenuSync, { model }),
     },
 
     app: {

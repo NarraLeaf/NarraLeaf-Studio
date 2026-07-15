@@ -26,13 +26,8 @@ app.whenReady().then(async () => {
     });
 
     try {
-        const launcher = await app.launchLauncher({
-            backgroundColor: '#0f1115',
-        });
-
-        launcher.onKeyUp("F12", () => {
-            launcher.toggleDevTools();
-        });
+        // Same call the workspace's close guard uses, so the home screen is built one way only.
+        await app.ensureLauncher();
     } catch (error) {
         app.logger.error('Failed to launch application:', error);
         app.quit();

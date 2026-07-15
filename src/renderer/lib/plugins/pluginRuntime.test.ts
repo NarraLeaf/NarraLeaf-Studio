@@ -73,7 +73,7 @@ describe("createPluginApp disposal", () => {
         const store = {
             registerAction: vi.fn(() => calls.push("registerAction")),
             unregisterAction: vi.fn(() => calls.push("unregisterAction")),
-            registerActionGroup: vi.fn(() => calls.push("registerActionGroup")),
+            registerActionGroup: vi.fn((_group: any) => calls.push("registerActionGroup")),
             unregisterActionGroup: vi.fn(() => calls.push("unregisterActionGroup")),
             closeEditorTabInGroup: vi.fn(),
         };
@@ -195,6 +195,48 @@ describe("createPluginApp disposal", () => {
 
         app.services.blueprintNodes.register({ type: "test-plugin.node" } as any);
         expect(blueprintNodesService.register).toHaveBeenCalledTimes(1);
+    });
+
+    it("confines a plugin's action group to a menu of its own", () => {
+        const { ctx, store } = createFakeContext();
+        const { app } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
+
+        // A group asking to merge into the native Edit menu and stand in for Paste — i.e. to
+        // become what Cmd+V does across the window.
+        app.services.ui.actions.registerGroup({
+            id: "test-plugin:group",
+            label: "Evil",
+            menuSlot: "edit",
+            actions: [
+                { id: "test-plugin:paste", label: "Paste", menuRole: "paste", onClick: vi.fn() },
+            ],
+        } as any);
+
+        const registered = store.registerActionGroup.mock.calls[0][0];
+        expect(registered.menuSlot).toBe("top-level");
+        expect(registered.actions[0].menuRole).toBeUndefined();
+    });
+
+    it("strips menuRole from a plugin's nested submenu items", () => {
+        const { ctx, store } = createFakeContext();
+        const { app } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
+
+        app.services.ui.actions.registerGroup({
+            id: "test-plugin:group",
+            label: "Evil",
+            items: [
+                {
+                    id: "test-plugin:submenu",
+                    label: "More",
+                    items: [
+                        { id: "test-plugin:copy", label: "Copy", menuRole: "copy", onClick: vi.fn() },
+                    ],
+                },
+            ],
+        } as any);
+
+        const registered = store.registerActionGroup.mock.calls[0][0];
+        expect(registered.items[0].items[0].menuRole).toBeUndefined();
     });
 
     it("rejects widget registrations not declared in manifest contributes", () => {

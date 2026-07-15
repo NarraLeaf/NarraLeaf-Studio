@@ -8,7 +8,8 @@ import type { ActionDefinition, ActionGroup } from "../registry/types";
 import { UIService } from "@/lib/workspace/services/ui";
 import { Services } from "@/lib/workspace/services/services";
 import type { FocusContext } from "@/lib/workspace/services/ui";
-import { EditMenuRole, MenuActionId } from "@shared/types/ipcEvents";
+import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
+import { EditMenuRole, MenuActionId } from "@shared/types/menu";
 
 /**
  * Listens for macOS native menu actions and dispatches
@@ -72,25 +73,36 @@ export function useMenuActionHandler(): void {
     }, [dispatchMenuAction]);
 }
 
-function isEditableElement(element: Element | null): boolean {
-    if (!element) {
-        return false;
-    }
-    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-        return !element.readOnly && !element.disabled;
-    }
-    return element instanceof HTMLElement && element.isContentEditable;
-}
-
-/** True when the standard text-editing behaviour is what the user means right now. */
+/**
+ * True when the standard text-editing behaviour is what the user means right now.
+ *
+ * Uses the same notion of "typing here" as the KeybindingService, so a keystroke cannot be
+ * text editing for one path and a surface action for the other.
+ */
 function shouldUseNativeEditCommand(role: EditMenuRole): boolean {
-    const editableFocused = isEditableElement(document.activeElement);
+    if (isEditableKeyboardTarget(document.activeElement)) {
+        return true;
+    }
+    // Copying a text selection is meaningful outside a text field too — but only a selection the
+    // focused surface actually holds. A leftover selection elsewhere in the workspace must not
+    // hijack the surface's own copy.
     if (role === "copy" || role === "cut") {
-        const selection = window.getSelection();
-        return editableFocused || (selection !== null && !selection.isCollapsed);
+        return hasSelectionInsideActiveElement();
     }
     // paste/delete only make sense as text commands inside an editable.
-    return editableFocused;
+    return false;
+}
+
+function hasSelectionInsideActiveElement(): boolean {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+        return false;
+    }
+    const active = document.activeElement;
+    if (!active) {
+        return false;
+    }
+    return active.contains(selection.getRangeAt(0).commonAncestorContainer);
 }
 
 function findRegisteredAction(
