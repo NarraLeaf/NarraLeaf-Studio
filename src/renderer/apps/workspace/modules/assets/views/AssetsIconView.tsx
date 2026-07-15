@@ -5,7 +5,7 @@ import { FolderPlus, Link, Upload, ChevronLeft } from "lucide-react";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
-import { ASSET_TYPE_ICONS, ASSET_TYPE_LABELS } from "../constants";
+import { ASSET_TYPE_ICONS } from "../constants";
 import { useWorkspace } from "../../../context";
 import { useTranslation } from "@/lib/i18n";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
@@ -207,7 +207,7 @@ export function AssetsIconView({
                                 <div className="flex items-center gap-2">
                                     <TypeIcon className="w-5 h-5 text-fg" />
                                     <div>
-                                        <p className="text-sm font-medium">{ASSET_TYPE_LABELS[type]}</p>
+                                        <p className="text-sm font-medium">{t(`assets.types.${type}`)}</p>
                                         <p className="text-xs text-fg-subtle">{tn("assets.iconView.assetCount", typeAssets.length)}</p>
                                     </div>
                                 </div>
@@ -286,7 +286,7 @@ export function AssetsIconView({
                                 </div>
                             ) : (
                                 <div className="mt-4 text-center text-xs text-fg-subtle">
-                                    {t("assets.emptyType", { label: ASSET_TYPE_LABELS[type].toLowerCase() })}
+                                    {t("assets.emptyType", { label: t(`assets.types.${type}`).toLowerCase() })}
                                 </div>
                             )}
                         </section>

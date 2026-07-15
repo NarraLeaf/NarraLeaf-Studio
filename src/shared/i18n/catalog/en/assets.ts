@@ -13,6 +13,16 @@ export const assets = {
     preview: "Preview",
     unknownError: "Unknown error",
     emptyType: "No {label} yet",
+    /** Asset category labels, keyed by the `AssetType` enum value. */
+    types: {
+        image: "Images",
+        audio: "Audio",
+        video: "Videos",
+        json: "JSON Files",
+        blueprint: "Blueprints",
+        font: "Fonts",
+        other: "Other",
+    },
     itemCount: {
         one: "{count} item",
         other: "{count} items",

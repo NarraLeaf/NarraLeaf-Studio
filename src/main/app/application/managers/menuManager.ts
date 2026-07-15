@@ -77,15 +77,16 @@ export class MenuManager {
         }
 
         // Built fresh on every rebuild so the menu re-localizes when the language
-        // changes (AppGlobalStateSetHandler calls updateMenu()). System `role`
-        // items are localized by Electron/macOS itself and stay untranslated here.
+        // changes (AppGlobalStateSetHandler calls updateMenu()). `role` items need an
+        // explicit `label`: macOS localizes roles to the *system* language only, so
+        // leaving them bare would ignore the in-app language picker.
         const { t } = getMainTranslator(this.app);
 
         return [
             {
                 label: APP_DISPLAY_NAME,
                 submenu: [
-                    { role: "about" },
+                    { role: "about", label: t("menu.app.about", { name: APP_DISPLAY_NAME }) },
                     { type: "separator" },
                     {
                         label: t("menu.app.preferences"),
@@ -95,13 +96,13 @@ export class MenuManager {
                         },
                     },
                     { type: "separator" },
-                    { role: "services" },
+                    { role: "services", label: t("menu.app.services") },
                     { type: "separator" },
-                    { role: "hide" },
-                    { role: "hideOthers" },
-                    { role: "unhide" },
+                    { role: "hide", label: t("menu.app.hide", { name: APP_DISPLAY_NAME }) },
+                    { role: "hideOthers", label: t("menu.app.hideOthers") },
+                    { role: "unhide", label: t("menu.app.unhide") },
                     { type: "separator" },
-                    { role: "quit" },
+                    { role: "quit", label: t("menu.app.quit", { name: APP_DISPLAY_NAME }) },
                 ],
             },
             {
@@ -139,29 +140,51 @@ export class MenuManager {
                     },
                 ],
             },
-            { role: "editMenu" },
+            {
+                role: "editMenu",
+                label: t("menu.edit.title"),
+                submenu: [
+                    { role: "undo", label: t("menu.edit.undo") },
+                    { role: "redo", label: t("menu.edit.redo") },
+                    { type: "separator" },
+                    { role: "cut", label: t("menu.edit.cut") },
+                    { role: "copy", label: t("menu.edit.copy") },
+                    { role: "paste", label: t("menu.edit.paste") },
+                    { role: "pasteAndMatchStyle", label: t("menu.edit.pasteAndMatchStyle") },
+                    { role: "delete", label: t("menu.edit.delete") },
+                    { role: "selectAll", label: t("menu.edit.selectAll") },
+                    { type: "separator" },
+                    {
+                        label: t("menu.edit.speech.title"),
+                        submenu: [
+                            { role: "startSpeaking", label: t("menu.edit.speech.startSpeaking") },
+                            { role: "stopSpeaking", label: t("menu.edit.speech.stopSpeaking") },
+                        ],
+                    },
+                ],
+            },
             {
                 label: t("menu.view.title"),
                 submenu: [
-                    { role: "reload" },
-                    { role: "forceReload" },
-                    { role: "toggleDevTools" },
+                    { role: "reload", label: t("menu.view.reload") },
+                    { role: "forceReload", label: t("menu.view.forceReload") },
+                    { role: "toggleDevTools", label: t("menu.view.toggleDevTools") },
                     { type: "separator" },
-                    { role: "resetZoom" },
-                    { role: "zoomIn" },
-                    { role: "zoomOut" },
+                    { role: "resetZoom", label: t("menu.view.resetZoom") },
+                    { role: "zoomIn", label: t("menu.view.zoomIn") },
+                    { role: "zoomOut", label: t("menu.view.zoomOut") },
                     { type: "separator" },
-                    { role: "togglefullscreen" },
+                    { role: "togglefullscreen", label: t("menu.view.toggleFullScreen") },
                 ],
             },
             {
                 role: "windowMenu",
                 label: t("menu.window.title"),
                 submenu: [
-                    { role: "minimize" },
-                    { role: "zoom" },
+                    { role: "minimize", label: t("menu.window.minimize") },
+                    { role: "zoom", label: t("menu.window.zoom") },
                     { type: "separator" },
-                    { role: "front" },
+                    { role: "front", label: t("menu.window.front") },
                 ],
             },
             {
