@@ -156,7 +156,7 @@ export const storyInspector = {
         clip: "应用 CSS 裁剪（clip-path）",
         clearClip: "移除当前裁剪路径",
         filter: "应用 CSS 滤镜（例如 blur(4px) grayscale(1)）",
-        clearFilter: "移除当前滤镜。",
+        clearFilter: "移除当前滤镜",
         darken: "淡入淡出一个暗色叠加层，数值范围为 0~1（仅适用于图片/角色类目标）",
         circleReveal: "通过动画遮罩实现圆形展开",
         circleClose: "通过动画遮罩实现圆形收拢",

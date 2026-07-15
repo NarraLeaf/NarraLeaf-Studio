@@ -27,7 +27,7 @@ export const properties = {
     diagnostics: {
         title: "静态检查",
         selectOnCanvas: "→ 在画布中选中",
-        help: "图形结构与绑定问题：从蓝图区域打开蓝图编辑器标签页。实时执行、节点进入/退出以及宿主 API 跟踪仅在开发模式中显示。",
+        help: "图形结构与绑定问题：从蓝图区域打开蓝图编辑器标签页；实时执行、节点进入/退出以及宿主 API 跟踪仅在开发模式中显示",
     },
     layout: {
         title: "布局",

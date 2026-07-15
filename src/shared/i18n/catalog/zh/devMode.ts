@@ -22,7 +22,7 @@ export const devMode = {
         empty: "暂无蓝图",
         openWorkspace: "工作区",
         cannotOpen: "无法从预览中打开该蓝图",
-        openFailed: "无法打开蓝图。",
+        openFailed: "无法打开蓝图",
     },
     output: {
         logLevel: "日志级别",

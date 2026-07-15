@@ -4,14 +4,14 @@ export const uiEditor = {
     surfaceKind: {
         page: "页面",
         gameUi: "游戏 UI",
-        pageDescription: "页面是完整的屏幕界面，例如标题、设置、存档、历史或图库。",
-        gameUiDescription: "游戏 UI 属于进行中的游戏玩法，例如对话、选项、HUD、快捷操作和通知。",
+        pageDescription: "页面是完整的屏幕，例如标题、设置、存档、历史或画廊",
+        gameUiDescription: "游戏界面属于进行中的游戏，例如对话、选项、HUD、快捷菜单和通知",
     },
     panel: {
         interfaceType: "界面类型",
         createPage: "新建页面",
         createGameUi: "新建游戏 UI",
-        emptyPages: "暂无页面。",
+        emptyPages: "暂无页面",
         emptyGameUi: "暂无游戏 UI 画布",
         emptyPagesHint: "请使用上方的\"创建页面\"，页面可作为全屏界面打开，之后也可作为游戏图层调用",
         emptyGameUiHint: "请使用上方的\"创建游戏界面\"，游戏界面固定为项目分辨率",
@@ -29,7 +29,7 @@ export const uiEditor = {
         duplicateFailed: "无法复制页面",
         pageValidationHint: "创建前请检查页面名称和尺寸",
         gameUiSlotHint: "创建前请选择一个可用的游戏 UI 位置",
-        allSlotsUsed: "所有游戏 UI 位置均已有界面。请从列表中打开已有的游戏 UI",
+        allSlotsUsed: "所有游戏 UI 位置均已有界面，请从列表中打开已有的游戏 UI",
     },
     naming: {
         page: "页面 {index}",
@@ -39,7 +39,7 @@ export const uiEditor = {
     createDialog: {
         slotIntro: "请选择该游戏 UI 在游玩期间所属的位置",
         slotAlreadyCreated: "已创建，请从列表中打开现有的游戏 UI",
-        resolutionNote: "游戏 UI 使用项目分辨率：{width}×{height}。",
+        resolutionNote: "游戏 UI 使用项目分辨率：{width}×{height}",
         nameRequired: "名称不能为空",
         width: "宽度",
         height: "高度",
