@@ -4,7 +4,7 @@ import { Upload, Link, FolderPlus, RefreshCw } from "lucide-react";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
-import { ASSET_TYPE_ICONS, ASSET_TYPE_LABELS } from "../constants";
+import { ASSET_TYPE_ICONS } from "../constants";
 import { useTranslation } from "@/lib/i18n";
 
 interface AssetsListViewProps {
@@ -49,7 +49,7 @@ export function AssetsListView({
                         key={type}
                         id={type}
                         icon={<TypeIcon className="w-4 h-4" />}
-                        title={`${ASSET_TYPE_LABELS[type]} (${typeAssets.length})`}
+                        title={`${t(`assets.types.${type}`)} (${typeAssets.length})`}
                         actions={
                             actionLoading ? (
                                 <RefreshCw className="w-3 h-3 animate-spin text-white" />
@@ -106,7 +106,7 @@ export function AssetsListView({
                             onContextMenu={(e) => e.preventDefault()}
                         >
                             {typeAssets.length === 0 && typeGroups.length === 0 ? (
-                                <div className="p-4 text-center text-xs text-fg-subtle">{t("assets.emptyType", { label: ASSET_TYPE_LABELS[type].toLowerCase() })}</div>
+                                <div className="p-4 text-center text-xs text-fg-subtle">{t("assets.emptyType", { label: t(`assets.types.${type}`).toLowerCase() })}</div>
                             ) : (
                                 <div className="py-1">
                                     {typeGroups.filter(g => !g.parentGroupId).map(group => <GroupItem key={group.id} group={group} type={type} level={0} />)}

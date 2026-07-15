@@ -4,7 +4,7 @@ export const workspace = {
     localization: {
         panel: {
             languagesTitle: "语言",
-            languagesHint: "游戏本体的语言。源语言是你所使用的编写语言，其他所有语言都会以此为基准进行翻译",
+            languagesHint: "游戏本体的语言：源语言是你所使用的编写语言，其他所有语言都会以此为基准进行翻译",
             empty: "还没有语言，先添加源语言",
             addLanguage: "添加语言",
             codePlaceholder: "代码（en、ja、zh-CN…）",
@@ -93,5 +93,9 @@ export const workspace = {
         stopPreview: "停止预览",
         logoAlt: "NarraLeaf Studio 徽标",
         editorTabsLabel: "编辑器标签页",
+        closeConfirm: {
+            message: "确定要关闭当前工作区吗？",
+            detail: "将会自动保存已作出的更改",
+        },
     },
 } satisfies LocaleNamespace<"workspace">;
