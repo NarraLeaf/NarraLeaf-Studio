@@ -1,4 +1,9 @@
-import type { GameBuildDesktopPlatform, GameBuildFormat } from "@shared/types/gameBuild";
+import type {
+    GameBuildArch,
+    GameBuildCompression,
+    GameBuildDesktopPlatform,
+    GameBuildFormat,
+} from "@shared/types/gameBuild";
 
 /**
  * Message protocol between GameBuildManager (main process) and the packaging
@@ -20,6 +25,8 @@ export type GameBuildWorkerFuses = {
 export type GameBuildWorkerTarget = {
     platform: GameBuildDesktopPlatform;
     formats: GameBuildFormat[];
+    /** The single arch to package for; see GameBuildTarget.arch for why one. */
+    arch: GameBuildArch;
     /** Electron fuse set for this platform's binaries. */
     fuses: GameBuildWorkerFuses;
     /**
@@ -65,6 +72,10 @@ export type GameBuildWorkerConfig = {
     /** Sanitized, path-safe artifact base name. */
     artifactBaseName: string;
     electronVersion: string;
+    /** Copyright line embedded in the binaries; unset leaves it to electron-builder. */
+    copyright?: string;
+    /** Payload compression; unset uses electron-builder's default ("maximum"). */
+    compression?: GameBuildCompression;
     /** Download mirror for Electron dists (cross builds); empty = official. */
     electronMirror?: string;
     /** Glob patterns kept outside the asar as real files. */
