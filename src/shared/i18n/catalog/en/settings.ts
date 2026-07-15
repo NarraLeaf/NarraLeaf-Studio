@@ -61,5 +61,14 @@ export const settings = {
             description:
                 "Mirror URL for downloading Electron when building games for other platforms. Leave empty to use the official source.",
         },
+        confirmBeforeClose: {
+            label: "Confirm before closing a workspace",
+            description: "Ask for confirmation when you close a workspace window.",
+        },
+        returnToLauncherOnClose: {
+            label: "Return to the home screen when closing a workspace",
+            description:
+                "Closing a workspace goes back to the home screen. Turn this off to quit NarraLeaf Studio instead when no other window is open.",
+        },
     },
 } as const;

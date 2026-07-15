@@ -93,6 +93,7 @@ export enum IPCEventType {
     workspaceExportProjectPackage = "workspace.projectPackage.export",
     workspaceImportProjectPackage = "workspace.projectPackage.import",
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
+    workspaceConfirmClose = "workspace.confirmClose",
     workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
     workspaceBlueprintNavigateFromPreview = "workspace.blueprint.navigateFromPreview",
@@ -616,6 +617,16 @@ export type IPCWorkspaceEvents = {
             filePath?: string;
             byteLength?: number;
         };
+    };
+    /**
+     * Asks the workspace to confirm closing, using its own in-app dialog rather than a native
+     * message box. Driven from the main process, which owns the window's close guard.
+     */
+    [IPCEventType.workspaceConfirmClose]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Client,
+        data: {};
+        response: RequestStatus<{ confirmed: boolean }>;
     };
     [IPCEventType.workspaceResolveAssetUrl]: {
         type: IPCMessageType.request,

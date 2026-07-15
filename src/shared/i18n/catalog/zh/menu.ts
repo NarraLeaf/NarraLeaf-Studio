@@ -36,8 +36,6 @@ export const menu = {
     view: {
         title: "视图",
         reload: "重新加载",
-        forceReload: "强制重新加载",
-        toggleDevTools: "切换开发者工具",
         resetZoom: "实际大小",
         zoomIn: "放大",
         zoomOut: "缩小",

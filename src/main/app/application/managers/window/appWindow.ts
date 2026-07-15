@@ -37,6 +37,8 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
     private closeResult?: WindowCloseResults[T];
     private closeResultResolver?: (result: WindowCloseResults[T]) => void;
     private config: WindowConfig<T>;
+    private closeGuard?: (window: AppWindow<T>) => boolean;
+    private closeGuardBypassed: boolean = false;
 
     constructor(app: App, config: WindowConfig<T>, props: WindowProps[T]) {
         const windowConfig: WindowConfig<T> = {
@@ -128,6 +130,30 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
 
     public close(): void {
         this.getBrowserWindow().close();
+    }
+
+    /**
+     * Intercept close requests for this window, whichever way they arrive: the native
+     * traffic lights/close box, the renderer's title bar controls, or close() from main.
+     *
+     * Returning true swallows the close; the guard then owns the window's lifetime and must
+     * call forceClose() once it is done. Returning false lets the close proceed. The guard is
+     * skipped while the app is quitting, so it can never cancel a quit.
+     */
+    public setCloseGuard(guard: (window: AppWindow<T>) => boolean): void {
+        this.closeGuard = guard;
+    }
+
+    /**
+     * Close the window, ignoring any close guard. Safe to call after async work: the window may
+     * already be gone by then (app quit, crash), in which case this does nothing.
+     */
+    public forceClose(): void {
+        if (this.isClosed()) {
+            return;
+        }
+        this.closeGuardBypassed = true;
+        this.close();
     }
 
     public closeWith(result: WindowCloseResults[T]): void {
@@ -244,7 +270,14 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         const win = this.getInstance().getBrowserWindow();
         const webContents = win.webContents;
 
-        win.on("close", () => {
+        win.on("close", (event) => {
+            if (this.closeGuard && !this.closeGuardBypassed && !this.getApp().isQuitting()) {
+                if (this.closeGuard(this)) {
+                    event.preventDefault();
+                    return;
+                }
+            }
+
             this.getEvents().emit("close", this);
 
             // Resolve close result if resolver is set

@@ -134,6 +134,33 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: MAX_ACTIVE_EDITORS_DEFAULT,
     },
     {
+        // Applied by the main process in `App.handleWorkspaceCloseRequest`: the workspace
+        // window's close guard shows a native confirmation sheet before letting the close through.
+        key: "workspace.confirmBeforeClose",
+        category: "workspace",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Confirm before closing a workspace",
+        labelKey: "settings.items.confirmBeforeClose.label",
+        description: "Ask for confirmation when you close a workspace window.",
+        descriptionKey: "settings.items.confirmBeforeClose.description",
+        defaultValue: false,
+    },
+    {
+        // Applied by the main process in `App.handleWorkspaceCloseRequest`: when on, closing a
+        // workspace reopens the launcher first. When off the close simply stands, so the app
+        // quits if the workspace was the last window.
+        key: "workspace.returnToLauncherOnClose",
+        category: "workspace",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Return to the home screen when closing a workspace",
+        labelKey: "settings.items.returnToLauncherOnClose.label",
+        description: "Closing a workspace goes back to the home screen. Turn this off to quit NarraLeaf Studio instead when no other window is open.",
+        descriptionKey: "settings.items.returnToLauncherOnClose.description",
+        defaultValue: true,
+    },
+    {
         // Read by the main-process GameBuildManager (readElectronMirror) and
         // passed to electron-builder as electronDownload.mirror for cross-platform
         // game builds. Empty = official Electron download source.

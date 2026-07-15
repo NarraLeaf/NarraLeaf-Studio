@@ -167,8 +167,6 @@ export class MenuManager {
                 label: t("menu.view.title"),
                 submenu: [
                     { role: "reload", label: t("menu.view.reload") },
-                    { role: "forceReload", label: t("menu.view.forceReload") },
-                    { role: "toggleDevTools", label: t("menu.view.toggleDevTools") },
                     { type: "separator" },
                     { role: "resetZoom", label: t("menu.view.resetZoom") },
                     { role: "zoomIn", label: t("menu.view.zoomIn") },
