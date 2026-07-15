@@ -203,6 +203,23 @@ function runtimeAliasPlugin() {
         plugins: [runtimeAliasPlugin(), postcssPlugin()],
     });
 
+    // Web runtime shell: replaces main.js/preload.js when a game is exported as
+    // a static site. Loaded by the generated web index.html BEFORE renderer.js,
+    // it installs the browser implementation of the runtime bridge; the
+    // renderer bundle itself is shared verbatim with the desktop shell.
+    await esbuild.build({
+        entryPoints: [path.join(runtimeSourceDir, 'web', 'web.ts')],
+        outfile: path.join(runtimeOutDir, 'web.js'),
+        platform: 'browser',
+        format: 'iife',
+        bundle: true,
+        sourcemap: dev,
+        minify: true,
+        define: productionDefine,
+        target: ['chrome114'],
+        tsconfig: runtimeTsconfig,
+    });
+
     fs.writeFileSync(path.join(runtimeOutDir, 'index.html'), runtimeHtml(), 'utf-8');
 
     copyRuntimeSupportSidecar(runtimeOutDir);

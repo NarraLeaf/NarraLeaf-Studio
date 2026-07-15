@@ -8,8 +8,9 @@ import type { DevModeConsoleLogPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
 import {
     currentGameBuildPlatform,
+    GAME_BUILD_FORMATS_BY_PLATFORM,
     hostCanBuildTarget,
-    type GameBuildPlatform,
+    type GameBuildDesktopPlatform,
     type GameBuildRequest,
     type GameBuildStateSnapshot,
     type GameBuildTarget,
@@ -19,7 +20,10 @@ import { sanitizeProjectFileName } from "@shared/utils/nlproj";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
-import { compileGameRuntimeArtifact } from "../preview/compiler/gameRuntimeArtifactCompiler";
+import {
+    compileGameRuntimeArtifact,
+    type GameRuntimeArtifactCompileResult,
+} from "../preview/compiler/gameRuntimeArtifactCompiler";
 import { formatPreviewProcessOutput } from "../preview/PreviewManager";
 import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "../preview/selectRuntimePlugins";
 import type {
@@ -90,7 +94,7 @@ export function deriveGameAppId(identifier: string | undefined, projectName: str
  * it stays off until real code signing is configured, at which point it earns
  * its keep. (Linux has no asar-integrity support regardless.)
  */
-export function gameFusesForPlatform(platform: GameBuildPlatform, hasSigningIdentity: boolean): GameBuildWorkerFuses {
+export function gameFusesForPlatform(platform: GameBuildDesktopPlatform, hasSigningIdentity: boolean): GameBuildWorkerFuses {
     return {
         runAsNode: false,
         // Left off deliberately: a game stores no Chromium cookies (saves and
@@ -167,10 +171,19 @@ export class GameBuildManager {
         if (targets.length === 0) {
             throw new Error("No build targets selected");
         }
+        const desktopTargets = targets.filter(isDesktopTarget);
+        const webTarget = targets.find(target => target.platform === "web");
+        const webFormats = webTarget
+            ? webTarget.formats.filter(format => GAME_BUILD_FORMATS_BY_PLATFORM.web.includes(format))
+            : [];
+        if (webTarget && webFormats.length === 0) {
+            throw new Error("The web target has no usable format (expected zip or dir)");
+        }
         // Defense in depth: the dialog already hides unbuildable platforms, but a
         // stored selection carried across hosts (or any non-UI caller) could still
         // ask for one. Fail early and clearly rather than deep inside electron-builder.
-        const unbuildable = targets.filter(target => !hostCanBuildTarget(hostPlatform, target.platform));
+        // (The web target builds everywhere and needs no check.)
+        const unbuildable = desktopTargets.filter(target => !hostCanBuildTarget(hostPlatform, target.platform));
         if (unbuildable.length > 0) {
             throw new Error(
                 `Cannot build for ${unbuildable.map(t => t.platform).join(", ")} on this machine. ` +
@@ -183,30 +196,63 @@ export class GameBuildManager {
         if (pluginSelection.errors.length > 0) {
             throw new Error(`Plugin validation failed:\n${pluginSelection.errors.join("\n")}`);
         }
-        const encryptionKey = await this.resolveEncryptionKey(projectPath, projectConfig);
+        const encryptionKey = desktopTargets.length > 0
+            ? await this.resolveEncryptionKey(projectPath, projectConfig)
+            : undefined;
         if (encryptionKey) {
             this.emit(session, { level: "info", source: "Build", message: "asset protection enabled; sealing pack" });
+        }
+        if (webTarget && this.encryptAssetsEnabled(projectConfig)) {
+            this.emit(session, {
+                level: "info",
+                source: "Build",
+                message: "asset protection does not apply to the web export; its files ship unprotected",
+            });
         }
         this.ensureNotCancelled(session);
 
         session.snapshot = { ...session.snapshot, status: "compiling" };
-        const stagingRoot = path.join(projectPath, ".nlstudio", "build", "staging");
-        const artifact = await compileGameRuntimeArtifact({
-            projectPath,
-            entry,
-            runtimeDistDir: path.join(this.app.getDistDir(), "runtime"),
-            runtimeVersion: this.readRuntimeVersion(),
-            outputRoot: stagingRoot,
-            runtimePlugins: pluginSelection.selected,
-            mode: "production",
-            encryptionKey,
-        });
-        this.emit(session, {
-            level: "info",
-            source: "Build",
-            message: `game compiled (${artifact.copiedAssetCount} asset(s)); packaging...`,
-        });
-        this.ensureNotCancelled(session);
+        const runtimeDistDir = path.join(this.app.getDistDir(), "runtime");
+        const runtimeVersion = this.readRuntimeVersion();
+        let desktopArtifact: GameRuntimeArtifactCompileResult | null = null;
+        if (desktopTargets.length > 0) {
+            desktopArtifact = await compileGameRuntimeArtifact({
+                projectPath,
+                entry,
+                runtimeDistDir,
+                runtimeVersion,
+                outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+                runtimePlugins: pluginSelection.selected,
+                mode: "production",
+                encryptionKey,
+            });
+            this.emit(session, {
+                level: "info",
+                source: "Build",
+                message: `game compiled (${desktopArtifact.copiedAssetCount} asset(s))`,
+            });
+            this.ensureNotCancelled(session);
+        }
+        let webArtifact: GameRuntimeArtifactCompileResult | null = null;
+        if (webTarget) {
+            webArtifact = await compileGameRuntimeArtifact({
+                projectPath,
+                entry,
+                runtimeDistDir,
+                runtimeVersion,
+                outputRoot: path.join(projectPath, ".nlstudio", "build", "staging-web"),
+                runtimePlugins: pluginSelection.selected,
+                mode: "production",
+                shell: "web",
+            });
+            this.emit(session, {
+                level: "info",
+                source: "Build",
+                message: `web export compiled (${webArtifact.copiedAssetCount} asset(s))`,
+            });
+            this.ensureNotCancelled(session);
+        }
+        this.emit(session, { level: "info", source: "Build", message: "packaging..." });
 
         // The output dir is an absolute path chosen through the native folder
         // picker (or the "<project>/dist" default), so it is used as-is.
@@ -217,7 +263,7 @@ export class GameBuildManager {
         // gameFusesForPlatform). A future code-signing batch flips this true.
         const hasSigningIdentity = false;
         const electronMirror = this.readElectronMirror();
-        const crossTargets = targets.filter(target => target.platform !== hostPlatform);
+        const crossTargets = desktopTargets.filter(target => target.platform !== hostPlatform);
         if (electronMirror && crossTargets.length > 0) {
             this.emit(session, {
                 level: "info",
@@ -232,7 +278,7 @@ export class GameBuildManager {
             });
         }
         const workerConfig: GameBuildWorkerConfig = {
-            appDir: artifact.appDir,
+            ...(desktopArtifact ? { appDir: desktopArtifact.appDir } : {}),
             outputDir,
             appId: identity.appId,
             productName: identity.productName,
@@ -240,7 +286,7 @@ export class GameBuildManager {
             electronVersion: process.versions.electron,
             ...(electronMirror ? { electronMirror } : {}),
             asarUnpack: buildAsarUnpackPatterns(Boolean(encryptionKey)),
-            targets: await Promise.all(targets.map(async target => ({
+            targets: await Promise.all(desktopTargets.map(async target => ({
                 platform: target.platform,
                 formats: target.formats,
                 fuses: gameFusesForPlatform(target.platform, hasSigningIdentity),
@@ -249,6 +295,14 @@ export class GameBuildManager {
                     : {}),
                 ...await this.resolveTargetIcon(session, projectPath, projectConfig, target.platform),
             }))),
+            ...(webArtifact ? {
+                web: {
+                    sourceDir: webArtifact.appDir,
+                    formats: webFormats,
+                    dirName: `${identity.artifactBaseName}-${identity.version}-web`,
+                    zipName: `${identity.artifactBaseName}-${identity.version}-web.zip`,
+                },
+            } : {}),
         };
 
         // Cancel may have landed during the async icon resolution above, while
@@ -289,7 +343,7 @@ export class GameBuildManager {
         session: BuildSession,
         projectPath: string,
         projectConfig: ProjectConfigData | null,
-        platform: GameBuildPlatform,
+        platform: GameBuildDesktopPlatform,
     ): Promise<{ iconPath?: string }> {
         const configuredPath = readIconPath(projectConfig, platform);
         if (!configuredPath) {
@@ -380,7 +434,7 @@ export class GameBuildManager {
         session: BuildSession,
         projectConfig: ProjectConfigData | null,
         projectPath: string,
-    ): { appId: string; productName: string; artifactBaseName: string } {
+    ): { appId: string; productName: string; artifactBaseName: string; version: string } {
         const productName = projectConfig?.name?.trim() || path.basename(projectPath) || "NarraLeaf Game";
         const rawVersion = projectConfig?.metadata?.version;
         const version = typeof rawVersion === "string" && rawVersion.trim() ? rawVersion.trim() : undefined;
@@ -409,6 +463,9 @@ export class GameBuildManager {
             appId,
             productName,
             artifactBaseName: sanitizeProjectFileName(productName),
+            // Same fallback electron-builder applies via the app manifest, so
+            // web artifact names line up with the desktop ones.
+            version: version ?? "0.0.0",
         };
     }
 
@@ -428,14 +485,16 @@ export class GameBuildManager {
         });
     }
 
+    private encryptAssetsEnabled(projectConfig: ProjectConfigData | null): boolean {
+        return (projectConfig?.app as { security?: { encryptAssets?: unknown } } | undefined)?.security?.encryptAssets === true;
+    }
+
     /** Same key resolution Preview uses: production ships the identical protection path. */
     private async resolveEncryptionKey(
         projectPath: string,
         projectConfig: ProjectConfigData | null,
     ): Promise<string | undefined> {
-        const enabled =
-            (projectConfig?.app as { security?: { encryptAssets?: unknown } } | undefined)?.security?.encryptAssets === true;
-        if (!enabled) {
+        if (!this.encryptAssetsEnabled(projectConfig)) {
             return undefined;
         }
         return resolvePackEncryptionKey(this.app.getUserDataDir(), projectPath);
@@ -502,8 +561,14 @@ function isActiveStatus(status: GameBuildStateSnapshot["status"]): boolean {
     return status === "preparing" || status === "compiling" || status === "packaging";
 }
 
+type GameBuildDesktopTarget = GameBuildTarget & { platform: GameBuildDesktopPlatform };
+
+function isDesktopTarget(target: GameBuildTarget): target is GameBuildDesktopTarget {
+    return target.platform !== "web";
+}
+
 /** Read the configured icon path for a platform from project metadata. */
-function readIconPath(projectConfig: ProjectConfigData | null, platform: GameBuildPlatform): string | undefined {
+function readIconPath(projectConfig: ProjectConfigData | null, platform: GameBuildDesktopPlatform): string | undefined {
     const icons = (projectConfig?.metadata as { icons?: Record<string, { path?: unknown }> } | undefined)?.icons;
     const raw = icons?.[platform]?.path;
     return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;

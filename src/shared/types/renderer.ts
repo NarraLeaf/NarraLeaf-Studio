@@ -181,6 +181,10 @@ export interface RendererPreloadedInterface {
         stop(): Promise<RequestStatus<{ status: DevModeStatus }>>;
         reload(): Promise<RequestStatus<{ status: DevModeStatus }>>;
         getStatus(): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        /** Fullscreen state of the Dev Mode window itself. */
+        getFullscreen(): Promise<RequestStatus<{ isFullscreen: boolean }>>;
+        setFullscreen(fullscreen: boolean): Promise<RequestStatus<void>>;
+        onFullscreenChanged(handler: (payload: { isFullscreen: boolean }) => void): AppEventToken;
         onPayloadUpdate(handler: (payload: { bundle: DevModeBundle }) => void): AppEventToken;
         onControlReload(handler: (payload: { revision: number }) => void): AppEventToken;
         onControlError(handler: (payload: { message: string }) => void): AppEventToken;

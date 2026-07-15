@@ -35,6 +35,36 @@ export class DevModeStopHandler extends IPCHandler<IPCEventType.devModeStop> {
     }
 }
 
+/**
+ * Fullscreen acts on the Dev Mode window itself, so the calling window is the
+ * target. The packaged runtime has its own equivalent over the runtime preload.
+ */
+export class DevModeFullscreenGetHandler extends IPCHandler<IPCEventType.devModeFullscreenGet> {
+    readonly name = IPCEventType.devModeFullscreenGet;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow): RequestStatus<{ isFullscreen: boolean }> {
+        return this.success({ isFullscreen: window.isFullScreen() });
+    }
+}
+
+export class DevModeFullscreenSetHandler extends IPCHandler<IPCEventType.devModeFullscreenSet> {
+    readonly name = IPCEventType.devModeFullscreenSet;
+    readonly type = IPCMessageType.request;
+
+    public handle(
+        window: AppWindow,
+        { fullscreen }: IPCEvents[IPCEventType.devModeFullscreenSet]["data"],
+    ): RequestStatus<void> {
+        if (fullscreen) {
+            window.enterFullScreen();
+        } else {
+            window.exitFullScreen();
+        }
+        return this.success();
+    }
+}
+
 export class DevModeReloadHandler extends IPCHandler<IPCEventType.devModeReload> {
     readonly name = IPCEventType.devModeReload;
     readonly type = IPCMessageType.request;

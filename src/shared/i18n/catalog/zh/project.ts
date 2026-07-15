@@ -49,8 +49,10 @@ export const project = {
     settings: {
         allowHttpTitle: "允许 HTTP",
         allowHttpDescription: "关闭时，游戏将被限制在应用协议内，所有 HTTP/HTTPS 请求均会被阻止",
+        allowHttpWebHint: "对 Web 导出不适用：网页游戏本身经由 HTTP(S) 分发，此设置仅影响桌面构建",
         encryptAssetsTitle: "加密资源",
         encryptAssetsDescription: "在打包及预览版本中加密资源、插件代码与剧本数据，让解包变得困难，但不影响开发模式",
+        encryptAssetsWebHint: "对 Web 导出不适用：Web 构建始终不加密资源",
     },
     dependencies: {
         rescan: "重新扫描",

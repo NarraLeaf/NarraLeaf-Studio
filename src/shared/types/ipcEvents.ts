@@ -115,6 +115,9 @@ export enum IPCEventType {
     devModeSaveListIds = "devMode.save.listIds",
     devModeSaveReadPreview = "devMode.save.readPreview",
     devModeSaveDelete = "devMode.save.delete",
+    devModeFullscreenGet = "devMode.fullscreen.get",
+    devModeFullscreenSet = "devMode.fullscreen.set",
+    devModeFullscreenChanged = "devMode.fullscreen.changed",
 
     previewLaunch = "preview.launch",
     previewStop = "preview.stop",
@@ -696,6 +699,30 @@ export type IPCDevModeEvents = {
         consumer: IPCType.Host,
         data: {
             bundle: DevModeBundle;
+        },
+        response: never;
+    };
+    [IPCEventType.devModeFullscreenGet]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            isFullscreen: boolean;
+        };
+    };
+    [IPCEventType.devModeFullscreenSet]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            fullscreen: boolean;
+        },
+        response: void;
+    };
+    [IPCEventType.devModeFullscreenChanged]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            isFullscreen: boolean;
         },
         response: never;
     };

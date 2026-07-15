@@ -214,6 +214,12 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.devModeReload, {}) as Promise<RequestStatus<{ status: DevModeStatus }>>,
         getStatus: () =>
             ipcClient.invoke(IPCEventType.devModeGetStatus, {}) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        getFullscreen: () =>
+            ipcClient.invoke(IPCEventType.devModeFullscreenGet, {}) as Promise<RequestStatus<{ isFullscreen: boolean }>>,
+        setFullscreen: (fullscreen: boolean) =>
+            ipcClient.invoke(IPCEventType.devModeFullscreenSet, { fullscreen }) as Promise<RequestStatus<void>>,
+        onFullscreenChanged: (handler: (payload: { isFullscreen: boolean }) => void) =>
+            ipcClient.onMessage(IPCEventType.devModeFullscreenChanged, handler),
         onPayloadUpdate: (handler: (payload: { bundle: DevModeBundle }) => void) =>
             ipcClient.onMessage(IPCEventType.devModePayloadUpdate, handler),
         onControlReload: (handler: (payload: { revision: number }) => void) =>

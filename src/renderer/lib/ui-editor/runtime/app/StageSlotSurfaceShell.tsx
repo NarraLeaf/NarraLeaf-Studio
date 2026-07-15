@@ -52,6 +52,9 @@ export type GameUiSlotHostOptions = {
     ) => Promise<void>;
     closeLayerWithTransition: () => Promise<void>;
     quitApplication: () => Promise<void>;
+    /** Hosts without a real application window (story preview) leave these unset. */
+    getFullscreen?: () => Promise<boolean>;
+    setFullscreen?: (fullscreen: boolean) => Promise<void>;
     startStoryInGame: (request: DevModeStartStoryRequest) => Promise<void>;
     writeSaveInGame: (id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>;
     loadSaveInGame: (id: string) => Promise<void>;
@@ -161,6 +164,8 @@ export function useStageSlotSurfaceRuntime(input: {
             onOpenSurface: options.openSurfaceWithTransition,
             onCloseLayer: options.closeLayerWithTransition,
             onQuitApplication: options.quitApplication,
+            onGetFullscreen: options.getFullscreen,
+            onSetFullscreen: options.setFullscreen,
             onStartStory: options.startStoryInGame,
             onWriteSave: options.writeSaveInGame,
             onLoadSave: options.loadSaveInGame,

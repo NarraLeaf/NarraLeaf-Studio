@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 23 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 24 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -103,6 +103,22 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: {},
+            output: null,
+        },
+        getFullscreen: {
+            capabilityId: "navigation.getFullscreen",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: false,
+        },
+        setFullscreen: {
+            capabilityId: "navigation.setFullscreen",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { fullscreen: false },
             output: null,
         },
     },

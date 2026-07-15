@@ -13,11 +13,13 @@ export const build = {
         windows: "Windows",
         macos: "macOS",
         linux: "Linux",
+        web: "Web",
     },
     unavailable: {
         windows: "当前设备无法构建 Windows 版本。",
         macos: "macOS 版本只能在 Mac 上构建。",
         linux: "当前设备无法构建 Linux 版本。",
+        web: "任何设备都可以构建 Web 版本。",
     },
     format: {
         zip: "便携 ZIP",
@@ -34,6 +36,7 @@ export const build = {
         protectionOn: "已开启",
         protectionOff: "未开启",
     },
+    webStaticNotice: "Web 构建是可部署到任意网页服务器的静态站点；资源加密与 HTTP 限制对它不生效。",
     unsignedNotice: "构建产物未做代码签名。玩家首次打开游戏时，macOS Gatekeeper 或 Windows SmartScreen 可能弹出安全提示；要获得无提示的安装体验需要签名证书。",
     selectAtLeastOne: "请至少选择一个平台和格式。",
     toast: {

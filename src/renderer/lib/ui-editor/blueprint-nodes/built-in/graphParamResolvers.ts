@@ -98,6 +98,7 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
+    BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
@@ -2281,7 +2282,8 @@ function resolveSelfOutput(
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS ||
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA ||
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW ||
-            selfNode.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET) &&
+            selfNode.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN) &&
         (portId === "index" ||
             portId === "item" ||
             portId === "value" ||
@@ -2289,6 +2291,7 @@ function resolveSelfOutput(
             portId === "metadata" ||
             portId === "preview" ||
             portId === "entries" ||
+            portId === "isFullscreen" ||
             portId === "count")
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);

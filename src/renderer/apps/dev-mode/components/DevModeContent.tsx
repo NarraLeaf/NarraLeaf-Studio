@@ -342,6 +342,26 @@ export function DevModeContent(props: DevModeContentProps) {
         }
     }, []);
 
+    const getFullscreen = useCallback(async (): Promise<boolean> => {
+        const result = await getInterface().devMode.getFullscreen();
+        if (!result.success) {
+            throw new Error(result.error ?? "Get Fullscreen failed");
+        }
+        return result.data.isFullscreen;
+    }, []);
+
+    const setFullscreen = useCallback(async (fullscreen: boolean): Promise<void> => {
+        const result = await getInterface().devMode.setFullscreen(fullscreen);
+        if (!result.success) {
+            throw new Error(result.error ?? "Set Fullscreen failed");
+        }
+    }, []);
+
+    const subscribeFullscreenChanged = useCallback((listener: (isFullscreen: boolean) => void): (() => void) => {
+        const token = getInterface().devMode.onFullscreenChanged(({ isFullscreen }) => listener(isFullscreen));
+        return () => token.cancel();
+    }, []);
+
     // Runtime plugin entries must be registered before the game boots so
     // plugin blueprint nodes and widget renderers resolve at execution time.
     // Failed plugins are logged and skipped; they never block the game.
@@ -365,9 +385,13 @@ export function DevModeContent(props: DevModeContentProps) {
             resolveStoryAssetUrl,
             saveStore,
             quitApplication,
+            getFullscreen,
+            setFullscreen,
+            subscribeFullscreenChanged,
         };
     }, [
         bundle,
+        getFullscreen,
         log,
         onDebugEvent,
         persistenceAdapter,
@@ -375,6 +399,8 @@ export function DevModeContent(props: DevModeContentProps) {
         resolveStoryAssetUrl,
         runtimePlugins.ready,
         saveStore,
+        setFullscreen,
+        subscribeFullscreenChanged,
         surface,
     ]);
 
