@@ -78,7 +78,17 @@ function locateSections(apk: Buffer): ApkSections {
         throw new Error("zip64 APKs are not supported by the v2 signer");
     }
     if (centralDirOffset + centralDirSize !== eocdOffset) {
-        throw new Error("APK already has an APK Signing Block or unexpected bytes before the central directory");
+        throw new Error("Malformed APK: unexpected bytes between the central directory and the EOCD");
+    }
+    // Reject an already-signed APK rather than double-sign it. A v2 signature
+    // sits between the entries and the central directory, so the well-formed
+    // check above still passes for a signed APK — the block's magic is the
+    // only reliable tell. The repack always signs a freshly built unsigned
+    // APK, so an existing block means a caller mistake.
+    if (centralDirOffset >= APK_SIGNING_BLOCK_MAGIC.length
+        && apk.subarray(centralDirOffset - APK_SIGNING_BLOCK_MAGIC.length, centralDirOffset)
+            .equals(APK_SIGNING_BLOCK_MAGIC)) {
+        throw new Error("APK already has an APK Signing Block");
     }
     return {
         beforeCentralDir: apk.subarray(0, centralDirOffset),

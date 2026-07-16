@@ -100,11 +100,26 @@ function derBitString(content: Buffer): Buffer {
     return der(0x03, Buffer.concat([Buffer.from([0x00]), content]));
 }
 
-function derGeneralizedTime(date: Date): Buffer {
-    const p = (value: number, width = 2) => String(value).padStart(width, "0");
-    const text = `${p(date.getUTCFullYear(), 4)}${p(date.getUTCMonth() + 1)}${p(date.getUTCDate())}`
-        + `${p(date.getUTCHours())}${p(date.getUTCMinutes())}${p(date.getUTCSeconds())}Z`;
-    return der(0x18, Buffer.from(text, "ascii"));
+const pad2 = (value: number) => String(value).padStart(2, "0");
+
+function timeDigits(date: Date): string {
+    return `${pad2(date.getUTCMonth() + 1)}${pad2(date.getUTCDate())}`
+        + `${pad2(date.getUTCHours())}${pad2(date.getUTCMinutes())}${pad2(date.getUTCSeconds())}Z`;
+}
+
+/**
+ * X.509 validity Time, encoded per RFC 5280 §4.1.2.5: dates through 2049 MUST
+ * be UTCTime (2-digit year), 2050 and later MUST be GeneralizedTime (4-digit
+ * year). Getting this wrong is not cosmetic — strict parsers (openssl verify,
+ * some Android/re-sign toolchains) reject a GeneralizedTime used for a
+ * pre-2050 date, even though lenient ones accept it.
+ */
+function derValidityTime(date: Date): Buffer {
+    const year = date.getUTCFullYear();
+    if (year >= 1950 && year <= 2049) {
+        return der(0x17, Buffer.from(`${pad2(year % 100)}${timeDigits(date)}`, "ascii"));
+    }
+    return der(0x18, Buffer.from(`${String(year).padStart(4, "0")}${timeDigits(date)}`, "ascii"));
 }
 
 function derExplicit(tagNumber: number, content: Buffer): Buffer {
@@ -156,7 +171,7 @@ export function buildSelfSignedCertificate(params: CertificateParams): Buffer {
         derInteger(params.serialNumber),
         algorithmIdentifierSha256Rsa(),
         name, // issuer
-        derSequence(derGeneralizedTime(params.notBefore), derGeneralizedTime(params.notAfter)),
+        derSequence(derValidityTime(params.notBefore), derValidityTime(params.notAfter)),
         name, // subject
         params.subjectPublicKeyInfoDer,
         der(0xa3, derSequence(basicConstraintsExtension())), // [3] extensions

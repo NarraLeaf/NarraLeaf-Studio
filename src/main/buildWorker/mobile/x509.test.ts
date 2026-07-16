@@ -56,6 +56,15 @@ describe("buildSelfSignedCertificate", () => {
             .equals(publicKey.export({ type: "spki", format: "der" }))).toBe(true);
     });
 
+    it("encodes validity per RFC 5280: UTCTime through 2049, GeneralizedTime from 2050", () => {
+        // Strict parsers (openssl verify, some Android/re-sign toolchains)
+        // reject a GeneralizedTime used for a pre-2050 date. UTCTime is tag
+        // 0x17; GeneralizedTime is 0x18.
+        const { der } = build();
+        expect(der.includes(Buffer.concat([Buffer.from([0x17, 0x0d]), Buffer.from("200101000000Z")]))).toBe(true);
+        expect(der.includes(Buffer.concat([Buffer.from([0x18, 0x0f]), Buffer.from("20500101000000Z")]))).toBe(true);
+    });
+
     it("is byte-deterministic for fixed inputs", () => {
         const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
         const params = {
