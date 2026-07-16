@@ -7,7 +7,17 @@ import { ReactNode } from "react";
 import { WindowControlPolicy, type WindowControlAbility } from "@shared/types/window";
 import { cn } from "../../utils/cn";
 
-const MACOS_TRAFFIC_LIGHT_SAFE_AREA = 90;
+/**
+ * Room to leave for the macOS traffic lights.
+ *
+ * macOS draws them at a fixed physical size that `ui.zoomPercent` does not touch,
+ * so this cannot be a plain CSS length: at 50% a flat 90px would reserve only 45
+ * real pixels and the action bar would sit on top of the buttons. Dividing the
+ * buttons' own width by `--nl-zoom` (published by lib/zoom) keeps their share of
+ * the bar constant in real pixels, while the trailing gap stays part of the UI and
+ * scales with everything else. Resolves to exactly 90px at 100%.
+ */
+const MACOS_TRAFFIC_LIGHT_SAFE_AREA = "calc(66px / var(--nl-zoom, 1) + 24px)";
 const TITLEBAR_EDGE_GAP = 5;
 
 export interface TitleBarProps {

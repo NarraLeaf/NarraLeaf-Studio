@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Input } from "@/lib/components/elements/Input";
 import { Select, SelectOption } from "@/lib/components/elements/Select";
+import { Slider } from "@/lib/components/elements/Slider";
 import { Switch } from "@/lib/components/elements/Switch";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
 import { Loader2 } from "lucide-react";
@@ -36,7 +37,8 @@ function parseSettingInput(type: SettingValueType, rawValue: string): SettingVal
         case SettingValueType.String:
             return rawValue;
         case SettingValueType.Number:
-        case SettingValueType.Integer: {
+        case SettingValueType.Integer:
+        case SettingValueType.Slider: {
             if (!rawValue.trim()) {
                 return null;
             }
@@ -230,6 +232,32 @@ export function SettingsExplorer<T>({
                             loading={isSaving}
                             size="md"
                         />
+                    </div>
+                );
+            }
+            case SettingValueType.Slider: {
+                const min = descriptor.min ?? 0;
+                const max = descriptor.max ?? 100;
+                const sliderValue = Number(displayValue);
+                return (
+                    <div className="flex items-center gap-3">
+                        <Slider
+                            value={Number.isFinite(sliderValue) ? sliderValue : Number(descriptor.defaultValue)}
+                            min={min}
+                            max={max}
+                            step={descriptor.step ?? 1}
+                            disabled={isSaving}
+                            // Track the drag locally and only persist on release: committing
+                            // per pixel would fire a write + a broadcast to every window on
+                            // every frame.
+                            onValueChange={(next) => handleInputChange(descriptor.id, String(next))}
+                            onValueCommit={(next) => handleCommit(entry, next)}
+                            aria-label={descriptor.label}
+                            className="w-40"
+                        />
+                        <span className="w-12 shrink-0 text-right text-xs tabular-nums text-fg-muted">
+                            {displayValue}{descriptor.unit ?? ""}
+                        </span>
                     </div>
                 );
             }

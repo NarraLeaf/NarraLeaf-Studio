@@ -77,6 +77,10 @@ export function SettingsApp() {
                     Object.entries(setting.optionLabelKeys).map(([option, key]) => [option, t(key)]),
                 )
                 : setting.optionLabels,
+            min: setting.min,
+            max: setting.max,
+            step: setting.step,
+            unit: setting.unit,
         }),
         [t],
     );

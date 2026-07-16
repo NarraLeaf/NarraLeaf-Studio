@@ -176,6 +176,51 @@ select:focus {
     box-shadow: none !important;
 }
 
+/*
+ * Range slider (see lib/components/elements/Slider.tsx). Scoped to `.nl-slider`
+ * rather than `input[type="range"]` so it never reaches a range input inside the
+ * game preview. The track/thumb pseudo-elements are out of Tailwind's reach.
+ */
+.nl-slider {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 100%;
+    height: 16px;
+    background: transparent;
+    cursor: default;
+}
+
+.nl-slider::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--nl-fill-strong);
+}
+
+.nl-slider::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    /* Centre the thumb on the 4px track. */
+    margin-top: -5px;
+    border-radius: 50%;
+    background: #40a8c4;
+    border: none;
+    transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.nl-slider:hover:not(:disabled)::-webkit-slider-thumb {
+    transform: scale(1.15);
+}
+
+.nl-slider:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 3px rgba(64, 168, 196, 0.35);
+}
+
+.nl-slider:disabled::-webkit-slider-thumb {
+    background: rgb(var(--nl-fg-subtle));
+}
+
 /* Custom radio button styles */
 input[type="radio"] {
     appearance: none;
