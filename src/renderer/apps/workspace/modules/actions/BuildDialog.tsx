@@ -739,7 +739,8 @@ async function startBuild(workspace: Workspace, request: GameBuildRequest): Prom
     void projectService.updateBuildConfiguration(requestToBuildConfiguration(request)).catch(() => undefined);
 
     uiService.panels.show("narraleaf-studio:console");
-    // The toolbar's build-status subscriber owns the success/error toast, so a
-    // failure here is not double-reported.
+    // Submission feedback only — the toolbar's build-status subscriber owns the
+    // success/error toast, so the outcome is not double-reported.
+    uiService.showNotification(translate("build.toast.submitted"), "info");
     await buildService.start(request);
 }

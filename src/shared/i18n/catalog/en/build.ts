@@ -105,6 +105,7 @@ export const build = {
     unsignedNotice: "Builds are not code-signed. Players may see a security warning from macOS Gatekeeper or Windows SmartScreen the first time they open the game; a signing certificate is needed for a warning-free install.",
     selectAtLeastOne: "Select at least one platform and format.",
     toast: {
+        submitted: "Build task submitted — see the console for progress.",
         done: "Build finished.",
         failed: "Build failed.",
     },
