@@ -7,8 +7,9 @@ import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui";
 import type { FocusContext } from "@/lib/workspace/services/ui/types";
-import { isMacPlatform } from "@/lib/app/platform";
 import { useKeybinding, contextual, whenEditorTabsFocused, useMaxActiveEditors } from "../../hooks";
+import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import { hasClosedTabs, reopenLastClosedTab } from "../../session/workspaceClosedTabsStore";
 import { useEditorGroupAssetDrop } from "./useEditorGroupAssetDrop";
 import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
 import { useTranslation } from "@/lib/i18n";
@@ -77,7 +78,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
     }, [group.focus, mru, maxActiveEditors]);
 
     const tabIds = useMemo(() => new Set(group.tabs.map((t) => t.id)), [group.tabs]);
-    const closeTabShortcut = useMemo(() => isMacPlatform() ? "cmd+w" : "ctrl+w", []);
+    const closeTabShortcut = "mod+w";
 
     // Drop stale selection entries when tabs change
     useEffect(() => {
@@ -121,6 +122,69 @@ export function EditorGroup({ group }: EditorGroupProps) {
         e.stopPropagation();
         closeEditorTab(tabId, group.id);
     };
+
+    // ---- Tab context menu (close others / to the right / all, reopen closed) ----
+
+    const { menuState, showMenu, hideMenu } = useContextMenu();
+    const [menuTabId, setMenuTabId] = useState<string | null>(null);
+
+    const handleTabContextMenu = (tabId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setMenuTabId(tabId);
+        showMenu(e);
+    };
+
+    const tabMenuItems = useMemo<ContextMenuDef>(() => {
+        const tabs = group.tabs;
+        const targetIndex = tabs.findIndex((tab) => tab.id === menuTabId);
+        if (targetIndex < 0) {
+            return [];
+        }
+        const target = tabs[targetIndex];
+        const closableIds = (list: typeof tabs) => list.filter((tab) => tab.closable !== false).map((tab) => tab.id);
+        const others = closableIds(tabs.filter((_, index) => index !== targetIndex));
+        const toRight = closableIds(tabs.slice(targetIndex + 1));
+        const all = closableIds(tabs);
+
+        return [
+            {
+                id: "close",
+                label: t("workspace.shell.tabMenu.close"),
+                disabled: target.closable === false,
+                onClick: () => closeEditorTab(target.id, group.id),
+            },
+            {
+                id: "close-others",
+                label: t("workspace.shell.tabMenu.closeOthers"),
+                disabled: others.length === 0,
+                onClick: () => closeEditorTabs(others, group.id),
+            },
+            {
+                id: "close-right",
+                label: t("workspace.shell.tabMenu.closeToRight"),
+                disabled: toRight.length === 0,
+                onClick: () => closeEditorTabs(toRight, group.id),
+            },
+            {
+                id: "close-all",
+                label: t("workspace.shell.tabMenu.closeAll"),
+                disabled: all.length === 0,
+                onClick: () => closeEditorTabs(all, group.id),
+            },
+            { separator: true, id: "sep-reopen" },
+            {
+                id: "reopen-closed",
+                label: t("workspace.shell.tabMenu.reopenClosed"),
+                disabled: !hasClosedTabs() || !context,
+                onClick: () => {
+                    if (!context) {
+                        return;
+                    }
+                    reopenLastClosedTab(context, context.services.get<UIService>(Services.UI));
+                },
+            },
+        ];
+    }, [closeEditorTab, closeEditorTabs, context, group.id, group.tabs, menuTabId, t]);
 
     const activateTabFromStrip = useCallback((tabId: string) => {
         setActiveEditorTab(tabId, group.id);
@@ -278,6 +342,13 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                         }
                                     `}
                                     onClick={(e) => handleTabClick(tab.id, e)}
+                                    onContextMenu={(e) => handleTabContextMenu(tab.id, e)}
+                                    onAuxClick={(e) => {
+                                        // Middle click closes, the muscle memory every browser/IDE trains.
+                                        if (e.button === 1 && closable) {
+                                            handleCloseTab(tab.id, e);
+                                        }
+                                    }}
                                 >
                                     {isGloballyActive && (
                                         <span
@@ -314,6 +385,12 @@ export function EditorGroup({ group }: EditorGroupProps) {
                             );
                         })}
                     </div>
+                    <ContextMenu
+                        items={tabMenuItems}
+                        position={menuState.position}
+                        visible={menuState.visible}
+                        onClose={hideMenu}
+                    />
                 </div>
             )}
 

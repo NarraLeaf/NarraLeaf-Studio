@@ -689,7 +689,7 @@ export class UIStore {
         return [...this.editorTabFocusHistory];
     }
 
-    public openEditorTabInGroup<TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string, activate: boolean = true): void {
+    public openEditorTabInGroup<TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string, activate: boolean = true, index?: number): void {
         const targetGroup = this.findGroup(this.state.editorLayout, groupId);
         const targetId = targetGroup?.id ?? (this.state.editorLayout as EditorGroup).id;
 
@@ -702,11 +702,12 @@ export class UIStore {
                 updatedTabs[existingIndex] = tab as EditorTabDefinition<any>;
                 return { ...group, tabs: updatedTabs, focus: activate ? tab.id : group.focus };
             }
-            // Add new tab
-            const newGroup = {
-                ...group,
-                tabs: [...group.tabs, tab as EditorTabDefinition<any>],
-            };
+            // Add new tab — at `index` when given (reopening a closed tab puts it
+            // back where it was), appended otherwise.
+            const updatedTabs = [...group.tabs];
+            const insertAt = index === undefined ? updatedTabs.length : Math.max(0, Math.min(index, updatedTabs.length));
+            updatedTabs.splice(insertAt, 0, tab as EditorTabDefinition<any>);
+            const newGroup = { ...group, tabs: updatedTabs };
             return activate ? { ...newGroup, focus: tab.id } : newGroup;
         });
 
