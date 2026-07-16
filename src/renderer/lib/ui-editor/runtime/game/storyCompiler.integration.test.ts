@@ -782,6 +782,100 @@ describe("compileStudioStoryToNlr", () => {
         expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("say");
     });
 
+    describe("character nametag fallbacks", () => {
+        function dialogueBlocks(characterId: string): Record<string, StoryBlock> {
+            return {
+                say: {
+                    id: "say",
+                    kind: "nodeAction",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: {
+                        action: "dialogue",
+                        characterId,
+                        text: { textId: "text-say", value: "Hello", role: "dialogue" },
+                    },
+                },
+            };
+        }
+
+        /** The Character the compiler bound to the `say` block, via `sentence.config.character`. */
+        async function compileSpeaker(characters: { id: string; name: string }[], characterId = "char-alice") {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument(dialogueBlocks(characterId), ["say"]),
+                sceneId: "scene-1",
+                characters,
+            });
+            expect(compiled.diagnostics).toEqual([]);
+            const sayAction = compiled.actionIdBindings.find(binding => binding.blockId === "say")?.action as any;
+            const speaker = sayAction?.contentNode?.getContent?.()?.config?.character;
+            expect(speaker).toBeTruthy();
+            return speaker;
+        }
+
+        it("keeps an authored name as the nametag", async () => {
+            const speaker = await compileSpeaker([{ id: "char-alice", name: "Alice" }]);
+            expect(speaker.state.name).toBe("Alice");
+        });
+
+        // A blank name must not produce `new Character("")`: NLR's Narrator collapses to
+        // `state.name === ""`, so useDialog would report this real character as `isNarrator` and
+        // Avatar would bail on `!character.state.name` — both silent.
+        it.each([
+            ["empty", ""],
+            ["whitespace-only", "   "],
+        ])("does not collapse a %s character name into the Narrator", async (_label, name) => {
+            const speaker = await compileSpeaker([{ id: "char-alice", name }]);
+
+            expect(speaker.state.name).not.toBe("");
+            expect(speaker.state.name).toBeTruthy();
+        });
+
+        it("falls back to a neutral label rather than leaking the characterId UUID", async () => {
+            const uuid = "0f1c6b3e-8a2d-4c77-9f5a-1b2c3d4e5f60";
+
+            // Unnamed character, and a character the host never sent a summary for.
+            const unnamed = await compileSpeaker([{ id: uuid, name: "" }], uuid);
+            const missing = await compileSpeaker([], uuid);
+
+            for (const speaker of [unnamed, missing]) {
+                expect(speaker.state.name).not.toBe(uuid);
+                expect(speaker.state.name).toBe("Unknown");
+            }
+        });
+
+        it("still binds one Character instance per characterId when names collide", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    say: dialogueBlocks("char-alice").say,
+                    say2: {
+                        id: "say2",
+                        kind: "nodeAction",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: {
+                            action: "dialogue",
+                            characterId: "char-bob",
+                            text: { textId: "text-say2", value: "Hi", role: "dialogue" },
+                        },
+                    },
+                }, ["say", "say2"]),
+                sceneId: "scene-1",
+                characters: [{ id: "char-alice", name: "" }, { id: "char-bob", name: "" }],
+            });
+
+            const speakers = ["say", "say2"].map(blockId => {
+                const action = compiled.actionIdBindings.find(binding => binding.blockId === blockId)?.action as any;
+                return action?.contentNode?.getContent?.()?.config?.character;
+            });
+
+            // Both render "Unknown", but identity is keyed on characterId, not the nametag.
+            expect(speakers[0].state.name).toBe("Unknown");
+            expect(speakers[1].state.name).toBe("Unknown");
+            expect(speakers[0]).not.toBe(speakers[1]);
+        });
+    });
+
     it("compiles choice, condition, variables, and skips script-only blocks with diagnostics", async () => {
         const optionChild = narrationBlock("option-child", "text-option-child", "Selected");
         optionChild.parentId = "option";
@@ -1089,5 +1183,52 @@ describe("compileStudioStoryToNlr localization", () => {
         locale = "zh-CN";
         expect(renderDynamicResult(promptWords[0].text({}))).toBe("怎么办？");
         expect(renderDynamicResult(optionWords[0].text({}))).toBe("留下");
+    });
+
+    /**
+     * A character enter block has no `objectName` until the author types one, so its portrait is
+     * registered under `characterId`. A displayable op that resolved the same creator block to the
+     * word "Character" looked up a name nothing was registered under, and compiled to nothing.
+     */
+    it("compiles a displayable effect against a character portrait with no explicit stage name", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            enter: {
+                id: "enter",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "character",
+                    operation: "enter",
+                    characterId: "char-alice",
+                    assetId: "asset-alice",
+                    transform: { preset: "center", durationMs: 300 },
+                },
+            },
+            darken: {
+                id: "darken",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "displayable",
+                    operation: "darken",
+                    target: { name: "Character", kind: "character", sourceBlockId: "enter" },
+                    darkness: 0.6,
+                    durationMs: 400,
+                },
+            },
+        };
+
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["enter", "darken"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice" }],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        // The op resolved to a real object, so it emitted a statement bound to the block.
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("darken");
     });
 });
