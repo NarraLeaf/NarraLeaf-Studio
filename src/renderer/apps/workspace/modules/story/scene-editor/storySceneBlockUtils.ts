@@ -262,7 +262,7 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
         if (payload.action === "setVariable") return `${variableRefShortLabel(payload.target, scene)} = ${String(payload.value)}`;
         if (payload.action === "wait") return payload.mode === "duration" ? translate("story.describe.waitDuration", { ms: payload.durationMs ?? 0 }) : translate("story.describe.waitClick");
         if (payload.action === "image") return translate("story.describe.image", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
-        if (payload.action === "displayable") return `${payload.operation} ${resolveDisplayableTargetRef(scene, payload.target).name || translate("story.describe.targetFallback")}`;
+        if (payload.action === "displayable") return `${payload.operation} ${resolveDisplayableTargetRef(scene, payload.target).label || translate("story.describe.targetFallback")}`;
         if (payload.action === "text") return translate("story.describe.text", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
         if (payload.action === "layer") {
             const layerName = payload.operation === "create"

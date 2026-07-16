@@ -575,7 +575,7 @@ class SnapshotWalker {
         const kind = resolved.kind === "character" || !resolved.kind ? "image" : resolved.kind;
         const record = this.displayables.get(this.key(kind === "text" ? "text" : kind === "layer" ? "layer" : "image", resolved.name));
         if (!record) {
-            this.diagnostic(blockId, `Displayable target not found: ${resolved.name || "(empty)"}`);
+            this.diagnostic(blockId, `Displayable target not found: ${resolved.label || resolved.name || "(empty)"}`);
             return null;
         }
         return { record };

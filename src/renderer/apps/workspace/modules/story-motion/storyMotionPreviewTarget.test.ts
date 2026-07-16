@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StoryActionPayload, StoryBlock, StoryDocument } from "@shared/types/story";
-import { resolveDisplayableTargetRef } from "@shared/types/story";
+import { characterStageObjectName, displayableSourceIdentity, resolveDisplayableTargetRef } from "@shared/types/story";
 import { listSceneDisplayableTargets, resolveStoryMotionPreviewTarget } from "./storyMotionPreviewTarget";
 
 function documentWith(blocks: Record<string, StoryBlock>, rootBlockIds: string[]): StoryDocument {
@@ -164,8 +164,8 @@ describe("listSceneDisplayableTargets", () => {
 
         // Deduped by identity: latest asset wins, but the source stays the first creator ("hero").
         expect(targets).toEqual([
-            { kind: "image", name: "hero", assetId: "asset-hero-2", sourceBlockId: "hero" },
-            { kind: "text", name: "caption", text: "Hi", sourceBlockId: "caption" },
+            { kind: "image", name: "hero", label: "hero", assetId: "asset-hero-2", sourceBlockId: "hero" },
+            { kind: "text", name: "caption", label: "caption", text: "Hi", sourceBlockId: "caption" },
         ]);
     });
 
@@ -177,7 +177,7 @@ describe("listSceneDisplayableTargets", () => {
 
         expect(listSceneDisplayableTargets(document, "scene-1", "hero")).toEqual([]);
         expect(listSceneDisplayableTargets(document, "scene-1", "later")).toEqual([
-            { kind: "image", name: "hero", assetId: "asset-hero", sourceBlockId: "hero" },
+            { kind: "image", name: "hero", label: "hero", assetId: "asset-hero", sourceBlockId: "hero" },
         ]);
     });
 
@@ -204,18 +204,81 @@ describe("resolveDisplayableTargetRef", () => {
         }, ["hero"]).scenes["scene-1"];
 
         expect(resolveDisplayableTargetRef(scene, { name: "hero", kind: "image", sourceBlockId: "hero" }))
-            .toEqual({ name: "protagonist", kind: "image" });
+            .toEqual({ name: "protagonist", kind: "image", label: "protagonist" });
     });
 
     it("falls back to the stored name when the source block is gone", () => {
         const scene = documentWith({}, []).scenes["scene-1"];
         expect(resolveDisplayableTargetRef(scene, { name: "ghost", kind: "image", sourceBlockId: "deleted" }))
-            .toEqual({ name: "ghost", kind: "image" });
+            .toEqual({ name: "ghost", kind: "image", label: "ghost" });
     });
 
     it("uses the stored name/kind for legacy targets without a source block", () => {
         const scene = documentWith({}, []).scenes["scene-1"];
         expect(resolveDisplayableTargetRef(scene, { name: "hero", kind: "character" }))
-            .toEqual({ name: "hero", kind: "character" });
+            .toEqual({ name: "hero", kind: "character", label: "hero" });
+    });
+});
+
+/**
+ * A displayable action finds its object by looking up the resolved `name` in the same map the
+ * compiler registered it in, so a target ref must resolve to *exactly* the creator's stage name.
+ * These two drifting apart is silent: the op compiles to nothing and the effect never runs.
+ */
+describe("resolved target name matches the stage name the compiler registers", () => {
+    function action(id: string, payload: StoryActionPayload): StoryBlock {
+        return { id, kind: "action", parentId: null, childrenIds: [], payload };
+    }
+
+    function resolvedNameFor(payload: StoryActionPayload, storedName: string): string {
+        const scene = documentWith({ source: action("source", payload) }, ["source"]).scenes["scene-1"];
+        return resolveDisplayableTargetRef(scene, { name: storedName, sourceBlockId: "source" }).name;
+    }
+
+    const CHARACTER_CASES: Array<{ label: string; payload: Extract<StoryActionPayload, { action: "character" }> }> = [
+        { label: "nothing configured", payload: { action: "character", operation: "enter" } },
+        { label: "characterId, no stage name", payload: { action: "character", operation: "enter", characterId: "c-uuid" } },
+        { label: "stage name auto-filled from the profile", payload: { action: "character", operation: "enter", characterId: "c-uuid", objectName: "Yuko" } },
+        { label: "stage name cleared by the author", payload: { action: "character", operation: "enter", characterId: "c-uuid", objectName: "" } },
+        { label: "stage name whitespace-only", payload: { action: "character", operation: "enter", characterId: "c-uuid", objectName: "   " } },
+        { label: "stage name literally 'character'", payload: { action: "character", operation: "enter", characterId: "c-uuid", objectName: "character" } },
+        { label: "custom stage name", payload: { action: "character", operation: "enter", characterId: "c-uuid", objectName: "heroine" } },
+    ];
+
+    for (const { label, payload } of CHARACTER_CASES) {
+        it(`character — ${label}`, () => {
+            // "Character" is what the legacy identity rule stored in the ref, so it doubles as a
+            // regression guard: the stored name must never win over the creator's real stage name.
+            expect(resolvedNameFor(payload, "Character")).toBe(characterStageObjectName(payload));
+        });
+    }
+
+    it("image / text / layer fall back to the compiler's stage name when unnamed", () => {
+        // `normalizeStageObjectName` is what the compiler keys these on, so an empty name is
+        // "object" on both sides — not the display word "Image" / "Text" / "Layer".
+        expect(resolvedNameFor({ action: "image", operation: "create", objectName: "" }, "Image")).toBe("object");
+        expect(resolvedNameFor({ action: "text", operation: "create", objectName: "  ", text: "hi" }, "Text")).toBe("object");
+        expect(resolvedNameFor({ action: "layer", operation: "create", objectName: "" }, "Layer")).toBe("object");
+    });
+});
+
+describe("displayableSourceIdentity keeps author-facing labels free of internal ids", () => {
+    function action(id: string, payload: StoryActionPayload): StoryBlock {
+        return { id, kind: "action", parentId: null, childrenIds: [], payload };
+    }
+
+    it("labels an unnamed character 'Character' even though it keys on the characterId UUID", () => {
+        const payload: StoryActionPayload = { action: "character", operation: "enter", characterId: "9f8c1e2a-uuid" };
+        const identity = displayableSourceIdentity(action("c", payload))!;
+
+        expect(identity.name).toBe("9f8c1e2a-uuid");
+        expect(identity.label).toBe("Character");
+    });
+
+    it("prefers the authored stage name as the label", () => {
+        const payload: StoryActionPayload = { action: "character", operation: "enter", characterId: "9f8c1e2a-uuid", objectName: "Yuko" };
+        const identity = displayableSourceIdentity(action("c", payload))!;
+
+        expect(identity).toMatchObject({ name: "Yuko", label: "Yuko" });
     });
 });

@@ -787,7 +787,7 @@ function ActionPayloadFields(props: {
                     <TransformPresetEditor
                         value={payload.transform}
                         motionTargetKind={resolvedTarget.kind ?? "image"}
-                        motionLabel={`${resolvedTarget.name || t("storyInspector.motionTarget.displayable")} ${payload.operation}`}
+                        motionLabel={`${resolvedTarget.label || t("storyInspector.motionTarget.displayable")} ${payload.operation}`}
                         storyId={props.document.id}
                         sceneId={props.sceneId}
                         blockId={props.block.id}
