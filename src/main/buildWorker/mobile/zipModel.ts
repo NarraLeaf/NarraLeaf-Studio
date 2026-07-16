@@ -10,6 +10,8 @@
  * ever use them, and rejecting them loudly beats misparsing.
  */
 
+import zlib from "zlib";
+
 export const ZIP_METHOD_STORE = 0;
 export const ZIP_METHOD_DEFLATE = 8;
 
@@ -276,6 +278,24 @@ export function readLocalEntryDataSpan(buffer: Buffer, entry: ZipIndexEntry): { 
     const extraLength = buffer.readUInt16LE(offset + 28);
     const start = offset + LOCAL_HEADER_SIZE + nameLength + extraLength;
     return { start, end: start + entry.compressedSize };
+}
+
+/**
+ * The decompressed bytes of an entry — for the repack to read a template's
+ * AndroidManifest.xml / resources.arsc / Info.plist, which may be stored or
+ * deflated. Only the two methods a real template uses are handled; anything
+ * else is rejected rather than returned wrong.
+ */
+export function readEntryBytes(buffer: Buffer, entry: ZipIndexEntry): Buffer {
+    const { start, end } = readLocalEntryDataSpan(buffer, entry);
+    const raw = buffer.subarray(start, end);
+    if (entry.method === ZIP_METHOD_STORE) {
+        return Buffer.from(raw);
+    }
+    if (entry.method === ZIP_METHOD_DEFLATE) {
+        return zlib.inflateRawSync(raw);
+    }
+    throw new Error(`Unsupported compression method ${entry.method} for "${entry.name}"`);
 }
 
 /**
