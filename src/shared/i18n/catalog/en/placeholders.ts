@@ -19,6 +19,7 @@ export const placeholders = {
         assets: "Assets",
         console: "Console",
         storyMotion: "Story Motion",
+        dashboard: "Dashboard",
         audioPreview: "Audio Preview",
         imagePreview: "Image Preview",
     },

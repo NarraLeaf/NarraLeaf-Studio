@@ -11,6 +11,7 @@ import {
     restoreWorkspaceEditorSession,
     serializeEditorSession,
 } from "../session/workspaceEditorSession";
+import { openDashboardTab } from "../modules/dashboard/openDashboardTab";
 
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -64,6 +65,18 @@ export function useWorkspaceEditorSession() {
                                 await settingsService.set(sessionSettingsKey, restoredSession);
                             }
                         }
+                    }
+
+                    // Opened after the restore rather than alongside it so the dashboard ends up
+                    // focused rather than buried, and outside the `session?.tabs.length` guard
+                    // above because a first-run project has no session to restore at all. The tab
+                    // id is constant, so re-opening an already-restored dashboard just focuses it.
+                    const showDashboard = await settingsService.get<boolean>(
+                        "dashboard.openOnWorkspaceOpen",
+                        true,
+                    );
+                    if (showDashboard !== false) {
+                        openDashboardTab(context);
                     }
                 } catch (error) {
                     console.error("[WorkspaceEditorSession] Failed to restore:", error);
