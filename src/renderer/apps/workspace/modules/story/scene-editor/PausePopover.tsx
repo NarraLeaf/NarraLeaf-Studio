@@ -51,12 +51,12 @@ export function PausePopover(props: {
     return createPortal(
         <div
             ref={panelRef}
-            className="fixed z-[70] w-56 rounded-lg border border-edge bg-[#16191e] p-2 shadow-2xl"
+            className="fixed z-[70] w-56 rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl"
             style={{ top, left: Math.max(8, left) }}
             onMouseDown={event => event.stopPropagation()}
         >
                 <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">{t("story.pause.title")}</div>
-                <div className="mb-2 inline-flex overflow-hidden rounded-md border border-edge bg-[#101216]">
+                <div className="mb-2 inline-flex overflow-hidden rounded-md border border-edge bg-surface">
                     <button
                         type="button"
                         className={[MODE_BTN, !isWait ? "bg-primary/20 text-primary" : "text-fg-muted hover:bg-fill-subtle"].join(" ")}
@@ -89,7 +89,7 @@ export function PausePopover(props: {
                 )}
                 <button
                     type="button"
-                    className="mt-2 flex items-center gap-1 text-xs text-fg-muted transition-colors hover:text-red-300"
+                    className="mt-2 flex items-center gap-1 text-xs text-fg-muted transition-colors hover:text-danger"
                     onClick={props.onRemove}
                 >
                     <Trash2 className="h-3 w-3" />

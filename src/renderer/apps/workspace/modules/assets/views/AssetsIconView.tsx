@@ -423,7 +423,7 @@ function AssetIconTile({
             onDragStart={(e) => handleDragStart?.(e, type, asset, false)}
             onDragEnd={() => handleDragEnd?.()}
         >
-            <div className="w-16 h-16 shrink-0 rounded-lg bg-gray-900/30 overflow-hidden flex items-center justify-center">
+            <div className="w-16 h-16 shrink-0 rounded-lg bg-surface-sunken overflow-hidden flex items-center justify-center">
                 {thumbnailUrl ? (
                     <img src={thumbnailUrl} alt={asset.name} draggable={false} className="w-full h-full object-cover" />
                 ) : (

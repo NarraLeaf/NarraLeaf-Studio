@@ -17,7 +17,7 @@ function markStyle(marks: StoryTextMarks | undefined): CSSProperties | undefined
 }
 
 const PAUSE_CHIP = "mx-0.5 inline-flex select-none items-center gap-0.5 rounded bg-primary/20 px-1 py-0.5 align-middle text-2xs font-medium text-primary";
-const INTERP_CHIP = "mx-0.5 inline-flex select-none items-center gap-0.5 rounded bg-emerald-500/20 px-1 py-0.5 align-middle text-2xs font-medium text-emerald-300";
+const INTERP_CHIP = "mx-0.5 inline-flex select-none items-center gap-0.5 rounded bg-success/20 px-1 py-0.5 align-middle text-2xs font-medium text-success";
 
 /**
  * Read-only WYSIWYG rendering of a text segment: rich marks (bold / italic / color / fontSize) are

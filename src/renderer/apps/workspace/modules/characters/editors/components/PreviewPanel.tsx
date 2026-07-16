@@ -40,11 +40,11 @@ function VariantPreview({
     if (error) {
         return (
             <div className="h-full flex items-center justify-center bg-surface p-4">
-                <div className="flex items-start gap-2 text-red-400 bg-red-500/10 rounded-md p-4 max-w-md">
+                <div className="flex items-start gap-2 text-danger bg-danger/10 rounded-md p-4 max-w-md">
                     <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
                     <div>
                         <p className="font-medium">{t("characters.preview.failed")}</p>
-                        <p className="text-sm mt-1 text-red-300">{error}</p>
+                        <p className="text-sm mt-1 text-danger/80">{error}</p>
                     </div>
                 </div>
             </div>
@@ -77,7 +77,7 @@ function VariantPreview({
                 </div>
                 <div className="flex items-center gap-2">
                     <button
-                        className="p-1 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors"
+                        className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors"
                         onClick={controls.zoomOut}
                         title={t("characters.preview.zoomOut")}
                     >
@@ -85,14 +85,14 @@ function VariantPreview({
                     </button>
                     <span className="text-sm text-fg-muted min-w-14 text-center">{controls.zoomLabel}</span>
                     <button
-                        className="p-1 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors"
+                        className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors"
                         onClick={controls.zoomIn}
                         title={t("characters.preview.zoomIn")}
                     >
                         <ZoomIn className="w-4 h-4" />
                     </button>
                     <button
-                        className="p-1 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors ml-2"
+                        className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors ml-2"
                         onClick={controls.resetView}
                         title={t("characters.preview.resetView")}
                     >

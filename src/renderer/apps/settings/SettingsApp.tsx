@@ -72,7 +72,11 @@ export function SettingsApp() {
                 : setting.description,
             defaultValue: setting.defaultValue,
             options: setting.options,
-            optionLabels: setting.optionLabels,
+            optionLabels: setting.optionLabelKeys
+                ? Object.fromEntries(
+                    Object.entries(setting.optionLabelKeys).map(([option, key]) => [option, t(key)]),
+                )
+                : setting.optionLabels,
         }),
         [t],
     );
@@ -111,9 +115,9 @@ export function SettingsApp() {
     return (
         <AppLayout title={t("settings.title")} iconSrc="/favicon.ico">
             <div className="flex h-full overflow-hidden rounded-md border border-edge bg-surface shadow-xl">
-                <aside className="w-64 shrink-0 border-r border-edge-subtle bg-black/50 p-4 space-y-4">
+                <aside className="w-64 shrink-0 border-r border-edge-subtle bg-surface-sunken p-4 space-y-4">
                     <div>
-                        <p className="text-lg font-semibold text-white">{t("settings.title")}</p>
+                        <p className="text-lg font-semibold text-fg">{t("settings.title")}</p>
                         <p className="text-xs text-fg-muted">
                             {t("settings.subtitle")}
                         </p>
@@ -133,7 +137,7 @@ export function SettingsApp() {
                                         <button
                                             key={category.key}
                                             onClick={() => handleCategoryClick(category.key)}
-                                            className={`w-full rounded-md px-3 py-2 text-left transition-colors ${isActive ? "bg-fill text-white" : "text-fg-muted hover:bg-fill hover:text-white"}`}
+                                            className={`w-full rounded-md px-3 py-2 text-left transition-colors ${isActive ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg"}`}
                                         >
                                             <div className="text-sm font-medium">{category.label}</div>
                                             <p className="text-xs text-fg-subtle">{category.description}</p>

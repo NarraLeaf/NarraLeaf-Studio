@@ -5,7 +5,7 @@ import { getFrameProps } from "./helpers";
 
 function FramePlaceholder({ label }: { label: string }): ReactElement {
     return (
-        <div className="flex h-full w-full items-center justify-center border border-dashed border-edge-strong bg-black/20 px-3 text-center text-xs text-fg-muted">
+        <div className="flex h-full w-full items-center justify-center border border-dashed border-edge-strong bg-fill-subtle px-3 text-center text-xs text-fg-muted">
             {label}
         </div>
     );

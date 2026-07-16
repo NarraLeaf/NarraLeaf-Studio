@@ -20,18 +20,18 @@ export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
             <div className="h-screen w-screen flex items-center justify-center bg-surface p-6">
                 <div className="max-w-md">
                     <div className="flex items-center gap-3 mb-4">
-                        <AlertCircle className="w-8 h-8 text-red-400 flex-shrink-0" />
-                        <h1 className="text-2xl font-bold text-white">{t("workspace.shell.errorTitle")}</h1>
+                        <AlertCircle className="w-8 h-8 text-danger flex-shrink-0" />
+                        <h1 className="text-2xl font-bold text-fg">{t("workspace.shell.errorTitle")}</h1>
                     </div>
 
-                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-6">
-                        <p className="text-sm text-red-300 font-mono">{error.message}</p>
+                    <div className="bg-danger/10 border border-danger/30 rounded-lg p-4 mb-6">
+                        <p className="text-sm text-danger font-mono">{error.message}</p>
                         {error.stack && (
                             <details className="mt-3">
-                                <summary className="text-xs text-red-400 cursor-default hover:text-red-300">
+                                <summary className="text-xs text-danger cursor-default hover:text-danger/80">
                                     {t("workspace.shell.showStackTrace")}
                                 </summary>
-                                <pre className="text-xs text-red-400 mt-2 overflow-auto max-h-40">
+                                <pre className="text-xs text-danger mt-2 overflow-auto max-h-40">
                                     {error.stack}
                                 </pre>
                             </details>

@@ -382,7 +382,7 @@ export function ActionInspector(props: {
 
     return (
         <div
-            className="mt-2 max-w-3xl animate-scale-in rounded-xl border border-edge bg-[#16191e] p-3 shadow-lg"
+            className="mt-2 max-w-3xl animate-scale-in rounded-xl border border-edge bg-surface-raised p-3 shadow-lg"
             onClick={event => event.stopPropagation()}
             onMouseDown={event => event.stopPropagation()}
             onKeyDown={event => {
@@ -1126,7 +1126,7 @@ function AssetField(props: {
                 </button>
                 <button
                     type="button"
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
                     disabled={!props.assetId}
                     title={t("storyInspector.asset.clear")}
                     onClick={() => props.onChange(undefined)}
@@ -1589,7 +1589,7 @@ function BackgroundActionEditor(props: {
 
     return (
         <div className="grid grid-cols-1 gap-3">
-            <div className="inline-flex w-fit overflow-hidden rounded-md border border-edge bg-[#101216]">
+            <div className="inline-flex w-fit overflow-hidden rounded-md border border-edge bg-surface">
                 <button
                     type="button"
                     className={[
@@ -1636,7 +1636,7 @@ function BackgroundActionEditor(props: {
                             </div>
                         )}
                         {loading ? (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-fg">
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-white">
                                 {t("common.loading")}
                             </div>
                         ) : null}
@@ -1663,7 +1663,7 @@ function BackgroundActionEditor(props: {
                             </button>
                             <button
                                 type="button"
-                                className="grid h-8 w-8 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                                className="grid h-8 w-8 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
                                 onClick={clearImage}
                                 disabled={!props.payload.assetId}
                                 title={t("storyInspector.background.clearImage")}
@@ -1672,7 +1672,7 @@ function BackgroundActionEditor(props: {
                             </button>
                         </div>
                         {props.payload.assetId && error ? (
-                            <div className="text-2xs leading-snug text-amber-400/90">
+                            <div className="text-2xs leading-snug text-warning/90">
                                 {t("storyInspector.background.assetError", { error })}
                             </div>
                         ) : null}
@@ -1765,14 +1765,14 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
                         onChange={condition => props.onChange({ ...branchPayload, condition })}
                     />
                     {branchPayload.condition?.kind === "expression" ? (
-                        <div className="rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
+                        <div className="rounded-md border border-warning/20 bg-warning/10 px-2 py-1.5 text-xs text-warning">
                             {t("storyInspector.condition.legacyExpression")}
                         </div>
                     ) : null}
                     {branchPayload.condition ? (
                         <button
                             type="button"
-                            className="h-8 w-fit rounded-md border border-edge px-2 text-xs text-fg-muted hover:border-red-400/40 hover:text-red-300"
+                            className="h-8 w-fit rounded-md border border-edge px-2 text-xs text-fg-muted hover:border-danger/40 hover:text-danger"
                             onClick={() => props.onChange({ ...branchPayload, condition: undefined })}
                         >
                             {t("storyInspector.condition.clear")}
@@ -1954,7 +1954,7 @@ function FieldGrid(props: { cols?: 2 | 3 | 4; className?: string; children: Reac
 /** Compact inline segmented toggle (e.g. Preset / Motion). */
 function SegToggle<T extends string>(props: { value: T; options: { value: T; label: string }[]; onChange: (value: T) => void }) {
     return (
-        <div className="inline-flex overflow-hidden rounded-md border border-edge bg-[#101216]">
+        <div className="inline-flex overflow-hidden rounded-md border border-edge bg-surface">
             {props.options.map((option, index) => (
                 <button
                     key={option.value}

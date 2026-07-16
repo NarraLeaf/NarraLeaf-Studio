@@ -324,7 +324,7 @@ export function ImageFillField<TData extends UIInspectorData>({
                                   ref={previewRef}
                                   type="button"
                                   onClick={() => setSelectorOpen(true)}
-                                  className="relative mt-2 w-full aspect-[4/3] rounded-xl border border-edge bg-[#13161b] overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary/70"
+                                  className="relative mt-2 w-full aspect-[4/3] rounded-xl border border-edge bg-surface overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary/70"
                               >
                                   {url ? (
                                       <img
@@ -340,7 +340,7 @@ export function ImageFillField<TData extends UIInspectorData>({
                                       </div>
                                   )}
                                   {loading && (
-                                      <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-xs text-fg">
+                                      <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-xs text-white">
                                           {t("common.loading")}
                                       </div>
                                   )}
@@ -394,7 +394,7 @@ export function ImageFillField<TData extends UIInspectorData>({
                 </button>
             </FieldLayout>
             {normalizedFill.assetId && assetResolveError ? (
-                <p className="mt-1 text-2xs text-amber-400/90 leading-snug">
+                <p className="mt-1 text-2xs text-warning leading-snug">
                     {t("properties.imageFill.resolveError", { error: assetResolveError })}
                 </p>
             ) : null}

@@ -378,7 +378,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
     const { url: previewBackgroundUrl } = useAssetObjectUrl(selectedAsset?.previewBackgroundAssetId ?? null);
 
     return (
-        <div className="flex h-full min-h-0 bg-[#101114] text-fg">
+        <div className="flex h-full min-h-0 bg-surface text-fg">
             <aside className="flex w-64 shrink-0 flex-col border-r border-edge">
                 <div className="flex items-center gap-2 border-b border-edge p-2">
                     <EnhancedInput
@@ -400,7 +400,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                             key={asset.id}
                             type="button"
                             className={[
-                                "flex w-full cursor-default items-center gap-2 border-l-2 border-transparent px-3 py-1.5 text-left hover:bg-gray-600/30",
+                                "flex w-full cursor-default items-center gap-2 border-l-2 border-transparent px-3 py-1.5 text-left hover:bg-fill",
                                 selectedId === asset.id ? "border-primary bg-primary/20" : "",
                             ].join(" ")}
                             onClick={() => setSelectedId(asset.id)}
@@ -424,7 +424,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                 {selectedAsset ? (
                     <div className="grid h-full min-h-0 grid-cols-[minmax(240px,3fr)_minmax(0,7fr)] gap-4">
                         <div className="min-h-0 overflow-auto">
-                            <section className="rounded-lg border border-edge bg-white/[0.025] p-4">
+                            <section className="rounded-lg border border-edge bg-fill-subtle p-4">
                                 <div className="grid gap-4">
                                     <label className="grid min-w-0 gap-1.5">
                                         <span className="text-xs font-medium text-fg-subtle">{t("common.name")}</span>
@@ -519,7 +519,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                 target={previewTarget}
                                 backgroundUrl={previewBackgroundUrl}
                             />
-                            <div className="flex h-10 shrink-0 items-center gap-2 border-t border-edge bg-[#0f1013] px-2">
+                            <div className="flex h-10 shrink-0 items-center gap-2 border-t border-edge bg-surface px-2">
                                 <PreviewAssetSlot
                                     buttonRef={targetPickerButtonRef}
                                     icon={<ImageIcon className="h-3.5 w-3.5 shrink-0 text-fg-muted" />}
@@ -694,7 +694,7 @@ function PreviewAssetSlot(props: {
             <button
                 ref={props.buttonRef}
                 type="button"
-                className={`flex h-7 min-w-0 flex-1 items-center gap-1.5 px-2 text-xs ${props.hasValue ? "text-fg" : "text-fg-subtle"} hover:bg-fill-subtle hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50`}
+                className={`flex h-7 min-w-0 flex-1 items-center gap-1.5 px-2 text-xs ${props.hasValue ? "text-fg" : "text-fg-subtle"} hover:bg-fill-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50`}
                 onClick={props.onOpen}
                 title={props.title}
             >
@@ -704,7 +704,7 @@ function PreviewAssetSlot(props: {
             {props.hasValue ? (
                 <button
                     type="button"
-                    className="grid h-7 w-6 shrink-0 place-items-center border-l border-edge text-fg-subtle hover:bg-red-500/10 hover:text-red-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400/50"
+                    className="grid h-7 w-6 shrink-0 place-items-center border-l border-edge text-fg-subtle hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-danger/50"
                     onClick={props.onClear}
                     title={t("common.clear")}
                     aria-label={t("motion.panel.clearAria", { name: props.title })}

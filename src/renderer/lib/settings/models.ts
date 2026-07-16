@@ -43,6 +43,8 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     options?: string[];
     /** Human-facing label per option value (e.g. locale code → endonym). */
     optionLabels?: Record<string, string>;
+    /** i18n key per option value; when set, overrides `optionLabels` at render time. */
+    optionLabelKeys?: Record<string, TranslationKey>;
 }
 
 /**

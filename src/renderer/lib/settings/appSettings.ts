@@ -95,6 +95,27 @@ export const AppSettings: AppSettingDefinition[] = [
         ),
     },
     {
+        // Applied by the main process (`applyThemeMode`): the stored mode drives
+        // nativeTheme.themeSource, every renderer's prefers-color-scheme follows it
+        // and flips the CSS tokens in styles.css, and window background colors track
+        // nativeTheme in baseApp.
+        key: "ui.themeMode",
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Theme",
+        labelKey: "settings.items.themeMode.label",
+        description: "Color theme for the Studio interface. \"Follow system\" switches with the operating system.",
+        descriptionKey: "settings.items.themeMode.description",
+        defaultValue: "auto",
+        options: ["auto", "light", "dark"],
+        optionLabelKeys: {
+            auto: "settings.items.themeMode.options.auto",
+            light: "settings.items.themeMode.options.light",
+            dark: "settings.items.themeMode.options.dark",
+        },
+    },
+    {
         // Applied by the Story scene editor via `storyEditorTextStyle.tsx`.
         key: "editor.fontSize",
         category: "editor",

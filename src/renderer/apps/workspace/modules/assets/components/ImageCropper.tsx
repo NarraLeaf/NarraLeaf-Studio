@@ -419,7 +419,7 @@ export function ImageCropper({
         >
             <div
                 style={anchorRef?.current ? { position: "fixed", top: anchorStyle.top, left: anchorStyle.left, width: anchorStyle.width } : { width: anchorStyle.width }}
-                className={`${anchorRef?.current ? "" : "mt-10 mx-auto"} bg-[#111218] border border-edge rounded-xl shadow-xl text-fg max-h-[640px] flex flex-col ${className}`}
+                className={`${anchorRef?.current ? "" : "mt-10 mx-auto"} bg-surface border border-edge rounded-xl shadow-xl text-fg max-h-[640px] flex flex-col ${className}`}
                 onMouseDown={(e) => e.stopPropagation()}
             >
                 <div className="flex items-center justify-between px-4 py-3 border-b border-edge">
@@ -461,7 +461,7 @@ export function ImageCropper({
                         onPointerDown={handleContainerPointerDown}
                     >
                         {loading && (
-                            <div className="absolute inset-0 flex items-center justify-center text-fg-muted gap-2">
+                            <div className="absolute inset-0 flex items-center justify-center text-white/70 gap-2">
                                 <RefreshCw className="w-4 h-4 animate-spin" />
                                 <span>{t("common.loading")}</span>
                             </div>
@@ -550,7 +550,7 @@ export function ImageCropper({
                     </div>
                 </div>
 
-                <div className="px-4 py-3 rounded-xl flex items-center justify-between bg-[#0d0f14]">
+                <div className="px-4 py-3 rounded-xl flex items-center justify-between bg-surface-sunken">
                     <div className="text-xs text-fg-muted">
                         {selection ? t("assets.cropper.selection", { width: Math.round(selection.width), height: Math.round(selection.height) }) : t("assets.cropper.waiting")}
                     </div>

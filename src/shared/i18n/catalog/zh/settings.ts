@@ -41,6 +41,15 @@ export const settings = {
             label: "语言",
             description: "Studio 界面的显示语言",
         },
+        themeMode: {
+            label: "主题",
+            description: "Studio 界面的配色主题，“跟随系统”会随操作系统切换",
+            options: {
+                auto: "跟随系统",
+                light: "亮色",
+                dark: "暗色",
+            },
+        },
         editorFontSize: {
             label: "故事编辑器字号",
             description: "故事场景编辑器中对话、旁白与选项文本的字号（px，{min}–{max}）",

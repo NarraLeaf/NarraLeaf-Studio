@@ -25,10 +25,10 @@ type Props<TData> = {
 
 function statusBadgeClass(status: string): string {
     if (status === "bound") {
-        return "bg-cyan-500/15 text-cyan-200 border-cyan-500/30";
+        return "bg-binding/15 text-binding border-binding/30";
     }
     if (status === "broken") {
-        return "bg-amber-500/15 text-amber-200 border-amber-500/30";
+        return "bg-warning/15 text-warning border-warning/30";
     }
     return "bg-fill-subtle text-fg-muted border-edge";
 }
@@ -134,14 +134,14 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                                 {t("properties.binding.fieldLabel")} <span className="text-fg">{bp.fieldLabel}</span>
                             </>
                         ) : (
-                            <span className="text-amber-300/90">{t("properties.binding.fieldMissing")}</span>
+                            <span className="text-warning">{t("properties.binding.fieldMissing")}</span>
                         )}
                     </span>
                 ) : null}
                 {bp.stateKey ? (
                     <span className="block w-full text-2xs text-fg-subtle">
                         {t("properties.binding.scopeKey", { scope: scopeLabel(bp.stateScope) })}{" "}
-                        <span className="font-mono text-2xs text-cyan-200/80">{bp.stateKey}</span>
+                        <span className="font-mono text-2xs text-binding">{bp.stateKey}</span>
                     </span>
                 ) : null}
                 {bp.status === "broken" && bp.brokenReason ? (
@@ -154,7 +154,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                         <button
                             type="button"
                             disabled={!bp.canBind}
-                            className="rounded border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-2xs text-cyan-100 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                            className="rounded border border-binding/40 bg-binding/10 px-2 py-1 text-2xs text-binding hover:bg-binding/20 disabled:cursor-not-allowed disabled:opacity-40"
                             onClick={() => openPicker()}
                             title={
                                 !bp.canBind
@@ -212,7 +212,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                                                 type="button"
                                                 className={`rounded px-2 py-0.5 text-2xs font-medium transition-colors ${
                                                     newFieldScope === scope
-                                                        ? "bg-cyan-500/20 text-cyan-100 border border-cyan-500/40"
+                                                        ? "bg-binding/20 text-binding border border-binding/40"
                                                         : "bg-fill-subtle text-fg-muted border border-edge hover:bg-fill"
                                                 }`}
                                                 onClick={() => setNewFieldScope(scope)}
@@ -237,7 +237,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                                         />
                                         <button
                                             type="button"
-                                            className="shrink-0 rounded border border-cyan-500/40 bg-cyan-500/15 px-2 py-1 text-2xs font-medium text-cyan-100 hover:bg-cyan-500/25"
+                                            className="shrink-0 rounded border border-binding/40 bg-binding/15 px-2 py-1 text-2xs font-medium text-binding hover:bg-binding/25"
                                             onClick={() => submitNew()}
                                         >
                                             {t("properties.binding.createAndBind")}
