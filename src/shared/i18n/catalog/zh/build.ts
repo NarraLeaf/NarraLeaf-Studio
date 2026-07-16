@@ -105,6 +105,7 @@ export const build = {
     unsignedNotice: "构建产物未做代码签名。玩家首次打开游戏时，macOS Gatekeeper 或 Windows SmartScreen 可能弹出安全提示；要获得无提示的安装体验需要签名证书",
     selectAtLeastOne: "请至少选择一个平台和格式",
     toast: {
+        submitted: "构建任务已提交，请查看控制台",
         done: "构建完成",
         failed: "构建失败",
     },
