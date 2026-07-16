@@ -602,7 +602,7 @@ export function AssetSelector({
             <div
                 ref={panelRef}
                 style={anchorRef?.current ? { position: "fixed", top: anchorStyle.top, left: anchorStyle.left, width: anchorStyle.width } : { width: anchorStyle.width }}
-                className={`${anchorRef?.current ? "" : "mt-12 mx-auto"} bg-surface-sunken border border-edge-strong rounded-lg shadow-2xl text-fg max-h-[560px] flex flex-col ${className}`}
+                className={`${anchorRef?.current ? "" : "mt-12 mx-auto"} bg-surface-overlay border border-edge-strong rounded-lg shadow-2xl text-fg max-h-[560px] flex flex-col ${className}`}
                 onMouseDown={(e) => e.stopPropagation()}
             >
                 <div className="flex items-center justify-between px-4 py-3 border-b border-edge">

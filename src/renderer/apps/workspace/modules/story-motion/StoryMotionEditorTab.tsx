@@ -765,13 +765,13 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
     const keybindings = useMemo<KeybindingDefinition[]>(() => [
         {
             id: "undo",
-            key: "ctrl+z",
+            key: "mod+z",
             description: "Undo story motion edit",
             handler: undoTimelineEdit,
         },
         {
             id: "redo",
-            key: "ctrl+shift+z",
+            key: "mod+shift+z",
             description: "Redo story motion edit",
             handler: redoTimelineEdit,
         },
