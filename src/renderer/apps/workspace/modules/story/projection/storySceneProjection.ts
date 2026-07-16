@@ -180,6 +180,10 @@ function projectBlockLine(
         const marker = block.payload.folded ? " folded" : "";
         return { text: `${indent}/code ${block.payload.language}${marker}`, editable: false, prefix: "" };
     }
+    if (block.kind === "invalid") {
+        // Verbatim: the line never parsed, so there is nothing to pretty-print from.
+        return { text: `${indent}${block.payload.source}`, editable: false, prefix: "" };
+    }
     const prefix = `${indent}// `;
     return {
         text: `${prefix}${block.payload.text.value}`,

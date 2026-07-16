@@ -22,7 +22,10 @@ export interface ClosedTabRecord {
     entry: SerializedTab;
     /** Group the tab lived in; reopening falls back to the default group if it is gone. */
     groupId: string;
-    /** Position within the group at close time, so reopening puts the tab back where it was. */
+    /**
+     * Position within the group at the moment this tab was removed — not its
+     * position before the batch started. See `recordClosedTabs`.
+     */
     index: number;
 }
 
@@ -35,18 +38,31 @@ let stack: ClosedTabRecord[] = [];
  * them (the tab definitions and their indices must still be readable).
  * Non-serializable tabs are skipped — they cannot be rebuilt, so offering to
  * "reopen" them would produce a dead entry.
+ *
+ * `index` is each tab's position before the batch closed, but what gets stored
+ * is its position *as it was removed*: a batch is torn down left to right, so by
+ * the time the nth entry goes the n before it are already gone and every later
+ * index has shifted down by n. Recording the shifted value is what lets the LIFO
+ * reopen invert the close — popping newest-first re-inserts each tab into the
+ * same list state its index was taken from. Storing the raw pre-close index
+ * instead only round-trips when the closed tabs are a contiguous suffix ("close
+ * to the right"); "close all" on [A,B,C,D] would reopen as [A,D,B,C].
+ *
+ * Skipped entries still count toward the shift — a non-serializable tab is
+ * removed like any other, it just never comes back.
  */
 export function recordClosedTabs(
     tabs: readonly { tab: EditorTabDefinition; index: number }[],
     groupId: string,
 ): void {
-    for (const { tab, index } of tabs) {
+    const ordered = [...tabs].sort((a, b) => a.index - b.index);
+    ordered.forEach(({ tab, index }, removedBefore) => {
         const entry = trySerializeTab(tab);
         if (!entry) {
-            continue;
+            return;
         }
-        stack.push({ entry, groupId, index });
-    }
+        stack.push({ entry, groupId, index: Math.max(0, index - removedBefore) });
+    });
     if (stack.length > MAX_CLOSED_TABS) {
         stack = stack.slice(stack.length - MAX_CLOSED_TABS);
     }

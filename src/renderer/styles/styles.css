@@ -27,12 +27,17 @@
      * updates the media query's VALUE when themeSource changes but never
      * dispatches the change event, so such a mirror silently stops updating.
      *
-     * The light override is scoped to `.nl-studio`, which only the Studio's own
-     * window shell sets (project/assets/app-entry-html.ejs). This stylesheet is
-     * also bundled into the GAME runtime — which shares widget code with the
-     * editor — and a shipped game must look identical on every player's machine
-     * instead of following their OS theme. Game shells therefore omit the class
-     * and always get the dark `:root` values.
+     * The light override is scoped to `.nl-studio`, set per-app by renderHtml
+     * (project/build/utils.js) on the window shell. This stylesheet is also
+     * bundled into the GAME runtime — which shares widget code with the editor —
+     * and a shipped game must look identical on every player's machine instead
+     * of following their OS theme. Game shells therefore omit the class and
+     * always get the dark `:root` values.
+     *
+     * The Dev Mode window omits it for the same reason: it renders GameApp
+     * in-document, so anything it showed under the light tokens would be a
+     * preview of something that never ships that way. Its own debug chrome
+     * staying dark is the price, and matches the game it sits on top of.
      */
     color-scheme: dark;
 

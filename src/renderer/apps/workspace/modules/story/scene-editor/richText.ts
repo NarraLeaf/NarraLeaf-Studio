@@ -1,14 +1,40 @@
 import type { StoryInterpolationRef, StoryRichRun, StoryTextMarks, StoryTextSegment } from "@shared/types/story";
 
 /** Pause chip class (a literal so Tailwind's content scan can see it). */
-const PAUSE_CHIP_CLASS = "story-rt-pause mx-0.5 inline-flex cursor-pointer select-none items-center rounded bg-primary/20 px-1 py-0.5 align-middle text-2xs font-medium text-primary hover:bg-primary/30";
+const PAUSE_CHIP_CLASS = "story-rt-pause mx-0.5 inline-flex select-none items-center rounded bg-primary/20 px-1 py-0.5 align-middle text-2xs font-medium text-primary";
+const PAUSE_CHIP_INTERACTIVE_CLASS = "cursor-pointer hover:bg-primary/30";
 const PAUSE_ICON_SVG = '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="14" y="4" width="4" height="16" rx="1"></rect><rect x="6" y="4" width="4" height="16" rx="1"></rect></svg>';
 
 /** Interpolation chip class (variable / blueprint value). */
-const INTERP_CHIP_CLASS = "story-rt-interp mx-0.5 inline-flex cursor-pointer select-none items-center rounded bg-success/20 px-1 py-0.5 align-middle text-2xs font-medium text-success hover:bg-success/30";
+const INTERP_CHIP_CLASS = "story-rt-interp mx-0.5 inline-flex select-none items-center rounded bg-success/20 px-1 py-0.5 align-middle text-2xs font-medium text-success";
+const INTERP_CHIP_INTERACTIVE_CLASS = "cursor-pointer hover:bg-success/30";
 const INTERP_ICON_SVG = '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1"></path><path d="M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"></path></svg>';
 
 export type ResolveInterpolationLabel = (interp: StoryInterpolationRef) => string;
+
+/** Chip copy. Callers pass translated strings so this layer never hardcodes user-facing text. */
+export type RichChipTitles = {
+    pauseClick: string;
+    pauseMs: (ms: number) => string;
+    insertedValue: (label: string) => string;
+    valueFallback: string;
+};
+
+/**
+ * Options for {@link renderRunsToElement}, the single renderer behind both the contentEditable
+ * editor and the read-only row preview.
+ *
+ * `interactive` is the *only* permitted difference between the two: editor chips open the pause /
+ * value popovers, view chips do not, so only the editor gets a pointer cursor and a button role.
+ * Everything else — tag structure, text content, and the `data-pause` / `data-interp` attributes the
+ * unit model reads — must stay identical, or a selection made in the view cannot be mapped onto the
+ * editor's unit offsets.
+ */
+export type RichRenderOptions = {
+    resolveLabel?: ResolveInterpolationLabel;
+    titles: RichChipTitles;
+    interactive?: boolean;
+};
 
 export function isTextRun(run: StoryRichRun): run is { text: string; marks?: StoryTextMarks } {
     return "text" in run;
@@ -189,20 +215,22 @@ function createMarkSpan(text: string, marks: StoryTextMarks): HTMLSpanElement {
     return span;
 }
 
-export function createPauseChip(pause: number | true): HTMLSpanElement {
+function createPauseChip(pause: number | true, options: RichRenderOptions): HTMLSpanElement {
     const span = globalThis.document.createElement("span");
     span.dataset.pause = pause === true ? "click" : String(Math.round(pause as number));
     span.contentEditable = "false";
-    span.className = PAUSE_CHIP_CLASS;
-    span.setAttribute("role", "button");
-    span.title = pause === true ? "Pause — waits for a click" : `Pause — waits ${Math.round(pause)}ms`;
+    span.className = options.interactive ? `${PAUSE_CHIP_CLASS} ${PAUSE_CHIP_INTERACTIVE_CLASS}` : PAUSE_CHIP_CLASS;
+    if (options.interactive) {
+        span.setAttribute("role", "button");
+    }
+    span.title = pause === true ? options.titles.pauseClick : options.titles.pauseMs(Math.round(pause));
     const label = pause === true ? "" : `<span class="ml-0.5">${Math.round(pause)}ms</span>`;
     // PAUSE_ICON_SVG is a trusted static string; the label only interpolates a rounded number.
     span.innerHTML = `${PAUSE_ICON_SVG}${label}`;
     return span;
 }
 
-export function createInterpolationChip(interp: StoryInterpolationRef, label: string, marks?: StoryTextMarks): HTMLSpanElement {
+function createInterpolationChip(interp: StoryInterpolationRef, label: string, marks: StoryTextMarks | undefined, options: RichRenderOptions): HTMLSpanElement {
     const span = globalThis.document.createElement("span");
     span.dataset.interp = JSON.stringify(interp);
     const clean = cleanMarks(marks);
@@ -210,9 +238,11 @@ export function createInterpolationChip(interp: StoryInterpolationRef, label: st
         span.dataset.marks = JSON.stringify(clean);
     }
     span.contentEditable = "false";
-    span.className = INTERP_CHIP_CLASS;
-    span.setAttribute("role", "button");
-    span.title = `Insert value: ${label}`;
+    span.className = options.interactive ? `${INTERP_CHIP_CLASS} ${INTERP_CHIP_INTERACTIVE_CLASS}` : INTERP_CHIP_CLASS;
+    if (options.interactive) {
+        span.setAttribute("role", "button");
+    }
+    span.title = options.titles.insertedValue(label);
     // INTERP_ICON_SVG is a trusted static string; the label is set via textContent (no HTML injection).
     span.innerHTML = INTERP_ICON_SVG;
     const labelSpan = globalThis.document.createElement("span");
@@ -222,21 +252,28 @@ export function createInterpolationChip(interp: StoryInterpolationRef, label: st
     if (clean?.bold) labelSpan.style.fontWeight = "700";
     if (clean?.italic) labelSpan.style.fontStyle = "italic";
     if (clean?.color) labelSpan.style.color = clean.color;
+    if (typeof clean?.fontSize === "number") labelSpan.style.fontSize = `${clean.fontSize}px`;
     span.appendChild(labelSpan);
     return span;
 }
 
-/** Render rich runs into a contentEditable root, replacing its content. */
-export function renderRunsToElement(root: HTMLElement, runs: StoryRichRun[], resolveLabel?: ResolveInterpolationLabel): void {
+/**
+ * Render rich runs into a root element, replacing its content.
+ *
+ * The one renderer for both surfaces: the contentEditable editor (`interactive: true`) and the
+ * read-only row preview. Keeping them on this function is what lets {@link getSelectionUnitRange}
+ * read a selection made in either — see {@link RichRenderOptions}.
+ */
+export function renderRunsToElement(root: HTMLElement, runs: StoryRichRun[], options: RichRenderOptions): void {
     root.textContent = "";
     for (const run of runs) {
         if (isTextRun(run)) {
             const marks = cleanMarks(run.marks);
             root.appendChild(marks ? createMarkSpan(run.text, marks) : globalThis.document.createTextNode(run.text));
         } else if (isInterpolationRun(run)) {
-            root.appendChild(createInterpolationChip(run.interpolation, resolveLabel?.(run.interpolation) ?? "value", run.marks));
+            root.appendChild(createInterpolationChip(run.interpolation, options.resolveLabel?.(run.interpolation) ?? options.titles.valueFallback, run.marks, options));
         } else {
-            root.appendChild(createPauseChip(run.pause));
+            root.appendChild(createPauseChip(run.pause, options));
         }
     }
 }
