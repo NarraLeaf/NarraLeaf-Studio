@@ -2,9 +2,11 @@
 <!--
   `nl-studio` opts this window into the light theme (see styles.css): the same
   stylesheet is bundled into the game runtime, which must stay dark regardless
-  of the player's OS, so only the Studio's own windows carry the class.
+  of the player's OS, so only windows showing Studio chrome carry the class.
+  Set per-app by renderHtml in project/build/utils.js — Dev Mode hosts the game
+  itself and is deliberately left without it.
 -->
-<html lang="en" class="nl-studio">
+<html lang="en" class="<%= htmlClass %>">
 
 <head>
   <!--

@@ -2,7 +2,6 @@ import type { LocaleNamespace } from "../types";
 
 export const settings = {
     title: "设置",
-    subtitle: "编辑器设置",
     searchPlaceholder: "搜索设置…",
     loading: "正在加载设置…",
     noResults: "没有匹配的设置",

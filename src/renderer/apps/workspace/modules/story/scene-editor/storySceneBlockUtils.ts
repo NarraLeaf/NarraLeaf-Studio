@@ -1,4 +1,4 @@
-import { Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, Type, UserRound, Variable, Video } from "lucide-react";
+import { Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video } from "lucide-react";
 import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment, StoryVariableRef } from "@shared/types/story";
 import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
 import { richIfMeaningful } from "./richText";
@@ -229,6 +229,11 @@ export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typ
     if (block.kind === "control") return withCategory(translate("story.badge.control"), Settings2, "control");
     if (block.kind === "jump") return withCategory(translate("story.badge.jump"), Route, "scene");
     if (block.kind === "code") return withCategory(translate("story.badge.code"), Code, "utils");
+    if (block.kind === "invalid") {
+        // Deliberately not a category colour: this row is an error, not another kind of action, and a
+        // build will refuse it. It has to read as wrong at a glance.
+        return { label: translate("story.badge.invalid"), icon: TriangleAlert, iconColor: "rgb(var(--nl-danger))" };
+    }
     return withCategory(translate("story.badge.note"), StickyNote, "utils");
 }
 
@@ -285,6 +290,11 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
     }
     if (block.kind === "code") {
         return translate("story.describe.code", { language: block.payload.language });
+    }
+    if (block.kind === "invalid") {
+        // The author's own text is the most useful thing to show them — it never parsed, so there is
+        // nothing to describe in its place.
+        return block.payload.source || translate("story.describe.invalid");
     }
     return block.payload.text.value || translate("story.describe.note");
 }

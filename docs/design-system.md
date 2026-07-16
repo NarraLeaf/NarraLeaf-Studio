@@ -11,6 +11,7 @@ Studio 是**双主题**应用（暗色 / 亮色,由 `ui.themeMode` 设置驱动,
 - 主进程把 `ui.themeMode`（`auto`/`light`/`dark`）映射到 `nativeTheme.themeSource`（[src/main/app/application/theme.ts](../src/main/app/application/theme.ts)）。这是**唯一开关**。
 - Electron 据此翻转每个渲染窗口的 `prefers-color-scheme`;`styles.css` 的 `@media (prefers-color-scheme: light)` 块整组覆盖 token。浏览器自己重算,所以**切换实时生效、首帧不闪、跨窗口同步,无需 IPC 广播**（与 `app.language` 的广播机制不同）。
 - 窗口背景色（首帧前的 paint-behind）由 `getWindowBackgroundColor()` 在 AppWindow 构造时解析,已开窗口靠 baseApp 里的 `nativeTheme.on("updated")` 跟进。
+- **亮色覆盖只作用于带 `.nl-studio` 的文档**,该 class 由 `renderHtml`（[project/build/utils.js](../project/build/utils.js)）按 app 决定。这条 scope 是**游戏 / Studio 隔离的承重墙**：同一份 styles.css 也打进游戏运行时(共用 widget 渲染代码),而**已发布的游戏必须在每台机器上长得一样,不能跟随玩家的 OS 主题**。因此游戏 shell 与 **Dev Mode 窗口**都不带这个 class——Dev Mode 是就地渲染 `GameApp`(不是 webview),带上就会让预览显示出永远不会发布的样子。代价是它自己的调试 chrome 恒为暗色,与其承载的游戏一致;其窗口背景走 `getGameHostWindowBackgroundColor()`(固定暗色)。
 - **组件永远写语义 token,不感知主题**。
 
 > ⚠️ **不要用 JS 镜像主题。** Electron 在 `themeSource` 变化时会更新 `matchMedia("(prefers-color-scheme: …)")` 的 **值**,但**不派发 `change` 事件**（已 CDP 实测）。任何基于 matchMedia 监听的 JS 镜像层都会在首次加载后静默失效。CSS 媒体查询不受此影响,是唯一可靠的路径。
@@ -21,7 +22,7 @@ Studio 是**双主题**应用（暗色 / 亮色,由 `ui.themeMode` 设置驱动,
 
 **只用语义 token,禁止任意 hex(`bg-[#…]`)、裸调色板(`text-gray-400`)、裸 white/black alpha(`bg-white/10`)。**
 
-token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer/styles/styles.css](../src/renderer/styles/styles.css)：`:root` 是暗色（默认）,`:root[data-theme="light"]` 整组覆盖。因此三处都能用同一来源：Tailwind 工具类 (`bg-surface`)、原生 CSS/内联 (`rgb(var(--nl-surface))`)、带透明度 (`bg-primary/20`)。下文表格中的具体色值均指**暗色主题**;亮色值见 styles.css。
+token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer/styles/styles.css](../src/renderer/styles/styles.css)：`:root` 是暗色（默认）,`@media (prefers-color-scheme: light)` 下的 `:root.nl-studio` 整组覆盖(见 §0——**没有 `data-theme` 属性,写它不会有任何效果**)。因此三处都能用同一来源：Tailwind 工具类 (`bg-surface`)、原生 CSS/内联 (`rgb(var(--nl-surface))`)、带透明度 (`bg-primary/20`)。下文表格中的具体色值均指**暗色主题**;亮色值见 styles.css。
 
 ### 品牌 / 强调色
 

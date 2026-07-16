@@ -732,6 +732,14 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
         return [];
     }
 
+    if (block.kind === "invalid") {
+        // Skipped rather than fatal so preview still runs: a half-typed command is a normal thing to
+        // have on screen while writing. `error` (not `warning`) is what stops it there — a production
+        // build refuses on error diagnostics, so an unfinished line cannot ship quietly.
+        diagnostic(ctx, "error", block.id, `Invalid command, skipped: ${block.payload.source}`);
+        return [];
+    }
+
     return [];
 }
 
@@ -789,7 +797,7 @@ async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryB
         if (!text.trim() && !segmentHasInterpolation(block.payload.text)) {
             return [];
         }
-        const character = getCharacter(ctx, block.payload.characterId);
+        const character = getCharacter(ctx, block.payload.characterId, block.payload.speakerName);
         const voiceUrl = block.payload.voiceAssetId
             ? await resolveAsset(ctx, block.payload.voiceAssetId, "audio", block.id)
             : null;
@@ -1368,8 +1376,26 @@ async function compileNvl(ctx: SceneCompileContext, block: Extract<StoryBlock, {
     return [recordStatement(ctx, chain, block)];
 }
 
-function getCharacter(ctx: SceneCompileContext, characterId: string | undefined): Character {
-    const normalizedId = characterId?.trim() || UNKNOWN_CHARACTER_ID;
+function getCharacter(ctx: SceneCompileContext, characterId: string | undefined, speakerName?: string): Character {
+    const id = characterId?.trim();
+    const tempName = speakerName?.trim();
+    // A temp speaker — a bare name with no Studio character behind it — is a valid line, not an
+    // error: NLR's dialogue box only ever displays the name its Character carries. It also covers
+    // the case where `characterId` no longer resolves (the character was deleted): falling back to
+    // the name the author wrote beats collapsing the line to "Unknown".
+    if (tempName && (!id || !ctx.characterSummaries.has(id))) {
+        // Keyed on the name so every line by the same temp speaker shares one Character. ':' cannot
+        // appear in a characterId UUID, so this can never collide with the real-character keys.
+        const key = `name:${tempName}`;
+        const cached = ctx.characters.get(key);
+        if (cached) {
+            return cached;
+        }
+        const created = new Character(tempName);
+        ctx.characters.set(key, created);
+        return created;
+    }
+    const normalizedId = id || UNKNOWN_CHARACTER_ID;
     const existing = ctx.characters.get(normalizedId);
     if (existing) {
         return existing;
