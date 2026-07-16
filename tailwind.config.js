@@ -4,6 +4,13 @@ module.exports = {
         './src/renderer/**/*.{ts,tsx,js,jsx,html}',
         './project/assets/**/*.ejs',
     ],
+    // Dark is the default and light is the prefers-color-scheme override (see
+    // styles.css), which Electron resolves from the `ui.themeMode` setting via
+    // nativeTheme. Theme-aware components use the semantic color tokens below,
+    // never a `dark:` variant — the variant is unscoped, so in the game runtime
+    // (which shares this stylesheet and must stay dark) it would follow the
+    // player's OS instead.
+    darkMode: 'media',
     theme: {
         extend: {
             colors: {
@@ -29,20 +36,23 @@ module.exports = {
                     subtle: 'rgb(var(--nl-fg-subtle) / <alpha-value>)',
                 },
 
-                // Hairline borders (fixed white alphas).
+                // Hairline borders. Full color values (alpha baked in) that
+                // flip between white overlays (dark) and ink overlays (light);
+                // see styles.css. No `/alpha` modifier support — the alpha is
+                // part of the token.
                 edge: {
-                    DEFAULT: 'rgb(255 255 255 / 0.1)',
-                    subtle: 'rgb(255 255 255 / 0.05)',
-                    strong: 'rgb(255 255 255 / 0.2)',
+                    DEFAULT: 'var(--nl-edge)',
+                    subtle: 'var(--nl-edge-subtle)',
+                    strong: 'var(--nl-edge-strong)',
                 },
 
-                // Translucent white FILLS (button secondary, hover backgrounds,
+                // Translucent FILLS (button secondary, hover backgrounds,
                 // subtle surfaces). Same values as `edge` but a distinct role so
                 // background usage never borrows a border token.
                 fill: {
-                    DEFAULT: 'rgb(255 255 255 / 0.1)',
-                    subtle: 'rgb(255 255 255 / 0.05)',
-                    strong: 'rgb(255 255 255 / 0.2)',
+                    DEFAULT: 'var(--nl-fill)',
+                    subtle: 'var(--nl-fill-subtle)',
+                    strong: 'var(--nl-fill-strong)',
                 },
 
                 // Semantic accents — low-saturation, hue-shifted from the anchor.

@@ -650,11 +650,11 @@ export function AssetSelector({
                         <span>{t("assets.loading")}</span>
                     </div>
                 ) : error ? (
-                    <div className="flex items-start gap-2 px-4 py-6 text-red-400">
+                    <div className="flex items-start gap-2 px-4 py-6 text-danger">
                         <AlertCircle className="w-4 h-4 mt-0.5" />
                         <div className="text-sm">
                             <div>{t("assets.loadError")}</div>
-                            <div className="text-xs text-red-300/80">{error}</div>
+                            <div className="text-xs text-danger/80">{error}</div>
                         </div>
                     </div>
                 ) : displayedAssets.length === 0 && !hasVisibleVirtualAssets ? (
@@ -687,13 +687,13 @@ export function AssetSelector({
                 )}
 
                 {multiple && (
-                    <div className="px-4 py-3 border-t border-edge flex items-center justify-between bg-black/20">
+                    <div className="px-4 py-3 border-t border-edge flex items-center justify-between bg-fill-subtle">
                         <div className="text-xs text-fg-muted">
                             {t("assets.selector.selectedCount", { count: selection.size })}
                             {selection.size > 0 && (
                                 <button
                                     onClick={() => setSelection(new Set())}
-                                    className="ml-2 text-red-400 hover:text-red-300"
+                                    className="ml-2 text-danger hover:text-danger/80"
                                 >
                                     {t("common.clear")}
                                 </button>

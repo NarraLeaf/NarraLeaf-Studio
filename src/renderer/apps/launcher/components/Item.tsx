@@ -28,8 +28,8 @@ export function Item({
                 ${disabled
                     ? "text-fg-subtle cursor-not-allowed opacity-50"
                     : active
-                        ? "bg-fill text-white cursor-default"
-                        : "text-fg-muted hover:bg-fill hover:text-white cursor-default"
+                        ? "bg-fill text-fg cursor-default"
+                        : "text-fg-muted hover:bg-fill hover:text-fg cursor-default"
                 }
                 ${className}
             `}

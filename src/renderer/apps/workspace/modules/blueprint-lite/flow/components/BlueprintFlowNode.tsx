@@ -140,7 +140,7 @@ const PIN_LABEL_CLASS = "text-fg-muted";
 const OPTIONAL_UNWIRED_PIN_LABEL_CLASS = "text-fg-subtle italic";
 
 const CARD_INPUT =
-    "rounded border-edge bg-[#111418] px-1.5 py-1 font-mono text-2xs";
+    "rounded border-edge bg-surface px-1.5 py-1 font-mono text-2xs";
 const CARD_ICON_BUTTON =
     "nodrag !h-4 !w-4 shrink-0 !gap-0 rounded !p-0.5 text-fg-muted hover:bg-fill-subtle hover:text-fg-muted";
 
@@ -210,7 +210,7 @@ function ImageAssetPickerCard({
                     type="button"
                     disabled={disabled}
                     className={`group relative flex w-full min-w-0 overflow-hidden rounded border border-edge bg-surface text-left transition-colors ${
-                        disabled ? "cursor-default opacity-80" : "hover:border-cyan-300/35 hover:bg-fill-subtle"
+                        disabled ? "cursor-default opacity-80" : "hover:border-primary/35 hover:bg-fill-subtle"
                     } ${heightClass}`}
                     title={assetId ? `${label} (${assetId})` : t("blueprint.image.selectAsset")}
                     onClick={e => {
@@ -234,25 +234,25 @@ function ImageAssetPickerCard({
                             </div>
                         )}
                         {loading ? (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-2xs text-fg">
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-2xs text-white">
                                 {t("common.loading")}
                             </div>
                         ) : null}
                     </div>
                     <div className="flex min-w-0 flex-1 flex-col justify-center px-2 py-1">
                         <div className="truncate text-2xs font-medium text-fg">{label}</div>
-                        <div className={`truncate text-2xs ${error ? "text-amber-300" : "text-fg-subtle"}`}>
+                        <div className={`truncate text-2xs ${error ? "text-warning" : "text-fg-subtle"}`}>
                             {detail}
                         </div>
                     </div>
                     {!disabled ? (
-                        <div className="pointer-events-none absolute inset-0 bg-cyan-400/0 transition-colors group-hover:bg-cyan-400/[0.04]" />
+                        <div className="pointer-events-none absolute inset-0 bg-primary/0 transition-colors group-hover:bg-primary/[0.04]" />
                     ) : null}
                 </button>
                 {assetId && !disabled ? (
                     <button
                         type="button"
-                        className="absolute right-1 top-1 rounded bg-black/55 p-0.5 text-fg-muted hover:bg-black/80 hover:text-white"
+                        className="absolute right-1 top-1 rounded bg-black/55 p-0.5 text-white/80 hover:bg-black/80 hover:text-white"
                         title={t("blueprint.image.clear")}
                         aria-label={t("blueprint.image.clear")}
                         onMouseDown={stopFlowNodePointerBubble}
@@ -417,7 +417,7 @@ function DynamicPinLabelInput({
     return (
         <Input
             className={`nodrag ${CARD_INPUT} min-h-[20px] min-w-[5rem] max-w-[8rem] flex-1 py-0.5 ${
-                isInvalid ? "border-red-400/70 text-red-100" : ""
+                isInvalid ? "border-danger/70 text-danger" : ""
             }`}
             type="text"
             value={draft}
@@ -1016,8 +1016,8 @@ function KeyboardBindingCardControl({
     return (
         <div ref={rootRef} className="nodrag relative min-w-0">
             {listening ? (
-                <div className="absolute bottom-full left-0 z-[60] mb-1 w-full rounded border border-cyan-300/35 bg-[#0b1016] px-2 py-1.5 text-left shadow-lg ring-1 ring-black/35">
-                    <div className="truncate font-mono text-2xs text-cyan-100">
+                <div className="absolute bottom-full left-0 z-[60] mb-1 w-full rounded border border-primary/35 bg-surface-sunken px-2 py-1.5 text-left shadow-lg ring-1 ring-black/35">
+                    <div className="truncate font-mono text-2xs text-primary">
                         {preview || t("blueprint.keyboard.pressKey")}
                     </div>
                     <div className="mt-0.5 truncate text-2xs text-fg-muted">{t("blueprint.keyboard.anyCombo")}</div>
@@ -1025,10 +1025,10 @@ function KeyboardBindingCardControl({
             ) : null}
             <button
                 type="button"
-                className={`flex min-h-[26px] w-full min-w-0 items-center gap-1.5 rounded border px-2 py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50 ${
+                className={`flex min-h-[26px] w-full min-w-0 items-center gap-1.5 rounded border px-2 py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 ${
                     listening
-                        ? "border-cyan-300/45 bg-cyan-400/10 text-cyan-100"
-                        : "border-edge bg-[#111418] text-fg hover:border-cyan-300/35 hover:bg-fill-subtle"
+                        ? "border-primary/45 bg-primary/10 text-primary"
+                        : "border-edge bg-surface text-fg hover:border-primary/35 hover:bg-fill-subtle"
                 } ${displayValue ? "pr-7" : ""}`}
                 title={displayValue ? t("blueprint.keyboard.boundTo", { key: displayValue }) : t("blueprint.keyboard.bind")}
                 aria-label={displayValue ? t("blueprint.keyboard.boundTo", { key: displayValue }) : t("blueprint.keyboard.bind")}
@@ -1042,7 +1042,7 @@ function KeyboardBindingCardControl({
                     setListening(open => !open);
                 }}
             >
-                <KeyboardIcon className="h-3.5 w-3.5 shrink-0 text-cyan-300/80" aria-hidden />
+                <KeyboardIcon className="h-3.5 w-3.5 shrink-0 text-primary/80" aria-hidden />
                 <span className={`min-w-0 flex-1 truncate font-mono text-2xs ${displayValue ? "" : "text-fg-subtle"}`}>
                     {displayValue || t("blueprint.keyboard.unbound")}
                 </span>
@@ -1050,7 +1050,7 @@ function KeyboardBindingCardControl({
             {displayValue ? (
                 <button
                     type="button"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-fg-subtle hover:bg-fill hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-fg-subtle hover:bg-fill hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
                     title={t("blueprint.keyboard.clear")}
                     aria-label={t("blueprint.keyboard.clear")}
                     onMouseDown={event => {
@@ -1426,7 +1426,7 @@ function CardNumberInput({
     return (
         <div className="relative">
             <input
-                className={`nodrag block w-full rounded border border-edge bg-[#111418] px-1.5 py-1 font-mono text-2xs text-fg transition-colors focus:border-primary focus:outline-none ${
+                className={`nodrag block w-full rounded border border-edge bg-surface px-1.5 py-1 font-mono text-2xs text-fg transition-colors focus:border-primary focus:outline-none ${
                     unit ? "pr-8" : ""
                 } ${disabled ? "cursor-not-allowed opacity-55" : ""} ${INPUT_NUMBER_NO_SPINNER}`}
                 type="text"
@@ -1736,7 +1736,7 @@ function DisplayableSetVariantCard({
             {message ? (
                 <div
                     className={`mt-1 truncate text-2xs ${
-                        targetVariants?.supported === false ? "text-amber-300" : "text-fg-subtle"
+                        targetVariants?.supported === false ? "text-warning" : "text-fg-subtle"
                     }`}
                     title={message}
                 >
@@ -2008,8 +2008,8 @@ function BlueprintCommentNodeCard({
                         type="button"
                         className={`relative h-4 w-4 rounded-full border border-dashed ${
                             backgroundEnabled
-                                ? "border-slate-300 bg-slate-400/30"
-                                : "border-slate-500 bg-transparent"
+                                ? "border-edge-strong bg-fill-strong"
+                                : "border-edge bg-transparent"
                         }`}
                         title={backgroundEnabled ? t("blueprint.comment.backgroundOn") : t("blueprint.comment.backgroundOff")}
                         aria-label={backgroundEnabled ? t("blueprint.comment.sendBehind") : t("blueprint.comment.restoreLayer")}
@@ -2026,7 +2026,7 @@ function BlueprintCommentNodeCard({
                 </div>
             </div>
             <TextArea
-                className="nodrag min-h-0 flex-1 resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed text-fg placeholder-white/35 focus:border-transparent"
+                className="nodrag min-h-0 flex-1 resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed text-fg placeholder-fg-subtle focus:border-transparent"
                 value={typeof params.text === "string" ? params.text : ""}
                 rows={4}
                 placeholder={displayName}
@@ -2035,11 +2035,11 @@ function BlueprintCommentNodeCard({
                 onChange={e => onPatchNodeParam?.(nodeId, "text", e.target.value)}
             />
             <div
-                className="nodrag absolute bottom-1 right-1 h-4 w-4 cursor-nwse-resize rounded-sm border border-edge-strong bg-black/20"
+                className="nodrag absolute bottom-1 right-1 h-4 w-4 cursor-nwse-resize rounded-sm border border-edge-strong bg-fill-subtle"
                 title={t("blueprint.comment.resize")}
                 onPointerDown={startResize}
             >
-                <div className="absolute bottom-1 right-1 h-2 w-2 border-b border-r border-white/50" />
+                <div className="absolute bottom-1 right-1 h-2 w-2 border-b border-r border-edge-strong" />
             </div>
         </div>
     );
@@ -2070,9 +2070,9 @@ function BlueprintElementLiteralNodeCard({
     const outputPins = catalog.pins.filter(p => p.kind === "output");
     return (
         <div
-            className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-[#1a1d21] text-xs shadow-md ${
+            className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-surface-raised text-xs shadow-md ${
                 firstNodeError
-                    ? "border-red-400/85 ring-1 ring-red-500/40"
+                    ? "border-danger/85 ring-1 ring-danger/40"
                     : selected
                       ? "border-yellow-300/90 ring-1 ring-yellow-500/45 shadow-[0_0_20px_rgba(234,179,8,0.18)]"
                       : "border-edge"
@@ -2089,7 +2089,7 @@ function BlueprintElementLiteralNodeCard({
             <div className="mx-2 my-1.5">
                 <button
                     type="button"
-                    className="nodrag block w-full overflow-hidden rounded border border-edge bg-black/20 p-1.5 text-left transition-colors hover:border-cyan-300/35 hover:bg-fill-subtle focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50"
+                    className="nodrag block w-full overflow-hidden rounded border border-edge bg-fill-subtle p-1.5 text-left transition-colors hover:border-primary/35 hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
                     aria-label={elementPreview ? t("blueprint.element.selectNamed", { name: boundLabel }) : t("blueprint.element.select")}
                     onMouseDown={stopFlowNodePointerBubble}
                     onPointerDown={stopFlowNodePointerBubble}
@@ -2101,7 +2101,7 @@ function BlueprintElementLiteralNodeCard({
                     {elementPreview?.preview ? (
                         elementPreview.preview
                     ) : (
-                        <div className="flex h-[72px] w-full items-center justify-center rounded-sm border border-dashed border-edge bg-[#0d1117] text-2xs text-fg-muted">
+                        <div className="flex h-[72px] w-full items-center justify-center rounded-sm border border-dashed border-edge bg-surface-sunken text-2xs text-fg-muted">
                             {t("blueprint.element.select")}
                         </div>
                     )}
@@ -2139,9 +2139,9 @@ function BlueprintImageAssetLiteralNodeCard({
     const outputPins = catalog.pins.filter(p => p.kind === "output");
     return (
         <div
-            className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-[#1a1d21] text-xs shadow-md ${
+            className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-surface-raised text-xs shadow-md ${
                 firstNodeError
-                    ? "border-red-400/85 ring-1 ring-red-500/40"
+                    ? "border-danger/85 ring-1 ring-danger/40"
                     : selected
                       ? "border-cyan-400/80 ring-1 ring-cyan-500/40"
                       : "border-edge"
@@ -2367,11 +2367,11 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
 
     return (
         <div
-            className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-[#1a1d21] text-xs shadow-md ${
+            className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-surface-raised text-xs shadow-md ${
                 isEventHead || isVarDeclare ? "border-l-2" : ""
             } ${isTerminalNode ? "border-r-2" : ""} ${
                 firstNodeError
-                    ? "border-red-400/85 ring-1 ring-red-500/40"
+                    ? "border-danger/85 ring-1 ring-danger/40"
                     : selected
                       ? "border-cyan-400/80 ring-1 ring-cyan-500/40"
                       : "border-edge"

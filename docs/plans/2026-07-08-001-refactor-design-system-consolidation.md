@@ -144,6 +144,12 @@ styles.css `:root` 定义 RGB 通道变量,`tailwind.config.js` 以 `rgb(var(--x
 - **验证**：renderer `tsc` exit 0;`yarn build:apps:dev` 6 个 app 全过;构建产物 CSS 含 token;ratchet 全项下降、基线已收紧到新低点;CDP 重载 workspace 截图视觉无回归。
 - **Phase 4 / 5 待办**：逐模块把裸 `<button>`/手写 tab/badge/空状态替换为新组件(靠 ratchet 兜底监督式推进);全部归零后把 ratchet 转硬性 lint。
 
+## 后续演进（2026-07-16）：双主题
+
+token 层升级为**双主题**（`ui.themeMode` 设置：跟随系统/亮/暗,默认跟随系统）：`styles.css :root` 为暗色默认值,`@media (prefers-color-scheme: light)` 整组覆盖;`edge`/`fill` 从固定白 alpha 改为完整颜色 CSS 变量(`--nl-edge*`/`--nl-fill*`,亮色下翻为墨色叠加);主进程 `nativeTheme.themeSource` 驱动所有窗口的 `prefers-color-scheme` 与背景色,链路纯 CSS 无 JS。**这使 Phase 0 表格中 "edge = 固定白 alpha" 的描述过时**;机制与"禁止 JS 镜像主题"的坑详见 docs/design-system.md §0。
+
+同期完成一轮全 renderer 的"亮色穿帮色"清扫(约 550 处 → token)。**这一轮同时消化了 Phase 3 遗留的大部分债务**:长尾近黑表面 hex、`cyan-*` 的 binding vs primary 归属、`bg-gray-*`/`border-gray-*`、severity 色(red/amber/emerald/rose → danger/warning/success)。**剩余债务**:裸 `rounded`(与主题无关,Phase 4 继续)、Tier-4 的 off-palette 装饰色(story-motion 的 `#1f9eff` 曲线/`orange-400` 播放头、SurfaceLayoutDiagnosticMarkers、PageAnimationEditor/ImageCropper 的迷你舞台底色——亮色下仍可读,属调色板规范问题而非破图);另 `apps/workspace/modules/story/monaco/storyMonaco.ts` 定义了全硬编码的深色 Monaco 主题,当前是死代码(`configureStoryMonaco` 无人 import),一旦接线需先双主题化。
+
 ## Key Files
 - token/配置：`tailwind.config.js`、`src/renderer/styles/styles.css`
 - codemod / 护栏：`scripts/style-codemod.mjs`、`scripts/style-ratchet.mjs` + `scripts/style-ratchet.baseline.json`

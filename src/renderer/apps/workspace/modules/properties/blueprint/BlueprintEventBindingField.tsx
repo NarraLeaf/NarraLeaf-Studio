@@ -22,7 +22,7 @@ export function BlueprintEventBindingField(props: CustomFieldProps<UIInspectorDa
                 {rows.map(row => (
                     <span
                         key={row.eventId}
-                        className="rounded border border-edge bg-[#0d0f11] px-2 py-1 text-2xs text-fg"
+                        className="rounded border border-edge bg-surface-sunken px-2 py-1 text-2xs text-fg"
                         title={row.description}
                     >
                         {row.displayName}
@@ -30,7 +30,7 @@ export function BlueprintEventBindingField(props: CustomFieldProps<UIInspectorDa
                 ))}
             </div>
             {rows.some(row => row.legacyGraphEventId && row.legacyGraphEventId !== row.eventId) ? (
-                <p className="text-2xs text-amber-200/90">{t("properties.events.legacy")}</p>
+                <p className="text-2xs text-warning">{t("properties.events.legacy")}</p>
             ) : null}
         </div>
     );

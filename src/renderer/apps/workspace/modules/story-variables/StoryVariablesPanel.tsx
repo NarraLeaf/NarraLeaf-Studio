@@ -98,7 +98,7 @@ function VariableRowEditor(props: {
             />
             <button
                 type="button"
-                className="flex h-7 w-7 items-center justify-center rounded text-fg-subtle hover:bg-fill hover:text-red-300"
+                className="flex h-7 w-7 items-center justify-center rounded text-fg-subtle hover:bg-fill hover:text-danger"
                 onClick={props.onDelete}
                 title={t("storyVars.row.delete")}
             >
@@ -143,7 +143,7 @@ function SectionHeader(props: { title: string; hint: string; onAdd?: () => void 
             {props.onAdd ? (
                 <button
                     type="button"
-                    className="flex h-6 items-center gap-1 rounded border border-edge px-2 text-2xs text-fg-muted hover:border-primary/50 hover:text-white"
+                    className="flex h-6 items-center gap-1 rounded border border-edge px-2 text-2xs text-fg-muted hover:border-primary/50 hover:text-fg"
                     onClick={props.onAdd}
                 >
                     <Plus className="h-3 w-3" /> {t("common.add")}

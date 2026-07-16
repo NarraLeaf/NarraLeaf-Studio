@@ -61,7 +61,7 @@ function CornerIcon({ position }: { position: CornerPosition }) {
 
 const CONTROL_BUTTON_BASE =
   "grid h-9 w-9 place-items-center rounded-lg border border-edge bg-transparent text-fg-muted transition hover:bg-fill-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50";
-const CONTROL_BUTTON_ACTIVE = "bg-fill border-white/40 text-white";
+const CONTROL_BUTTON_ACTIVE = "bg-fill border-edge-strong text-fg";
 
 export function controlButtonClass(active?: boolean) {
   return [CONTROL_BUTTON_BASE, active ? CONTROL_BUTTON_ACTIVE : null].filter(Boolean).join(" ");

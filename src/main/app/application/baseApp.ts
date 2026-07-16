@@ -1,5 +1,5 @@
 // Electron
-import { app, dialog } from "electron/main";
+import { app, dialog, nativeTheme } from "electron/main";
 
 // Utils
 import fs from "fs";
@@ -22,6 +22,7 @@ import { GlobalStateManager } from "./managers/storage/globalState";
 import { PluginPermissionManager } from "./managers/pluginPermissionManager";
 import { PluginManager } from "./managers/pluginManager";
 import { isMainDevMode, parseMainCommandLine } from "./commandLine";
+import { applyThemeMode, getWindowBackgroundColor } from "./theme";
 import { APP_DISPLAY_NAME } from "@shared/constants/app";
 
 export interface AppDependencies {
@@ -318,6 +319,26 @@ export class BaseApp {
         }
 
         await this.electronApp.whenReady();
+
+        // Resolve the persisted theme before any window exists, so the first
+        // window already paints (backgroundColor + prefers-color-scheme) in
+        // the right theme. Keep open windows' paint-behind color in sync when
+        // the effective theme changes later (setting switched, or the OS
+        // flips while in "auto").
+        applyThemeMode(this.globalState.get("ui.themeMode"));
+        nativeTheme.on("updated", () => {
+            const backgroundColor = getWindowBackgroundColor();
+            for (const window of this.windowManager.getWindows()) {
+                if (window.isClosed()) {
+                    continue;
+                }
+                try {
+                    window.win.setBackgroundColor(backgroundColor);
+                } catch (error) {
+                    this.logger.debug(`[Theme] Failed to update a window background: ${String(error)}`);
+                }
+            }
+        });
 
         // Retrieve app info
         this.appInfo = await this.constructAppInfo();

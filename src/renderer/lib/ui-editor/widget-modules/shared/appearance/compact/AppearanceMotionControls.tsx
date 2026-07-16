@@ -205,7 +205,7 @@ export function AppearanceFieldMotionButton({
         ? createPortal(
               <div
                   ref={panelRef}
-                  className="fixed z-[80] w-[280px] rounded-xl border border-edge bg-[#17181c] p-3 shadow-2xl"
+                  className="fixed z-[80] w-[280px] rounded-xl border border-edge bg-surface-raised p-3 shadow-2xl"
                   style={{ left: position.left, top: position.top, maxWidth: "calc(100vw - 16px)" }}
                   onMouseDown={event => event.stopPropagation()}
               >
@@ -220,7 +220,7 @@ export function AppearanceFieldMotionButton({
                           <button
                               type="button"
                               onClick={() => commitTransition(null)}
-                              className="grid h-7 w-7 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted transition hover:bg-red-500/10 hover:text-red-200"
+                              className="grid h-7 w-7 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted transition hover:bg-danger/10 hover:text-danger"
                               title={t("widgetAppearance.motion.clearFieldTitle")}
                           >
                               <Trash2 className="w-3.5 h-3.5" />

@@ -211,7 +211,6 @@ export class MenuManager {
             center: true,
             x: undefined,
             y: undefined,
-            backgroundColor: "#0f1115",
         }).catch((error) => {
             this.app.logger.error("Failed to open preferences:", error);
         });

@@ -85,7 +85,7 @@ export function StoryScenePreviewPane(props: {
                     </div>
                 ))}
                 {controller.stageLayers.length === 0 && controller.phase === "idle" ? (
-                    <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs text-fg-subtle">
+                    <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs text-white/50">
                         {t("story.preview.selectRow")}
                     </div>
                 ) : null}
@@ -93,7 +93,7 @@ export function StoryScenePreviewPane(props: {
                     <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/70 p-4">
                         <div className="max-w-full text-center">
                             <div className="text-xs font-medium text-red-400">{t("story.preview.failed")}</div>
-                            <div className="mt-1 break-words text-2xs text-fg-muted">{controller.errorMessage}</div>
+                            <div className="mt-1 break-words text-2xs text-white/70">{controller.errorMessage}</div>
                         </div>
                     </div>
                 ) : null}
@@ -110,7 +110,7 @@ export function StoryScenePreviewPane(props: {
                     {notes.map((note, index) => (
                         <div
                             key={index}
-                            className={`truncate text-2xs leading-5 ${note.level === "error" ? "text-red-400" : "text-amber-300"}`}
+                            className={`truncate text-2xs leading-5 ${note.level === "error" ? "text-danger" : "text-warning"}`}
                             title={note.message}
                         >
                             {note.message}

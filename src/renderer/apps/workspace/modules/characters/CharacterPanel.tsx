@@ -486,7 +486,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         return (
             <div
                 key={item.id}
-                className={`group flex items-center gap-3 px-3 py-2 cursor-default hover:bg-gray-600/30 border-b border-edge-subtle last:border-b-0 transition-colors ${focusedStyles}`}
+                className={`group flex items-center gap-3 px-3 py-2 cursor-default hover:bg-fill border-b border-edge-subtle last:border-b-0 transition-colors ${focusedStyles}`}
                 data-character-id={item.id}
                 onClick={() => handleCharacterClick(item.source)}
             >
@@ -498,7 +498,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     )}
                 </div>
                 <div className="min-w-0 flex-1">
-                    <div className="text-sm text-white truncate">{item.name}</div>
+                    <div className="text-sm text-fg truncate">{item.name}</div>
                     {item.nicknames.length > 0 && (
                         <div className="text-xs text-fg-subtle truncate">{item.nicknames.join(", ")}</div>
                     )}
@@ -535,7 +535,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     </button>
                     <button
                         onClick={(event) => { event.stopPropagation(); handleCreateGroup(); }}
-                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-edge-strong bg-fill-subtle text-white hover:bg-fill transition-colors"
+                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-edge-strong bg-fill-subtle text-fg hover:bg-fill transition-colors"
                         title={t("characters.panel.addGroup")}
                     >
                         <FolderPlus className="w-4 h-4" />

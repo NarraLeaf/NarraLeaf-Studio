@@ -198,11 +198,11 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
     if (error) {
         return (
             <div className="h-full flex items-center justify-center bg-surface p-4">
-                <div className="flex items-start gap-2 text-red-400 bg-red-500/10 rounded-md p-4 max-w-md">
+                <div className="flex items-start gap-2 text-danger bg-danger/10 rounded-md p-4 max-w-md">
                     <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
                     <div>
                         <p className="font-medium">{t("assets.audio.loadError")}</p>
-                        <p className="text-sm mt-1 text-red-300">{error}</p>
+                        <p className="text-sm mt-1 text-danger/80">{error}</p>
                     </div>
                 </div>
             </div>
@@ -239,7 +239,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
 
                 <button
                     onClick={handlePlayPause}
-                    className="p-2 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors"
+                    className="p-2 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors"
                     title={isPlaying ? t("assets.audio.pause") : t("assets.audio.play")}
                 >
                     {isPlaying ? (
@@ -262,11 +262,11 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     onLoadedMetadata={handleLoadedMetadata}
                     onTimeUpdate={handleTimeUpdate}
                 />
-                <div className="w-full max-w-2xl bg-[#15171c] border border-edge rounded-md px-4 py-3">
+                <div className="w-full max-w-2xl bg-surface-raised border border-edge rounded-md px-4 py-3">
                     <div className="flex items-center gap-3">
                         <button
                             onClick={handlePlayPause}
-                            className="p-2 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors"
+                            className="p-2 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors"
                             title={isPlaying ? t("assets.audio.pause") : t("assets.audio.play")}
                         >
                             {isPlaying ? (
@@ -285,7 +285,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                             step={0.01}
                             value={Math.min(currentTime, duration || 0)}
                             onChange={(event) => handleSeek(Number(event.target.value))}
-                            className="flex-1 h-1 rounded bg-fill accent-white/70"
+                            className="flex-1 h-1 rounded bg-fill accent-fg/70"
                             aria-label={t("assets.audio.seek")}
                         />
                         <span className="text-xs text-fg-muted w-12">
@@ -293,7 +293,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                         </span>
                         <button
                             onClick={toggleMute}
-                            className="p-2 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors"
+                            className="p-2 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors"
                             title={isMuted ? t("assets.audio.unmute") : t("assets.audio.mute")}
                         >
                             {isMuted || volume === 0 ? (
@@ -315,7 +315,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                                     setIsMuted(false);
                                 }
                             }}
-                            className="w-24 h-1 rounded bg-fill accent-white/70"
+                            className="w-24 h-1 rounded bg-fill accent-fg/70"
                             aria-label={t("assets.audio.volume")}
                         />
                     </div>

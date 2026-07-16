@@ -167,8 +167,8 @@ function PaletteDockerBar({
                         type="button"
                         className={`flex h-8 w-full items-center gap-2 px-3 text-left text-xs transition-colors ${
                             isActive
-                                ? "bg-primary/20 text-white"
-                                : "text-fg-muted hover:bg-fill hover:text-white"
+                                ? "bg-primary/20 text-fg"
+                                : "text-fg-muted hover:bg-fill hover:text-fg"
                         }`}
                         title={t("widgetChrome.docker.insert", { name: mod.displayName })}
                         onClick={() => selectType(mod.type)}
@@ -187,8 +187,8 @@ function PaletteDockerBar({
                         type="button"
                         className={`flex h-8 w-full items-center gap-2 px-3 text-left text-xs transition-colors ${
                             componentsActive
-                                ? "bg-primary/20 text-white"
-                                : "text-fg-muted hover:bg-fill hover:text-white"
+                                ? "bg-primary/20 text-fg"
+                                : "text-fg-muted hover:bg-fill hover:text-fg"
                         }`}
                         title={t("widgetChrome.docker.openComponentLibrary")}
                         onClick={() => {
@@ -218,8 +218,8 @@ function PaletteDockerBar({
                         type="button"
                         className={`flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium transition-colors ${
                             isActive
-                                ? "bg-primary/20 text-white border border-primary/40"
-                                : "text-fg-muted hover:bg-fill hover:text-white border border-transparent"
+                                ? "bg-primary/20 text-fg border border-primary/40"
+                                : "text-fg-muted hover:bg-fill hover:text-fg border border-transparent"
                         }`}
                         onClick={() => selectType(mod.type)}
                         onPointerDown={stopPointerPropagation}
@@ -238,8 +238,8 @@ function PaletteDockerBar({
                         type="button"
                         className={`flex h-8 items-center justify-center rounded-md border px-2.5 text-xs font-medium transition-colors ${
                             overflowOpen || overflowActive
-                                ? "border-primary/40 bg-primary/20 text-white"
-                                : "border-transparent text-fg-muted hover:bg-fill hover:text-white"
+                                ? "border-primary/40 bg-primary/20 text-fg"
+                                : "border-transparent text-fg-muted hover:bg-fill hover:text-fg"
                         }`}
                         onClick={() => setOverflowOpen(open => !open)}
                         onPointerDown={stopPointerPropagation}
@@ -276,8 +276,8 @@ function DockerItemRenderer({ item }: { item: DockerBarItem }) {
                     type="button"
                     className={`flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium transition-colors ${
                         item.active
-                            ? "bg-primary/20 text-white border border-primary/40"
-                            : "text-fg-muted hover:bg-fill hover:text-white"
+                            ? "bg-primary/20 text-fg border border-primary/40"
+                            : "text-fg-muted hover:bg-fill hover:text-fg"
                     } ${item.disabled ? "opacity-50 cursor-not-allowed" : ""}`}
                     onClick={item.onClick}
                     disabled={item.disabled}
@@ -696,7 +696,7 @@ function ComponentsLibraryModal({
                         <div className="flex h-14 shrink-0 items-center gap-3 border-b border-edge px-6">
                             <Component className="h-4 w-4 text-fg-muted" />
                             <div className="min-w-0 flex-1">
-                                <div className="text-sm font-semibold text-white">{t("widgetChrome.docker.componentLibrary")}</div>
+                                <div className="text-sm font-semibold text-fg">{t("widgetChrome.docker.componentLibrary")}</div>
                             </div>
                             <div className="relative w-72 max-w-[40vw]">
                                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-subtle" />
@@ -710,7 +710,7 @@ function ComponentsLibraryModal({
                             </div>
                             <button
                                 type="button"
-                                className="grid h-8 w-8 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-white"
+                                className="grid h-8 w-8 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
                                 onClick={onClose}
                                 title={t("common.close")}
                                 aria-label={t("common.close")}

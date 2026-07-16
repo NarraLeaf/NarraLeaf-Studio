@@ -49,7 +49,7 @@ export function ConditionRowToggles({ conditions, disabled, onChange }: Props) {
                             active
                                 ? state === true
                                     ? "border-primary/60 bg-primary/15 text-primary"
-                                    : "border-amber-500/40 bg-amber-500/10 text-amber-200"
+                                    : "border-warning/40 bg-warning/10 text-warning"
                                 : "border-edge bg-fill-subtle text-fg-subtle hover:bg-fill",
                         ].join(" ")}
                     >

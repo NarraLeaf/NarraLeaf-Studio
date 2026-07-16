@@ -134,7 +134,7 @@ export function SurfaceList({
                 >
                     <div className="flex items-start gap-2">
                         <div className="flex-1 min-w-0">
-                            <div className="text-sm font-semibold text-white truncate">{globalBlueprintCard.title}</div>
+                            <div className="text-sm font-semibold text-fg truncate">{globalBlueprintCard.title}</div>
                             <div className="text-2xs text-fg-muted">{globalBlueprintCard.subtitle}</div>
                             <div className="text-2xs text-fg-subtle">{globalBlueprintCard.typeLabel}</div>
                         </div>
@@ -156,7 +156,7 @@ export function SurfaceList({
                     >
                         <div className="flex items-start gap-2">
                             <div className="flex-1 min-w-0">
-                                <div className="text-sm font-semibold text-white truncate">{surface.name}</div>
+                                <div className="text-sm font-semibold text-fg truncate">{surface.name}</div>
                                 <div className="text-2xs text-fg-muted">
                                     {surface.designSize.width}×{surface.designSize.height}
                                 </div>

@@ -102,7 +102,7 @@ export function FontAssetField<TData extends UIInspectorData>({
                     type="button"
                     ref={previewRef}
                     onClick={() => setSelectorOpen(true)}
-                    className="relative mt-1 w-full rounded-xl border border-edge bg-[#13161b] px-3 py-3 text-left focus:outline-none focus:ring-2 focus:ring-primary/70"
+                    className="relative mt-1 w-full rounded-xl border border-edge bg-surface px-3 py-3 text-left focus:outline-none focus:ring-2 focus:ring-primary/70"
                 >
                     <div className="flex items-center gap-2 text-xs text-fg-muted tracking-widest">
                         <Type className="h-3.5 w-3.5 shrink-0" />
@@ -133,7 +133,7 @@ export function FontAssetField<TData extends UIInspectorData>({
             </FieldLayout>
 
             {assetId && fontError ? (
-                <p className="mt-1 text-2xs text-amber-400/90 leading-snug">
+                <p className="mt-1 text-2xs text-warning leading-snug">
                     {t("properties.fontAsset.loadError", { error: fontError })}
                 </p>
             ) : null}

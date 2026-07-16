@@ -15,7 +15,7 @@ export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
                 <div className="text-center mb-12">
                     <div className="flex items-center justify-center gap-3 mb-4">
                         <Sparkles className="w-12 h-12 text-primary" />
-                        <h1 className="text-4xl font-bold text-white">{t("common.appName")}</h1>
+                        <h1 className="text-4xl font-bold text-fg">{t("common.appName")}</h1>
                     </div>
                     <p className="text-lg text-fg-muted">
                         {t("welcome.tagline")}
@@ -24,7 +24,7 @@ export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
 
                 {/* Getting Started */}
                 <div className="bg-surface-sunken rounded-lg p-6 border border-edge">
-                    <h2 className="text-xl font-semibold text-white mb-4">{t("welcome.gettingStarted.title")}</h2>
+                    <h2 className="text-xl font-semibold text-fg mb-4">{t("welcome.gettingStarted.title")}</h2>
                     <div className="space-y-4">
                         <GettingStartedStep
                             number={1}
@@ -73,7 +73,7 @@ function GettingStartedStep({ number, title, description }: GettingStartedStepPr
                 {number}
             </div>
             <div>
-                <h3 className="text-base font-medium text-white mb-1">{title}</h3>
+                <h3 className="text-base font-medium text-fg mb-1">{title}</h3>
                 <p className="text-sm text-fg-muted">{description}</p>
             </div>
         </div>

@@ -293,7 +293,7 @@ export function SettingsExplorer<T>({
                             {isSaving && <Loader2 className="w-3 h-3 text-primary animate-spin" />}
                         </div>
                     </div>
-                    {error && <p className="mt-1 text-xs text-rose-400">{error}</p>}
+                    {error && <p className="mt-1 text-xs text-danger">{error}</p>}
                 </div>
             );
         }
@@ -310,7 +310,7 @@ export function SettingsExplorer<T>({
                         {isSaving && <Loader2 className="w-3 h-3 text-primary animate-spin" />}
                     </div>
                 </div>
-                {error && <p className="mt-1 text-xs text-rose-400">{error}</p>}
+                {error && <p className="mt-1 text-xs text-danger">{error}</p>}
             </div>
         );
     };

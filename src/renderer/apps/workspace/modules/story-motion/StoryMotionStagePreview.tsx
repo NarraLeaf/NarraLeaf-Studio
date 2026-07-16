@@ -88,9 +88,9 @@ export function StoryMotionStagePreview(props: {
                     draggable={false}
                 />
             ) : null}
-            <div className={`${fixedStage ? "absolute inset-0" : "absolute inset-6"} rounded border border-edge bg-[linear-gradient(90deg,rgba(255,255,255,.04)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px)] bg-[length:32px_32px]`} />
+            <div className={`${fixedStage ? "absolute inset-0" : "absolute inset-6"} rounded border border-white/10 bg-[linear-gradient(90deg,rgba(255,255,255,.04)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px)] bg-[length:32px_32px]`} />
             {showLabel ? (
-                <div className={`${fixedStage ? "left-2 top-2" : "left-6 top-6"} absolute rounded border border-edge bg-black/30 px-2 py-1 text-2xs text-fg-muted`}>
+                <div className={`${fixedStage ? "left-2 top-2" : "left-6 top-6"} absolute rounded border border-white/10 bg-black/30 px-2 py-1 text-2xs text-white/70`}>
                     {t("motion.preview.stageLabel")}
                 </div>
             ) : null}
@@ -128,7 +128,7 @@ export function StoryMotionStagePreview(props: {
                             title={t("motion.preview.dragScaleY")}
                         />
                         <div
-                            className="absolute -top-7 left-1/2 grid h-5 w-5 cursor-ew-resize place-items-center rounded-full border border-white/50 bg-[#1b1d22] text-fg"
+                            className="absolute -top-7 left-1/2 grid h-5 w-5 cursor-ew-resize place-items-center rounded-full border border-white/50 bg-[#1b1d22] text-white"
                             style={{ transform: `translateX(-50%) scale(${handleInvX}, ${handleInvY})`, transformOrigin: "center" }}
                             onPointerDown={event => props.onPointerDrag(event, "rotation")}
                             title={t("motion.preview.dragRotate")}

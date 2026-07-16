@@ -94,7 +94,7 @@ function SettingRow({
     onChange: (value: boolean) => void;
 }) {
     return (
-        <section className="flex items-start justify-between gap-3 rounded-md border border-edge bg-white/[0.025] p-3">
+        <section className="flex items-start justify-between gap-3 rounded-md border border-edge bg-fill-subtle p-3">
             <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-sm font-medium text-fg">
                     <span>{title}</span>

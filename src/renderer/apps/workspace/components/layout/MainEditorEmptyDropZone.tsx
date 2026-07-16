@@ -43,7 +43,7 @@ export function MainEditorEmptyDropZone({ groupId }: MainEditorEmptyDropZoneProp
                 </div>
 
                 <div className="space-y-4">
-                    <h1 className="text-4xl font-light text-white/5">NarraLeaf Studio</h1>
+                    <h1 className="text-4xl font-light text-fg/5">NarraLeaf Studio</h1>
                 </div>
             </div>
         </div>

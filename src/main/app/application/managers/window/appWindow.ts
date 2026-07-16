@@ -8,6 +8,7 @@ import { WindowIPC } from "./windowIPC";
 import { WindowProxy } from "./windowProxy";
 import { WindowUserHandlers } from "./windowUserHandlers";
 import { WindowProps, WindowAppType, WindowVisibilityStatus, WindowCloseResults, WindowControlPolicy } from "@shared/types/window";
+import { getWindowBackgroundColor } from "@/app/application/theme";
 import { decideWindowNavigation } from "./navigationGuard";
 
 export interface WindowConfig<T extends WindowAppType> {
@@ -25,9 +26,6 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         isolated: true,
         autoFocus: true,
         preload: null,
-        options: {
-            backgroundColor: "#fff",
-        }
     }
 
     private props: WindowProps[T];
@@ -44,6 +42,13 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         const windowConfig: WindowConfig<T> = {
             ...AppWindow.DefaultConfig,
             ...config,
+            options: {
+                // Paint-behind color for every Studio window, resolved from the
+                // current theme at creation time (kept live afterwards by the
+                // nativeTheme listener in baseApp).
+                backgroundColor: getWindowBackgroundColor(),
+                ...config.options,
+            },
         } as WindowConfig<T>;
 
         const instance = new WindowInstance(windowConfig);

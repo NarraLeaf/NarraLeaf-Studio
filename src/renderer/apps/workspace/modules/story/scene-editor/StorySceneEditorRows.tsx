@@ -113,7 +113,7 @@ export function StoryBlockRow(props: {
             data-story-row-block-id={block.id}
             className={[
                 "group relative grid min-h-[35px] grid-cols-[36px_28px_1fr] items-start border-l-2 pr-3",
-                selected ? "border-primary bg-primary/20" : active ? "border-primary bg-white/[0.035]" : "border-transparent hover:bg-white/[0.025]",
+                selected ? "border-primary bg-primary/20" : active ? "border-primary bg-fill-subtle" : "border-transparent hover:bg-fill-subtle",
             ].join(" ")}
             onClick={props.onSelect}
             onMouseDown={props.onMouseDown}
@@ -360,7 +360,7 @@ function TextEditBox(props: {
     };
 
     return (
-        <div ref={containerRef} className="relative flex min-w-0 flex-1 items-stretch overflow-visible rounded border border-primary/50 bg-black/30">
+        <div ref={containerRef} className="relative flex min-w-0 flex-1 items-stretch overflow-visible rounded border border-primary/50 bg-surface-sunken">
             <RichTextToolbar editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} hasVariables={variableOptions.scene.length + variableOptions.saved.length + variableOptions.persistent.length > 0} />
             {dialoguePayload ? (
                 <CharacterSelectTrigger
@@ -468,11 +468,11 @@ function RailGuides({ depth, highlight }: { depth: number; highlight: boolean })
 }
 
 const CONTAINER_PILL_TONE: Record<StoryContainerHeaderInfo["role"], string> = {
-    condition: "border-[#b2a6c9]/40 bg-[#b2a6c9]/10 text-[#d0c8e0]",
-    branch: "border-[#b2a6c9]/40 bg-[#b2a6c9]/10 text-[#d0c8e0]",
-    group: "border-[#96b8a0]/40 bg-[#96b8a0]/10 text-[#bcd6c2]",
-    menu: "border-[#9bb7d8]/40 bg-[#9bb7d8]/10 text-[#c6d7ee]",
-    option: "border-[#9bb7d8]/40 bg-[#9bb7d8]/10 text-[#c6d7ee]",
+    condition: "border-binding/40 bg-binding/10 text-binding",
+    branch: "border-binding/40 bg-binding/10 text-binding",
+    group: "border-success/40 bg-success/10 text-success",
+    menu: "border-primary/40 bg-primary/10 text-primary",
+    option: "border-primary/40 bg-primary/10 text-primary",
     nvl: "border-edge bg-fill-subtle text-fg-muted",
 };
 
@@ -554,7 +554,7 @@ function ConditionChip(props: {
         <>
             <button
                 type="button"
-                className="min-w-0 max-w-[240px] truncate rounded border border-edge bg-black/20 px-2 py-0.5 text-xs text-fg-muted transition-colors hover:border-primary/50 hover:text-fg"
+                className="min-w-0 max-w-[240px] truncate rounded border border-edge bg-fill-subtle px-2 py-0.5 text-xs text-fg-muted transition-colors hover:border-primary/50 hover:text-fg"
                 onClick={openPopover}
                 onMouseDown={event => event.stopPropagation()}
             >
@@ -599,7 +599,7 @@ function RepeatTimesField(props: { block: StoryBlock; onUpdatePayload: (payload:
                 onChange={event =>
                     props.onUpdatePayload({ ...payload, times: Math.max(0, Math.floor(Number(event.target.value) || 0)) })
                 }
-                className="w-14 rounded border border-edge bg-black/20 px-1.5 py-0.5 text-fg outline-none focus:border-primary/50"
+                className="w-14 rounded border border-edge bg-fill-subtle px-1.5 py-0.5 text-fg outline-none focus:border-primary/50"
             />
             <span>{t("story.repeat.times")}</span>
         </label>
@@ -723,7 +723,7 @@ export function InsertRow(props: {
             <div ref={menuAnchorRef} className="relative py-1.5">
                 <textarea
                     ref={props.inputRef}
-                    className="min-h-[30px] w-full resize-none rounded border border-primary/40 bg-black/30 px-2 py-1 text-fg outline-none placeholder:italic placeholder:text-fg-subtle"
+                    className="min-h-[30px] w-full resize-none rounded border border-primary/40 bg-surface-sunken px-2 py-1 text-fg outline-none placeholder:italic placeholder:text-fg-subtle"
                     style={textStyle}
                     rows={1}
                     value={props.mode.value}
@@ -976,7 +976,7 @@ function ActionCommandMenu(props: {
 
     return (
         <div
-            className={["absolute left-0 z-50 w-[420px] overflow-hidden rounded-xl border border-edge bg-[#181b20] shadow-xl", getPopupPlacementClass(props.placement)].join(" ")}
+            className={["absolute left-0 z-50 w-[420px] overflow-hidden rounded-xl border border-edge bg-surface-raised shadow-xl", getPopupPlacementClass(props.placement)].join(" ")}
             onMouseDown={event => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -1000,7 +1000,7 @@ function ActionCommandMenu(props: {
                                     data-action-category-id={category.id}
                                     className={[
                                         "relative flex h-9 min-w-[74px] flex-none cursor-default items-center justify-center px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
-                                        active ? "bg-[#151922] text-white" : "text-fg-muted hover:bg-fill-subtle hover:text-fg",
+                                        active ? "bg-surface-raised text-fg" : "text-fg-muted hover:bg-fill-subtle hover:text-fg",
                                     ].join(" ")}
                                     onMouseDown={() => props.onSelectCategory(category.id)}
                                 >
@@ -1028,7 +1028,7 @@ function ActionCommandMenu(props: {
                                     data-action-command-id={command.id}
                                     className={[
                                         "flex w-full items-center gap-2 rounded px-2 py-2 text-left transition-colors",
-                                        active ? "bg-primary/15 text-white" : "hover:bg-fill",
+                                        active ? "bg-primary/15 text-fg" : "hover:bg-fill",
                                     ].join(" ")}
                                     onMouseDown={() => props.onChoose(command.id)}
                                     onMouseEnter={() => props.onHighlightCommand(command.id)}
@@ -1105,7 +1105,7 @@ function CharacterPicker(props: {
     return (
         <div
             ref={listRef}
-            className={["absolute left-0 z-50 max-h-72 w-[320px] overflow-auto rounded-xl border border-edge bg-[#181b20] p-1 shadow-xl", getPopupPlacementClass(props.placement)].join(" ")}
+            className={["absolute left-0 z-50 max-h-72 w-[320px] overflow-auto rounded-xl border border-edge bg-surface-raised p-1 shadow-xl", getPopupPlacementClass(props.placement)].join(" ")}
             onMouseDown={event => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -1128,7 +1128,7 @@ function CharacterPicker(props: {
                             data-character-id={characterId}
                             className={[
                                 "flex w-full items-center gap-2 rounded px-2 py-2 text-left transition-colors",
-                                active ? "bg-primary/15 text-white" : "hover:bg-fill",
+                                active ? "bg-primary/15 text-fg" : "hover:bg-fill",
                             ].join(" ")}
                             onMouseEnter={() => props.onHighlight(characterId)}
                             onMouseDown={() => props.onChoose(characterId)}

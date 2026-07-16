@@ -53,7 +53,7 @@ export function ProjectPanelHome({
     const { t } = useTranslation();
     const navItems = useProjectNavItems();
     return (
-        <div className="flex h-full min-h-0 flex-col bg-[#101114] text-fg">
+        <div className="flex h-full min-h-0 flex-col bg-surface text-fg">
             <div className="border-b border-edge p-3">
                 <div className="truncate text-sm font-semibold text-fg">
                     {config?.name?.trim() || t("project.home.untitledProject")}

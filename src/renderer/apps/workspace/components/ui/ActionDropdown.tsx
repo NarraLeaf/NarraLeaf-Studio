@@ -168,7 +168,7 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
                         e.preventDefault();
                     }
                 }}
-                className="h-8 px-2 rounded-md flex items-center gap-2 text-sm transition-colors cursor-default text-fg-muted hover:bg-fill hover:text-white"
+                className="h-8 px-2 rounded-md flex items-center gap-2 text-sm transition-colors cursor-default text-fg-muted hover:bg-fill hover:text-fg"
                 title={String(groupLabel)}
                 aria-label={String(groupLabel)}
                 aria-expanded={isOpen}
@@ -190,7 +190,7 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
                     {/* Root menu */}
                     <div
                         ref={rootMenuRef}
-                        className="absolute top-full left-0 mt-1 z-20 min-w-64 bg-[#1a1a1a] border border-edge-strong rounded-md shadow-lg py-1"
+                        className="absolute top-full left-0 mt-1 z-20 min-w-64 bg-surface-overlay border border-edge-strong rounded-md shadow-lg py-1"
                         role="menu"
                         aria-label={groupLabel}
                         tabIndex={0}
@@ -341,7 +341,7 @@ function MenuLevel(props: MenuLevelProps) {
                     return (
                         <div key={item.id}
                             className={`w-full px-3 py-2 text-sm flex items-center justify-between cursor-default ${
-                                isDisabled ? "text-fg-subtle cursor-not-allowed" : isFocused ? "bg-fill text-white" : "text-fg-muted hover:bg-fill hover:text-white"
+                                isDisabled ? "text-fg-subtle cursor-not-allowed" : isFocused ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg"
                             }`}
                             role="menuitem"
                             aria-disabled={isDisabled || undefined}
@@ -382,14 +382,14 @@ function MenuLevel(props: MenuLevelProps) {
                                 ) : null}
                                 {isActionMenuAction(item) ? (
                                     item.badge ? (
-                                        <span className="bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{item.badge}</span>
+                                        <span className="bg-danger text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{item.badge}</span>
                                     ) : null
                                 ) : (
                                     <ChevronRight className="w-3 h-3 opacity-80" />
                                 )}
                             </span>
                             {!isActionMenuAction(item) && isOpened && (
-                                <div className="absolute top-0 left-full ml-1 z-20 min-w-56 bg-[#1a1a1a] border border-edge-strong rounded-md shadow-lg py-1">
+                                <div className="absolute top-0 left-full ml-1 z-20 min-w-56 bg-surface-overlay border border-edge-strong rounded-md shadow-lg py-1">
                                     <MenuLevel
                                         level={level + 1}
                                         items={getVisibleActionMenuItems(item.items, focusContext)}

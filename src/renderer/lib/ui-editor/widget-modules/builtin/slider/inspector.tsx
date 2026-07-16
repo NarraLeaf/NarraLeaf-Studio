@@ -118,7 +118,7 @@ function OrientationButton({
             type="button"
             className={`flex h-8 w-8 items-center justify-center border text-fg transition first:rounded-l-md last:rounded-r-md ${
                 active
-                    ? "border-cyan-500/50 bg-cyan-500/20 text-cyan-100"
+                    ? "border-primary/50 bg-primary/15 text-fg"
                     : "border-edge bg-fill-subtle hover:bg-fill"
             }`}
             title={label}

@@ -54,7 +54,7 @@ export function SurfaceOutlinePanel({
         return null;
     }
 
-    const panelClasses = `absolute inset-y-0 left-0 z-10 w-64 border-r border-edge-subtle bg-[#080a0e] transition-transform duration-200 ease-out ${
+    const panelClasses = `absolute inset-y-0 left-0 z-10 w-64 border-r border-edge-subtle bg-surface-sunken transition-transform duration-200 ease-out ${
         isCollapsed ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100 pointer-events-auto"
     }`;
 
@@ -67,7 +67,7 @@ export function SurfaceOutlinePanel({
                     <span>{t("uiEditor.editor.outlineTitle")}</span>
                     <button
                         type="button"
-                        className="text-fg-muted hover:text-white transition-colors"
+                        className="text-fg-muted hover:text-fg transition-colors"
                         onClick={toggleCollapsed}
                         title={isCollapsed ? t("uiEditor.editor.expandOutline") : t("uiEditor.editor.collapseOutline")}
                     >
@@ -95,7 +95,7 @@ export function SurfaceOutlinePanel({
             {isCollapsed && (
                 <button
                     type="button"
-                    className="absolute left-3 top-3 z-20 h-10 w-10 flex items-center justify-center rounded-full border border-edge-strong bg-surface-canvas/80 text-fg-muted hover:text-white focus:outline-none"
+                    className="absolute left-3 top-3 z-20 h-10 w-10 flex items-center justify-center rounded-full border border-edge-strong bg-surface-canvas/80 text-fg-muted hover:text-fg focus:outline-none"
                     onClick={() => setCollapsed(false)}
                     title={t("uiEditor.editor.expandOutline")}
                 >
