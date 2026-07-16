@@ -49,6 +49,7 @@ export type DevModeBlueprintDebugEventPayload = {
 
 export type DevModeCharacterSummary = {
     id: string;
+    /** Author-facing display name. Empty when the character is unnamed — never falls back to `id`, which is a UUID. */
     name: string;
     defaultForm?: string | null;
     forms?: DevModeCharacterFormSummary[];
