@@ -69,7 +69,7 @@ function Thumb(props: { assetId: string | null; className?: string; alt?: string
     const { url } = useAssetObjectUrl(props.assetId);
     if (!url) {
         return (
-            <div className={["grid place-items-center rounded bg-black/30 text-fg-subtle", props.className ?? ""].join(" ")}>
+            <div className={["grid place-items-center rounded bg-fill-subtle text-fg-subtle", props.className ?? ""].join(" ")}>
                 <ImageOff className="h-4 w-4" />
             </div>
         );
@@ -136,11 +136,11 @@ export function CharacterAppearancePicker(props: {
     };
 
     if (forms.length === 0) {
-        return <div className="rounded-md border border-dashed border-edge bg-black/10 p-3 text-xs text-fg-subtle">{t("story.appearance.noForms")}</div>;
+        return <div className="rounded-md border border-dashed border-edge bg-fill-subtle p-3 text-xs text-fg-subtle">{t("story.appearance.noForms")}</div>;
     }
 
     return (
-        <div ref={scrollRef} className="flex gap-3 overflow-x-auto rounded-lg border border-edge bg-black/20 p-2">
+        <div ref={scrollRef} className="flex gap-3 overflow-x-auto rounded-lg border border-edge bg-fill-subtle p-2">
             <div className={COLUMN}>
                 <div className="px-1 text-2xs font-medium tracking-wide text-fg-subtle">{t("story.appearance.form")}</div>
                 {forms.map(form => {

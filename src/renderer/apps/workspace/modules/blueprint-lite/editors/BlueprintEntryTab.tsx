@@ -405,14 +405,14 @@ function ElementLiteralSurfacePreview({
 
     if (!rendered) {
         return (
-            <div className="flex h-[72px] w-full items-center justify-center rounded-sm bg-[#0d1117] text-2xs text-fg-subtle">
+            <div className="flex h-[72px] w-full items-center justify-center rounded-sm bg-surface-sunken text-2xs text-fg-subtle">
                 {t("blueprint.canvas.previewUnavailable")}
             </div>
         );
     }
 
     return (
-        <div className="relative flex h-[72px] w-full items-center justify-center overflow-hidden rounded-sm bg-[#0d1117]">
+        <div className="relative flex h-[72px] w-full items-center justify-center overflow-hidden rounded-sm bg-surface-sunken">
             <div
                 className="relative overflow-hidden rounded-[3px] border border-edge shadow-sm"
                 style={{
@@ -460,7 +460,7 @@ export function BlueprintEntryTab(props: EditorComponentProps<BlueprintEntryTabP
     const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
     if (!localBp.getBlueprintDocument().blueprints[props.payload.blueprintId]) {
         return (
-            <div className="flex h-full items-center justify-center p-6 text-sm text-amber-400">
+            <div className="flex h-full items-center justify-center p-6 text-sm text-warning">
                 {t("blueprint.tab.notFound", { id: props.payload.blueprintId })}
             </div>
         );
@@ -736,9 +736,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
 
     const blueprintKeybindings = useMemo(
         () => [
+            // `mod` resolves to ⌘/Ctrl per platform, replacing the ctrl/meta twin
+            // registrations this list used to carry.
             {
-                id: "undo-ctrl",
-                key: "ctrl+z",
+                id: "undo",
+                key: "mod+z",
                 handler: () => {
                     if (!isTypingInField()) {
                         localBp.undoBlueprint(payload.blueprintId);
@@ -746,8 +748,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 },
             },
             {
-                id: "redo-ctrl",
-                key: "ctrl+shift+z",
+                id: "redo",
+                key: "mod+shift+z",
                 handler: () => {
                     if (!isTypingInField()) {
                         localBp.redoBlueprint(payload.blueprintId);
@@ -755,51 +757,18 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 },
             },
             {
-                id: "copy-ctrl",
-                key: "ctrl+c",
+                id: "copy",
+                key: "mod+c",
                 handler: copySelectedGraphNodes,
             },
             {
-                id: "cut-ctrl",
-                key: "ctrl+x",
+                id: "cut",
+                key: "mod+x",
                 handler: cutSelectedGraphNodes,
             },
             {
-                id: "paste-ctrl",
-                key: "ctrl+v",
-                handler: pasteGraphNodes,
-            },
-            {
-                id: "undo-meta",
-                key: "meta+z",
-                handler: () => {
-                    if (!isTypingInField()) {
-                        localBp.undoBlueprint(payload.blueprintId);
-                    }
-                },
-            },
-            {
-                id: "redo-meta",
-                key: "meta+shift+z",
-                handler: () => {
-                    if (!isTypingInField()) {
-                        localBp.redoBlueprint(payload.blueprintId);
-                    }
-                },
-            },
-            {
-                id: "copy-meta",
-                key: "meta+c",
-                handler: copySelectedGraphNodes,
-            },
-            {
-                id: "cut-meta",
-                key: "meta+x",
-                handler: cutSelectedGraphNodes,
-            },
-            {
-                id: "paste-meta",
-                key: "meta+v",
+                id: "paste",
+                key: "mod+v",
                 handler: pasteGraphNodes,
             },
         ],
@@ -1573,7 +1542,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                             className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5"
                             title={contextTitle}
                         >
-                            <span className="text-sm font-semibold text-white">TypeScript</span>
+                            <span className="text-sm font-semibold text-fg">TypeScript</span>
                             <BlueprintFrontendBadge kind="typescript" />
                             <span className="truncate font-mono text-2xs text-fg-muted">{bp.name}</span>
                         </div>
@@ -1596,7 +1565,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
 
     const header = (
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5" title={contextTitle}>
-            <span className="text-sm font-semibold text-white">{t("blueprint.header.title")}</span>
+            <span className="text-sm font-semibold text-fg">{t("blueprint.header.title")}</span>
             <span className="truncate font-mono text-2xs text-fg-muted">{bp.name}</span>
         </div>
     );
@@ -1641,7 +1610,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 px-4 py-8">
                 <button
                     type="button"
-                    className="rounded-md border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-100 hover:bg-cyan-500/20"
+                    className="rounded-md border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20"
                     onClick={onAddEvent}
                 >
                     {t("blueprint.canvas.addLayer")}

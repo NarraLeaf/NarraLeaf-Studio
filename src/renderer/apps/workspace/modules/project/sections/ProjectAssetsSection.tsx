@@ -229,7 +229,7 @@ function ProjectIconCard({
         : null;
 
     return (
-        <section className="rounded-md border border-edge bg-white/[0.025] p-3">
+        <section className="rounded-md border border-edge bg-fill-subtle p-3">
             <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
                     <PlatformIcon className="h-4 w-4 shrink-0 text-fg-muted" />
@@ -251,7 +251,7 @@ function ProjectIconCard({
             </div>
 
             <div className="mt-3 flex min-w-0 gap-3">
-                <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-md border border-edge bg-[#17181c]">
+                <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-md border border-edge bg-surface-raised">
                     {state.preview ? (
                         <img src={state.preview.url} alt={t("project.assets.iconAlt", { platform: option.label })} className="max-h-full max-w-full object-contain" />
                     ) : busy ? (
@@ -263,7 +263,7 @@ function ProjectIconCard({
                 <div className="min-w-0 flex-1 self-center">
                     <div className="flex min-w-0 items-center gap-1.5">
                         {state.status === "error" ? (
-                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-400" />
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-danger" />
                         ) : state.icon ? (
                             <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-primary" />
                         ) : (

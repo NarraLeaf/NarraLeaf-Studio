@@ -42,6 +42,19 @@ export const settings = {
             label: "Language",
             description: "Display language for the Studio interface.",
         },
+        themeMode: {
+            label: "Theme",
+            description: "Color theme for the Studio interface. \"Follow system\" switches with the operating system.",
+            options: {
+                auto: "Follow system",
+                light: "Light",
+                dark: "Dark",
+            },
+        },
+        zoomPercent: {
+            label: "Interface zoom",
+            description: "Zoom level of the Studio interface ({min}%-{max}%).",
+        },
         editorFontSize: {
             label: "Story editor font size",
             description:

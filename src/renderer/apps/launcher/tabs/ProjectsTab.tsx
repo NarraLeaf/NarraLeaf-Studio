@@ -169,7 +169,7 @@ export function ProjectsTab() {
             </div>
 
             {operationError && (
-                <div className="mb-4 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                <div className="mb-4 rounded-md border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger">
                     {operationError}
                 </div>
             )}
@@ -221,7 +221,7 @@ export function ProjectsTab() {
                                         e.stopPropagation();
                                         void handleRemoveRecentProject(project);
                                     }}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-fg-muted opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 transition-opacity cursor-default"
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-fg-muted opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-edge-strong transition-opacity cursor-default"
                                     title={t("launcher.projects.removeFromRecent")}
                                     aria-label={t("launcher.projects.removeNamedFromRecent", { name: project.name })}
                                 >

@@ -198,6 +198,8 @@ export function WorkspaceEditorQuickSwitch() {
 
     useKeybinding({
         id: "workspace-editor-quick-switch-next",
+        // Deliberately ctrl, NOT mod: tab-switching is Ctrl+Tab on macOS too
+        // (⌘+Tab belongs to the OS app switcher).
         key: "ctrl+tab",
         description: "Switch to previous editor tab",
         handler: () => moveSelection(1),
@@ -266,7 +268,7 @@ export function WorkspaceEditorQuickSwitch() {
     return (
         <div className="nl-window-content-layer z-[45] flex items-start justify-center pt-[12vh] pointer-events-none">
             <div
-                className="w-[min(560px,calc(100vw-32px))] max-h-[min(480px,70vh)] overflow-hidden rounded-md border border-edge bg-[#171a21]/95 shadow-2xl backdrop-blur-sm pointer-events-auto"
+                className="w-[min(560px,calc(100vw-32px))] max-h-[min(480px,70vh)] overflow-hidden rounded-md border border-edge bg-surface-raised/95 shadow-2xl backdrop-blur-sm pointer-events-auto"
                 role="listbox"
                 aria-label={t("workspace.shell.editorTabsLabel")}
             >
@@ -293,8 +295,8 @@ export function WorkspaceEditorQuickSwitch() {
                                 onClick={() => commitCandidate(candidate)}
                                 className={`flex h-10 w-full items-center gap-3 px-3 text-left transition-colors ${
                                     selected
-                                        ? "bg-primary/20 text-white"
-                                        : "text-fg-muted hover:bg-fill-subtle hover:text-white"
+                                        ? "bg-primary/20 text-fg"
+                                        : "text-fg-muted hover:bg-fill-subtle hover:text-fg"
                                 }`}
                             >
                                 <span className="flex h-4 w-4 shrink-0 items-center justify-center text-fg-muted">

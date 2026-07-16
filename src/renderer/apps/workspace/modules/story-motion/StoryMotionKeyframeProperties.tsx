@@ -293,7 +293,7 @@ function createStoryMotionKeyframeSchema(
                     <SurfaceEditorToolbarButtonGroup aria-label={t("motion.keyframe.keyframeActions")} className="w-full">
                         <SurfaceEditorToolbarSegButton
                             type="button"
-                            className="!w-auto flex-1 gap-2 px-3 !text-fg-muted hover:!bg-red-500/10 hover:!text-red-100 focus-visible:!ring-red-400/40"
+                            className="!w-auto flex-1 gap-2 px-3 !text-fg-muted hover:!bg-danger/10 hover:!text-danger focus-visible:!ring-danger/40"
                             onClick={() => deleteKeyframe(data)}
                             title={t("motion.keyframe.deleteKeyframe")}
                         >
@@ -409,13 +409,13 @@ function StoryMotionBezierEditor(props: { easing: string; onChange: (easing: str
             <svg
                 ref={svgRef}
                 viewBox={`0 0 ${BEZIER_VIEW_SIZE} ${BEZIER_VIEW_SIZE}`}
-                className="w-full touch-none rounded border border-edge bg-black/20"
+                className="w-full touch-none rounded border border-edge bg-fill-subtle"
             >
-                <rect x={0} y={toY(1)} width={BEZIER_VIEW_SIZE} height={toY(0) - toY(1)} fill="rgba(255,255,255,0.03)" />
-                <line x1={0} y1={toY(0)} x2={BEZIER_VIEW_SIZE} y2={toY(0)} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
-                <line x1={0} y1={toY(1)} x2={BEZIER_VIEW_SIZE} y2={toY(1)} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
-                <line x1={toX(0)} y1={toY(0)} x2={toX(points[0])} y2={toY(points[1])} stroke="rgba(148,163,184,0.5)" strokeWidth={1} />
-                <line x1={toX(1)} y1={toY(1)} x2={toX(points[2])} y2={toY(points[3])} stroke="rgba(148,163,184,0.5)" strokeWidth={1} />
+                <rect x={0} y={toY(1)} width={BEZIER_VIEW_SIZE} height={toY(0) - toY(1)} style={{ fill: "var(--nl-fill-subtle)" }} />
+                <line x1={0} y1={toY(0)} x2={BEZIER_VIEW_SIZE} y2={toY(0)} style={{ stroke: "var(--nl-edge)" }} strokeWidth={1} />
+                <line x1={0} y1={toY(1)} x2={BEZIER_VIEW_SIZE} y2={toY(1)} style={{ stroke: "var(--nl-edge)" }} strokeWidth={1} />
+                <line x1={toX(0)} y1={toY(0)} x2={toX(points[0])} y2={toY(points[1])} style={{ stroke: "rgb(var(--nl-fg-muted) / 0.5)" }} strokeWidth={1} />
+                <line x1={toX(1)} y1={toY(1)} x2={toX(points[2])} y2={toY(points[3])} style={{ stroke: "rgb(var(--nl-fg-muted) / 0.5)" }} strokeWidth={1} />
                 <path
                     d={`M ${toX(0)} ${toY(0)} C ${toX(points[0])} ${toY(points[1])}, ${toX(points[2])} ${toY(points[3])}, ${toX(1)} ${toY(1)}`}
                     fill="none"
@@ -427,7 +427,7 @@ function StoryMotionBezierEditor(props: { easing: string; onChange: (easing: str
                     cy={toY(points[1])}
                     r={5}
                     fill="#1f9eff"
-                    stroke="rgba(255,255,255,0.8)"
+                    style={{ stroke: "rgb(var(--nl-fg) / 0.8)" }}
                     className="cursor-grab"
                     onPointerDown={event => startHandleDrag(event, 0)}
                 />
@@ -436,7 +436,7 @@ function StoryMotionBezierEditor(props: { easing: string; onChange: (easing: str
                     cy={toY(points[3])}
                     r={5}
                     fill="#1f9eff"
-                    stroke="rgba(255,255,255,0.8)"
+                    style={{ stroke: "rgb(var(--nl-fg) / 0.8)" }}
                     className="cursor-grab"
                     onPointerDown={event => startHandleDrag(event, 1)}
                 />

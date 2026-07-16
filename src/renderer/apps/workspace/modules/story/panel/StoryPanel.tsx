@@ -491,7 +491,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                     return (
                                         <div
                                             key={entry.id}
-                                            className={`group/story flex cursor-default items-center gap-2 px-3 py-1.5 hover:bg-gray-600/30 ${
+                                            className={`group/story flex cursor-default items-center gap-2 px-3 py-1.5 hover:bg-fill ${
                                                 selected ? "border-l-2 border-primary bg-primary/20" : ""
                                             }`}
                                             onClick={() => setSelectedStoryId(entry.id)}
@@ -505,7 +505,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                             <span className="min-w-0 flex-1 truncate text-sm text-fg">{entry.name}</span>
                                             <button
                                                 type="button"
-                                                className="rounded p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-white group-hover/story:opacity-100"
+                                                className="rounded p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover/story:opacity-100"
                                                 title={t("story.panel.storyActions")}
                                                 onClick={event => handleOpenStoryMenu(event, entry)}
                                             >
@@ -586,7 +586,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                     return (
                                                         <div
                                                             key={scene.id}
-                                                            className="group/scene flex cursor-default items-center gap-2 px-3 py-1.5 hover:bg-gray-600/30"
+                                                            className="group/scene flex cursor-default items-center gap-2 px-3 py-1.5 hover:bg-fill"
                                                             style={{ paddingLeft: "44px" }}
                                                             onClick={() => handleOpenScene(scene.id, scene.name)}
                                                             onContextMenu={event => handleOpenSceneMenu(event, scene)}
@@ -604,7 +604,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                             </div>
                                                             <button
                                                                 type="button"
-                                                                className="rounded p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-white group-hover/scene:opacity-100"
+                                                                className="rounded p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover/scene:opacity-100"
                                                                 title={t("story.panel.sceneActions")}
                                                                 onClick={event => handleOpenSceneMenu(event, scene)}
                                                             >

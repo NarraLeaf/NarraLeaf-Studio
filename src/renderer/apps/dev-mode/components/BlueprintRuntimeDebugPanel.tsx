@@ -179,7 +179,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         [projectPath, t],
     );
 
-    const rootClass = ["flex h-full min-h-0 shrink-0 flex-col border-l border-edge bg-[#0d0f11] text-2xs text-fg-muted", className]
+    const rootClass = ["flex h-full min-h-0 shrink-0 flex-col border-l border-edge bg-surface-sunken text-2xs text-fg-muted", className]
         .filter(Boolean)
         .join(" ");
 
@@ -202,7 +202,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                             role="tab"
                             aria-selected={active}
                             className={`relative h-9 flex-1 cursor-default px-2 text-xs transition-colors ${
-                                active ? "bg-[#12151c] text-white" : "text-fg-muted hover:bg-surface hover:text-white"
+                                active ? "bg-surface text-fg" : "text-fg-muted hover:bg-surface hover:text-fg"
                             }`}
                             onClick={() => setTab(id)}
                         >
@@ -221,7 +221,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden font-mono leading-snug">
                 {tab === "blueprints" ? (
                     <div className="min-h-0 flex-1 overflow-auto p-2">
-                        {studioHint ? <p className="mb-2 text-2xs text-amber-400/90">{studioHint}</p> : null}
+                        {studioHint ? <p className="mb-2 text-2xs text-warning/90">{studioHint}</p> : null}
                         {blueprintsList.length === 0 ? (
                             <p className="text-2xs text-fg-subtle">{t("devMode.blueprints.empty")}</p>
                         ) : (
@@ -292,7 +292,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                                 {logLevelMenuOpen ? (
                                     <div
                                         role="menu"
-                                        className="absolute left-0 top-full z-20 mt-1 w-32 rounded border border-edge bg-[#11141b] p-1 shadow-xl"
+                                        className="absolute left-0 top-full z-20 mt-1 w-32 rounded border border-edge bg-surface-overlay p-1 shadow-xl"
                                     >
                                         {OUTPUT_LOG_LEVELS.map(level => (
                                             <label
@@ -538,11 +538,11 @@ export function filterBlueprintDebugEventsByLogLevel(
 function outputLogLevelClassName(level: BlueprintOutputLogLevel): string {
     switch (level) {
         case "error":
-            return "text-rose-300/90";
+            return "text-danger/90";
         case "warning":
-            return "text-amber-300/90";
+            return "text-warning/90";
         case "log":
-            return "text-cyan-400/90";
+            return "text-primary/90";
         case "verbose":
             return "text-fg-subtle";
         default:

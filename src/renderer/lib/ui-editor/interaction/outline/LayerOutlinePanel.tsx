@@ -450,7 +450,7 @@ export function UILayersPanel({
         <div className="space-y-2 px-2 py-2" onContextMenu={openBlankContextMenu}>
             <div className="text-xs tracking-wide text-fg-muted">{t("widgetChrome.outline.title")}</div>
             {isLinkedTree ? (
-                <div className="text-2xs leading-snug text-amber-400/90 px-0.5">
+                <div className="text-2xs leading-snug text-warning px-0.5">
                     {t("widgetChrome.outline.linkedSurfaceHint")}
                 </div>
             ) : null}

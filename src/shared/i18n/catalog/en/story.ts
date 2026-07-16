@@ -113,6 +113,7 @@ export const story = {
         placeholderText: "Text…",
         dragRow: "Drag row",
         insert: "Insert",
+        delete: "Delete",
         insertPlaceholder: "Type narration, / for actions, # for characters…",
         noCategoryActionFound: "No {category} action found.",
         actionTypes: "Action types",
