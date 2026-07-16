@@ -31,6 +31,10 @@ const BUILDER_TARGET_NAMES: Record<GameBuildFormat, string> = {
     nsis: "nsis",
     dmg: "dmg",
     appimage: "AppImage",
+    // The mobile formats never reach electron-builder (desktop worker targets
+    // are typed GameBuildDesktopPlatform); listed to keep the map total.
+    apk: "apk",
+    ipa: "ipa",
 };
 
 const BUILDER_ARCHS: Record<GameBuildArch, Arch> = {
