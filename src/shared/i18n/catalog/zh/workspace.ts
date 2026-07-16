@@ -85,6 +85,13 @@ export const workspace = {
         noActiveEditor: "没有活动的编辑器",
         closePanel: "关闭面板",
         closeTab: "关闭 {name}",
+        tabMenu: {
+            close: "关闭",
+            closeOthers: "关闭其他",
+            closeToRight: "关闭右侧标签",
+            closeAll: "全部关闭",
+            reopenClosed: "重新打开关闭的标签",
+        },
         toggleLeftSidebar: "切换左侧边栏",
         toggleRightSidebar: "切换右侧边栏",
         toggleBottomPanel: "切换底部面板",
