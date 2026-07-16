@@ -50,6 +50,23 @@ describe("normalizeBuildConfiguration", () => {
         });
     });
 
+    it("drops stored mobile platforms until the dialog offers them", () => {
+        // ALL_BUILD_PLATFORMS deliberately excludes android/ios while the
+        // mobile pipeline lands worker-first; the UI batch flips this along
+        // with DIALOG_PLATFORMS. Until then a stored mobile selection (from a
+        // newer Studio or a hand-edited state) must not resurface targets the
+        // pipeline rejects.
+        expect(normalizeBuildConfiguration({
+            platforms: ["android"],
+            formats: { android: ["apk"] },
+        })).toBeNull();
+        const mixed = normalizeBuildConfiguration({
+            platforms: ["android", "web"],
+            formats: { android: ["apk"], web: ["zip"] },
+        });
+        expect(mixed?.platforms).toEqual(["web"]);
+    });
+
     it("returns null when every selected platform loses all its formats", () => {
         expect(normalizeBuildConfiguration({ platforms: ["macos"], formats: { macos: ["nsis"] } })).toBeNull();
     });

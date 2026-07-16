@@ -1,10 +1,19 @@
 import path from "path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
 import {
     deriveGameAppId,
+    GameBuildManager,
     gameFusesForPlatform,
+    isDesktopTarget,
     resolveElectronDistDirForApp,
 } from "./GameBuildManager";
+
+// The fail-fast tests below reach run()'s console emission before throwing;
+// keep it away from the window plumbing.
+vi.mock("../../utils/workspaceConsole", () => ({
+    emitWorkspaceConsoleLog: () => undefined,
+}));
 
 describe("deriveGameAppId", () => {
     it("uses a reverse-domain identifier verbatim", () => {
@@ -21,6 +30,53 @@ describe("deriveGameAppId", () => {
 
     it("keeps a safe trailing segment for punctuation-only names", () => {
         expect(deriveGameAppId("***", "***")).toBe("com.narraleaf.games.project");
+    });
+});
+
+describe("isDesktopTarget", () => {
+    it("claims desktop platforms only — not web, not mobile", () => {
+        // Type-predicate bodies are unchecked by TypeScript; this pins the
+        // classification so a revert to `platform !== "web"` fails a test
+        // instead of silently routing mobile targets into electron-builder.
+        const formats = { formats: [] };
+        expect(isDesktopTarget({ platform: "windows", ...formats })).toBe(true);
+        expect(isDesktopTarget({ platform: "macos", ...formats })).toBe(true);
+        expect(isDesktopTarget({ platform: "linux", ...formats })).toBe(true);
+        expect(isDesktopTarget({ platform: "web", ...formats })).toBe(false);
+        expect(isDesktopTarget({ platform: "android", ...formats })).toBe(false);
+        expect(isDesktopTarget({ platform: "ios", ...formats })).toBe(false);
+    });
+});
+
+describe("GameBuildManager.start fail-fast guards", () => {
+    const makeManager = () => new GameBuildManager({
+        logger: { error: () => undefined },
+    } as unknown as ConstructorParameters<typeof GameBuildManager>[0]);
+    const entry = {} as GameRuntimeLaunchEntry;
+
+    it("fails a mobile-target build instead of silently ignoring it", async () => {
+        const manager = makeManager();
+        const projectPath = path.join("/nonexistent", "mobile-guard-project");
+        manager.start(projectPath, entry, { targets: [{ platform: "android", formats: ["apk"] }] });
+        await vi.waitFor(() => {
+            expect(manager.getStatus(projectPath).status).toBe("error");
+        });
+        expect(manager.getStatus(projectPath).error).toContain("android");
+    });
+
+    it("fails loudly for a platform outside the union", async () => {
+        // Regression: with the explicit desktop/mobile/web partitions, an
+        // unknown platform matches none of them — without this guard the
+        // build would end "done" with zero artifacts.
+        const manager = makeManager();
+        const projectPath = path.join("/nonexistent", "unknown-platform-project");
+        manager.start(projectPath, entry, {
+            targets: [{ platform: "banana" as never, formats: ["zip"] }],
+        });
+        await vi.waitFor(() => {
+            expect(manager.getStatus(projectPath).status).toBe("error");
+        });
+        expect(manager.getStatus(projectPath).error).toContain("banana");
     });
 });
 

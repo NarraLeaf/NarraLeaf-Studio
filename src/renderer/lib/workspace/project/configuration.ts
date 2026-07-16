@@ -1,6 +1,7 @@
 import type { LocalizationConfiguration } from "@shared/types/localization";
 import {
     GAME_BUILD_FORMATS_BY_PLATFORM,
+    isDesktopBuildPlatform,
     normalizeGameBuildArch,
     type GameBuildArch,
     type GameBuildCompression,
@@ -164,7 +165,8 @@ export function normalizeBuildConfiguration(value: unknown): BuildConfiguration 
         : {};
     const archs: Partial<Record<GameBuildDesktopPlatform, GameBuildArch>> = {};
     for (const platform of platforms) {
-        if (platform === "web") {
+        // Only desktop platforms carry an arch; web and mobile have none.
+        if (!isDesktopBuildPlatform(platform)) {
             continue;
         }
         const stored = rawArchs[platform];

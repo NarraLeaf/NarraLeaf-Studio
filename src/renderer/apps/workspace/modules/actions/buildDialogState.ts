@@ -1,6 +1,7 @@
 import {
     defaultGameBuildArch,
     hostCanBuildTarget,
+    isDesktopBuildPlatform,
     normalizeGameBuildArch,
     type GameBuildArch,
     type GameBuildCompression,
@@ -33,6 +34,10 @@ export const OFFERED_FORMATS: Record<GameBuildPlatform, GameBuildFormat[]> = {
     macos: ["zip", "dmg", "dir"],
     linux: ["zip", "appimage", "dir"],
     web: ["zip", "dir"],
+    // Not in DIALOG_PLATFORMS yet — the mobile pipeline lands worker-first;
+    // the UI batch adds them there once the repack path exists end to end.
+    android: ["apk"],
+    ios: ["ipa"],
 };
 
 /** Formats a platform switches on with — the installer plus the portable archive. */
@@ -41,6 +46,8 @@ const DEFAULT_FORMATS: Record<GameBuildPlatform, GameBuildFormat[]> = {
     macos: ["zip", "dmg"],
     linux: ["zip", "appimage"],
     web: ["zip"],
+    android: ["apk"],
+    ios: ["ipa"],
 };
 
 export type BuildDialogState = {
@@ -52,8 +59,18 @@ export type BuildDialogState = {
     openWhenDone: boolean;
 };
 
+/**
+ * Every platform key, so `BuildDialogState.formats` is genuinely total: the
+ * dialog renders only DIALOG_PLATFORMS, but code trusting the Record type may
+ * index any platform — seeding all keys keeps the type honest.
+ */
+const ALL_PLATFORMS = Object.keys(OFFERED_FORMATS) as GameBuildPlatform[];
+
 export function isDesktopPlatform(platform: GameBuildPlatform): platform is GameBuildDesktopPlatform {
-    return platform !== "web";
+    // Delegates to the shared exhaustive test: `platform !== "web"` silently
+    // classified the mobile platforms as desktop (arch selects and all) the
+    // moment the union grew — a predicate body TypeScript never checks.
+    return isDesktopBuildPlatform(platform);
 }
 
 /**
@@ -66,7 +83,7 @@ export function initialDialogState(
     hostArch: string,
 ): BuildDialogState {
     const formats = {} as Record<GameBuildPlatform, Set<GameBuildFormat>>;
-    for (const platform of DIALOG_PLATFORMS) {
+    for (const platform of ALL_PLATFORMS) {
         // A platform this host cannot build never starts selected, so the
         // committed selection can never contain an impossible target.
         if (!hostCanBuildTarget(hostPlatform, platform)) {
@@ -147,7 +164,7 @@ export function stateFromRequest(
     hostArch: string,
 ): BuildDialogState {
     const formats = {} as Record<GameBuildPlatform, Set<GameBuildFormat>>;
-    for (const platform of DIALOG_PLATFORMS) {
+    for (const platform of ALL_PLATFORMS) {
         formats[platform] = new Set();
     }
     const archs = {} as Record<GameBuildDesktopPlatform, GameBuildArch>;
