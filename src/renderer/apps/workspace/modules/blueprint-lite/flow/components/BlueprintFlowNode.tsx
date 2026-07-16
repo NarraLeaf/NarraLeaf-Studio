@@ -1016,7 +1016,7 @@ function KeyboardBindingCardControl({
     return (
         <div ref={rootRef} className="nodrag relative min-w-0">
             {listening ? (
-                <div className="absolute bottom-full left-0 z-[60] mb-1 w-full rounded border border-primary/35 bg-surface-sunken px-2 py-1.5 text-left shadow-lg ring-1 ring-black/35">
+                <div className="absolute bottom-full left-0 z-[60] mb-1 w-full rounded border border-primary/35 bg-surface-overlay px-2 py-1.5 text-left shadow-lg ring-1 ring-black/35">
                     <div className="truncate font-mono text-2xs text-primary">
                         {preview || t("blueprint.keyboard.pressKey")}
                     </div>

@@ -110,7 +110,7 @@ export function SurfaceList({
                 : t("uiEditor.panel.emptyGameUiHint");
 
         return (
-            <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2 bg-surface-sunken">
+            <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2">
                 <p className="text-xs text-fg-muted">{emptyPrimary}</p>
                 <p className="text-xs text-fg-subtle">{emptySecondary}</p>
             </div>
@@ -118,11 +118,11 @@ export function SurfaceList({
     }
 
     return (
-        <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2 bg-surface-sunken">
+        <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2">
             {globalBlueprintCard ? (
                 <button
                     type="button"
-                    className="group w-full text-left rounded-md border border-edge bg-surface-sunken px-3 py-2 transition-colors hover:bg-fill-subtle disabled:cursor-default disabled:hover:bg-surface-sunken"
+                    className="group w-full text-left rounded-md border border-edge bg-surface-raised px-3 py-2 transition-colors hover:bg-fill-subtle disabled:cursor-default disabled:hover:bg-surface-raised"
                     disabled={!globalBlueprintCard.canOpen}
                     onClick={globalBlueprintCard.onClick}
                     onContextMenu={event => event.preventDefault()}
@@ -148,7 +148,7 @@ export function SurfaceList({
                 return (
                     <div
                         key={surface.id}
-                        className="group w-full text-left rounded-md border border-edge bg-surface-sunken px-3 py-2 transition-colors hover:bg-fill-subtle"
+                        className="group w-full text-left rounded-md border border-edge bg-surface-raised px-3 py-2 transition-colors hover:bg-fill-subtle"
                         onClick={() => onSurfaceClick(surface)}
                         onContextMenu={event => onOpenMenu(event, surface)}
                         role="button"

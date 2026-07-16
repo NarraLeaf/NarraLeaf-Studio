@@ -121,7 +121,7 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
 
             {/* Filter Options Panel */}
             {isExpanded && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-surface-sunken border border-edge-strong rounded-lg shadow-xl z-10">
+                <div className="absolute top-full left-0 right-0 mt-2 bg-surface-overlay border border-edge-strong rounded-lg shadow-xl z-10">
                     <div className="p-3 space-y-3">
                         {filters.map(filter => (
                             <div key={filter.id} className="space-y-2">

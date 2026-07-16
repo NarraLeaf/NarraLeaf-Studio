@@ -736,9 +736,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
 
     const blueprintKeybindings = useMemo(
         () => [
+            // `mod` resolves to ⌘/Ctrl per platform, replacing the ctrl/meta twin
+            // registrations this list used to carry.
             {
-                id: "undo-ctrl",
-                key: "ctrl+z",
+                id: "undo",
+                key: "mod+z",
                 handler: () => {
                     if (!isTypingInField()) {
                         localBp.undoBlueprint(payload.blueprintId);
@@ -746,8 +748,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 },
             },
             {
-                id: "redo-ctrl",
-                key: "ctrl+shift+z",
+                id: "redo",
+                key: "mod+shift+z",
                 handler: () => {
                     if (!isTypingInField()) {
                         localBp.redoBlueprint(payload.blueprintId);
@@ -755,51 +757,18 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 },
             },
             {
-                id: "copy-ctrl",
-                key: "ctrl+c",
+                id: "copy",
+                key: "mod+c",
                 handler: copySelectedGraphNodes,
             },
             {
-                id: "cut-ctrl",
-                key: "ctrl+x",
+                id: "cut",
+                key: "mod+x",
                 handler: cutSelectedGraphNodes,
             },
             {
-                id: "paste-ctrl",
-                key: "ctrl+v",
-                handler: pasteGraphNodes,
-            },
-            {
-                id: "undo-meta",
-                key: "meta+z",
-                handler: () => {
-                    if (!isTypingInField()) {
-                        localBp.undoBlueprint(payload.blueprintId);
-                    }
-                },
-            },
-            {
-                id: "redo-meta",
-                key: "meta+shift+z",
-                handler: () => {
-                    if (!isTypingInField()) {
-                        localBp.redoBlueprint(payload.blueprintId);
-                    }
-                },
-            },
-            {
-                id: "copy-meta",
-                key: "meta+c",
-                handler: copySelectedGraphNodes,
-            },
-            {
-                id: "cut-meta",
-                key: "meta+x",
-                handler: cutSelectedGraphNodes,
-            },
-            {
-                id: "paste-meta",
-                key: "meta+v",
+                id: "paste",
+                key: "mod+v",
                 handler: pasteGraphNodes,
             },
         ],

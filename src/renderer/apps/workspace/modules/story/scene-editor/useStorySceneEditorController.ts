@@ -974,11 +974,15 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         handlePaste(event);
     }, [handlePaste, isStoryEditorFocusActive]);
 
-    const deleteSelection = useCallback(async (options?: { confirmMultiple?: boolean }) => {
+    /**
+     * The one deletion path for rows, whatever pointed at them (keyboard selection,
+     * a row's hover action, …): dedupes descendants of deleted containers, records
+     * one history entry, and resets selection/edit state.
+     */
+    const deleteRows = useCallback(async (ids: string[], options?: { confirmMultiple?: boolean }) => {
         if (!storyService || !storyId || !sceneId || !scene) {
             return;
         }
-        const ids = selectedBlockIds.size > 0 ? [...selectedBlockIds] : activeBlockId ? [activeBlockId] : [];
         if (ids.length === 0) {
             return;
         }
@@ -1005,7 +1009,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setActiveBlockId(null);
         setEditorMode({ kind: "idle" });
         setStatusText(`Deleted ${roots.length} row${roots.length === 1 ? "" : "s"}.`);
-    }, [activeBlockId, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uiService]);
+    }, [recordHistory, scene, sceneId, storyId, storyService, uiService]);
+
+    const deleteSelection = useCallback(async (options?: { confirmMultiple?: boolean }) => {
+        const ids = selectedBlockIds.size > 0 ? [...selectedBlockIds] : activeBlockId ? [activeBlockId] : [];
+        await deleteRows(ids, options);
+    }, [activeBlockId, deleteRows, selectedBlockIds]);
 
     const indentSelection = useCallback((direction: "in" | "out") => {
         if (!storyService || !storyId || !sceneId || !scene) {
@@ -1250,7 +1259,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         characters, visibleRows, shouldRenderActiveInsertSlot,
         rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
-        deleteSelection, startInsertAfter, selectRow, beginDragSelection,
+        deleteRows, deleteSelection, startInsertAfter, selectRow, beginDragSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateSceneMetadata,
         setDialogueCharacter, commitTextEdit, handleInsertValueChange,
         undoEdit, redoEdit,

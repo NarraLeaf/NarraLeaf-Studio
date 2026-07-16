@@ -151,7 +151,7 @@ function DevModeDebugOverlay(props: {
                                 ref={devtoolsMenuRef}
                                 role="menu"
                                 aria-label={t("devMode.devtools.menuAria")}
-                                className="absolute bottom-full left-0 z-10 mb-2 w-[min(15rem,calc(100vw-1.5rem))] rounded-md border border-edge bg-surface-sunken py-1 shadow-lg"
+                                className="absolute bottom-full left-0 z-10 mb-2 w-[min(15rem,calc(100vw-1.5rem))] rounded-md border border-edge bg-surface-overlay py-1 shadow-lg"
                             >
                                 <button
                                     type="button"
@@ -182,7 +182,7 @@ function DevModeDebugOverlay(props: {
                         <button
                             ref={devtoolsFabRef}
                             type="button"
-                            className="pointer-events-auto flex h-11 w-11 shrink-0 cursor-default items-center justify-center rounded-full border border-edge bg-surface-sunken shadow-md outline-none ring-edge-strong transition-colors duration-150 hover:border-edge-strong hover:bg-surface-raised hover:shadow-lg focus-visible:ring-2"
+                            className="pointer-events-auto flex h-11 w-11 shrink-0 cursor-default items-center justify-center rounded-full border border-edge bg-surface-overlay shadow-md outline-none ring-edge-strong transition-colors duration-150 hover:border-edge-strong hover:bg-surface-raised hover:shadow-lg focus-visible:ring-2"
                             aria-label={devtoolsMenuOpen ? t("devMode.devtools.closeMenu") : t("devMode.devtools.openMenu")}
                             aria-expanded={devtoolsMenuOpen}
                             aria-haspopup="menu"

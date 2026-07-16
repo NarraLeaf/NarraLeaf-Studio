@@ -262,13 +262,13 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         },
         {
             id: "undo",
-            key: "ctrl+z",
+            key: "mod+z",
             description: t("story.keybindings.undo"),
             handler: editor.undoEdit,
         },
         {
             id: "redo",
-            key: "ctrl+shift+z",
+            key: "mod+shift+z",
             description: t("story.keybindings.redo"),
             handler: editor.redoEdit,
         },
@@ -279,14 +279,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             handler: editor.enterEditOrInspectorForActive,
         },
         {
-            id: "insert-after-active-ctrl",
-            key: "ctrl+enter",
-            description: t("story.keybindings.insertRow"),
-            handler: editor.startInsertAfterActive,
-        },
-        {
-            id: "insert-after-active-meta",
-            key: "meta+enter",
+            id: "insert-after-active",
+            key: "mod+enter",
             description: t("story.keybindings.insertRow"),
             handler: editor.startInsertAfterActive,
         },
@@ -303,26 +297,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             handler: () => editor.indentSelection("out"),
         },
         {
-            id: "select-all-ctrl",
-            key: "ctrl+a",
+            id: "select-all",
+            key: "mod+a",
             description: t("story.keybindings.selectAll"),
             handler: editor.selectAllRows,
         },
         {
-            id: "select-all-meta",
-            key: "meta+a",
-            description: t("story.keybindings.selectAll"),
-            handler: editor.selectAllRows,
-        },
-        {
-            id: "duplicate-ctrl",
-            key: "ctrl+d",
-            description: t("story.keybindings.duplicateRows"),
-            handler: editor.duplicateSelection,
-        },
-        {
-            id: "duplicate-meta",
-            key: "meta+d",
+            id: "duplicate",
+            key: "mod+d",
             description: t("story.keybindings.duplicateRows"),
             handler: editor.duplicateSelection,
         },
@@ -375,14 +357,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             handler: () => editor.jumpRowSelection("last"),
         },
         {
-            id: "select-first-ctrl",
-            key: "ctrl+home",
+            id: "select-first-mod",
+            key: "mod+home",
             description: t("story.keybindings.selectFirst"),
             handler: () => editor.jumpRowSelection("first"),
         },
         {
-            id: "select-last-ctrl",
-            key: "ctrl+end",
+            id: "select-last-mod",
+            key: "mod+end",
             description: t("story.keybindings.selectLast"),
             handler: () => editor.jumpRowSelection("last"),
         },
@@ -884,6 +866,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     generateTextId={() => editor.uuidService?.generate() ?? crypto.randomUUID()}
                                     onCreateLayer={beforeBlockId => editor.createLayerBeforeBlock(beforeBlockId)}
                                     onInsertAfter={() => editor.startInsertAfter(row.block.id, true)}
+                                    onDeleteRow={() => void editor.deleteRows([row.block.id])}
                                     onAddInside={parentId => editor.addInsideContainer(parentId)}
                                     onAddBranch={(conditionId, branch) => editor.addConditionBranch(conditionId, branch)}
                                 />
@@ -934,7 +917,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             </div>
             <button
                 type="button"
-                className={`absolute bottom-3 right-3 z-[5] flex items-center gap-1.5 rounded-lg border border-edge px-2.5 py-1.5 text-xs shadow-lg transition-colors ${previewOpen ? "bg-primary/20 text-primary" : "bg-surface-sunken text-fg-muted hover:bg-fill"}`}
+                className={`absolute bottom-3 right-3 z-[5] flex items-center gap-1.5 rounded-lg border border-edge px-2.5 py-1.5 text-xs shadow-lg transition-colors ${previewOpen ? "bg-primary/20 text-primary" : "bg-surface-overlay text-fg-muted hover:bg-fill"}`}
                 onClick={togglePreview}
                 title={previewOpen ? t("story.preview.closePreview") : t("story.preview.openPreview")}
             >

@@ -146,7 +146,7 @@ export interface FocusContext {
  */
 export interface Keybinding {
     id: string;
-    key: string; // e.g., "ctrl+s", "cmd+shift+p"
+    key: string; // e.g., "mod+s" (mod = ⌘ on macOS, Ctrl elsewhere), "ctrl+tab", "cmd+shift+p"
     description?: string;
     handler: (context: FocusContext) => void | Promise<void>;
     when?: (context: FocusContext) => boolean; // Condition for when the keybinding is active

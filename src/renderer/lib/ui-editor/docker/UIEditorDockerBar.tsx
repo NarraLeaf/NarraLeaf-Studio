@@ -420,7 +420,7 @@ function DockerBarAnimatedWidthShell({ children }: { children: React.ReactNode }
 
     return (
         <motion.div
-            className={`inline-block overflow-hidden rounded-lg border border-edge bg-surface-sunken/90 backdrop-blur-sm shadow-lg shadow-black/30 ${shellUsesMvWidth ? "" : "w-max"}`}
+            className={`inline-block overflow-hidden rounded-lg border border-edge bg-surface-overlay/90 backdrop-blur-sm shadow-lg shadow-black/30 ${shellUsesMvWidth ? "" : "w-max"}`}
             style={shellUsesMvWidth ? { width: widthMv } : undefined}
         >
             <div ref={measureRef} className="flex items-center px-2 py-1.5 w-max">

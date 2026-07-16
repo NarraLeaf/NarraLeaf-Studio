@@ -237,7 +237,7 @@ export function MotionSelector(props: {
             <div
                 ref={panelRef}
                 style={{ position: "fixed", top: anchorStyle.top, left: anchorStyle.left, width: anchorStyle.width }}
-                className="flex max-h-[420px] flex-col overflow-hidden rounded-lg border border-edge-strong bg-surface-sunken shadow-2xl"
+                className="flex max-h-[420px] flex-col overflow-hidden rounded-lg border border-edge-strong bg-surface-overlay shadow-2xl"
                 onMouseDown={event => event.stopPropagation()}
             >
                 <div className="flex items-center gap-2 border-b border-edge p-2">

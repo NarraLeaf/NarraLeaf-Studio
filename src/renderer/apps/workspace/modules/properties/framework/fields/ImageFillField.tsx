@@ -285,7 +285,7 @@ export function ImageFillField<TData extends UIInspectorData>({
             ? createPortal(
                   <div
                       ref={panelRef}
-                      className="fixed z-50 rounded-2xl border border-edge-strong bg-surface-sunken shadow-2xl p-4 text-fg"
+                      className="fixed z-50 rounded-2xl border border-edge-strong bg-surface-overlay shadow-2xl p-4 text-fg"
                       style={{
                           top: panelPosition.top,
                           left: panelPosition.left,

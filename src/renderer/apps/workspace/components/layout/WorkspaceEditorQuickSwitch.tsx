@@ -198,6 +198,8 @@ export function WorkspaceEditorQuickSwitch() {
 
     useKeybinding({
         id: "workspace-editor-quick-switch-next",
+        // Deliberately ctrl, NOT mod: tab-switching is Ctrl+Tab on macOS too
+        // (⌘+Tab belongs to the OS app switcher).
         key: "ctrl+tab",
         description: "Switch to previous editor tab",
         handler: () => moveSelection(1),

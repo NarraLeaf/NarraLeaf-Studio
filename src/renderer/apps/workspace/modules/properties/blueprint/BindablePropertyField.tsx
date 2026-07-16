@@ -165,7 +165,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                             {t("properties.binding.bindToField")}
                         </button>
                         {pickerOpen ? (
-                            <div className="absolute left-0 top-full z-50 mt-1 w-[min(100%,20rem)] rounded-lg border border-edge bg-surface-sunken p-3 shadow-xl">
+                            <div className="absolute left-0 top-full z-50 mt-1 w-[min(100%,20rem)] rounded-lg border border-edge bg-surface-overlay p-3 shadow-xl">
                                 <div className="mb-2 flex items-center justify-between gap-2">
                                     <span className="text-2xs font-medium text-fg">{t("properties.binding.bindProperty")}</span>
                                     <button

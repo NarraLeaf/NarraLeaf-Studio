@@ -46,19 +46,19 @@ export function useKeyboardShortcuts({
             bindings.push(
                 {
                     id: "copy",
-                    key: "ctrl+c",
+                    key: "mod+c",
                     description: t("assets.shortcuts.copy"),
                     handler: onCopy,
                 },
                 {
                     id: "cut",
-                    key: "ctrl+x",
+                    key: "mod+x",
                     description: t("assets.shortcuts.cut"),
                     handler: onCut,
                 },
                 {
                     id: "paste",
-                    key: "ctrl+v",
+                    key: "mod+v",
                     description: t("assets.shortcuts.paste"),
                     handler: onPaste,
                 }
