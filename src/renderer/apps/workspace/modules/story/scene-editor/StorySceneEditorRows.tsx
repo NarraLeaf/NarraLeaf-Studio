@@ -82,6 +82,8 @@ export function StoryBlockRow(props: {
     generateTextId: () => string;
     onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
     onInsertAfter: () => void;
+    /** Quick-delete this row from its hover actions. */
+    onDeleteRow: () => void;
     /** Insert a fresh child (action / menu option) at the end of this container. */
     onAddInside: (parentId: StoryBlockId) => void;
     /** Append an if / else-if / else branch to a condition container. */
@@ -210,7 +212,7 @@ export function StoryBlockRow(props: {
                     {containerInfo ? (
                         <ContainerHeaderAdd info={containerInfo} onAdd={() => props.onAddInside(block.id)} />
                     ) : (
-                        <RowActions onInsertAfter={props.onInsertAfter} />
+                        <RowActions onInsertAfter={props.onInsertAfter} onDelete={props.onDeleteRow} />
                     )}
                 </div>
                 {containerInfo ? (
@@ -426,7 +428,7 @@ function TextEditBox(props: {
     );
 }
 
-function RowActions(props: { onInsertAfter: () => void }) {
+function RowActions(props: { onInsertAfter: () => void; onDelete: () => void }) {
     const { t } = useTranslation();
     return (
         <div className="pointer-events-none ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
@@ -435,6 +437,12 @@ function RowActions(props: { onInsertAfter: () => void }) {
                 props.onInsertAfter();
             }}>
                 {t("story.rows.insert")}
+            </button>
+            <button type="button" tabIndex={-1} className="rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-danger/10 hover:text-danger" onClick={event => {
+                event.stopPropagation();
+                props.onDelete();
+            }}>
+                {t("story.rows.delete")}
             </button>
         </div>
     );

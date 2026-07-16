@@ -23,7 +23,7 @@ export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
                 </div>
 
                 {/* Getting Started */}
-                <div className="bg-surface-sunken rounded-lg p-6 border border-edge">
+                <div className="bg-surface-raised rounded-lg p-6 border border-edge">
                     <h2 className="text-xl font-semibold text-fg mb-4">{t("welcome.gettingStarted.title")}</h2>
                     <div className="space-y-4">
                         <GettingStartedStep

@@ -772,7 +772,7 @@ export function UIEditorInteractionLayer({
                     />
                     {hasFloatingToolbar && floatingToolbarPosition ? (
                         <div
-                            className="pointer-events-auto absolute z-[10000] flex -translate-y-full overflow-hidden rounded-md border border-edge bg-surface-sunken/90 text-fg shadow-lg shadow-black/30"
+                            className="pointer-events-auto absolute z-[10000] flex -translate-y-full overflow-hidden rounded-md border border-edge bg-surface-overlay/90 text-fg shadow-lg shadow-black/30"
                             style={{
                                 left: floatingToolbarPosition.left,
                                 top: floatingToolbarPosition.top,

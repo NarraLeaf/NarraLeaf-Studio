@@ -1,10 +1,11 @@
+import { isMacPlatform } from "@/lib/app/platform";
 import { Keybinding, FocusContext } from "./types";
 import { FocusManager } from "./FocusManager";
 import { UIStore } from "./UIStore";
 import { isEditableKeyboardTarget } from "./keyboardEditable";
 
 /**
- * Parse a keybinding string (e.g., "ctrl+s") into modifier keys and key
+ * Parse a keybinding string (e.g., "mod+s") into modifier keys and key
  */
 interface ParsedKeybinding {
     ctrl: boolean;
@@ -14,7 +15,16 @@ interface ParsedKeybinding {
     key: string;
 }
 
-function parseKeybinding(binding: string): ParsedKeybinding {
+/**
+ * Exported for tests (the platform flag is injected there); production code goes
+ * through the service, which resolves the flag itself.
+ *
+ * `mod` is the primary shortcut modifier — ⌘ on macOS, Ctrl elsewhere. Use it for
+ * every cross-platform shortcut instead of registering ctrl/meta twins. Literal
+ * `ctrl` stays available for the few bindings that genuinely mean the Control key
+ * on macOS too (e.g. ctrl+tab tab-switching, where ⌘+Tab belongs to the OS).
+ */
+export function parseKeybinding(binding: string, isMac: boolean): ParsedKeybinding {
     const parts = binding.toLowerCase().split("+");
     const result: ParsedKeybinding = {
         ctrl: false,
@@ -26,6 +36,13 @@ function parseKeybinding(binding: string): ParsedKeybinding {
 
     for (const part of parts) {
         switch (part) {
+            case "mod":
+                if (isMac) {
+                    result.meta = true;
+                } else {
+                    result.ctrl = true;
+                }
+                break;
             case "ctrl":
             case "control":
                 result.ctrl = true;
@@ -58,9 +75,9 @@ function normalizeKeyboardEventKey(event: KeyboardEvent): string {
 }
 
 /**
- * Check if keyboard event matches parsed keybinding
+ * Check if keyboard event matches parsed keybinding. Exported for tests.
  */
-function matchesKeybinding(event: KeyboardEvent, parsed: ParsedKeybinding): boolean {
+export function matchesKeybinding(event: KeyboardEvent, parsed: ParsedKeybinding): boolean {
     const evKey = normalizeKeyboardEventKey(event);
     return (
         event.ctrlKey === parsed.ctrl &&
@@ -164,8 +181,9 @@ export class KeybindingService {
         const inEditableField = isEditableKeyboardTarget(event.target);
 
         // Find matching keybindings
+        const isMac = isMacPlatform();
         for (const keybinding of this.keybindings.values()) {
-            const parsed = parseKeybinding(keybinding.key);
+            const parsed = parseKeybinding(keybinding.key, isMac);
 
             if (matchesKeybinding(event, parsed)) {
                 if (inEditableField && !keybinding.allowInEditable) {
