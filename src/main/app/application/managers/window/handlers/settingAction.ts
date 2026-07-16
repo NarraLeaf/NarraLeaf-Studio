@@ -17,7 +17,6 @@ export class AppSettingsWindowLaunchHandler extends IPCHandler<IPCEventType.appL
             center: true,
             x: undefined,
             y: undefined,
-            backgroundColor: "#0f1115",
         });
 
         return this.success(void 0);

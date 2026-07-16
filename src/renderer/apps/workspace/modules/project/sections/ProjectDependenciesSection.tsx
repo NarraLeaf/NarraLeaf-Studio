@@ -14,10 +14,10 @@ import type {
 import type { ProjectSectionProps } from "./types";
 
 const STATUS_STYLES: Record<DependencyStatus, { dot: string; text: string }> = {
-    satisfied: { dot: "bg-emerald-400", text: "text-emerald-300" },
-    outdated: { dot: "bg-amber-400", text: "text-amber-300" },
-    missing: { dot: "bg-rose-400", text: "text-rose-300" },
-    incompatible: { dot: "bg-rose-400", text: "text-rose-300" },
+    satisfied: { dot: "bg-success", text: "text-success" },
+    outdated: { dot: "bg-warning", text: "text-warning" },
+    missing: { dot: "bg-danger", text: "text-danger" },
+    incompatible: { dot: "bg-danger", text: "text-danger" },
 };
 
 const STATUS_LABEL_KEYS: Record<DependencyStatus, TranslationKey> = {
@@ -104,7 +104,7 @@ export function ProjectDependenciesSection(_props: ProjectSectionProps) {
             ) : null}
 
             {entries.length === 0 ? (
-                <div className="rounded-md border border-edge bg-white/[0.025] p-4 text-center text-2xs text-fg-subtle">
+                <div className="rounded-md border border-edge bg-fill-subtle p-4 text-center text-2xs text-fg-subtle">
                     {busy ? t("project.dependencies.scanning") : t("project.dependencies.empty")}
                 </div>
             ) : (
@@ -125,8 +125,8 @@ function OverallBanner({ overall }: { overall: "warnings" | "blocked" }) {
         <div
             className={`rounded-md border p-2.5 text-2xs leading-relaxed ${
                 blocked
-                    ? "border-rose-500/30 bg-rose-500/10 text-rose-200"
-                    : "border-amber-500/30 bg-amber-500/10 text-amber-200"
+                    ? "border-danger/30 bg-danger/10 text-danger"
+                    : "border-warning/30 bg-warning/10 text-warning"
             }`}
         >
             {blocked
@@ -152,7 +152,7 @@ function DependencyRow({ entry }: { entry: DependencyResolutionEntry }) {
     ].filter(Boolean).join("  ·  ");
 
     return (
-        <section className="rounded-md border border-edge bg-white/[0.025] p-3">
+        <section className="rounded-md border border-edge bg-fill-subtle p-3">
             <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
                     <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${style.dot}`} aria-hidden />

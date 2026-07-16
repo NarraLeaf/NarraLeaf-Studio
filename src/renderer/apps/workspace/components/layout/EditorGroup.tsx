@@ -234,7 +234,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
     return (
         <div
             {...dropTargetProps}
-            className={`h-full flex flex-col border border-transparent border-b-white/10 transition-colors ${overlayClassName}`}
+            className={`h-full flex flex-col border border-transparent border-b-edge transition-colors ${overlayClassName}`}
         >
             {/* Tab Bar */}
             {group.tabs.length > 0 && (
@@ -269,12 +269,12 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                         transition-colors
                                         ${
                                             isGloballyActive
-                                                ? "bg-primary/[0.15] text-white"
+                                                ? "bg-primary/[0.15] text-fg"
                                                 : isActive
                                                   ? "bg-primary/[0.08] text-fg"
                                                   : isSelected
                                                     ? "bg-fill text-fg"
-                                                    : "bg-surface-sunken text-fg-muted hover:bg-surface hover:text-white"
+                                                    : "bg-surface-sunken text-fg-muted hover:bg-surface hover:text-fg"
                                         }
                                     `}
                                     onClick={(e) => handleTabClick(tab.id, e)}

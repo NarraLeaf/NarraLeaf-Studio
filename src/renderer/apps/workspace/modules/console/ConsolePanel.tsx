@@ -29,10 +29,10 @@ const DEFAULT_VISIBLE_LEVELS = new Set<ConsoleLogLevel>(["error", "warning", "su
 
 /** Per-level text colour. Labels are translated via `console.level.<level>`. */
 const LEVEL_TEXT_CLASS: Record<ConsoleLogLevel, string> = {
-    error: "text-rose-300/75",
-    warning: "text-amber-300/75",
-    success: "text-emerald-300/75",
-    info: "text-cyan-300/75",
+    error: "text-danger/75",
+    warning: "text-warning/75",
+    success: "text-success/75",
+    info: "text-primary/75",
     verbose: "text-fg-subtle/80",
 };
 
@@ -319,8 +319,8 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                                 title={channelDescription(t, channel)}
                                 className={`relative flex min-w-28 cursor-default items-center justify-center gap-2 px-4 text-xs transition-colors ${
                                     active
-                                        ? "bg-[#12151c] text-white"
-                                        : "text-fg-muted hover:bg-[#11141b] hover:text-fg"
+                                        ? "bg-surface text-fg"
+                                        : "text-fg-muted hover:bg-fill-subtle hover:text-fg"
                                 }`}
                                 onClick={() => setActiveChannel(channel.id)}
                             >
@@ -345,7 +345,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                 <div className="flex h-full shrink-0 items-center gap-2 px-2">
                     <button
                         type="button"
-                        className="flex h-7 w-7 cursor-default items-center justify-center rounded border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-white"
+                        className="flex h-7 w-7 cursor-default items-center justify-center rounded border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                         title={t("console.export")}
                         aria-label={t("console.export")}
                         onClick={handleExport}
@@ -355,7 +355,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                     <div ref={filterMenuRef} className="relative">
                         <button
                             type="button"
-                            className="flex h-7 w-7 cursor-default items-center justify-center rounded border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-white"
+                            className="flex h-7 w-7 cursor-default items-center justify-center rounded border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                             title={t("console.filterLevels")}
                             aria-label={t("console.filterLevels")}
                             aria-haspopup="menu"
@@ -367,7 +367,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                         {filterMenuOpen ? (
                             <div
                                 role="menu"
-                                className="absolute right-0 top-full z-20 mt-1 w-36 rounded border border-edge bg-[#11141b] p-1 shadow-xl"
+                                className="absolute right-0 top-full z-20 mt-1 w-36 rounded border border-edge bg-surface-overlay p-1 shadow-xl"
                             >
                                 {LOG_LEVELS.map(level => (
                                     <label
@@ -432,7 +432,7 @@ function ConsoleProgressBar({ progress }: { progress: ConsoleProgress | null }) 
     const pct = Math.round(progress.value * 100);
     return (
         <div
-            className="relative h-0.5 w-full shrink-0 overflow-hidden bg-white/[0.06]"
+            className="relative h-0.5 w-full shrink-0 overflow-hidden bg-fill-subtle"
             role="progressbar"
             aria-label={progress.label}
             aria-valuemin={progress.indeterminate ? undefined : 0}
@@ -479,7 +479,7 @@ function ConsoleEntryGrid({ entries }: { entries: ConsoleEntry[] }) {
             {entries.map((entry, index) => (
                 <time
                     key={`${entry.id}:time`}
-                    className="select-text border-r border-white/[0.04] px-3 py-0.5 text-fg-subtle hover:bg-white/[0.035]"
+                    className="select-text border-r border-edge-subtle px-3 py-0.5 text-fg-subtle hover:bg-fill-subtle"
                     style={{ gridColumn: 1, gridRow: index + 1 }}
                 >
                     {formatTimestamp(entry.timestamp)}
@@ -489,7 +489,7 @@ function ConsoleEntryGrid({ entries }: { entries: ConsoleEntry[] }) {
             {entries.map((entry, index) => (
                 <span
                     key={`${entry.id}:level`}
-                    className={`select-text border-r border-white/[0.04] px-3 py-0.5 hover:bg-white/[0.035] ${LEVEL_TEXT_CLASS[entry.level]}`}
+                    className={`select-text border-r border-edge-subtle px-3 py-0.5 hover:bg-fill-subtle ${LEVEL_TEXT_CLASS[entry.level]}`}
                     style={{ gridColumn: 2, gridRow: index + 1 }}
                 >
                     {t(`console.level.${entry.level}`)}
@@ -499,7 +499,7 @@ function ConsoleEntryGrid({ entries }: { entries: ConsoleEntry[] }) {
             {entries.map((entry, index) => (
                 <div
                     key={`${entry.id}:message`}
-                    className="select-text whitespace-pre-wrap break-words px-3 py-0.5 text-fg-muted hover:bg-white/[0.035]"
+                    className="select-text whitespace-pre-wrap break-words px-3 py-0.5 text-fg-muted hover:bg-fill-subtle"
                     style={{ gridColumn: 3, gridRow: index + 1 }}
                 >
                     {entry.source ? <span className="text-fg-subtle">[{entry.source}] </span> : null}

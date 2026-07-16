@@ -417,15 +417,15 @@ function MotionHoverPreview(props: {
                             />
                         </div>
                     </div>
-                    <div className="absolute left-2 top-2 truncate rounded bg-black/55 px-1.5 py-0.5 text-2xs font-medium text-fg">
+                    <div className="absolute left-2 top-2 truncate rounded bg-black/55 px-1.5 py-0.5 text-2xs font-medium text-white">
                         {asset.name}
                     </div>
-                    <div className="absolute right-2 bottom-2 rounded bg-black/55 px-1.5 py-0.5 text-2xs text-fg-muted">
+                    <div className="absolute right-2 bottom-2 rounded bg-black/55 px-1.5 py-0.5 text-2xs text-white/70">
                         {motionSummary(asset, t)}
                     </div>
                 </div>
             ) : (
-                <div className="grid h-full w-full place-items-center text-xs text-fg-subtle">{t("motion.selector.loadingPreview")}</div>
+                <div className="grid h-full w-full place-items-center text-xs text-white/70">{t("motion.selector.loadingPreview")}</div>
             )}
         </div>
     );

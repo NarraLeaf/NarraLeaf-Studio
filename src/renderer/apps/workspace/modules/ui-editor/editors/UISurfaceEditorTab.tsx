@@ -486,8 +486,8 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     const toolButtonClass = (active: boolean) =>
         `w-9 h-9 rounded-md border flex items-center justify-center text-xs transition-colors ${
             active
-                ? "border-primary bg-primary/20 text-white"
-                : "border-edge text-fg-muted hover:border-primary hover:text-white hover:bg-fill"
+                ? "border-primary bg-primary/20 text-fg"
+                : "border-edge text-fg-muted hover:border-primary hover:text-fg hover:bg-fill"
         } disabled:opacity-50 disabled:cursor-not-allowed`;
 
     useSurfaceInteractionCropDimming({
@@ -604,7 +604,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
             <WidgetRuntimeStateProvider key={surface.id}>
                 <div
                     ref={editorRootRef}
-                    className="relative flex-1 bg-[#050f10]"
+                    className="relative flex-1 bg-surface-canvas"
                     onContextMenu={handleCanvasContextMenu}
                     onMouseDownCapture={focusSurfaceEditor}
                     onFocusCapture={focusSurfaceEditor}
@@ -669,16 +669,16 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                     </div>
 
                     {activeBindingSession ? (
-                        <div className="absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-2 rounded-md border border-cyan-400/30 bg-[#111820]/95 px-3 py-2 text-xs text-fg shadow-lg">
+                        <div className="absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-2 rounded-md border border-primary/30 bg-surface-overlay/95 px-3 py-2 text-xs text-fg shadow-lg">
                             <div className="min-w-[220px]">
-                                <div className="font-medium text-cyan-100">{t("uiEditor.editor.bindElement")}</div>
+                                <div className="font-medium text-primary">{t("uiEditor.editor.bindElement")}</div>
                                 <div className="max-w-[300px] truncate text-2xs text-fg-muted">
                                     {bindingSelection ? bindingSelection.label : t("uiEditor.editor.bindSelectHint")}
                                 </div>
                             </div>
                             <button
                                 type="button"
-                                className="rounded border border-cyan-300/35 bg-cyan-300/15 px-2.5 py-1 text-2xs font-medium text-cyan-50 hover:bg-cyan-300/25 disabled:cursor-not-allowed disabled:opacity-45"
+                                className="rounded border border-primary/35 bg-primary/15 px-2.5 py-1 text-2xs font-medium text-fg hover:bg-primary/25 disabled:cursor-not-allowed disabled:opacity-45"
                                 disabled={!bindingSelection}
                                 onClick={handleConfirmElementBinding}
                             >
@@ -701,9 +701,9 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                         {...surfaceImageDropTargetProps}
                     >
                         {surfaceLevelDiagnosticMessages.length > 0 ? (
-                            <div className="absolute left-64 right-36 top-14 z-20 rounded-md border border-amber-500/35 bg-amber-950/40 px-3 py-2 text-2xs text-amber-100/90">
-                                <span className="font-medium text-amber-200/95">{t("uiEditor.editor.staticChecks")}</span>
-                                <span className="text-amber-100/85">{surfaceLevelDiagnosticMessages.join(" · ")}</span>
+                            <div className="absolute left-64 right-36 top-14 z-20 rounded-md border border-warning/35 bg-warning/10 px-3 py-2 text-2xs text-warning">
+                                <span className="font-medium text-warning">{t("uiEditor.editor.staticChecks")}</span>
+                                <span className="text-warning/85">{surfaceLevelDiagnosticMessages.join(" · ")}</span>
                                 <span className="mt-1 block text-2xs text-fg-subtle">
                                     {t("uiEditor.editor.devModeHint")}
                                 </span>

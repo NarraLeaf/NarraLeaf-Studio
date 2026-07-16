@@ -111,7 +111,7 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
                     ))}
                     <button
                         onClick={handleClearAllFilters}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 transition-colors"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-danger/20 text-danger rounded hover:bg-danger/30 transition-colors"
                     >
                         <X className="w-3 h-3" />
                         {t("common.clear")}

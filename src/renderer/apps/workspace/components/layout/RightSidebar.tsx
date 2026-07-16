@@ -62,7 +62,7 @@ export function RightSidebar({ panelId, onClose, width }: RightSidebarProps) {
     return (
         <div 
             className={`bg-surface flex flex-col border transition-colors ${
-                isFocused ? 'border-primary' : 'border-transparent border-l-white/10'
+                isFocused ? 'border-primary' : 'border-transparent border-l-edge'
             }`}
             style={{ width: `${width}px` }}
             onClick={handleClick}
@@ -72,11 +72,11 @@ export function RightSidebar({ panelId, onClose, width }: RightSidebarProps) {
             <div className="h-12 flex items-center justify-between px-4 bg-surface-sunken border-b border-edge">
                 <div className="flex items-center gap-2">
                     <span className="text-fg-muted">{panel.icon}</span>
-                    <h2 className="text-sm font-medium text-white">{panel.title}</h2>
+                    <h2 className="text-sm font-medium text-fg">{panel.title}</h2>
                 </div>
                 <button
                     onClick={onClose}
-                    className="w-6 h-6 rounded flex items-center justify-center text-fg-muted hover:bg-fill hover:text-white transition-colors cursor-default"
+                    className="w-6 h-6 rounded flex items-center justify-center text-fg-muted hover:bg-fill hover:text-fg transition-colors cursor-default"
                     aria-label={t("workspace.shell.closePanel")}
                     title={t("workspace.shell.closePanel")}
                 >

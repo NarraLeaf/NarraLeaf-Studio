@@ -4,6 +4,7 @@ import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { Platform } from "@shared/types/os";
 import { WindowControlAbility } from "@shared/types/window";
+import { applyThemeMode } from "@/app/application/theme";
 import { app as electronApp } from "electron";
 
 export class AppPlatformInfoHandler extends IPCHandler<IPCEventType.getPlatform> {
@@ -180,6 +181,14 @@ export class AppGlobalStateSetHandler extends IPCHandler<IPCEventType.appGlobalS
         // the main process and must be rebuilt here.
         if (data.key === "app.language") {
             app.menuManager.updateMenu();
+        }
+
+        // The theme is owned by the main process: nativeTheme drives
+        // prefers-color-scheme in every renderer (which flips the CSS tokens)
+        // plus native chrome. Window background colors follow via the
+        // nativeTheme "updated" listener in baseApp.
+        if (data.key === "ui.themeMode") {
+            applyThemeMode(data.value);
         }
 
         return this.success(void 0);

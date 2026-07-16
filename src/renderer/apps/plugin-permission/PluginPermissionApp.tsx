@@ -236,7 +236,7 @@ export function PluginPermissionApp() {
                             <div className="text-2xs font-medium tracking-normal text-fg-muted">
                                 {copy.type}
                             </div>
-                            <div className="mt-1 text-sm font-medium text-white">
+                            <div className="mt-1 text-sm font-medium text-fg">
                                 {copy.title}
                             </div>
                         </div>
@@ -268,13 +268,13 @@ export function PluginPermissionApp() {
                             ) : null}
 
                             {request?.reason ? (
-                                <div className="mt-3 border border-edge bg-[#111318] px-3 py-2 text-xs leading-5 text-fg-muted">
+                                <div className="mt-3 border border-edge bg-surface px-3 py-2 text-xs leading-5 text-fg-muted">
                                     {request.reason}
                                 </div>
                             ) : null}
 
                             {error ? (
-                                <div className="mt-3 border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                                <div className="mt-3 border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
                                     {error}
                                 </div>
                             ) : null}
@@ -282,7 +282,7 @@ export function PluginPermissionApp() {
                     </>
                 ) : error ? (
                     <div className="flex min-h-0 flex-1 items-center justify-center p-4">
-                        <div className="border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                        <div className="border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
                             {error}
                         </div>
                     </div>
@@ -304,7 +304,7 @@ export function PluginPermissionApp() {
                                 type="button"
                                 onClick={() => handleApprove("temporary")}
                                 disabled={!request || busy}
-                                className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded border border-edge bg-fill px-3 text-sm font-medium text-fg hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
+                                className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded border border-edge bg-fill px-3 text-sm font-medium text-fg hover:bg-fill-strong disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 <Check size={15} className="shrink-0" />
                                 <span className="whitespace-nowrap">{t("pluginPermission.button.allowOnce")}</span>

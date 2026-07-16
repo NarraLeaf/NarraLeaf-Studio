@@ -854,8 +854,8 @@ export function ColorPickerTrigger({
                         type="button"
                         className={`flex-1 rounded-lg border px-2 py-1 text-xs font-semibold transition ${
                             activeMode === mode
-                                ? "border-primary text-white"
-                                : "border-edge text-fg-muted hover:border-white/40"
+                                ? "border-primary text-fg"
+                                : "border-edge text-fg-muted hover:border-edge-strong"
                         }`}
                         onClick={() => setActiveMode(mode)}
                     >
@@ -894,7 +894,7 @@ export function ColorPickerTrigger({
             onClick={isOpen ? closePicker : openPicker}
             disabled={disabled || readOnly}
             className={`
-                nodrag nowheel flex items-center rounded-md border border-edge-strong bg-[#17181a] px-3 py-2 text-sm
+                nodrag nowheel flex items-center rounded-md border border-edge-strong bg-surface-raised px-3 py-2 text-sm
                 text-fg transition focus:outline-none focus:ring-2 focus:ring-primary/50
                 ${displayMode === "icon" ? "gap-2" : "gap-3"}
             `}

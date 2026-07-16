@@ -110,7 +110,7 @@ export function PluginsTab() {
         <div className="flex h-full min-h-0 bg-surface text-fg">
             <div className="flex min-h-0 w-[320px] shrink-0 flex-col border-r border-edge">
                 <div className="flex h-10 shrink-0 items-center justify-between border-b border-edge bg-surface-sunken px-3">
-                    <div className="text-sm font-medium text-white">{t("launcher.nav.plugins")}</div>
+                    <div className="text-sm font-medium text-fg">{t("launcher.nav.plugins")}</div>
                     <div className="flex items-center gap-1">
                         <IconButton title={t("launcher.plugins.installLocal")} disabled={busy} onClick={installLocal}>
                             <Download className="h-4 w-4" />
@@ -134,14 +134,14 @@ export function PluginsTab() {
                                         key={plugin.pluginId}
                                         type="button"
                                         onClick={() => setSelectedId(plugin.pluginId)}
-                                        className={`no-drag w-full border-b border-l-2 border-b-white/10 px-3 py-2 text-left transition-colors ${
+                                        className={`no-drag w-full border-b border-l-2 border-b-edge px-3 py-2 text-left transition-colors ${
                                             isSelected
                                                 ? "border-l-primary"
                                                 : "border-l-transparent hover:bg-fill"
                                         }`}
                                     >
                                         <div className="flex min-w-0 items-center justify-between gap-2">
-                                            <div className="truncate text-sm font-medium text-white">{plugin.manifest.name}</div>
+                                            <div className="truncate text-sm font-medium text-fg">{plugin.manifest.name}</div>
                                             <StatusBadge status={plugin.status} />
                                         </div>
                                         <div className="mt-1 truncate font-mono text-2xs text-fg-subtle">{plugin.pluginId}</div>
@@ -155,7 +155,7 @@ export function PluginsTab() {
 
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                 <div className="flex h-10 shrink-0 items-center justify-between border-b border-edge bg-surface-sunken px-4">
-                    <div className="min-w-0 truncate text-sm font-medium text-white">
+                    <div className="min-w-0 truncate text-sm font-medium text-fg">
                         {selected?.manifest.name ?? t("launcher.nav.plugins")}
                     </div>
                     {selected ? (
@@ -212,12 +212,12 @@ function PluginDetails({ plugin }: { plugin: PluginListItem }) {
         <div className="space-y-4">
             <div>
                 <div className="flex min-w-0 items-center gap-2">
-                    <div className="truncate text-lg font-semibold text-white">{plugin.manifest.name}</div>
+                    <div className="truncate text-lg font-semibold text-fg">{plugin.manifest.name}</div>
                     <span className="shrink-0 rounded border border-edge px-1.5 py-0.5 text-2xs text-fg-muted">
                         {plugin.manifest.version}
                     </span>
                     {plugin.builtIn ? (
-                        <span className="shrink-0 rounded border border-cyan-400/20 px-1.5 py-0.5 text-2xs text-cyan-200">
+                        <span className="shrink-0 rounded border border-primary/20 px-1.5 py-0.5 text-2xs text-primary">
                             {t("launcher.plugins.builtIn")}
                         </span>
                     ) : null}
@@ -258,7 +258,7 @@ function PluginDetails({ plugin }: { plugin: PluginListItem }) {
             </div>
 
             {plugin.lastError ? (
-                <div className="rounded-md border border-red-400/25 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                <div className="rounded-md border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger">
                     {plugin.lastError}
                 </div>
             ) : null}
@@ -297,7 +297,7 @@ function IconButton({ title, disabled, onClick, children }: {
             aria-label={title}
             disabled={disabled}
             onClick={onClick}
-            className="no-drag grid h-8 w-8 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="no-drag grid h-8 w-8 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg disabled:cursor-not-allowed disabled:opacity-50"
         >
             {children}
         </button>
@@ -341,11 +341,11 @@ function statusText(status: PluginStatus, t: Translator["t"]): string {
 function statusClass(status: PluginStatus): string {
     switch (status) {
         case "enabled":
-            return "border-emerald-400/25 text-emerald-200";
+            return "border-success/25 text-success";
         case "needsAuthorization":
-            return "border-amber-400/25 text-amber-200";
+            return "border-warning/25 text-warning";
         case "error":
-            return "border-red-400/25 text-red-200";
+            return "border-danger/25 text-danger";
         default:
             return "border-edge text-fg-muted";
     }
@@ -354,11 +354,11 @@ function statusClass(status: PluginStatus): string {
 function taskClass(status: TaskState["status"]): string {
     switch (status) {
         case "success":
-            return "border-emerald-400/25 bg-emerald-500/10 text-emerald-100";
+            return "border-success/25 bg-success/10 text-success";
         case "error":
-            return "border-red-400/25 bg-red-500/10 text-red-100";
+            return "border-danger/25 bg-danger/10 text-danger";
         case "working":
-            return "border-cyan-400/25 bg-cyan-500/10 text-cyan-100";
+            return "border-primary/25 bg-primary/10 text-primary";
         default:
             return "border-edge bg-fill-subtle text-fg-muted";
     }
