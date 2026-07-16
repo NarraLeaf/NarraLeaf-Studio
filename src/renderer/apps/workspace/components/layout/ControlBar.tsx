@@ -38,8 +38,8 @@ export function ControlBar({
                 className={`
                     w-8 h-8 rounded flex items-center justify-center transition-colors cursor-default
                     ${leftSidebarVisible
-                        ? "bg-fill-strong text-white"
-                        : "text-fg-muted hover:bg-fill hover:text-white"
+                        ? "bg-fill-strong text-fg"
+                        : "text-fg-muted hover:bg-fill hover:text-fg"
                     }
                 `}
                 title={t("workspace.shell.toggleLeftSidebar")}
@@ -54,8 +54,8 @@ export function ControlBar({
                 className={`
                     w-8 h-8 rounded flex items-center justify-center transition-colors cursor-default
                     ${bottomPanelVisible
-                        ? "bg-fill-strong text-white"
-                        : "text-fg-muted hover:bg-fill hover:text-white"
+                        ? "bg-fill-strong text-fg"
+                        : "text-fg-muted hover:bg-fill hover:text-fg"
                     }
                 `}
                 title={t("workspace.shell.toggleBottomPanel")}
@@ -70,8 +70,8 @@ export function ControlBar({
                 className={`
                     w-8 h-8 rounded flex items-center justify-center transition-colors cursor-default
                     ${rightSidebarVisible
-                        ? "bg-fill-strong text-white"
-                        : "text-fg-muted hover:bg-fill hover:text-white"
+                        ? "bg-fill-strong text-fg"
+                        : "text-fg-muted hover:bg-fill hover:text-fg"
                     }
                 `}
                 title={t("workspace.shell.toggleRightSidebar")}
@@ -83,7 +83,7 @@ export function ControlBar({
             {/* Settings Button */}
             <button
                 onClick={handleOpenSettings}
-                className="w-8 h-8 rounded flex items-center justify-center text-fg-muted hover:bg-fill hover:text-white transition-colors cursor-default"
+                className="w-8 h-8 rounded flex items-center justify-center text-fg-muted hover:bg-fill hover:text-fg transition-colors cursor-default"
                 title={t("workspace.shell.openSettings")}
                 aria-label={t("workspace.shell.openSettings")}
             >

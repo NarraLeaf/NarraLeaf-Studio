@@ -461,7 +461,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     }
 
     if (error) {
-        return <div className="p-4 text-red-400 flex items-start gap-2"><AlertCircle className="w-4 h-4" /> <div><p>{t("assets.loadError")}</p><p className="text-xs">{error}</p></div></div>;
+        return <div className="p-4 text-danger flex items-start gap-2"><AlertCircle className="w-4 h-4" /> <div><p>{t("assets.loadError")}</p><p className="text-xs">{error}</p></div></div>;
     }
 
     const contextValue = {

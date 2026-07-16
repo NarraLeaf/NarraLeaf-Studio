@@ -4,6 +4,8 @@ export enum SettingValueType {
     Integer = "integer",
     Boolean = "boolean",
     Enum = "enum",
+    /** A bounded number the user drags rather than types; needs `min`/`max`. */
+    Slider = "slider",
 }
 
 export type TypeofSettingSchema<T extends SettingValueType> =
@@ -12,6 +14,7 @@ export type TypeofSettingSchema<T extends SettingValueType> =
     T extends SettingValueType.Integer ? number :
     T extends SettingValueType.Boolean ? boolean :
     T extends SettingValueType.Enum ? string :
+    T extends SettingValueType.Slider ? number :
     never;
 
 export type SettingValueProps<T extends SettingValueType> = T extends SettingValueType.Enum ? {

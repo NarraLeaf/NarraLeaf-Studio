@@ -92,11 +92,11 @@ export function StoryLayerField(props: {
                 className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-edge bg-surface-raised px-3 text-left text-sm text-fg-muted transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60"
                 onClick={() => setOpen(current => !current)}
             >
-                <TriggerIcon className={["h-3.5 w-3.5 shrink-0", unresolved ? "text-amber-400" : "text-fg-muted"].join(" ")} />
+                <TriggerIcon className={["h-3.5 w-3.5 shrink-0", unresolved ? "text-warning" : "text-fg-muted"].join(" ")} />
                 <span className="truncate text-fg">{resolved.name || t("story.layerField.defaultName")}</span>
                 {unresolved ? (
                     <span
-                        className="shrink-0 rounded bg-amber-400/10 px-1 text-2xs text-amber-300/90"
+                        className="shrink-0 rounded bg-warning/10 px-1 text-2xs text-warning"
                         title={t("story.layerField.notOnStageTitle")}
                     >
                         {t("story.stage.notOnStage")}
@@ -109,7 +109,7 @@ export function StoryLayerField(props: {
             {open ? (
                 <div
                     className={[
-                        "absolute left-0 z-50 w-full min-w-[240px] overflow-hidden rounded-xl border border-edge bg-[#181b20] shadow-xl",
+                        "absolute left-0 z-50 w-full min-w-[240px] overflow-hidden rounded-xl border border-edge bg-surface-raised shadow-xl",
                         placement === "above" ? "bottom-full mb-1" : "top-full mt-1",
                     ].join(" ")}
                 >
@@ -124,7 +124,7 @@ export function StoryLayerField(props: {
                             />
                         ))}
                         {customLayers.length > 0 ? (
-                            <div className="my-1 border-t border-white/[0.06]" />
+                            <div className="my-1 border-t border-edge-subtle" />
                         ) : null}
                         {customLayers.map(option =>
                             option.kind === "custom" ? (
@@ -137,7 +137,7 @@ export function StoryLayerField(props: {
                                 />
                             ) : null,
                         )}
-                        <div className="my-1 border-t border-white/[0.06]" />
+                        <div className="my-1 border-t border-edge-subtle" />
                         <button
                             type="button"
                             className="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-left text-sm text-primary transition-colors hover:bg-primary/10"
@@ -168,7 +168,7 @@ function LayerRow(props: {
             aria-selected={props.active}
             className={[
                 "flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-left transition-colors",
-                props.active ? "bg-primary/15 text-white" : "hover:bg-fill",
+                props.active ? "bg-primary/15 text-fg" : "hover:bg-fill",
             ].join(" ")}
             onClick={props.onChoose}
         >

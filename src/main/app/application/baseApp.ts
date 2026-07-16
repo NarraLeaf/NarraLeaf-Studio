@@ -1,5 +1,5 @@
 // Electron
-import { app, dialog } from "electron/main";
+import { app, dialog, nativeTheme } from "electron/main";
 
 // Utils
 import fs from "fs";
@@ -9,6 +9,8 @@ import EventEmitter from "events";
 
 // Managers
 import { AppEventToken, AppInfo } from "@shared/types/app";
+import { IPCEventType } from "@shared/types/ipcEvents";
+import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import { WindowAppType } from "@shared/types/window";
 import { readJson } from "@shared/utils/json";
 import { safeExecuteFn } from "@shared/utils/os";
@@ -22,6 +24,7 @@ import { GlobalStateManager } from "./managers/storage/globalState";
 import { PluginPermissionManager } from "./managers/pluginPermissionManager";
 import { PluginManager } from "./managers/pluginManager";
 import { isMainDevMode, parseMainCommandLine } from "./commandLine";
+import { applyThemeMode, getWindowBackgroundColor } from "./theme";
 import { APP_DISPLAY_NAME } from "@shared/constants/app";
 
 export interface AppDependencies {
@@ -91,6 +94,53 @@ export class BaseApp {
         this.storageManager = new StorageManager(this);
 
         void this.prepare().catch((error) => this.failBootstrap(error));
+    }
+
+    /**
+     * Persist a global-state value, fan it out to every open window, and run the
+     * main-process side effects the key carries.
+     *
+     * The one write path for global state: the Settings window arrives here over
+     * IPC, and the zoom shortcuts call it directly. Keeping it in one place is
+     * what lets a keystroke in one window re-zoom all of them.
+     */
+    public setGlobalStateAndBroadcast<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): void {
+        this.globalState.set(key, value);
+
+        for (const window of this.windowManager.getWindows()) {
+            if (window.isClosed()) {
+                continue;
+            }
+            try {
+                window.sendIpcEvent(IPCEventType.appGlobalStateChanged, { key, value });
+            } catch (error) {
+                this.logger.debug(`Failed to broadcast global state change to a window: ${String(error)}`);
+            }
+        }
+
+        // The language also drives the native application menu, which is owned by
+        // the main process and must be rebuilt here.
+        if (key === "app.language") {
+            this.menuManager.updateMenu();
+        }
+
+        // The theme is owned by the main process: nativeTheme drives
+        // prefers-color-scheme in every renderer (which flips the CSS tokens) plus
+        // native chrome. Window background colors follow via the nativeTheme
+        // "updated" listener in prepare().
+        if (key === "ui.themeMode") {
+            applyThemeMode(value);
+        }
+
+        // Zoom is a per-webContents property, so unlike the theme it has to be
+        // pushed to each window rather than resolved from one switch.
+        if (key === "ui.zoomPercent") {
+            for (const window of this.windowManager.getWindows()) {
+                if (!window.isClosed()) {
+                    window.applyStoredZoom();
+                }
+            }
+        }
     }
 
     public onReady(fn: (...args: AppEvents["ready"]) => void): AppEventToken {
@@ -318,6 +368,26 @@ export class BaseApp {
         }
 
         await this.electronApp.whenReady();
+
+        // Resolve the persisted theme before any window exists, so the first
+        // window already paints (backgroundColor + prefers-color-scheme) in
+        // the right theme. Keep open windows' paint-behind color in sync when
+        // the effective theme changes later (setting switched, or the OS
+        // flips while in "auto").
+        applyThemeMode(this.globalState.get("ui.themeMode"));
+        nativeTheme.on("updated", () => {
+            const backgroundColor = getWindowBackgroundColor();
+            for (const window of this.windowManager.getWindows()) {
+                if (window.isClosed()) {
+                    continue;
+                }
+                try {
+                    window.win.setBackgroundColor(backgroundColor);
+                } catch (error) {
+                    this.logger.debug(`[Theme] Failed to update a window background: ${String(error)}`);
+                }
+            }
+        });
 
         // Retrieve app info
         this.appInfo = await this.constructAppInfo();

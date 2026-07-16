@@ -88,6 +88,13 @@ export const workspace = {
         noActiveEditor: "No active editor",
         closePanel: "Close panel",
         closeTab: "Close {name}",
+        tabMenu: {
+            close: "Close",
+            closeOthers: "Close others",
+            closeToRight: "Close tabs to the right",
+            closeAll: "Close all",
+            reopenClosed: "Reopen closed tab",
+        },
         toggleLeftSidebar: "Toggle left sidebar",
         toggleRightSidebar: "Toggle right sidebar",
         toggleBottomPanel: "Toggle bottom panel",

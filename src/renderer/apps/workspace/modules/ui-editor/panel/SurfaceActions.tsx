@@ -18,7 +18,7 @@ export function SurfaceActions({
                     type="button"
                     onClick={onCreate}
                     disabled={createDisabled}
-                    className="flex-1 flex h-10 items-center justify-center gap-2 rounded-md border border-edge-strong bg-surface-sunken px-3 text-xs font-semibold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-fill hover:text-white"
+                    className="flex-1 flex h-10 items-center justify-center gap-2 rounded-md border border-edge-strong bg-surface-raised px-3 text-xs font-semibold text-fg transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-fill hover:text-fg"
                 >
                     <Plus className="w-4 h-4" />
                     <span>{createLabel}</span>

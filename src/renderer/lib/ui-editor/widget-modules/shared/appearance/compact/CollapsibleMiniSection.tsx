@@ -17,7 +17,7 @@ export function CollapsibleMiniSection({ title, defaultCollapsed = true, subtle,
     const toggle = useCallback(() => setCollapsed(c => !c), []);
 
     return (
-        <div className="rounded-lg border border-edge bg-black/15 overflow-hidden min-w-0">
+        <div className="rounded-lg border border-edge bg-fill-subtle overflow-hidden min-w-0">
             <button
                 type="button"
                 onClick={toggle}

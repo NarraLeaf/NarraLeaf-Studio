@@ -82,7 +82,7 @@ const ButtonLabelBlueprintValueField = createBlueprintValueField({
         const buttonProps = getButtonProps(liveElement);
         return (
             <textarea
-                className="min-h-[88px] w-full resize-y rounded-md border border-edge bg-[#0b0d10] px-2 py-1.5 text-xs text-fg outline-none focus:border-cyan-400/70 focus:ring-1 focus:ring-cyan-400/40"
+                className="min-h-[88px] w-full resize-y rounded-md border border-edge bg-surface-sunken px-2 py-1.5 text-xs text-fg outline-none focus:border-primary/70 focus:ring-1 focus:ring-primary/40"
                 value={buttonProps.label}
                 rows={4}
                 onChange={event => {

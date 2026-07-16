@@ -284,7 +284,7 @@ export function AppearanceAuthoringPanel({
 
     if (!isUsableAppearanceModel(model)) {
         return (
-            <p className="text-xs text-amber-200/90 leading-relaxed px-1 py-2">
+            <p className="text-xs text-warning leading-relaxed px-1 py-2">
                 {t("widgetAppearance.panel.invalidModel")}
             </p>
         );
@@ -376,7 +376,7 @@ export function AppearanceAuthoringPanel({
                     title={t("widgetAppearance.variant.deleteTitle")}
                     onClick={handleRemoveVariant}
                     disabled={model.variants.length <= 1}
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-edge bg-fill-subtle text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-edge bg-fill-subtle text-danger hover:bg-danger/10 disabled:opacity-40"
                 >
                     <Trash2 className="w-4 h-4" />
                 </button>

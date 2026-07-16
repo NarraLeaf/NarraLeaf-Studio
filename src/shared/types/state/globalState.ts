@@ -1,3 +1,4 @@
+import { ZOOM_PERCENT_DEFAULT } from "@shared/constants/zoom";
 import { PersistentState } from "@shared/utils/persistentState";
 import { RecentlyOpenedProject } from "./appStateTypes";
 
@@ -8,6 +9,8 @@ export interface GlobalStateType extends Record<string, any> {
     "app.notificationsEnabled": boolean;
     "app.autoCheckUpdates": boolean;
     "ui.themeMode": "auto" | "light" | "dark" | string;
+    /** Studio UI zoom as a whole percentage; see @shared/constants/zoom. */
+    "ui.zoomPercent": number;
     "ui.accentColor": string;
     "ui.compactMode": boolean;
     "ui.reduceMotion": boolean;
@@ -53,6 +56,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "app.notificationsEnabled": true,
     "app.autoCheckUpdates": true,
     "ui.themeMode": "auto",
+    "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,
     "ui.accentColor": "blue",
     "ui.compactMode": false,
     "ui.reduceMotion": false,

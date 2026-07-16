@@ -536,7 +536,10 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     }, [globalBlueprintId, globalBlueprintPreviewModel, handleOpenGlobalBlueprint, kind, t]);
 
     return (
-        <div className="h-full flex flex-col">
+        // One continuous sunken tray: filters, the create button, the surface list
+        // and the component library share the same recessed background, with cards
+        // and the button floating raised on it — no color seam between sections.
+        <div className="h-full flex flex-col bg-surface-sunken">
             <SurfaceFilters
                 kind={kind}
                 onKindChange={setKind}

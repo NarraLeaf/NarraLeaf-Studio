@@ -56,7 +56,7 @@ function PreviewButton({ label, ariaLabel, onClick }: { label: string; ariaLabel
     return (
         <button
             type="button"
-            className="inline-flex h-7 min-w-0 items-center justify-center gap-1 rounded-md border border-edge bg-fill-subtle px-2 text-2xs text-fg-muted transition hover:bg-fill hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            className="inline-flex h-7 min-w-0 items-center justify-center gap-1 rounded-md border border-edge bg-fill-subtle px-2 text-2xs text-fg-muted transition hover:bg-fill hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
             onClick={onClick}
             title={ariaLabel}
             aria-label={ariaLabel}
@@ -167,7 +167,7 @@ function AnimationPhaseBlock({
     const isAngle = shownDirection === "angle";
 
     return (
-        <div className="space-y-2 rounded-md border border-edge bg-white/[0.025] p-2">
+        <div className="space-y-2 rounded-md border border-edge bg-fill-subtle p-2">
             <div className="flex min-h-7 items-center justify-between gap-2">
                 <span className="text-2xs font-semibold tracking-wide text-fg-muted">{label}</span>
                 {showExitBlocking ? (

@@ -82,7 +82,7 @@ export function ConditionalAppearanceOverrides({
                                 return (
                                     <div
                                         key={`${groupKey}-${rowIndex}`}
-                                        className="rounded border border-edge-subtle bg-black/20 p-2 space-y-2"
+                                        className="rounded border border-edge-subtle bg-fill-subtle p-2 space-y-2"
                                     >
                                         <ConditionRowToggles
                                             conditions={row.conditions}
@@ -134,7 +134,7 @@ export function ConditionalAppearanceOverrides({
                                         </div>
                                         <button
                                             type="button"
-                                            className="text-2xs text-red-400 hover:underline"
+                                            className="text-2xs text-danger hover:underline"
                                             onClick={() => {
                                                 const v = removeRowFromGroup(variant, groupKey, rowIndex);
                                                 commitVariant(v);
@@ -149,7 +149,7 @@ export function ConditionalAppearanceOverrides({
                     );
                 })}
 
-                <div className="rounded-md border border-edge-subtle bg-black/15 p-2 space-y-2 min-w-0">
+                <div className="rounded-md border border-edge-subtle bg-fill-subtle p-2 space-y-2 min-w-0">
                     <div className="text-2xs tracking-wide text-fg-subtle">{t("widgetAppearance.conditions.addRowManually")}</div>
                     <p className="text-2xs text-fg-subtle leading-snug">
                         {t("widgetAppearance.conditions.addRowHint")}

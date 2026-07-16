@@ -91,6 +91,8 @@ type ConsoleServiceEvents = {
 export const MAX_CONSOLE_ENTRIES_PER_CHANNEL = 500;
 export const MAX_CONSOLE_ENTRY_CHARS = 8192;
 const TRUNCATED_ENTRY_SUFFIX = "... [truncated]";
+/** Console chrome the service emits itself; follows the theme like the rest of the panel. */
+const MUTED_SEGMENT_COLOR = "rgb(var(--nl-fg-muted))";
 
 /**
  * Always-present channels seeded at startup. Additional channels (e.g. the story preview's "Story"
@@ -172,7 +174,7 @@ function truncateSegments(segments: ConsoleLineSegment[]): ConsoleLineSegment[] 
     out.push({
         text: TRUNCATED_ENTRY_SUFFIX,
         italic: true,
-        color: "#8b949e",
+        color: MUTED_SEGMENT_COLOR,
     });
     return out;
 }
@@ -282,7 +284,7 @@ export class ConsoleService extends Service<ConsoleService> {
                 level: devModeStatusLevel(status),
                 source: "Dev Mode",
                 segments: [
-                    { text: "status changed: ", color: "#8b949e" },
+                    { text: "status changed: ", color: MUTED_SEGMENT_COLOR },
                     { text: status, bold: true },
                 ],
             });

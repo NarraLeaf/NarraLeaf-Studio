@@ -2,6 +2,7 @@ import "@xyflow/react/dist/style.css";
 import {
     useCallback,
     useEffect,
+    useId,
     useLayoutEffect,
     useMemo,
     useRef,
@@ -289,6 +290,12 @@ function BlueprintFlowCanvasInner({
     currentBlueprintId,
     resolveCallableFnSignature,
 }: BlueprintFlowCanvasInnerProps) {
+    // React Flow derives document-wide ids from this (the dot-grid `<pattern>`, edge
+    // markers, handle element ids, ARIA descriptions) and falls back to a literal "1"
+    // when unset — so every un-id'd instance on the page collides, and `url(#pattern-1)`
+    // resolves to whichever mounted first. Colons would break React Flow's own
+    // querySelector lookups for handles, so strip them out of useId's output.
+    const flowId = useId().replace(/:/g, "");
     const { getNodes, screenToFlowPosition, fitView, getViewport, setViewport } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -1092,6 +1099,7 @@ function BlueprintFlowCanvasInner({
                     zoom: viewport.zoom,
                 })}
                 defaultViewport={initialViewport ?? undefined}
+                id={flowId}
                 className="narraleaf-blueprint-flow bg-surface"
                 proOptions={{ hideAttribution: true }}
                 deleteKeyCode={deleteKeyCode ?? null}
@@ -1101,12 +1109,16 @@ function BlueprintFlowCanvasInner({
                 defaultEdgeOptions={{ selectable: true, focusable: true, interactionWidth: 24 }}
                 zIndexMode="manual"
             >
-                <Background color="#334155" gap={20} size={1} />
+                <Background color="rgb(var(--nl-fg-subtle))" gap={20} size={1} />
                 <BlueprintFlowZoomControls />
                 <MiniMap
-                    className="!bg-surface-sunken !border-edge"
-                    maskColor="rgba(15, 23, 42, 0.65)"
-                    nodeColor={() => "#0891b2"}
+                    // Dragging the minimap pans the viewport — the quickest way to
+                    // move across a large graph. xyflow ships no cursor affordance
+                    // for it, so add our own (grab, grabbing while held).
+                    pannable
+                    className="!bg-surface-sunken !border-edge cursor-grab active:cursor-grabbing"
+                    maskColor="rgb(var(--nl-surface-sunken) / 0.65)"
+                    nodeColor={() => "var(--narraleaf-accent, #40a8c4)"}
                 />
             </ReactFlow>
             {onAddNodeAtFlowPosition && addMenu ? (

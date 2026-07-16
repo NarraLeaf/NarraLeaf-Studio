@@ -1,5 +1,5 @@
 import "@xyflow/react/dist/style.css";
-import { memo } from "react";
+import { memo, useId } from "react";
 import { useTranslation } from "@/lib/i18n";
 import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
@@ -253,7 +253,7 @@ const MiniBlueprintNode = memo(function MiniBlueprintNode({ data }: NodeProps<No
         const rows = Math.max(inputs.length, outputs.length);
         return (
             <div
-                className="flex flex-col overflow-hidden rounded-md border border-slate-200/25 bg-[#1b1f27] shadow-md"
+                className="flex flex-col overflow-hidden rounded-md border border-edge-strong bg-surface-raised shadow-md"
                 style={{ width: data.width, height: data.height }}
             >
                 {handles}
@@ -264,17 +264,17 @@ const MiniBlueprintNode = memo(function MiniBlueprintNode({ data }: NodeProps<No
                     <div className="flex flex-1 justify-between gap-2 px-2 py-1.5">
                         <div className="flex min-w-0 flex-col gap-1">
                             {inputs.map((label, index) => (
-                                <span key={`in-${index}`} className="flex items-center gap-1 truncate text-[11px] text-slate-300">
-                                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400" />
+                                <span key={`in-${index}`} className="flex items-center gap-1 truncate text-[11px] text-fg-muted">
+                                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-fg-muted" />
                                     {label}
                                 </span>
                             ))}
                         </div>
                         <div className="flex min-w-0 flex-col items-end gap-1">
                             {outputs.map((label, index) => (
-                                <span key={`out-${index}`} className="flex items-center gap-1 truncate text-[11px] text-slate-300">
+                                <span key={`out-${index}`} className="flex items-center gap-1 truncate text-[11px] text-fg-muted">
                                     {label}
-                                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />
                                 </span>
                             ))}
                         </div>
@@ -312,6 +312,11 @@ export function BlueprintLayerPreview({
     variant?: "mini" | "detailed";
 }) {
     const { t } = useTranslation();
+    // Unique per instance: React Flow scopes its document-wide ids (dot-grid `<pattern>`,
+    // edge markers, handle ids) to this, defaulting every instance to "1" otherwise.
+    // Several previews plus the main editor canvas coexist on one page, and the first
+    // `pattern-1` in the DOM would otherwise win for all of them.
+    const flowId = useId().replace(/:/g, "");
     const detailed = variant === "detailed";
     const resolvedHeight = heightClassName ?? (detailed ? "h-[200px]" : "h-[112px]");
     const hasLayer = model !== null;
@@ -331,6 +336,7 @@ export function BlueprintLayerPreview({
             <ReactFlowProvider>
                 <ReactFlow
                     key={flowKey}
+                    id={flowId}
                     nodes={nodes}
                     edges={edges}
                     nodeTypes={miniNodeTypes}

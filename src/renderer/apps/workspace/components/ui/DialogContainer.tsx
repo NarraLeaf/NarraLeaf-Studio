@@ -81,7 +81,7 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
             >
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-edge">
-                    <h2 className="text-lg font-semibold text-white">{dialog.title}</h2>
+                    <h2 className="text-lg font-semibold text-fg">{dialog.title}</h2>
                     {dialog.closable && (
                         <button
                             onClick={onClose}
@@ -121,7 +121,7 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
                                 className={`
                                     px-4 py-2 text-sm rounded transition-colors
                                     ${button.disabled
-                                        ? "bg-gray-700 text-fg-subtle cursor-not-allowed"
+                                        ? "bg-fill text-fg-subtle cursor-not-allowed"
                                         : button.primary
                                             ? "bg-primary hover:bg-primary/80 text-white font-medium"
                                             : "bg-fill-subtle hover:bg-fill text-fg-muted"

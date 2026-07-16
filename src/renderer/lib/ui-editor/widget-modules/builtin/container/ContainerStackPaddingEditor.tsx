@@ -188,7 +188,7 @@ export function ContainerStackPaddingEditor({
                       ref={panelRef}
                       role="dialog"
                       aria-label={t("widgets.container.paddingDialog")}
-                      className="fixed z-[70] rounded-xl border border-edge bg-[#17181c] p-3 shadow-2xl"
+                      className="fixed z-[70] rounded-xl border border-edge bg-surface-raised p-3 shadow-2xl"
                       style={{
                           left: popoverPos.left,
                           top: popoverPos.top,

@@ -112,6 +112,7 @@ export const story = {
         placeholderText: "文本…",
         dragRow: "拖动行",
         insert: "插入",
+        delete: "删除",
         insertPlaceholder: "输入旁白，/ 插入动作，# 选择角色…",
         noCategoryActionFound: "未找到{category}动作",
         actionTypes: "动作类型",

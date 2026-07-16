@@ -142,11 +142,11 @@ export function DisplayableTargetField(props: {
             >
                 {name ? (
                     <>
-                        <TriggerIcon className={["h-3.5 w-3.5 shrink-0", unresolved ? "text-amber-400" : "text-fg-muted"].join(" ")} />
+                        <TriggerIcon className={["h-3.5 w-3.5 shrink-0", unresolved ? "text-warning" : "text-fg-muted"].join(" ")} />
                         <span className="truncate text-fg">{name}</span>
                         {unresolved ? (
                             <span
-                                className="shrink-0 rounded bg-amber-400/10 px-1 text-2xs text-amber-300/90"
+                                className="shrink-0 rounded bg-warning/10 px-1 text-2xs text-warning"
                                 title={t("story.targetField.notOnStageTitle")}
                             >
                                 {t("story.stage.notOnStage")}
@@ -163,7 +163,7 @@ export function DisplayableTargetField(props: {
             {open ? (
                 <div
                     className={[
-                        "absolute left-0 z-50 w-full min-w-[260px] overflow-hidden rounded-xl border border-edge bg-[#181b20] shadow-xl",
+                        "absolute left-0 z-50 w-full min-w-[260px] overflow-hidden rounded-xl border border-edge bg-surface-raised shadow-xl",
                         placement === "above" ? "bottom-full mb-1" : "top-full mt-1",
                     ].join(" ")}
                 >
@@ -189,7 +189,7 @@ export function DisplayableTargetField(props: {
                             />
                         ))}
                         {filteredBuiltins.length > 0 && filtered.length > 0 ? (
-                            <div className="my-1 border-t border-white/[0.06]" />
+                            <div className="my-1 border-t border-edge-subtle" />
                         ) : null}
                         {filtered.map(option => (
                             <DisplayableOptionRow
@@ -223,7 +223,7 @@ function BuiltinTargetRow(props: {
             aria-selected={props.active}
             className={[
                 "flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-left transition-colors",
-                props.active ? "bg-primary/15 text-white" : "hover:bg-fill",
+                props.active ? "bg-primary/15 text-fg" : "hover:bg-fill",
             ].join(" ")}
             onClick={props.onChoose}
         >
@@ -256,7 +256,7 @@ function DisplayableOptionRow(props: {
             aria-selected={props.active}
             className={[
                 "flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-left transition-colors",
-                props.active ? "bg-primary/15 text-white" : "hover:bg-fill",
+                props.active ? "bg-primary/15 text-fg" : "hover:bg-fill",
             ].join(" ")}
             onClick={props.onChoose}
         >
