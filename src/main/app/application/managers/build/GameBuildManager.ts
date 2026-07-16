@@ -10,6 +10,8 @@ import {
     deriveGameAppId,
     GAME_BUILD_FORMATS_BY_PLATFORM,
     hostCanBuildTarget,
+    isDesktopBuildPlatform,
+    isMobileBuildPlatform,
     normalizeGameBuildArch,
     webExportDirName,
     webExportZipName,
@@ -286,6 +288,31 @@ export class GameBuildManager {
             throw new Error("No build targets selected");
         }
         const desktopTargets = targets.filter(isDesktopTarget);
+        // Temporary until the mobile repack path is wired into the worker:
+        // fail fast and clearly instead of silently ignoring a target the
+        // caller asked for (the dialog does not offer these platforms yet, so
+        // only stored selections or non-UI callers can reach this). preflight
+        // deliberately stays silent about mobile targets until the UI batch
+        // adds the real mobile preflight codes alongside this guard's removal.
+        const mobileTargets = targets.filter(target => isMobileBuildPlatform(target.platform));
+        if (mobileTargets.length > 0) {
+            throw new Error(
+                `Building for ${mobileTargets.map(t => t.platform).join(", ")} is not supported yet; ` +
+                "the mobile pipeline is still being wired up.",
+            );
+        }
+        // A platform outside the union (malformed non-UI payload) must also
+        // fail loudly: with the explicit partitions above it would otherwise
+        // fall into none of them and the build would "succeed" with zero
+        // artifacts — worse than the TypeError the old desktop fall-through
+        // produced.
+        const unknownTargets = targets.filter(target =>
+            !isDesktopBuildPlatform(target.platform)
+            && !isMobileBuildPlatform(target.platform)
+            && target.platform !== "web");
+        if (unknownTargets.length > 0) {
+            throw new Error(`Unknown build platform(s): ${unknownTargets.map(t => String(t.platform)).join(", ")}`);
+        }
         const webTarget = targets.find(target => target.platform === "web");
         const webFormats = webTarget
             ? webTarget.formats.filter(format => GAME_BUILD_FORMATS_BY_PLATFORM.web.includes(format))
@@ -670,8 +697,12 @@ function isActiveStatus(status: GameBuildStateSnapshot["status"]): boolean {
 
 type GameBuildDesktopTarget = GameBuildTarget & { platform: GameBuildDesktopPlatform };
 
-function isDesktopTarget(target: GameBuildTarget): target is GameBuildDesktopTarget {
-    return target.platform !== "web";
+export function isDesktopTarget(target: GameBuildTarget): target is GameBuildDesktopTarget {
+    // Must be the shared exhaustive test, not `platform !== "web"`: this is a
+    // type predicate, whose body TypeScript never checks — the old form
+    // silently routed mobile targets into the electron-builder path when the
+    // platform union grew.
+    return isDesktopBuildPlatform(target.platform);
 }
 
 function normalizeTargets(targets: GameBuildTarget[] | undefined): GameBuildTarget[] {

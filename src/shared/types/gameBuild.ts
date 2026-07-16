@@ -6,20 +6,27 @@ import { sanitizeProjectFileName } from "@shared/utils/nlproj";
  */
 
 /** Platforms a project can be packaged for. */
-export type GameBuildPlatform = "windows" | "macos" | "linux" | "web";
+export type GameBuildPlatform = "windows" | "macos" | "linux" | "web" | "android" | "ios";
+
+/**
+ * Mobile platforms repack a prebuilt WebView shell template (pure TS, offline);
+ * like "web" they never touch electron-builder and have no CPU arch.
+ */
+export type GameBuildMobilePlatform = "android" | "ios";
 
 /**
  * Desktop platforms package an Electron shell through electron-builder; the
- * "web" platform emits a static site instead and never touches the packager.
+ * "web" platform emits a static site and the mobile platforms repack a shell
+ * template — neither touches the packager.
  */
-export type GameBuildDesktopPlatform = Exclude<GameBuildPlatform, "web">;
+export type GameBuildDesktopPlatform = Exclude<GameBuildPlatform, "web" | GameBuildMobilePlatform>;
 
 /**
  * Distribution formats. "dir" is the unpacked folder (fast local check; for
- * web it is the deployable site folder), "zip" a portable archive; the rest
- * are per-platform installers.
+ * web it is the deployable site folder), "zip" a portable archive, "apk"/"ipa"
+ * the mobile install packages; the rest are per-platform installers.
  */
-export type GameBuildFormat = "dir" | "zip" | "nsis" | "dmg" | "appimage";
+export type GameBuildFormat = "dir" | "zip" | "nsis" | "dmg" | "appimage" | "apk" | "ipa";
 
 /** CPU architecture a desktop target is packaged for. "universal" is macOS-only. */
 export type GameBuildArch = "x64" | "arm64" | "universal";
@@ -45,7 +52,10 @@ export type GameBuildCompression = "store" | "normal" | "maximum";
 export type GameBuildTarget = {
     platform: GameBuildPlatform;
     formats: GameBuildFormat[];
-    /** Ignored when `platform` is "web": a static site has no CPU arch. */
+    /**
+     * Ignored for "web" and the mobile platforms: a static site has no CPU
+     * arch, and the WebView shell templates are ABI-independent.
+     */
     arch?: GameBuildArch;
 };
 
@@ -125,7 +135,23 @@ export const GAME_BUILD_FORMATS_BY_PLATFORM: Record<GameBuildPlatform, GameBuild
     macos: ["zip", "dmg", "dir"],
     linux: ["zip", "appimage", "dir"],
     web: ["zip", "dir"],
+    android: ["apk"],
+    ios: ["ipa"],
 };
+
+/**
+ * Explicit membership tests instead of `platform !== "web"`: these are type
+ * predicates, whose bodies TypeScript never checks — when the platform union
+ * grew, every "not web means desktop" site silently misrouted mobile targets
+ * into the electron-builder path. Keeping the one exhaustive answer here.
+ */
+export function isDesktopBuildPlatform(platform: GameBuildPlatform): platform is GameBuildDesktopPlatform {
+    return platform === "windows" || platform === "macos" || platform === "linux";
+}
+
+export function isMobileBuildPlatform(platform: GameBuildPlatform): platform is GameBuildMobilePlatform {
+    return platform === "android" || platform === "ios";
+}
 
 /** Reverse-domain identifiers usable as a bundle/app id verbatim. */
 const APP_ID_PATTERN = /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$/;
@@ -190,12 +216,18 @@ const BUILDER_OS_TOKEN: Record<GameBuildDesktopPlatform, string> = {
     linux: "linux",
 };
 
-/** electron-builder's `${ext}` macro, per installer/archive format. */
+/**
+ * electron-builder's `${ext}` macro, per installer/archive format. The mobile
+ * formats never reach the desktop naming path (they are named by
+ * `mobileExportFileName`); they are listed to keep the map total.
+ */
 const BUILDER_EXT_TOKEN: Record<Exclude<GameBuildFormat, "dir">, string> = {
     zip: "zip",
     nsis: "exe",
     dmg: "dmg",
     appimage: "AppImage",
+    apk: "apk",
+    ipa: "ipa",
 };
 
 /**
@@ -215,6 +247,77 @@ export function webExportDirName(artifactBaseName: string, version: string): str
 /** File the web export's "zip" format is written to, under the output dir. */
 export function webExportZipName(artifactBaseName: string, version: string): string {
     return `${webExportDirName(artifactBaseName, version)}.zip`;
+}
+
+/**
+ * File a mobile install package is written to, under the output dir. Same
+ * naming family as the web export: no arch token (the shells are
+ * ABI-independent), the platform spelled out. Lives here for the same reason
+ * as the helpers above: the build dialog predicts the exact name the repack
+ * worker writes, and two copies would drift.
+ */
+export function mobileExportFileName(
+    platform: GameBuildMobilePlatform,
+    artifactBaseName: string,
+    version: string,
+): string {
+    return `${artifactBaseName}-${version}-${platform}.${platform === "android" ? "apk" : "ipa"}`;
+}
+
+/**
+ * Android versionCode derived from the project's semver: major*1e6 +
+ * minor*1e3 + patch, so successive releases stay monotonic. The pre-release
+ * suffix is ignored — "1.2.0-beta.3" shares 1.2.0's code, which sideloading
+ * accepts (same code + same signature installs as an update); strict
+ * "pre-release < release" ordering is a Play-upload concern for the future
+ * signing batch. The major cap is Google Play's 2_100_000_000 ceiling, adopted
+ * deliberately ahead of the store batch (the OS itself accepts Int32.max).
+ * Returns null when the version cannot be encoded; preflight reports that as
+ * an error rather than silently truncating and breaking monotonicity.
+ */
+export function deriveAndroidVersionCode(version: string): number | null {
+    const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version.trim());
+    if (!match) {
+        return null;
+    }
+    const major = Number(match[1]);
+    const minor = Number(match[2]);
+    const patch = Number(match[3]);
+    if (major > 2099 || minor > 999 || patch > 999) {
+        return null;
+    }
+    // 0.0.0 (the no-version fallback) still needs a valid code; installers
+    // reject versionCode 0.
+    return Math.max(1, major * 1_000_000 + minor * 1_000 + patch);
+}
+
+/**
+ * Make an app id usable as an Android package name, which is stricter than
+ * reverse-domain: every segment must start with a letter and may contain only
+ * letters, digits and underscores (hyphens are invalid anywhere). Hyphens and
+ * other invalid characters become underscores; a segment not starting with a
+ * letter gets an "n" prefix. Callers compare input and output to warn the
+ * author when the shipped package name differs from the displayed app id.
+ */
+export function normalizeAndroidPackageName(appId: string): string {
+    const segments = appId.split(".").map(segment => {
+        const cleaned = segment.replace(/[^A-Za-z0-9_]/g, "_");
+        return /^[A-Za-z]/.test(cleaned) ? cleaned : `n${cleaned}`;
+    });
+    // deriveGameAppId always emits at least two segments; guard non-UI callers.
+    return segments.length >= 2 ? segments.join(".") : `com.narraleaf.games.${segments[0]}`;
+}
+
+/**
+ * Make an app id usable as an iOS bundle identifier: alphanumerics, hyphens
+ * and periods only. Apple rejects underscores — the mirror image of Android's
+ * rule, which is why the two normalizations are separate functions.
+ */
+export function normalizeIosBundleId(appId: string): string {
+    return appId
+        .split(".")
+        .map(segment => segment.replace(/[^A-Za-z0-9-]/g, "-") || "app")
+        .join(".");
 }
 
 /**
@@ -262,7 +365,8 @@ export function predictGameBuildArtifacts(input: {
     const { artifactBaseName, version, targets } = input;
     const predicted: PredictedGameBuildArtifact[] = [];
     for (const target of targets) {
-        if (target.platform === "web") {
+        const { platform } = target;
+        if (platform === "web") {
             for (const format of target.formats) {
                 if (format === "dir") {
                     predicted.push({
@@ -282,7 +386,25 @@ export function predictGameBuildArtifacts(input: {
             }
             continue;
         }
-        const platform = target.platform as GameBuildDesktopPlatform;
+        if (platform === "android" || platform === "ios") {
+            for (const format of target.formats) {
+                if (!GAME_BUILD_FORMATS_BY_PLATFORM[platform].includes(format)) {
+                    continue;
+                }
+                predicted.push({
+                    name: mobileExportFileName(platform, artifactBaseName, version),
+                    kind: "file",
+                    platform,
+                    format,
+                });
+            }
+            continue;
+        }
+        // The narrowing above (not web, not mobile) is what makes `platform`
+        // desktop here — no cast, so the next platform addition fails to
+        // compile instead of falling into the desktop path at runtime (the
+        // old cast let non-desktop platforms through, crashing in the arch
+        // lookup below before any name was produced).
         const arch = normalizeGameBuildArch(platform, target.arch);
         for (const format of target.formats) {
             if (format === "dir") {
@@ -326,18 +448,21 @@ export function platformFromSystem(system: string): GameBuildDesktopPlatform {
  * Whether `host` can package for `target`. macOS targets need Apple tooling
  * (mac host only); Linux packaging (AppImage) needs a Unix host; Windows
  * targets build from any host. Mirrors electron-builder's cross-build support
- * for unsigned artifacts. The web target is plain file copying/zipping and
- * builds everywhere.
+ * for unsigned artifacts. The web target is plain file copying/zipping and the
+ * mobile targets are pure-TS repacks of prebuilt shell templates — both build
+ * everywhere, by design rather than by fall-through: the switch is exhaustive
+ * so the next platform addition must state its answer explicitly.
  */
 export function hostCanBuildTarget(host: GameBuildPlatform, target: GameBuildPlatform): boolean {
-    if (target === "web") {
-        return true;
+    switch (target) {
+        case "web":
+        case "android":
+        case "ios":
+        case "windows":
+            return true;
+        case "macos":
+            return host === "macos";
+        case "linux":
+            return host !== "windows";
     }
-    if (target === "macos") {
-        return host === "macos";
-    }
-    if (target === "linux") {
-        return host !== "windows";
-    }
-    return true;
 }
