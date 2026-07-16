@@ -261,6 +261,11 @@ describe("entry validation", () => {
 });
 
 describe("zip64", () => {
+    // These build 65k-entry archives; a generous timeout keeps them from
+    // flaking against the default 5s when co-scheduled with the RSA-keygen
+    // signing tests under CI load.
+    const HEAVY_TIMEOUT = 30_000;
+
     const manyEntries = (count: number): ZipWriteEntry[] => {
         const entries: ZipWriteEntry[] = [];
         for (let i = 0; i < count; i++) {
@@ -280,18 +285,18 @@ describe("zip64", () => {
         expect(index.zip64).toBe(true);
         expect(index.entries.length).toBe(65535);
         expect(index.entries[65534].name).toBe("d/65534");
-    });
+    }, HEAVY_TIMEOUT);
 
     it("stays plain zip below the sentinel", async () => {
         const output = new BufferZipOutput();
         const result = await writeZip(output, manyEntries(65534), IPA_OPTIONS);
         expect(result.zip64).toBe(false);
         expect(parseZipIndex(output.toBuffer()).entries.length).toBe(65534);
-    });
+    }, HEAVY_TIMEOUT);
 
     it("fails loudly instead of writing zip64 when the target forbids it", async () => {
         await expect(writeToBuffer(manyEntries(65535), APK_OPTIONS)).rejects.toThrow(/zip64/);
-    });
+    }, HEAVY_TIMEOUT);
 });
 
 describe("lazy source opening", () => {
