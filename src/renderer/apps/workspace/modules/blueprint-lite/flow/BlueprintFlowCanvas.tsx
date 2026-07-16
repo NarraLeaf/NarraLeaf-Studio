@@ -1112,7 +1112,11 @@ function BlueprintFlowCanvasInner({
                 <Background color="rgb(var(--nl-fg-subtle))" gap={20} size={1} />
                 <BlueprintFlowZoomControls />
                 <MiniMap
-                    className="!bg-surface-sunken !border-edge"
+                    // Dragging the minimap pans the viewport — the quickest way to
+                    // move across a large graph. xyflow ships no cursor affordance
+                    // for it, so add our own (grab, grabbing while held).
+                    pannable
+                    className="!bg-surface-sunken !border-edge cursor-grab active:cursor-grabbing"
                     maskColor="rgb(var(--nl-surface-sunken) / 0.65)"
                     nodeColor={() => "var(--narraleaf-accent, #40a8c4)"}
                 />
