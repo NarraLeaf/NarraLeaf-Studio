@@ -50,6 +50,10 @@ export const settings = {
                 dark: "暗色",
             },
         },
+        zoomPercent: {
+            label: "界面缩放",
+            description: "Studio 界面的缩放比例（{min}%-{max}%）",
+        },
         editorFontSize: {
             label: "故事编辑器字号",
             description: "故事场景编辑器中对话、旁白与选项文本的字号（px，{min}–{max}）",

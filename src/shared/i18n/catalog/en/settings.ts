@@ -51,6 +51,10 @@ export const settings = {
                 dark: "Dark",
             },
         },
+        zoomPercent: {
+            label: "Interface zoom",
+            description: "Zoom level of the Studio interface ({min}%-{max}%).",
+        },
         editorFontSize: {
             label: "Story editor font size",
             description:

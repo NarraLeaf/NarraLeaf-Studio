@@ -9,6 +9,8 @@ import EventEmitter from "events";
 
 // Managers
 import { AppEventToken, AppInfo } from "@shared/types/app";
+import { IPCEventType } from "@shared/types/ipcEvents";
+import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import { WindowAppType } from "@shared/types/window";
 import { readJson } from "@shared/utils/json";
 import { safeExecuteFn } from "@shared/utils/os";
@@ -92,6 +94,53 @@ export class BaseApp {
         this.storageManager = new StorageManager(this);
 
         void this.prepare().catch((error) => this.failBootstrap(error));
+    }
+
+    /**
+     * Persist a global-state value, fan it out to every open window, and run the
+     * main-process side effects the key carries.
+     *
+     * The one write path for global state: the Settings window arrives here over
+     * IPC, and the zoom shortcuts call it directly. Keeping it in one place is
+     * what lets a keystroke in one window re-zoom all of them.
+     */
+    public setGlobalStateAndBroadcast<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): void {
+        this.globalState.set(key, value);
+
+        for (const window of this.windowManager.getWindows()) {
+            if (window.isClosed()) {
+                continue;
+            }
+            try {
+                window.sendIpcEvent(IPCEventType.appGlobalStateChanged, { key, value });
+            } catch (error) {
+                this.logger.debug(`Failed to broadcast global state change to a window: ${String(error)}`);
+            }
+        }
+
+        // The language also drives the native application menu, which is owned by
+        // the main process and must be rebuilt here.
+        if (key === "app.language") {
+            this.menuManager.updateMenu();
+        }
+
+        // The theme is owned by the main process: nativeTheme drives
+        // prefers-color-scheme in every renderer (which flips the CSS tokens) plus
+        // native chrome. Window background colors follow via the nativeTheme
+        // "updated" listener in prepare().
+        if (key === "ui.themeMode") {
+            applyThemeMode(value);
+        }
+
+        // Zoom is a per-webContents property, so unlike the theme it has to be
+        // pushed to each window rather than resolved from one switch.
+        if (key === "ui.zoomPercent") {
+            for (const window of this.windowManager.getWindows()) {
+                if (!window.isClosed()) {
+                    window.applyStoredZoom();
+                }
+            }
+        }
     }
 
     public onReady(fn: (...args: AppEvents["ready"]) => void): AppEventToken {
