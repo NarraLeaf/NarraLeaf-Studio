@@ -146,7 +146,7 @@ const TextBlueprintValueField = createBlueprintValueField({
     const textProps = getTextProps(liveElement);
     return (
       <textarea
-        className="min-h-[88px] w-full resize-y rounded-md border border-edge bg-[#0b0d10] px-2 py-1.5 text-xs text-fg outline-none focus:border-cyan-400/70 focus:ring-1 focus:ring-cyan-400/40"
+        className="min-h-[88px] w-full resize-y rounded-md border border-edge bg-surface-sunken px-2 py-1.5 text-xs text-fg outline-none focus:border-primary/70 focus:ring-1 focus:ring-primary/40"
         value={textProps.text}
         rows={4}
         onChange={event => {
@@ -309,8 +309,8 @@ export function createTextInspector(ctx: InspectorContext) {
                           className={[
                             "flex h-9 min-h-[34px] w-9 items-center justify-center rounded-md border border-edge transition",
                             isItalic
-                              ? "bg-fill text-white"
-                              : "bg-surface-raised text-fg-muted hover:bg-fill hover:text-white",
+                              ? "bg-fill text-fg"
+                              : "bg-surface-raised text-fg-muted hover:bg-fill hover:text-fg",
                           ].join(" ")}
                           aria-label={isItalic ? t("widgets.typography.disableItalic") : t("widgets.typography.enableItalic")}
                           aria-pressed={isItalic}

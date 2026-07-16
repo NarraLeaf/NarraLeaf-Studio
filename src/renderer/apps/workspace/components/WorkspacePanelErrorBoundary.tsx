@@ -20,9 +20,9 @@ function createPanelErrorFallback(
         const { t } = useTranslation();
         return (
             <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-3 bg-surface p-4 text-center">
-                <AlertCircle className="h-8 w-8 shrink-0 text-red-400" aria-hidden />
+                <AlertCircle className="h-8 w-8 shrink-0 text-danger" aria-hidden />
                 <div>
-                    <p className="text-sm font-medium text-white">{t("workspace.shell.panelRenderError")}</p>
+                    <p className="text-sm font-medium text-fg">{t("workspace.shell.panelRenderError")}</p>
                     <p className="mt-1 text-xs text-fg-subtle">{regionLabel}</p>
                 </div>
                 <button

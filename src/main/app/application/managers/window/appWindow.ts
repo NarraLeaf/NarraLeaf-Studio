@@ -8,6 +8,9 @@ import { WindowIPC } from "./windowIPC";
 import { WindowProxy } from "./windowProxy";
 import { WindowUserHandlers } from "./windowUserHandlers";
 import { WindowProps, WindowAppType, WindowVisibilityStatus, WindowCloseResults, WindowControlPolicy } from "@shared/types/window";
+import { getWindowBackgroundColor } from "@/app/application/theme";
+import { applyTrafficLightPositionForZoom, applyZoomFactorToWebContents, windowTypeUsesZoom } from "@/app/application/zoom";
+import { ZOOM_PERCENT_DEFAULT, nextZoomPercent, normalizeZoomPercent } from "@shared/constants/zoom";
 import { decideWindowNavigation } from "./navigationGuard";
 
 export interface WindowConfig<T extends WindowAppType> {
@@ -25,9 +28,6 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         isolated: true,
         autoFocus: true,
         preload: null,
-        options: {
-            backgroundColor: "#fff",
-        }
     }
 
     private props: WindowProps[T];
@@ -44,6 +44,13 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         const windowConfig: WindowConfig<T> = {
             ...AppWindow.DefaultConfig,
             ...config,
+            options: {
+                // Paint-behind color for every Studio window, resolved from the
+                // current theme at creation time (kept live afterwards by the
+                // nativeTheme listener in baseApp).
+                backgroundColor: getWindowBackgroundColor(),
+                ...config.options,
+            },
         } as WindowConfig<T>;
 
         const instance = new WindowInstance(windowConfig);
@@ -270,9 +277,79 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         this.prepareEvents();
     }
 
+    /** Re-read `ui.zoomPercent` and apply it. No-op for windows that don't zoom. */
+    public applyStoredZoom(): void {
+        if (!windowTypeUsesZoom(this.getWindowType())) {
+            return;
+        }
+        const percent = this.getApp().globalState.get("ui.zoomPercent");
+        try {
+            applyZoomFactorToWebContents(this.getWebContents(), percent);
+            // The traffic lights are drawn by macOS and ignore the zoom, so the CSS
+            // titlebar would otherwise grow or shrink out from under them.
+            if (this.getConfig().options?.frame === false) {
+                applyTrafficLightPositionForZoom(
+                    this.getBrowserWindow(),
+                    this.getConfig().windowControlPolicy ?? WindowControlPolicy.Standard,
+                    percent,
+                );
+            }
+        } catch (error) {
+            this.getApp().logger.debug(`[Zoom] Failed to apply zoom to ${this.getWindowType()}: ${String(error)}`);
+        }
+    }
+
+    /**
+     * Keep the window on the stored zoom, and let Cmd/Ctrl +/-/0 change it.
+     *
+     * The shortcuts write the setting rather than touching this webContents, so
+     * one keystroke re-zooms every open window through the same broadcast the
+     * Settings window uses. They are wired here (not in the macOS menu) because
+     * `buildMenuTemplate` returns an empty menu off darwin, which would leave
+     * Windows and Linux without any way to zoom.
+     */
+    private prepareZoom(webContents: Electron.WebContents): void {
+        if (!windowTypeUsesZoom(this.getWindowType())) {
+            return;
+        }
+
+        // Electron drops the zoom factor on every navigation, so re-apply on load
+        // rather than once at construction.
+        webContents.on("did-finish-load", () => this.applyStoredZoom());
+
+        webContents.on("before-input-event", (event, input) => {
+            if (input.type !== "keyDown" || !(input.control || input.meta) || input.alt) {
+                return;
+            }
+
+            const current = this.getApp().globalState.get("ui.zoomPercent");
+            let next: number | null = null;
+            // "=" and "+" share a key; the numpad reports "Add"/"Subtract".
+            if (input.key === "=" || input.key === "+" || input.key === "Add") {
+                next = nextZoomPercent(current, 1);
+            } else if (input.key === "-" || input.key === "_" || input.key === "Subtract") {
+                next = nextZoomPercent(current, -1);
+            } else if (input.key === "0") {
+                next = ZOOM_PERCENT_DEFAULT;
+            }
+
+            if (next === null) {
+                return;
+            }
+
+            event.preventDefault();
+            if (next === normalizeZoomPercent(current)) {
+                return;
+            }
+            this.getApp().setGlobalStateAndBroadcast("ui.zoomPercent", next);
+        });
+    }
+
     private prepareEvents(): void {
         const win = this.getInstance().getBrowserWindow();
         const webContents = win.webContents;
+
+        this.prepareZoom(webContents);
 
         win.on("close", (event) => {
             if (this.closeGuard && !this.closeGuardBypassed && !this.getApp().isQuitting()) {

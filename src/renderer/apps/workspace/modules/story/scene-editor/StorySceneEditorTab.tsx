@@ -54,7 +54,7 @@ import {
 } from "./preview/storyScenePreviewSessionStore";
 
 const SCENE_FIELD_LABEL_CLASS = "mb-1 block text-2xs font-medium text-fg-subtle";
-const SCENE_TEXT_FIELD_CLASS = "w-full rounded-md border border-edge bg-[#16181d] px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-primary/50";
+const SCENE_TEXT_FIELD_CLASS = "w-full rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-primary/50";
 
 function StorySceneOverviewBlock(props: {
     document: StoryDocument;
@@ -108,14 +108,14 @@ function StorySceneOverviewBlock(props: {
     const backgroundLabel = backgroundAsset?.name ?? (backgroundAssetId ? t("story.background.missingImage") : t("story.background.none"));
 
     return (
-        <div className="mx-3 mb-3 rounded-lg border border-edge bg-white/[0.025] p-3">
+        <div className="mx-3 mb-3 rounded-lg border border-edge bg-fill-subtle p-3">
             <div
                 className="grid items-start gap-3"
                 style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))" }}
             >
                 <button
                     type="button"
-                    className="group relative aspect-[16/9] min-h-40 overflow-hidden rounded-md border border-edge bg-[#101216] text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
+                    className="group relative aspect-[16/9] min-h-40 overflow-hidden rounded-md border border-edge bg-surface text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
                     onClick={() => setSelectorOpen(true)}
                     title={backgroundAssetId ? t("story.sceneEditor.changeBackgroundTitle") : t("story.sceneEditor.selectBackgroundTitle")}
                 >
@@ -128,11 +128,11 @@ function StorySceneOverviewBlock(props: {
                         </div>
                     )}
                     {loading ? (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-xs text-fg">
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-xs text-white">
                             {t("common.loading")}
                         </div>
                     ) : null}
-                    <div className="absolute inset-x-0 bottom-0 flex min-h-9 items-center justify-between gap-2 bg-black/55 px-3 py-2 text-xs text-fg backdrop-blur-sm">
+                    <div className="absolute inset-x-0 bottom-0 flex min-h-9 items-center justify-between gap-2 bg-black/55 px-3 py-2 text-xs text-white backdrop-blur-sm">
                         <span className="min-w-0 truncate">{backgroundLabel}</span>
                         <span className="shrink-0 text-primary opacity-0 transition-opacity group-hover:opacity-100">
                             {backgroundAssetId ? t("story.sceneEditor.change") : t("story.sceneEditor.select")}
@@ -145,7 +145,7 @@ function StorySceneOverviewBlock(props: {
                         <div className="mb-2 flex min-w-0 items-center gap-2">
                             <FileText className="h-4 w-4 shrink-0 text-primary" />
                             <div className="min-w-0">
-                                <div className="truncate text-sm font-medium text-white">{document.name}</div>
+                                <div className="truncate text-sm font-medium text-fg">{document.name}</div>
                                 <div className="truncate text-2xs text-fg-subtle">{scene.runtimeName || t("story.sceneEditor.untitledScene")}</div>
                             </div>
                         </div>
@@ -196,7 +196,7 @@ function StorySceneOverviewBlock(props: {
                             <button
                                 ref={selectButtonRef}
                                 type="button"
-                                className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-edge bg-[#16181d] px-3 text-left text-sm text-fg-muted hover:border-primary/40"
+                                className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-edge bg-surface-raised px-3 text-left text-sm text-fg-muted hover:border-primary/40"
                                 onClick={() => setSelectorOpen(true)}
                             >
                                 <ImageIcon className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
@@ -206,7 +206,7 @@ function StorySceneOverviewBlock(props: {
                             </button>
                             <button
                                 type="button"
-                                className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                                className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
                                 disabled={!backgroundAssetId}
                                 title={t("story.sceneEditor.clearBackground")}
                                 onClick={clearBackground}
@@ -215,7 +215,7 @@ function StorySceneOverviewBlock(props: {
                             </button>
                         </div>
                         {backgroundAssetId && error ? (
-                            <div className="mt-1 text-2xs text-amber-400/90">
+                            <div className="mt-1 text-2xs text-warning/90">
                                 {t("story.sceneEditor.backgroundResolveError", { error })}
                             </div>
                         ) : null}
@@ -262,13 +262,13 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         },
         {
             id: "undo",
-            key: "ctrl+z",
+            key: "mod+z",
             description: t("story.keybindings.undo"),
             handler: editor.undoEdit,
         },
         {
             id: "redo",
-            key: "ctrl+shift+z",
+            key: "mod+shift+z",
             description: t("story.keybindings.redo"),
             handler: editor.redoEdit,
         },
@@ -279,14 +279,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             handler: editor.enterEditOrInspectorForActive,
         },
         {
-            id: "insert-after-active-ctrl",
-            key: "ctrl+enter",
-            description: t("story.keybindings.insertRow"),
-            handler: editor.startInsertAfterActive,
-        },
-        {
-            id: "insert-after-active-meta",
-            key: "meta+enter",
+            id: "insert-after-active",
+            key: "mod+enter",
             description: t("story.keybindings.insertRow"),
             handler: editor.startInsertAfterActive,
         },
@@ -303,26 +297,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             handler: () => editor.indentSelection("out"),
         },
         {
-            id: "select-all-ctrl",
-            key: "ctrl+a",
+            id: "select-all",
+            key: "mod+a",
             description: t("story.keybindings.selectAll"),
             handler: editor.selectAllRows,
         },
         {
-            id: "select-all-meta",
-            key: "meta+a",
-            description: t("story.keybindings.selectAll"),
-            handler: editor.selectAllRows,
-        },
-        {
-            id: "duplicate-ctrl",
-            key: "ctrl+d",
-            description: t("story.keybindings.duplicateRows"),
-            handler: editor.duplicateSelection,
-        },
-        {
-            id: "duplicate-meta",
-            key: "meta+d",
+            id: "duplicate",
+            key: "mod+d",
             description: t("story.keybindings.duplicateRows"),
             handler: editor.duplicateSelection,
         },
@@ -375,14 +357,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             handler: () => editor.jumpRowSelection("last"),
         },
         {
-            id: "select-first-ctrl",
-            key: "ctrl+home",
+            id: "select-first-mod",
+            key: "mod+home",
             description: t("story.keybindings.selectFirst"),
             handler: () => editor.jumpRowSelection("first"),
         },
         {
-            id: "select-last-ctrl",
-            key: "ctrl+end",
+            id: "select-last-mod",
+            key: "mod+end",
             description: t("story.keybindings.selectLast"),
             handler: () => editor.jumpRowSelection("last"),
         },
@@ -781,7 +763,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
 
     if (!document || !scene) {
         return (
-            <div className="flex h-full items-center justify-center p-6 text-sm text-amber-300">
+            <div className="flex h-full items-center justify-center p-6 text-sm text-warning">
                 {t("story.sceneEditor.notFound")}
             </div>
         );
@@ -808,7 +790,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         <div
             ref={editor.rootRef}
             tabIndex={0}
-            className="flex h-full min-h-0 flex-col bg-[#0d0f12] text-fg outline-none"
+            className="flex h-full min-h-0 flex-col bg-surface text-fg outline-none"
             onFocus={editor.focusWorkspace}
             onFocusCapture={handleEditorFocusCapture}
             onKeyDown={editor.handleKeyDown}
@@ -819,7 +801,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 <div className="flex min-w-0 items-center gap-2">
                     <FileText className="h-4 w-4 shrink-0 text-primary" />
                     <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-white">{scene.name}</div>
+                        <div className="truncate text-sm font-medium text-fg">{scene.name}</div>
                         <div className="truncate text-2xs text-fg-muted">{document.name}</div>
                     </div>
                 </div>
@@ -884,6 +866,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     generateTextId={() => editor.uuidService?.generate() ?? crypto.randomUUID()}
                                     onCreateLayer={beforeBlockId => editor.createLayerBeforeBlock(beforeBlockId)}
                                     onInsertAfter={() => editor.startInsertAfter(row.block.id, true)}
+                                    onDeleteRow={() => void editor.deleteRows([row.block.id])}
                                     onAddInside={parentId => editor.addInsideContainer(parentId)}
                                     onAddBranch={(conditionId, branch) => editor.addConditionBranch(conditionId, branch)}
                                 />
@@ -934,7 +917,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             </div>
             <button
                 type="button"
-                className={`absolute bottom-3 right-3 z-[5] flex items-center gap-1.5 rounded-lg border border-edge px-2.5 py-1.5 text-xs shadow-lg transition-colors ${previewOpen ? "bg-primary/20 text-primary" : "bg-surface-sunken text-fg-muted hover:bg-fill"}`}
+                className={`absolute bottom-3 right-3 z-[5] flex items-center gap-1.5 rounded-lg border border-edge px-2.5 py-1.5 text-xs shadow-lg transition-colors ${previewOpen ? "bg-primary/20 text-primary" : "bg-surface-overlay text-fg-muted hover:bg-fill"}`}
                 onClick={togglePreview}
                 title={previewOpen ? t("story.preview.closePreview") : t("story.preview.openPreview")}
             >

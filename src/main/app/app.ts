@@ -114,9 +114,7 @@ export class App extends BaseApp {
             return this.launcherStartup;
         }
 
-        this.launcherStartup = this.launchLauncher({
-            backgroundColor: "#0f1115",
-        }).then(launcher => {
+        this.launcherStartup = this.launchLauncher({}).then(launcher => {
             launcher.onKeyUp("F12", () => {
                 launcher.toggleDevTools();
             });
@@ -325,7 +323,6 @@ export class App extends BaseApp {
                 center: true,
                 frame: false,
                 titleBarStyle: "hidden",
-                backgroundColor: "#0f1115",
                 show: false,
                 ...options,
             },
@@ -389,7 +386,6 @@ export class App extends BaseApp {
                 center: true,
                 frame: false,
                 titleBarStyle: "hidden",
-                backgroundColor: "#111318",
                 show: false,
                 ...options,
             },

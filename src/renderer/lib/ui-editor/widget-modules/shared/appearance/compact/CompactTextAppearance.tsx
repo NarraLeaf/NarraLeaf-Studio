@@ -60,8 +60,8 @@ function segButtonClass(active: boolean): string {
     return [
         "grid h-9 w-9 place-items-center rounded-md border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
         active
-            ? "border-primary/50 bg-primary/20 text-white"
-            : "border-edge bg-surface-raised text-fg-muted hover:bg-fill hover:text-white",
+            ? "border-primary/50 bg-primary/20 text-fg"
+            : "border-edge bg-surface-raised text-fg-muted hover:bg-fill hover:text-fg",
     ].join(" ");
 }
 

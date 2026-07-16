@@ -12,6 +12,7 @@ import { ControlBar } from "./ControlBar";
 import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
 import { ResizableHandle } from "../ui/ResizableHandle";
+import { EditorClosedTabsKeybinding } from "./EditorClosedTabsKeybinding";
 import { WorkspaceEditorQuickSwitch } from "./WorkspaceEditorQuickSwitch";
 import { useRegistry } from "../../registry";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
@@ -670,6 +671,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
             {/* UI Overlays */}
             <WorkspaceEditorQuickSwitch />
+            <EditorClosedTabsKeybinding />
             <NotificationContainer />
             <DialogContainer />
         </div>

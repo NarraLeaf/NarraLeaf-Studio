@@ -108,8 +108,8 @@ export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
                 const stateClasses = action.disabled
                     ? "text-fg-subtle cursor-not-allowed"
                     : isRuntimeActionActive
-                        ? "bg-red-600 text-white hover:bg-red-700 hover:text-white"
-                        : "text-fg-muted hover:bg-fill hover:text-white";
+                        ? "bg-danger text-white hover:bg-danger/80 hover:text-white"
+                        : "text-fg-muted hover:bg-fill hover:text-fg";
                 const resolvedLabel = action.labelKey ? t(action.labelKey) : action.label;
                 const resolvedTooltip = action.tooltipKey ? t(action.tooltipKey) : action.tooltip;
                 const title = isRuntimeActionActive
@@ -134,7 +134,7 @@ export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
                         {action.icon && <span className="w-4 h-4">{action.icon}</span>}
                         {resolvedLabel && <span>{String(resolvedLabel)}</span>}
                         {action.badge && (
-                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                            <span className="absolute -top-1 -right-1 bg-danger text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
                                 {action.badge}
                             </span>
                         )}

@@ -87,7 +87,7 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
 
     return (
         <div
-            className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[#101114]"
+            className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface"
             data-panel-id={panelId}
         >
             <ProjectPanelHome config={config} onOpen={setActiveSection} />
@@ -96,7 +96,7 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
                 {activeItem && sectionProps ? (
                     <motion.div
                         key={activeItem.id}
-                        className="absolute inset-0 z-10 bg-[#101114] shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
+                        className="absolute inset-0 z-10 bg-surface shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
                         initial={{ x: "100%" }}
                         animate={{ x: 0 }}
                         exit={{ x: "100%" }}

@@ -6,6 +6,7 @@ import { getInterface, hardenRendererBridge, initializeRendererBridge } from "./
 import { CriticalErrorBoundary } from "./app/errorHandling/CriticalErrorBoundary";
 import { RenderingStatusAnnouncer } from "./components/announcers/RenderingStatusAnnouncer";
 import { initI18n } from "./i18n";
+import { initZoom } from "./zoom";
 
 import "@/styles/styles.css";
 
@@ -51,6 +52,9 @@ async function renderApp(children: React.ReactNode) {
     // Load the persisted language + subscribe to live changes before the first
     // paint, so every window renders in the right language with no flash.
     await initI18n();
+
+    // Publishes `--nl-zoom` for the titlebar's traffic-light safe area.
+    await initZoom();
 
     console.log("[renderer] platformInfo", platformInfo);
     console.log("[renderer] appInfo", appInfo);

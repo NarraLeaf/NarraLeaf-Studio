@@ -58,9 +58,9 @@ type Props = {
 
 const ICON_BUTTON =
     "nodrag !h-5 !w-5 shrink-0 !gap-0 rounded !p-1 text-fg-muted hover:bg-fill-subtle hover:text-fg";
-const INPUT_CLASS = "h-6 rounded border-edge bg-[#111418] px-1.5 py-0.5 font-mono text-2xs";
+const INPUT_CLASS = "h-6 rounded border-edge bg-surface px-1.5 py-0.5 font-mono text-2xs";
 const RAW_TEXTAREA_CLASS =
-    "min-h-[300px] resize-none rounded border-edge bg-[#0d1014] px-2 py-1.5 font-mono text-2xs leading-relaxed";
+    "min-h-[300px] resize-none rounded border-edge bg-surface-sunken px-2 py-1.5 font-mono text-2xs leading-relaxed";
 const JSON_EDITOR_SCOPE_ATTRIBUTE = "data-blueprint-json-editor-scope";
 const JSON_EDITOR_PANEL_Z_INDEX = 10000;
 const JSON_EDITOR_MENU_Z_INDEX = JSON_EDITOR_PANEL_Z_INDEX + 1;
@@ -128,7 +128,7 @@ function NumberValueInput({ value, onChange }: { value: number; onChange: (next:
     const invalid = draft.trim().length === 0 || !Number.isFinite(Number(draft));
     return (
         <Input
-            className={`${INPUT_CLASS} min-w-[5rem] flex-1 ${invalid ? "border-red-400/70 text-red-100" : ""}`}
+            className={`${INPUT_CLASS} min-w-[5rem] flex-1 ${invalid ? "border-danger/70 text-danger" : ""}`}
             type="number"
             value={draft}
             size="sm"
@@ -172,7 +172,7 @@ function JsonObjectKeyInput({
     return (
         <Input
             className={`${INPUT_CLASS} min-w-[5.5rem] max-w-[8rem] ${
-                invalid ? "border-red-400/70 text-red-100" : ""
+                invalid ? "border-danger/70 text-danger" : ""
             }`}
             type="text"
             value={draft}
@@ -379,7 +379,7 @@ function JsonTreeRow({
                     )}
                     {lockedKind ? (
                         <span
-                            className="w-[6.25rem] shrink-0 rounded border border-edge bg-[#0d1014] px-1.5 py-1 text-2xs capitalize tracking-wide text-fg-subtle"
+                            className="w-[6.25rem] shrink-0 rounded border border-edge bg-surface-sunken px-1.5 py-1 text-2xs capitalize tracking-wide text-fg-subtle"
                             title={t("blueprint.json.schemaFieldType")}
                         >
                             {lockedKind}
@@ -429,7 +429,7 @@ function JsonTreeRow({
                         aria-label={t("common.remove")}
                         variant="ghost"
                         size="sm"
-                        className={`${ICON_BUTTON} hover:text-red-200`}
+                        className={`${ICON_BUTTON} hover:text-danger`}
                         onMouseDown={stopFlowNodePointerBubble}
                         onPointerDown={stopFlowNodePointerBubble}
                         onClick={e => {
@@ -690,7 +690,7 @@ function JsonEditorPortal({
         <div
             ref={panelRef}
             data-blueprint-json-editor-scope={scopeId}
-            className="rounded-md border border-edge bg-[#111418] p-2 text-xs text-fg shadow-2xl"
+            className="rounded-md border border-edge bg-surface p-2 text-xs text-fg shadow-2xl"
             style={style}
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
@@ -710,7 +710,7 @@ function JsonEditorPortal({
                         aria-label={mode === "raw" ? t("blueprint.json.treeEditor") : t("blueprint.json.rawJson")}
                         variant="ghost"
                         size="sm"
-                        className={`${ICON_BUTTON} text-cyan-200 hover:text-cyan-100`}
+                        className={`${ICON_BUTTON} text-primary hover:text-primary/80`}
                         onMouseDown={stopFlowNodePointerBubble}
                         onPointerDown={stopFlowNodePointerBubble}
                         onClick={e => {
@@ -724,7 +724,7 @@ function JsonEditorPortal({
                 {mode === "raw" ? (
                     <div className="space-y-1.5">
                         <TextArea
-                            className={`${RAW_TEXTAREA_CLASS} ${rawError ? "border-red-400/70 text-red-100" : ""}`}
+                            className={`${RAW_TEXTAREA_CLASS} ${rawError ? "border-danger/70 text-danger" : ""}`}
                             value={rawDraft}
                             rows={12}
                             fullWidth
@@ -741,7 +741,7 @@ function JsonEditorPortal({
                                 commitRawDraft();
                             }}
                         />
-                        {rawError ? <div className="text-2xs text-red-300">{rawError}</div> : null}
+                        {rawError ? <div className="text-2xs text-danger">{rawError}</div> : null}
                     </div>
                 ) : (
                     <div className="max-h-[360px] overflow-auto pr-1">
@@ -777,7 +777,7 @@ export function BlueprintJsonValueControl({ value, onChange, schema }: Props) {
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
-            <div className="min-w-0 flex-1 rounded border border-edge bg-[#111418] px-1.5 py-1">
+            <div className="min-w-0 flex-1 rounded border border-edge bg-surface px-1.5 py-1">
                 <div className="text-2xs capitalize tracking-wide text-fg-subtle">{kind}</div>
                 <div className="truncate font-mono text-2xs text-fg-muted" title={summarizeJsonValue(root)}>
                     {summarizeJsonValue(root)}

@@ -65,8 +65,8 @@ export function SidebarPanelDropIcon({
                 w-10 h-10 rounded-md flex items-center justify-center transition-colors cursor-default
                 ${
                     active && sidebarVisible
-                        ? "bg-fill-strong text-white"
-                        : "text-fg-muted hover:bg-fill hover:text-white"
+                        ? "bg-fill-strong text-fg"
+                        : "text-fg-muted hover:bg-fill hover:text-fg"
                 }
                 ${sortable?.isDragging ? "opacity-50 ring-2 ring-primary/60" : ""}
                 ${overlayClassName}

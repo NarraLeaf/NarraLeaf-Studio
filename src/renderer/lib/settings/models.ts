@@ -21,6 +21,12 @@ export interface SettingDescriptor<T extends SettingValueType = SettingValueType
     options?: string[];
     /** Human-facing label per option value (e.g. locale code → endonym). */
     optionLabels?: Record<string, string>;
+    /** Slider bounds and granularity; required for `SettingValueType.Slider`. */
+    min?: number;
+    max?: number;
+    step?: number;
+    /** Rendered after a Slider's live value, e.g. "%". */
+    unit?: string;
 }
 
 /**
@@ -43,6 +49,14 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     options?: string[];
     /** Human-facing label per option value (e.g. locale code → endonym). */
     optionLabels?: Record<string, string>;
+    /** i18n key per option value; when set, overrides `optionLabels` at render time. */
+    optionLabelKeys?: Record<string, TranslationKey>;
+    /** Slider bounds and granularity; required for `SettingValueType.Slider`. */
+    min?: number;
+    max?: number;
+    step?: number;
+    /** Rendered after a Slider's live value, e.g. "%". */
+    unit?: string;
 }
 
 /**

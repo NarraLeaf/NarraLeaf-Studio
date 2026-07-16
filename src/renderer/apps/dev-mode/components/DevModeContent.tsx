@@ -45,14 +45,14 @@ function SessionErrorBanner(props: {
         return null;
     }
     return (
-        <div className="shrink-0 border-b border-red-900/60 bg-red-950/80 px-3 py-2 text-xs text-red-100">
+        <div className="shrink-0 border-b border-danger/40 bg-danger/15 px-3 py-2 text-xs text-danger">
             <div className="flex items-start justify-between gap-2">
                 <pre className="max-h-24 flex-1 overflow-auto whitespace-pre-wrap font-mono text-2xs leading-snug">
                     {sessionError}
                 </pre>
                 <button
                     type="button"
-                    className="shrink-0 rounded border border-red-700/80 px-2 py-0.5 text-2xs text-red-100 hover:bg-red-900/50"
+                    className="shrink-0 rounded border border-danger/50 px-2 py-0.5 text-2xs text-danger hover:bg-danger/25"
                     onClick={onDismissSessionError}
                 >
                     {t("devMode.dismiss")}
@@ -123,7 +123,7 @@ function DevModeDebugOverlay(props: {
                         key="blueprint-devtools"
                         role="complementary"
                         aria-label={t("devMode.devtools.title")}
-                        className="pointer-events-auto absolute inset-y-0 right-0 z-30 flex w-[min(100%,380px)] max-w-full flex-col overflow-hidden border-l border-edge bg-[#0d0f11] shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
+                        className="pointer-events-auto absolute inset-y-0 right-0 z-30 flex w-[min(100%,380px)] max-w-full flex-col overflow-hidden border-l border-edge bg-surface-sunken shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
                         initial={{ x: "100%" }}
                         animate={{ x: 0 }}
                         exit={{ x: "100%" }}
@@ -151,7 +151,7 @@ function DevModeDebugOverlay(props: {
                                 ref={devtoolsMenuRef}
                                 role="menu"
                                 aria-label={t("devMode.devtools.menuAria")}
-                                className="absolute bottom-full left-0 z-10 mb-2 w-[min(15rem,calc(100vw-1.5rem))] rounded-md border border-edge bg-surface-sunken py-1 shadow-lg"
+                                className="absolute bottom-full left-0 z-10 mb-2 w-[min(15rem,calc(100vw-1.5rem))] rounded-md border border-edge bg-surface-overlay py-1 shadow-lg"
                             >
                                 <button
                                     type="button"
@@ -159,8 +159,8 @@ function DevModeDebugOverlay(props: {
                                     aria-pressed={blueprintPanelOpen}
                                     className={`flex w-full cursor-default items-center gap-2 px-3 py-2 text-left text-xs transition-colors ${
                                         blueprintPanelOpen
-                                            ? "bg-fill-strong text-white"
-                                            : "text-fg-muted hover:bg-fill hover:text-white"
+                                            ? "bg-fill-strong text-fg"
+                                            : "text-fg-muted hover:bg-fill hover:text-fg"
                                     }`}
                                     onClick={() => {
                                         setBlueprintPanelOpen(prev => !prev);
@@ -182,7 +182,7 @@ function DevModeDebugOverlay(props: {
                         <button
                             ref={devtoolsFabRef}
                             type="button"
-                            className="pointer-events-auto flex h-11 w-11 shrink-0 cursor-default items-center justify-center rounded-full border border-edge bg-surface-sunken shadow-md outline-none ring-white/20 transition-colors duration-150 hover:border-white/22 hover:bg-[#151a24] hover:shadow-lg focus-visible:ring-2"
+                            className="pointer-events-auto flex h-11 w-11 shrink-0 cursor-default items-center justify-center rounded-full border border-edge bg-surface-overlay shadow-md outline-none ring-edge-strong transition-colors duration-150 hover:border-edge-strong hover:bg-surface-raised hover:shadow-lg focus-visible:ring-2"
                             aria-label={devtoolsMenuOpen ? t("devMode.devtools.closeMenu") : t("devMode.devtools.openMenu")}
                             aria-expanded={devtoolsMenuOpen}
                             aria-haspopup="menu"

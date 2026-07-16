@@ -48,3 +48,7 @@ export type { SelectProps, SelectOption } from "./Select";
 // Switch components
 export { Switch } from "./Switch";
 export type { SwitchProps, SwitchSize, SwitchVariant } from "./Switch";
+
+// Slider components
+export { Slider } from "./Slider";
+export type { SliderProps } from "./Slider";

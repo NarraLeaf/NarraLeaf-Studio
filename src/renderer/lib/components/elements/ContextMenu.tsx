@@ -334,8 +334,8 @@ function ContextMenuItem({
                     item.disabled
                         ? "opacity-50 cursor-not-allowed text-fg-muted"
                         : isFocused
-                        ? "bg-primary/20 text-white"
-                        : "text-fg-muted hover:bg-fill hover:text-white",
+                        ? "bg-primary/20 text-fg"
+                        : "text-fg-muted hover:bg-fill hover:text-fg",
                 )}
                 onClick={handleClick}
                 onMouseEnter={handleMouseEnter}

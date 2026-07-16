@@ -29,7 +29,7 @@ function Swatch(props: { color: string; active?: boolean; onPick: (color: string
         <button
             type="button"
             className={`h-5 w-5 rounded border transition-transform hover:scale-110 ${
-                props.active ? "border-white ring-2 ring-white/80 ring-offset-1 ring-offset-[#16191e]" : "border-edge-strong"
+                props.active ? "border-fg ring-2 ring-fg/80 ring-offset-1 ring-offset-surface-raised" : "border-edge-strong"
             }`}
             style={{ backgroundColor: props.color }}
             title={props.color}

@@ -12,6 +12,11 @@ import {
     MAX_ACTIVE_EDITORS_MAX,
     MAX_ACTIVE_EDITORS_MIN,
 } from "@/lib/settings/editorLayoutOptions";
+import {
+    ZOOM_PERCENT_DEFAULT,
+    ZOOM_PERCENT_MAX,
+    ZOOM_PERCENT_MIN,
+} from "@shared/constants/zoom";
 import { DEFAULT_LOCALE, LOCALE_META, SUPPORTED_LOCALES } from "@shared/i18n";
 
 /**
@@ -93,6 +98,47 @@ export const AppSettings: AppSettingDefinition[] = [
         optionLabels: Object.fromEntries(
             SUPPORTED_LOCALES.map((code) => [code, LOCALE_META[code].nativeName]),
         ),
+    },
+    {
+        // Applied by the main process (`applyThemeMode`): the stored mode drives
+        // nativeTheme.themeSource, every renderer's prefers-color-scheme follows it
+        // and flips the CSS tokens in styles.css, and window background colors track
+        // nativeTheme in baseApp.
+        key: "ui.themeMode",
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Theme",
+        labelKey: "settings.items.themeMode.label",
+        description: "Color theme for the Studio interface. \"Follow system\" switches with the operating system.",
+        descriptionKey: "settings.items.themeMode.description",
+        defaultValue: "auto",
+        options: ["auto", "light", "dark"],
+        optionLabelKeys: {
+            auto: "settings.items.themeMode.options.auto",
+            light: "settings.items.themeMode.options.light",
+            dark: "settings.items.themeMode.options.dark",
+        },
+    },
+    {
+        // Applied by the main process to every Studio window's webContents
+        // (`AppWindow.applyStoredZoom`). Cmd/Ctrl +/-/0 write this same key, so the
+        // shortcuts and this field stay in agreement. The Dev Mode window is
+        // excluded — it renders the game at its real stage size.
+        key: "ui.zoomPercent",
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Slider,
+        label: "Interface zoom",
+        labelKey: "settings.items.zoomPercent.label",
+        description: `Zoom level of the Studio interface (${ZOOM_PERCENT_MIN}%-${ZOOM_PERCENT_MAX}%).`,
+        descriptionKey: "settings.items.zoomPercent.description",
+        descriptionParams: { min: ZOOM_PERCENT_MIN, max: ZOOM_PERCENT_MAX },
+        defaultValue: ZOOM_PERCENT_DEFAULT,
+        min: ZOOM_PERCENT_MIN,
+        max: ZOOM_PERCENT_MAX,
+        step: 5,
+        unit: "%",
     },
     {
         // Applied by the Story scene editor via `storyEditorTextStyle.tsx`.

@@ -346,7 +346,7 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
                     <div className="flex items-center gap-2">
                         {thumbnailId && (
                             <button
-                                className="text-xs text-red-400 hover:text-red-300"
+                                className="text-xs text-danger hover:text-danger/80"
                                 onClick={handleClearThumbnail}
                                 disabled={isSaving}
                             >
@@ -379,7 +379,7 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
                         </div>
                     )}
                 </div>
-                {error && <div className="text-xs text-red-400">{error}</div>}
+                {error && <div className="text-xs text-danger">{error}</div>}
             </div>
 
             <AssetSelector

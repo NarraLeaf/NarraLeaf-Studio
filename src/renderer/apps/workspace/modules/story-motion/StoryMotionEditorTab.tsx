@@ -765,13 +765,13 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
     const keybindings = useMemo<KeybindingDefinition[]>(() => [
         {
             id: "undo",
-            key: "ctrl+z",
+            key: "mod+z",
             description: "Undo story motion edit",
             handler: undoTimelineEdit,
         },
         {
             id: "redo",
-            key: "ctrl+shift+z",
+            key: "mod+shift+z",
             description: "Redo story motion edit",
             handler: redoTimelineEdit,
         },
@@ -1074,7 +1074,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
 
     if (!asset) {
         return (
-            <div className="flex h-full items-center justify-center bg-[#101114] text-sm text-fg-muted">
+            <div className="flex h-full items-center justify-center bg-surface text-sm text-fg-muted">
                 {loadError ?? t("motion.editor.loading")}
             </div>
         );
@@ -1083,7 +1083,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
     return (
         <div
             ref={editorRootRef}
-            className="flex h-full min-h-0 flex-col bg-[#101114] text-fg outline-none"
+            className="flex h-full min-h-0 flex-col bg-surface text-fg outline-none"
             tabIndex={-1}
             onKeyDownCapture={handleEditorKeyDown}
             onMouseDownCapture={focusEditor}
@@ -1180,7 +1180,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                         </div>
                     </div>
 
-                    <div className="h-64 shrink-0 border-t border-edge bg-[#0f1013]">
+                    <div className="h-64 shrink-0 border-t border-edge bg-surface">
                         <div className="flex h-12 items-center gap-3 border-b border-edge px-3">
                             <div className="w-[168px] text-xs font-medium text-fg-muted">{t("motion.editor.animatedProperties")}</div>
                             <Select
@@ -1215,10 +1215,10 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                     gridTemplateColumns: `${TIMELINE_LEFT_COL_PX}px ${timelineWidth}px`,
                                 }}
                             >
-                                <div className="sticky left-0 top-0 z-40 flex h-8 items-center border-r border-b border-edge bg-[#0f1013] px-3 text-xs font-medium text-fg-muted">
+                                <div className="sticky left-0 top-0 z-40 flex h-8 items-center border-r border-b border-edge bg-surface px-3 text-xs font-medium text-fg-muted">
                                     {t("motion.property")}
                                 </div>
-                                <div className="sticky top-0 z-30 h-8 border-b border-edge bg-[#0f1013]" onPointerDown={startPlayheadDrag}>
+                                <div className="sticky top-0 z-30 h-8 border-b border-edge bg-surface" onPointerDown={startPlayheadDrag}>
                                     {buildTicks(pxPerMs, timelineWidth, timelineViewport, STORY_MOTION_FPS).map(tick => (
                                         <div key={tick.timeMs} className="absolute top-0 h-full border-l border-edge" style={{ left: tick.timeMs * pxPerMs }}>
                                             <span className="ml-1 text-2xs text-fg-subtle">{tick.label}</span>
@@ -1230,7 +1230,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                 </div>
                                 {tracks.map(track => (
                                     <Fragment key={track.id}>
-                                        <div className="group sticky left-0 z-20 flex h-[34px] items-center gap-2 border-r border-b border-white/[0.06] bg-[#0f1013] px-3 text-xs text-fg-muted">
+                                        <div className="group sticky left-0 z-20 flex h-[34px] items-center gap-2 border-r border-b border-edge-subtle bg-surface px-3 text-xs text-fg-muted">
                                             <span className="min-w-0 flex-1 truncate">{getStoryMotionPropertyMeta(track.property).label}</span>
                                             <button
                                                 type="button"
@@ -1247,7 +1247,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                             </button>
                                             <button
                                                 type="button"
-                                                className="grid h-6 w-6 shrink-0 place-items-center rounded text-fg-subtle opacity-0 transition group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400/50"
+                                                className="grid h-6 w-6 shrink-0 place-items-center rounded text-fg-subtle opacity-0 transition group-hover:opacity-100 hover:bg-danger/10 hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-danger/50"
                                                 onClick={event => {
                                                     event.stopPropagation();
                                                     deleteTrack(track);
@@ -1260,7 +1260,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                             </button>
                                         </div>
                                         <div
-                                            className="relative h-[34px] border-b border-white/[0.06]"
+                                            className="relative h-[34px] border-b border-edge-subtle"
                                             onDoubleClick={event => handleLaneDoubleClick(event, track)}
                                         >
                                             <div className="absolute top-0 z-20 h-full w-px bg-orange-400/90" style={{ left: playheadMs * pxPerMs }} />
@@ -1282,7 +1282,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                                     title={`${getStoryMotionPropertyMeta(track.property).label} ${formatStoryMotionTime(keyframe.timeMs, STORY_MOTION_FPS)}`}
                                                 />
                                             ))}
-                                            <div className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-white/[0.04]" />
+                                            <div className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-edge-subtle" />
                                         </div>
                                     </Fragment>
                                 ))}

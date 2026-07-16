@@ -34,7 +34,7 @@ export function FormsPanel({
                 <div className="flex items-center gap-1">
                     {!collapsed && (
                         <button
-                            className="p-1 rounded-md text-fg hover:text-white hover:bg-fill transition-colors"
+                            className="p-1 rounded-md text-fg hover:bg-fill transition-colors"
                             onClick={onAddForm}
                             title={t("characters.formsPanel.addForm")}
                             aria-label={t("characters.formsPanel.addForm")}
@@ -43,7 +43,7 @@ export function FormsPanel({
                         </button>
                     )}
                     <button
-                        className="p-1 rounded-md text-fg hover:text-white hover:bg-fill transition-colors"
+                        className="p-1 rounded-md text-fg hover:bg-fill transition-colors"
                         onClick={onToggleCollapse}
                         title={collapsed ? t("characters.formsPanel.expand") : t("characters.formsPanel.collapse")}
                         aria-label={collapsed ? t("characters.formsPanel.expand") : t("characters.formsPanel.collapse")}
@@ -61,7 +61,7 @@ export function FormsPanel({
                             <div
                                 key={form.name}
                                 className={`w-full px-3 py-2 rounded-md border transition-colors cursor-pointer flex items-center justify-between ${isActive
-                                    ? "border-primary/60 bg-primary/10 text-white"
+                                    ? "border-primary/60 bg-primary/10 text-fg"
                                     : "border-edge hover:border-edge-strong text-fg"
                                     }`}
                                 onClick={() => onSelectForm(form.name)}

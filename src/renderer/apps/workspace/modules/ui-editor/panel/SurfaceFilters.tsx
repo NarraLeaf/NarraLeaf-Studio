@@ -22,8 +22,8 @@ export function SurfaceFilters({
                         type="button"
                         className={`flex-1 rounded-md px-2 py-1 text-xs font-medium border transition-colors ${
                             kind === option.kind
-                                ? "border-primary bg-primary/10 text-white"
-                                : "border-edge text-fg-muted hover:bg-fill hover:text-white"
+                                ? "border-primary bg-primary/10 text-fg"
+                                : "border-edge text-fg-muted hover:bg-fill hover:text-fg"
                         }`}
                         onClick={() => onKindChange(option.kind)}
                     >

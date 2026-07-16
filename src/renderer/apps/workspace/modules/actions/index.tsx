@@ -9,6 +9,7 @@ import {
     Archive,
 } from "lucide-react";
 import { ModuleAction, ModuleActionGroup } from "../types";
+import { cn } from "@/lib/utils/cn";
 import { Workspace } from "@/lib/workspace/workspace";
 import { UIService } from "@/lib/workspace/services/ui";
 import { Services } from "@/lib/workspace/services/services";
@@ -85,17 +86,12 @@ function DevModeActionIcon() {
         };
     }, [context]);
 
-    const iconColor = useMemo(() => {
-        if (status === "error") {
-            return "#f87171";
-        }
-        if (isDevModeRuntimeActive(status)) {
-            return "#ffffff";
-        }
-        return "rgba(255,255,255,0.6)";
-    }, [status]);
+    // Anything but the error tint inherits the button's own text color: idle it is
+    // `text-fg-muted` (and gains the hover brighten), running it is the white of the
+    // danger-filled stop button. Pinning a color here would defeat both.
+    const iconClass = useMemo(() => (status === "error" ? "text-danger" : ""), [status]);
 
-    return <Play className="w-4 h-4" color={iconColor} />;
+    return <Play className={cn("w-4 h-4", iconClass)} />;
 }
 
 export const previewAction: ModuleAction = {
@@ -134,17 +130,10 @@ function PreviewActionIcon() {
         };
     }, [context]);
 
-    const iconColor = useMemo(() => {
-        if (status === "error") {
-            return "#f87171";
-        }
-        if (isPreviewRuntimeActive(status)) {
-            return "#ffffff";
-        }
-        return "rgba(255,255,255,0.6)";
-    }, [status]);
+    // See DevModeActionIcon: every state but "error" inherits the button's text color.
+    const iconClass = useMemo(() => (status === "error" ? "text-danger" : ""), [status]);
 
-    return <Hammer className="w-4 h-4" color={iconColor} />;
+    return <Hammer className={cn("w-4 h-4", iconClass)} />;
 }
 
 /**
@@ -190,17 +179,20 @@ function BuildActionIcon() {
         };
     }, [context]);
 
-    const iconColor = useMemo(() => {
+    // Unlike Dev Mode and Preview, a running build does not turn its button into a
+    // stop control, so the busy state brightens the icon itself against the plain
+    // button background.
+    const iconClass = useMemo(() => {
         if (status === "error") {
-            return "#f87171";
+            return "text-danger";
         }
         if (status === "preparing" || status === "compiling" || status === "packaging") {
-            return "#ffffff";
+            return "text-fg";
         }
-        return "rgba(255,255,255,0.6)";
+        return "";
     }, [status]);
 
-    return <Package className="w-4 h-4" color={iconColor} />;
+    return <Package className={cn("w-4 h-4", iconClass)} />;
 }
 
 /**

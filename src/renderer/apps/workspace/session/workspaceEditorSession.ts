@@ -345,7 +345,12 @@ function storyIcon(): ReactNode {
     return createElement(FileText, { className: "w-4 h-4" });
 }
 
-function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab): EditorTabDefinition | null {
+/**
+ * Rebuild a live tab definition from its serialized form. Null when the tab's
+ * resource no longer exists (deleted scene/asset/…) — callers drop the entry.
+ * Exported for the closed-tab reopen path, which shares this rebuild logic.
+ */
+export function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab): EditorTabDefinition | null {
     if (entry.kind === "welcome") {
         return {
             id: welcomeModule.metadata.id,

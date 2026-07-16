@@ -38,7 +38,7 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                         <li key={id} className="flex items-center gap-2">
                             <button
                                 type="button"
-                                className={`truncate text-left font-mono text-2xs ${active ? "text-cyan-300" : "text-fg-muted hover:text-fg"}`}
+                                className={`truncate text-left font-mono text-2xs ${active ? "text-primary" : "text-fg-muted hover:text-fg"}`}
                                 onClick={() => {
                                     if (!active) {
                                         localBp.setActivePrivateBlueprintForOwnerKey(ownerKey, id);

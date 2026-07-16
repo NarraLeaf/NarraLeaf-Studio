@@ -60,7 +60,7 @@ function ShadowStoredFields({
         return (
             <div className="space-y-2">
                 <textarea
-                    className="w-full min-h-[4rem] rounded-md border border-edge bg-black/30 px-2 py-1.5 font-mono text-2xs text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-1 focus:ring-white/20"
+                    className="w-full min-h-[4rem] rounded-md border border-edge bg-surface-sunken px-2 py-1.5 font-mono text-2xs text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-1 focus:ring-edge-strong"
                     rows={4}
                     value={value.css}
                     onChange={e => onChange({ storage: "css", css: e.target.value })}
@@ -182,7 +182,7 @@ function FilterStoredFields({
         return (
             <div className="space-y-2">
                 <textarea
-                    className="w-full min-h-[4rem] rounded-md border border-edge bg-black/30 px-2 py-1.5 font-mono text-2xs text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-1 focus:ring-white/20"
+                    className="w-full min-h-[4rem] rounded-md border border-edge bg-surface-sunken px-2 py-1.5 font-mono text-2xs text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-1 focus:ring-edge-strong"
                     rows={4}
                     value={value.css}
                     onChange={e => onChange({ storage: "css", css: e.target.value })}
@@ -460,7 +460,7 @@ function EffectsAnchoredPanel({
     return createPortal(
         <div
             ref={panelRef}
-            className="fixed z-[80] flex max-h-[min(70vh,calc(100vh-24px))] w-[280px] max-w-[calc(100vw-16px)] flex-col overflow-visible rounded-xl border border-edge bg-[#17181c] p-3 shadow-2xl"
+            className="fixed z-[80] flex max-h-[min(70vh,calc(100vh-24px))] w-[280px] max-w-[calc(100vw-16px)] flex-col overflow-visible rounded-xl border border-edge bg-surface-raised p-3 shadow-2xl"
             style={{
                 left: pos.left,
                 top: pos.top,
@@ -474,7 +474,7 @@ function EffectsAnchoredPanel({
 }
 
 const ROW_BTN =
-    "grid h-7 w-7 shrink-0 place-items-center rounded border border-edge bg-black/25 text-fg-muted transition-colors hover:border-edge-strong hover:bg-fill hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-40 disabled:pointer-events-none";
+    "grid h-7 w-7 shrink-0 place-items-center rounded border border-edge bg-surface-sunken text-fg-muted transition-colors hover:border-edge-strong hover:bg-fill hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-40 disabled:pointer-events-none";
 
 export type EffectsStackEditorProps = {
     values: ElementEffectValues;
@@ -552,7 +552,7 @@ export function EffectsStackEditor({
             </div>
 
             {enabled.map(kind => (
-                <div key={kind} className="flex flex-col gap-0 min-w-0 rounded-md border border-edge bg-black/15 px-2 py-1.5">
+                <div key={kind} className="flex flex-col gap-0 min-w-0 rounded-md border border-edge bg-fill-subtle px-2 py-1.5">
                     <div className="flex items-center gap-1.5 min-w-0">
                         <span className="text-2xs font-medium text-fg-muted shrink-0 w-[4.5rem]">
                             {t(EFFECT_KIND_LABEL_KEY[kind])}

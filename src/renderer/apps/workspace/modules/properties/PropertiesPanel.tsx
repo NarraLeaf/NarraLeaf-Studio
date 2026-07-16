@@ -509,9 +509,9 @@ function LinkedComponentInfoField({ data }: { data: UIInspectorData }) {
         return null;
     }
     return (
-        <div className="rounded-md border border-cyan-400/20 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-50">
+        <div className="rounded-md border border-primary/20 bg-primary/10 px-3 py-2 text-xs text-fg">
             <div className="font-medium">{component?.name ?? t("properties.linkedComponent.missing")}</div>
-            <div className="mt-1 text-2xs leading-snug text-cyan-100/70">
+            <div className="mt-1 text-2xs leading-snug text-fg-muted">
                 {t("properties.linkedComponent.info")}
             </div>
         </div>
@@ -765,22 +765,22 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         }
         const surfaceId = deferredUiSelection.surfaceId;
         return (
-            <div className="shrink-0 border-b border-amber-500/25 bg-amber-950/30 px-3 py-2 text-2xs text-amber-100/90">
-                <span className="font-medium text-amber-200/95">{t("properties.diagnostics.title")}</span>
+            <div className="shrink-0 border-b border-warning/25 bg-warning/10 px-3 py-2 text-2xs text-warning">
+                <span className="font-medium text-warning">{t("properties.diagnostics.title")}</span>
                 <ul className="mt-1 list-none space-y-1 pl-0">
                     {picked.map(d => (
                         <li key={d.id} className="leading-snug">
                             {d.elementId ? (
                                 <button
                                     type="button"
-                                    className="w-full rounded px-1 py-0.5 text-left text-amber-100/95 hover:bg-amber-500/10"
+                                    className="w-full rounded px-1 py-0.5 text-left text-warning hover:bg-warning/10"
                                     onClick={() => selectUiCanvasElement(surfaceId, d.elementId!)}
                                 >
                                     {d.message}
-                                    <span className="ml-1 text-2xs text-cyan-300/80">{t("properties.diagnostics.selectOnCanvas")}</span>
+                                    <span className="ml-1 text-2xs text-primary">{t("properties.diagnostics.selectOnCanvas")}</span>
                                 </button>
                             ) : (
-                                <span className="text-amber-100/90">{d.message}</span>
+                                <span className="text-warning">{d.message}</span>
                             )}
                         </li>
                     ))}

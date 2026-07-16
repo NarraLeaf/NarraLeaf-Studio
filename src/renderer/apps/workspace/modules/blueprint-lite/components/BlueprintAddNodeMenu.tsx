@@ -303,7 +303,7 @@ export function BlueprintAddNodeMenu({
             />
             <div
                 role="presentation"
-                className="fixed z-[101] flex max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-md border border-edge bg-[#101318] shadow-xl"
+                className="fixed z-[101] flex max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-md border border-edge bg-surface shadow-xl"
                 style={{ left: layout.left, top: layout.top, width: MENU_W, maxHeight: layout.maxHeight }}
                 onContextMenu={e => e.preventDefault()}
             >
@@ -345,7 +345,7 @@ export function BlueprintAddNodeMenu({
                                     className={[
                                         "flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors",
                                         active
-                                            ? "border-primary/45 bg-primary/15 text-white"
+                                            ? "border-primary/45 bg-primary/15 text-fg"
                                             : "border-edge bg-fill-subtle text-fg-muted hover:bg-fill hover:text-fg",
                                     ].join(" ")}
                                     onClick={() => setActiveCategoryId(category.id)}

@@ -139,10 +139,16 @@ styles.css `:root` 定义 RGB 通道变量,`tailwind.config.js` 以 `rgb(var(--x
 
 - **Phase 0 ✅** 见上。
 - **Phase 1 ✅ 组件库自治**：`lib/components` 全部 16 个组件接入 `cn()` 并换语义 token（Button/Input/Select/Switch/Progress 原先硬编码 `#40a8c4` 已消除；`error`→`danger` 命名分歧因是"输入校验态 vs 按钮意图"两个语义域,保留未强制合并以免破坏调用方）。新增 `fill` token 家族(半透明白色填充,与 `edge` 边框角色区分)。Progress 修掉了原先失效的 indeterminate 渐变 hack。
-- **Phase 2 ✅ 补齐原语**：新增 `ToolbarButton`(收编 20+ 处手写图标按钮)、`TabStrip`、`Badge`、`EmptyState`、`FieldLabel`、`SectionCard`、`PanelHeader`、`Tooltip`(轻量 CSS 版)。
+- **Phase 2 ✅ 补齐原语**：新增 `ToolbarButton`(收编 20+ 处手写图标按钮)、`TabStrip`、`Badge`、`EmptyState`、`FieldLabel`、`SectionCard`、`PanelHeader`、`Tooltip`(轻量 CSS 版)。**`Slider` 于 2026-07-16 补上**(原计划清单里的最后一个缺失原语)：原生 `input[type=range]` + `.nl-slider` 伪元素样式(Tailwind 够不到 `::-webkit-slider-*`)；`onValueChange` 拖动中连续触发、`onValueCommit` 松手触发,调用方据此避免每帧写盘。设置框架同步新增 `SettingValueType.Slider` + `min/max/step/unit`。
 - **Phase 3 ⏳ 大部分完成**：`scripts/style-codemod.mjs` 跑了保值/已批准的全局替换(189 文件、~2800 处)。债务下降:任意 hex 309→102、裸中性色板 1176→22、white/black alpha 795→79、任意 px 字号 312→3、裸 accent 127→93。**剩余(判断密集,留给 Phase 4 监督式迁移)**:长尾近黑表面 hex、`cyan-*` 的 binding vs primary 归属、`bg-gray-*`/`border-gray-*` 少量、控件 vs 容器的裸 `rounded`(223 未动)、black alpha scrim/shadow。
 - **验证**：renderer `tsc` exit 0;`yarn build:apps:dev` 6 个 app 全过;构建产物 CSS 含 token;ratchet 全项下降、基线已收紧到新低点;CDP 重载 workspace 截图视觉无回归。
 - **Phase 4 / 5 待办**：逐模块把裸 `<button>`/手写 tab/badge/空状态替换为新组件(靠 ratchet 兜底监督式推进);全部归零后把 ratchet 转硬性 lint。
+
+## 后续演进（2026-07-16）：双主题
+
+token 层升级为**双主题**（`ui.themeMode` 设置：跟随系统/亮/暗,默认跟随系统）：`styles.css :root` 为暗色默认值,`@media (prefers-color-scheme: light)` 整组覆盖;`edge`/`fill` 从固定白 alpha 改为完整颜色 CSS 变量(`--nl-edge*`/`--nl-fill*`,亮色下翻为墨色叠加);主进程 `nativeTheme.themeSource` 驱动所有窗口的 `prefers-color-scheme` 与背景色,链路纯 CSS 无 JS。**这使 Phase 0 表格中 "edge = 固定白 alpha" 的描述过时**;机制与"禁止 JS 镜像主题"的坑详见 docs/design-system.md §0。
+
+同期完成一轮全 renderer 的"亮色穿帮色"清扫(约 550 处 → token)。**这一轮同时消化了 Phase 3 遗留的大部分债务**:长尾近黑表面 hex、`cyan-*` 的 binding vs primary 归属、`bg-gray-*`/`border-gray-*`、severity 色(red/amber/emerald/rose → danger/warning/success)。**剩余债务**:裸 `rounded`(与主题无关,Phase 4 继续)、Tier-4 的 off-palette 装饰色(story-motion 的 `#1f9eff` 曲线/`orange-400` 播放头、SurfaceLayoutDiagnosticMarkers、PageAnimationEditor/ImageCropper 的迷你舞台底色——亮色下仍可读,属调色板规范问题而非破图);另 `apps/workspace/modules/story/monaco/storyMonaco.ts` 定义了全硬编码的深色 Monaco 主题,当前是死代码(`configureStoryMonaco` 无人 import),一旦接线需先双主题化。
 
 ## Key Files
 - token/配置：`tailwind.config.js`、`src/renderer/styles/styles.css`
