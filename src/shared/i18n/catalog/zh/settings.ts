@@ -78,5 +78,15 @@ export const settings = {
             label: "关闭工作区后返回首页",
             description: "关闭工作区后回到首页，关闭此项则在没有其他窗口时直接退出 NarraLeaf Studio",
         },
+        dashboardOnOpen: {
+            label: "进入工作区时显示项目仪表盘",
+            description: "每次进入工作区时，自动打开项目仪表盘标签页",
+        },
+        clearAllStats: {
+            label: "清空所有统计数据",
+            description: "抹除所有项目已记录的写作历史、活跃时长和构建历史。从项目本身算出的统计数字不受影响",
+            action: "清空",
+            confirm: "确认清空",
+        },
     },
 } satisfies LocaleNamespace<"settings">;

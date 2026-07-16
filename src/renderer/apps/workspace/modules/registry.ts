@@ -18,12 +18,14 @@ import { projectPanelModule } from "./project";
 import { storyPanelModule } from "./story";
 import { storyMotionPanelModule } from "./story-motion";
 import { localizationPanelModule } from "./localization";
+import { dashboardPanelModule } from "./dashboard";
 
 /**
  * Built-in panel modules
  * All panels that should be registered on workspace startup
  */
 export const builtInPanels: PanelModule[] = [
+    dashboardPanelModule,
     projectPanelModule,
     storyPanelModule,
     uiEditorSurfacesModule,
@@ -72,3 +74,4 @@ export { projectPanelModule } from "./project";
 export { storyPanelModule } from "./story";
 export { storyMotionPanelModule } from "./story-motion";
 export { localizationPanelModule } from "./localization";
+export { dashboardPanelModule } from "./dashboard";

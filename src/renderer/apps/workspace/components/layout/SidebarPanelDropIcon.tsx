@@ -53,12 +53,16 @@ export function SidebarPanelDropIcon({
         },
     });
 
+    // A rail action has no panel body, so there is nowhere to drop an asset *into*: accepting one
+    // would activate the sidebar onto an empty panel. It reads as a plain button instead.
+    const acceptsAssetDrop = !panel.railAction;
+
     return (
         <button
             type="button"
             ref={sortable?.setNodeRef}
             style={sortable?.style}
-            {...dropTargetProps}
+            {...(acceptsAssetDrop ? dropTargetProps : {})}
             {...sortable?.attributes}
             {...sortable?.listeners}
             className={`
@@ -69,7 +73,7 @@ export function SidebarPanelDropIcon({
                         : "text-fg-muted hover:bg-fill hover:text-fg"
                 }
                 ${sortable?.isDragging ? "opacity-50 ring-2 ring-primary/60" : ""}
-                ${overlayClassName}
+                ${acceptsAssetDrop ? overlayClassName : ""}
             `}
             onClick={onPanelClick}
             title={panel.title}

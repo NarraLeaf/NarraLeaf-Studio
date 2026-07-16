@@ -1,5 +1,6 @@
 import React from "react";
 import { useRegistry } from "../../registry";
+import { useWorkspace } from "../../context";
 import { PanelPosition } from "../../registry/types";
 import { SidebarPanelRail } from "./SidebarPanelRail";
 
@@ -24,9 +25,20 @@ export function LeftSidebarSelector({
     onActivatePanelForDrop,
 }: LeftSidebarSelectorProps) {
     const { getPanelsByPosition, reorderPanels } = useRegistry();
+    const { context } = useWorkspace();
     const panels = getPanelsByPosition(PanelPosition.Left);
 
     const handlePanelClick = (panelId: string) => {
+        const panel = panels.find(entry => entry.id === panelId);
+        if (panel?.railAction) {
+            // A rail action leads somewhere else entirely (an editor tab, a window), so it neither
+            // becomes the active panel nor disturbs the sidebar's current visibility.
+            if (context) {
+                panel.railAction(context);
+            }
+            return;
+        }
+
         if (activeId === panelId && visible) {
             // Clicking active panel toggles visibility
             onToggleVisibility();
