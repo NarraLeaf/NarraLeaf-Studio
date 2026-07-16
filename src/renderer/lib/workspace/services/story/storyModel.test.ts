@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock } from "@shared/types/story";
+import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import {
+    collectInvalidBlocks,
+    collectTempSpeakers,
     createEmptyStoryAnimationIndex,
     createEmptyStoryDocument,
     createEmptyStoryLibraryIndex,
@@ -11,6 +14,7 @@ import {
     normalizeStoryAnimationIndex,
     normalizeStoryDocument,
     normalizeStoryLibraryIndex,
+    promoteTempSpeaker,
     storyAnimationDocumentRelativePath,
     storyDocumentRelativePath,
     updateBlockPayload,
@@ -486,7 +490,9 @@ describe("storyModel", () => {
         const normalized = normalizeStoryDocument(document, now);
         const migratedScene = normalized.scenes[document.entrySceneId!];
 
-        expect(normalized.schemaVersion).toBe(3);
+        // Normalization always lands on the current schema; what this test is about is the layer-ref
+        // migration below, not the version number it happens to stamp.
+        expect(normalized.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
         expect((migratedScene.blocks["img-bound"].payload as Record<string, unknown>).layerName).toBeUndefined();
         expect((migratedScene.blocks["img-bound"].payload as Record<string, unknown>).layer).toEqual({
             kind: "custom",
@@ -549,5 +555,176 @@ describe("storyModel", () => {
         };
 
         expect(() => insertBlockInScene(scene, jump, { parentId: null })).toThrow(/Jump/);
+    });
+});
+
+describe("collectInvalidBlocks", () => {
+    function documentWith(blocks: StoryBlock[]) {
+        const document = createEmptyStoryDocument({
+            id: STORY_ID_1,
+            name: "My Story",
+            now: "2026-07-16T00:00:00.000Z",
+            generateId: idFactory(),
+        });
+        const scene = Object.values(document.scenes)[0];
+        for (const block of blocks) {
+            scene.blocks[block.id] = block;
+            scene.rootBlockIds.push(block.id);
+        }
+        return document;
+    }
+
+    function invalidBlock(id: string, source: string): StoryBlock {
+        return { id, kind: "invalid", parentId: null, childrenIds: [], payload: { source } };
+    }
+
+    it("finds nothing in a story that has none", () => {
+        const document = documentWith([narrationBlock("n1", "t1", "Hello")]);
+        expect(collectInvalidBlocks(document)).toEqual([]);
+    });
+
+    it("reports each invalid block with the text the author typed and where it lives", () => {
+        const document = documentWith([
+            narrationBlock("n1", "t1", "Hello"),
+            invalidBlock("bad", "/bgg forest"),
+        ]);
+        const scene = Object.values(document.scenes)[0];
+
+        expect(collectInvalidBlocks(document)).toEqual([
+            {
+                storyId: STORY_ID_1,
+                storyName: "My Story",
+                sceneId: scene.id,
+                sceneName: scene.name,
+                blockId: "bad",
+                source: "/bgg forest",
+            },
+        ]);
+    });
+
+    it("finds every one of them, not just the first", () => {
+        const document = documentWith([invalidBlock("bad1", "/bgg"), invalidBlock("bad2", "#")]);
+        expect(collectInvalidBlocks(document).map(ref => ref.blockId)).toEqual(["bad1", "bad2"]);
+    });
+});
+
+describe("temp speakers", () => {
+    function dialogue(id: string, payload: { characterId?: string; speakerName?: string }): StoryBlock {
+        return {
+            id,
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "dialogue",
+                ...payload,
+                text: { textId: `t-${id}`, role: "dialogue", value: "Hi" },
+            },
+        };
+    }
+
+    function documentWith(blocks: StoryBlock[]) {
+        const document = createEmptyStoryDocument({
+            id: STORY_ID_1,
+            name: "My Story",
+            now: "2026-07-16T00:00:00.000Z",
+            generateId: idFactory(),
+        });
+        const scene = Object.values(document.scenes)[0];
+        for (const block of blocks) {
+            scene.blocks[block.id] = block;
+            scene.rootBlockIds.push(block.id);
+        }
+        return document;
+    }
+
+    it("groups every line under the name that speaks it", () => {
+        const document = documentWith([
+            dialogue("a", { speakerName: "Alice" }),
+            dialogue("b", { speakerName: "Bob" }),
+            dialogue("c", { speakerName: "Alice" }),
+        ]);
+
+        expect(collectTempSpeakers(document)).toEqual([
+            { name: "Alice", blockIds: ["a", "c"] },
+            { name: "Bob", blockIds: ["b"] },
+        ]);
+    });
+
+    it("ignores lines that already have a real character", () => {
+        const document = documentWith([dialogue("a", { characterId: "char-alice", speakerName: "Stale" })]);
+        expect(collectTempSpeakers(document)).toEqual([]);
+    });
+
+    it("ignores blank names, which cannot be spoken by anyone", () => {
+        const document = documentWith([dialogue("a", { speakerName: "   " }), dialogue("b", {})]);
+        expect(collectTempSpeakers(document)).toEqual([]);
+    });
+
+    it("retires a temp speaker once nothing references it", () => {
+        const document = documentWith([dialogue("a", { speakerName: "Alice" })]);
+        const scene = Object.values(document.scenes)[0];
+
+        deleteBlockFromScene(scene, "a");
+
+        expect(collectTempSpeakers(document)).toEqual([]);
+    });
+
+    it("rebinds every line of a promoted speaker and drops the bare name", () => {
+        const document = documentWith([
+            dialogue("a", { speakerName: "Alice" }),
+            dialogue("b", { speakerName: "Bob" }),
+            dialogue("c", { speakerName: "Alice" }),
+        ]);
+        const scene = Object.values(document.scenes)[0];
+
+        expect(promoteTempSpeaker(document, "Alice", "char-new")).toBe(2);
+
+        for (const id of ["a", "c"]) {
+            const payload = scene.blocks[id].payload as Record<string, unknown>;
+            expect(payload.characterId).toBe("char-new");
+            expect(payload.speakerName).toBeUndefined();
+        }
+        // Bob is a different speaker and must not be swept up.
+        expect(collectTempSpeakers(document)).toEqual([{ name: "Bob", blockIds: ["b"] }]);
+    });
+
+    it("does not touch lines already bound to a character", () => {
+        const document = documentWith([dialogue("a", { characterId: "char-existing", speakerName: "Alice" })]);
+        const scene = Object.values(document.scenes)[0];
+
+        expect(promoteTempSpeaker(document, "Alice", "char-new")).toBe(0);
+        expect((scene.blocks["a"].payload as Record<string, unknown>).characterId).toBe("char-existing");
+    });
+});
+
+describe("story document migration ladder", () => {
+    function docAtVersion(version: number) {
+        const document = createEmptyStoryDocument({
+            id: STORY_ID_1,
+            name: "My Story",
+            now: "2026-07-16T00:00:00.000Z",
+            generateId: idFactory(),
+        });
+        return { ...document, schemaVersion: version as never };
+    }
+
+    // The regression that shipped: bumping the constant without adding a step left v3 documents
+    // falling through migrateStoryDocumentToLatest untouched, so every existing project threw
+    // "migration is not implemented" and its story panel would not open.
+    it.each([[1], [2], [3]])("brings a v%i document to the current schema", version => {
+        expect(normalizeStoryDocument(docAtVersion(version), "2026-07-16T00:00:00.000Z").schemaVersion)
+            .toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    });
+
+    it("leaves a current-version document alone", () => {
+        const document = docAtVersion(STORY_DOCUMENT_SCHEMA_VERSION);
+        expect(normalizeStoryDocument(document, "2026-07-16T00:00:00.000Z").schemaVersion)
+            .toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    });
+
+    it("still refuses a document from a newer Studio", () => {
+        expect(() => normalizeStoryDocument(docAtVersion(STORY_DOCUMENT_SCHEMA_VERSION + 1), "2026-07-16T00:00:00.000Z"))
+            .toThrow(/newer than this Studio/);
     });
 });

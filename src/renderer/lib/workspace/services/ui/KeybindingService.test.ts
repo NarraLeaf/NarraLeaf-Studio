@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchesKeybinding, parseKeybinding } from "./KeybindingService";
+import { formatKeybinding, matchesKeybinding, parseKeybinding } from "./KeybindingService";
 
 function keyEvent(init: Partial<KeyboardEvent> & { key: string }): KeyboardEvent {
     return {
@@ -44,5 +44,29 @@ describe("matchesKeybinding", () => {
     it("rejects extra modifiers so mod+z and mod+shift+z stay distinct", () => {
         const parsed = parseKeybinding("mod+z", true);
         expect(matchesKeybinding(keyEvent({ key: "z", metaKey: true, shiftKey: true }), parsed)).toBe(false);
+    });
+});
+
+describe("formatKeybinding", () => {
+    it("renders mod as the platform's real modifier, never the literal token", () => {
+        expect(formatKeybinding("mod+c", true)).toBe("⌘C");
+        expect(formatKeybinding("mod+c", false)).toBe("Ctrl+C");
+    });
+
+    it("shows literal ctrl as Control on macOS rather than ⌘", () => {
+        // ctrl+tab really is Control there — displaying ⌘⇥ would be a lie.
+        expect(formatKeybinding("ctrl+tab", true)).toBe("⌃Tab");
+        expect(formatKeybinding("ctrl+tab", false)).toBe("Ctrl+Tab");
+    });
+
+    it("orders and joins stacked modifiers per platform convention", () => {
+        expect(formatKeybinding("mod+shift+t", true)).toBe("⌘⇧T");
+        expect(formatKeybinding("mod+shift+t", false)).toBe("Ctrl+Shift+T");
+    });
+
+    it("gives named keys a readable label", () => {
+        expect(formatKeybinding("delete", false)).toBe("Delete");
+        expect(formatKeybinding("mod+=", true)).toBe("⌘+");
+        expect(formatKeybinding("escape", false)).toBe("Esc");
     });
 });

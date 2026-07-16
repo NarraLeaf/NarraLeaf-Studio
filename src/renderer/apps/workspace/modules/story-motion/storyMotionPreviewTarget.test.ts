@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { StoryActionPayload, StoryBlock, StoryDocument } from "@shared/types/story";
-import { characterStageObjectName, displayableSourceIdentity, resolveDisplayableTargetRef } from "@shared/types/story";
+import { characterStageObjectName, displayableSourceIdentity, resolveDisplayableTargetRef, STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { listSceneDisplayableTargets, resolveStoryMotionPreviewTarget } from "./storyMotionPreviewTarget";
 
 function documentWith(blocks: Record<string, StoryBlock>, rootBlockIds: string[]): StoryDocument {
     return {
-        schemaVersion: 3,
+        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
         id: "story-1",
         name: "Story",
         chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1"] }],

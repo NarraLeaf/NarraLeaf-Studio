@@ -62,6 +62,24 @@ export function SettingsApp() {
         };
     }, []);
 
+    // Settings can move without this window touching them — Cmd/Ctrl +/-/0 write
+    // `ui.zoomPercent` from the main process, and any other window may write a
+    // global key. Follow the broadcast so the fields show what is actually stored
+    // instead of a snapshot from mount.
+    useEffect(() => {
+        const keys = new Set<string>(getAllAppSettings().map(setting => setting.key));
+        const token = getInterface().app.state.onGlobalStateChanged?.((change) => {
+            if (!keys.has(change.key)) {
+                return;
+            }
+            setValues((prev) => ({
+                ...prev,
+                [change.key]: change.value as SettingValue,
+            }));
+        });
+        return () => token?.cancel();
+    }, []);
+
     const describeAppSetting = useCallback(
         (setting: AppSettingDefinition): SettingDescriptor => ({
             id: setting.key,
@@ -122,9 +140,6 @@ export function SettingsApp() {
                 <aside className="w-64 shrink-0 border-r border-edge-subtle bg-surface-sunken p-4 space-y-4">
                     <div>
                         <p className="text-lg font-semibold text-fg">{t("settings.title")}</p>
-                        <p className="text-xs text-fg-muted">
-                            {t("settings.subtitle")}
-                        </p>
                     </div>
                     {localizedCategories.length > 0 ? (
                         <>
@@ -144,7 +159,6 @@ export function SettingsApp() {
                                             className={`w-full rounded-md px-3 py-2 text-left transition-colors ${isActive ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg"}`}
                                         >
                                             <div className="text-sm font-medium">{category.label}</div>
-                                            <p className="text-xs text-fg-subtle">{category.description}</p>
                                         </button>
                                     );
                                 })}

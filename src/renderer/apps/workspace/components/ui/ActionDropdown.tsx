@@ -5,6 +5,8 @@ import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusContext } from "@/lib/workspace/services/ui";
+import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
+import { isMacPlatform } from "@/lib/app/platform";
 import {
     getActionGroupItems,
     getVisibleActionMenuItems,
@@ -378,7 +380,9 @@ function MenuLevel(props: MenuLevelProps) {
                             {/* Right side: shortcut + badge/chevron */}
                             <span className="flex items-center gap-2">
                                 {isActionMenuAction(item) && item.shortcut ? (
-                                    <span className="text-sm text-fg-muted tabular-nums">{item.shortcut}</span>
+                                    <span className="text-sm text-fg-muted tabular-nums">
+                                        {formatKeybinding(item.shortcut, isMacPlatform())}
+                                    </span>
                                 ) : null}
                                 {isActionMenuAction(item) ? (
                                     item.badge ? (

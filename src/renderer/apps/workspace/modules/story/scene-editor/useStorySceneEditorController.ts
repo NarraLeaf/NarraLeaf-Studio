@@ -11,6 +11,13 @@ import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { StorySceneEditorTabPayload } from "./storySceneEditorTabId";
 import { createBlockForCommand, isActionCommandId, isInspectorFirstCommand, type ActionCommandId } from "./storyActionCommands";
+import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { applyCommandArgs } from "./storyCommandApply";
+import { buildStoryCommandContext } from "./storyCommandContext";
+import { canCommit, parseCommandLine } from "./storyCommandParser";
+import { resolveCommandLine } from "./storyCommandResolution";
+import { collectTempSpeakers, promoteTempSpeaker } from "@/lib/workspace/services/story/storyModel";
+import { CHARACTERS_PANEL_ID } from "../../characters";
 import {
     buildVisibleRows,
     canAcceptChildren,
@@ -28,7 +35,7 @@ import {
 import { isInteractiveTarget, isTextInputActive } from "./storySceneDom";
 import { getStoryEditorViewState, patchStoryEditorViewState } from "./storyEditorSessionStore";
 import { cloneSerializedBlock, insertSerializedClone, serializeBlockSubtree } from "./storySceneClipboard";
-import { richRunsToPlain } from "./richText";
+import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
 import type { EditorMode, StoryBlockTarget } from "./storySceneEditorTypes";
 import { useStorySceneClipboardHandlers } from "./useStorySceneClipboardHandlers";
@@ -56,6 +63,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const uiService = useMemo(() => (context && isInitialized ? context.services.get<UIService>(Services.UI) : null), [context, isInitialized]);
     const uuidService = useMemo(() => (context && isInitialized ? context.services.get<UuidService>(Services.Uuid) : null), [context, isInitialized]);
     const characterService = useMemo(() => (context && isInitialized ? context.services.get<CharacterService>(Services.Character) : null), [context, isInitialized]);
+    const assetsService = useMemo(() => (context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null), [context, isInitialized]);
     // Per-project persistent store for the editor's view state (focus/selection/scroll). Available on
     // the first render — the workspace only mounts editors once services (incl. this one) are ready.
     const panelStateService = useMemo(() => (context && isInitialized ? context.services.get<PanelStateService>(Services.PanelState) : null), [context, isInitialized]);
@@ -67,6 +75,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const insertInputRef = useRef<HTMLTextAreaElement | null>(null);
     const textInputRef = useRef<RichTextInputHandle | null>(null);
     const dragSelectionStartRef = useRef<StoryBlockId | null>(null);
+    // Set while a press that landed on a row's text is still undecided: the browser is painting a
+    // native text selection, and the mouseup (or the drag leaving this row) settles what it meant.
+    const textSelectRef = useRef<{ blockId: StoryBlockId; textEl: HTMLElement } | null>(null);
     const dragSelectPointerRef = useRef<{ x: number; y: number } | null>(null);
     const dragSelectAutoScrollRef = useRef<number | null>(null);
     const draggingBlockIdRef = useRef<StoryBlockId | null>(null);
@@ -153,7 +164,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [characterService]);
 
     const scene = useMemo(() => (document && sceneId ? document.scenes[sceneId] ?? null : null), [document, sceneId]);
+    /**
+     * Temp speakers alive anywhere in this story, offered back as candidates. Derived from the
+     * document rather than stored, so one goes away exactly when its last line does — and so a name
+     * used earlier in the story is findable later without anyone maintaining a registry.
+     */
+    const tempSpeakers = useMemo(() => (document ? collectTempSpeakers(document) : []), [document]);
     const characters = useMemo(() => characterService?.listCharacter() ?? [], [characterRevision, characterService]);
+
+    /** What a name typed on the command line may refer to. Rebuilt as the project changes under it. */
+    const commandContext = useMemo(
+        () => buildStoryCommandContext({ assets: assetsService?.getAssets(), characters, document, scene }),
+        [assetsService, characters, document, scene],
+    );
     const visibleRows = useMemo(() => (scene ? buildVisibleRows(scene, collapsedBlockIds) : []), [collapsedBlockIds, document, scene]);
     const rowIndexById = useMemo(() => {
         const result = new Map<StoryBlockId, number>();
@@ -203,6 +226,38 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         dragSelectionStartRef.current = null;
     }, []);
 
+    /**
+     * Let the rows paint a native text selection again. Written straight to the node rather than
+     * through state so a drag never re-renders the list mid-gesture — and so this can be called from
+     * the teardown paths (mouseup, pointercancel, window blur) that must not be able to leave the
+     * editor stuck with unselectable text.
+     */
+    const setRowTextSelectable = useCallback((selectable: boolean) => {
+        const root = rootRef.current;
+        if (root) {
+            root.style.userSelect = selectable ? "" : "none";
+        }
+    }, []);
+
+    /**
+     * Mouse released without leaving the row. A real selection opens the row for editing carrying
+     * that selection (this is also how double-click-to-edit lands: the word the browser selected on
+     * the second press is the selection we hand over). A collapsed one was a plain click, and the row
+     * is already selected from the press.
+     */
+    const finishTextSelectGesture = useCallback((pending: { blockId: StoryBlockId; textEl: HTMLElement }) => {
+        const range = getSelectionUnitRange(pending.textEl);
+        if (!range || range.start === range.end) {
+            return;
+        }
+        const block = scene?.blocks[pending.blockId];
+        if (!block || !isTextEditableBlock(block)) {
+            return;
+        }
+        const segment = getTextSegment(block);
+        setEditorMode({ kind: "text", blockId: pending.blockId, value: segment?.value ?? "", rich: segment?.rich, caret: range });
+    }, [scene]);
+
     const runDragSelectAutoScroll = useCallback(() => {
         const container = scrollContainerRef.current;
         const pointer = dragSelectPointerRef.current;
@@ -235,8 +290,34 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [runDragSelectAutoScroll]);
 
+    /**
+     * The drag that began on a row's text has left that row: the author is selecting rows, not prose.
+     * Drop the native selection, stop the browser from painting a new one, and hand the gesture over
+     * to the row-range drag as if it had started on the gutter.
+     */
+    const escalateTextSelectToRowDrag = useCallback((blockId: StoryBlockId, x: number, y: number) => {
+        textSelectRef.current = null;
+        globalThis.window.getSelection()?.removeAllRanges();
+        setRowTextSelectable(false);
+        dragSelectPointerRef.current = { x, y };
+        dragSelectionStartRef.current = blockId;
+        setDragSelectActive(true);
+        startDragSelectAutoScroll();
+        extendDragSelectionAtPoint(x, y);
+    }, [extendDragSelectionAtPoint, setRowTextSelectable, startDragSelectAutoScroll]);
+
     useEffect(() => {
         const handleMouseMove = (event: globalThis.MouseEvent) => {
+            const pending = textSelectRef.current;
+            if (pending) {
+                const overRow = globalThis.document
+                    .elementFromPoint(event.clientX, event.clientY)
+                    ?.closest<HTMLElement>("[data-story-row-block-id]");
+                if (overRow && overRow.dataset.storyRowBlockId !== pending.blockId) {
+                    escalateTextSelectToRowDrag(pending.blockId, event.clientX, event.clientY);
+                }
+                return;
+            }
             if (!dragSelectionStartRef.current) {
                 return;
             }
@@ -245,19 +326,39 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             startDragSelectAutoScroll();
         };
         const handleMouseUp = () => {
+            const pending = textSelectRef.current;
+            textSelectRef.current = null;
+            if (pending) {
+                finishTextSelectGesture(pending);
+            }
+            setRowTextSelectable(true);
+            stopDragSelection();
+        };
+        // Backstops for a gesture that never gets its mouseup — the pointer taken away by the OS, or
+        // the window losing focus mid-drag. They abandon the gesture rather than complete it (losing
+        // focus is not a decision to open a row), but they must still hand text selection back, or
+        // the rows stay permanently unselectable.
+        const cancelGesture = () => {
+            textSelectRef.current = null;
+            setRowTextSelectable(true);
             stopDragSelection();
         };
         window.addEventListener("mousemove", handleMouseMove);
         window.addEventListener("mouseup", handleMouseUp);
+        window.addEventListener("pointercancel", cancelGesture);
+        window.addEventListener("blur", cancelGesture);
         return () => {
             window.removeEventListener("mousemove", handleMouseMove);
             window.removeEventListener("mouseup", handleMouseUp);
+            window.removeEventListener("pointercancel", cancelGesture);
+            window.removeEventListener("blur", cancelGesture);
+            setRowTextSelectable(true);
             if (dragSelectAutoScrollRef.current !== null) {
                 window.cancelAnimationFrame(dragSelectAutoScrollRef.current);
                 dragSelectAutoScrollRef.current = null;
             }
         };
-    }, [extendDragSelectionAtPoint, startDragSelectAutoScroll, stopDragSelection]);
+    }, [escalateTextSelectToRowDrag, extendDragSelectionAtPoint, finishTextSelectGesture, setRowTextSelectable, startDragSelectAutoScroll, stopDragSelection]);
 
     const isStoryEditorFocusActive = useCallback(() => {
         if (!uiService || uiService.dialogs.getActive()) {
@@ -762,8 +863,55 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [createBlock, editorMode, insertBlock, startInsertAfter]);
 
     const handleInsertValueChange = useCallback((value: string) => {
-        setEditorMode(current => current.kind !== "insert" ? current : { ...current, value, chooser: value.startsWith("/") ? "action" : value.startsWith("#") ? "character" : "none" });
+        setEditorMode(current => {
+            if (current.kind !== "insert") {
+                return current;
+            }
+            // Once dismissed, the chooser stays gone for the life of this slot. Without this the menu
+            // would spring back on the very next keystroke, since `chooser` is derived from the prefix.
+            if (current.chooserDismissed) {
+                return { ...current, value, chooser: "none" };
+            }
+            return { ...current, value, chooser: value.startsWith("/") ? "action" : value.startsWith("#") ? "character" : "none" };
+        });
     }, []);
+
+    /** Escape, first press: drop the candidates but keep the line and the caret. */
+    const dismissInsertChooser = useCallback(() => {
+        setEditorMode(current => current.kind !== "insert" ? current : { ...current, chooser: "none", chooserDismissed: true });
+    }, []);
+
+    /** Escape, last press: an uncommitted slot never existed, so leaving it must not create anything. */
+    const discardInsertSlot = useCallback(() => {
+        setEditorMode({ kind: "idle" });
+        focusRoot();
+    }, [focusRoot]);
+
+    /**
+     * Commit the line as an invalid row: it did not resolve to anything, and the author's text is too
+     * expensive to throw away and too wrong to quietly turn into prose. The build refuses these, so
+     * nothing here can ship by accident.
+     */
+    const commitInvalidFromInsert = useCallback(() => {
+        if (editorMode.kind !== "insert" || !uuidService) {
+            return;
+        }
+        const source = editorMode.value;
+        if (!source.trim()) {
+            setEditorMode({ kind: "idle" });
+            return;
+        }
+        const block: StoryBlock = {
+            id: uuidService.generate(),
+            kind: "invalid",
+            parentId: null,
+            childrenIds: [],
+            payload: { source },
+        };
+        insertBlock(block, editorMode.slot.afterBlockId, false, { target: editorMode.slot.target });
+        startInsertAfter(block.id, true);
+    }, [editorMode, insertBlock, startInsertAfter, uuidService]);
+
 
     // Backspace on an empty insert slot: dismiss the blank line and step back onto the row above it —
     // re-entering it for editing when it holds text — so the demote ladder keeps walking upward.
@@ -853,11 +1001,114 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         const target = editorMode.slot.target;
-        const block = createBlock("dialogue", editorMode.value.replace(/^#\s*/, ""), characterId);
+        // Empty, not the typed text: everything after `#` was the speaker query (see `chooserQuery`),
+        // so reusing it as the body would put the speaker's own name in their first line.
+        const block = createBlock("dialogue", "", characterId);
         if (block) {
             insertBlock(block, editorMode.slot.afterBlockId, false, { target });
             setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
         }
+    }, [createBlock, editorMode, insertBlock]);
+
+    /**
+     * Enter on a `/…` line: parse it, resolve every name it mentions, and commit the action it
+     * describes — arguments and all.
+     *
+     * Returns false when the line does not stand on its own (unknown command, a name that resolves to
+     * nothing, a value the variable cannot hold), so the caller lands an invalid row and the author's
+     * text survives verbatim. Nothing half-written is ever committed as an action.
+     */
+    const commitCommandFromInsert = useCallback((value: string): boolean => {
+        if (editorMode.kind !== "insert") {
+            return false;
+        }
+        const line = parseCommandLine(value);
+        if (line.kind !== "command" || !line.def) {
+            return false;
+        }
+        // A command P0 gave no grammar to takes no args: it keeps the menu's behaviour, including
+        // inspector-first and treating the rest of the line as initial text (`/note some words`).
+        // Parsing it as arguments would only invent errors it never had.
+        if (line.def.params.length === 0) {
+            chooseCommand(line.def.commandId);
+            return true;
+        }
+        if (!canCommit(line)) {
+            return false;
+        }
+        const { args, issues } = resolveCommandLine(line, commandContext);
+        if (issues.length > 0) {
+            return false;
+        }
+        const commandId = line.def.commandId;
+        const base = createBlock(commandId);
+        if (!base) {
+            return false;
+        }
+        const block = applyCommandArgs(base, commandId, args);
+        insertBlock(block, editorMode.slot.afterBlockId, false, { target: editorMode.slot.target });
+        scaffoldContainer(block);
+        // A speaker with no line yet (`/say Alice`) lands the caret in the body, exactly as picking a
+        // speaker after `#` does. A line that already carries its text moves on to the next row —
+        // the command line never routes to the inspector, or it would stop the author mid-flow.
+        if (isTextEditableBlock(block) && !args.text) {
+            setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
+            return true;
+        }
+        startInsertAfter(block.id, true);
+        return true;
+    }, [chooseCommand, commandContext, createBlock, editorMode, insertBlock, scaffoldContainer, startInsertAfter]);
+
+    /**
+     * Enter / Shift+Enter with no candidate to take — the chooser was dismissed, or never opened.
+     * The line has to stand on its own now: prose commits, a resolvable command commits, and anything
+     * still wearing a `/` or `#` becomes an invalid row rather than silently becoming prose.
+     */
+    const resolveInsertLine = useCallback(() => {
+        if (editorMode.kind !== "insert") {
+            return;
+        }
+        const value = editorMode.value;
+        if (!value.trim()) {
+            setEditorMode({ kind: "idle" });
+            return;
+        }
+        if (value.startsWith("/")) {
+            if (!commitCommandFromInsert(value)) {
+                commitInvalidFromInsert();
+            }
+            return;
+        }
+        if (value.startsWith("#")) {
+            // A `#` line only becomes dialogue by picking a speaker; there is nothing else to resolve.
+            commitInvalidFromInsert();
+            return;
+        }
+        commitNarrationFromInsert(true);
+    }, [commitCommandFromInsert, commitInvalidFromInsert, commitNarrationFromInsert, editorMode]);
+
+    /**
+     * Pick a speaker that no Studio character backs. Valid, not a fallback: NLR's dialogue box only
+     * displays the name its Character carries (see `speakerName`). Offering the typed name back as a
+     * candidate is what removes "nothing matched" as a state the editor needs an answer for.
+     */
+    const chooseTempSpeakerForInsert = useCallback((speakerName: string) => {
+        if (editorMode.kind !== "insert") {
+            return;
+        }
+        const name = speakerName.trim();
+        if (!name) {
+            return;
+        }
+        const target = editorMode.slot.target;
+        // Empty for the same reason as `chooseCharacterForInsert`: the post-`#` text was the name.
+        const block = createBlock("dialogue", "");
+        if (!block || block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+            return;
+        }
+        block.payload = { ...block.payload, speakerName: name, characterId: undefined };
+        insertBlock(block, editorMode.slot.afterBlockId, false, { target });
+        setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
     }, [createBlock, editorMode, insertBlock]);
 
     const createActionFromSidebar = useCallback((commandId: string) => {
@@ -878,11 +1129,47 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [activeBlockId, createBlock, createPluginActionBlock, insertBlock]);
 
-    const setDialogueCharacter = useCallback((block: StoryBlock, characterId: string | undefined) => {
-        if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
-            updateBlockPayloadFor(block.id, { ...block.payload, characterId });
+    /**
+     * Point a dialogue row at a speaker: a real character, a bare name, or nobody.
+     *
+     * The two are mutually exclusive on purpose — a leftover `speakerName` under a real `characterId`
+     * would silently win back if that character were ever deleted (see the payload's docs).
+     */
+    const setDialogueSpeaker = useCallback((block: StoryBlock, speaker: { characterId: string } | { speakerName: string } | null) => {
+        if (block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+            return;
         }
+        const { characterId: _id, speakerName: _name, ...rest } = block.payload;
+        if (!speaker) {
+            updateBlockPayloadFor(block.id, rest);
+            return;
+        }
+        updateBlockPayloadFor(block.id, "characterId" in speaker
+            ? { ...rest, characterId: speaker.characterId }
+            : { ...rest, speakerName: speaker.speakerName });
     }, [updateBlockPayloadFor]);
+
+    /**
+     * Promote the name on a dialogue row to a real character: create it, rebind every line that used
+     * the bare name, and reveal the character manager so the author can give it a face — but leave the
+     * caret in the line they were writing. The manager is the destination for later, not for now.
+     */
+    const createCharacterFromSpeaker = useCallback((block: StoryBlock, name: string) => {
+        const trimmed = name.trim();
+        if (!characterService || !trimmed || block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+            return;
+        }
+        const created = characterService.createCharacter(trimmed);
+        const characterId = created.profile.getId();
+        if (document) {
+            // Every other line already speaking as this name comes along; leaving them behind would
+            // fork one speaker into two that merely look alike.
+            promoteTempSpeaker(document, trimmed, characterId);
+        }
+        setDialogueSpeaker(block, { characterId });
+        uiService?.panels.show(CHARACTERS_PANEL_ID);
+        setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "", caret: "end" });
+    }, [characterService, document, setDialogueSpeaker, uiService]);
 
     const selectRow = useCallback((blockId: StoryBlockId, event?: MouseEvent) => {
         setActiveBlockId(blockId);
@@ -908,6 +1195,18 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         selectRow(blockId, event);
+        // Pressing on a row's own text starts a *text* selection, not a row-range drag: let the
+        // browser select natively and read the author's intent off the mouseup (a plain click leaves
+        // the row selected; a real selection opens the row for editing with that selection intact).
+        // A modified click is unambiguously a row-selection intent, so it skips this.
+        const plainPress = !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
+        const textEl = plainPress
+            ? (event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[data-story-row-text]") : null)
+            : null;
+        if (textEl) {
+            textSelectRef.current = { blockId, textEl };
+            return;
+        }
         dragSelectPointerRef.current = { x: event.clientX, y: event.clientY };
         dragSelectionStartRef.current = blockId;
         setDragSelectActive(true);
@@ -1052,9 +1351,20 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [activeBlockId, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService]);
 
-    const startInsertAfterActive = useCallback(() => {
-        startInsertAfter(activeBlockId, true);
-    }, [activeBlockId, startInsertAfter]);
+    /**
+     * Shift+Enter's anchor: the last selected row in document order, not the active one. The active
+     * row is the selection's head, which sits *above* its tail after Shift+ArrowUp — anchoring there
+     * would drop the new row into the middle of the selection.
+     */
+    const startInsertAfterSelection = useCallback(() => {
+        let last: StoryBlockId | null = null;
+        for (const row of visibleRows) {
+            if (selectedBlockIds.has(row.block.id)) {
+                last = row.block.id;
+            }
+        }
+        startInsertAfter(last ?? activeBlockId, true);
+    }, [activeBlockId, selectedBlockIds, startInsertAfter, visibleRows]);
 
     const selectAllRows = useCallback(() => {
         setSelectedBlockIds(new Set(visibleRows.map(row => row.block.id)));
@@ -1261,10 +1571,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
         deleteRows, deleteSelection, startInsertAfter, selectRow, beginDragSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateSceneMetadata,
-        setDialogueCharacter, commitTextEdit, handleInsertValueChange,
+        setDialogueSpeaker, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange,
         undoEdit, redoEdit,
-        startInsertAfterActive, indentSelection, selectAllRows, moveActiveRowSelection,
+        startInsertAfterSelection, indentSelection, selectAllRows, moveActiveRowSelection,
         insertContinuationAfterCurrentTextEdit, commitNarrationFromInsert, handleInsertBackspaceEmpty, chooseCommand, chooseCharacterForInsert,
+        dismissInsertChooser, discardInsertSlot, resolveInsertLine, commitInvalidFromInsert, chooseTempSpeakerForInsert, tempSpeakers,
         createActionFromSidebar, addInsideContainer, addConditionBranch,
         navigateFromTextEdit, handleBackspaceAtEmptyStart, enterEditOrInspectorForActive,
         extendRowSelection, moveSelectedRows, duplicateSelection, jumpRowSelection, pageRowSelection,

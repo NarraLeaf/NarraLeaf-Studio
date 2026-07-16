@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { DevTools } from "narraleaf-react";
 import type { StoryAnimationAsset, StoryBlock, StoryDocument, StoryTransitionRef } from "@shared/types/story";
+import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
 
 function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[] = Object.keys(blocks)): StoryDocument {
     return {
-        schemaVersion: 3,
+        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
         id: "story-1",
         name: "Story",
         chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1", "scene-2"] }],
@@ -873,6 +874,78 @@ describe("compileStudioStoryToNlr", () => {
             expect(speakers[0].state.name).toBe("Unknown");
             expect(speakers[1].state.name).toBe("Unknown");
             expect(speakers[0]).not.toBe(speakers[1]);
+        });
+    });
+
+    // A speaker the author typed that has no Studio character behind it. NLR's dialogue box only
+    // displays the name its Character carries, so these are valid lines rather than errors.
+    describe("temp speakers", () => {
+        function speakerLine(id: string, payload: { characterId?: string; speakerName?: string }): StoryBlock {
+            return {
+                id,
+                kind: "nodeAction",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "dialogue",
+                    ...payload,
+                    text: { textId: `text-${id}`, value: "Hello", role: "dialogue" },
+                },
+            };
+        }
+
+        async function compileSpeakers(blocks: Record<string, StoryBlock>, characters: { id: string; name: string }[] = []) {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument(blocks, Object.keys(blocks)),
+                sceneId: "scene-1",
+                characters,
+            });
+            expect(compiled.diagnostics).toEqual([]);
+            return Object.keys(blocks).map(blockId => {
+                const action = compiled.actionIdBindings.find(binding => binding.blockId === blockId)?.action as any;
+                return action?.contentNode?.getContent?.()?.config?.character;
+            });
+        }
+
+        it("renders a bare speakerName as the nametag", async () => {
+            const [speaker] = await compileSpeakers({ say: speakerLine("say", { speakerName: "Alice" }) });
+            expect(speaker.state.name).toBe("Alice");
+        });
+
+        it("binds one Character instance per temp speaker name", async () => {
+            const [first, second, other] = await compileSpeakers({
+                say: speakerLine("say", { speakerName: "Alice" }),
+                say2: speakerLine("say2", { speakerName: "Alice" }),
+                say3: speakerLine("say3", { speakerName: "Bob" }),
+            });
+
+            expect(first).toBe(second);
+            expect(first).not.toBe(other);
+        });
+
+        it("prefers a resolving characterId over speakerName", async () => {
+            const [speaker] = await compileSpeakers(
+                { say: speakerLine("say", { characterId: "char-alice", speakerName: "Stale" }) },
+                [{ id: "char-alice", name: "Alice" }],
+            );
+            expect(speaker.state.name).toBe("Alice");
+        });
+
+        // Deleting a character should degrade the line to the name the author wrote, not to "Unknown".
+        it("falls back to speakerName when the characterId no longer resolves", async () => {
+            const [speaker] = await compileSpeakers({ say: speakerLine("say", { characterId: "char-gone", speakerName: "Alice" }) });
+            expect(speaker.state.name).toBe("Alice");
+        });
+
+        // Same trap as the authored-name case: `new Character("")` collapses into NLR's Narrator.
+        it.each([
+            ["empty", ""],
+            ["whitespace-only", "   "],
+        ])("does not collapse a %s speakerName into the Narrator", async (_label, speakerName) => {
+            const [speaker] = await compileSpeakers({ say: speakerLine("say", { speakerName }) });
+
+            expect(speaker.state.name).not.toBe("");
+            expect(speaker.state.name).toBe("Unknown");
         });
     });
 

@@ -121,6 +121,9 @@ export const story = {
         doubleClickDialogue: "Double-click to enter dialogue",
         setBackground: "Set background",
         transform: "Transform",
+        invalidHint: "won't build",
+        tempSpeaker: "name only",
+        createCharacter: "Create character “{name}”",
     },
     sceneEditor: {
         defaultSceneName: "Untitled Scene",
@@ -294,6 +297,7 @@ export const story = {
         jump: "Jump",
         code: "Code",
         note: "Note",
+        invalid: "Invalid",
     },
     emptyPlaceholder: {
         narration: "Double-click to enter narration",
@@ -332,6 +336,7 @@ export const story = {
         jump: "Jump {scene}",
         code: "{language} code",
         note: "Note",
+        invalid: "Invalid command",
         sceneUnassigned: "unassigned",
         sceneUnknown: "unknown scene",
         variableFallback: "variable",

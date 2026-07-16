@@ -19,6 +19,18 @@ function getRendererApps() {
         .map((d) => d.name);
 }
 
+/**
+ * Apps that host the game rather than Studio chrome, and so must not carry the
+ * `nl-studio` class: it opts a document into the light theme, and the game has
+ * to render exactly as it ships no matter which theme the author picked. Dev
+ * Mode renders GameApp in-document (not in a webview), so the class would reach
+ * the game through the shared widget renderers.
+ *
+ * Values are app directory names, which are also the WindowAppType values in
+ * src/shared/types/window.ts — BaseApp.getAppEntry resolves one from the other.
+ */
+const GAME_HOSTING_APPS = new Set(['dev-mode']);
+
 async function renderHtml(appName) {
     const template = await promisify(fs.readFile)(templatePath, 'utf-8');
     return ejs.render(template, {
@@ -26,6 +38,7 @@ async function renderHtml(appName) {
         base: `app://public`,
         script: `app://windows/${appName}/index.js`,
         style: `app://windows/${appName}/index.css`,
+        htmlClass: GAME_HOSTING_APPS.has(appName) ? '' : 'nl-studio',
     });
 }
 

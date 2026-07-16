@@ -115,4 +115,6 @@ export const build = {
         done: "Build finished.",
         failed: "Build failed.",
     },
+    invalidCommand: "Invalid command in {story} / {scene}: {source}",
+    invalidCommandSummary: "Build stopped: {count} invalid command(s). See the console.",
 } as const;

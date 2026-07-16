@@ -115,4 +115,6 @@ export const build = {
         done: "构建完成",
         failed: "构建失败",
     },
+    invalidCommand: "{story} / {scene} 中有无效指令：{source}",
+    invalidCommandSummary: "构建已中止：有 {count} 条无效指令，详见控制台",
 } satisfies LocaleNamespace<"build">;

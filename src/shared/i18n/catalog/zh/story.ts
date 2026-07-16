@@ -120,6 +120,9 @@ export const story = {
         doubleClickDialogue: "双击输入对话",
         setBackground: "设置背景",
         transform: "变换",
+        invalidHint: "无法构建",
+        tempSpeaker: "仅名字",
+        createCharacter: "创建角色「{name}」",
     },
     sceneEditor: {
         defaultSceneName: "未命名场景",
@@ -440,6 +443,7 @@ export const story = {
         jump: "跳转",
         code: "代码",
         note: "备注",
+        invalid: "无效",
     },
     emptyPlaceholder: {
         narration: "双击输入旁白",
@@ -476,6 +480,7 @@ export const story = {
         jump: "跳转 {scene}",
         code: "{language} 代码",
         note: "备注",
+        invalid: "无效指令",
         sceneUnassigned: "未指定",
         sceneUnknown: "未知场景",
         variableFallback: "变量",

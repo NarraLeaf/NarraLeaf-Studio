@@ -157,13 +157,11 @@ function StorySceneOverviewBlock(props: {
                             onChange={event => setNameValue(event.target.value)}
                             onBlur={commitName}
                             onKeyDown={event => {
-                                if (event.key === "Enter") {
+                                // Escape exits and saves, like everywhere else in the editor — blurring
+                                // is what commits. Reverting here made Escape mean three different
+                                // things across one tab; undo is Mod+Z's job.
+                                if (event.key === "Enter" || event.key === "Escape") {
                                     event.preventDefault();
-                                    event.currentTarget.blur();
-                                }
-                                if (event.key === "Escape") {
-                                    event.preventDefault();
-                                    setNameValue(scene.name);
                                     event.currentTarget.blur();
                                 }
                             }}
@@ -181,9 +179,10 @@ function StorySceneOverviewBlock(props: {
                             onChange={event => setDescriptionValue(event.target.value)}
                             onBlur={commitDescription}
                             onKeyDown={event => {
+                                // Exit and save (onBlur commits). Enter stays a newline — this one is
+                                // genuinely multi-line, unlike a story row.
                                 if (event.key === "Escape") {
                                     event.preventDefault();
-                                    setDescriptionValue(scene.description ?? "");
                                     event.currentTarget.blur();
                                 }
                             }}
@@ -279,10 +278,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             handler: editor.enterEditOrInspectorForActive,
         },
         {
-            id: "insert-after-active",
-            key: "mod+enter",
+            id: "insert-blank-after-selection",
+            key: "shift+enter",
             description: t("story.keybindings.insertRow"),
-            handler: editor.startInsertAfterActive,
+            handler: editor.startInsertAfterSelection,
         },
         {
             id: "indent",
@@ -392,7 +391,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         editor.pageRowSelection,
         editor.redoEdit,
         editor.selectAllRows,
-        editor.startInsertAfterActive,
+        editor.startInsertAfterSelection,
         editor.undoEdit,
         t,
     ]);
@@ -855,14 +854,23 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         )
                                     }
                                     onCommitTextEdit={editor.commitTextEdit}
-                                    onCancelTextEdit={() => { editor.setEditorMode({ kind: "idle" }); editor.focusRoot(); }}
+                                    onExitTextEdit={() => { editor.commitTextEdit(); editor.focusRoot(); }}
                                     onContinue={editor.insertContinuationAfterCurrentTextEdit}
                                     onArrowOut={editor.navigateFromTextEdit}
                                     onBackspaceAtEmptyStart={editor.handleBackspaceAtEmptyStart}
+                                    // The row's stack is spent, so the caret is back where the edit opened and
+                                    // committing is a no-op (`commitTextEdit` short-circuits when nothing
+                                    // changed, recording no history). Leaving the field first is what lets any
+                                    // further Mod+Z reach story history through the normal keybinding.
+                                    onUndoBeyondRow={() => { editor.commitTextEdit(); editor.focusRoot(); editor.undoEdit(); }}
+                                    onRedoBeyondRow={() => { editor.commitTextEdit(); editor.focusRoot(); editor.redoEdit(); }}
                                     onOpenInspector={() => editor.setEditorMode({ kind: "inspector", blockId: row.block.id })}
                                     onCloseInspector={() => editor.setEditorMode({ kind: "idle" })}
                                     onUpdatePayload={payload => editor.updateBlockPayloadFor(row.block.id, payload)}
-                                    onSetDialogueCharacter={characterId => editor.setDialogueCharacter(row.block, characterId)}
+                                    onSetDialogueCharacter={characterId => editor.setDialogueSpeaker(row.block, characterId ? { characterId } : null)}
+                                    tempSpeakers={editor.tempSpeakers}
+                                    onSetSpeaker={speaker => editor.setDialogueSpeaker(row.block, speaker)}
+                                    onCreateCharacter={name => editor.createCharacterFromSpeaker(row.block, name)}
                                     generateTextId={() => editor.uuidService?.generate() ?? crypto.randomUUID()}
                                     onCreateLayer={beforeBlockId => editor.createLayerBeforeBlock(beforeBlockId)}
                                     onInsertAfter={() => editor.startInsertAfter(row.block.id, true)}
@@ -877,9 +885,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         inputRef={editor.insertInputRef}
                                         onValueChange={editor.handleInsertValueChange}
                                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
-                                        onCancelActionChooser={() => editor.commitNarrationFromInsert(false)}
+                                        onDismissChooser={editor.dismissInsertChooser}
+                                        onDiscardSlot={editor.discardInsertSlot}
+                                        onResolveLine={editor.resolveInsertLine}
+                                        onCommitInvalid={editor.commitInvalidFromInsert}
                                         onChooseCommand={editor.chooseCommand}
                                         onChooseCharacter={editor.chooseCharacterForInsert}
+                                        onChooseTempSpeaker={editor.chooseTempSpeakerForInsert}
+                                        tempSpeakers={editor.tempSpeakers}
                                         onBackspaceEmpty={editor.handleInsertBackspaceEmpty}
                                     />
                                 ) : null}
@@ -894,9 +907,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         inputRef={editor.insertInputRef}
                         onValueChange={editor.handleInsertValueChange}
                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
-                        onCancelActionChooser={() => editor.commitNarrationFromInsert(false)}
+                        onDismissChooser={editor.dismissInsertChooser}
+                        onDiscardSlot={editor.discardInsertSlot}
+                        onResolveLine={editor.resolveInsertLine}
+                        onCommitInvalid={editor.commitInvalidFromInsert}
                         onChooseCommand={editor.chooseCommand}
                         onChooseCharacter={editor.chooseCharacterForInsert}
+                        onChooseTempSpeaker={editor.chooseTempSpeakerForInsert}
+                        tempSpeakers={editor.tempSpeakers}
                         onBackspaceEmpty={editor.handleInsertBackspaceEmpty}
                     />
                 ) : isInsertingAfterLastRow ? null : (
