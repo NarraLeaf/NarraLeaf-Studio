@@ -44,6 +44,7 @@ export function useModuleLoader() {
                 icon: panelModule.metadata.icon!,
                 position: panelModule.metadata.position,
                 component: panelModule.component as any,
+                railAction: panelModule.railAction,
                 defaultVisible: panelModule.metadata.defaultVisible,
                 order: panelModule.metadata.order,
                 payload: panelModule.metadata.payload,

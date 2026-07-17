@@ -32,6 +32,14 @@ export interface GlobalStateType extends Record<string, any> {
     "workspace.returnToLauncherOnClose": boolean;
     "workspace.recentProjectsLimit": number;
     "workspace.autoSave": boolean;
+    /**
+     * Open the project dashboard as a tab every time a workspace opens.
+     *
+     * Global rather than per-project: this is a habit of the author, not a property of the project,
+     * and a `.nlproj` is shared through version control where one teammate's preference would
+     * silently override everyone else's.
+     */
+    "dashboard.openOnWorkspaceOpen": boolean;
     "sync.autoBackup": boolean;
     "sync.backupIntervalMinutes": number;
     "sync.backupPath": string;
@@ -70,6 +78,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "workspace.returnToLauncherOnClose": true,
     "workspace.recentProjectsLimit": 10,
     "workspace.autoSave": true,
+    "dashboard.openOnWorkspaceOpen": true,
     "sync.autoBackup": true,
     "sync.backupIntervalMinutes": 30,
     "sync.backupPath": "",

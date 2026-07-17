@@ -27,6 +27,12 @@ export interface SettingDescriptor<T extends SettingValueType = SettingValueType
     step?: number;
     /** Rendered after the value, e.g. "%". */
     unit?: string;
+    /** Action only: the button's resting label. */
+    actionLabel?: string;
+    /** Action only: the label of the second, confirming click. */
+    confirmLabel?: string;
+    /** Action only: renders the button in the destructive variant. */
+    danger?: boolean;
 }
 
 /**
@@ -57,6 +63,19 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     step?: number;
     /** Rendered after the value, e.g. "%". */
     unit?: string;
+    /**
+     * `SettingValueType.Action` only: what the button does. It owns its own effects — the settings
+     * layer stores nothing for an Action and `key` is only an identity for it.
+     */
+    onInvoke?: () => Promise<void>;
+    /** Action only: the button's resting label. */
+    actionLabel?: string;
+    /** i18n key; when set, it overrides `actionLabel` at render time. */
+    actionLabelKey?: TranslationKey;
+    /** Action only: the label of the second, confirming click (defaults to `common.confirm`). */
+    confirmLabelKey?: TranslationKey;
+    /** Action only: renders the button in the destructive variant. */
+    danger?: boolean;
 }
 
 /**

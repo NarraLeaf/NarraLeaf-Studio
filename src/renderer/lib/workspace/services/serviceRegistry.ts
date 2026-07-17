@@ -26,6 +26,7 @@ import { BlueprintNodeCatalogService } from "./ui-editor/BlueprintNodeCatalogSer
 import { StoryService } from "./story/StoryService";
 import { ProjectDependencyService } from "./core/ProjectDependencyService";
 import { LocalizationService } from "./localization/LocalizationService";
+import { ProjectStatsService } from "./stats/ProjectStatsService";
 
 export class ServiceRegistry {
     private services: Record<Services, Service> = {
@@ -55,6 +56,7 @@ export class ServiceRegistry {
         [Services.BlueprintNodeCatalog]: BlueprintNodeCatalogService.getInstance(),
         [Services.ProjectDependency]: ProjectDependencyService.getInstance(),
         [Services.Localization]: LocalizationService.getInstance(),
+        [Services.ProjectStats]: ProjectStatsService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {

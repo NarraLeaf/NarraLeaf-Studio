@@ -8,6 +8,7 @@ import {
     getSettingsByCategory,
 } from "@/lib/settings/registry";
 import { AppSettingDefinition, AppSettingCategoryKey, SettingCategory, SettingDescriptor } from "@/lib/settings/models";
+import { SettingValueType } from "@/lib/settings/types";
 import { getInterface } from "@/lib/app/bridge";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import { useTranslation } from "@/lib/i18n";
@@ -37,6 +38,10 @@ export function SettingsApp() {
             const nextValues: Record<string, SettingValue> = {};
             await Promise.all(
                 getAllAppSettings().map(async (setting) => {
+                    // Actions store nothing; their `key` is an identity, not a state key.
+                    if (setting.type === SettingValueType.Action) {
+                        return;
+                    }
                     try {
                         const result = await getInterface().app.state.getGlobalState(setting.key);
                         const storedValue = result.success
@@ -99,8 +104,18 @@ export function SettingsApp() {
             max: setting.max,
             step: setting.step,
             unit: setting.unit,
+            actionLabel: setting.actionLabelKey ? t(setting.actionLabelKey) : setting.actionLabel,
+            confirmLabel: setting.confirmLabelKey ? t(setting.confirmLabelKey) : undefined,
+            danger: setting.danger,
         }),
         [t],
+    );
+
+    const invokeSettingAction = useCallback(
+        async (setting: AppSettingDefinition) => {
+            await setting.onInvoke?.();
+        },
+        [],
     );
 
     const getSettingValue = useCallback(
@@ -177,6 +192,7 @@ export function SettingsApp() {
                         describeSetting={describeAppSetting}
                         getValue={(setting, _descriptor) => getSettingValue(setting)}
                         onCommit={commitSetting}
+                        onInvokeAction={invokeSettingAction}
                         searchQuery={searchQuery}
                         onSearchChange={setSearchQuery}
                         showSearch={false}

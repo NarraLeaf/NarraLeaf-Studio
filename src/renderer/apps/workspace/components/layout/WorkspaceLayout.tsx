@@ -355,9 +355,11 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     // Enhanced toggle functions that auto-select first panel if none is active
     const toggleLeftSidebar = () => {
         if (!leftSidebarVisible && !activeLeftPanelId) {
-            const leftPanels = getPanelsByPosition(PanelPosition.Left);
-            if (leftPanels.length > 0) {
-                setActiveLeftPanelId(leftPanels[0].id);
+            // Rail actions occupy a rail slot but have no panel body, so selecting one would open
+            // the sidebar onto nothing.
+            const firstPanel = getPanelsByPosition(PanelPosition.Left).find(panel => !panel.railAction);
+            if (firstPanel) {
+                setActiveLeftPanelId(firstPanel.id);
             }
         }
         setLeftSidebarVisible(!leftSidebarVisible);
