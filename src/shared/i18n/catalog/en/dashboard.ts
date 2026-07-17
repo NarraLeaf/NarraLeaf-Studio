@@ -10,6 +10,14 @@ export const dashboard = {
         never: "Not yet",
     },
 
+    greeting: {
+        lateNight: "Working late",
+        morning: "Good morning",
+        noon: "Good afternoon",
+        afternoon: "Good afternoon",
+        evening: "Good evening",
+    },
+
     units: {
         words: {
             one: "{count} word",
@@ -85,7 +93,7 @@ export const dashboard = {
 
     structure: {
         title: "Structure",
-        endings: "Endings",
+        chapters: "Outline",
         branches: "Branches",
         unreachable: "Unreachable scenes",
         unreachableHint: "No jump path leads to these scenes from the entry scene.",

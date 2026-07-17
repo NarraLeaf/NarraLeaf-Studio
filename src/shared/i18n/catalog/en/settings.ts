@@ -84,8 +84,9 @@ export const settings = {
                 "Closing a workspace goes back to the home screen. Turn this off to quit NarraLeaf Studio instead when no other window is open.",
         },
         dashboardOnOpen: {
-            label: "Show the project dashboard on open",
-            description: "Open the project dashboard as a tab every time you enter a workspace.",
+            label: "Show the project dashboard by default",
+            description:
+                "Whether projects you haven't decided about open their dashboard on entering the workspace. Each project can override this from its own dashboard.",
         },
         clearAllStats: {
             label: "Clear all statistics data",
