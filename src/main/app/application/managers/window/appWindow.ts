@@ -1,6 +1,7 @@
 import fs from "fs";
 import { AppEventToken } from "@shared/types/app";
 import { Namespace } from "@shared/types/ipc";
+import { IPCEventType } from "@shared/types/ipcEvents";
 import { App } from "@/app/app";
 import { WindowEventManager } from "./windowEvents";
 import { WindowInstanceConfig, WindowInstance } from "./windowInstance";
@@ -350,6 +351,17 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         const webContents = win.webContents;
 
         this.prepareZoom(webContents);
+
+        // The title bar reserves space for the macOS traffic lights, which the OS hides in
+        // fullscreen — so the renderer has to know when that happens to reclaim the gap. Pushed
+        // rather than polled because Electron's matchMedia change events are unreliable.
+        const forwardFullscreen = (isFullscreen: boolean) => () => {
+            if (!this.isClosed() && !this.isDestroyed()) {
+                this.sendIpcEvent(IPCEventType.appWindowFullscreenChanged, { isFullscreen });
+            }
+        };
+        win.on("enter-full-screen", forwardFullscreen(true));
+        win.on("leave-full-screen", forwardFullscreen(false));
 
         win.on("close", (event) => {
             if (this.closeGuard && !this.closeGuardBypassed && !this.getApp().isQuitting()) {

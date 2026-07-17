@@ -1,4 +1,5 @@
 import { useWindowControls } from "@/lib/app/hooks/useWindowControls";
+import { useWindowFullscreen } from "@/lib/app/hooks/useWindowFullscreen";
 import { useTranslation } from "@/lib/i18n";
 import { ErrorBoundary } from "@/lib/app/errorHandling/ErrorBoundary";
 import { isMacPlatform } from "@/lib/app/platform";
@@ -45,12 +46,16 @@ export function TitleBar({
 }: TitleBarProps) {
     const { t } = useTranslation();
     const isMac = isMacPlatform();
+    const isFullscreen = useWindowFullscreen();
     const usesInlineMacControls = isMac && windowControlPolicy === WindowControlPolicy.Standard;
     const hasWindowControls = windowControlPolicy !== WindowControlPolicy.None;
     const shouldRenderCustomControls = hasWindowControls && !isMac;
-    const leftInset = usesInlineMacControls ? MACOS_TRAFFIC_LIGHT_SAFE_AREA : 0;
+    // macOS hides the traffic lights in fullscreen, so the space reserved for them becomes dead —
+    // stop reserving it and let the content sit flush against the window edge.
+    const reserveMacTrafficLights = usesInlineMacControls && !isFullscreen;
+    const leftInset = reserveMacTrafficLights ? MACOS_TRAFFIC_LIGHT_SAFE_AREA : 0;
     const rightInset = usesInlineMacControls
-        ? (controlBar || iconSrc ? TITLEBAR_EDGE_GAP : MACOS_TRAFFIC_LIGHT_SAFE_AREA)
+        ? (controlBar || iconSrc ? TITLEBAR_EDGE_GAP : (reserveMacTrafficLights ? MACOS_TRAFFIC_LIGHT_SAFE_AREA : 0))
         : 0;
     const leftSafeAreaStyle = leftInset ? { paddingLeft: leftInset } : undefined;
     const rightSafeAreaStyle = rightInset ? { paddingRight: rightInset } : undefined;

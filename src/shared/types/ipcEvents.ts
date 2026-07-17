@@ -41,6 +41,8 @@ export enum IPCEventType {
     appWindowCloseWith = "app.window.closeWith",
     appWindowGetControl = "app.window.getControl",
     appWindowControlAbility = "app.window.getControlAbility",
+    appWindowGetFullscreen = "app.window.getFullscreen",
+    appWindowFullscreenChanged = "app.window.fullscreenChanged",
     appWindowProps = "app.window.props",
     appInfo = "app.info",
     appWindowReady = "app.window.ready",
@@ -232,6 +234,20 @@ export type IPCEvents = {
         consumer: IPCType.Host,
         data: {},
         response: WindowControlAbility;
+    };
+    [IPCEventType.appWindowGetFullscreen]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            isFullscreen: boolean,
+        };
+    };
+    [IPCEventType.appWindowFullscreenChanged]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: { isFullscreen: boolean },
+        response: never;
     };
     [IPCEventType.appWindowProps]: {
         type: IPCMessageType.request,
