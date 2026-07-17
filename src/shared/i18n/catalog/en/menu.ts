@@ -18,6 +18,8 @@ export const menu = {
         title: "File",
         new: "New Workspace",
         open: "Open Workspace",
+        openRecent: "Open Recent Workspaces",
+        noRecent: "No Recent Workspaces",
         export: "Export Project",
         close: "Close Workspace",
     },

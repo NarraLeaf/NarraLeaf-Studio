@@ -190,6 +190,9 @@ export class AppAddRecentProjectHandler extends IPCHandler<IPCEventType.appAddRe
             openedAt: Date.now(),
             securityScopedBookmark: window.app.storageManager.getSecurityScopedBookmarkForPath(data.path),
         });
+        // Keep the native "Open Recent" submenu in step with the history it renders. No-op off
+        // macOS, where the application menu is empty.
+        window.app.menuManager.updateMenu();
         return this.success(void 0);
     }
 }
