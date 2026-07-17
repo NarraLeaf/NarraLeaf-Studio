@@ -6,6 +6,8 @@ import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useTranslation } from "@/lib/i18n";
+import { isMacPlatform } from "@/lib/app/platform";
+import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
@@ -244,7 +246,7 @@ export function StoryBlockRow(props: {
                     {containerInfo ? (
                         <ContainerHeaderAdd info={containerInfo} onAdd={() => props.onAddInside(block.id)} />
                     ) : (
-                        <RowActions onInsertAfter={props.onInsertAfter} onDelete={props.onDeleteRow} />
+                        <RowActions onInsertAfter={props.onInsertAfter} onDelete={props.onDeleteRow} active={active} />
                     )}
                 </div>
                 {containerInfo ? (
@@ -472,20 +474,51 @@ function TextEditBox(props: {
     );
 }
 
-function RowActions(props: { onInsertAfter: () => void; onDelete: () => void }) {
+/**
+ * Insert / Delete for a row.
+ *
+ * Shown on hover *and* on the active row: the editor is keyboard-first, and a control that only
+ * exists under a pointer is a control a keyboard author never learns about. They stay `tabIndex={-1}`
+ * on purpose — `Tab` indents the row (see the interaction model), so it is not a focus-traversal key
+ * here and these must not swallow it. The keyboard path is the shortcut, which is why the shortcut is
+ * on the `title`: that is the whole point of showing them on the active row.
+ */
+function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; active: boolean }) {
     const { t } = useTranslation();
+    // Rendered from the bindings themselves, never spelled out: `mod` is ⌘ or Ctrl depending on the
+    // platform, and a hardcoded label is how a hint drifts from the key it claims to describe.
+    const isMac = isMacPlatform();
+    const insertKeys = formatKeybinding("shift+enter", isMac);
+    const deleteKeys = formatKeybinding("delete", isMac);
     return (
-        <div className="pointer-events-none ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
-            <button type="button" tabIndex={-1} className="rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill hover:text-primary" onClick={event => {
-                event.stopPropagation();
-                props.onInsertAfter();
-            }}>
+        <div
+            className={[
+                "ml-auto flex shrink-0 items-center gap-1 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100",
+                props.active ? "opacity-100" : "pointer-events-none opacity-0",
+            ].join(" ")}
+        >
+            <button
+                type="button"
+                tabIndex={-1}
+                title={t("story.rows.insertTitle", { keys: insertKeys })}
+                className="rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill hover:text-primary"
+                onClick={event => {
+                    event.stopPropagation();
+                    props.onInsertAfter();
+                }}
+            >
                 {t("story.rows.insert")}
             </button>
-            <button type="button" tabIndex={-1} className="rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-danger/10 hover:text-danger" onClick={event => {
-                event.stopPropagation();
-                props.onDelete();
-            }}>
+            <button
+                type="button"
+                tabIndex={-1}
+                title={t("story.rows.deleteTitle", { keys: deleteKeys })}
+                className="rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-danger/10 hover:text-danger"
+                onClick={event => {
+                    event.stopPropagation();
+                    props.onDelete();
+                }}
+            >
                 {t("story.rows.delete")}
             </button>
         </div>

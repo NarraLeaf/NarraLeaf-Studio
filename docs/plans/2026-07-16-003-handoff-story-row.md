@@ -166,14 +166,18 @@ and never inserts `\n` (rule 3: rows are the line model), so it accepts exactly 
 is correct. Setting it to `"true"` would announce to a screen-reader user that `Enter` starts a new
 line inside the field; it starts a new *row* instead. That is a worse lie than the wrap.
 
-### Row actions are keyboard-unreachable
+### ~~Row actions are keyboard-unreachable~~ — **DONE (2026-07-16)**, discoverability only
 
-`StorySceneEditorRows.tsx:474-475` — Insert / Delete are `tabIndex={-1}` inside an `opacity-0`
-group-hover container. They exist only for the mouse. `Alt+Arrow` reorder has the inverse problem:
-keyboard-only, with drag as its only visible equivalent.
+`RowActions` now shows on the **active row** as well as on hover, and each button's `title` names its
+shortcut — rendered through `formatKeybinding` against the real binding (`shift+enter`, `delete`)
+rather than spelled out, so the hint cannot drift from the key. Driven: inactive rows stay
+`opacity: 0 / pointer-events: none`; the active row is `opacity: 1 / pointer-events: auto`; titles
+read "Insert a blank row after this one (⇧Enter)" / "Delete this row (Delete)".
 
-Neither needs to become a permanent control. The cheap fix is discoverability: make them reachable
-when the row is focused, and surface the shortcut in their `title`.
+They stay `tabIndex={-1}` **deliberately**, which is the part the original note had backwards: `Tab`
+indents the row (rule 3), so it is not a focus-traversal key in this editor and these buttons must not
+swallow it. "Reachable from the keyboard" here means the shortcut, and the shortcut is now on screen
+whenever the row is active — which is what makes it discoverable. `Alt+Arrow` is untouched.
 
 ### `initialRuns` is read once
 
@@ -199,14 +203,43 @@ putting the speaker's own name into their first line of dialogue. Only running i
 yarn dev                              # NB: starts with `rimraf dist` — wait for the rebuild
 node project/app/cdp.js list          # port 9222
 node project/app/cdp.js --target workspace eval "…"
+node project/app/cdp.js --target workspace reload      # after EVERY edit — see below
 ```
 
 If the workspace is blank with `ERR_FILE_NOT_FOUND`, you raced the `rimraf`; `yarn build:apps:dev`
-then reload, or launch `node project/app/dev-electron.js --cdp --cdp-port=9222` directly.
+then reload, or launch `node project/app/dev-electron.js --cdp --cdp-port=9222` directly. `yarn dev`
+also `rimraf`s `dist` out from under any instance already running — check `lsof -iTCP:5588` first.
+
+Drive with **real input**: `Input.dispatchMouseEvent` (press/release, `clickCount` 1 then 2), not
+`el.click()` — the browser only word-selects on a *trusted* double-click, which is the whole gesture.
+(`Input` is not enable-able; `cdp.enable('Input')` throws.)
+
+Four ways this rig will lie to you, each of which reads exactly like a real bug. All four cost me an
+hour on 2026-07-16:
+
+1. **The page is not the bundle.** `grep`ing `dist/` proves the build landed, not that the window
+   loaded it. `reload` after every edit — the goal column "did nothing" for three test runs purely
+   because the page was stale.
+2. **rAF is suspended.** A CDP-driven window is occluded (`document.visibilityState === "hidden"`), so
+   anything positioning itself from `requestAnimationFrame` never renders and throws no error. See the
+   toolbar section. `Page.bringToFront` does not help.
+3. **`getBoundingClientRect()` reports clipped rows anyway.** A row behind the Console panel or
+   scrolled out of the pane still has a plausible rect; clicks there hit `<html>` and every probe
+   reads "no selection". Gate on `elementFromPoint(x, y).closest('[data-story-row-text]') === el`.
+4. **The restored session may open with a modal up** (a "Build for distribution" dialog did), which
+   eats every click. Screenshot before believing dead input.
 
 Test projects live in `/Users/nomen/Documents/dev/test/` (`demo2` has 3 scenes / 23 blocks). **Leave
 them as you found them** — undo your rows, and note that a confirm dialog's buttons are `Cancel`/`OK`,
 not `Delete`.
 
 Tests to keep green: `richText.test.ts`, `speakerCandidates.test.ts`, `storySceneBlockUtils.test.ts`,
-`storyEditorSessionStore.test.ts`.
+`storyEditorSessionStore.test.ts`. They stay green through every bug in this file, which is the point:
+jsdom implements neither `user-select`, native selection, nor caret geometry, so **not one line of the
+mouse model or the goal column is testable there.** Green means you have not regressed the parsing —
+it never means the row works.
+
+You are not alone in this checkout. Another agent is committing to `develop` with `git add -A` and
+will sweep your uncommitted files into its own commit under an unrelated message. Work vanishing from
+`git status` almost certainly means it was committed by someone else — check
+`git show HEAD:<file> | grep <marker>` before redoing it.
