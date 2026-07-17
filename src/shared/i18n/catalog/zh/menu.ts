@@ -14,6 +14,8 @@ export const menu = {
         title: "文件",
         new: "新建工作区",
         open: "打开工作区",
+        openRecent: "最近打开的工作区",
+        noRecent: "无最近工作区",
         export: "导出项目",
         close: "关闭工作区",
     },

@@ -6,10 +6,6 @@ import { dialog } from "electron";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
-function normalizeProjectPath(projectPath: string): string {
-    return projectPath.replace(/[\\/]+$/, "");
-}
-
 /** Reduce a renderer-supplied name to a single safe filename (no separators, no leading dots). */
 function sanitizeLogFileName(name: string): string {
     const base = path
@@ -49,19 +45,7 @@ export class WorkspaceLaunchHandler extends IPCHandler<IPCEventType.workspaceLau
         window: AppWindow,
         { props, closeCurrentWindow }: IPCEvents[IPCEventType.workspaceLaunch]["data"]
     ): Promise<RequestStatus<void>> {
-        const recentProject = window.getApp().globalState.recentlyOpened.list().find(project =>
-            normalizeProjectPath(project.path) === normalizeProjectPath(props.projectPath)
-        );
-        if (recentProject?.securityScopedBookmark) {
-            window.app.storageManager.grantFileSystemAccess(
-                window,
-                props.projectPath,
-                "readwrite",
-                true,
-                recentProject.securityScopedBookmark,
-                "session",
-            );
-        }
+        window.getApp().authorizeRecentProjectAccess(window, props.projectPath);
 
         const workspaceWindow = await window.getApp().launchWorkspace(window, props, {
             minWidth: 800,
@@ -83,6 +67,27 @@ export class WorkspaceLaunchHandler extends IPCHandler<IPCEventType.workspaceLau
             });
         }
 
+        return this.success(void 0);
+    }
+}
+
+/**
+ * Handler for opening a project from the recent list.
+ *
+ * Unlike {@link WorkspaceLaunchHandler}, which always launches, this focuses a window that
+ * already has the project open and only launches a fresh one otherwise — the behaviour the
+ * top-bar switcher and the "Open Recent" menus want. File-access authorization is shared through
+ * {@link App.openRecentProject}.
+ */
+export class WorkspaceOpenRecentHandler extends IPCHandler<IPCEventType.workspaceOpenRecent> {
+    readonly name = IPCEventType.workspaceOpenRecent;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, replaceCurrentWindow }: IPCEvents[IPCEventType.workspaceOpenRecent]["data"],
+    ): Promise<RequestStatus<void>> {
+        await window.getApp().openRecentProject(window, projectPath, { replaceOpener: replaceCurrentWindow });
         return this.success(void 0);
     }
 }

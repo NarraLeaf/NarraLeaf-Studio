@@ -100,6 +100,16 @@ export const workspace = {
         stopPreview: "停止预览",
         logoAlt: "NarraLeaf Studio 徽标",
         editorTabsLabel: "编辑器标签页",
+        // 标题栏里类 PyCharm 的项目切换器：显示当前项目名，下拉列出最近工作区以便跳转。
+        projectSwitcher: {
+            switchProject: "切换项目",
+            recentProjects: "最近项目",
+            current: "当前",
+            openProject: "打开项目…",
+            newProject: "新建项目…",
+            noRecent: "无最近工作区",
+            untitled: "未命名项目",
+        },
         closeConfirm: {
             message: "确定要关闭当前工作区吗？",
             detail: "将会自动保存已作出的更改",

@@ -343,5 +343,9 @@ export const globalActions: ModuleAction[] = [devModeAction, previewAction, buil
 /**
  * All global action groups
  * Array of all action groups that should be registered globally
+ *
+ * `fileActionGroup` is deliberately absent: it is registered by `useFileMenu`, which owns it so
+ * the "Open Recent" submenu can track the project history live without two writers racing for the
+ * same id. Its definition above stays the single source of the File group's New/Open/Export/Close.
  */
-export const globalActionGroups: ModuleActionGroup[] = [fileActionGroup, helpActionGroup];
+export const globalActionGroups: ModuleActionGroup[] = [helpActionGroup];

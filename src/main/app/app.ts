@@ -8,6 +8,11 @@ import { devModeNetworkPolicy, readProjectAllowHttp } from "./application/manage
 import { GameBuildManager } from "./application/managers/build/GameBuildManager";
 import { PreviewManager } from "./application/managers/preview/PreviewManager";
 
+/** Strip trailing slashes so two spellings of the same project path compare equal. */
+function normalizeProjectPath(projectPath: string): string {
+    return projectPath.replace(/[\\/]+$/, "");
+}
+
 export interface AppConfig extends BaseAppConfig {
 }
 
@@ -277,6 +282,90 @@ export class App extends BaseApp {
         // Project is added to recently opened only when workspace successfully loads it (see WorkspaceContext)
 
         return window;
+    }
+
+    /**
+     * Re-authorize file-system access to a project the user has opened before. macOS only hands a
+     * sandboxed folder back through the security-scoped bookmark captured when it was first chosen,
+     * so without this a project outside the app container would be unreadable. Session lifetime
+     * keeps the folder accessible for the rest of the run rather than tying it to the opener window.
+     *
+     * Shared by the launcher's launch IPC ({@link WorkspaceLaunchHandler}) and the native "Open
+     * Recent" menu, so both grant identical access before a workspace touches the files.
+     */
+    public authorizeRecentProjectAccess(opener: AppWindow, projectPath: string): void {
+        const recentProject = this.globalState.recentlyOpened.list().find(project =>
+            normalizeProjectPath(project.path) === normalizeProjectPath(projectPath),
+        );
+        if (recentProject?.securityScopedBookmark) {
+            this.storageManager.grantFileSystemAccess(
+                opener,
+                projectPath,
+                "readwrite",
+                true,
+                recentProject.securityScopedBookmark,
+                "session",
+            );
+        }
+    }
+
+    /**
+     * Open a recent project by path: authorize its files, then focus the workspace window that
+     * already has it open, or launch a fresh one. Used by the native "Open Recent" menu and the
+     * title-bar project switcher.
+     *
+     * With `replaceOpener`, this is a "switch in the current window": the target takes over the
+     * opener's place on screen (same bounds) and the opener closes once the target is ready, so it
+     * reads as the same window reused rather than a second one piling up. Without it, the opener
+     * is left untouched — the menu's history-open behaviour.
+     *
+     * The launcher's launch flow keeps its own path rather than calling this, because it also owns
+     * closeCurrentWindow and the dev-mode devtools wiring against the freshly launched window.
+     */
+    public async openRecentProject(
+        opener: AppWindow,
+        projectPath: string,
+        options: { replaceOpener?: boolean } = {},
+    ): Promise<AppWindow<WindowAppType.Workspace>> {
+        this.authorizeRecentProjectAccess(opener, projectPath);
+
+        // forceClose() is deliberate: a switch is not a "close this workspace" gesture, so it must
+        // skip the close guard's confirm sheet and return-to-launcher, which would otherwise
+        // interrupt the switch or flash the home window. Changes auto-save, so nothing is lost.
+        const replaceOpener = Boolean(options.replaceOpener) && opener.getWindowType() === WindowAppType.Workspace;
+
+        const existing = this.windowManager.getWindows().find(window =>
+            window.getWindowType() === WindowAppType.Workspace
+            && !window.isClosed()
+            && normalizeProjectPath(window.getProps().projectPath) === normalizeProjectPath(projectPath),
+        ) as AppWindow<WindowAppType.Workspace> | undefined;
+        if (existing) {
+            // A minimized window ignores focus() on macOS, so bring it back up first.
+            if (existing.win.isMinimized()) {
+                existing.win.restore();
+            }
+            existing.focus();
+            // Switching to a project already open elsewhere still retires the window left behind —
+            // unless that window *is* the target (clicking the current project in the menu).
+            if (replaceOpener && existing !== opener && !opener.isClosed()) {
+                opener.forceClose();
+            }
+            return existing;
+        }
+
+        const bounds = replaceOpener ? opener.win.getBounds() : undefined;
+        const workspaceWindow = await this.launchWorkspace(opener, { projectPath }, bounds
+            ? { minWidth: 800, minHeight: 600, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, center: false }
+            : { minWidth: 800, minHeight: 600, width: 1400, height: 900 });
+
+        if (replaceOpener) {
+            workspaceWindow.onReady(() => {
+                if (!opener.isClosed()) {
+                    opener.forceClose();
+                }
+            });
+        }
+        return workspaceWindow;
     }
 
     async launchProjectWizard(
