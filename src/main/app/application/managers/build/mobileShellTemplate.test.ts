@@ -116,8 +116,14 @@ describe("loadMobileShellTemplate", () => {
 
     it("names the missing variant when a template file was not staged", async () => {
         // The staging script copies both variants; a partial copy must fail
-        // loudly here rather than deep inside the repack.
-        const dir = await makeTemplateDir(validManifest, ["android/template.apk", "ios/template.app.zip"]);
+        // loudly here rather than deep inside the repack. Only the Android
+        // debug template is withheld, so the message cannot be the iOS one
+        // winning a rejection race.
+        const dir = await makeTemplateDir(validManifest, [
+            "android/template.apk",
+            "ios/template.app.zip",
+            "ios/template-debug.app.zip",
+        ]);
         await expect(loadMobileShellTemplate(dir, "debug")).rejects.toThrow(/Android debug shell template is missing/);
     });
 

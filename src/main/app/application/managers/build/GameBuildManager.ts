@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import fs from "fs/promises";
 import path from "path";
 import { shell, utilityProcess, type UtilityProcess } from "electron";
 import { RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME } from "@narraleaf/encryption";
@@ -7,20 +8,27 @@ import type { DevModeConsoleLogPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
 import {
     currentGameBuildPlatform,
+    deriveAndroidVersionCode,
     deriveGameAppId,
+    deriveIosBundleVersion,
     GAME_BUILD_FORMATS_BY_PLATFORM,
     hostCanBuildTarget,
     isDesktopBuildPlatform,
     isMobileBuildPlatform,
+    mobileExportFileName,
+    normalizeAndroidPackageName,
     normalizeGameBuildArch,
+    normalizeIosBundleId,
     webExportDirName,
     webExportZipName,
     type BuildPreflightFinding,
     type GameBuildDesktopPlatform,
+    type GameBuildMobilePlatform,
     type GameBuildRequest,
     type GameBuildStateSnapshot,
     type GameBuildTarget,
 } from "@shared/types/gameBuild";
+import { resolveGameRuntimeInitialBackgroundColor } from "@shared/utils/gameRuntimeEntrySurface";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
 import {
@@ -28,9 +36,14 @@ import {
     checkOutputDir,
     isValidProjectVersion,
     MIN_ICON_SIZE,
+    readMobileOrientation,
     readProjectIdentifier,
     readProjectVersion,
 } from "./preflight";
+import { readIconSlotSizes, writeScaledIcons } from "./mobileIcons";
+import { loadMobileShellTemplateForApp } from "./mobileShellTemplate";
+import { resolveMobileSigningIdentity } from "./mobileSigningIdentity";
+import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManifest";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
@@ -38,11 +51,13 @@ import {
     compileGameRuntimeArtifact,
     type GameRuntimeArtifactCompileResult,
 } from "../preview/compiler/gameRuntimeArtifactCompiler";
+import { buildWebIndexHtml, WEB_FAVICON_FILENAME } from "../preview/compiler/webShell";
 import { formatPreviewProcessOutput } from "../preview/PreviewManager";
 import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "../preview/selectRuntimePlugins";
 import type {
     GameBuildWorkerConfig,
     GameBuildWorkerFuses,
+    GameBuildWorkerMobileJob,
     GameBuildWorkerOutboundMessage,
 } from "@/buildWorker/protocol";
 
@@ -288,19 +303,7 @@ export class GameBuildManager {
             throw new Error("No build targets selected");
         }
         const desktopTargets = targets.filter(isDesktopTarget);
-        // Temporary until the mobile repack path is wired into the worker:
-        // fail fast and clearly instead of silently ignoring a target the
-        // caller asked for (the dialog does not offer these platforms yet, so
-        // only stored selections or non-UI callers can reach this). preflight
-        // deliberately stays silent about mobile targets until the UI batch
-        // adds the real mobile preflight codes alongside this guard's removal.
-        const mobileTargets = targets.filter(target => isMobileBuildPlatform(target.platform));
-        if (mobileTargets.length > 0) {
-            throw new Error(
-                `Building for ${mobileTargets.map(t => t.platform).join(", ")} is not supported yet; ` +
-                "the mobile pipeline is still being wired up.",
-            );
-        }
+        const mobileTargets = targets.filter(isMobileTarget);
         // A platform outside the union (malformed non-UI payload) must also
         // fail loudly: with the explicit partitions above it would otherwise
         // fall into none of them and the build would "succeed" with zero
@@ -350,6 +353,16 @@ export class GameBuildManager {
                 message: "asset protection does not apply to the web export; its files ship unprotected",
             });
         }
+        if (mobileTargets.length > 0 && this.encryptAssetsEnabled(projectConfig)) {
+            // "does not yet": unlike the web export, mobile protection is a
+            // planned milestone — the shells carry the interception point
+            // already. This branch becomes the protected path then.
+            this.emit(session, {
+                level: "info",
+                source: "Build",
+                message: "asset protection does not yet apply to mobile exports; their files ship unprotected",
+            });
+        }
         this.ensureNotCancelled(session);
 
         session.snapshot = { ...session.snapshot, status: "compiling" };
@@ -374,8 +387,11 @@ export class GameBuildManager {
             });
             this.ensureNotCancelled(session);
         }
+        // The mobile shells serve the very same static site the web target
+        // exports, so both read one compile. Selecting web and Android together
+        // must not compile the game twice.
         let webArtifact: GameRuntimeArtifactCompileResult | null = null;
-        if (webTarget) {
+        if (webTarget || mobileTargets.length > 0) {
             webArtifact = await compileGameRuntimeArtifact({
                 projectPath,
                 entry,
@@ -389,7 +405,7 @@ export class GameBuildManager {
             this.emit(session, {
                 level: "info",
                 source: "Build",
-                message: `web export compiled (${webArtifact.copiedAssetCount} asset(s))`,
+                message: `${webTarget ? "web export" : "game site"} compiled (${webArtifact.copiedAssetCount} asset(s))`,
             });
             this.ensureNotCancelled(session);
         }
@@ -439,13 +455,22 @@ export class GameBuildManager {
                     : {}),
                 ...await this.resolveTargetIcon(session, projectPath, projectConfig, target.platform),
             }))),
-            ...(webArtifact ? {
+            ...(webTarget && webArtifact ? {
                 web: {
                     sourceDir: webArtifact.appDir,
                     formats: webFormats,
                     dirName: webExportDirName(identity.artifactBaseName, identity.version),
                     zipName: webExportZipName(identity.artifactBaseName, identity.version),
                 },
+            } : {}),
+            ...(mobileTargets.length > 0 && webArtifact ? {
+                mobile: await this.buildMobileJob(session, {
+                    projectPath,
+                    projectConfig,
+                    identity,
+                    platforms: mobileTargets.map(target => target.platform),
+                    site: webArtifact,
+                }),
             } : {}),
         };
 
@@ -505,6 +530,154 @@ export class GameBuildManager {
                 : `the ${platform} icon is invalid or smaller than ${MIN_ICON_SIZE}×${MIN_ICON_SIZE}; using the default Electron icon`,
         });
         return {};
+    }
+
+    /**
+     * Assemble the mobile repack job: everything the worker cannot decide for
+     * itself. The identity normalizations, the version code, the signing
+     * identity and the scaled icons are all resolved here, so the worker only
+     * moves bytes (and so a normalization that changes the author's app id can
+     * be reported on the console, where they will see it).
+     */
+    private async buildMobileJob(
+        session: BuildSession,
+        input: {
+            projectPath: string;
+            projectConfig: ProjectConfigData | null;
+            identity: { appId: string; productName: string; artifactBaseName: string; version: string };
+            platforms: GameBuildMobilePlatform[];
+            site: GameRuntimeArtifactCompileResult;
+        },
+    ): Promise<GameBuildWorkerMobileJob> {
+        const template = await loadMobileShellTemplateForApp(this.app);
+        this.emit(session, {
+            level: "info",
+            source: "Build",
+            message: `using the ${template.variant} shell template`,
+        });
+        const { identity, site } = input;
+        const orientation = readMobileOrientation(input.projectConfig);
+        const shellConfig: MobileShellConfigV1 = {
+            schemaVersion: template.manifest.shellConfigSchemaVersion,
+            orientation,
+            // Same pre-boot background the entry document paints, so the native
+            // window and the document agree on the first frame.
+            backgroundColor: resolveGameRuntimeInitialBackgroundColor(site.pack),
+        };
+        const hasFavicon = await fileExists(path.join(site.appDir, WEB_FAVICON_FILENAME));
+
+        const job: GameBuildWorkerMobileJob = {
+            sourceDir: site.appDir,
+            templateManifest: template.manifest,
+            productName: identity.productName,
+            appDirBaseName: identity.artifactBaseName,
+            orientation,
+            indexHtmlOverride: buildWebIndexHtml(site.pack, { hasFavicon, variant: "mobile" }),
+            shellConfigJson: JSON.stringify(shellConfig),
+        };
+
+        if (input.platforms.includes("android")) {
+            const applicationId = normalizeAndroidPackageName(identity.appId);
+            if (applicationId !== identity.appId) {
+                this.emit(session, {
+                    level: "warning",
+                    source: "Build",
+                    message: `the app id ${identity.appId} is not a valid Android package name; `
+                        + `packaging as ${applicationId}`,
+                });
+            }
+            const versionCode = deriveAndroidVersionCode(identity.version);
+            if (versionCode === null) {
+                throw new Error(
+                    `Version "${identity.version}" cannot be encoded as an Android version code. `
+                    + "Each of major, minor and patch must fit its budget (major ≤ 2099, minor and patch ≤ 999).",
+                );
+            }
+            job.android = {
+                templateApkPath: template.androidTemplatePath,
+                outputName: mobileExportFileName("android", identity.artifactBaseName, identity.version),
+                applicationId,
+                versionName: identity.version,
+                versionCode,
+                signingIdentity: await resolveMobileSigningIdentity(this.app.getUserDataDir()),
+                ...await this.resolveMobileIcons(session, {
+                    projectPath: input.projectPath,
+                    projectConfig: input.projectConfig,
+                    platform: "android",
+                    templatePath: template.androidTemplatePath,
+                    slots: template.manifest.android.iconSlots,
+                }),
+            };
+        }
+
+        if (input.platforms.includes("ios")) {
+            const bundleId = normalizeIosBundleId(identity.appId);
+            if (bundleId !== identity.appId) {
+                this.emit(session, {
+                    level: "warning",
+                    source: "Build",
+                    message: `the app id ${identity.appId} is not a valid iOS bundle identifier; `
+                        + `packaging as ${bundleId}`,
+                });
+            }
+            const bundleVersion = deriveIosBundleVersion(identity.version);
+            job.ios = {
+                templateAppZipPath: template.iosTemplatePath,
+                outputName: mobileExportFileName("ios", identity.artifactBaseName, identity.version),
+                bundleId,
+                shortVersionString: bundleVersion,
+                bundleVersion,
+                ...await this.resolveMobileIcons(session, {
+                    projectPath: input.projectPath,
+                    projectConfig: input.projectConfig,
+                    platform: "ios",
+                    templatePath: template.iosTemplatePath,
+                    // The .app.zip prefixes every entry with the .app dir, while
+                    // the manifest's slots are relative to it.
+                    entryPrefix: `${template.manifest.ios.appDirName}/`,
+                    slots: template.manifest.ios.iconSlots,
+                }),
+            };
+        }
+        return job;
+    }
+
+    /**
+     * Scale the configured app icon into this template's icon slots. A missing
+     * or unusable icon is a warning, not a failure: the repack then leaves the
+     * shell's placeholder icons in place, mirroring how a desktop build falls
+     * back to the default Electron icon.
+     */
+    private async resolveMobileIcons(
+        session: BuildSession,
+        input: {
+            projectPath: string;
+            projectConfig: ProjectConfigData | null;
+            platform: GameBuildMobilePlatform;
+            templatePath: string;
+            slots: string[];
+            entryPrefix?: string;
+        },
+    ): Promise<{ iconPngBySlot?: Record<string, string> }> {
+        const icon = await checkIcon(input.projectPath, input.projectConfig, input.platform);
+        if (icon.status !== "ok") {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: icon.status === "missing"
+                    ? `no usable ${input.platform} app icon configured; using the shell's placeholder icon`
+                    : `the ${input.platform} icon is invalid or smaller than ${MIN_ICON_SIZE}×${MIN_ICON_SIZE}; `
+                        + "using the shell's placeholder icon",
+            });
+            return {};
+        }
+        const slots = readIconSlotSizes(await fs.readFile(input.templatePath), input.slots, input.entryPrefix);
+        const iconPngBySlot = await writeScaledIcons(
+            icon.iconPath,
+            slots,
+            path.join(input.projectPath, ".nlstudio", "build", "mobile-icons", input.platform),
+        );
+        return { iconPngBySlot };
     }
 
     private runWorker(session: BuildSession, config: GameBuildWorkerConfig): Promise<string[]> {
@@ -691,6 +864,15 @@ export class GameBuildManager {
     }
 }
 
+async function fileExists(filePath: string): Promise<boolean> {
+    try {
+        await fs.access(filePath);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 function isActiveStatus(status: GameBuildStateSnapshot["status"]): boolean {
     return status === "preparing" || status === "compiling" || status === "packaging";
 }
@@ -703,6 +885,12 @@ export function isDesktopTarget(target: GameBuildTarget): target is GameBuildDes
     // silently routed mobile targets into the electron-builder path when the
     // platform union grew.
     return isDesktopBuildPlatform(target.platform);
+}
+
+type GameBuildMobileTarget = GameBuildTarget & { platform: GameBuildMobilePlatform };
+
+export function isMobileTarget(target: GameBuildTarget): target is GameBuildMobileTarget {
+    return isMobileBuildPlatform(target.platform);
 }
 
 function normalizeTargets(targets: GameBuildTarget[] | undefined): GameBuildTarget[] {

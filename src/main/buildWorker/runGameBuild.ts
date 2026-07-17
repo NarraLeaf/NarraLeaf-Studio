@@ -6,6 +6,7 @@ import {
     type GameBuildDesktopPlatform,
     type GameBuildFormat,
 } from "@shared/types/gameBuild";
+import { runMobileRepack } from "./mobile/runMobileRepack";
 import { packageWebSite } from "./packageWebSite";
 import type { GameBuildWorkerConfig, GameBuildWorkerTarget } from "./protocol";
 import { ensureWinCodeSignCache } from "./winCodeSignCache";
@@ -70,11 +71,14 @@ function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWo
 
 export async function runGameBuild(config: GameBuildWorkerConfig, log: GameBuildLogger): Promise<string[]> {
     const artifacts: string[] = [];
-    // The web job first: it is orders of magnitude faster than any
-    // electron-builder target, so its artifacts land even if a later desktop
-    // target fails.
+    // The web and mobile jobs first: both are orders of magnitude faster than
+    // any electron-builder target, so their artifacts land even if a later
+    // desktop target fails.
     if (config.web) {
         artifacts.push(...await packageWebSite(config.web, config.outputDir, log));
+    }
+    if (config.mobile) {
+        artifacts.push(...await runMobileRepack(config.mobile, config.outputDir, log));
     }
     if (config.targets.length === 0) {
         return artifacts;
