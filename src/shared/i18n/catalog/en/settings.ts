@@ -1,7 +1,6 @@
 /** `settings` — the Settings window (registry-driven; see appSettings.ts). */
 export const settings = {
     title: "Settings",
-    subtitle: "Editor Settings",
     searchPlaceholder: "Search settings…",
     loading: "Loading settings…",
     noResults: "No settings match your search.",

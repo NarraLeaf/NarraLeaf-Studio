@@ -130,7 +130,7 @@ export const AppSettings: AppSettingDefinition[] = [
         key: "ui.zoomPercent",
         category: "appearance",
         scope: SettingScope.Global,
-        type: SettingValueType.Slider,
+        type: SettingValueType.Integer,
         label: "Interface zoom",
         labelKey: "settings.items.zoomPercent.label",
         description: `Zoom level of the Studio interface (${ZOOM_PERCENT_MIN}%-${ZOOM_PERCENT_MAX}%).`,

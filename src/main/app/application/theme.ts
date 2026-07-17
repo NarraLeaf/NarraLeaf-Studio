@@ -30,3 +30,13 @@ export function applyThemeMode(value: unknown): void {
 export function getWindowBackgroundColor(): string {
     return nativeTheme.shouldUseDarkColors ? WINDOW_BACKGROUND_DARK : WINDOW_BACKGROUND_LIGHT;
 }
+
+/**
+ * Paint-behind color for windows that host the game rather than Studio chrome.
+ * Pinned dark: those windows omit `.nl-studio` (see project/build/utils.js), so
+ * their content stays dark whatever the author picked, and the themed color
+ * above would flash a light frame around a dark game.
+ */
+export function getGameHostWindowBackgroundColor(): string {
+    return WINDOW_BACKGROUND_DARK;
+}

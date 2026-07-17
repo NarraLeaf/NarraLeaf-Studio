@@ -13,6 +13,8 @@ import { EventEmitter } from "../ui/EventEmitter";
 import { ConsoleService } from "./ConsoleService";
 import { CharacterService } from "./CharacterService";
 import { StoryService } from "../story/StoryService";
+import { collectInvalidBlocks, type InvalidStoryBlockRef } from "../story/storyModel";
+import { translate } from "@/lib/i18n";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
 
@@ -151,6 +153,21 @@ export class BuildService extends Service<BuildService> {
             this.updateState({ status: "error", error: "Failed to save the project before building" });
             return this.state;
         }
+        // The story compiler runs inside the game at startup, not here, so it cannot be what stops an
+        // unresolved command line from shipping — this is the only gate before the packer.
+        const invalid = await this.collectInvalidStoryBlocks();
+        if (invalid.length > 0) {
+            const consoleService = this.tryGetConsole();
+            for (const ref of invalid) {
+                consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", translate("build.invalidCommand", {
+                    story: ref.storyName,
+                    scene: ref.sceneName,
+                    source: ref.source,
+                }));
+            }
+            this.updateState({ status: "error", error: translate("build.invalidCommandSummary", { count: invalid.length }) });
+            return this.state;
+        }
         // Committed: the selection is now persisted as BuildConfiguration, so
         // the draft has served its purpose and must not shadow it next time.
         this.clearDraft();
@@ -173,6 +190,24 @@ export class BuildService extends Service<BuildService> {
             this.updateState(result.data.state);
         }
         return this.state;
+    }
+
+    /**
+     * Every unresolved command line in the project, across every story — not just the loaded ones.
+     * An unfinished line in a story the author never opened this session still must not ship.
+     */
+    private async collectInvalidStoryBlocks(): Promise<InvalidStoryBlockRef[]> {
+        const story = this.getContext().services.get<StoryService>(Services.Story);
+        const found: InvalidStoryBlockRef[] = [];
+        for (const entry of story.getLibraryIndex().stories) {
+            try {
+                found.push(...collectInvalidBlocks(await story.loadStory(entry.id)));
+            } catch (error) {
+                // A story that will not load is the packer's problem to report, not ours to mask.
+                console.error(`[Build] could not scan story ${entry.id} for invalid commands`, error);
+            }
+        }
+        return found;
     }
 
     /** Flush dirty editor state so the build sees what the user last authored. */

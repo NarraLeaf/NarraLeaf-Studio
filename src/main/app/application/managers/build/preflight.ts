@@ -1,8 +1,9 @@
 import fs from "fs/promises";
 import { constants as fsConstants } from "fs";
 import path from "path";
-import type { GameBuildDesktopPlatform } from "@shared/types/gameBuild";
+import type { GameBuildDesktopPlatform, GameBuildMobilePlatform } from "@shared/types/gameBuild";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
+import type { MobileShellOrientation } from "@/buildWorker/mobile/mobileShellManifest";
 
 /**
  * The checks a production build applies to a project, factored out of
@@ -36,10 +37,31 @@ export function readProjectIdentifier(projectConfig: ProjectConfigData | null): 
     return projectConfig?.identifier?.trim() || undefined;
 }
 
+/**
+ * The orientation the mobile shells lock the game to. A project-level setting
+ * (`app.mobile.orientation`), not per-target: it describes the game, and a
+ * project that plays in landscape does so on both platforms. Visual novels are
+ * overwhelmingly landscape, so that is the default — including for projects
+ * saved before the setting existed.
+ */
+export function readMobileOrientation(projectConfig: ProjectConfigData | null): MobileShellOrientation {
+    const configured = (projectConfig?.app as { mobile?: { orientation?: unknown } } | undefined)?.mobile?.orientation;
+    return configured === "portrait" || configured === "auto" || configured === "landscape"
+        ? configured
+        : "landscape";
+}
+
+/**
+ * Platforms that carry their own app icon. The mobile shells take one too — the
+ * repack scales it into the template's icon slots — so the same configured-icon
+ * lookup serves both.
+ */
+export type GameBuildIconPlatform = GameBuildDesktopPlatform | GameBuildMobilePlatform;
+
 /** Read the configured icon path for a platform from project metadata. */
 export function readIconPath(
     projectConfig: ProjectConfigData | null,
-    platform: GameBuildDesktopPlatform,
+    platform: GameBuildIconPlatform,
 ): string | undefined {
     const icons = (projectConfig?.metadata as { icons?: Record<string, { path?: unknown }> } | undefined)?.icons;
     const raw = icons?.[platform]?.path;
@@ -64,13 +86,14 @@ export type IconCheck =
 /**
  * Whether a platform's configured icon is usable. "missing" covers both "none
  * configured" and "configured but not on disk"; "unusable" means present but
- * too small or corrupt. Neither fails a build — electron-builder just ships the
- * default Electron icon — so both surface as warnings.
+ * too small or corrupt. Neither fails a build — the desktop packager ships the
+ * default Electron icon and a mobile repack leaves the shell's placeholder — so
+ * both surface as warnings.
  */
 export async function checkIcon(
     projectPath: string,
     projectConfig: ProjectConfigData | null,
-    platform: GameBuildDesktopPlatform,
+    platform: GameBuildIconPlatform,
 ): Promise<IconCheck> {
     const configuredPath = readIconPath(projectConfig, platform);
     if (!configuredPath) {

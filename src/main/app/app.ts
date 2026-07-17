@@ -1,6 +1,7 @@
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { WindowAppType, WindowControlPolicy, WindowProps } from "@shared/types/window";
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
+import { getGameHostWindowBackgroundColor } from "./application/theme";
 import { AppWindow, WindowConfig } from "./application/managers/window/appWindow";
 import { DevModeManager } from "./application/managers/devMode/DevModeManager";
 import { devModeNetworkPolicy, readProjectAllowHttp } from "./application/managers/devMode/devModeNetworkPolicy";
@@ -323,6 +324,7 @@ export class App extends BaseApp {
                 center: true,
                 frame: false,
                 titleBarStyle: "hidden",
+                backgroundColor: getGameHostWindowBackgroundColor(),
                 show: false,
                 ...options,
             },

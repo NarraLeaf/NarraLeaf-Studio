@@ -18,6 +18,14 @@ import {
 
 export const WEB_FAVICON_FILENAME = "favicon.png";
 
+/**
+ * Which host the emitted entry document targets. The mobile shells serve the
+ * very same site — only the entry document differs, and only in its viewport —
+ * so the mobile variant is generated from the same pack and injected into the
+ * repack, leaving the compiled site on disk exactly what the web target ships.
+ */
+export type GameWebShellVariant = "web" | "mobile";
+
 export async function writeWebShellFiles(input: {
     appDir: string;
     pack: GameRuntimePackV1;
@@ -45,18 +53,27 @@ export async function writeWebShellFiles(input: {
  * baked in — the desktop network restriction is meaningless for a game that
  * is itself served over HTTP(S); hosts that want one set it as a header.
  */
-export function buildWebIndexHtml(pack: GameRuntimePackV1, options: { hasFavicon: boolean }): string {
+export function buildWebIndexHtml(
+    pack: GameRuntimePackV1,
+    options: { hasFavicon: boolean; variant?: GameWebShellVariant },
+): string {
     const title = escapeHtml(pack.project.name?.trim() || "NarraLeaf Game");
     // Guaranteed markup-safe: a #rrggbb hex or a bare lowercase color name.
     const background = resolveGameRuntimeInitialBackgroundColor(pack);
     const faviconLink = options.hasFavicon
         ? `    <link rel="icon" type="image/png" href="./${WEB_FAVICON_FILENAME}" />\n`
         : "";
+    // viewport-fit=cover lets the game paint under a notch/home indicator
+    // instead of being letterboxed by the browser's default safe-area inset;
+    // the shells run full-screen, so the inset would show as bars.
+    const viewport = options.variant === "mobile"
+        ? "width=device-width, initial-scale=1.0, viewport-fit=cover"
+        : "width=device-width, initial-scale=1.0";
     return `<!doctype html>
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="${viewport}" />
     <title>${title}</title>
     <script type="importmap">
     {

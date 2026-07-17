@@ -73,7 +73,7 @@ export function DisplayableTargetField(props: {
     // Built-ins (scene background / built-in layers) always resolve to their label + kind.
     const scene = props.document.scenes[props.sceneId];
     const resolved = resolveDisplayableTargetRef(scene, target);
-    const name = selected?.name ?? resolved.name;
+    const name = selected?.label ?? resolved.label;
     const unresolved = !target.builtin && name.trim().length > 0 && !selected;
 
     const placement = useAutoMenuPlacement(rootRef, open, 320);
@@ -104,7 +104,7 @@ export function DisplayableTargetField(props: {
             return options;
         }
         return options.filter(option =>
-            option.name.toLowerCase().includes(normalized) || option.kind.includes(normalized));
+            option.label.toLowerCase().includes(normalized) || option.kind.includes(normalized));
     }, [options, query]);
 
     const filteredBuiltins = useMemo(() => {
@@ -268,7 +268,7 @@ function DisplayableOptionRow(props: {
                 )}
             </span>
             <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-fg">{props.option.name}</span>
+                <span className="block truncate text-sm text-fg">{props.option.label}</span>
                 <span className="block truncate text-2xs text-fg-subtle">
                     {t(`story.targetField.kind.${props.option.kind}`)}{preview ? ` · ${preview}` : ""}
                 </span>

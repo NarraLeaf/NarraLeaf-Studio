@@ -395,3 +395,31 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
 export function isInspectorFirstCommand(commandId: ActionCommandId): boolean {
     return !["narration", "dialogue", "note", "choiceOption"].includes(commandId);
 }
+
+/**
+ * Resolve a typed `/…` line to a command, without going through the menu.
+ *
+ * This is what runs when the author dismissed the candidates and pressed Enter anyway: the line has
+ * to stand on its own or become an invalid row. Only the first token is considered — arguments are
+ * the command system's job, and this is the seam its parser replaces.
+ */
+export function resolveActionCommandToken(line: string): ActionCommandId | null {
+    const token = line.trim().split(/\s+/)[0] ?? "";
+    if (!token.startsWith("/")) {
+        return null;
+    }
+    const needle = token.toLowerCase();
+    const bare = needle.slice(1);
+    if (!bare) {
+        return null;
+    }
+    for (const command of ACTION_COMMANDS) {
+        if (command.id.toLowerCase() === bare) {
+            return command.id;
+        }
+        if (command.aliases?.some(alias => alias.toLowerCase() === needle)) {
+            return command.id;
+        }
+    }
+    return null;
+}

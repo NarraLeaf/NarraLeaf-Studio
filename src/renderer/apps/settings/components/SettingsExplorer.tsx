@@ -58,6 +58,22 @@ function parseSettingInput(type: SettingValueType, rawValue: string): SettingVal
     }
 }
 
+/**
+ * Bring a typed number onto the descriptor's range before it is stored. Without
+ * this a hand-typed 500% would persist as 500 and only get clamped where it is
+ * applied, leaving the field showing a value the app is not using.
+ */
+function normalizeSettingNumber(descriptor: SettingDescriptor, value: number): number {
+    let next = descriptor.type === SettingValueType.Number ? value : Math.round(value);
+    if (descriptor.min !== undefined) {
+        next = Math.max(descriptor.min, next);
+    }
+    if (descriptor.max !== undefined) {
+        next = Math.min(descriptor.max, next);
+    }
+    return next;
+}
+
 export function SettingsExplorer<T>({
     categories,
     getSettingsForCategory,
@@ -243,7 +259,14 @@ export function SettingsExplorer<T>({
                 setErrors(prev => ({ ...prev, [id]: t("settings.invalidValue") }));
                 return;
             }
-            handleCommit(entry, parsed);
+            const value = typeof parsed === "number" ? normalizeSettingNumber(entry.descriptor, parsed) : parsed;
+            if (typeof value === "number" && String(value) !== rawValue) {
+                // Show the clamped/rounded value straight away; the commit below drops
+                // the pending input once it lands, so the field would otherwise keep
+                // displaying what was typed until the write resolves.
+                setPendingInputs(prev => ({ ...prev, [id]: String(value) }));
+            }
+            handleCommit(entry, value);
         },
         [getValue, handleCommit, pendingInputs, t],
     );
@@ -364,12 +387,16 @@ export function SettingsExplorer<T>({
             case SettingValueType.Number:
             case SettingValueType.Integer:
             case SettingValueType.String:
-            default:
-                return (
+            default: {
+                const isNumeric = descriptor.type !== SettingValueType.String;
+                const input = (
                     <Input
                         size="sm"
                         fullWidth
-                        type={descriptor.type === SettingValueType.String ? "text" : "number"}
+                        type={isNumeric ? "number" : "text"}
+                        min={isNumeric ? descriptor.min : undefined}
+                        max={isNumeric ? descriptor.max : undefined}
+                        step={isNumeric ? descriptor.step : undefined}
                         value={displayValue}
                         onChange={(event) => handleInputChange(descriptor.id, event.target.value)}
                         onBlur={() => handleInputCommit(entry)}
@@ -382,6 +409,16 @@ export function SettingsExplorer<T>({
                         disabled={isSaving}
                     />
                 );
+                if (!descriptor.unit) {
+                    return input;
+                }
+                return (
+                    <div className="flex items-center gap-2">
+                        <div className="w-24">{input}</div>
+                        <span className="shrink-0 text-xs text-fg-muted">{descriptor.unit}</span>
+                    </div>
+                );
+            }
         }
     };
 

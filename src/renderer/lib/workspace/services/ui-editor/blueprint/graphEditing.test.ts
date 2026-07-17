@@ -12,6 +12,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
+    BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
     BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
@@ -87,6 +88,51 @@ describe("blueprint graph editing", () => {
         expect(edges).toEqual([
             { from: { nodeId: "source", port: "value" }, to: { nodeId: "first", port: "value" } },
             { from: { nodeId: "source", port: "value" }, to: { nodeId: "second", port: "value" } },
+        ]);
+    });
+
+    it("allows fn head param pins to connect to multiple targets", () => {
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_FN_HEAD },
+                first: { id: "first", type: BLUEPRINT_NODE_TYPE_STRING_TO_STRING },
+                second: { id: "second", type: BLUEPRINT_NODE_TYPE_STRING_TO_STRING },
+            },
+            edges: [{ from: { nodeId: "head", port: "param_1_value" }, to: { nodeId: "first", port: "value" } }],
+        };
+
+        const edges = applyBlueprintIrConnection(ir, {
+            source: "head",
+            sourceHandle: "param_1_value",
+            target: "second",
+            targetHandle: "value",
+        });
+
+        expect(edges).toEqual([
+            { from: { nodeId: "head", port: "param_1_value" }, to: { nodeId: "first", port: "value" } },
+            { from: { nodeId: "head", port: "param_1_value" }, to: { nodeId: "second", port: "value" } },
+        ]);
+    });
+
+    it("replaces an existing outgoing body exec edge from a fn head", () => {
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_FN_HEAD },
+                first: { id: "first", type: BLUEPRINT_NODE_TYPE_LOCAL_SET },
+                second: { id: "second", type: BLUEPRINT_NODE_TYPE_LOCAL_SET },
+            },
+            edges: [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "first", port: "in" } }],
+        };
+
+        const edges = applyBlueprintIrConnection(ir, {
+            source: "head",
+            sourceHandle: "then",
+            target: "second",
+            targetHandle: "in",
+        });
+
+        expect(edges).toEqual([
+            { from: { nodeId: "head", port: "then" }, to: { nodeId: "second", port: "in" } },
         ]);
     });
 

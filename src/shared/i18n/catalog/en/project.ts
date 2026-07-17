@@ -52,6 +52,13 @@ export const project = {
         encryptAssetsTitle: "Encrypt assets",
         encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed builds. Makes unpacking difficult; does not affect Dev Mode.",
         encryptAssetsWebHint: "Not applicable to the Web export: Web builds always ship without asset protection.",
+        orientationTitle: "Mobile orientation",
+        orientationDescription: "The orientation mobile builds lock the game to when it starts.",
+        orientation: {
+            landscape: "Landscape",
+            portrait: "Portrait",
+            auto: "Follow device",
+        },
     },
     dependencies: {
         rescan: "Rescan",

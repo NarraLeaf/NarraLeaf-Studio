@@ -1,6 +1,7 @@
 import type { LocalizationConfiguration } from "@shared/types/localization";
 import {
     GAME_BUILD_FORMATS_BY_PLATFORM,
+    isDesktopBuildPlatform,
     normalizeGameBuildArch,
     type GameBuildArch,
     type GameBuildCompression,
@@ -29,6 +30,35 @@ export type SecurityConfiguration = {
     /** When true, packaged and previewed builds protect game assets and data. */
     encryptAssets: boolean;
 };
+
+/** Orientations a mobile build can lock to, in display order. */
+export const MOBILE_ORIENTATIONS = ["landscape", "portrait", "auto"] as const;
+
+export type MobileOrientation = typeof MOBILE_ORIENTATIONS[number];
+
+export type MobileConfiguration = {
+    /**
+     * Orientation the mobile shells lock the game to at startup. A project-level
+     * setting rather than a per-target one: it describes the game, and a project
+     * that plays in landscape does so on every device.
+     */
+    orientation: MobileOrientation;
+};
+
+/** Visual novels are overwhelmingly landscape, including every project predating this setting. */
+export const DEFAULT_MOBILE_CONFIGURATION: MobileConfiguration = {
+    orientation: "landscape",
+};
+
+/** Coerce a persisted value into a complete MobileConfiguration. */
+export function normalizeMobileConfiguration(value: unknown): MobileConfiguration {
+    const record = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+    return {
+        orientation: MOBILE_ORIENTATIONS.includes(record.orientation as MobileOrientation)
+            ? record.orientation as MobileOrientation
+            : DEFAULT_MOBILE_CONFIGURATION.orientation,
+    };
+}
 
 /**
  * Remembered production-build selection, so the build dialog re-opens with the
@@ -62,6 +92,8 @@ export type ProjectAppConfiguration = {
     localization?: LocalizationConfiguration;
     /** Asset-protection policy applied at pack time; absent until configured. */
     security?: SecurityConfiguration;
+    /** Mobile shell behaviour; absent until configured (see the defaults). */
+    mobile?: MobileConfiguration;
     /** Last production-build dialog selection; absent until the first build. */
     build?: BuildConfiguration;
 };
@@ -118,7 +150,8 @@ export function normalizeSecurityConfiguration(value: unknown): SecurityConfigur
     };
 }
 
-const ALL_BUILD_PLATFORMS: GameBuildPlatform[] = ["windows", "macos", "linux", "web"];
+/** Platforms a stored selection may name. */
+const ALL_BUILD_PLATFORMS: GameBuildPlatform[] = ["windows", "macos", "linux", "web", "android", "ios"];
 
 /** Keep only formats electron-builder supports for the given platform. */
 function sanitizeFormats(platform: GameBuildPlatform, value: unknown): GameBuildFormat[] {
@@ -164,7 +197,8 @@ export function normalizeBuildConfiguration(value: unknown): BuildConfiguration 
         : {};
     const archs: Partial<Record<GameBuildDesktopPlatform, GameBuildArch>> = {};
     for (const platform of platforms) {
-        if (platform === "web") {
+        // Only desktop platforms carry an arch; web and mobile have none.
+        if (!isDesktopBuildPlatform(platform)) {
             continue;
         }
         const stored = rawArchs[platform];

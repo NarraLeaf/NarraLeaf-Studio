@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    # ubuntu-latest ships a licensed Android SDK. That is the point of running
+    # here: the SDK's components cannot be redistributed, so Studio never bundles
+    # them and the tools that judge a repacked APK (apksigner, aapt2, zipalign)
+    # only exist on the runner. See the mobile pipeline plan, §2.2.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # apksigner is a Java tool. Pinned rather than left to the image's default
+      # so the oracle does not break the day the runner image moves.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      # --no-immutable is required, not a shortcut: yarn defaults to --immutable
+      # under CI, and this repo deliberately does not commit yarn.lock, so every
+      # run legitimately writes one. The dependency the mobile tests rely on
+      # (@narraleaf/studio-shell) is pinned exactly in package.json, so a fresh
+      # resolve still gets the same templates.
+      - name: Install dependencies
+        run: yarn install --no-immutable
+
+      - name: Locate the Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$ANDROID_HOME/build-tools" || { echo "::error::no Android build-tools on this runner"; exit 1; }
+          echo "Using $(ls -1 "$ANDROID_HOME"/build-tools | sort -V | tail -1)"
+
+      - name: Typecheck
+        run: yarn lint
+
+      # REQUIRE_ANDROID_SDK_ORACLE turns a missing SDK into a failure rather than
+      # a skip: the oracle tests are the only external judgement of whether a
+      # repacked APK is installable, and a silent skip is indistinguishable from
+      # a pass.
+      - name: Test
+        run: yarn test
+        env:
+          REQUIRE_ANDROID_SDK_ORACLE: "1"

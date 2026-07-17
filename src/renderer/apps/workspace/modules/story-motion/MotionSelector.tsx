@@ -9,6 +9,7 @@ import type {
     StoryDocument,
     StoryTransformRef,
 } from "@shared/types/story";
+import { formatStorySecondsLabel } from "@shared/utils/storyTime";
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
@@ -55,13 +56,13 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 export function motionSummary(asset: StoryAnimationAsset, t: UseTranslation["t"]): string {
-    const durationMs = getStoryMotionDurationMs(asset.timeline);
+    const duration = formatStorySecondsLabel(getStoryMotionDurationMs(asset.timeline));
     const tracks = asset.timeline?.tracks ?? [];
     const labels = tracks
         .slice(0, 3)
         .map(track => t(`motion.propertyLabel.${track.property}`))
         .join(", ");
-    return `${durationMs}ms${labels ? ` / ${labels}${tracks.length > 3 ? "..." : ""}` : ""}`;
+    return `${duration}${labels ? ` / ${labels}${tracks.length > 3 ? "..." : ""}` : ""}`;
 }
 
 /**

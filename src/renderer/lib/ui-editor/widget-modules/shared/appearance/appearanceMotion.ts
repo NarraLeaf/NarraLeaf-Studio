@@ -1,4 +1,5 @@
 import type { TranslationKey } from "@shared/i18n";
+import { formatStorySecondsLabel } from "@shared/utils/storyTime";
 import { translate } from "@/lib/i18n";
 import type {
     AppearanceFieldTransition,
@@ -214,7 +215,7 @@ export function formatAppearanceTransitionSummary(transition: AppearanceFieldTra
         return translate("widgetAppearance.motion.summaryOff");
     }
     if (transition.type === "tween") {
-        return `${transition.durationMs}ms ${transition.easing}`;
+        return `${formatStorySecondsLabel(transition.durationMs)} ${transition.easing}`;
     }
     return `Spring ${transition.stiffness}/${transition.damping}`;
 }

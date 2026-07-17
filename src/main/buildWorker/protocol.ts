@@ -4,6 +4,8 @@ import type {
     GameBuildDesktopPlatform,
     GameBuildFormat,
 } from "@shared/types/gameBuild";
+import type { MobileShellManifest, MobileShellOrientation } from "./mobile/mobileShellManifest";
+import type { SigningIdentity } from "./mobile/signingIdentity";
 
 /**
  * Message protocol between GameBuildManager (main process) and the packaging
@@ -59,6 +61,62 @@ export type GameBuildWorkerWebJob = {
     zipName: string;
 };
 
+/**
+ * Mobile repack job. Both platforms share one job because they share the
+ * compiled site and every piece of identity derived from it; each block is
+ * present only when that platform was selected.
+ *
+ * Everything the repack cannot decide for itself is resolved by the manager
+ * before the fork: the signing identity, the version code, the normalized
+ * package name / bundle id, and the scaled icons (nativeImage is a main-process
+ * API). The worker only reads files and moves bytes.
+ */
+export type GameBuildWorkerMobileJob = {
+    /** Compiled static-site dir — the same web compile the web target uses. */
+    sourceDir: string;
+    /** The shell template contract, already validated by the manager. */
+    templateManifest: MobileShellManifest;
+    /** Home-screen name (Android label / CFBundleDisplayName) and .app dir name. */
+    productName: string;
+    /** Sanitized, path-safe base for the `Payload/<name>.app` directory. */
+    appDirBaseName: string;
+    orientation: MobileShellOrientation;
+    /**
+     * The mobile variant of index.html, injected over the compiled site's copy.
+     * Passed rather than re-compiled so the shared staging-web dir stays exactly
+     * what the web target ships.
+     */
+    indexHtmlOverride: string;
+    /** shell-config.json payload, written verbatim into the template. */
+    shellConfigJson: string;
+    android?: {
+        /** Template APK for the variant the manager picked (release/debug). */
+        templateApkPath: string;
+        /** File name written under outputDir. */
+        outputName: string;
+        /** Already through normalizeAndroidPackageName. */
+        applicationId: string;
+        /** android:versionName — the project's raw semver. */
+        versionName: string;
+        /** android:versionCode — monotonic integer from deriveAndroidVersionCode. */
+        versionCode: number;
+        /** Icon slot (zip entry path) → absolute path of the scaled PNG. */
+        iconPngBySlot?: Record<string, string>;
+        signingIdentity: SigningIdentity;
+    };
+    ios?: {
+        templateAppZipPath: string;
+        outputName: string;
+        /** Already through normalizeIosBundleId. */
+        bundleId: string;
+        /** Numeric three-part version; shared with bundleVersion. */
+        shortVersionString: string;
+        bundleVersion: string;
+        /** Icon slot (path relative to the .app) → absolute path of the scaled PNG. */
+        iconPngBySlot?: Record<string, string>;
+    };
+};
+
 export type GameBuildWorkerConfig = {
     /**
      * Compiled staging app dir (contains package.json + runtime + payload).
@@ -84,6 +142,8 @@ export type GameBuildWorkerConfig = {
     targets: GameBuildWorkerTarget[];
     /** Optional web export job, packaged without electron-builder. */
     web?: GameBuildWorkerWebJob;
+    /** Optional mobile repack job, packaged without electron-builder. */
+    mobile?: GameBuildWorkerMobileJob;
 };
 
 export type GameBuildWorkerStartMessage = {

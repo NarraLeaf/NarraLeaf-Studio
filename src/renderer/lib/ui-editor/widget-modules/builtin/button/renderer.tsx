@@ -16,8 +16,7 @@ import { effectShadowStoredToCss } from "@shared/types/ui-editor/effects";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
-import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
-import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import {
     lineWrapCss,
@@ -32,7 +31,7 @@ import {
 import {
     useWidgetRuntimeElementState,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
-import { beginInlineTextEdit } from "@/lib/ui-editor/interaction/inlineTextEdit";
+import { beginInlineTextEdit, resolveInlineTextEditHost } from "@/lib/ui-editor/interaction/inlineTextEdit";
 import { consumeSuppressNextCanvasWidgetDoubleClick } from "@/lib/ui-editor/interaction/containerDrillSelection";
 import { getSingleSelectedElementId } from "@/lib/ui-editor/interaction/surfaceInlineTextEditActivation";
 import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
@@ -63,16 +62,20 @@ function commitButtonLabelEditValue(documentService: UIDocumentService, elementI
 
 export function ButtonRenderer(props: WidgetRendererProps) {
     const { element, children, surface, hostAdapter, useAppearanceInspectorPreview } = props;
-    const stateService = hostAdapter.editorStateService ?? UIEditorStateService.getInstance();
-    const documentService = hostAdapter.editorDocumentService ?? UIDocumentService.getInstance();
+    const editHost = resolveInlineTextEditHost(hostAdapter);
+    const stateService = editHost?.stateService ?? null;
+    const documentService = editHost?.documentService ?? null;
     const initialLabel = getButtonProps(element).label;
-    const [interactionOverride, setInteractionOverride] = useState(() => stateService.getInteractionOverride());
+    const [interactionOverride, setInteractionOverride] = useState(() => stateService?.getInteractionOverride() ?? null);
     const [draftLabel, setDraftLabel] = useState(initialLabel);
     const draftRef = useRef(initialLabel);
     const skipBlurCommitRef = useRef(false);
     const skipOverrideCommitRef = useRef(false);
 
     useEffect(() => {
+        if (!stateService || !documentService) {
+            return undefined;
+        }
         return stateService.on("interactionOverrideChanged", payload => {
             const { previous, next } = payload;
             setInteractionOverride(next);
@@ -133,7 +136,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
 
     const handleStartInlineTextEdit = useCallback(
         (e: MouseEvent<HTMLDivElement>) => {
-            if (isEditing || hostAdapter.blueprintRuntime) {
+            if (!stateService || isEditing) {
                 return;
             }
             if (consumeSuppressNextCanvasWidgetDoubleClick()) {
@@ -160,7 +163,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
             e.stopPropagation();
             beginInlineTextEdit(stateService, surface.id, element.id);
         },
-        [element.id, hostAdapter.blueprintRuntime, isEditing, stateService, surface.id],
+        [element.id, isEditing, stateService, surface.id],
     );
 
     useLayoutEffect(() => {
@@ -303,6 +306,9 @@ export function ButtonRenderer(props: WidgetRendererProps) {
 
     const commitLabelAndClose = useCallback(
         (nextLabel: string) => {
+            if (!stateService || !documentService) {
+                return;
+            }
             draftRef.current = nextLabel;
             setDraftLabel(nextLabel);
             commitButtonLabelEditValue(documentService, element.id, nextLabel);
@@ -349,7 +355,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
                     elementId: element.id,
                     surfaceId: surface.id,
                 });
-                stateService.setInteractionOverride(null);
+                stateService?.setInteractionOverride(null);
             }
         },
         [element.id, stateService, surface.id],

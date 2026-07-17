@@ -42,7 +42,7 @@ import {
     withInferredBlueprintVariableValueTypeParam,
     type BlueprintVariableTypeOption,
 } from "./graphVariableTypeInference";
-import { isBlueprintElementBindingOutputPin, isBlueprintLiteralNodeType } from "./graphEditing";
+import { isBlueprintFanOutOutputPin } from "./graphEditing";
 import {
     isValidBlueprintExecConnection,
     resolveBlueprintNodeEditorCatalogEntryForNode,
@@ -658,11 +658,7 @@ export function validateBlueprintGraphIr(
             }
         }
         const fromNodeType = nodes[edge.from.nodeId]?.type ?? "";
-        if (
-            nodeIds.has(edge.from.nodeId) &&
-            !isBlueprintLiteralNodeType(fromNodeType) &&
-            !isBlueprintElementBindingOutputPin(fromNodeType, edge.from.port)
-        ) {
+        if (nodeIds.has(edge.from.nodeId) && !isBlueprintFanOutOutputPin(fromNodeType, edge.from.port)) {
             reportDuplicatePinConnection(out, seenPins, {
                 key: `out\0${edge.from.nodeId}\0${edge.from.port}`,
                 nodeId: edge.from.nodeId,
