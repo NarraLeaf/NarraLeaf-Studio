@@ -306,11 +306,27 @@ type StoryCandidateProvider = (query: string, ctx: StoryCandidateContext) => Sto
 15. **greedy 参数一旦开始，位置计数必须停下。** 我第一版让 `/say Alice hello |there` 算成了 `paramName` —— 位置计数器把台词里的每个词都当成了新的位置参数。改为：一旦位置索引到达 greedy 参数，之后全是正文。
 16. **候选里漏了临时说话人（对照真实 picker 才发现）。** 交互模型规定候选顺序是「真实角色 → 本故事已用过的名字 → 正在打的名字」，而 `StoryCommandContext` 里根本没有第二类。已加 `tempSpeakers`（由 `collectTempSpeakers` 从文档派生，所以一个临时说话人**恰好**在它最后一行消失时退场）。`#Ali` 现在给出 `["Alice", "Ali"]` —— 与 `getSpeakerCandidates` 一致：**即使有部分匹配，也照样把打的名字作为候选附上**，这正是列表永不为空的原因。
 
-**尚未实现 —— 下一块：InsertRow 接线。**
+### 7.3 InsertRow 接线（已落地，P0 完成）
 
-- 需要一个新的候选菜单组件：现有的 `ActionCommandMenu` 是命令专用的（带分类 chips），承载不了资产/枚举/参数名候选。
-- `InsertRow` 现有的按键路由**已对着运行的 app 验证过，必须原样搬运**（§5）：Escape 两级、Tab 与 Enter 同取高亮、Shift+Enter 在 `#` 行落无效行。要改的只是 chooser 的**来源**（从 `value` 前缀 → `getCommandCursor(value, caret)`）和取候选的**动作**。
-- 一个已定的规则：命令名候选被取用时，**有 grammar 的命令补全成 `/bg `**（让作者继续填参数），**无 grammar 的命令直接提交**（保持 `/note` 今天的手感）。这样对 `/note`、`/imageCreate` 零变化，只影响那 10 个今天本来就跳 inspector 的命令 —— 没有肌肉记忆会被破坏。
+`StoryCommandCandidateMenu.tsx` 新增；`InsertRow` 的 chooser **来源**换成 `getCommandCursor(value, caret)`，按键路由原样搬运未改。在运行的 app 上逐步验证：`/bg ` → 图片候选首项高亮 → `Na` 过滤 → Tab → `/bg Nattou.png ` → `t`/`d` 候选**无高亮** → Tab → `t=`（无尾随空格）+ transition 候选立开 → `fa` → Tab → `/bg Nattou.png t=fade `。
+
+17. **新组件镜像 `CharacterPicker` 而不是自立门户。** 同一块 `surface-raised` 圆角面板、同样的行高与 `bg-primary/15` 高亮、同样的 `onMouseDown` preventDefault（让光标留在槽里）。目标是让作者觉得是**同一个菜单随光标换内容**，而不是三个菜单。命令名位仍用 `ActionCommandMenu`（它的分类 chips 是有价值的浏览入口），说话人位仍用 `CharacterPicker` —— 新组件只接管这两者从未覆盖的位置。
+18. **「没匹配上」和「没什么可匹配」要分开。** 资产名找不到值得告诉作者（空态"无匹配项"，与说话人选择器一致）；半打的时长弹"无匹配项"则是胡说。`hasCandidateSource(param)` 编码了这个区别。
+19. **Tab 在无高亮处仍取首项。** 规则 2 说的是「有高亮处 Tab 与 Enter 等价」；无高亮处两者本就该分开 —— Enter 提交（规则 2），Tab 在行内前进（规则 3）。所以 `/bg forest_day ` + Tab → `t=`，+ Enter → 提交。
+
+### 7.4 顺手修掉的 bug：Escape 第二级会提交它本该丢弃的行
+
+驱动 app 时发现磁盘上多了一个 `{narration, value: "/bg Na"}` —— 我全程没按过 Enter。
+
+**成因**：`discardInsertSlot` 同步调用 `focusRoot()`，立刻触发 textarea 的 blur；blur 处理器的职责是提交散文（`chooser === "none"` 时）。而 `setEditorMode({kind:"idle"})` 的状态更新在同一 tick 内尚未 flush，闭包里的 `editorMode` 仍是那个 insert 槽 —— 于是丢弃动作把该行提交了。
+
+同时违反两条规则：**规则 1**（离开未提交的槽不产生任何东西）与 **规则 4**（`/` 行永不变成散文）。且**对普通旁白同样成立**，不只 `/` 行 —— 任何走到第二级 Escape 的行都会被落盘。这正是交互模型里「旧代码在 Escape 时把 `/set` 提交成一行旁白」那个 bug 的残余通道：Escape 那条路堵上了，blur 这条没有。
+
+**修法**（两道，各自独立成立）：
+- `slotDiscardedRef` —— 在 `focusRoot()` 之前同步置位，`commitNarrationFromInsert` 读它。blur 在同一 tick 能读到 ref，读不到 state。**每个开槽入口都必须清零**（有两处），否则一次丢弃会永久吃掉后续槽的 blur 提交。
+- `commitNarrationFromInsert` 拒绝 `/` / `#` 开头的行 —— 它是「提交旁白」的函数，而那些不是旁白。blur 是唯一不预先知道行是什么的调用方。
+
+已验证：Escape 梯对 `/bg Na` 与普通旁白都只丢弃、不产生行；而**点击别处仍然保留散文**（blur 提交的正当用途没被误伤）。
 
 ## 8. 风险
 
