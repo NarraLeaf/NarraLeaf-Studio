@@ -43,6 +43,8 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_VALUE_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_SUBMIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
@@ -162,6 +164,21 @@ const PIN_PREVIOUS_VALUE: BlueprintNodePinDef = {
     kind: "output",
     semantic: "data",
     valueType: "float",
+    label: "Previous Value",
+};
+// The slider's value pins above are floats; a text field needs its own string-typed pair.
+const PIN_TEXT_VALUE: BlueprintNodePinDef = {
+    id: "value",
+    kind: "output",
+    semantic: "data",
+    valueType: "string",
+    label: "Value",
+};
+const PIN_PREVIOUS_TEXT_VALUE: BlueprintNodePinDef = {
+    id: "previousValue",
+    kind: "output",
+    semantic: "data",
+    valueType: "string",
     label: "Previous Value",
 };
 const PIN_ELEMENT: BlueprintNodePinDef = {
@@ -618,6 +635,18 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         displayName: "Drag End",
         keywords: ["slider", "drag", "end", "value"],
         pins: [THEN_PIN, PIN_VALUE],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_VALUE_CHANGED,
+        displayName: "Value Changed",
+        keywords: ["text", "input", "value", "change", "type"],
+        pins: [THEN_PIN, PIN_TEXT_VALUE, PIN_PREVIOUS_TEXT_VALUE],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_SUBMIT,
+        displayName: "Submit",
+        keywords: ["text", "input", "submit", "enter", "confirm"],
+        pins: [THEN_PIN, PIN_TEXT_VALUE],
     }),
     broadcastEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST,

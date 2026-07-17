@@ -229,6 +229,8 @@ export const WIDGET_EFFECT_KINDS_BY_TYPE: Record<string, readonly VisualEffectKi
     ],
     "nl.image": ["blur", "backgroundBlur", "shadow", "innerShadow", "blend", "glow", "filter"],
     "nl.button": ["blur", "backgroundBlur", "shadow", "textShadow", "innerShadow", "blend", "glow", "filter"],
+    // Reuses the button appearance kind, so it offers the same set (text shadow applies to the field text).
+    "nl.textInput": ["blur", "backgroundBlur", "shadow", "textShadow", "innerShadow", "blend", "glow", "filter"],
 };
 
 export function getSupportedEffectKindsForWidgetType(type: string): readonly VisualEffectKind[] {

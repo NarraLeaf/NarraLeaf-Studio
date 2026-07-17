@@ -120,6 +120,24 @@ export const widgets = {
         handle: "手柄",
         repairParts: "修复部件",
     },
+    textInput: {
+        title: "文本输入框",
+        value: "值",
+        valueHint: "初始文本。玩家输入的内容保存在运行中的游戏里，不会写回本文档",
+        placeholder: "占位文本",
+        placeholderKey: "占位文本键",
+        placeholderKeyHint: "占位文本会展示给玩家：绑定键以便翻译",
+        sectionBehavior: "行为",
+        inputMode: "输入模式",
+        inputModeText: "文本",
+        inputModePassword: "密码",
+        inputModeNumber: "数字",
+        maxLength: "最大长度",
+        maxLengthHint: "0 表示不限制",
+        readOnly: "只读",
+        disabled: "禁用",
+        color: "颜色",
+    },
     button: {
         title: "按钮",
         sectionText: "文本",
@@ -203,6 +221,7 @@ export const widgets = {
     },
     blueprintValue: {
         sliderTitle: "滑块值",
+        textInputValueTitle: "文本输入框值",
         pagePropsTitle: "页面参数值",
         buttonTextTitle: "按钮文本值",
         textTitle: "文本值",
@@ -264,6 +283,9 @@ export const widgets = {
         text: {
             name: "文本",
             text: "文本",
+        },
+        textInput: {
+            name: "文本输入框",
         },
         appearanceVariant: "默认",
     },

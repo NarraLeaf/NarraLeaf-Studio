@@ -290,6 +290,40 @@ const SLIDER_EVENTS: readonly WidgetLogicEventDef[] = [
     ...WINDOW_EVENTS,
 ];
 
+const TEXT_INPUT_EVENTS: readonly WidgetLogicEventDef[] = [
+    INIT_EVENT,
+    FLUSH_EVENT,
+    ...SURFACE_LIFECYCLE_EVENTS,
+    UNMOUNT_EVENT,
+    {
+        id: "valueChanged",
+        displayName: "Value changed",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.textInputValueChanged"],
+    },
+    {
+        id: "submit",
+        displayName: "Submit",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.textInputSubmit"],
+    },
+    {
+        id: "focus",
+        displayName: "Focus",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.focus"],
+    },
+    {
+        id: "blur",
+        displayName: "Blur",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.blur"],
+    },
+    ...KEYBOARD_EVENTS,
+    ...BROADCAST_EVENTS,
+    ...WINDOW_EVENTS,
+];
+
 const DISPLAYABLE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
     FLUSH_EVENT,
@@ -520,6 +554,30 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             { propPath: "min", displayName: "Min" },
             { propPath: "max", displayName: "Max" },
             { propPath: "step", displayName: "Step" },
+        ],
+    },
+    "nl.textInput": {
+        supportsPrivateBlueprint: true,
+        blueprintLabel: "Text input logic",
+        events: TEXT_INPUT_EVENTS,
+        commands: [
+            ...baseCommands,
+            {
+                id: "setValue",
+                displayName: "Set value",
+                capabilityId: "widget.setTextInputProperties",
+                availability: "available",
+            },
+        ],
+        readableState: [
+            { id: "value", displayName: "Value" },
+            { id: "length", displayName: "Length" },
+        ],
+        writableProps: [
+            { propPath: "value", displayName: "Value" },
+            { propPath: "placeholder", displayName: "Placeholder" },
+            { propPath: "readOnly", displayName: "Read only" },
+            { propPath: "disabled", displayName: "Disabled" },
         ],
     },
     "nl.frame": {

@@ -76,6 +76,7 @@ import { createGameUiSlotComponents, createLiveGameUiCallbacks, createNlrGameWit
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
+import { isTextEntryTarget } from "./isTextEntryTarget";
 import { readNlrCharacterName } from "./nlrDialogReaders";
 import {
     createNlrDialogReadHooks,
@@ -1405,6 +1406,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             return;
         }
         const dispatchKeyboardEvent = (eventName: "keyDown" | "keyUp", event: KeyboardEvent) => {
+            // Typing into a text field must not also drive the game's global keys — otherwise
+            // entering a name would advance dialogue on space and open the menu on Escape. The
+            // widget's own keyboard event still fires: it arrives through DOM bubbling, not here.
+            if (isTextEntryTarget(event.target)) {
+                return;
+            }
             const payload = keyboardBlueprintPayload(event);
             const eventControl = getOrCreateDomEventPropagationControl(event);
             // A widget-level keyboard handler may already have stopped propagation

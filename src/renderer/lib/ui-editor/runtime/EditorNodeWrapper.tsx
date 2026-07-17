@@ -19,6 +19,7 @@ import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/B
 import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import { getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
 import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
+import { isTextEntryTarget } from "./app/isTextEntryTarget";
 import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
 import {
     type AppearanceResolveContext,
@@ -288,13 +289,23 @@ export function EditorNodeWrapper({
             return undefined;
         }
 
+        // These listeners are on `window`, so every widget hears every key regardless of focus.
+        // That is the established semantic, but it must not extend to text entry: a keystroke meant
+        // for a text field would otherwise also reach every other widget's keyDown on the surface.
+        // The field's own Submit/Value Changed events are dispatched by its renderer, not here.
         const onKeyDown = (event: KeyboardEvent) => {
+            if (isTextEntryTarget(event.target)) {
+                return;
+            }
             const eventControl = getOrCreateDomEventPropagationControl(event);
             if (canDispatchKeyDown) {
                 dispatchMountedWidgetEvent("keyDown", keyboardEventPayload(event), eventControl);
             }
         };
         const onKeyUp = (event: KeyboardEvent) => {
+            if (isTextEntryTarget(event.target)) {
+                return;
+            }
             const eventControl = getOrCreateDomEventPropagationControl(event);
             if (canDispatchKeyUp) {
                 dispatchMountedWidgetEvent("keyUp", keyboardEventPayload(event), eventControl);
