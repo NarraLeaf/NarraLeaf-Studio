@@ -84,6 +84,7 @@ export enum IPCEventType {
     projectWizardGetDefaultDirectory = "projectWizard.getDefaultDirectory",
     
     workspaceLaunch = "workspace.launch",
+    workspaceOpenRecent = "workspace.openRecent",
     workspaceSelectFolder = "workspace.selectFolder",
     workspaceClose = "workspace.close",
     workspaceExportProjectPackage = "workspace.projectPackage.export",
@@ -577,6 +578,16 @@ export type IPCWorkspaceEvents = {
             props: WindowProps[WindowAppType.Workspace];
             closeCurrentWindow?: boolean;
         },
+        response: void;
+    };
+    [IPCEventType.workspaceOpenRecent]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            /** Close the calling window once the target is open — a "switch in this window". */
+            replaceCurrentWindow?: boolean;
+        };
         response: void;
     };
     [IPCEventType.workspaceSelectFolder]: {

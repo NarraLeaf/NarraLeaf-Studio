@@ -1,6 +1,8 @@
+import os from "os";
 import { Menu, MenuItemConstructorOptions, BrowserWindow, shell } from "electron";
 import { BaseApp } from "../baseApp";
 import { IPCEventType } from "@shared/types/ipcEvents";
+import { formatRecentProjectLabel } from "@shared/utils/recentProject";
 import {
     EditMenuRole,
     MenuActionId,
@@ -271,6 +273,7 @@ export class MenuManager {
                             this.sendActionToFocusedWindow(WorkspaceMenuAction.OpenWorkspace);
                         },
                     },
+                    this.buildOpenRecentMenu(t),
                     { type: "separator" },
                     // No project is open, so there is nothing to export or close.
                     { label: t("menu.file.export"), enabled: false },
@@ -325,6 +328,7 @@ export class MenuManager {
                             this.sendActionToFocusedWindow(WorkspaceMenuAction.OpenWorkspace);
                         },
                     },
+                    this.buildOpenRecentMenu(t),
                     { type: "separator" },
                     {
                         label: t("menu.file.export"),
@@ -413,6 +417,44 @@ export class MenuManager {
                 ],
             },
         ];
+    }
+
+    /**
+     * The "Open Recent" submenu. Unlike New/Open — which dispatch an action into the focused
+     * renderer — its items open (or focus, if already open) a project straight from the main
+     * process, so they work regardless of which surface handles menu actions. An empty history
+     * shows a single disabled placeholder rather than a bare submenu.
+     */
+    private buildOpenRecentMenu(t: Translator["t"]): MenuItemConstructorOptions {
+        const recentProjects = this.app.globalState.recentlyOpened.list();
+        const homeDir = os.homedir();
+        const submenu: MenuItemConstructorOptions[] = recentProjects.length === 0
+            ? [{ label: t("menu.file.noRecent"), enabled: false }]
+            : recentProjects.map(project => ({
+                // Name and path together, so two projects that share a name stay distinguishable.
+                label: formatRecentProjectLabel(project, homeDir),
+                click: () => {
+                    this.openRecentProject(project.path);
+                },
+            }));
+
+        return {
+            label: t("menu.file.openRecent"),
+            submenu,
+        };
+    }
+
+    private openRecentProject(projectPath: string): void {
+        // launchWorkspace and its file-access authorization live on App, reachable through the
+        // target window (this.app is the narrower BaseApp), mirroring how preferences are opened.
+        const target = this.getMenuTargetWindow();
+        if (!target) {
+            return;
+        }
+
+        void target.getApp().openRecentProject(target, projectPath).catch((error) => {
+            this.app.logger.error("Failed to open recent project from menu:", error);
+        });
     }
 
     private buildAppMenu(t: Translator["t"]): MenuItemConstructorOptions {

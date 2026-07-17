@@ -124,6 +124,14 @@ export class BaseApp {
             this.menuManager.updateMenu();
         }
 
+        // The "Open Recent" submenu is built from this list, so a change here — most
+        // visibly the launcher removing a project — has to rebuild the native menu, or it
+        // keeps offering a project the user just deleted. Renderer surfaces refresh from the
+        // broadcast above; the native menu is main-process-owned and does not see it.
+        if (key === "app.recentProjects") {
+            this.menuManager.updateMenu();
+        }
+
         // The theme is owned by the main process: nativeTheme drives
         // prefers-color-scheme in every renderer (which flips the CSS tokens) plus
         // native chrome. Window background colors follow via the nativeTheme

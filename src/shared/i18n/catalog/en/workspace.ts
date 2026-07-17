@@ -103,6 +103,17 @@ export const workspace = {
         stopPreview: "Stop Preview",
         logoAlt: "NarraLeaf Studio logo",
         editorTabsLabel: "Editor tabs",
+        // The PyCharm-style project switcher in the title bar: current project name plus a
+        // dropdown of recent workspaces to jump between.
+        projectSwitcher: {
+            switchProject: "Switch project",
+            recentProjects: "Recent Projects",
+            current: "Current",
+            openProject: "Open Project…",
+            newProject: "New Project…",
+            noRecent: "No recent workspaces",
+            untitled: "Untitled Project",
+        },
         // In-app confirmation shown before a workspace closes, when `workspace.confirmBeforeClose`
         // is on. The main process drives it over IPC; the dialog supplies its own title/buttons.
         closeConfirm: {

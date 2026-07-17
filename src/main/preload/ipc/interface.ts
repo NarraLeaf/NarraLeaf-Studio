@@ -173,6 +173,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         getDefaultProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardGetDefaultDirectory, {}),
         launch: (props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean) =>
             ipcClient.invoke(IPCEventType.workspaceLaunch, { props, closeCurrentWindow }),
+        openRecent: (projectPath: string, replaceCurrentWindow?: boolean) =>
+            ipcClient.invoke(IPCEventType.workspaceOpenRecent, { projectPath, replaceCurrentWindow }),
         close: () => ipcClient.invoke(IPCEventType.workspaceClose, {}),
         exportProjectPackage: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.workspaceExportProjectPackage, { projectPath }),

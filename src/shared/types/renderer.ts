@@ -136,6 +136,12 @@ export interface RendererPreloadedInterface {
     selectFolder(): Promise<RequestStatus<{ path: string | null }>>;
     workspace: {
         launch(props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean): Promise<RequestStatus<void>>;
+        /**
+         * Open a recent project by path, focusing an already-open window instead of duplicating it.
+         * With `replaceCurrentWindow`, the calling window is closed once the target opens — a
+         * "switch in this window" rather than opening alongside.
+         */
+        openRecent(projectPath: string, replaceCurrentWindow?: boolean): Promise<RequestStatus<void>>;
         close(): Promise<RequestStatus<void>>;
         getDefaultProjectDirectory(): Promise<RequestStatus<{ dir: string }>>;
         exportProjectPackage(projectPath: string): Promise<RequestStatus<{

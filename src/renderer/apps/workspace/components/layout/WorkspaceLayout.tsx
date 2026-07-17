@@ -8,6 +8,7 @@ import { RightSidebar } from "./RightSidebar";
 import { BottomPanel } from "./BottomPanel";
 import { MainEditorArea } from "./MainEditorArea";
 import { ActionBar } from "./ActionBar";
+import { ProjectSwitcher } from "./ProjectSwitcher";
 import { ControlBar } from "./ControlBar";
 import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
@@ -563,7 +564,12 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             <TitleBar
                 title=""
                 iconSrc={iconSrc}
-                actionBar={<ActionBar hideAllGroups={isMac} />}
+                actionBar={
+                    <div className="flex items-center gap-0.5">
+                        <ProjectSwitcher />
+                        <ActionBar hideAllGroups={isMac} />
+                    </div>
+                }
                 controlBar={
                     <ControlBar
                         leftSidebarVisible={leftSidebarVisible}
