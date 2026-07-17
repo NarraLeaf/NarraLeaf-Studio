@@ -59,6 +59,9 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END = "blueprint.event.head.s
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START = "blueprint.event.head.sliderDragStart" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED = "blueprint.event.head.sliderValueChanged" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END = "blueprint.event.head.sliderDragEnd" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_VALUE_CHANGED = "blueprint.event.head.textInputValueChanged" as const;
+/** Fires when the player commits the field (Enter), not on every keystroke. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_SUBMIT = "blueprint.event.head.textInputSubmit" as const;
 /** Entry for global `appBoot` lifecycle event (application start). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT = "blueprint.event.head.appBoot" as const;
 /** Entry for global NarraLeaf game runtime readiness. */
@@ -116,6 +119,8 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_VALUE_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_SUBMIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
@@ -912,6 +917,13 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_NORMALIZED_VALUE = "blueprin
 export const BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_RANGE = "blueprint.element.slider.getRange" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_SET_VALUE = "blueprint.element.slider.setValue" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_SET_RANGE = "blueprint.element.slider.setRange" as const;
+
+export const BLUEPRINT_NODE_TYPE_TEXT_INPUT_GET_VALUE = "blueprint.textInput.getValue" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_INPUT_SET_VALUE = "blueprint.textInput.setValue" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_INPUT_CLEAR = "blueprint.textInput.clear" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_GET_VALUE = "blueprint.element.textInput.getValue" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_SET_VALUE = "blueprint.element.textInput.setValue" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_CLEAR = "blueprint.element.textInput.clear" as const;
 
 export const BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS = "blueprint.list.setItems" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS = "blueprint.list.getItems" as const;

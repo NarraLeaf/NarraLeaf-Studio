@@ -33,8 +33,11 @@ export function uiTextUnitId(elementId: string, prop: string): string {
 
 export type LocalizedWidgetTextInput = {
     elementId: string;
-    /** Which prop carries the text ("text" for text widgets, "label" for buttons). */
-    prop: "text" | "label";
+    /**
+     * Which prop carries the text ("text" for text widgets, "label" for buttons,
+     * "placeholder" for text inputs).
+     */
+    prop: "text" | "label" | "placeholder";
     /** Authored source-language text (always what design time renders). */
     sourceText: string;
     /** Implicit unit opt-in (`ui:<elementId>.<prop>`). */

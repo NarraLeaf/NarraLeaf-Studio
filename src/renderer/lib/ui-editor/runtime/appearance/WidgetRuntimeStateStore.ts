@@ -4,6 +4,11 @@ import {
     type UISliderRuntimeValue,
     type UISliderWidgetProps,
 } from "@shared/types/ui-editor/slider";
+import {
+    resolveTextInputRuntimeValue,
+    type UITextInputRuntimeValue,
+    type UITextInputWidgetProps,
+} from "@shared/types/ui-editor/textInput";
 
 export type UIListRuntimeScrollRequest =
     | { version: number; kind: "index"; index: number }
@@ -88,6 +93,8 @@ export type WidgetRuntimeSnapshot = {
     variantOverrides: ReadonlyMap<string, string>;
     /** Copy for external readers; treat as immutable after getSnapshot. */
     sliderProperties: ReadonlyMap<string, UISliderRuntimeValue>;
+    /** Copy for external readers; treat as immutable after getSnapshot. */
+    textInputProperties: ReadonlyMap<string, UITextInputRuntimeValue>;
     /** Runtime List content overrides keyed by runtime-scope element key. */
     listItems: ReadonlyMap<string, readonly unknown[]>;
     listSelectedIndexes: ReadonlyMap<string, number>;
@@ -104,6 +111,7 @@ export const STATIC_WIDGET_RUNTIME_SNAPSHOT: WidgetRuntimeSnapshot = Object.free
     focusedId: null,
     variantOverrides: new Map<string, string>(),
     sliderProperties: new Map<string, UISliderRuntimeValue>(),
+    textInputProperties: new Map<string, UITextInputRuntimeValue>(),
     listItems: new Map<string, readonly unknown[]>(),
     listSelectedIndexes: new Map<string, number>(),
     listScrollRequests: new Map<string, UIListRuntimeScrollRequest>(),
@@ -121,6 +129,7 @@ export class WidgetRuntimeStateStore {
     private focusedId: string | null = null;
     private readonly variantOverrides = new Map<string, string>();
     private readonly sliderProperties = new Map<string, UISliderRuntimeValue>();
+    private readonly textInputProperties = new Map<string, UITextInputRuntimeValue>();
     private readonly listItems = new Map<string, unknown[]>();
     private readonly listSelectedIndexes = new Map<string, number>();
     private readonly listScrollRequests = new Map<string, UIListRuntimeScrollRequest>();
@@ -156,6 +165,7 @@ export class WidgetRuntimeStateStore {
             focusedId: this.focusedId,
             variantOverrides: new Map(this.variantOverrides),
             sliderProperties: new Map(this.sliderProperties),
+            textInputProperties: new Map(this.textInputProperties),
             listItems: new Map(this.listItems),
             listSelectedIndexes: new Map(this.listSelectedIndexes),
             listScrollRequests: new Map(this.listScrollRequests),
@@ -297,6 +307,29 @@ export class WidgetRuntimeStateStore {
             return current;
         }
         this.sliderProperties.set(elementId, next);
+        this.emit();
+        return next;
+    }
+
+    getTextInputProperties(elementId: string): UITextInputRuntimeValue | undefined {
+        return this.textInputProperties.get(elementId);
+    }
+
+    setTextInputProperties(
+        elementId: string,
+        currentProps: Partial<UITextInputWidgetProps>,
+        patch: Partial<UITextInputWidgetProps>,
+    ): UITextInputRuntimeValue {
+        const current = this.textInputProperties.get(elementId) ?? resolveTextInputRuntimeValue(currentProps);
+        const next = resolveTextInputRuntimeValue({
+            ...currentProps,
+            ...current,
+            ...patch,
+        });
+        if (current.value === next.value) {
+            return current;
+        }
+        this.textInputProperties.set(elementId, next);
         this.emit();
         return next;
     }
