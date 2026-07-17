@@ -55,6 +55,13 @@ import { DebugBridge } from "./DebugBridge";
 import { BlueprintExecutionManager } from "./BlueprintExecutionManager";
 import { createExplicitBlueprintVariableRef } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
 
+/** Node-level tracing is verbose, which the bridge drops by default; assert it only with capture on. */
+function createTracingDebugBridge(): DebugBridge {
+    const debug = new DebugBridge();
+    debug.setVerboseCaptureEnabled(true);
+    return debug;
+}
+
 describe("BlueprintDispatcher", () => {
     it("dispatches top-level container init into a Log node", async () => {
         const blueprintId = "bp-container";
@@ -144,7 +151,7 @@ describe("BlueprintDispatcher", () => {
                 },
             },
         };
-        const debug = new DebugBridge();
+        const debug = createTracingDebugBridge();
         const hostAdapter: UIHostAdapter = { host: "player" };
         const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
@@ -259,7 +266,7 @@ describe("BlueprintDispatcher", () => {
                 },
             },
         };
-        const debug = new DebugBridge();
+        const debug = createTracingDebugBridge();
         const hostAdapter: UIHostAdapter = { host: "player" };
 
         await dispatchBlueprintUiEvent({
@@ -440,7 +447,7 @@ describe("BlueprintDispatcher", () => {
                 },
             },
         };
-        const debug = new DebugBridge();
+        const debug = createTracingDebugBridge();
         const hostAdapter: UIHostAdapter = { host: "player" };
 
         await dispatchBlueprintUiEvent({
@@ -551,7 +558,7 @@ describe("BlueprintDispatcher", () => {
                 },
             },
         };
-        const debug = new DebugBridge();
+        const debug = createTracingDebugBridge();
         const hostAdapter: UIHostAdapter = { host: "player" };
 
         await dispatchBlueprintElementClickEvent({
@@ -1158,7 +1165,7 @@ describe("BlueprintDispatcher", () => {
                 },
             },
         };
-        const debug = new DebugBridge();
+        const debug = createTracingDebugBridge();
         const hostAdapter: UIHostAdapter = { host: "player" };
 
         await dispatchSurfaceBlueprintEvent({
@@ -1249,7 +1256,7 @@ describe("BlueprintDispatcher", () => {
                     },
                 },
             };
-            const debug = new DebugBridge();
+            const debug = createTracingDebugBridge();
             const executionManager = new BlueprintExecutionManager();
             executionManager.openScope(runtimeScopeId);
             const hostAdapter: UIHostAdapter = { host: "player" };
