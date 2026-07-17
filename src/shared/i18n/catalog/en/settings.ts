@@ -82,5 +82,16 @@ export const settings = {
             description:
                 "Closing a workspace goes back to the home screen. Turn this off to quit NarraLeaf Studio instead when no other window is open.",
         },
+        dashboardOnOpen: {
+            label: "Show the project dashboard on open",
+            description: "Open the project dashboard as a tab every time you enter a workspace.",
+        },
+        clearAllStats: {
+            label: "Clear all statistics data",
+            description:
+                "Erase the recorded writing history, active time, and build history of every project. Counts derived from your projects are unaffected.",
+            action: "Clear",
+            confirm: "Clear everything",
+        },
     },
 } as const;
