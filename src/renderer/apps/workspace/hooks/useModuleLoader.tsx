@@ -41,6 +41,7 @@ export function useModuleLoader() {
             store.registerPanel({
                 id: panelModule.metadata.id,
                 title: panelModule.metadata.title,
+                titleKey: panelModule.metadata.titleKey,
                 icon: panelModule.metadata.icon!,
                 position: panelModule.metadata.position,
                 component: panelModule.component as any,

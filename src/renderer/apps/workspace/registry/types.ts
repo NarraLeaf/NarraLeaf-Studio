@@ -20,6 +20,8 @@ export enum PanelPosition {
 export interface PanelDefinition<TPayload = any> {
     id: string;
     title: string;
+    /** i18n key for the title; resolved reactively at render so it follows a live language switch. */
+    titleKey?: TranslationKey;
     icon: ReactNode;
     position: PanelPosition;
     /** Omitted only by rail actions, which have no panel body to render. */

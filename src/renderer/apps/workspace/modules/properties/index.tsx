@@ -12,6 +12,7 @@ export const propertiesModule: PanelModule = {
     metadata: {
         id: "narraleaf-studio:properties",
         // Resolved lazily on read (module registration runs after i18n init).
+        titleKey: "placeholders.moduleTitles.properties",
         get title() {
             return translate("placeholders.moduleTitles.properties");
         },

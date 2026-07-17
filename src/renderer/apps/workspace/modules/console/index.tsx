@@ -11,6 +11,7 @@ import { PanelPosition } from "../../registry/types";
 export const consoleModule: PanelModule = {
     metadata: {
         id: "narraleaf-studio:console",
+        titleKey: "placeholders.moduleTitles.console",
         get title() { return translate("placeholders.moduleTitles.console"); },
         icon: <Terminal className="w-4 h-4" />,
         position: PanelPosition.Bottom,

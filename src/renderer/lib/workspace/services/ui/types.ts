@@ -1,4 +1,5 @@
 import { ReactNode, ComponentType } from "react";
+import type { TranslationKey } from "@shared/i18n";
 import type { WorkspaceContext } from "../services";
 
 /**
@@ -83,6 +84,8 @@ export interface PanelComponentProps<TPayload = any> {
 export interface PanelDefinition<TPayload = any> {
     id: string;
     title: string;
+    /** i18n key for the title; resolved reactively at render so it follows a live language switch. */
+    titleKey?: TranslationKey;
     icon: ReactNode;
     /** Omitted only by rail actions, which have no panel body to render. */
     component?: ComponentType<PanelComponentProps<TPayload>>;

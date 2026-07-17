@@ -12,6 +12,7 @@ import { FocusArea } from "@/lib/workspace/services/ui/types";
 export const assetsModule: PanelModule = {
     metadata: {
         id: "narraleaf-studio:assets",
+        titleKey: "placeholders.moduleTitles.assets",
         get title() { return translate("placeholders.moduleTitles.assets"); },
         icon: <FolderOpen className="w-4 h-4" />,
         position: PanelPosition.Left,
@@ -32,6 +33,7 @@ export const assetsModule: PanelModule = {
 export const assetsBottomModule: PanelModule = {
     metadata: {
         id: "narraleaf-studio:assets-bottom",
+        titleKey: "placeholders.moduleTitles.assets",
         get title() { return translate("placeholders.moduleTitles.assets"); },
         icon: <FolderOpen className="w-4 h-4" />,
         position: PanelPosition.Bottom,

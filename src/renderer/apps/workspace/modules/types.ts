@@ -16,6 +16,12 @@ export interface ModuleMetadata {
     id: string;
     /** Display title */
     title: string;
+    /**
+     * i18n key for the title. Preferred over `title` at render, and resolved reactively so the
+     * heading follows a live language switch — unlike `title`, which is captured as a plain string
+     * when the panel is registered and would otherwise freeze in whatever locale was then active.
+     */
+    titleKey?: TranslationKey;
     /** Icon component or element */
     icon?: ReactNode;
     /** Sort order (lower values appear first) */

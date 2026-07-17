@@ -22,7 +22,9 @@ export function openProjectPanel(workspace: WorkspaceContext, payload: ProjectPa
 export const projectPanelModule: PanelModule<ProjectPanelPayload> = {
     metadata: {
         id: PROJECT_PANEL_ID,
-        // Resolved lazily on read (module registration runs after i18n init).
+        // titleKey drives the reactive heading; the title getter stays as a plain-string fallback
+        // for any consumer that reads `title` directly (it is captured once at registration).
+        titleKey: "placeholders.moduleTitles.project",
         get title() {
             return translate("placeholders.moduleTitles.project");
         },
