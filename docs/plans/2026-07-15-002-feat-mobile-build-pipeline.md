@@ -415,9 +415,27 @@ dev 模式经 node_modules 解析 debug 模板；纯 Android 构建不产出 web
 为 Store；独立 central-directory 走查确认 stored 条目 4 字节全对齐；`plutil -lint`
 判定改写后 Info.plist 合法并读回 5 个 CFBundle 键；`unzip` 确认可执行位 0755；
 `openssl` 确认签名证书为合法 RSA-2048/SHA-256 X.509。
-**`apksigner verify --min-sdk-version 26` / `aapt2 dump badging` 仍未跑**——本机无
-SDK（符合 §2.2），需 CI；这是 §12.5「Studio 侧对应的验收」唯一未回填项，也是
-「Android 装机语义」遗留审查的权威答案来源。
+
+**SDK oracle 已落地并实跑（2026-07-16 晚，CI 全绿）**：Studio 此前无任何 CI，现有
+`.github/workflows/ci.yml`（ubuntu-latest：lint + test，build-tools 37.0.0）；
+oracle 测试在 `src/main/buildWorker/mobile/androidSdkOracle.test.ts`，按
+`ANDROID_HOME` 门控（本机跳过，符合 §2.2 的 SDK 不再分发），CI 置
+`REQUIRE_ANDROID_SDK_ORACLE=1` 使「SDK 缺失」由静默跳过变为**失败**——跳过与通过
+在日志里长得一模一样，这是唯一能防住的手段。8 个 oracle 测试在 CI 全部真跑通过。
+
+**「Android 装机语义」遗留审查——已由 CI oracle 权威回答（结论回填）**：
+- **v2-only 对 minSdk 26 足够** ✅：`apksigner verify --min-sdk-version 26 --verbose`
+  通过，且断言 `v2 scheme: true` / `v1 (JAR) scheme: false`。v1 仅在 API < 24 必需，
+  壳的 minSdk 26 高于该门槛。
+- **META-INF / 未保护条目** ✅：apksigner **零 WARNING**（该告警正是它报告
+  「容忍但 Android 可能不接受」的方式，如 v2 摘要之外的未保护条目）。
+- **重命名一致性** ✅：`aapt2 dump badging` 读回
+  `com.example.oraclegame` / versionCode 1002003 / versionName 1.2.3 / label；
+  `aapt2 dump resources` 确认**有且仅有一个** package 且已同步改名；
+  `aapt2 dump xmltree` 确认零 `<provider>`、全树无 `com.narraleaf.shell.placeholder` 残留。
+- **签名覆盖游戏载荷（非仅壳）** ✅：翻转载荷一个字节后 apksigner **拒绝**——
+  该变异测试已永久编码，否则上面所有签名断言都可能是空转。
+- `zipalign -c 4` 通过。
 
 **本轮新增的实现决定**：
 1. **图标槽位尺寸从模板自身的占位 PNG 读出**（`mobileIcons.ts`），不按密度名硬编码
@@ -429,9 +447,11 @@ SDK（符合 §2.2），需 CI；这是 §12.5「Studio 侧对应的验收」唯
    含全部素材，故必然失败）；不由未压缩体积反推编译后体积，避免误杀合法构建。
    真限额仍由 worker 对真实字节强制。
 
-**下一步**：①CI oracle（apksigner/aapt2）回填 §12.5 与 Android 装机语义遗留审查；
-②实机 tap-install 收口 M2；③W0 实机验证 + iOS test-payload 自检（自定义 scheme 下
-IndexedDB —— 唯一真实存疑点）；④B2 = iOS UI 暴露（验证后即一行闸门 + 文案）。
+**下一步（均需真设备，代码侧无剩余卡点）**：①**实机 tap-install 收口 M2**——
+oracle 已答「Android 会接受这个签名」，但「装上去能玩」仍是推断；②W0 实机验证
+（§12.4 清单）+ iOS test-payload 自检，**自定义 scheme 下 IndexedDB 是否可用是唯一
+真实存疑点**（存档全靠它；Android 侧用 https 伪 host 已规避）；③B2 = iOS UI 暴露
+（M3 验收「未签名 IPA → 第三方重签 → 旁加载 → 实机可玩」通过后，即一行闸门 + 文案）。
 
 ### 12.0.1 历史状态（2026-07-16 早，repack 核心落地时）
 
@@ -703,8 +723,9 @@ Studio 的 repack 器已落地，**模板不满足下列任何一条即在 repac
 - 可执行文件名 = `manifest.ios.executableName`，权限位 0755（repack 原样保真）。
 - 无 embedded frameworks（最小壳不需要，且会引入 symlink）。
 
-**Studio 侧对应的验收（S4 落地后补跑）**
-- `repackApk`/`repackIpa` 对**真模板**跑通 → 真模板 golden 测试（模板缺席时
-  当前测试会 skip / 用合成 fixture）。
-- CI oracle：`apksigner verify --min-sdk-version 26`、`zipalign -c 4`、
-  `aapt2 dump badging` 读回目标身份（SDK 只在 CI，见 §2.2）。
+**Studio 侧对应的验收 —— 已全部跑通（2026-07-16 晚）**
+- ✅ `repackApk`/`repackIpa` 对**真模板** golden 测试（`runMobileRepack.test.ts`，
+  含可复现性与注入顺序确定性）。
+- ✅ CI oracle：`apksigner verify --min-sdk-version 26`、`zipalign -c 4`、
+  `aapt2 dump badging`/`dump resources`/`dump xmltree` 读回目标身份 + 篡改拒绝
+  （`androidSdkOracle.test.ts`，SDK 只在 CI，见 §2.2）。结论见 §12.0。
