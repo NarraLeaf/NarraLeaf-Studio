@@ -14,6 +14,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE,
+    BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
     BLUEPRINT_NODE_TYPE_LITERAL,
     BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
@@ -113,6 +114,24 @@ export function isBlueprintElementBindingOutputPin(type: string, port: string): 
     return port === "element" && isBlueprintElementBindingNodeType(type);
 }
 
+/** Fn head param pins ("then" is the body exec output, everything else is a declared param). */
+function isBlueprintFnHeadParamOutputPin(type: string, port: string): boolean {
+    return type === BLUEPRINT_NODE_TYPE_FN_HEAD && port !== "then";
+}
+
+/**
+ * Whether an output pin may feed several consumers at once. Literals and Element bindings hold a
+ * constant, and Fn head params are seeded into the execution store before the body runs, so each
+ * read yields the same value. Pure node outputs re-evaluate per read and stay single-consumer.
+ */
+export function isBlueprintFanOutOutputPin(type: string, port: string): boolean {
+    return (
+        isBlueprintLiteralNodeType(type) ||
+        isBlueprintElementBindingOutputPin(type, port) ||
+        isBlueprintFnHeadParamOutputPin(type, port)
+    );
+}
+
 function isBlueprintExecInputPin(
     ir: Pick<BlueprintGraphIr, "nodes">,
     nodeId: string,
@@ -193,8 +212,7 @@ export function applyBlueprintIrConnection(
 
     const sourceNode = ir.nodes?.[connection.source];
     const allowSourceFanOut = sourceNode
-        ? isBlueprintLiteralNodeType(sourceNode.type) ||
-            isBlueprintElementBindingOutputPin(sourceNode.type, connection.sourceHandle)
+        ? isBlueprintFanOutOutputPin(sourceNode.type, connection.sourceHandle)
         : false;
     const allowTargetFanIn = isBlueprintExecInputPin(ir, connection.target, connection.targetHandle);
     const withoutReplacedPinEdges = edges.filter(

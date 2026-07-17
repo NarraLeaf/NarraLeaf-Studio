@@ -2,6 +2,7 @@ import { ComponentType, ReactNode } from "react";
 import { ActionSeparator } from "@/apps/workspace/registry/types";
 import { PanelPosition } from "../registry/types";
 import { FocusContext } from "@/lib/workspace/services/ui";
+import type { WorkspaceContext } from "@/lib/workspace/services/services";
 import { Workspace } from "@/lib/workspace/workspace";
 import { TranslationKey } from "@shared/i18n";
 import { NativeMenuSlot } from "@shared/types/menu";
@@ -117,8 +118,13 @@ export interface PanelModule<TPayload = any> {
         /** Payload data passed to panel component */
         payload?: TPayload;
     };
-    /** Panel component */
-    component: ComponentType<PanelComponentProps<TPayload>>;
+    /** Panel component; omitted only by rail actions, which have no panel body. */
+    component?: ComponentType<PanelComponentProps<TPayload>>;
+    /**
+     * Turns the rail icon into a button — clicking runs this instead of opening a panel body.
+     * See `PanelDefinition.railAction`. Mutually exclusive with `component`.
+     */
+    railAction?: (workspace: WorkspaceContext) => void;
     /** Actions that should be registered when this panel is active/focused */
     actions?: ModuleAction[];
     /** Action groups that should be registered when this panel is active/focused */

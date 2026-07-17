@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import {
+    getBlueprintDebugEventLogLevel,
+    type BlueprintDebugEvent,
+    type BlueprintDebugEventLogLevel,
+} from "@shared/types/blueprint/debug";
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { UIDocument } from "@shared/types/ui-editor/document";
@@ -12,7 +16,7 @@ import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance
 import { listBlueprintsForDevTools } from "./blueprintDebugPanelModel";
 
 type DebugTabId = "blueprints" | "output" | "scope";
-export type BlueprintOutputLogLevel = "error" | "warning" | "log" | "verbose";
+export type BlueprintOutputLogLevel = BlueprintDebugEventLogLevel;
 
 const OUTPUT_LOG_LEVELS: BlueprintOutputLogLevel[] = ["error", "warning", "log", "verbose"];
 const DEFAULT_OUTPUT_LOG_LEVELS = new Set<BlueprintOutputLogLevel>(["error", "warning", "log"]);
@@ -64,6 +68,14 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
             setEvents(debug.snapshot());
         });
     }, [debug]);
+
+    // Verbose tracing is dropped at the bridge unless something asks for it, so the filter
+    // checkbox has to drive capture rather than just hide rows. Only events emitted while it is
+    // on are recorded.
+    useEffect(() => {
+        debug.setVerboseCaptureEnabled(outputLogLevels.has("verbose"));
+        return () => debug.setVerboseCaptureEnabled(false);
+    }, [debug, outputLogLevels]);
 
     useEffect(() => {
         const store = scopeBridge.getSurfaceStore(activeSurfaceId);
@@ -509,23 +521,6 @@ function formatExecutionCancelled(ev: Extract<BlueprintDebugEvent, { type: "exec
         parts.push(`graph:${String(ev.graphId).slice(0, 14)}…`);
     }
     return parts.join(" · ");
-}
-
-export function getBlueprintDebugEventLogLevel(ev: BlueprintDebugEvent): BlueprintOutputLogLevel {
-    if (ev.type === "execution.error") {
-        return "error";
-    }
-    if (ev.type === "devtools.log") {
-        const level = ev.level.trim().toLowerCase();
-        if (level === "error") {
-            return "error";
-        }
-        if (level === "warn" || level === "warning") {
-            return "warning";
-        }
-        return "log";
-    }
-    return "verbose";
 }
 
 export function filterBlueprintDebugEventsByLogLevel(

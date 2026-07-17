@@ -3,13 +3,15 @@ import { Input } from "@/lib/components/elements/Input";
 import { Select, SelectOption } from "@/lib/components/elements/Select";
 import { Slider } from "@/lib/components/elements/Slider";
 import { Switch } from "@/lib/components/elements/Switch";
+import { Button } from "@/lib/components/elements/Button";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
 import { Loader2 } from "lucide-react";
 import { SettingValueType } from "@/lib/settings/types";
 import { SettingCategory, SettingDescriptor } from "@/lib/settings/models";
 import { useTranslation } from "@/lib/i18n";
 
-export type SettingValue = string | number | boolean;
+/** `null` is the Action type's stand-in: it renders a button and stores nothing. */
+export type SettingValue = string | number | boolean | null;
 
 interface SettingEntry<T> {
     descriptor: SettingDescriptor;
@@ -22,6 +24,8 @@ interface SettingsExplorerProps<T> {
     describeSetting: (setting: T) => SettingDescriptor;
     getValue: (setting: T, descriptor: SettingDescriptor) => SettingValue | undefined;
     onCommit: (setting: T, descriptor: SettingDescriptor, value: SettingValue) => Promise<void>;
+    /** Runs an `Action` entry once the user has confirmed it. Required if any entry is an Action. */
+    onInvokeAction?: (setting: T, descriptor: SettingDescriptor) => Promise<void>;
     selectedCategory?: SettingCategory["key"];
     selectedCategoryScrollSignal?: number;
     searchQuery?: string;
@@ -76,6 +80,7 @@ export function SettingsExplorer<T>({
     describeSetting,
     getValue,
     onCommit,
+    onInvokeAction,
     selectedCategory,
     selectedCategoryScrollSignal,
     searchQuery,
@@ -91,6 +96,8 @@ export function SettingsExplorer<T>({
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [pendingInputs, setPendingInputs] = useState<Record<string, string>>({});
     const [pendingBooleans, setPendingBooleans] = useState<Record<string, boolean>>({});
+    /** Action ids awaiting their second, confirming click. */
+    const [confirmingActions, setConfirmingActions] = useState<Set<string>>(new Set());
     const scrollContainerRef = useRef<HTMLDivElement | null>(null);
     const categoryRefs = useRef<Record<string, HTMLElement | null>>({});
 
@@ -201,6 +208,44 @@ export function SettingsExplorer<T>({
         [getValue, handleCommit],
     );
 
+    const setActionConfirming = useCallback((id: string, active: boolean) => {
+        setConfirmingActions(prev => {
+            const next = new Set(prev);
+            if (active) {
+                next.add(id);
+            } else {
+                next.delete(id);
+            }
+            return next;
+        });
+    }, []);
+
+    /**
+     * Run a confirmed Action. Unlike `handleCommit` this persists nothing itself — the entry's own
+     * handler owns whatever it touches — so all this layer contributes is the pending/error chrome.
+     */
+    const handleInvokeAction = useCallback(
+        async (entry: SettingEntry<T>) => {
+            const id = entry.descriptor.id;
+            setActionConfirming(id, false);
+            setErrors(prev => {
+                const next = { ...prev };
+                delete next[id];
+                return next;
+            });
+            handleSavingState(id, true);
+            try {
+                await onInvokeAction?.(entry.source, entry.descriptor);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                setErrors(prev => ({ ...prev, [id]: message }));
+            } finally {
+                handleSavingState(id, false);
+            }
+        },
+        [handleSavingState, onInvokeAction, setActionConfirming],
+    );
+
     const handleInputChange = useCallback((id: string, nextValue: string) => {
         setPendingInputs(prev => ({ ...prev, [id]: nextValue }));
     }, []);
@@ -244,6 +289,43 @@ export function SettingsExplorer<T>({
         const error = errors[descriptor.id];
 
         switch (descriptor.type) {
+            case SettingValueType.Action: {
+                // Two-step inline confirm rather than a modal: the settings window hosts no dialog
+                // container, and an in-place "are you sure" reads better in a settings row anyway.
+                const isConfirming = confirmingActions.has(descriptor.id);
+                if (!isConfirming) {
+                    return (
+                        <Button
+                            size="sm"
+                            variant={descriptor.danger ? "danger" : "secondary"}
+                            disabled={isSaving}
+                            onClick={() => setActionConfirming(descriptor.id, true)}
+                        >
+                            {descriptor.actionLabel ?? descriptor.label}
+                        </Button>
+                    );
+                }
+                return (
+                    <div className="flex items-center gap-2">
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={isSaving}
+                            onClick={() => setActionConfirming(descriptor.id, false)}
+                        >
+                            {t("common.cancel")}
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant={descriptor.danger ? "danger" : "primary"}
+                            disabled={isSaving}
+                            onClick={() => handleInvokeAction(entry)}
+                        >
+                            {descriptor.confirmLabel ?? t("common.confirm")}
+                        </Button>
+                    </div>
+                );
+            }
             case SettingValueType.Boolean: {
                 const booleanValue = pendingBoolean !== undefined ? pendingBoolean : Boolean(currentValue);
                 return (

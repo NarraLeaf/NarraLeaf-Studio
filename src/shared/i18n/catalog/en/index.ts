@@ -37,6 +37,7 @@ import { pluginPermission } from "./pluginPermission";
 import { dialogs } from "./dialogs";
 import { defaultDoc } from "./defaultDoc";
 import { build } from "./build";
+import { dashboard } from "./dashboard";
 
 export const en = {
     common,
@@ -67,4 +68,5 @@ export const en = {
     dialogs,
     defaultDoc,
     build,
+    dashboard,
 } as const;
