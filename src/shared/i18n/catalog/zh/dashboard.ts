@@ -11,6 +11,14 @@ export const dashboard = {
         never: "暂无",
     },
 
+    greeting: {
+        lateNight: "夜深了",
+        morning: "早上好",
+        noon: "中午好",
+        afternoon: "下午好",
+        evening: "晚上好",
+    },
+
     units: {
         words: {
             other: "{count} 字",
@@ -61,7 +69,7 @@ export const dashboard = {
         streak: "连续写作",
         streakNone: "暂无连续记录",
         peak: "峰值 {words}",
-        empty: "还没有写作记录，记录到写作的那天起会显示柱状图",
+        empty: "尚未记录任何内容。一旦记录下当天的写作内容，进度条便会显示",
         chartLabel: "最近 30 天每天的写作字数",
         tooltip: {
             added: "{date} · 新增 {words}",
@@ -82,7 +90,7 @@ export const dashboard = {
 
     structure: {
         title: "结构",
-        endings: "结局",
+        chapters: "大纲",
         branches: "分支",
         unreachable: "不可达场景",
         unreachableHint: "从入口场景出发没有跳转路径能到达这些场景",
@@ -117,6 +125,6 @@ export const dashboard = {
         clear: "清空本项目统计数据",
         clearConfirm: "确定清空本项目的统计数据？",
         clearDetail:
-            "仅清除已记录的活动历史：写作曲线、活跃时长、编辑次数与构建记录。场景数、字数、角色数与本地化进度都是从项目本身实时计算的，不会受到影响。此操作无法撤销。",
+            "仅清除已记录的活动历史：写作曲线、活跃时长、编辑次数与构建记录。场景数、字数、角色数与本地化进度都是从项目本身实时计算的，不会受到影响。此操作无法撤销！",
     },
 } satisfies LocaleNamespace<"dashboard">;

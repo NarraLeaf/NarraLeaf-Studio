@@ -1,6 +1,6 @@
 /**
  * On-demand static statistics for the open project: scale (scenes, lines,
- * words, assets, blueprints), structural findings (endings, branches,
+ * words, assets, blueprints), structural findings (branches,
  * unreachable/empty scenes), per-scene and per-character word counts, and
  * per-language translation progress. Nothing here is persisted or cached —
  * the snapshot is recomputed by whoever renders it.
@@ -54,7 +54,6 @@ export type ProjectStatsSnapshot = {
         variables: { scene: number; saved: number; persistent: number };
     };
     structure: {
-        endings: number;
         branches: number;
         unreachableScenes: string[];
         emptyScenes: string[];
@@ -88,7 +87,6 @@ type StoriesScan = {
     totalWords: number;
     sceneVariables: number;
     savedVariables: number;
-    endings: number;
     branches: number;
     unreachableScenes: string[];
     emptyScenes: string[];
@@ -107,7 +105,6 @@ function createStoriesScan(): StoriesScan {
         totalWords: 0,
         sceneVariables: 0,
         savedVariables: 0,
-        endings: 0,
         branches: 0,
         unreachableScenes: [],
         emptyScenes: [],
@@ -262,9 +259,6 @@ function scanStories(documents: readonly StoryDocument[]): StoriesScan {
             scan.branches += sceneScan.choiceOptions;
             scan.totalWords += sceneScan.words;
             scan.sceneVariables += Object.keys(scene.sceneVariables ?? {}).length;
-            if (sceneScan.jumpTargets.size === 0) {
-                scan.endings += 1;
-            }
             if (sceneScan.contentBlocks === 0) {
                 scan.emptyScenes.push(scene.name);
             }
@@ -476,7 +470,6 @@ export async function computeProjectStatsSnapshot(ctx: WorkspaceContext): Promis
             },
         },
         structure: {
-            endings: stories.endings,
             branches: stories.branches,
             unreachableScenes: stories.unreachableScenes,
             emptyScenes: stories.emptyScenes,

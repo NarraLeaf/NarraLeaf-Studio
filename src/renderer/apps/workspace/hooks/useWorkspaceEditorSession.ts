@@ -12,6 +12,11 @@ import {
     serializeEditorSession,
 } from "../session/workspaceEditorSession";
 import { openDashboardTab } from "../modules/dashboard/openDashboardTab";
+import {
+    DASHBOARD_OPEN_DEFAULT_KEY,
+    getDashboardOpenProjectKey,
+    resolveDashboardOpen,
+} from "@shared/constants/dashboard";
 
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -31,13 +36,15 @@ export function useWorkspaceEditorSession() {
     const uiService = context?.services.get<UIService>(Services.UI) ?? null;
     const settingsService = context?.services.get<GlobalSettingsService>(Services.GlobalSettings) ?? null;
     const projectService = context?.services.get<ProjectService>(Services.Project) ?? null;
-    const sessionSettingsKey =
+    const projectRef =
         context && projectService
-            ? getWorkspaceEditorSessionSettingsKey({
+            ? {
                   projectPath: context.project.getConfig().projectPath,
                   projectIdentifier: projectService.getProjectConfig().identifier,
-              })
+              }
             : null;
+    const sessionSettingsKey = projectRef ? getWorkspaceEditorSessionSettingsKey(projectRef) : null;
+    const dashboardOpenProjectKey = projectRef ? getDashboardOpenProjectKey(projectRef) : null;
 
     useEffect(() => {
         if (!context || !uiService || !settingsService || !sessionSettingsKey) {
@@ -71,11 +78,13 @@ export function useWorkspaceEditorSession() {
                     // focused rather than buried, and outside the `session?.tabs.length` guard
                     // above because a first-run project has no session to restore at all. The tab
                     // id is constant, so re-opening an already-restored dashboard just focuses it.
-                    const showDashboard = await settingsService.get<boolean>(
-                        "dashboard.openOnWorkspaceOpen",
-                        true,
-                    );
-                    if (showDashboard !== false) {
+                    const [projectChoice, globalDefault] = await Promise.all([
+                        dashboardOpenProjectKey
+                            ? settingsService.get<boolean>(dashboardOpenProjectKey)
+                            : Promise.resolve(undefined),
+                        settingsService.get<boolean>(DASHBOARD_OPEN_DEFAULT_KEY, true),
+                    ]);
+                    if (resolveDashboardOpen(projectChoice, globalDefault)) {
                         openDashboardTab(context);
                     }
                 } catch (error) {
@@ -91,7 +100,7 @@ export function useWorkspaceEditorSession() {
         }
 
         return () => {};
-    }, [context, uiService, settingsService, sessionSettingsKey]);
+    }, [context, uiService, settingsService, sessionSettingsKey, dashboardOpenProjectKey]);
 
     useEffect(() => {
         if (!context || !uiService || !settingsService || !sessionSettingsKey) {

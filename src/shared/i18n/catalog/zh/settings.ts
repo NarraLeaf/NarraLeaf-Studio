@@ -79,8 +79,8 @@ export const settings = {
             description: "关闭工作区后回到首页，关闭此项则在没有其他窗口时直接退出 NarraLeaf Studio",
         },
         dashboardOnOpen: {
-            label: "进入工作区时显示项目仪表盘",
-            description: "每次进入工作区时，自动打开项目仪表盘标签页",
+            label: "默认显示项目仪表盘",
+            description: "尚未单独设置过的项目，进入工作区时是否自动打开仪表盘标签页。可在各项目的仪表盘底部单独调整",
         },
         clearAllStats: {
             label: "清空所有统计数据",

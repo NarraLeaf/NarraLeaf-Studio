@@ -152,6 +152,27 @@ export function computeWritingStreak(timeline: readonly ActivityPoint[]): number
     return streak;
 }
 
+/**
+ * Time-of-day greeting. The bands follow how people actually name the hours rather than splitting
+ * the day evenly — "late night" is its own thing, and nobody calls 11pm "evening".
+ */
+export function formatGreeting(translator: Translator, now: number): string {
+    const hour = new Date(now).getHours();
+    if (hour < 5) {
+        return translator.t("dashboard.greeting.lateNight");
+    }
+    if (hour < 11) {
+        return translator.t("dashboard.greeting.morning");
+    }
+    if (hour < 13) {
+        return translator.t("dashboard.greeting.noon");
+    }
+    if (hour < 18) {
+        return translator.t("dashboard.greeting.afternoon");
+    }
+    return translator.t("dashboard.greeting.evening");
+}
+
 export function formatActiveTime(translator: Translator, totalSeconds: number): string {
     const seconds = Math.max(0, Math.round(totalSeconds));
     const hours = Math.floor(seconds / 3600);
