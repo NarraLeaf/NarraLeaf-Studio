@@ -31,11 +31,13 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      # No --immutable: yarn.lock is deliberately not committed, so every run
-      # resolves fresh. The shell templates are pinned exactly in package.json,
-      # which is what the mobile tests depend on.
+      # --no-immutable is required, not a shortcut: yarn defaults to --immutable
+      # under CI, and this repo deliberately does not commit yarn.lock, so every
+      # run legitimately writes one. The dependency the mobile tests rely on
+      # (@narraleaf/studio-shell) is pinned exactly in package.json, so a fresh
+      # resolve still gets the same templates.
       - name: Install dependencies
-        run: yarn install
+        run: yarn install --no-immutable
 
       - name: Locate the Android build tools
         shell: bash
