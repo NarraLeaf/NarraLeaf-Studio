@@ -10,6 +10,7 @@ const CONTEXT: StoryCommandContext = {
     audio: [{ id: "aud-theme", name: "theme" }],
     videos: [],
     characters: [{ id: "chr-alice", name: "Alice" }],
+    tempSpeakers: [],
     scenes: [{ id: "scn-2", name: "Chapter 2" }],
     variables: [
         { name: "gold", ref: { scope: "scene", variableId: "var-gold" }, valueType: "number" },

@@ -33,6 +33,12 @@ export type StoryCommandContext = {
     audio: readonly StoryCommandNamedRef[];
     videos: readonly StoryCommandNamedRef[];
     characters: readonly StoryCommandNamedRef[];
+    /**
+     * Bare speaker names already used somewhere in this story. They back no character record, so they
+     * carry no id — but they are what the speaker picker offers between the real characters and the
+     * name being typed, and the command line must offer the same list.
+     */
+    tempSpeakers: readonly string[];
     scenes: readonly StoryCommandNamedRef[];
     variables: readonly StoryCommandVariableEntry[];
     /** Form / appearance names per character id — the candidates for `form=`, which only exist once the character resolves. */
@@ -40,7 +46,7 @@ export type StoryCommandContext = {
 };
 
 export const EMPTY_STORY_COMMAND_CONTEXT: StoryCommandContext = {
-    images: [], audio: [], videos: [], characters: [], scenes: [], variables: [], formsByCharacterId: {},
+    images: [], audio: [], videos: [], characters: [], tempSpeakers: [], scenes: [], variables: [], formsByCharacterId: {},
 };
 
 export type StoryCommandValue =
