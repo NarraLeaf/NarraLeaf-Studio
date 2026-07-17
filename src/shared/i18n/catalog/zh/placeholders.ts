@@ -19,6 +19,7 @@ export const placeholders = {
         assets: "素材",
         console: "控制台",
         storyMotion: "故事动效",
+        dashboard: "仪表盘",
         audioPreview: "音频预览",
         imagePreview: "图片预览",
     },

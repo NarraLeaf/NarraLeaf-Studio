@@ -1,4 +1,5 @@
 import { EditorTabComponentProps, FocusContext, PanelComponentProps } from "@/lib/workspace/services/ui/types";
+import type { WorkspaceContext } from "@/lib/workspace/services/services";
 import { Workspace } from "@/lib/workspace/workspace";
 import { ComponentType, ReactNode } from "react";
 import { TranslationKey } from "@shared/i18n";
@@ -21,7 +22,17 @@ export interface PanelDefinition<TPayload = any> {
     title: string;
     icon: ReactNode;
     position: PanelPosition;
-    component: ComponentType<PanelComponentProps<TPayload>>;
+    /** Omitted only by rail actions, which have no panel body to render. */
+    component?: ComponentType<PanelComponentProps<TPayload>>;
+    /**
+     * Turns the rail icon into a button: clicking runs this instead of opening a panel body, and
+     * the icon never enters the active state.
+     *
+     * This is how a rail entry can lead somewhere other than the sidebar — the dashboard uses it to
+     * open its editor tab. Entries that set this leave `component` undefined. Honored by the left
+     * rail only; the right and bottom docks have no button affordance.
+     */
+    railAction?: (workspace: WorkspaceContext) => void;
     defaultVisible?: boolean;
     order?: number; // For sorting panels
     badge?: string | number;

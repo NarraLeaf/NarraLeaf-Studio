@@ -132,6 +132,8 @@ enum Services {
     Assets = "assets",
     /** Per-project plugin dependency table: scan, persist, and resolve compatibility */
     ProjectDependency = "projectDependency",
+    /** Accumulated authoring activity (writing curve, active time, build history) */
+    ProjectStats = "projectStats",
     // Texture = "texture",
     // Audio = "audio",
     // Video = "video",
