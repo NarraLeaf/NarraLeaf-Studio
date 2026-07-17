@@ -92,7 +92,13 @@ export type BuildPreflightCode =
     | "plugins-invalid"
     | "encryption-key-unavailable"
     | "web-unprotected"
+    | "mobile-unprotected"
+    | "mobile-template-missing"
+    | "mobile-payload-too-large"
+    | "version-uncodable"
+    | "appid-android-adjusted"
     | "unsigned"
+    | "unsigned-android"
     | "cross-build-download"
     | "output-not-writable"
     | "output-not-empty";

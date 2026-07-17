@@ -6,11 +6,13 @@ import { ProjectConfig, ProjectIconConfig, ProjectIconPlatform, ProjectMetadata,
 import {
     BuildConfiguration,
     LocalizationConfiguration,
+    MobileConfiguration,
     NetworkConfiguration,
     ProjectAppConfiguration,
     SecurityConfiguration,
     normalizeBuildConfiguration,
     normalizeLocalizationConfiguration,
+    normalizeMobileConfiguration,
     normalizeNetworkConfiguration,
     normalizeSecurityConfiguration,
 } from "../../project/configuration";
@@ -24,6 +26,10 @@ export const PROJECT_ICON_PICKER_EXTENSIONS: Record<ProjectIconPlatform, string[
     macos: ["icns", "png", "jpg", "jpeg", "webp"],
     windows: ["ico", "png", "jpg", "jpeg", "webp"],
     linux: ["png", "svg", "jpg", "jpeg", "webp"],
+    // PNG only: the repack reads the source's pixels to scale it into the
+    // shell's launcher slots, and the native icon containers (.icns/.ico) and
+    // SVG are not readable that way.
+    android: ["png"],
 };
 
 const ICON_MEDIA_TYPES: Record<string, string> = {
@@ -198,6 +204,28 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 security,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Update the mobile shell settings. Read by the mobile repack, which writes
+     * them into the shell config the packaged game reads at startup.
+     */
+    public async updateMobileConfiguration(patch: Partial<MobileConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const mobile: MobileConfiguration = {
+                ...normalizeMobileConfiguration(config.app?.mobile),
+                ...patch,
+            };
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                mobile,
             };
             return {
                 ...config,

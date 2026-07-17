@@ -8,6 +8,7 @@ import {
     Loader2,
     Monitor,
     RefreshCw,
+    Smartphone,
     Upload,
 } from "lucide-react";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
@@ -35,12 +36,16 @@ const PLATFORM_OPTIONS: PlatformOption[] = [
     { id: "macos", label: "macOS", detail: ".icns, .png", icon: Laptop },
     { id: "windows", label: "Windows", detail: ".ico, .png", icon: Monitor },
     { id: "linux", label: "Linux", detail: ".png, .svg", icon: HardDrive },
+    // The repack scales one PNG into every launcher density, so a single
+    // square source is all the author provides.
+    { id: "android", label: "Android", detail: ".png", icon: Smartphone },
 ];
 
 const EMPTY_ICON_STATE: Record<ProjectIconPlatform, IconState> = {
     macos: { icon: null, preview: null, status: "idle", error: null },
     windows: { icon: null, preview: null, status: "idle", error: null },
     linux: { icon: null, preview: null, status: "idle", error: null },
+    android: { icon: null, preview: null, status: "idle", error: null },
 };
 
 const ICON_BUTTON_CLASS = controlButtonClass();
@@ -52,6 +57,7 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
         macos: null,
         windows: null,
         linux: null,
+        android: null,
     });
 
     const applyPreview = useCallback((platform: ProjectIconPlatform, preview: ProjectIconPreview | null) => {
@@ -294,6 +300,7 @@ function cloneIconStates(states: Record<ProjectIconPlatform, IconState>): Record
         macos: { ...states.macos },
         windows: { ...states.windows },
         linux: { ...states.linux },
+        android: { ...states.android },
     };
 }
 
