@@ -169,7 +169,7 @@ describe("hasCandidateSource", () => {
 
     it("counts a union enumerable when any branch is", () => {
         // `/wait` is `click` or a number: `click` is worth offering.
-        expect(hasCandidateSource(param("wait", "ms"))).toBe(true);
+        expect(hasCandidateSource(param("wait", "seconds"))).toBe(true);
     });
 });
 

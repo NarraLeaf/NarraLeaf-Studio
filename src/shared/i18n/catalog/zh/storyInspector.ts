@@ -24,8 +24,8 @@ export const storyInspector = {
         scope: "作用域",
         variable: "变量",
         mode: "模式",
-        durationMs: "时长（毫秒）",
-        holdMs: "保持（毫秒）",
+        duration: "时长（秒）",
+        hold: "保持（秒）",
         easing: "缓动",
         color: "颜色",
         opacity: "不透明度",
@@ -202,7 +202,7 @@ export const storyInspector = {
     },
     dialogue: {
         pauseAfter: "本行后暂停",
-        pauseMs: "暂停毫秒（可选）",
+        pauseSeconds: "暂停秒数（可选）",
     },
     choice: {
         prompt: "提示语",
@@ -226,7 +226,7 @@ export const storyInspector = {
         soundName: "音效名称",
         bgmAsset: "背景音乐资源",
         soundAsset: "音效资源",
-        fadeMs: "淡入淡出（毫秒）",
+        fade: "淡入淡出（秒）",
         volume: "音量",
         rate: "倍速",
         loop: "循环",

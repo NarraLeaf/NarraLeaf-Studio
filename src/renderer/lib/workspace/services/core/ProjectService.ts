@@ -30,6 +30,7 @@ export const PROJECT_ICON_PICKER_EXTENSIONS: Record<ProjectIconPlatform, string[
     // shell's launcher slots, and the native icon containers (.icns/.ico) and
     // SVG are not readable that way.
     android: ["png"],
+    ios: ["png"],
 };
 
 const ICON_MEDIA_TYPES: Record<string, string> = {

@@ -170,7 +170,7 @@ export const STORY_COMMANDS: readonly StoryCommandDef[] = [
         token: "wait",
         commandId: "waitDuration",
         params: [
-            { name: "ms", type: [{ kind: "keyword", value: "click" }, { kind: "number", min: 0 }], positional: true },
+            { name: "seconds", type: [{ kind: "keyword", value: "click" }, { kind: "number", min: 0 }], positional: true },
         ],
     },
     {

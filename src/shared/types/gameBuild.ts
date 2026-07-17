@@ -97,8 +97,10 @@ export type BuildPreflightCode =
     | "mobile-payload-too-large"
     | "version-uncodable"
     | "appid-android-adjusted"
+    | "bundleid-ios-adjusted"
     | "unsigned"
     | "unsigned-android"
+    | "unsigned-ios"
     | "cross-build-download"
     | "output-not-writable"
     | "output-not-empty";

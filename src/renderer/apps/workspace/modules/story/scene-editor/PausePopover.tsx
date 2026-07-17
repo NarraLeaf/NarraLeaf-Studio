@@ -2,12 +2,15 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
+import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 
 const MODE_BTN = "h-7 px-2.5 text-xs transition-colors";
 
 /**
  * Small config popover for an inline Pause, mirroring the NLR Pause interface: either
  * "click to proceed" (`new Pause()`) or "wait for" a fixed duration (`Pause.wait(ms)`).
+ * `value` stays in milliseconds to match the stored run; the author reads and types seconds.
  */
 export function PausePopover(props: {
     anchor: { top: number; left: number; bottom: number };
@@ -74,15 +77,18 @@ export function PausePopover(props: {
                 </div>
                 {isWait ? (
                     <div className="flex items-center gap-1.5">
-                        <input
-                            type="number"
-                            min={0}
-                            value={ms}
+                        <NumericDraftEnhancedInput
+                            committedDisplay={formatStorySecondsValue(ms)}
+                            onFiniteNumber={seconds => props.onChange(Math.max(0, storySecondsToMs(seconds)))}
+                            onEmpty={() => props.onChange(0)}
+                            type="text"
+                            inputMode="decimal"
                             autoFocus
-                            className="h-8 w-24 rounded-md border border-edge bg-surface-raised px-2 text-sm text-fg outline-none focus:border-primary/50"
-                            onChange={event => props.onChange(Math.max(0, Math.round(Number(event.target.value) || 0)))}
+                            popoverWhenNarrow={false}
+                            className="w-24"
+                            inputClassName="h-8 rounded-md border border-edge bg-surface-raised px-2 text-sm text-fg outline-none focus:border-primary/50"
                         />
-                        <span className="text-xs text-fg-muted">{t("story.pause.ms")}</span>
+                        <span className="text-xs text-fg-muted">{t("story.pause.seconds")}</span>
                     </div>
                 ) : (
                     <div className="text-2xs text-fg-subtle">{t("story.pause.clickHint")}</div>

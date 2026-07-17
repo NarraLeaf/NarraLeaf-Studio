@@ -4,6 +4,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { Select } from "@/lib/components/elements/Select";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
+import { formatStorySecondsValue, storyMsToSeconds, storySecondsToMs } from "@shared/utils/storyTime";
 import { InlineMenuTriggerButton } from "@/lib/ui-editor/widget-modules/shared/chrome/InlineMenuTriggerButton";
 import { Check, Settings2, Trash2 } from "lucide-react";
 import type {
@@ -40,6 +41,13 @@ const FIELD_POPOVER_SPACING = 8;
 const FIELD_POPOVER_MARGIN = 8;
 /** Above motion field popover (`z-[80]`) so narrow-column `EnhancedInput` portals stack correctly. */
 const MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX = 90;
+const MOTION_MAX_DURATION_MS = 5000;
+const MOTION_MAX_DURATION_SECONDS = storyMsToSeconds(MOTION_MAX_DURATION_MS);
+
+/** Author-entered seconds → the clamped millisecond value a transition stores. */
+function toTransitionMs(seconds: number): number {
+    return Math.max(0, Math.min(MOTION_MAX_DURATION_MS, storySecondsToMs(seconds)));
+}
 
 /** Borderless icon-only trigger; active = field has a transition configured. */
 function motionIconTriggerClass(active: boolean): string {
@@ -273,20 +281,20 @@ export function AppearanceFieldMotionButton({
                                           </label>
                                           <NumericDraftEnhancedInput
                                               popoverZIndex={MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX}
-                                              committedDisplay={String(transition.durationMs)}
+                                              committedDisplay={formatStorySecondsValue(transition.durationMs)}
                                               draftResetKey={`${draftResetKey}-${groupKey}-duration`}
-                                              onFiniteNumber={value =>
+                                              onFiniteNumber={seconds =>
                                                   commitTransition(
                                                       patchTransition(transition, {
-                                                          durationMs: Math.max(0, Math.min(5000, Math.round(value))),
+                                                          durationMs: toTransitionMs(seconds),
                                                       })
                                                   )
                                               }
-                                              inputMode="numeric"
+                                              inputMode="decimal"
                                               type="number"
                                               min={0}
-                                              max={5000}
-                                              unit="ms"
+                                              max={MOTION_MAX_DURATION_SECONDS}
+                                              unit="s"
                                               className="w-full min-w-0"
                                           />
                                       </div>
@@ -296,20 +304,20 @@ export function AppearanceFieldMotionButton({
                                           </label>
                                           <NumericDraftEnhancedInput
                                               popoverZIndex={MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX}
-                                              committedDisplay={String(transition.delayMs ?? 0)}
+                                              committedDisplay={formatStorySecondsValue(transition.delayMs ?? 0)}
                                               draftResetKey={`${draftResetKey}-${groupKey}-delay`}
-                                              onFiniteNumber={value =>
+                                              onFiniteNumber={seconds =>
                                                   commitTransition(
                                                       patchTransition(transition, {
-                                                          delayMs: Math.max(0, Math.min(5000, Math.round(value))),
+                                                          delayMs: toTransitionMs(seconds),
                                                       })
                                                   )
                                               }
-                                              inputMode="numeric"
+                                              inputMode="decimal"
                                               type="number"
                                               min={0}
-                                              max={5000}
-                                              unit="ms"
+                                              max={MOTION_MAX_DURATION_SECONDS}
+                                              unit="s"
                                               className="w-full min-w-0"
                                           />
                                       </div>
@@ -413,20 +421,20 @@ export function AppearanceFieldMotionButton({
                                           </label>
                                           <NumericDraftEnhancedInput
                                               popoverZIndex={MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX}
-                                              committedDisplay={String(transition.delayMs ?? 0)}
+                                              committedDisplay={formatStorySecondsValue(transition.delayMs ?? 0)}
                                               draftResetKey={`${draftResetKey}-${groupKey}-spring-delay`}
-                                              onFiniteNumber={value =>
+                                              onFiniteNumber={seconds =>
                                                   commitTransition(
                                                       patchTransition(transition, {
-                                                          delayMs: Math.max(0, Math.min(5000, Math.round(value))),
+                                                          delayMs: toTransitionMs(seconds),
                                                       })
                                                   )
                                               }
-                                              inputMode="numeric"
+                                              inputMode="decimal"
                                               type="number"
                                               min={0}
-                                              max={5000}
-                                              unit="ms"
+                                              max={MOTION_MAX_DURATION_SECONDS}
+                                              unit="s"
                                               className="w-full min-w-0"
                                           />
                                       </div>

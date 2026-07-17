@@ -1,4 +1,5 @@
 import type { StoryInterpolationRef, StoryRichRun, StoryTextMarks, StoryTextSegment } from "@shared/types/story";
+import { formatStorySecondsLabel, storyMsToSeconds } from "@shared/utils/storyTime";
 
 /** Pause chip class (a literal so Tailwind's content scan can see it). */
 const PAUSE_CHIP_CLASS = "story-rt-pause mx-0.5 inline-flex select-none items-center rounded bg-primary/20 px-1 py-0.5 align-middle text-2xs font-medium text-primary";
@@ -15,7 +16,7 @@ export type ResolveInterpolationLabel = (interp: StoryInterpolationRef) => strin
 /** Chip copy. Callers pass translated strings so this layer never hardcodes user-facing text. */
 export type RichChipTitles = {
     pauseClick: string;
-    pauseMs: (ms: number) => string;
+    pauseSeconds: (seconds: number) => string;
     insertedValue: (label: string) => string;
     valueFallback: string;
 };
@@ -223,8 +224,8 @@ function createPauseChip(pause: number | true, options: RichRenderOptions): HTML
     if (options.interactive) {
         span.setAttribute("role", "button");
     }
-    span.title = pause === true ? options.titles.pauseClick : options.titles.pauseMs(Math.round(pause));
-    const label = pause === true ? "" : `<span class="ml-0.5">${Math.round(pause)}ms</span>`;
+    span.title = pause === true ? options.titles.pauseClick : options.titles.pauseSeconds(storyMsToSeconds(pause));
+    const label = pause === true ? "" : `<span class="ml-0.5">${formatStorySecondsLabel(pause)}</span>`;
     // PAUSE_ICON_SVG is a trusted static string; the label only interpolates a rounded number.
     span.innerHTML = `${PAUSE_ICON_SVG}${label}`;
     return span;

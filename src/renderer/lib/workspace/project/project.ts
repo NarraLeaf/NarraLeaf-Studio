@@ -8,11 +8,10 @@ export type Resolution = {
 };
 
 /**
- * Platforms that take their own app icon. Android's is scaled into the shell
- * template's icon slots by the mobile repack; iOS joins once its build target
- * is offered.
+ * Platforms that take their own app icon. The mobile ones are scaled into their
+ * shell template's icon slots by the repack.
  */
-export type ProjectIconPlatform = "macos" | "windows" | "linux" | "android";
+export type ProjectIconPlatform = "macos" | "windows" | "linux" | "android" | "ios";
 
 export interface ProjectIconConfig {
     path: string;
