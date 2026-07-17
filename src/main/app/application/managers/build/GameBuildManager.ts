@@ -215,18 +215,28 @@ export class GameBuildManager {
             readProjectIdentifier(projectConfig),
             projectConfig?.name?.trim() || path.basename(normalizedProjectPath),
         );
+        // Both mobile platforms normalize the app id, by opposite rules — the
+        // shipped id can differ from the one shown everywhere else, so say so
+        // rather than let them find out from the installed app's details.
         if (mobileTargets.some(target => target.platform === "android")) {
             const applicationId = normalizeAndroidPackageName(appId);
             if (applicationId !== appId) {
-                // Android package names are stricter than reverse-domain app
-                // ids, so the shipped id can differ from the one shown
-                // everywhere else. Say so rather than let them find out by
-                // reading the installed app's details.
                 findings.push({
                     code: "appid-android-adjusted",
                     severity: "warning",
                     section: "identity",
                     detail: { appId, applicationId },
+                });
+            }
+        }
+        if (mobileTargets.some(target => target.platform === "ios")) {
+            const bundleId = normalizeIosBundleId(appId);
+            if (bundleId !== appId) {
+                findings.push({
+                    code: "bundleid-ios-adjusted",
+                    severity: "warning",
+                    section: "identity",
+                    detail: { appId, bundleId },
                 });
             }
         }
@@ -610,6 +620,12 @@ export class GameBuildManager {
         }
         if (mobileTargets.some(target => target.platform === "android")) {
             findings.push({ code: "unsigned-android", severity: "warning", section: "content" });
+        }
+        if (mobileTargets.some(target => target.platform === "ios")) {
+            // Not the same caveat as Android's: an .ipa without a signature
+            // cannot be installed at all, so this is a prerequisite the author
+            // must act on, not a limitation they can ignore.
+            findings.push({ code: "unsigned-ios", severity: "warning", section: "content" });
         }
         return findings;
     }

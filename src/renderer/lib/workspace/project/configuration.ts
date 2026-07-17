@@ -150,8 +150,8 @@ export function normalizeSecurityConfiguration(value: unknown): SecurityConfigur
     };
 }
 
-/** Platforms a stored selection may name; see DIALOG_PLATFORMS on iOS's absence. */
-const ALL_BUILD_PLATFORMS: GameBuildPlatform[] = ["windows", "macos", "linux", "web", "android"];
+/** Platforms a stored selection may name. */
+const ALL_BUILD_PLATFORMS: GameBuildPlatform[] = ["windows", "macos", "linux", "web", "android", "ios"];
 
 /** Keep only formats electron-builder supports for the given platform. */
 function sanitizeFormats(platform: GameBuildPlatform, value: unknown): GameBuildFormat[] {

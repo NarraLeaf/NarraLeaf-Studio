@@ -1693,11 +1693,13 @@ function BlockPreview(props: {
                     style={textStyle}
                 />
                 <span
-                    className={["min-w-0 flex-1 whitespace-pre-wrap break-words", hasValue ? "text-fg" : "italic text-fg-subtle"].join(" ")}
+                    className={["min-w-0 flex-1 whitespace-pre-wrap break-words", hasValue ? "nl-selectable-text text-fg" : "italic text-fg-subtle"].join(" ")}
                     style={textStyle}
                     // Marked only when it actually holds rich content: the controller reads the
                     // author's selection out of this element (its unit structure matches the
                     // editor's) to carry it into edit mode. The placeholder is not content.
+                    // `nl-selectable-text` is what makes that selection possible at all — the app
+                    // sets `user-select: none` on everything by default.
                     data-story-row-text={hasValue ? "" : undefined}
                 >
                     {hasValue && text ? <RichTextView segment={text} document={props.document} sceneId={props.scene.id} /> : t("story.rows.doubleClickDialogue")}
@@ -1710,7 +1712,11 @@ function BlockPreview(props: {
         const note = block.kind === "note";
         return (
             <span
-                className={["min-w-0 flex-1 whitespace-pre-wrap break-words", note ? "italic text-fg-muted" : hasValue ? "text-fg" : "italic text-fg-subtle"].join(" ")}
+                className={[
+                    "min-w-0 flex-1 whitespace-pre-wrap break-words",
+                    hasValue ? "nl-selectable-text" : "",
+                    note ? "italic text-fg-muted" : hasValue ? "text-fg" : "italic text-fg-subtle",
+                ].filter(Boolean).join(" ")}
                 style={textStyle}
                 data-story-row-text={hasValue ? "" : undefined}
             >
