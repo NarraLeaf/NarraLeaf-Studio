@@ -53,6 +53,13 @@ export const project = {
         encryptAssetsTitle: "加密资源",
         encryptAssetsDescription: "在打包及预览版本中加密资源、插件代码与剧本数据，让解包变得困难，但不影响开发模式",
         encryptAssetsWebHint: "对 Web 导出不适用：Web 构建始终不加密资源",
+        orientationTitle: "移动端方向",
+        orientationDescription: "移动端构建启动时锁定的屏幕方向",
+        orientation: {
+            landscape: "横屏",
+            portrait: "竖屏",
+            auto: "跟随设备",
+        },
     },
     dependencies: {
         rescan: "重新扫描",

@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import type { Dirent } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import { shell, utilityProcess, type UtilityProcess } from "electron";
@@ -43,6 +44,7 @@ import {
 import { readIconSlotSizes, writeScaledIcons } from "./mobileIcons";
 import { loadMobileShellTemplateForApp } from "./mobileShellTemplate";
 import { resolveMobileSigningIdentity } from "./mobileSigningIdentity";
+import { payloadExceedsLimit } from "../../../../buildWorker/mobile/runMobileRepack";
 import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManifest";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
@@ -177,12 +179,23 @@ export class GameBuildManager {
             });
         }
 
+        const mobileTargets = targets.filter(isMobileTarget);
         const version = readProjectVersion(projectConfig);
         if (!version) {
             findings.push({ code: "version-missing", severity: "warning", section: "identity" });
         } else if (!isValidProjectVersion(version)) {
             findings.push({
                 code: "version-invalid",
+                severity: "error",
+                section: "identity",
+                detail: { version },
+            });
+        } else if (mobileTargets.some(target => target.platform === "android")
+            && deriveAndroidVersionCode(version) === null) {
+            // A version semver accepts but Android cannot encode blocks only
+            // the Android target — the same project still builds elsewhere.
+            findings.push({
+                code: "version-uncodable",
                 severity: "error",
                 section: "identity",
                 detail: { version },
@@ -198,8 +211,27 @@ export class GameBuildManager {
                 },
             });
         }
+        const appId = deriveGameAppId(
+            readProjectIdentifier(projectConfig),
+            projectConfig?.name?.trim() || path.basename(normalizedProjectPath),
+        );
+        if (mobileTargets.some(target => target.platform === "android")) {
+            const applicationId = normalizeAndroidPackageName(appId);
+            if (applicationId !== appId) {
+                // Android package names are stricter than reverse-domain app
+                // ids, so the shipped id can differ from the one shown
+                // everywhere else. Say so rather than let them find out by
+                // reading the installed app's details.
+                findings.push({
+                    code: "appid-android-adjusted",
+                    severity: "warning",
+                    section: "identity",
+                    detail: { appId, applicationId },
+                });
+            }
+        }
         // Only icons for platforms actually being built are worth reporting.
-        for (const target of desktopTargets) {
+        for (const target of [...desktopTargets, ...mobileTargets]) {
             const icon = await checkIcon(normalizedProjectPath, projectConfig, target.platform);
             if (icon.status === "ok") {
                 continue;
@@ -229,6 +261,12 @@ export class GameBuildManager {
         }
         if (targets.some(target => target.platform === "web") && this.encryptAssetsEnabled(projectConfig)) {
             findings.push({ code: "web-unprotected", severity: "warning", section: "content" });
+        }
+        if (mobileTargets.length > 0) {
+            if (this.encryptAssetsEnabled(projectConfig)) {
+                findings.push({ code: "mobile-unprotected", severity: "warning", section: "content" });
+            }
+            findings.push(...await this.mobilePreflight(normalizedProjectPath, mobileTargets));
         }
         if (desktopTargets.length > 0) {
             findings.push({ code: "unsigned", severity: "warning", section: "content" });
@@ -530,6 +568,50 @@ export class GameBuildManager {
                 : `the ${platform} icon is invalid or smaller than ${MIN_ICON_SIZE}×${MIN_ICON_SIZE}; using the default Electron icon`,
         });
         return {};
+    }
+
+    /**
+     * The mobile-only preflight checks: that the templates this Studio ships
+     * are actually there, that the payload can fit, and the standing caveats
+     * of a debug-signed sideload.
+     */
+    private async mobilePreflight(
+        projectPath: string,
+        mobileTargets: { platform: GameBuildMobilePlatform }[],
+    ): Promise<BuildPreflightFinding[]> {
+        const findings: BuildPreflightFinding[] = [];
+        try {
+            await loadMobileShellTemplateForApp(this.app);
+        } catch (error) {
+            // A broken install or a Studio/template mismatch: nothing else about
+            // a mobile build matters until it is fixed, so report the reason
+            // verbatim rather than a generic "cannot build".
+            findings.push({
+                code: "mobile-template-missing",
+                severity: "error",
+                section: "content",
+                detail: { reason: error instanceof Error ? error.message : String(error) },
+            });
+        }
+        // The compiled site always contains at least the project's assets, so
+        // assets alone exceeding the ceiling means the package certainly will.
+        // Inferring the other way is not sound (compression, protection and the
+        // runtime all move the number), so a payload under the bar says nothing
+        // and reports nothing — the worker still enforces the real limit on the
+        // real bytes.
+        const assetBytes = await directorySize(path.join(projectPath, "assets"));
+        if (payloadExceedsLimit(assetBytes)) {
+            findings.push({
+                code: "mobile-payload-too-large",
+                severity: "error",
+                section: "content",
+                detail: { size: `${(assetBytes / 1024 ** 3).toFixed(2)} GiB` },
+            });
+        }
+        if (mobileTargets.some(target => target.platform === "android")) {
+            findings.push({ code: "unsigned-android", severity: "warning", section: "content" });
+        }
+        return findings;
     }
 
     /**
@@ -862,6 +944,26 @@ export class GameBuildManager {
     private projectKey(projectPath: string): string {
         return path.resolve(projectPath);
     }
+}
+
+/** Total bytes of a directory tree; a missing directory is simply empty. */
+async function directorySize(dir: string): Promise<number> {
+    let total = 0;
+    let entries: Dirent[];
+    try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+        return 0;
+    }
+    for (const entry of entries) {
+        const entryPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+            total += await directorySize(entryPath);
+        } else if (entry.isFile()) {
+            total += await fs.stat(entryPath).then(stat => stat.size).catch(() => 0);
+        }
+    }
+    return total;
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
