@@ -497,6 +497,25 @@ export function getSelectionUnitRange(root: HTMLElement): { start: number; end: 
     return { start: Math.min(start, end), end: Math.max(start, end) };
 }
 
+/**
+ * The unit offset nearest a viewport point — how a goal column lands: the caret keeps its x across
+ * vertical moves, and the row it arrives in has to turn that x back into an offset in its own text.
+ *
+ * Chromium-only (`caretRangeFromPoint`); returns null where it is unavailable or the point falls
+ * outside `root`, leaving the caller to fall back to a line edge.
+ */
+export function unitOffsetFromPoint(root: HTMLElement, x: number, y: number): number | null {
+    const doc = globalThis.document as Document & { caretRangeFromPoint?(x: number, y: number): Range | null };
+    const range = doc.caretRangeFromPoint?.(x, y) ?? null;
+    if (!range || !root.contains(range.startContainer)) {
+        return null;
+    }
+    const measured = doc.createRange();
+    measured.setStart(root, 0);
+    measured.setEnd(range.startContainer, range.startOffset);
+    return countUnits(measured.cloneContents());
+}
+
 function pointAt(root: HTMLElement, target: number): { node: Node; offset: number } {
     let remaining = target;
     let result: { node: Node; offset: number } | null = null;
