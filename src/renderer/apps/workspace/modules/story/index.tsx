@@ -8,6 +8,7 @@ export const storyPanelModule: PanelModule = {
     metadata: {
         id: "narraleaf-studio:story",
         // Resolved lazily on read (module registration runs after i18n init).
+        titleKey: "placeholders.moduleTitles.story",
         get title() {
             return translate("placeholders.moduleTitles.story");
         },

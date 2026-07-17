@@ -11,6 +11,7 @@ export const charactersModule: PanelModule = {
     metadata: {
         id: CHARACTERS_PANEL_ID,
         // Resolved lazily on read (module registration runs after i18n init).
+        titleKey: "placeholders.moduleTitles.characters",
         get title() {
             return translate("placeholders.moduleTitles.characters");
         },
