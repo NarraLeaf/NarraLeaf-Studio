@@ -18,6 +18,7 @@ import {
     ZOOM_PERCENT_MIN,
 } from "@shared/constants/zoom";
 import { DEFAULT_LOCALE, LOCALE_META, SUPPORTED_LOCALES } from "@shared/i18n";
+import { clearAllProjectStats } from "@/lib/stats/clearAllProjectStats";
 
 /**
  * Category metadata used by the shared settings UI.
@@ -205,6 +206,39 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Closing a workspace goes back to the home screen. Turn this off to quit NarraLeaf Studio instead when no other window is open.",
         descriptionKey: "settings.items.returnToLauncherOnClose.description",
         defaultValue: true,
+    },
+    {
+        // Read by `useWorkspaceEditorSession` during session restore: when on, the dashboard tab
+        // is opened alongside whatever tabs the previous session left behind. The dashboard
+        // mirrors this same key in its own footer toggle.
+        key: "dashboard.openOnWorkspaceOpen",
+        category: "workspace",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Show the project dashboard on open",
+        labelKey: "settings.items.dashboardOnOpen.label",
+        description: "Open the project dashboard as a tab every time you enter a workspace.",
+        descriptionKey: "settings.items.dashboardOnOpen.description",
+        defaultValue: true,
+    },
+    {
+        // Handled entirely by `clearAllProjectStats`; nothing is stored under this key — it is
+        // only the identity of the button. Scoped to every project because the Settings window is
+        // its own window and has no current project; the per-project reset lives on the dashboard.
+        key: "dashboard.clearAllStats",
+        category: "workspace",
+        scope: SettingScope.Global,
+        type: SettingValueType.Action,
+        label: "Clear all statistics data",
+        labelKey: "settings.items.clearAllStats.label",
+        description: "Erase the recorded writing history, active time, and build history of every project. Counts derived from your projects are unaffected.",
+        descriptionKey: "settings.items.clearAllStats.description",
+        defaultValue: null,
+        actionLabel: "Clear",
+        actionLabelKey: "settings.items.clearAllStats.action",
+        confirmLabelKey: "settings.items.clearAllStats.confirm",
+        danger: true,
+        onInvoke: clearAllProjectStats,
     },
     {
         // Read by the main-process GameBuildManager (readElectronMirror) and
