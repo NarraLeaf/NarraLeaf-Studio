@@ -6,6 +6,8 @@ import { nativeImage } from "electron";
 import { app, BrowserWindow, ipcMain, Menu, protocol, session } from "electron/main";
 import { WebSocketServer } from "ws";
 import {
+    GAME_RUNTIME_CLOSE_DECISION_CHANNEL,
+    GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL,
     GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL,
     GAME_RUNTIME_PROTOCOL,
     type GameRuntimePackV1,
@@ -58,11 +60,13 @@ const useSiblingUserData = shellMode !== "production" && fsSync.existsSync(previ
 const userDataDir = useSiblingUserData ? previewUserDataDir : app.getPath("userData");
 
 /**
- * Build-time placeholder. The compiler substitutes the real value when asset
- * protection is on and leaves it untouched (and unused) otherwise. Must match
- * RUNTIME_KEY_PLACEHOLDER in @narraleaf/encryption.
+ * Build-time placeholders. The compiler substitutes real opaque values when
+ * asset protection is on and leaves them untouched (and unused) otherwise. Both
+ * are required to open a protected store; their meaning is opaque here. Must
+ * match the placeholders exported by @narraleaf/encryption.
  */
 const PACK_KEY = "__NLS_ENC_KEY_PLACEHOLDER__";
+const PACK_AUX = "__NLS_ENC_AUX_PLACEHOLDER__";
 
 /** Node inspector / Chromium remote-debugging switches refused in production. */
 const DEBUG_SWITCHES = [
@@ -81,6 +85,22 @@ let resources: RuntimeResources | null = null;
 let saveStore: RuntimeSaveStore | null = null;
 let persistenceStore: RuntimePersistenceStore | null = null;
 let runtimeStorageFlushedForQuit = false;
+/**
+ * Set once the app has started quitting (Quit Application node, window-all-closed, preview
+ * shutdown). The window-close guard stands aside while this is true, so a programmatic quit never
+ * fires the blueprint `On Window Close Requested` event — that is reserved for the user closing the
+ * window.
+ */
+let isQuitting = false;
+/** Pending window-close decisions, keyed by requestId, resolved by the renderer's reply. */
+const pendingCloseDecisions = new Map<number, (allow: boolean) => void>();
+let closeDecisionSeq = 0;
+/**
+ * Upper bound on how long the close is held open while the renderer's blueprints decide. A
+ * synchronous decision returns in milliseconds; the timeout only bounds a hung/crashed renderer,
+ * after which the window closes (the default is to close unless a blueprint cancels it).
+ */
+const CLOSE_DECISION_TIMEOUT_MS = 60 * 1000;
 
 /**
  * The active resource backend. Established once at startup; every packaged read
@@ -134,7 +154,7 @@ void app.whenReady().then(async () => {
     if (startupBlocked) {
         return;
     }
-    resources = await createRuntimeResources(appDir, PACK_KEY);
+    resources = await createRuntimeResources(appDir, PACK_KEY, PACK_AUX);
     const pack = await readPack();
     if (pack.mode === "production" && hasDebuggingSwitch()) {
         // Refuse to run a production game under an attached debugger/CDP.
@@ -159,6 +179,9 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", event => {
+    // From here on every window close is part of the quit, not a user close, so the close guard
+    // must stand aside (it also lets the quit-and-flush dance below re-close without re-prompting).
+    isQuitting = true;
     // Save/persistence writes are debounced; hold the quit open until every
     // queued write has reached disk, then quit again.
     if (!runtimeStorageFlushedForQuit && (saveStore?.hasPendingWrites() || persistenceStore?.hasPendingWrites())) {
@@ -233,6 +256,32 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             win.show();
         }
     });
+    // Give the game's blueprints a chance to intercept a user-initiated close (native close box, OS
+    // shortcut) via the `On Window Close Requested` head: hold the close, ask the renderer, and
+    // re-issue it once nothing cancelled it. Every app.quit() path sets isQuitting first and so
+    // bypasses this, meaning the Quit Application node never fires the blueprint close event.
+    let closeApproved = false;
+    let closeDecisionPending = false;
+    win.on("close", event => {
+        if (isQuitting || closeApproved || win.isDestroyed()) {
+            return;
+        }
+        event.preventDefault();
+        if (closeDecisionPending) {
+            return;
+        }
+        closeDecisionPending = true;
+        void requestRendererCloseDecision(win).then(allow => {
+            closeDecisionPending = false;
+            if (win.isDestroyed()) {
+                return;
+            }
+            if (allow) {
+                closeApproved = true;
+                win.close();
+            }
+        });
+    });
     win.on("closed", () => {
         if (mainWindow === win) {
             mainWindow = null;
@@ -260,6 +309,33 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         });
     }
     return win;
+}
+
+/**
+ * Ask the renderer whether a user-initiated close may proceed, resolving to the blueprint's
+ * decision. Each request carries a unique id the renderer echoes back; a hung/crashed renderer
+ * falls back to closing so the window can never get trapped open.
+ */
+function requestRendererCloseDecision(win: BrowserWindow): Promise<boolean> {
+    if (win.isDestroyed()) {
+        return Promise.resolve(true);
+    }
+    const requestId = ++closeDecisionSeq;
+    return new Promise<boolean>(resolve => {
+        let settled = false;
+        const finish = (allow: boolean) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            pendingCloseDecisions.delete(requestId);
+            clearTimeout(timer);
+            resolve(allow);
+        };
+        const timer = setTimeout(() => finish(true), CLOSE_DECISION_TIMEOUT_MS);
+        pendingCloseDecisions.set(requestId, finish);
+        win.webContents.send(GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL, { requestId });
+    });
 }
 
 /**
@@ -534,7 +610,17 @@ function registerRuntimeIpc(): void {
 
     ipcMain.handle("runtime:read-pack", () => readPack());
     ipcMain.handle("runtime:close", () => {
+        // The Quit Application node's graceful terminate. Mark the quit before it reaches the
+        // window so the close guard stands aside and the blueprint close event does not fire again.
+        isQuitting = true;
         app.quit();
+    });
+    ipcMain.on(GAME_RUNTIME_CLOSE_DECISION_CHANNEL, (_event, payload: { requestId?: number; allow?: boolean }) => {
+        const requestId = payload?.requestId;
+        if (typeof requestId !== "number") {
+            return;
+        }
+        pendingCloseDecisions.get(requestId)?.(payload?.allow !== false);
     });
     ipcMain.handle("runtime:fullscreen:get", () => mainWindow?.isFullScreen() === true);
     ipcMain.handle("runtime:fullscreen:set", (_event, fullscreen: boolean) => {

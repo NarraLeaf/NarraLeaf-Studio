@@ -16,6 +16,7 @@ export const placeholders = {
         characters: "角色",
         story: "故事",
         localization: "本地化",
+        voice: "配音",
         assets: "素材",
         console: "控制台",
         storyMotion: "故事动效",

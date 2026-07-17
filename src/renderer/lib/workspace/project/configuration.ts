@@ -1,4 +1,5 @@
 import type { LocalizationConfiguration } from "@shared/types/localization";
+import type { VoiceConfiguration } from "@shared/types/voice";
 import {
     GAME_BUILD_FORMATS_BY_PLATFORM,
     isDesktopBuildPlatform,
@@ -15,6 +16,11 @@ export {
     normalizeLocalizationConfiguration,
 } from "@shared/types/localization";
 export type { LocalizationConfiguration, LocalizationLocaleEntry } from "@shared/types/localization";
+export {
+    DEFAULT_VOICE_CONFIGURATION,
+    normalizeVoiceConfiguration,
+} from "@shared/types/voice";
+export type { VoiceConfiguration, VoiceLocaleEntry } from "@shared/types/voice";
 
 // Declared as object-literal `type` aliases (not interfaces) so they carry an
 // implicit string index signature and remain assignable to the loose
@@ -90,6 +96,8 @@ export type ProjectAppConfiguration = {
     network: NetworkConfiguration;
     /** Game localization setup (see @shared/types/localization); absent until configured. */
     localization?: LocalizationConfiguration;
+    /** Game voice-over setup (see @shared/types/voice); absent until configured. */
+    voice?: VoiceConfiguration;
     /** Asset-protection policy applied at pack time; absent until configured. */
     security?: SecurityConfiguration;
     /** Mobile shell behaviour; absent until configured (see the defaults). */

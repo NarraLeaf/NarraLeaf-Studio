@@ -157,7 +157,9 @@ function acceptsType(type: StoryCommandParamType, value: string): boolean {
         case "scene":
         case "variable":
         case "displayable":
+        case "stageObject":
         case "literal":
+        case "variableValue":
         case "text":
             return true;
     }

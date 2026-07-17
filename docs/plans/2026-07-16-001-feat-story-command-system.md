@@ -328,6 +328,24 @@ type StoryCandidateProvider = (query: string, ctx: StoryCandidateContext) => Sto
 
 已验证：Escape 梯对 `/bg Na` 与普通旁白都只丢弃、不产生行；而**点击别处仍然保留散文**（blur 提交的正当用途没被误伤）。
 
+### 7.5 P1 铺满：从作者视角逐条设计，而非填表（已落地）
+
+在 P0 的十条之上补齐调色板其余命令。**第一版是"填表"**（对象名走自由 `text`，`/imgshow` 只是个盲输入框），被否掉了 —— 用户的要求是"image show 要像 set background 一样"：引用要是**选择器**，不是记名字。于是加了一层真正的基建。
+
+新增命令（token）：`expr`（角色表情）、`menu`（选项）、`repeat`、`nvl`；图像 `image`/`imgsrc`/`imgshow`/`imghide`；文本 `text`/`settext`/`txtshow`/`txthide`/`font`；`layer`；视频 `video`/`vidshow`/`vidhide`/`vidplay`；屏幕效果 `blink`/`vignette`；声音控制 `stop`/`pause`/`resume`/`vol`/`rate`/`mute`。测试：`storyCommandApply` / `storyCommandCursor` 扩测 + 新增 `storyCommandContext.test.ts`，全绿。
+
+结论：
+
+20. **新增 `{ kind: "stageObject"; objectKind }` 参数类型 —— 这是把"引用"从盲输入变成选择器的关键。** `create` 的名字是**发明**的（自由 `text`，无候选）；`show`/`hide`/`set` 的名字是**已在台上**的对象，候选来自 `listSceneDisplayableTargets` —— **与 inspector 的目标选择器同一个 collector**，所以命令行永远不会提供 inspector 提供不了的名字（§3.3 的单一来源，落到了实处）。它与 `displayable` 类型的区别在**payload 存什么**：这些命令按 `objectName` 字符串寻址，不需要解析成 `DisplayableTargetRef`，所以只要名字列表、不要场景图绑定。value 解析成 `text`，`applyArgs` 因此一行未改。
+21. **`stageObject` 沿用说话人的"永不空列表"技巧。** 未匹配的名字是合法引用（对象可能是动态创建或跨场景的），把正在打的名字也附回候选 —— 列表永不为空，Tab/Enter 因此单义。`allowsFreeValue(stageObject)=true`，与 `{character, allowTemp}` 同源。
+22. **video / audio 不是 displayable 目标，单独扫。** `listSceneDisplayableTargets` 只认 character/image/text/layer；视频与声音句柄按 `objectName` 从场景 action 块直接收集。当前是**全场景**（未按光标位置裁剪）—— 位置感知是廉价的后续项，把插入槽的锚点线程进 `buildStoryCommandContext` 即可。
+23. **show/hide 的入场动画走 `t=`，与 `/bg` 同手感。** 图像/文本没有独立的 `StoryTransitionRef`，进出场都靠 transform preset。于是 `t=`（reveal：`fade`/`slideLeft`/`zoom`…）与 `d=` 都折进 `transform`（`withStageTransform`）；`create` 的 `at=`（位置）也折同一处，一条命令不会同时给两者，读哪个有值即可。
+24. **form 改为位置参数（`/expr Alice angry`、`/show Alice smile`），比 `form=` 更顺。** 依赖已解析的 `character`（位置 0）先于 `form`（位置 1）解析 —— `resolvedArgs` 在 InsertRow 里就是整行的解析结果，所以位置依赖与 `form=` 命名时一样成立。`form=` 仍可用（位置参数照样可按名寻址），纯增强。
+25. **一个块只跑一个 op，`applyArgs` 据输入字段选 op。** `/font hero 48` 落 `setFontSize`，`/font hero color=#f00` 落 `setFontColor`。
+26. **`nvl` 的过渡是 `StoryTransformRef`（preset），不是 `StoryTransitionRef`，带自己的一小组 preset 别名**，不复用背景那套交叉淡入。
+
+**仍然推迟（需要**解析层**基建）：** `displayableTransform`/`displayableShow`/`displayableHide`/`displayableEffect` 与 `layerZIndex` 用的是 `DisplayableTargetRef`（带稳定 block-id 绑定与 kind），不是裸 `objectName` —— 需要 resolution 里那个 `return null` 桩变成真正的场景图解析（`stageObject` 只做了名字列表，没做绑定）；`executeScript` 需要 **blueprint 候选源**。纯容器（`condition`/`parallel`/`race`/`sequence`）没有可打的标量参数，`narration`/`note`/`waitClick` 已由既有路径覆盖。
+
 ## 8. 风险
 
 1. **grammar 表达力被 payload 的异构性击穿**。55 个 action 的 payload 形状差异极大（`storyActionCommands.ts:281-393` 那个 switch 就是证据）。P0 选 `set` 和 `show` 正是为了尽早撞上这堵墙 —— 如果 `applyArgs` 在这两条上就需要大量逃生舱，说明声明式 grammar 不成立，应退回"每命令手写 applyArgs"的朴素形态。

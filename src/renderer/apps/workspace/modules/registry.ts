@@ -18,6 +18,7 @@ import { projectPanelModule } from "./project";
 import { storyPanelModule } from "./story";
 import { storyMotionPanelModule } from "./story-motion";
 import { localizationPanelModule } from "./localization";
+import { voicePanelModule } from "./voice";
 import { dashboardPanelModule } from "./dashboard";
 
 /**
@@ -32,6 +33,7 @@ export const builtInPanels: PanelModule[] = [
     charactersModule,
     assetsModule,
     localizationPanelModule,
+    voicePanelModule,
     storyMotionPanelModule,
     assetsBottomModule,
     propertiesModule,
@@ -74,4 +76,5 @@ export { projectPanelModule } from "./project";
 export { storyPanelModule } from "./story";
 export { storyMotionPanelModule } from "./story-motion";
 export { localizationPanelModule } from "./localization";
+export { voicePanelModule } from "./voice";
 export { dashboardPanelModule } from "./dashboard";

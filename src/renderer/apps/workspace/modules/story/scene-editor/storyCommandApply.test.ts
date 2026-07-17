@@ -6,9 +6,9 @@ import { parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "./storyCommandResolution";
 
 const CONTEXT: StoryCommandContext = {
-    images: [{ id: "img-forest", name: "forest_day" }, { id: "img-rain", name: "city rain" }, { id: "img-dup", name: "twin" }, { id: "img-dup2", name: "twin" }],
+    images: [{ id: "img-forest", name: "forest_day" }, { id: "img-rain", name: "city rain" }, { id: "img-dup", name: "twin" }, { id: "img-dup2", name: "twin" }, { id: "img-sky", name: "sky.png" }],
     audio: [{ id: "aud-theme", name: "theme" }],
-    videos: [],
+    videos: [{ id: "vid-intro", name: "intro" }],
     characters: [{ id: "chr-alice", name: "Alice" }],
     tempSpeakers: [],
     scenes: [{ id: "scn-2", name: "Chapter 2" }],
@@ -17,6 +17,7 @@ const CONTEXT: StoryCommandContext = {
         { name: "met", ref: { scope: "saved", variableId: "var-met" }, valueType: "boolean" },
     ],
     formsByCharacterId: { "chr-alice": ["smile", "angry"] },
+    stageObjects: { image: ["hero"], text: ["title"], layer: [], video: ["clip"], audio: ["sound"] },
 };
 
 let counter = 0;
@@ -178,5 +179,164 @@ describe("enum aliases", () => {
         expect(payload("/bg forest_day t=fade")).toMatchObject({ transition: { kind: "fadeIn" } });
         expect(payload("/bg forest_day t=circle")).toMatchObject({ transition: { kind: "maskCircle" } });
         expect(payload("/bg forest_day t=dissolve")).toMatchObject({ transition: { kind: "dissolve" } });
+    });
+});
+
+describe("P1 — the rest of the palette", () => {
+    it("expr: sets a character's form, positionally or by name", () => {
+        // `/expr Alice angry` reads as one thought; `form=angry` still works (a positional stays named).
+        expect(payload("/expr Alice angry")).toMatchObject({
+            action: "character", operation: "expression", characterId: "chr-alice", formName: "angry",
+        });
+        expect(payload("/expr Alice form=smile")).toMatchObject({ formName: "smile" });
+        // A portrait op, so an unknown character faults (unlike a speaker) and so does an absent form.
+        expect(run("/expr Zoe").issues).toEqual(["unknownCharacter"]);
+        expect(run("/expr Alice sad").issues).toEqual(["unknownForm"]);
+    });
+
+    it("menu: folds a greedy prompt into the choice segment", () => {
+        expect(payload("/menu Pick a door")).toMatchObject({
+            action: "choice", prompt: { role: "choicePrompt", value: "Pick a door" },
+        });
+    });
+
+    it("repeat: takes an integer count", () => {
+        expect(payload("/repeat 3")).toMatchObject({ control: "repeat", times: 3 });
+        // Unfilled keeps the palette default rather than erroring.
+        expect(payload("/repeat")).toMatchObject({ control: "repeat", times: 2 });
+    });
+
+    it("nvl: folds t/d into its transform-based transition", () => {
+        expect(payload("/nvl t=fade d=0.4")).toMatchObject({ action: "nvl", transition: { preset: "fadeIn", durationMs: 400 } });
+    });
+
+    describe("image", () => {
+        it("create leads with the asset (like /bg) and auto-names the object from its filename", () => {
+            expect(payload("/image forest_day at=left d=0.3")).toMatchObject({
+                action: "image", operation: "create", objectName: "forest_day", assetId: "img-forest",
+                transform: { preset: "left", durationMs: 300 },
+            });
+        });
+
+        it("strips the asset's extension when auto-naming", () => {
+            expect(payload("/image sky.png")).toMatchObject({ objectName: "sky", assetId: "img-sky" });
+        });
+
+        it("takes an explicit name= that overrides the auto-derived name", () => {
+            expect(payload("/image forest_day name=hero")).toMatchObject({ objectName: "hero", assetId: "img-forest" });
+        });
+
+        it("suffixes the auto-name when the derived name is already on stage", () => {
+            const context = { ...CONTEXT, stageObjects: { ...CONTEXT.stageObjects, image: ["forest_day"] } };
+            const line = parseCommandLine("/image forest_day");
+            if (line.kind !== "command" || !line.def) {
+                throw new Error("not a command");
+            }
+            const { args } = resolveCommandLine(line, context);
+            const block = applyCommandArgs(createBlockForCommand("imageCreate", nextId), "imageCreate", args);
+            expect((block.payload as Record<string, unknown>).objectName).toBe("forest_day2");
+        });
+
+        it("source swaps only the asset", () => {
+            expect(payload("/imgsrc hero forest_day")).toMatchObject({ operation: "setSource", objectName: "hero", assetId: "img-forest" });
+        });
+
+        it("show picks an object on stage and folds the reveal (t=) and its timing (d=) into the transform", () => {
+            expect(payload("/imgshow hero d=0.2")).toMatchObject({ operation: "show", objectName: "hero", transform: { preset: "fadeIn", durationMs: 200 } });
+            expect(payload("/imgshow hero t=slideLeft d=0.3")).toMatchObject({ objectName: "hero", transform: { preset: "slideLeft", durationMs: 300 } });
+        });
+
+        it("accepts an object name not yet on stage — a reference need not resolve", () => {
+            // `ghost` is in no stage list, but a reference is a free value (dynamic / cross-scene), so it
+            // binds without an issue rather than faulting like an asset would.
+            expect(run("/imgshow ghost").issues).toEqual([]);
+            expect(payload("/imgshow ghost")).toMatchObject({ objectName: "ghost" });
+        });
+
+        it("still faults an image asset that does not exist", () => {
+            expect(run("/image nope").issues).toEqual(["unknownAsset"]);
+        });
+
+        it("keeps the palette default name on a non-create op when none is typed", () => {
+            expect(payload("/imgshow")).toMatchObject({ operation: "show", objectName: "image" });
+        });
+    });
+
+    describe("text", () => {
+        it("create leads with the greedy content and auto-names the overlay", () => {
+            expect(payload("/text Hello world")).toMatchObject({ action: "text", operation: "create", objectName: "text", text: "Hello world" });
+        });
+
+        it("takes a leading name= handle before the greedy content", () => {
+            expect(payload("/text name=title Hello world")).toMatchObject({ operation: "create", objectName: "title", text: "Hello world" });
+        });
+
+        it("set rewrites the content of a named overlay", () => {
+            expect(payload("/settext title New copy")).toMatchObject({ operation: "setText", objectName: "title", text: "New copy" });
+        });
+
+        it("font routes to the op the typed field implies — size, else colour", () => {
+            expect(payload("/font title 48")).toMatchObject({ operation: "setFontSize", objectName: "title", fontSize: 48 });
+            expect(payload("/font title color=#ff0000")).toMatchObject({ operation: "setFontColor", objectName: "title", fontColor: "#ff0000" });
+        });
+
+        it("font faults rather than silently dropping the colour when both size and colour are given", () => {
+            // One block runs one op, so honouring both is impossible — fault instead of losing the colour.
+            expect(run("/font title 48 color=#ff0000").issues).toEqual(["conflictingParams"]);
+        });
+    });
+
+    it("layer: creates a named layer with a z-index", () => {
+        expect(payload("/layer overlay 5")).toMatchObject({ action: "layer", operation: "create", objectName: "overlay", zIndex: 5 });
+    });
+
+    describe("video", () => {
+        it("create leads with the asset, auto-names, and takes muted", () => {
+            expect(payload("/video intro muted=true")).toMatchObject({
+                action: "video", operation: "create", objectName: "intro", assetId: "vid-intro", muted: true,
+            });
+        });
+
+        it("takes an explicit name= that overrides the auto-derived name", () => {
+            expect(payload("/video intro name=clip")).toMatchObject({ objectName: "clip", assetId: "vid-intro" });
+        });
+
+        it("play addresses the name", () => {
+            expect(payload("/vidplay clip")).toMatchObject({ operation: "play", objectName: "clip" });
+        });
+    });
+
+    describe("screen effects", () => {
+        it("blink reads d/hold as seconds and a colour", () => {
+            expect(payload("/blink d=0.2 hold=0.1 color=#000000")).toMatchObject({
+                action: "screenEffect", effect: "blink", durationMs: 200, holdMs: 100, color: "#000000",
+            });
+        });
+
+        it("vignette takes an opacity", () => {
+            expect(payload("/vignette opacity=0.5")).toMatchObject({ effect: "vignette", opacity: 0.5 });
+        });
+    });
+
+    describe("sound control", () => {
+        it("stop targets a named handle, else the default", () => {
+            expect(payload("/stop bgm")).toMatchObject({ action: "audio", operation: "stopSound", objectName: "bgm" });
+            expect(payload("/stop")).toMatchObject({ operation: "stopSound", objectName: "sound" });
+        });
+
+        it("volume takes a positional value, a fade and an optional name", () => {
+            expect(payload("/vol 0.3 fade=0.5")).toMatchObject({ operation: "setVolume", objectName: "sound", volume: 0.3, fadeMs: 500 });
+            expect(payload("/vol 0.3 name=music")).toMatchObject({ objectName: "music", volume: 0.3 });
+        });
+
+        it("rate takes a positional multiplier", () => {
+            expect(payload("/rate 1.5")).toMatchObject({ operation: "setRate", rate: 1.5 });
+        });
+
+        it("mute maps on/off to the boolean, defaulting muted", () => {
+            expect(payload("/mute off")).toMatchObject({ operation: "muteSound", muted: false });
+            expect(payload("/mute on")).toMatchObject({ muted: true });
+            expect(payload("/mute")).toMatchObject({ muted: true });
+        });
     });
 });

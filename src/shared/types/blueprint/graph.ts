@@ -77,6 +77,13 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED = "blueprint.
 /** Entry for application window fullscreen transitions (entered or left fullscreen). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED = "blueprint.event.head.fullscreenChanged" as const;
 /**
+ * Entry for an application window close request (the user asked to close the window: native close
+ * box, OS shortcut, etc.). The blueprint may cancel the close by synchronously running a Stop Event
+ * Bubble node during dispatch; otherwise the window proceeds to close. In Dev Mode this intercepts
+ * the Dev Mode window; in preview/production it intercepts the game window.
+ */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED = "blueprint.event.head.windowCloseRequested" as const;
+/**
  * Entry for a Story Action Blueprint's single "On Call" event. Deliberately kept OUT of
  * EVENT_DISPATCH_HEAD_TYPES — story-action graphs run via the story compiler's Script wrapper,
  * never through the UI dispatch paths.
@@ -128,6 +135,7 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED,
 ]);
 
 /**

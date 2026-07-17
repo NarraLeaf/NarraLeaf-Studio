@@ -16,6 +16,7 @@ export const placeholders = {
         characters: "Characters",
         story: "Story",
         localization: "Localization",
+        voice: "Voice",
         assets: "Assets",
         console: "Console",
         storyMotion: "Story Motion",

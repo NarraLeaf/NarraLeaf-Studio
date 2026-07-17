@@ -13,6 +13,7 @@ const CONTEXT: StoryCommandContext = {
     scenes: [{ id: "s1", name: "Chapter 2" }],
     variables: [{ name: "gold", ref: { scope: "scene", variableId: "v1" }, valueType: "number" }],
     formsByCharacterId: { c1: ["smile", "angry"] },
+    stageObjects: { image: ["hero", "portrait"], text: ["title"], layer: ["fx"], video: ["intro"], audio: ["sound", "music"] },
 };
 
 /** Caret marked with `|`. */
@@ -141,6 +142,41 @@ describe("getCommandCandidates", () => {
         expect(values("/show Al|")).toEqual(["Alice"]);
     });
 
+    it("leads a show/hide/set with the objects on stage, each kind its own list", () => {
+        // The headline of this pass: `/imgshow` is a pick from what exists, like `/bg`'s asset picker —
+        // not a remembered string. A text name is never offered to an image slot.
+        expect(values("/imgshow |")).toEqual(["hero", "portrait"]);
+        // The typed fragment is offered back alongside the match, exactly as the speaker picker does —
+        // that is the never-empty invariant, applied to object references.
+        expect(values("/imgshow he|")).toEqual(["hero", "he"]);
+        expect(values("/settext |")).toEqual(["title"]);
+        expect(values("/vidshow |")).toEqual(["intro"]);
+        expect(values("/stop |")).toEqual(["sound", "music"]);
+    });
+
+    it("offers a typed object name back, so an unknown reference is still a valid pick", () => {
+        // As with speakers: the object may be created dynamically or in another scene, so the list is
+        // never empty and Tab/Enter never need a "nothing matched" rule.
+        expect(values("/imgshow new|")).toEqual(["new"]);
+        expect(values("/stop other|")).toEqual(["other"]);
+    });
+
+    it("offers Alice's forms as the positional after her name once she resolves", () => {
+        // `form` is positional now (`/expr Alice angry`), so it depends on the resolved character just
+        // as `form=` did — an empty list until the speaker is known.
+        expect(values("/expr Alice |")).toEqual([]);
+        expect(values("/expr Alice |", { character: { kind: "character", characterId: "c1" } })).toEqual(["smile", "angry"]);
+    });
+
+    it("offers a boolean variable's values once it resolves, and nothing for other types", () => {
+        const variable = (valueType: "number" | "boolean") => ({ variable: { kind: "variable" as const, ref: { scope: "scene" as const, variableId: "v1" }, valueType } });
+        // Unresolved or non-boolean: nothing to enumerate, so `/set gold ` stays a free field.
+        expect(values("/set gold |")).toEqual([]);
+        expect(values("/set gold |", variable("number"))).toEqual([]);
+        // A boolean stops being a blank field — true/false, like `/bg`'s asset picker.
+        expect(values("/set gold |", variable("boolean"))).toEqual(["true", "false"]);
+    });
+
     it("offers nothing inside a greedy body", () => {
         expect(values("/say Alice hello |")).toEqual([]);
     });
@@ -165,6 +201,9 @@ describe("hasCandidateSource", () => {
         expect(hasCandidateSource(param("bg", "d"))).toBe(false);
         expect(hasCandidateSource(param("say", "text"))).toBe(false);
         expect(hasCandidateSource(param("set", "value"))).toBe(false);
+        // A stage-object reference has a source (the objects on stage); a create's invented name does not.
+        expect(hasCandidateSource(param("imgshow", "name"))).toBe(true);
+        expect(hasCandidateSource(param("image", "name"))).toBe(false);
     });
 
     it("counts a union enumerable when any branch is", () => {

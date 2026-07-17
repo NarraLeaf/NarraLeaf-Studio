@@ -26,6 +26,14 @@ type DevModeSession = {
 };
 
 export class DevModeManager {
+    /**
+     * Upper bound on how long the main process holds the Dev Mode window's close open while the
+     * renderer's blueprints decide whether to intercept it. A synchronous decision returns in
+     * milliseconds; the timeout only bounds a hung/crashed renderer, after which the window closes
+     * (the documented default is that the window closes unless a blueprint cancels it).
+     */
+    private static readonly CloseDecisionTimeoutMs = 60 * 1000;
+
     private session: DevModeSession | null = null;
     private readonly compiler: INLangCompiler;
     private readonly bundleSource: DevModeBundleSource;
@@ -151,6 +159,67 @@ export class DevModeManager {
         };
         window.win.on("enter-full-screen", forwardFullscreen(true));
         window.win.on("leave-full-screen", forwardFullscreen(false));
+
+        // Give the game's blueprints a chance to intercept a user-initiated window close (native
+        // close box, OS shortcut) via the `On Window Close Requested` head. Swallow the close, ask
+        // the renderer, and re-issue it through forceClose() when nothing cancelled it. Programmatic
+        // teardown (Quit Application node, workspace stop button, relaunch) uses forceClose() and so
+        // bypasses this entirely — that path must never fire the blueprint close event.
+        let closeRequestPending = false;
+        window.setCloseGuard(() => {
+            if (closeRequestPending) {
+                // A second close while the last decision is still settling: surface the window
+                // rather than stacking requests.
+                window.focus();
+                return true;
+            }
+            closeRequestPending = true;
+            void this.handleWindowCloseRequest(session, window)
+                .catch(err => this.app.logger.error("[DevMode] window close request failed", err))
+                .finally(() => {
+                    closeRequestPending = false;
+                });
+            return true;
+        });
+    }
+
+    /**
+     * Ask the Dev Mode renderer whether the window may close and act on the answer. Anything other
+     * than an explicit "cancel" closes the window: a close that fails open is far better than one
+     * that traps the user, and quitting the app works regardless (the close guard stands aside once
+     * the app is quitting).
+     */
+    private async handleWindowCloseRequest(
+        session: DevModeSession,
+        window: AppWindow<WindowAppType.DevMode>,
+    ): Promise<void> {
+        const allow = await this.requestBlueprintCloseDecision(window);
+        if (!allow) {
+            this.emitVerbose(session, "window close cancelled by blueprint");
+            return;
+        }
+        if (window.isClosed() || this.app.isQuitting()) {
+            return;
+        }
+        window.forceClose();
+    }
+
+    private async requestBlueprintCloseDecision(window: AppWindow<WindowAppType.DevMode>): Promise<boolean> {
+        try {
+            const result = await window.invokeIpcRequest(
+                IPCEventType.devModeWindowCloseRequested,
+                {},
+                { timeoutMs: DevModeManager.CloseDecisionTimeoutMs },
+            );
+            if (!result.success) {
+                this.app.logger.warn(`[DevMode] close decision failed, closing the window: ${result.error}`);
+                return true;
+            }
+            return result.data.allow;
+        } catch (error) {
+            this.app.logger.warn(`[DevMode] no answer to the close decision, closing the window: ${String(error)}`);
+            return true;
+        }
     }
 
     private async compileAndSendBundle(session: DevModeSession, status: DevModeStatus): Promise<void> {
@@ -306,7 +375,10 @@ export class DevModeManager {
         this.disposeWatcher(session);
         this.clearReloadTimer(session);
         if (session.window && !session.window.isClosed()) {
-            session.window.close();
+            // forceClose bypasses the blueprint close guard: a programmatic stop (Quit Application
+            // node, workspace stop button, relaunch) is not the user closing the window, so it must
+            // not fire the On Window Close Requested event.
+            session.window.forceClose();
         }
         if (this.session === session) {
             this.session = null;

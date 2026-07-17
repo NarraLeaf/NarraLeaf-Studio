@@ -10,11 +10,13 @@ import {
     NetworkConfiguration,
     ProjectAppConfiguration,
     SecurityConfiguration,
+    VoiceConfiguration,
     normalizeBuildConfiguration,
     normalizeLocalizationConfiguration,
     normalizeMobileConfiguration,
     normalizeNetworkConfiguration,
     normalizeSecurityConfiguration,
+    normalizeVoiceConfiguration,
 } from "../../project/configuration";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
@@ -288,6 +290,41 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 localization: next,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+        return applied;
+    }
+
+    /**
+     * Read the effective game voice-over setup, normalized with safe defaults
+     * for projects that predate (or never configured) `app.voice`.
+     */
+    public getVoiceConfiguration(): VoiceConfiguration {
+        return normalizeVoiceConfiguration(this.getProjectConfig().app?.voice);
+    }
+
+    /**
+     * Replace the game voice-over setup via an updater over the current
+     * normalized value. Used by the Voice panel (voice-language management) and
+     * consumed by the Dev Mode / packaging bundle assembler.
+     */
+    public async updateVoiceConfiguration(
+        updater: (current: VoiceConfiguration) => VoiceConfiguration,
+    ): Promise<VoiceConfiguration> {
+        let applied: VoiceConfiguration = normalizeVoiceConfiguration(undefined);
+        await this.updateProjectConfig(config => {
+            const next = normalizeVoiceConfiguration(
+                updater(normalizeVoiceConfiguration(config.app?.voice)),
+            );
+            applied = next;
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                voice: next,
             };
             return {
                 ...config,
