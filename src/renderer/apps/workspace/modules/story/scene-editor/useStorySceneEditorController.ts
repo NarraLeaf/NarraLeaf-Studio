@@ -237,12 +237,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * through state so a drag never re-renders the list mid-gesture — and so this can be called from
      * the teardown paths (mouseup, pointercancel, window blur) that must not be able to leave the
      * editor stuck with unselectable text.
+     *
+     * Toggles a class rather than an inline `user-select`: the rows carry `.nl-selectable-text`, an
+     * explicit value that an inherited one from this root cannot override — see the rule in
+     * `styles.css`.
      */
     const setRowTextSelectable = useCallback((selectable: boolean) => {
-        const root = rootRef.current;
-        if (root) {
-            root.style.userSelect = selectable ? "" : "none";
-        }
+        rootRef.current?.classList.toggle("nl-text-select-suspended", !selectable);
     }, []);
 
     /**
@@ -250,6 +251,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * that selection (this is also how double-click-to-edit lands: the word the browser selected on
      * the second press is the selection we hand over). A collapsed one was a plain click, and the row
      * is already selected from the press.
+     *
+     * Every mouse gesture on a row therefore rests on the browser being *allowed* to select the row's
+     * text: the app resets `user-select: none` onto everything, so the rows opt back in with
+     * `.nl-selectable-text` (see `renderRowText`). Without that opt-in the selection here is always
+     * collapsed, this bails every time, and the row simply never opens — which is exactly how
+     * double-click-to-edit was broken while every unit test passed. jsdom implements neither
+     * `user-select` nor native selection, so nothing but driving the real app can catch it.
      */
     const finishTextSelectGesture = useCallback((pending: { blockId: StoryBlockId; textEl: HTMLElement }) => {
         const range = getSelectionUnitRange(pending.textEl);

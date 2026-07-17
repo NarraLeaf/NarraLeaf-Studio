@@ -18,6 +18,7 @@ import type {
     StoryVariableValueType,
 } from "@shared/types/story";
 import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
+import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import { useTranslation } from "@/lib/i18n";
 import type { Translator } from "@shared/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -477,8 +478,8 @@ function InspectorFields(props: {
                                 onChange={checked => props.onUpdatePayload({ ...payload, pauseAfter: checked ? true : undefined })}
                             />
                             {pauseEnabled ? (
-                                <NumberField
-                                    label={t("storyInspector.dialogue.pauseMs")}
+                                <SecondsField
+                                    label={t("storyInspector.dialogue.pauseSeconds")}
                                     value={pauseMs}
                                     onChange={ms => props.onUpdatePayload({ ...payload, pauseAfter: ms === undefined ? true : ms })}
                                 />
@@ -692,7 +693,7 @@ function ActionPayloadFields(props: {
                         assetId={payload.assetId}
                         onChange={assetId => props.onChange({ ...payload, assetId })}
                     />
-                    <NumberField label={t("storyInspector.audio.fadeMs")} value={payload.fadeMs} onChange={fadeMs => props.onChange({ ...payload, fadeMs })} />
+                    <SecondsField label={t("storyInspector.audio.fade")} value={payload.fadeMs} onChange={fadeMs => props.onChange({ ...payload, fadeMs })} />
                     <NumberField label={t("storyInspector.audio.volume")} value={payload.volume} onChange={volume => props.onChange({ ...payload, volume })} />
                     <NumberField label={t("storyInspector.audio.rate")} value={payload.rate} onChange={rate => props.onChange({ ...payload, rate })} />
                     <CheckboxField label={t("storyInspector.audio.loop")} checked={Boolean(payload.loop)} onChange={loop => props.onChange({ ...payload, loop })} />
@@ -716,7 +717,7 @@ function ActionPayloadFields(props: {
                     value={payload.mode}
                     onChange={mode => props.onChange({ ...payload, mode: mode as "duration" | "click" })}
                 />
-                <NumberField label={t("storyInspector.field.durationMs")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
+                <SecondsField label={t("storyInspector.field.duration")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
             </div>
         );
     }
@@ -933,8 +934,8 @@ function ActionPayloadFields(props: {
                     value={payload.effect}
                     onChange={effect => props.onChange({ ...payload, effect: effect as Extract<StoryActionPayload, { action: "screenEffect" }>["effect"] })}
                 />
-                <NumberField label={t("storyInspector.field.durationMs")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
-                <NumberField label={t("storyInspector.field.holdMs")} value={payload.holdMs} onChange={holdMs => props.onChange({ ...payload, holdMs })} />
+                <SecondsField label={t("storyInspector.field.duration")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
+                <SecondsField label={t("storyInspector.field.hold")} value={payload.holdMs} onChange={holdMs => props.onChange({ ...payload, holdMs })} />
                 <ColorTextField label={t("storyInspector.field.color")} value={payload.color ?? "#000000"} onChange={color => props.onChange({ ...payload, color })} />
                 <NumberField label={t("storyInspector.field.opacity")} value={payload.opacity} onChange={opacity => props.onChange({ ...payload, opacity })} />
                 <SelectField
@@ -1162,7 +1163,7 @@ function DisplayableEffectEditor(props: {
     return (
         <Section title={t("storyInspector.section.effect")}>
             <FieldGrid cols={3}>
-                <NumberField label={t("storyInspector.field.durationMs")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
+                <SecondsField label={t("storyInspector.field.duration")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
                 <SelectField
                     label={t("storyInspector.field.easing")}
                     options={easingOptions(t)}
@@ -1258,8 +1259,8 @@ function TransformPresetEditor(props: {
                             value={value.preset ?? "none"}
                             onChange={preset => props.onChange({ ...value, mode: "preset", preset: preset as StoryTransformPreset })}
                         />
-                        <NumberField
-                            label={t("storyInspector.field.durationMs")}
+                        <SecondsField
+                            label={t("storyInspector.field.duration")}
                             value={value.durationMs}
                             onChange={durationMs => props.onChange({ ...value, durationMs })}
                         />
@@ -1324,7 +1325,7 @@ function TransitionEditor(props: {
                 />
                 {kind === "none" ? null : (
                     <>
-                        <NumberField label={t("storyInspector.field.durationMs")} value={value.durationMs} onChange={durationMs => setBase({ durationMs })} />
+                        <SecondsField label={t("storyInspector.field.duration")} value={value.durationMs} onChange={durationMs => setBase({ durationMs })} />
                         <SelectField
                             label={t("storyInspector.field.easing")}
                             options={easingOptions(t)}
@@ -1886,6 +1887,25 @@ function NumberField(props: { label: string; value: number | undefined; onChange
             <NumericDraftEnhancedInput
                 committedDisplay={props.value === undefined ? "" : String(props.value)}
                 onFiniteNumber={props.onChange}
+                onEmpty={() => props.onChange(undefined)}
+                type="text"
+                inputMode="decimal"
+            />
+        </div>
+    );
+}
+
+/**
+ * Edits a millisecond-backed timing field in seconds. `value` and `onChange` both speak the
+ * stored milliseconds; only the text the author reads and types is seconds.
+ */
+function SecondsField(props: { label: string; value: number | undefined; onChange: (ms: number | undefined) => void }) {
+    return (
+        <div>
+            <label className={FIELD_LABEL_CLASS}>{props.label}</label>
+            <NumericDraftEnhancedInput
+                committedDisplay={formatStorySecondsValue(props.value)}
+                onFiniteNumber={seconds => props.onChange(storySecondsToMs(seconds))}
                 onEmpty={() => props.onChange(undefined)}
                 type="text"
                 inputMode="decimal"
