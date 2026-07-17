@@ -47,6 +47,8 @@ import type {
 } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 import type { UISliderRuntimeValue, UISliderWidgetProps } from "@shared/types/ui-editor/slider";
 import { resolveSliderRuntimeValue } from "@shared/types/ui-editor/slider";
+import type { UITextInputRuntimeValue, UITextInputWidgetProps } from "@shared/types/ui-editor/textInput";
+import { normalizeTextInputProps, resolveTextInputRuntimeValue } from "@shared/types/ui-editor/textInput";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import {
     isButtonCursorValue,
@@ -105,6 +107,15 @@ export type BlueprintTextPropertiesPatch = Partial<BlueprintTextProperties>;
 export type BlueprintSliderProperties = UISliderRuntimeValue;
 
 export type BlueprintSliderPropertiesPatch = Partial<Pick<UISliderWidgetProps, "value" | "min" | "max" | "step">>;
+
+export type BlueprintTextInputProperties = UITextInputRuntimeValue;
+
+/**
+ * Only `value` — the runtime value carries nothing else, so patching `placeholder`/`readOnly`/
+ * `disabled` here would be silently dropped. Those stay authored props, and an author who needs
+ * them to react at runtime binds them to a graph (the Literal/Bound chip) instead.
+ */
+export type BlueprintTextInputPropertiesPatch = Partial<Pick<UITextInputWidgetProps, "value">>;
 
 export type BlueprintListProperties = {
     items: unknown[];
@@ -217,6 +228,8 @@ export type BlueprintHostApiRuntime = {
         setImageProperties: (elementId: string, patch: Partial<BlueprintImageProperties>) => Promise<void>;
         getSliderProperties: (elementId: string) => BlueprintSliderProperties;
         setSliderProperties: (elementId: string, patch: BlueprintSliderPropertiesPatch) => Promise<void>;
+        getTextInputProperties: (elementId: string) => BlueprintTextInputProperties;
+        setTextInputProperties: (elementId: string, patch: BlueprintTextInputPropertiesPatch) => Promise<void>;
         getListProperties: (elementId: string) => BlueprintListProperties;
         setListItems: (elementId: string, items: readonly unknown[]) => Promise<void>;
         setListSelectedIndex: (elementId: string, index: number) => Promise<void>;
@@ -547,6 +560,14 @@ function assertSliderElement(document: UIDocument, elementId: string) {
     return el;
 }
 
+function assertTextInputElement(document: UIDocument, elementId: string) {
+    const el = requireDocumentElement(document, elementId, "textInput");
+    if (el.type !== "nl.textInput") {
+        throw new Error(`textInput: element is not a Text Input widget: ${el.type}`);
+    }
+    return el;
+}
+
 function assertListElement(document: UIDocument, elementId: string) {
     const el = requireDocumentElement(document, elementId, "list");
     if (!isListLikeWidgetType(el.type)) {
@@ -663,6 +684,23 @@ function readListProperties(
         items,
         selectedIndex,
     };
+}
+
+function readAuthoredTextInputProperties(document: UIDocument, elementId: string): UITextInputWidgetProps {
+    const el = assertTextInputElement(document, elementId);
+    return normalizeTextInputProps(el.props);
+}
+
+function readTextInputProperties(
+    document: UIDocument,
+    widgetRuntimeStore: WidgetRuntimeStateStore,
+    runtimeScopeId: string | undefined,
+    activeSurfaceId: string,
+    elementId: string,
+): BlueprintTextInputProperties {
+    const authored = readAuthoredTextInputProperties(document, elementId);
+    const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+    return widgetRuntimeStore.getTextInputProperties(scopedKey) ?? resolveTextInputRuntimeValue(authored);
 }
 
 function readSliderProperties(
@@ -1869,6 +1907,45 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         patch,
                     );
                     if (!sliderPropertiesEqual(before, after)) {
+                        scheduleElementFlush(elementId);
+                    }
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getTextInputProperties: (elementId: string) => {
+                const cap = "widget.getTextInputProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return readTextInputProperties(
+                        document,
+                        widgetRuntimeStore,
+                        runtimeScopeId,
+                        activeSurfaceId,
+                        elementId,
+                    );
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setTextInputProperties: async (elementId: string, patch: BlueprintTextInputPropertiesPatch) => {
+                const cap = "widget.setTextInputProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const before = readTextInputProperties(
+                        document,
+                        widgetRuntimeStore,
+                        runtimeScopeId,
+                        activeSurfaceId,
+                        elementId,
+                    );
+                    const authored = readAuthoredTextInputProperties(document, elementId);
+                    const after = widgetRuntimeStore.setTextInputProperties(
+                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                        authored,
+                        patch,
+                    );
+                    if (before.value !== after.value) {
                         scheduleElementFlush(elementId);
                     }
                 } finally {

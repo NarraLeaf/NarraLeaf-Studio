@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 24 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 25 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -173,6 +173,22 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
         },
         setSliderProperties: {
             capabilityId: "widget.setSliderProperties",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { elementId: "", patch: {} },
+            output: null,
+        },
+        getTextInputProperties: {
+            capabilityId: "widget.getTextInputProperties",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { elementId: "" },
+            output: {},
+        },
+        setTextInputProperties: {
+            capabilityId: "widget.setTextInputProperties",
             purity: "effectful",
             callableFromBinding: false,
             async: true,
