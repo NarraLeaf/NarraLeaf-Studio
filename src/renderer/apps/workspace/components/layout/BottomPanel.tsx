@@ -82,7 +82,7 @@ export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
             <div className="h-10 flex items-center justify-between px-4 bg-surface-sunken border-b border-edge">
                 <div className="flex items-center gap-2">
                     <span className="text-fg-muted">{panel.icon}</span>
-                    <h2 className="text-sm font-medium text-fg">{panel.title}</h2>
+                    <h2 className="text-sm font-medium text-fg">{panel.titleKey ? t(panel.titleKey) : panel.title}</h2>
                 </div>
                 <button
                     onClick={onClose}

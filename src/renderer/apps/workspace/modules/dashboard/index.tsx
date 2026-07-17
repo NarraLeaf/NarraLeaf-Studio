@@ -12,6 +12,7 @@ export const dashboardPanelModule: PanelModule = {
     metadata: {
         id: "narraleaf-studio:dashboard",
         // Resolved lazily on read (module registration runs after i18n init).
+        titleKey: "placeholders.moduleTitles.dashboard",
         get title() {
             return translate("placeholders.moduleTitles.dashboard");
         },
