@@ -1,4 +1,5 @@
 import type { StoryDocument, StoryScene } from "@shared/types/story";
+import { collectTempSpeakers } from "@/lib/workspace/services/story/storyModel";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsMap } from "@/lib/workspace/services/assets/types";
@@ -60,6 +61,9 @@ export function buildStoryCommandContext(input: {
         audio: assetRefs(input.assets, AssetType.Audio),
         videos: assetRefs(input.assets, AssetType.Video),
         characters,
+        // Derived from the document, exactly as the speaker picker derives them, so a temp speaker
+        // retires from the command line's candidates precisely when its last line does.
+        tempSpeakers: input.document ? collectTempSpeakers(input.document).map(speaker => speaker.name) : [],
         // A scene is addressed by the name the author sees in the panel, not its runtimeName.
         scenes: Object.values(input.document?.scenes ?? {}).map(entry => ({ id: entry.id, name: entry.name })),
         variables: variableEntries(input.document, input.scene),

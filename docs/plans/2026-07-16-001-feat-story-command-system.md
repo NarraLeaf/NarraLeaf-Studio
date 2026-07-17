@@ -298,7 +298,19 @@ type StoryCandidateProvider = (query: string, ctx: StoryCandidateContext) => Sto
 12. **同名资产无法寻址（新缺口）。** 命令行按 name 寻址，但资产名在项目内不唯一。`/bg forest` 遇到两张都叫 forest 的图时，`findByName` 返回 `ambiguous` → 落无效行，而不是静默挑一张（挑到的那张会随排序变化而改变，是最难查的一类 bug）。代价是这行在命令行里无法完成，作者只能改名或走 inspector。**这是已知缺口，不是决定** —— 候选补全把名字填回文本时同样歧义，真正的解法需要一个消歧写法（如 `#id` 后缀），留待 P1。
 13. **persistent 变量还不能寻址。** `buildStoryCommandContext` 只收 scene-local 与 document-saved；persistent 变量住在 blueprint 文档里、按 `storageKey` 索引，需要一个本 builder 拿不到的数据源。`/set` 它们目前报 unknownVariable —— 缺口，非决定。
 
-**尚未实现**：cursor context（光标位置 → 该出什么候选）与候选 provider registry —— 即 §4.2 的候选/高亮规则和 §3.3 的重构。它们是下一块，也是让 `/bg fo⇥` 能补全的那一块；目前作者必须把名字打全。
+### 7.2 cursor context + 候选（已落地，纯层）
+
+`storyCommandCursor.ts` / `storyCommandCandidates.ts` 已写并测（25 个）。前者把 (文本, 光标) 映射到该出什么候选、Tab 替换哪一段；后者读**与 resolver 同一个** `StoryCommandContext`，所以候选列表不可能提供一个随后解析失败的名字。新增结论：
+
+14. **§4.0-1 的高亮规则编码在 `defaultHighlights()` 里，不在组件里。** 你说过它是最容易丢的决定，所以它是纯函数 + 有测试，而不是 UI 里的一句注释。`paramName` 返回 false 那条测试直接写明了理由：高亮了 `t=`，`/bg forest_day` + Enter 就会去抓 `t=`，这行永远提交不了。
+15. **greedy 参数一旦开始，位置计数必须停下。** 我第一版让 `/say Alice hello |there` 算成了 `paramName` —— 位置计数器把台词里的每个词都当成了新的位置参数。改为：一旦位置索引到达 greedy 参数，之后全是正文。
+16. **候选里漏了临时说话人（对照真实 picker 才发现）。** 交互模型规定候选顺序是「真实角色 → 本故事已用过的名字 → 正在打的名字」，而 `StoryCommandContext` 里根本没有第二类。已加 `tempSpeakers`（由 `collectTempSpeakers` 从文档派生，所以一个临时说话人**恰好**在它最后一行消失时退场）。`#Ali` 现在给出 `["Alice", "Ali"]` —— 与 `getSpeakerCandidates` 一致：**即使有部分匹配，也照样把打的名字作为候选附上**，这正是列表永不为空的原因。
+
+**尚未实现 —— 下一块：InsertRow 接线。**
+
+- 需要一个新的候选菜单组件：现有的 `ActionCommandMenu` 是命令专用的（带分类 chips），承载不了资产/枚举/参数名候选。
+- `InsertRow` 现有的按键路由**已对着运行的 app 验证过，必须原样搬运**（§5）：Escape 两级、Tab 与 Enter 同取高亮、Shift+Enter 在 `#` 行落无效行。要改的只是 chooser 的**来源**（从 `value` 前缀 → `getCommandCursor(value, caret)`）和取候选的**动作**。
+- 一个已定的规则：命令名候选被取用时，**有 grammar 的命令补全成 `/bg `**（让作者继续填参数），**无 grammar 的命令直接提交**（保持 `/note` 今天的手感）。这样对 `/note`、`/imageCreate` 零变化，只影响那 10 个今天本来就跳 inspector 的命令 —— 没有肌肉记忆会被破坏。
 
 ## 8. 风险
 
