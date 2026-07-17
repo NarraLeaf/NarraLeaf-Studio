@@ -278,6 +278,16 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             handler: editor.enterEditOrInspectorForActive,
         },
         {
+            // The inspector's own Escape only fires with focus inside it; opened via Enter, focus stays
+            // on the row, so this is the rung that closes it. Bindings default to `allowInEditable:
+            // false`, so this never steals Escape from a text edit or an insert slot (those have their
+            // own). See the exit ladder in docs/story-editor-interaction-model.md.
+            id: "close-inspector",
+            key: "escape",
+            description: t("story.keybindings.closeInspector"),
+            handler: editor.closeInspector,
+        },
+        {
             id: "insert-blank-after-selection",
             key: "shift+enter",
             description: t("story.keybindings.insertRow"),
@@ -380,6 +390,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             handler: () => editor.pageRowSelection("up"),
         },
     ], [
+        editor.closeInspector,
         editor.deleteSelection,
         editor.duplicateSelection,
         editor.enterEditOrInspectorForActive,
@@ -866,8 +877,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     // further Mod+Z reach story history through the normal keybinding.
                                     onUndoBeyondRow={() => { editor.commitTextEdit(); editor.focusRoot(); editor.undoEdit(); }}
                                     onRedoBeyondRow={() => { editor.commitTextEdit(); editor.focusRoot(); editor.redoEdit(); }}
-                                    onOpenInspector={() => editor.setEditorMode({ kind: "inspector", blockId: row.block.id })}
-                                    onCloseInspector={() => editor.setEditorMode({ kind: "idle" })}
+                                    onOpenInspector={() => editor.activateBlockForInspectorOrOp(row.block.id)}
+                                    onCloseInspector={editor.closeInspector}
                                     onUpdatePayload={payload => editor.updateBlockPayloadFor(row.block.id, payload)}
                                     onSetDialogueCharacter={characterId => editor.setDialogueSpeaker(row.block, characterId ? { characterId } : null)}
                                     tempSpeakers={editor.tempSpeakers}
@@ -883,6 +894,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                 {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && editor.editorMode.slot.afterBlockId === row.block.id ? (
                                     <InsertRow
                                         mode={editor.editorMode}
+                                        // Inserting *inside* this row (its `+ Add action`) nests one level
+                                        // deeper; a sibling-after slot keeps the row's own depth.
+                                        depth={editor.editorMode.slot.target?.parentId === row.block.id ? row.depth + 1 : row.depth}
                                         characters={editor.characters}
                                         commandContext={editor.commandContext}
                                         inputRef={editor.insertInputRef}
@@ -906,6 +920,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 {editor.editorMode.kind === "insert" && editor.editorMode.slot.afterBlockId === null ? (
                     <InsertRow
                         mode={editor.editorMode}
+                        depth={0}
                         characters={editor.characters}
                         commandContext={editor.commandContext}
                         inputRef={editor.insertInputRef}

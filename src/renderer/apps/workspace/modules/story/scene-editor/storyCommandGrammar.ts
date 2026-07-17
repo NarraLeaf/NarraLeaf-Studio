@@ -47,6 +47,22 @@ export type StoryCommandParamType =
     | { kind: "scene" }
     | { kind: "variable" }
     | { kind: "displayable"; targetKind?: StoryDisplayableTargetKind }
+    /**
+     * A named stage object already put on stage by an earlier block — the image `/imgshow` reveals,
+     * the text `/settext` rewrites, the sound `/stop` stops.
+     *
+     * This is what makes a reference feel like `/bg`'s asset picker rather than a blind name field:
+     * the candidates are the object names *in scope*, read from `listSceneDisplayableTargets` — the
+     * same collector the inspector's target picker uses, so the two can never disagree. It differs
+     * from `displayable` (which the four transform/effect ops need) in what the payload stores: these
+     * commands address the object by its plain `objectName` string, not a resolved `DisplayableTargetRef`,
+     * so no scene-graph *binding* is required — only the list of names.
+     *
+     * A free-typed name stays valid ({@link allowsFreeValue}): the object may be created dynamically or
+     * live in another scene, and — as with speakers — offering the typed name back keeps the list from
+     * ever being empty, which is what lets Tab and Enter mean one thing.
+     */
+    | { kind: "stageObject"; objectKind: "image" | "text" | "layer" | "video" | "audio" }
     | { kind: "enum"; options: readonly StoryCommandEnumOption[] }
     /** A bare word that means itself, e.g. the `click` in `/wait click`. Used inside unions. */
     | { kind: "keyword"; value: string }
@@ -59,7 +75,20 @@ export type StoryCommandParamType =
      * a variable with a declared `valueType`. The parser accepts any scalar; resolution rejects.
      */
     | { kind: "literal" }
-    /** Free text with no candidates. Only meaningful on a `greedy` param. */
+    /**
+     * A scalar whose *candidates* follow the variable named by `dependsOn`: once it resolves, a boolean
+     * variable offers `true`/`false` rather than a blank field. Parses and stores exactly like
+     * {@link literal} (the type check still happens once both resolve); the only thing `dependsOn` buys
+     * is a candidate list, so `/set met ` stops being the one position that gives the author no help.
+     */
+    | { kind: "variableValue"; dependsOn: string }
+    /**
+     * Free text with no candidates. Two shapes use it: a `greedy` line of prose (`/say`'s text), and a
+     * single-token *name the author invents* for a stage object (`/image hero …`). The latter cannot
+     * offer candidates yet — the names of already-created objects live in the scene graph, which is the
+     * displayable-candidate work P0 deferred — so an object name is free-typed exactly like `set`'s
+     * `literal` value, which has no candidate source either and has shipped since P0.
+     */
     | { kind: "text" };
 
 export type StoryCommandParam = {
@@ -120,6 +149,61 @@ const TRANSITION: StoryCommandParam = { name: "t", aliases: ["transition"], type
 const PLACEMENT: StoryCommandParam = { name: "at", aliases: ["pos"], type: { kind: "enum", options: PLACEMENTS } };
 
 /**
+ * A brand-new object name the author *invents* on a `create` — free text, no candidates, because it
+ * does not exist yet. Kept positional only where the name *is* the object's identity and there is
+ * nothing to derive it from (a `/layer`). Image / video / text lead with their asset or content and
+ * take the name as {@link NAME_OPTION} instead, so the common line never asks for a name at all.
+ */
+const OBJECT_NAME: StoryCommandParam = { name: "name", type: { kind: "text" }, positional: true };
+const IMAGE_ASSET: StoryCommandParam = { name: "image", aliases: ["src"], type: { kind: "asset", assetType: "image" }, positional: true };
+const VIDEO_ASSET: StoryCommandParam = { name: "video", aliases: ["src"], type: { kind: "asset", assetType: "video" }, positional: true };
+const OBJECT_CONTENT: StoryCommandParam = { name: "content", type: { kind: "text" }, positional: true, greedy: true };
+/**
+ * The optional handle for a created object. Named, not positional, so the asset/content leads the line
+ * like `/bg` does. Left off, the resolver auto-derives the name from the asset filename (or a deduped
+ * default), so `/image forest.png` lands an image called `forest` without the author naming it — see
+ * the auto-name pass in `storyCommandResolution`.
+ */
+const NAME_OPTION: StoryCommandParam = { name: "name", type: { kind: "text" } };
+
+/** A reference to an object already on stage — the picker the `show`/`hide`/`set` commands lead with. */
+const imageRef = (positional: boolean): StoryCommandParam => ({ name: "name", type: { kind: "stageObject", objectKind: "image" }, ...(positional ? { positional: true } : {}) });
+const textRef = (positional: boolean): StoryCommandParam => ({ name: "name", type: { kind: "stageObject", objectKind: "text" }, ...(positional ? { positional: true } : {}) });
+const videoRef = (positional: boolean): StoryCommandParam => ({ name: "name", type: { kind: "stageObject", objectKind: "video" }, ...(positional ? { positional: true } : {}) });
+const audioRef = (positional: boolean): StoryCommandParam => ({ name: "name", type: { kind: "stageObject", objectKind: "audio" }, ...(positional ? { positional: true } : {}) });
+
+/** The character form/appearance, whose candidates only exist once the `character` positional resolves. */
+const FORM: StoryCommandParam = { name: "form", type: { kind: "characterForm", dependsOn: "character" }, positional: true };
+
+/**
+ * The reveal animation of a `show`/`hide` — a `StoryTransformRef` preset the object animates *in* or
+ * *out* with. The author picks it as `t=`, so it reads like `/bg`'s `t=` even though the payload folds
+ * it into `transform.preset`, not a `StoryTransitionRef` (images/texts have no separate transition).
+ */
+const REVEALS: readonly StoryCommandEnumOption[] = [
+    { value: "fadeIn", aliases: ["fade"] },
+    { value: "fadeOut" },
+    { value: "slideLeft", aliases: ["slideL"] },
+    { value: "slideRight", aliases: ["slideR"] },
+    { value: "slideUp" },
+    { value: "slideDown" },
+    { value: "zoom" },
+    { value: "none" },
+];
+const REVEAL: StoryCommandParam = { name: "t", aliases: ["transition", "reveal"], type: { kind: "enum", options: REVEALS } };
+
+/**
+ * NVL's enter transition is a `StoryTransformRef` (preset-based), not the `StoryTransitionRef` the
+ * scene/background commands use, so it takes its own short preset set rather than the crossfade-heavy
+ * {@link TRANSITIONS}.
+ */
+const NVL_TRANSITIONS: readonly StoryCommandEnumOption[] = [
+    { value: "fadeIn", aliases: ["fade"] },
+    { value: "fadeOut" },
+    { value: "none" },
+];
+
+/**
  * P0 covers the ten commands that carry most lines. They were chosen to stress the grammar, not to
  * be easy: `set` forces a param whose type depends on another param's resolution, and `say` forces
  * greedy text. See the plan doc's §6.
@@ -141,7 +225,9 @@ export const STORY_COMMANDS: readonly StoryCommandDef[] = [
         aliases: ["enter"],
         params: [
             CHARACTER,
-            { name: "form", type: { kind: "characterForm", dependsOn: "character" } },
+            // Positional, like `/expr`: `/show Alice smile at=left` reads as one thought. `form=smile`
+            // still works — a positional param stays addressable by name.
+            FORM,
             PLACEMENT,
             TRANSITION,
             DURATION,
@@ -206,9 +292,59 @@ export const STORY_COMMANDS: readonly StoryCommandDef[] = [
         commandId: "setVariable",
         params: [
             { name: "variable", type: { kind: "variable" }, positional: true },
-            { name: "value", type: { kind: "literal" }, positional: true },
+            // `variableValue`, not a bare `literal`: once `variable` resolves, a boolean gets true/false
+            // candidates instead of a blank field. It still parses/stores as a literal.
+            { name: "value", type: { kind: "variableValue", dependsOn: "variable" }, positional: true },
         ],
     },
+
+    // ── P1: the rest of the palette that fits the P0 param types ──────────────────────────────────
+    //
+    // Each command is designed from the author's seat, not filled in by rote. The through-line: a
+    // command that *makes* an object lets you invent its name and pick its asset (like `/bg`); a
+    // command that *acts on* one leads with the picker of what's already on stage (`stageObject`), so
+    // "show the image I made" is a pick, never a remembered string. show/hide take the reveal as `t=`
+    // and its timing as `d=`, mirroring `/bg`. The four `displayable*` ops, `layerZIndex` and
+    // `executeScript` stay out: they need a resolved `DisplayableTargetRef` / blueprint id, not a name.
+    { token: "expr", commandId: "characterExpression", aliases: ["face", "expression"], params: [CHARACTER, FORM] },
+    { token: "menu", commandId: "choice", aliases: ["choice"], params: [{ name: "text", type: { kind: "text" }, positional: true, greedy: true }] },
+    { token: "repeat", commandId: "repeat", aliases: ["loop"], params: [{ name: "times", type: { kind: "number", min: 1, integer: true }, positional: true }] },
+    { token: "nvl", commandId: "nvl", params: [{ name: "t", aliases: ["transition"], type: { kind: "enum", options: NVL_TRANSITIONS } }, DURATION] },
+
+    // Image — create leads with the asset (like `/bg`) and auto-names from it; the rest lead with the
+    // picker of images on stage. `name=` overrides the auto-derived name when the author wants a handle.
+    { token: "image", commandId: "imageCreate", aliases: ["img"], params: [IMAGE_ASSET, PLACEMENT, DURATION, NAME_OPTION] },
+    { token: "imgsrc", commandId: "imageSetSource", aliases: ["setimg"], params: [imageRef(true), IMAGE_ASSET] },
+    { token: "imgshow", commandId: "imageShow", params: [imageRef(true), REVEAL, DURATION] },
+    { token: "imghide", commandId: "imageHide", params: [imageRef(true), REVEAL, DURATION] },
+
+    // Text — create leads with the greedy content (the words are the point); set/show/hide/font pick an
+    // existing overlay. A `name=` handle is optional and, being greedy-shadowed, must precede the content.
+    { token: "text", commandId: "textCreate", aliases: ["txt"], params: [OBJECT_CONTENT, NAME_OPTION] },
+    { token: "settext", commandId: "textSet", aliases: ["txtset"], params: [textRef(true), OBJECT_CONTENT] },
+    { token: "txtshow", commandId: "textShow", params: [textRef(true), REVEAL, DURATION] },
+    { token: "txthide", commandId: "textHide", params: [textRef(true), REVEAL, DURATION] },
+    { token: "font", commandId: "textFont", aliases: ["txtfont"], params: [textRef(true), { name: "size", type: { kind: "number", min: 1 }, positional: true }, { name: "color", type: { kind: "color" } }] },
+
+    { token: "layer", commandId: "layerCreate", params: [OBJECT_NAME, { name: "z", aliases: ["zindex"], type: { kind: "number", integer: true }, positional: true }] },
+
+    // Video — create leads with the asset and auto-names from it; show/hide/play pick the video on stage.
+    { token: "video", commandId: "videoCreate", aliases: ["vid"], params: [VIDEO_ASSET, { name: "muted", type: { kind: "boolean" } }, NAME_OPTION] },
+    { token: "vidshow", commandId: "videoShow", params: [videoRef(true)] },
+    { token: "vidhide", commandId: "videoHide", params: [videoRef(true)] },
+    { token: "vidplay", commandId: "videoPlay", aliases: ["playvideo"], params: [videoRef(true)] },
+
+    // Screen effects — pure scalars, no object reference.
+    { token: "blink", commandId: "screenBlink", params: [DURATION, { name: "hold", type: { kind: "number", min: 0 } }, { name: "color", type: { kind: "color" } }] },
+    { token: "vignette", commandId: "screenVignette", aliases: ["vig"], params: [DURATION, { name: "hold", type: { kind: "number", min: 0 } }, { name: "color", type: { kind: "color" } }, { name: "opacity", type: { kind: "number", min: 0, max: 1 } }] },
+
+    // Sound control — lead with the picker of playing handles (default "sound") + the one value each op changes.
+    { token: "stop", commandId: "stopSound", params: [audioRef(true)] },
+    { token: "pausesound", commandId: "pauseSound", aliases: ["pause"], params: [audioRef(true)] },
+    { token: "resume", commandId: "resumeSound", params: [audioRef(true)] },
+    { token: "vol", commandId: "soundVolume", aliases: ["volume"], params: [{ name: "volume", type: { kind: "number", min: 0, max: 1 }, positional: true }, audioRef(false), { name: "fade", type: { kind: "number", min: 0 } }] },
+    { token: "rate", commandId: "soundRate", params: [{ name: "rate", type: { kind: "number", min: 0 }, positional: true }, audioRef(false)] },
+    { token: "mute", commandId: "muteSound", params: [{ name: "muted", type: { kind: "enum", options: [{ value: "on" }, { value: "off" }] }, positional: true }, audioRef(false)] },
 ];
 
 const GRAMMAR_COMMAND_IDS = new Set<ActionCommandId>(STORY_COMMANDS.map(def => def.commandId));
@@ -289,7 +425,10 @@ export function matchEnumOption(type: Extract<StoryCommandParamType, { kind: "en
 
 /** Whether a param's candidates can only be listed once another param has resolved. */
 export function dependsOnParam(type: StoryCommandParamType): string | null {
-    return type.kind === "characterForm" ? type.dependsOn : null;
+    if (type.kind === "characterForm" || type.kind === "variableValue") {
+        return type.dependsOn;
+    }
+    return null;
 }
 
 /**
@@ -311,7 +450,13 @@ export function allowsFreeValue(type: StoryCommandParamType): boolean {
         case "character":
             return type.allowTemp === true;
         case "literal":
+        // A dependent value stores like a literal; its declared-type check is the resolver's, not a
+        // parse-time "unresolvable" error, so it must not fault when nothing matches.
+        case "variableValue":
         case "text":
+        // A stage object name may point at something made dynamically or in another scene — an unknown
+        // name is a valid reference, not an error (see the type's note).
+        case "stageObject":
             return true;
         case "asset":
         case "scene":

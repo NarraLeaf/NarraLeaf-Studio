@@ -305,6 +305,10 @@ export function GameRuntimeApp() {
         return bridge?.onFullscreenChanged(listener) ?? (() => undefined);
     }, [bridge]);
 
+    const subscribeCloseRequested = useCallback((listener: () => boolean | Promise<boolean>): (() => void) => {
+        return bridge?.onCloseRequested(listener) ?? (() => undefined);
+    }, [bridge]);
+
     const host = useMemo<GameAppHost | null>(() => {
         if (!pack) {
             return null;
@@ -328,6 +332,7 @@ export function GameRuntimeApp() {
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
+            subscribeCloseRequested,
         };
     }, [
         entrySurfaceId,
@@ -341,6 +346,7 @@ export function GameRuntimeApp() {
         runtimeReady,
         setFullscreen,
         subscribeFullscreenChanged,
+        subscribeCloseRequested,
         saveStore,
     ]);
 

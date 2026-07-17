@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, MouseEvent } from "react";
 import type { DraggableAttributes } from "@dnd-kit/core";
 import { useAssetDropTarget } from "@/apps/workspace/dnd/useAssetDropTarget";
 import { useWorkspace } from "@/apps/workspace/context";
@@ -24,6 +24,8 @@ interface SidebarPanelDropIconProps {
     onPanelClick: () => void;
     /** Show sidebar, select panel, and move workspace focus (for drag-drop). */
     onActivateForDrop: () => void;
+    /** Right-click on this icon (opens the rail's visibility context menu). */
+    onContextMenu?: (event: MouseEvent) => void;
     /** Optional sortable bindings from the enclosing rail (enables drag-to-reorder). */
     sortable?: SidebarPanelSortable;
 }
@@ -38,6 +40,7 @@ export function SidebarPanelDropIcon({
     sidebarVisible,
     onPanelClick,
     onActivateForDrop,
+    onContextMenu,
     sortable,
 }: SidebarPanelDropIconProps) {
     const { context } = useWorkspace();
@@ -76,6 +79,7 @@ export function SidebarPanelDropIcon({
                 ${acceptsAssetDrop ? overlayClassName : ""}
             `}
             onClick={onPanelClick}
+            onContextMenu={onContextMenu}
             title={panel.title}
             aria-label={panel.title}
         >

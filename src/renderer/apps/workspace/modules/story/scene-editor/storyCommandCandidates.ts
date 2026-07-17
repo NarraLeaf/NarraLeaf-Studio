@@ -107,6 +107,28 @@ function candidatesForType(
             return !query || startsWithFold(type.value, query) ? [{ value: type.value, label: type.value }] : [];
         case "boolean":
             return ["true", "false"].filter(value => !query || value.startsWith(query.toLowerCase())).map(value => ({ value, label: value }));
+        case "variableValue": {
+            // The candidates follow the resolved variable: a boolean offers true/false, so `/set met `
+            // stops being a blank field. Other value types stay free — there is nothing to enumerate.
+            const owner = resolved[type.dependsOn];
+            if (owner?.kind !== "variable" || owner.valueType !== "boolean") {
+                return [];
+            }
+            return ["true", "false"].filter(value => !query || value.startsWith(query.toLowerCase())).map(value => ({ value, label: value }));
+        }
+        case "stageObject": {
+            // The names on stage of this kind — sourced from the same collector the inspector's target
+            // picker reads, so the two never disagree about what exists.
+            const found = refCandidates((context.stageObjects[type.objectKind] ?? []).map(name => ({ id: name, name })), query);
+            // Offer the typed name back, as the speaker picker does: an object may be created dynamically
+            // or in another scene, so an unmatched name is a valid reference, and a never-empty list is
+            // what keeps Tab and Enter single-meaning.
+            const typed = query.trim();
+            if (typed && !found.some(candidate => candidate.value.trim().toLowerCase() === typed.toLowerCase())) {
+                found.push({ value: typed, label: typed, free: true });
+            }
+            return found;
+        }
         // Nothing to enumerate: a number, a colour, free text or an unconstrained literal is whatever
         // the author types.
         case "number":
@@ -146,10 +168,15 @@ export function hasCandidateSource(param: StoryCommandParam): boolean {
             case "enum":
             case "keyword":
             case "boolean":
+            case "stageObject":
                 return true;
             case "number":
             case "color":
             case "literal":
+            // A dependent value only has candidates for *some* variables (booleans). Reporting "yes"
+            // here would flash a misleading "no matches" while typing a number into a number variable;
+            // the boolean candidates still open on their own via a non-empty list.
+            case "variableValue":
             case "text":
             case "displayable":
                 return false;

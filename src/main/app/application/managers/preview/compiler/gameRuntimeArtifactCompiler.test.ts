@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { derivePackEncryptionKey } from "@narraleaf/encryption";
 import {
     openSealedBundle,
+    RUNTIME_AUX_PLACEHOLDER,
     RUNTIME_BUNDLE_FILENAME,
     RUNTIME_KEY_PLACEHOLDER,
     RUNTIME_SUPPORT_FILENAME,
@@ -35,7 +36,27 @@ describe("game runtime artifact compiler", () => {
     });
 
     afterEach(async () => {
-        await fs.rm(tempDir, { recursive: true, force: true });
+        // The protected-store test process.dlopen()s the packed nlcrypto.node; on
+        // Windows a loaded native module cannot be unlinked until the process
+        // exits, so a plain rm throws EPERM on that one file. Retry briefly, then
+        // leave the locked binary for the OS temp sweep rather than failing the
+        // suite on a cleanup artifact.
+        for (let attempt = 0; ; attempt++) {
+            try {
+                await fs.rm(tempDir, { recursive: true, force: true });
+                return;
+            } catch (error) {
+                const code = (error as { code?: string }).code;
+                if ((code === "EPERM" || code === "EBUSY") && attempt < 5) {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    continue;
+                }
+                if (code === "EPERM" || code === "EBUSY") {
+                    return; // give up on the locked native module only
+                }
+                throw error;
+            }
+        }
     });
 
     it("writes a real preview app with pack.json and flat copied assets", async () => {
@@ -265,8 +286,13 @@ describe("game runtime artifact compiler", () => {
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
         const pluginInstallDir = path.join(tempDir, "plugins", "acme.sample-plugin");
         await createRuntimeDist(runtimeDistDir);
-        // Protection injects the pack key into main.js at its placeholder.
-        await fs.writeFile(path.join(runtimeDistDir, "main.js"), `const K = "${RUNTIME_KEY_PLACEHOLDER}";`, "utf-8");
+        // Protection substitutes the pack key and the second opaque token into
+        // main.js at their placeholders.
+        await fs.writeFile(
+            path.join(runtimeDistDir, "main.js"),
+            `const K = "${RUNTIME_KEY_PLACEHOLDER}"; const A = "${RUNTIME_AUX_PLACEHOLDER}";`,
+            "utf-8",
+        );
         await createMinimalProject(projectPath);
         await writeAsset(projectPath, ASSET_ID, "local image bytes");
         await writeProjectIcon(projectPath, "configured icon bytes");
@@ -308,16 +334,30 @@ describe("game runtime artifact compiler", () => {
         expect(result.pack.assets.items[ASSET_ID].relativePath).toBe(`assets/${ASSET_ID}`);
         expect(result.pack.assets.items[ASSET_ID].mimeType).toBe("image/png");
 
-        // main.js received the real key in place of the placeholder.
+        // main.js received the real key and second token in place of the placeholders.
         const mainJs = await fs.readFile(path.join(result.appDir, "main.js"), "utf-8");
         expect(mainJs).toContain(packKey);
         expect(mainJs).not.toContain(RUNTIME_KEY_PLACEHOLDER);
+        expect(mainJs).not.toContain(RUNTIME_AUX_PLACEHOLDER);
+        // Recover the injected second token the way the runtime would.
+        const auxMatch = mainJs.match(/const A = "([A-Za-z0-9+/=]+)";/);
+        expect(auxMatch).not.toBeNull();
+        const auxToken = Buffer.from(auxMatch![1], "base64");
+        expect(auxToken.length).toBe(32);
 
-        // The store round-trips through the runtime reader.
+        // The store round-trips through the runtime reader — but ONLY with both
+        // the key and the matching second token.
+        await expect(openSealedBundle(
+            path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
+            path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+            packKey,
+            crypto.randomBytes(32),
+        )).rejects.toThrow();
         const reader = await openSealedBundle(
             path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
             path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
             packKey,
+            auxToken,
         );
         try {
             const pack = JSON.parse((await reader.read("pack")).toString("utf-8"));

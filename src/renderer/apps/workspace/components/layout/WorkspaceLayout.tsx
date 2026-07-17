@@ -353,14 +353,22 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         return correction;
     }, [currentEnv]);
 
+    // The first panel that would actually show in a dock's rail: not hidden, and not a (bodyless)
+    // rail action — so opening a sidebar with no active panel never lands on a hidden or empty one.
+    const firstVisiblePanelId = (position: PanelPosition): string | null => {
+        const visibility = context?.services.get<UIService>(Services.UI).getStore().getPanelVisibility() ?? {};
+        const first = getPanelsByPosition(position).find(
+            panel => !panel.railAction && visibility[panel.id] !== false,
+        );
+        return first?.id ?? null;
+    };
+
     // Enhanced toggle functions that auto-select first panel if none is active
     const toggleLeftSidebar = () => {
         if (!leftSidebarVisible && !activeLeftPanelId) {
-            // Rail actions occupy a rail slot but have no panel body, so selecting one would open
-            // the sidebar onto nothing.
-            const firstPanel = getPanelsByPosition(PanelPosition.Left).find(panel => !panel.railAction);
-            if (firstPanel) {
-                setActiveLeftPanelId(firstPanel.id);
+            const firstId = firstVisiblePanelId(PanelPosition.Left);
+            if (firstId) {
+                setActiveLeftPanelId(firstId);
             }
         }
         setLeftSidebarVisible(!leftSidebarVisible);
@@ -368,9 +376,9 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
     const toggleRightSidebar = () => {
         if (!rightSidebarVisible && !activeRightPanelId) {
-            const rightPanels = getPanelsByPosition(PanelPosition.Right);
-            if (rightPanels.length > 0) {
-                setActiveRightPanelId(rightPanels[0].id);
+            const firstId = firstVisiblePanelId(PanelPosition.Right);
+            if (firstId) {
+                setActiveRightPanelId(firstId);
             }
         }
         setRightSidebarVisible(!rightSidebarVisible);
@@ -378,9 +386,9 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
     const toggleBottomPanel = () => {
         if (!bottomPanelVisible && !activeBottomPanelId) {
-            const bottomPanels = getPanelsByPosition(PanelPosition.Bottom);
-            if (bottomPanels.length > 0) {
-                setActiveBottomPanelId(bottomPanels[0].id);
+            const firstId = firstVisiblePanelId(PanelPosition.Bottom);
+            if (firstId) {
+                setActiveBottomPanelId(firstId);
             }
         }
         setBottomPanelVisible(!bottomPanelVisible);
@@ -480,15 +488,12 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             return store.getPanels().filter(panel => panel.position === position);
         };
 
-        const previousPanelId = (panels: PanelDefinition[], panelId: string) => {
-            const currentIndex = panels.findIndex(panel => panel.id === panelId);
-            if (currentIndex > 0) {
-                return panels[currentIndex - 1].id;
-            }
-            return panels.find(panel => panel.id !== panelId)?.id ?? null;
-        };
-
         const showPanel = (panel: PanelDefinition) => {
+            // A rail action has no body — restoring its visibility just brings the rail icon back;
+            // it must not become the active panel or open the sidebar onto nothing.
+            if (panel.railAction) {
+                return;
+            }
             if (panel.position === PanelPosition.Left) {
                 setActiveLeftPanelId(panel.id);
                 setLeftSidebarVisible(true);
@@ -502,8 +507,16 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         };
 
         const hidePanel = (panel: PanelDefinition) => {
+            // Pick a replacement among the panels that are still visible (rail actions excluded —
+            // they have no body). Prefer the nearest one before the hidden panel, else the one after.
+            const visibility = store.getPanelVisibility();
             const panels = panelsByPosition(panel.position);
-            const fallbackId = previousPanelId(panels, panel.id);
+            const isReplacement = (candidate: PanelDefinition) =>
+                candidate.id !== panel.id && !candidate.railAction && visibility[candidate.id] !== false;
+            const targetIndex = panels.findIndex(entry => entry.id === panel.id);
+            const before = panels.slice(0, Math.max(targetIndex, 0)).filter(isReplacement).at(-1);
+            const after = panels.slice(targetIndex + 1).find(isReplacement);
+            const fallbackId = (before ?? after)?.id ?? null;
             if (panel.position === PanelPosition.Left && activeLeftPanelIdRef.current === panel.id) {
                 setActiveLeftPanelId(fallbackId);
                 setLeftSidebarVisible(Boolean(fallbackId));

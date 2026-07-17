@@ -198,6 +198,7 @@ export interface RendererPreloadedInterface {
         getFullscreen(): Promise<RequestStatus<{ isFullscreen: boolean }>>;
         setFullscreen(fullscreen: boolean): Promise<RequestStatus<void>>;
         onFullscreenChanged(handler: (payload: { isFullscreen: boolean }) => void): AppEventToken;
+        onCloseRequested(handler: () => Promise<RequestStatus<{ allow: boolean }>>): AppEventToken;
         onPayloadUpdate(handler: (payload: { bundle: DevModeBundle }) => void): AppEventToken;
         onControlReload(handler: (payload: { revision: number }) => void): AppEventToken;
         onControlError(handler: (payload: { message: string }) => void): AppEventToken;

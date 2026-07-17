@@ -119,3 +119,49 @@ describe("UIStore panel ordering", () => {
         expect(idsByPosition(store, PanelPosition.Left)).toEqual(["b", "a", "c"]);
     });
 });
+
+describe("UIStore panel visibility", () => {
+    function hidablePanel(id: string, defaultVisible?: boolean): PanelDefinition {
+        return { id, title: id, icon: null, position: PanelPosition.Left, component: DummyTab, defaultVisible };
+    }
+
+    function recordVisibilityEvents(store: UIStore, id: string): boolean[] {
+        const seen: boolean[] = [];
+        store.getEvents().on("panelVisibilityChanged", ({ panelId, visible }) => {
+            if (panelId === id) seen.push(visible);
+        });
+        return seen;
+    }
+
+    it("seeds visibility to true for a panel whose defaultVisible is not false", () => {
+        const store = new UIStore();
+        store.registerPanel(hidablePanel("p"));
+        expect(store.getPanelVisibility().p).toBe(true);
+    });
+
+    it("leaves a defaultVisible:false panel unseeded — the trap behind the 'first click focuses' bug", () => {
+        const store = new UIStore();
+        store.registerPanel(hidablePanel("p", false));
+        // Nothing seeds visibility, yet the rail shows such panels (undefined reads as visible).
+        expect(store.getPanelVisibility().p).toBeUndefined();
+
+        // A blind toggle flips undefined -> true, i.e. emits `visible: true`, which drove showPanel()
+        // and focused the panel instead of hiding it.
+        const events = recordVisibilityEvents(store, "p");
+        store.togglePanelVisibility("p");
+        expect(events).toEqual([true]);
+        expect(store.getPanelVisibility().p).toBe(true);
+    });
+
+    it("hides an unseeded panel when the menu sets visibility from the displayed (visible) state", () => {
+        const store = new UIStore();
+        store.registerPanel(hidablePanel("p", false));
+
+        // The menu reads the panel as visible (undefined !== false) and sets the opposite explicitly,
+        // so the very first click emits `visible: false` -> hidePanel() removes it.
+        const events = recordVisibilityEvents(store, "p");
+        store.setPanelVisibility("p", false);
+        expect(events).toEqual([false]);
+        expect(store.getPanelVisibility().p).toBe(false);
+    });
+});

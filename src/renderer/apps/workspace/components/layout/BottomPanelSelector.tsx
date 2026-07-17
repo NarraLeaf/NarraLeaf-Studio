@@ -1,7 +1,7 @@
 import React from "react";
-import { useRegistry } from "../../registry";
 import { PanelPosition } from "../../registry/types";
 import { SidebarPanelRail } from "./SidebarPanelRail";
+import { useSidebarPanelContextMenu } from "./useSidebarPanelContextMenu";
 
 interface BottomPanelSelectorProps {
     visible: boolean;
@@ -22,8 +22,7 @@ export function BottomPanelSelector({
     onSelectPanel,
     onActivatePanelForDrop,
 }: BottomPanelSelectorProps) {
-    const { getPanelsByPosition, reorderPanels } = useRegistry();
-    const panels = getPanelsByPosition(PanelPosition.Bottom);
+    const { railPanels, hasPanels, commitReorder, openMenu, menu } = useSidebarPanelContextMenu(PanelPosition.Bottom);
 
     const handlePanelClick = (panelId: string) => {
         if (activeId === panelId && visible) {
@@ -36,20 +35,26 @@ export function BottomPanelSelector({
         }
     };
 
-    if (panels.length === 0) {
+    if (!hasPanels) {
         return null;
     }
 
     return (
-        <div className="bg-surface-sunken border-t border-edge flex flex-col items-center py-2 px-1 gap-1">
+        <div
+            data-workspace-sidebar-rail=""
+            className="bg-surface-sunken border-t border-edge flex flex-col items-center py-2 px-1 gap-1"
+            onContextMenu={(event) => openMenu(event)}
+        >
             <SidebarPanelRail
-                panels={panels}
+                panels={railPanels}
                 activeId={activeId}
                 sidebarVisible={visible}
                 onPanelClick={handlePanelClick}
                 onActivateForDrop={onActivatePanelForDrop}
-                onReorder={(orderedIds) => reorderPanels(PanelPosition.Bottom, orderedIds)}
+                onReorder={commitReorder}
+                onPanelContextMenu={openMenu}
             />
+            {menu}
         </div>
     );
 }
