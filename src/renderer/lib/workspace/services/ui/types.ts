@@ -1,4 +1,5 @@
 import { ReactNode, ComponentType } from "react";
+import type { WorkspaceContext } from "../services";
 
 /**
  * Notification types
@@ -83,8 +84,14 @@ export interface PanelDefinition<TPayload = any> {
     id: string;
     title: string;
     icon: ReactNode;
+    /** Omitted only by rail actions, which have no panel body to render. */
+    component?: ComponentType<PanelComponentProps<TPayload>>;
     position: PanelPosition;
-    component: ComponentType<PanelComponentProps<TPayload>>;
+    /**
+     * Turns the rail icon into a button: clicking runs this instead of opening a panel body.
+     * See the mirror of this type in `@/apps/workspace/registry/types`.
+     */
+    railAction?: (workspace: WorkspaceContext) => void;
     defaultVisible?: boolean;
     order?: number;
     badge?: string | number;

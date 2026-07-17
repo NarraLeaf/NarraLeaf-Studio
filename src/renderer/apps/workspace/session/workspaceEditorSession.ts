@@ -28,6 +28,9 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
+import { stableProjectKeyToken } from "@shared/utils/stableKeyHash";
+import { createDashboardTab } from "@/apps/workspace/modules/dashboard/openDashboardTab";
+import { DASHBOARD_TAB_ID } from "@/apps/workspace/modules/dashboard/dashboardTabId";
 
 /** Legacy global settings key; stored in Electron userData/state/global.json. */
 export const WORKSPACE_EDITOR_SESSION_SETTINGS_KEY = "ui.editor.session";
@@ -50,6 +53,7 @@ const BLUEPRINT_ENTRY_OWNER_KINDS = new Set([
 
 export type SerializedTab =
     | { kind: "welcome" }
+    | { kind: "dashboard" }
     | { kind: "surface"; surfaceId: string }
     | { kind: "blueprint"; title: string; payload: BlueprintEntryTabPayload }
     | { kind: "character"; characterId: string }
@@ -70,28 +74,8 @@ export type WorkspaceEditorSessionProjectRef = {
     projectIdentifier?: string | null;
 };
 
-function normalizeProjectPathForSessionKey(projectPath: string): string {
-    const normalized = projectPath.trim().replace(/\\/g, "/");
-    if (normalized.length <= 1) {
-        return normalized;
-    }
-    return normalized.replace(/\/+$/g, "");
-}
-
-function stableHashForSettingsKey(value: string): string {
-    let hash = 0xcbf29ce484222325n;
-    const prime = 0x100000001b3n;
-    for (let i = 0; i < value.length; i += 1) {
-        hash ^= BigInt(value.charCodeAt(i));
-        hash = BigInt.asUintN(64, hash * prime);
-    }
-    return hash.toString(36);
-}
-
 export function getWorkspaceEditorSessionSettingsKey(projectRef: WorkspaceEditorSessionProjectRef): string {
-    const projectPath = normalizeProjectPathForSessionKey(projectRef.projectPath);
-    const projectIdentifier = projectRef.projectIdentifier?.trim() ?? "";
-    return `${WORKSPACE_EDITOR_SESSION_SETTINGS_KEY_PREFIX}.${stableHashForSettingsKey(`${projectIdentifier}\0${projectPath}`)}`;
+    return `${WORKSPACE_EDITOR_SESSION_SETTINGS_KEY_PREFIX}.${stableProjectKeyToken(projectRef)}`;
 }
 
 function isBlueprintEntryPayload(value: unknown): value is BlueprintEntryTabPayload {
@@ -178,6 +162,9 @@ export function trySerializeTab(tab: EditorTabDefinition): SerializedTab | null 
     if (tab.id === WELCOME_TAB_ID) {
         return { kind: "welcome" };
     }
+    if (tab.id === DASHBOARD_TAB_ID) {
+        return { kind: "dashboard" };
+    }
     if (tab.id.startsWith(SURFACE_TAB_PREFIX)) {
         const surfaceId = tab.id.slice(SURFACE_TAB_PREFIX.length);
         if (!surfaceId) {
@@ -254,7 +241,7 @@ function isSerializedTab(value: unknown): value is SerializedTab {
     }
     const o = value as Record<string, unknown>;
     const kind = o.kind;
-    if (kind === "welcome") {
+    if (kind === "welcome" || kind === "dashboard") {
         return true;
     }
     if (kind === "surface" && typeof o.surfaceId === "string" && o.surfaceId.length > 0) {
@@ -359,6 +346,9 @@ export function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab):
             component: welcomeModule.component as EditorTabDefinition["component"],
             closable: welcomeModule.metadata.closable,
         };
+    }
+    if (entry.kind === "dashboard") {
+        return createDashboardTab();
     }
     if (entry.kind === "surface") {
         const documentService = ctx.services.get<UIDocumentService>(Services.UIDocument);

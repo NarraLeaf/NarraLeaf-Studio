@@ -480,6 +480,44 @@ function DynamicPinTypeSelect({
     );
 }
 
+/**
+ * On-card true/false dropdown for an unwired boolean data pin. An unset pin reads as False,
+ * matching the runtime, which treats anything other than `true` as false.
+ */
+function PinInlineBooleanSelect({
+    pin,
+    nodeId,
+    raw,
+    onPatchNodeParam,
+}: {
+    pin: CatalogPin;
+    nodeId: string;
+    raw: unknown;
+    onPatchNodeParam: (nodeId: string, key: string, value: unknown) => void;
+}) {
+    const { t } = useTranslation();
+    return (
+        <div
+            className="nodrag min-w-0 flex-1"
+            onMouseDown={stopFlowNodePointerBubble}
+            onPointerDown={stopFlowNodePointerBubble}
+        >
+            <Select
+                size="sm"
+                fullWidth
+                options={[
+                    { value: "true", label: t("blueprint.literal.true") },
+                    { value: "false", label: t("blueprint.literal.false") },
+                ]}
+                value={raw === true ? "true" : "false"}
+                onChange={value => onPatchNodeParam(nodeId, pin.id, value === "true")}
+                portalMenu
+                menuPlacement="below"
+            />
+        </div>
+    );
+}
+
 function PinInlineLiteralInput({
     pin,
     nodeId,
@@ -510,6 +548,10 @@ function PinInlineLiteralInput({
                 />
             </div>
         );
+    }
+
+    if (vt === "boolean") {
+        return <PinInlineBooleanSelect pin={pin} nodeId={nodeId} raw={raw} onPatchNodeParam={onPatchNodeParam} />;
     }
 
     if (vt === "string") {

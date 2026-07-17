@@ -508,6 +508,17 @@ export function GameApp(props: GameAppProps): ReactNode {
         core.scopeBridge.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, false);
     }, [core]);
 
+    /**
+     * Surface a failed save screenshot to the Blueprint console. Capture is best-effort — the save
+     * still succeeds without a preview — but staying silent made a requested capture look like the
+     * Save Game node was ignoring its Capture pin.
+     */
+    const reportSaveCaptureFailure = useCallback((id: string, reason: string): void => {
+        const message = `Save Game: screenshot capture failed for "${id}" — ${reason}`;
+        core?.debug.emit({ type: "devtools.log", level: "warn", message });
+        host.log("warning", message);
+    }, [core, host.log]);
+
     const setNlrDialogVirtualClickTarget = useCallback((target: HTMLElement | null): void => {
         nlrDialogVirtualClickTargetRef.current = target;
     }, []);
@@ -573,11 +584,20 @@ export function GameApp(props: GameAppProps): ReactNode {
     const writeSave = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
         const liveGame = requireActiveLiveGame("Save Game");
         let capture: string | undefined;
-        if (screenshot === true && typeof liveGame.capturePng === "function") {
-            capture = await liveGame.capturePng().catch(() => undefined);
+        if (screenshot === true) {
+            if (typeof liveGame.capturePng !== "function") {
+                reportSaveCaptureFailure(id, "the game runtime does not support capturePng");
+            } else {
+                try {
+                    capture = await liveGame.capturePng();
+                } catch (error) {
+                    // The save itself still goes through — a failed preview must not lose progress.
+                    reportSaveCaptureFailure(id, normalizeError(error));
+                }
+            }
         }
         await host.saveStore.write(id, liveGame.serialize(), capture, metadata);
-    }, [host.saveStore, requireActiveLiveGame]);
+    }, [host.saveStore, reportSaveCaptureFailure, requireActiveLiveGame]);
 
     const loadSave = useCallback(async (id: string) => {
         const liveGame = requireActiveLiveGame("Load Save");
