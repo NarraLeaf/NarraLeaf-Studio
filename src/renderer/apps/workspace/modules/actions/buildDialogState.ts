@@ -18,8 +18,12 @@ import { DEFAULT_BUILD_COMPRESSION, type BuildConfiguration } from "@/lib/worksp
  * logic is testable without rendering.
  */
 
-/** Platforms shown, in display order. */
-export const DIALOG_PLATFORMS: GameBuildPlatform[] = ["windows", "macos", "linux", "web"];
+/**
+ * Platforms shown, in display order. iOS is wired end to end but stays hidden
+ * until an unsigned .ipa has been re-signed and installed on a real device —
+ * offering it before that would promise something unverified.
+ */
+export const DIALOG_PLATFORMS: GameBuildPlatform[] = ["windows", "macos", "linux", "web", "android"];
 
 export const DESKTOP_PLATFORMS: GameBuildDesktopPlatform[] = ["windows", "macos", "linux"];
 
@@ -34,9 +38,8 @@ export const OFFERED_FORMATS: Record<GameBuildPlatform, GameBuildFormat[]> = {
     macos: ["zip", "dmg", "dir"],
     linux: ["zip", "appimage", "dir"],
     web: ["zip", "dir"],
-    // Not in DIALOG_PLATFORMS yet — the mobile pipeline lands worker-first;
-    // the UI batch adds them there once the repack path exists end to end.
     android: ["apk"],
+    // Not in DIALOG_PLATFORMS yet; see the note there.
     ios: ["ipa"],
 };
 
