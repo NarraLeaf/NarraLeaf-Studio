@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, RefObject, MouseEvent } from "react";
-import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Plus, UserRoundPlus } from "lucide-react";
+import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Music, Plus, Route, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
@@ -25,6 +25,12 @@ import {
     type PaletteActionCommand,
 } from "./storyActionCommands";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
+import { getCommandDef, paramTypes } from "./storyCommandGrammar";
+import { completionFor, defaultHighlights, getCommandCursor, type StoryCommandCursor } from "./storyCommandCursor";
+import { getCommandCandidates, hasCandidateSource, type StoryCommandCandidate } from "./storyCommandCandidates";
+import { parseCommandLine } from "./storyCommandParser";
+import { resolveCommandLine, type StoryCommandContext } from "./storyCommandResolution";
+import { StoryCommandCandidateMenu, useStoryCandidateMenuState, type StoryCandidateItem } from "./StoryCommandCandidateMenu";
 import { ActionInspector } from "./StorySceneActionInspector";
 import { RichTextInput, type ActiveMarks, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle } from "./RichTextInput";
 import { RichTextToolbar } from "./RichTextToolbar";
@@ -728,10 +734,35 @@ function ContainerFooter(props: {
     );
 }
 
+/**
+ * The icon for a candidate, chosen from what the param is asking for. A speaker with nobody behind it
+ * gets the outline icon the picker uses, so picking one is never mistaken for picking a character.
+ */
+function candidateIcon(cursor: StoryCommandCursor, candidate: StoryCommandCandidate): { icon: typeof Hash; className?: string } | null {
+    if (cursor.kind !== "positional" && cursor.kind !== "paramValue") {
+        return null;
+    }
+    const [type] = paramTypes(cursor.param);
+    switch (type?.kind) {
+        case "asset":
+            return { icon: type.assetType === "audio" ? Music : type.assetType === "video" ? Video : Image };
+        case "character":
+            return candidate.free ? { icon: UserRoundPlus } : { icon: Hash, className: "text-primary/80" };
+        case "scene":
+            return { icon: Route };
+        case "variable":
+            return { icon: Variable };
+        default:
+            return null;
+    }
+}
+
 export function InsertRow(props: {
     mode: Extract<EditorMode, { kind: "insert" }>;
     characters: Character[];
     tempSpeakers: TempSpeakerRef[];
+    /** What a name typed on this line may refer to — the same view the resolver reads. */
+    commandContext: StoryCommandContext;
     inputRef: RefObject<HTMLTextAreaElement | null>;
     onValueChange: (value: string) => void;
     onCommitNarration: (focusNext: boolean) => void;
@@ -767,6 +798,84 @@ export function InsertRow(props: {
     const characterMenu = useCharacterPickerState(characterOptions);
     const textStyle = useStoryEditorTextStyle();
 
+    // Where the caret is decides what the slot offers, so it has to be state: `/bg fo|` asks for an
+    // image, `/bg forest_day t=|` for a transition, and only the caret tells them apart.
+    const [caret, setCaret] = useState(props.mode.value.length);
+    const cursor = useMemo(() => getCommandCursor(props.mode.value, caret), [caret, props.mode.value]);
+    // `form=` can only list the forms of the character this line already named, so the candidates need
+    // the args resolved so far.
+    const resolvedArgs = useMemo(() => {
+        const line = parseCommandLine(props.mode.value);
+        return line.kind === "command" && line.def ? resolveCommandLine(line, props.commandContext).args : {};
+    }, [props.commandContext, props.mode.value]);
+    const argItems = useMemo<StoryCandidateItem[]>(() => {
+        if (cursor.kind !== "positional" && cursor.kind !== "paramValue" && cursor.kind !== "paramName") {
+            return [];
+        }
+        return getCommandCandidates(cursor, props.commandContext, resolvedArgs).map((candidate, index) => {
+            const icon = candidateIcon(cursor, candidate);
+            return {
+                // Values are not unique on their own — two assets may share a name.
+                key: `${index}:${candidate.value}`,
+                value: candidate.value,
+                label: candidate.label,
+                detail: candidate.detail,
+                icon: icon?.icon,
+                iconClassName: icon?.className,
+                tag: candidate.free ? t("story.rows.tempSpeaker") : undefined,
+            };
+        });
+    }, [cursor, props.commandContext, resolvedArgs, t]);
+    const argMenu = useStoryCandidateMenuState(argItems, defaultHighlights(cursor));
+
+    /**
+     * The argument menu owns the slot whenever the caret is past the command name.
+     *
+     * An empty list still opens when the author typed something a param *could* have matched — that is
+     * the "no matches" the speaker picker also shows. It stays shut for a param with nothing to
+     * enumerate (a duration, a colour), where "no matches" would be nonsense, and at a `k=` position,
+     * where an empty list means every param is already given and there is nothing left to say.
+     */
+    const argValuePosition = cursor.kind === "positional" || cursor.kind === "paramValue";
+    const argMenuOpen = props.mode.chooser === "action"
+        && (cursor.kind === "paramName" ? argItems.length > 0
+            : argValuePosition && (argItems.length > 0 || (cursor.query.length > 0 && hasCandidateSource(cursor.param))));
+    const actionMenuOpen = props.mode.chooser === "action" && cursor.kind === "commandName";
+
+    /**
+     * Replace the token under the caret and put the caret after what was written. The slot's value is
+     * controlled, so the caret has to be restored by hand once React has rendered the new text.
+     */
+    const applyCompletion = (text: string, replace: { start: number; end: number }) => {
+        const value = props.mode.value;
+        const next = value.slice(0, replace.start) + text + value.slice(replace.end);
+        const nextCaret = replace.start + text.length;
+        props.onValueChange(next);
+        setCaret(nextCaret);
+        window.requestAnimationFrame(() => props.inputRef.current?.setSelectionRange(nextCaret, nextCaret));
+    };
+
+    const takeArgCandidate = (item: StoryCandidateItem) => {
+        const completion = completionFor(cursor, item.value);
+        if (completion) {
+            applyCompletion(completion.text, completion.replace);
+        }
+    };
+
+    /**
+     * Taking a command from the menu completes the line rather than committing it — but only for a
+     * command that has arguments to go on and fill. A command with no grammar has nothing more to say,
+     * so it commits exactly as it does today; `/note` and `/imageCreate` keep their behaviour.
+     */
+    const chooseCommandCandidate = (commandId: string) => {
+        const def = getCommandDef(commandId);
+        if (def && def.params.length > 0) {
+            applyCompletion(`/${def.token} `, { start: 0, end: props.mode.value.length });
+            return;
+        }
+        props.onChooseCommand(commandId);
+    };
+
     return (
         <div className="relative grid min-h-[40px] grid-cols-[36px_28px_1fr] items-start pr-3">
             <div className="pt-2 text-right text-[12px] text-fg-subtle">+</div>
@@ -781,7 +890,13 @@ export function InsertRow(props: {
                     rows={1}
                     value={props.mode.value}
                     placeholder={t("story.rows.insertPlaceholder")}
-                    onChange={event => props.onValueChange(event.target.value)}
+                    onChange={event => {
+                        setCaret(event.target.selectionStart ?? event.target.value.length);
+                        props.onValueChange(event.target.value);
+                    }}
+                    // Fires on caret moves as well as selections — the slot has to follow the caret,
+                    // not just the text, or clicking back into `/bg |forest` would still offer transitions.
+                    onSelect={event => setCaret((event.target as HTMLTextAreaElement).selectionStart ?? 0)}
                     onBlur={() => {
                         if (props.mode.chooser === "none") {
                             props.onCommitNarration(false);
@@ -802,7 +917,12 @@ export function InsertRow(props: {
                             return;
                         }
                         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                            if (props.mode.chooser === "action") {
+                            if (argMenuOpen) {
+                                event.preventDefault();
+                                argMenu.move(event.key === "ArrowDown" ? 1 : -1);
+                                return;
+                            }
+                            if (actionMenuOpen) {
                                 event.preventDefault();
                                 actionMenu.moveCommand(event.key === "ArrowDown" ? 1 : -1);
                                 return;
@@ -817,12 +937,21 @@ export function InsertRow(props: {
                         // point: the highlight is the pointer, so whichever key the author reaches for
                         // does what the menu is showing. Tab no longer cycles categories.
                         const takeHighlighted = () => {
-                            if (props.mode.chooser === "action") {
+                            if (argMenuOpen) {
+                                // No highlight is the answer at a `k=` position: Enter falls through and
+                                // submits the line instead of grabbing `t=`.
+                                if (!argMenu.activeItem) {
+                                    return false;
+                                }
+                                takeArgCandidate(argMenu.activeItem);
+                                return true;
+                            }
+                            if (actionMenuOpen) {
                                 const command = actionMenu.activeCommand;
                                 if (!command) {
                                     return false;
                                 }
-                                props.onChooseCommand(command.id);
+                                chooseCommandCandidate(command.id);
                                 return true;
                             }
                             if (props.mode.chooser === "character") {
@@ -839,7 +968,15 @@ export function InsertRow(props: {
                         };
                         if (event.key === "Tab") {
                             event.preventDefault();
-                            takeHighlighted();
+                            if (takeHighlighted()) {
+                                return;
+                            }
+                            // Tab advances *within* the row. With nothing highlighted — a `k=` position,
+                            // where Enter submits instead — it still takes the first candidate, which is
+                            // what walks the caret on to the next argument.
+                            if (argMenuOpen && argItems.length > 0) {
+                                takeArgCandidate(argItems[0]);
+                            }
                             return;
                         }
                         if (event.key === "Enter") {
@@ -857,14 +994,24 @@ export function InsertRow(props: {
                         }
                     }}
                 />
-                {props.mode.chooser === "action" ? (
+                {actionMenuOpen ? (
                     <ActionCommandMenu
                         categories={actionMenu.visibleCategories}
                         activeCategoryId={actionMenu.activeCategoryId}
                         activeCommandId={actionMenu.activeCommand?.id ?? null}
                         onSelectCategory={actionMenu.selectCategory}
                         onHighlightCommand={actionMenu.selectCommand}
-                        onChoose={props.onChooseCommand}
+                        onChoose={chooseCommandCandidate}
+                        onCancel={props.onDismissChooser}
+                        placement={menuPlacement}
+                    />
+                ) : null}
+                {argMenuOpen ? (
+                    <StoryCommandCandidateMenu
+                        items={argItems}
+                        activeKey={argMenu.activeItem?.key ?? null}
+                        onHighlight={argMenu.selectItem}
+                        onChoose={takeArgCandidate}
                         onCancel={props.onDismissChooser}
                         placement={menuPlacement}
                     />
@@ -1546,11 +1693,13 @@ function BlockPreview(props: {
                     style={textStyle}
                 />
                 <span
-                    className={["min-w-0 flex-1 whitespace-pre-wrap break-words", hasValue ? "text-fg" : "italic text-fg-subtle"].join(" ")}
+                    className={["min-w-0 flex-1 whitespace-pre-wrap break-words", hasValue ? "nl-selectable-text text-fg" : "italic text-fg-subtle"].join(" ")}
                     style={textStyle}
                     // Marked only when it actually holds rich content: the controller reads the
                     // author's selection out of this element (its unit structure matches the
                     // editor's) to carry it into edit mode. The placeholder is not content.
+                    // `nl-selectable-text` is what makes that selection possible at all — the app
+                    // sets `user-select: none` on everything by default.
                     data-story-row-text={hasValue ? "" : undefined}
                 >
                     {hasValue && text ? <RichTextView segment={text} document={props.document} sceneId={props.scene.id} /> : t("story.rows.doubleClickDialogue")}
@@ -1563,7 +1712,11 @@ function BlockPreview(props: {
         const note = block.kind === "note";
         return (
             <span
-                className={["min-w-0 flex-1 whitespace-pre-wrap break-words", note ? "italic text-fg-muted" : hasValue ? "text-fg" : "italic text-fg-subtle"].join(" ")}
+                className={[
+                    "min-w-0 flex-1 whitespace-pre-wrap break-words",
+                    hasValue ? "nl-selectable-text" : "",
+                    note ? "italic text-fg-muted" : hasValue ? "text-fg" : "italic text-fg-subtle",
+                ].filter(Boolean).join(" ")}
                 style={textStyle}
                 data-story-row-text={hasValue ? "" : undefined}
             >

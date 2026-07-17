@@ -6,6 +6,7 @@ import {
     GameBuildManager,
     gameFusesForPlatform,
     isDesktopTarget,
+    isMobileTarget,
     resolveElectronDistDirForApp,
 } from "./GameBuildManager";
 
@@ -48,21 +49,25 @@ describe("isDesktopTarget", () => {
     });
 });
 
+describe("isMobileTarget", () => {
+    it("claims mobile platforms only — not web, not desktop", () => {
+        // Same reasoning as isDesktopTarget: a type-predicate body is unchecked,
+        // and this one decides whether a target reaches the repack at all.
+        const formats = { formats: [] };
+        expect(isMobileTarget({ platform: "android", ...formats })).toBe(true);
+        expect(isMobileTarget({ platform: "ios", ...formats })).toBe(true);
+        expect(isMobileTarget({ platform: "web", ...formats })).toBe(false);
+        expect(isMobileTarget({ platform: "windows", ...formats })).toBe(false);
+        expect(isMobileTarget({ platform: "macos", ...formats })).toBe(false);
+        expect(isMobileTarget({ platform: "linux", ...formats })).toBe(false);
+    });
+});
+
 describe("GameBuildManager.start fail-fast guards", () => {
     const makeManager = () => new GameBuildManager({
         logger: { error: () => undefined },
     } as unknown as ConstructorParameters<typeof GameBuildManager>[0]);
     const entry = {} as GameRuntimeLaunchEntry;
-
-    it("fails a mobile-target build instead of silently ignoring it", async () => {
-        const manager = makeManager();
-        const projectPath = path.join("/nonexistent", "mobile-guard-project");
-        manager.start(projectPath, entry, { targets: [{ platform: "android", formats: ["apk"] }] });
-        await vi.waitFor(() => {
-            expect(manager.getStatus(projectPath).status).toBe("error");
-        });
-        expect(manager.getStatus(projectPath).error).toContain("android");
-    });
 
     it("fails loudly for a platform outside the union", async () => {
         // Regression: with the explicit desktop/mobile/web partitions, an

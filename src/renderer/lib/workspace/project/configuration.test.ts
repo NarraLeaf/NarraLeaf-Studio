@@ -50,21 +50,25 @@ describe("normalizeBuildConfiguration", () => {
         });
     });
 
-    it("drops stored mobile platforms until the dialog offers them", () => {
-        // ALL_BUILD_PLATFORMS deliberately excludes android/ios while the
-        // mobile pipeline lands worker-first; the UI batch flips this along
-        // with DIALOG_PLATFORMS. Until then a stored mobile selection (from a
-        // newer Studio or a hand-edited state) must not resurface targets the
-        // pipeline rejects.
+    it("restores a stored mobile selection", () => {
         expect(normalizeBuildConfiguration({
-            platforms: ["android"],
-            formats: { android: ["apk"] },
-        })).toBeNull();
-        const mixed = normalizeBuildConfiguration({
-            platforms: ["android", "web"],
-            formats: { android: ["apk"], web: ["zip"] },
+            platforms: ["android", "ios"],
+            formats: { android: ["apk"], ios: ["ipa"] },
+        })).toMatchObject({
+            platforms: ["android", "ios"],
+            formats: { android: ["apk"], ios: ["ipa"] },
         });
-        expect(mixed?.platforms).toEqual(["web"]);
+    });
+
+    it("drops a mobile format the platform does not offer", () => {
+        // A hand-edited state (or a newer Studio's) must not resurface a
+        // format the pipeline would reject — the mobile platforms have exactly
+        // one each.
+        const config = normalizeBuildConfiguration({
+            platforms: ["android", "ios"],
+            formats: { android: ["apk", "nsis"], ios: ["ipa", "dmg"] },
+        });
+        expect(config?.formats).toEqual({ android: ["apk"], ios: ["ipa"] });
     });
 
     it("returns null when every selected platform loses all its formats", () => {

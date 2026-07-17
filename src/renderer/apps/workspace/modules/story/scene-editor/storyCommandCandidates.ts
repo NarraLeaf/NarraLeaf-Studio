@@ -129,6 +129,35 @@ function candidatesForParam(
 }
 
 /**
+ * Whether this param has anything to enumerate at all.
+ *
+ * The difference between "nothing matched" and "nothing to match": an asset name that finds no asset
+ * is worth telling the author about, a half-typed number is not. Callers use it to decide whether an
+ * empty list deserves an empty *state* or no menu at all.
+ */
+export function hasCandidateSource(param: StoryCommandParam): boolean {
+    return paramTypes(param).some(type => {
+        switch (type.kind) {
+            case "asset":
+            case "character":
+            case "characterForm":
+            case "scene":
+            case "variable":
+            case "enum":
+            case "keyword":
+            case "boolean":
+                return true;
+            case "number":
+            case "color":
+            case "literal":
+            case "text":
+            case "displayable":
+                return false;
+        }
+    });
+}
+
+/**
  * Candidates for the caret's position.
  *
  * `resolved` carries the args resolved so far, which a dependent param needs — `form=` can only list

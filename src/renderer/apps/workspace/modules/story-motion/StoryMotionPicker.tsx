@@ -14,6 +14,7 @@ import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { Select } from "@/lib/components/elements/Select";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
+import { motionSummary } from "./MotionSelector";
 import { createStoryMotionEditorTab } from "./StoryMotionEditorTab";
 import type { StoryMotionActionContext } from "./storyMotionTypes";
 import {
@@ -234,12 +235,3 @@ export function StoryMotionPicker(props: {
     );
 }
 
-function motionSummary(asset: StoryAnimationAsset, t: UseTranslation["t"]): string {
-    const durationMs = getStoryMotionDurationMs(asset.timeline);
-    const tracks = asset.timeline?.tracks ?? [];
-    const labels = tracks
-        .slice(0, 3)
-        .map(track => t(`motion.propertyLabel.${track.property}`))
-        .join(", ");
-    return `${durationMs}ms${labels ? ` / ${labels}${tracks.length > 3 ? "..." : ""}` : ""}`;
-}

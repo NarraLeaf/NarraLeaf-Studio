@@ -27,7 +27,7 @@ top of them (see `docs/plans/2026-07-16-001-feat-story-command-system.md`).
 | `Tab` | indent | — | take highlight |
 | `Shift+Enter` | blank row after last selected | commit + blank row after | `#` line → invalid row; else resolve line |
 | `Shift+Tab` | outdent | — | — |
-| double-click | enter edit, native word selection preserved | — | — |
+| double-click | enter edit, native word selection preserved **(intended; currently broken — see Selection)** | — | — |
 
 `Mod+Enter` was removed: it did exactly what `Shift+Enter` does, had no UI path, and was silently
 downgraded to plain `Enter` inside the slot.
@@ -42,6 +42,10 @@ One rule decides all three mouse gestures: **is the selection collapsed at mouse
 - Non-collapsed within one row (a drag, or a double-click) → enter edit, carrying the selection.
 - Crossing a row boundary → abandon the text selection, switch to row-range selection, and suspend
   `user-select` for the rest of the gesture.
+
+> **This section describes intent, not current behaviour.** Double-click on a row with text does not
+> actually enter edit mode. The model is sound; the implementation is not. Being rebuilt — see
+> `docs/plans/2026-07-16-003-handoff-story-row.md`.
 
 The suspend/restore is the fragile part: teardown must cover `mouseup`, `pointercancel` **and**
 `window blur`, or text becomes permanently unselectable. Drag is safe from the row body because

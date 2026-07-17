@@ -1,4 +1,5 @@
 import type { StoryBlock, StoryTransformRef, StoryTransitionRef } from "@shared/types/story";
+import { storySecondsToMs } from "@shared/utils/storyTime";
 import type { ActionCommandId } from "./storyActionCommands";
 import type { StoryCommandResolvedArgs, StoryCommandValue } from "./storyCommandResolution";
 
@@ -22,6 +23,12 @@ function asNumber(value: StoryCommandValue | undefined): number | undefined {
     return value?.kind === "number" ? value.value : undefined;
 }
 
+/** Durations are typed in seconds and stored in milliseconds — `d=0.3` means 300ms. */
+function asDurationMs(value: StoryCommandValue | undefined): number | undefined {
+    const seconds = asNumber(value);
+    return seconds === undefined ? undefined : storySecondsToMs(seconds);
+}
+
 function asBoolean(value: StoryCommandValue | undefined): boolean | undefined {
     return value?.kind === "boolean" ? value.value : undefined;
 }
@@ -39,7 +46,7 @@ function asEnum(value: StoryCommandValue | undefined): string | undefined {
  */
 function withTransition(current: StoryTransitionRef | undefined, args: StoryCommandResolvedArgs): StoryTransitionRef | undefined {
     const kind = asEnum(args.t) as StoryTransitionRef["kind"] | undefined;
-    const durationMs = asNumber(args.d);
+    const durationMs = asDurationMs(args.d);
     if (kind === undefined && durationMs === undefined) {
         return current;
     }
@@ -53,7 +60,7 @@ function withTransition(current: StoryTransitionRef | undefined, args: StoryComm
 /** Fold `at=` / `d=` into a transform. `d` belongs to the transform on character actions, not the transition. */
 function withTransform(current: StoryTransformRef | undefined, args: StoryCommandResolvedArgs): StoryTransformRef | undefined {
     const preset = asEnum(args.at) as StoryTransformRef["preset"] | undefined;
-    const durationMs = asNumber(args.d);
+    const durationMs = asDurationMs(args.d);
     if (preset === undefined && durationMs === undefined) {
         return current;
     }
@@ -134,12 +141,12 @@ export function applyCommandArgs(block: StoryBlock, commandId: ActionCommandId, 
             if (block.kind !== "action" || block.payload.action !== "wait") {
                 return block;
             }
-            const ms = args.ms;
-            if (ms?.kind === "keyword") {
+            const seconds = args.seconds;
+            if (seconds?.kind === "keyword") {
                 return { ...block, payload: { action: "wait", mode: "click" } };
             }
-            if (ms?.kind === "number") {
-                return { ...block, payload: { action: "wait", mode: "duration", durationMs: ms.value } };
+            if (seconds?.kind === "number") {
+                return { ...block, payload: { action: "wait", mode: "duration", durationMs: storySecondsToMs(seconds.value) } };
             }
             return block;
         }
@@ -153,9 +160,9 @@ export function applyCommandArgs(block: StoryBlock, commandId: ActionCommandId, 
             if (args.audio?.kind === "asset") {
                 payload.assetId = args.audio.assetId;
             }
-            const fade = asNumber(args.fade);
-            if (fade !== undefined) {
-                payload.fadeMs = fade;
+            const fadeMs = asDurationMs(args.fade);
+            if (fadeMs !== undefined) {
+                payload.fadeMs = fadeMs;
             }
             const volume = asNumber(args.vol);
             if (volume !== undefined) {

@@ -3,6 +3,7 @@ import {
     defaultGameBuildArch,
     deriveAndroidVersionCode,
     deriveGameAppId,
+    deriveIosBundleVersion,
     gameBuildArtifactNamePattern,
     hostCanBuildTarget,
     isDesktopBuildPlatform,
@@ -275,6 +276,24 @@ describe("normalizeIosBundleId", () => {
 
     it("replaces underscores (invalid on iOS, unlike Android)", () => {
         expect(normalizeIosBundleId("com.studio.my_game")).toBe("com.studio.my-game");
+    });
+});
+
+describe("deriveIosBundleVersion", () => {
+    it("passes a plain three-part version through", () => {
+        expect(deriveIosBundleVersion("1.2.3")).toBe("1.2.3");
+    });
+
+    it("strips the pre-release and build metadata iOS rejects", () => {
+        // CFBundleShortVersionString takes digits and dots only; semver's
+        // suffixes would make the bundle invalid.
+        expect(deriveIosBundleVersion("1.2.0-beta.3")).toBe("1.2.0");
+        expect(deriveIosBundleVersion("1.2.0+build.7")).toBe("1.2.0");
+        expect(deriveIosBundleVersion("2.0.0-rc.1+exp")).toBe("2.0.0");
+    });
+
+    it("falls back for a version it cannot parse", () => {
+        expect(deriveIosBundleVersion("not-a-version")).toBe("0.0.0");
     });
 });
 
