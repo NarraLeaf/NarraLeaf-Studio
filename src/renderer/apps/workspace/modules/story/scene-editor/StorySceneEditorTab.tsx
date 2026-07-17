@@ -882,6 +882,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     <InsertRow
                                         mode={editor.editorMode}
                                         characters={editor.characters}
+                                        commandContext={editor.commandContext}
                                         inputRef={editor.insertInputRef}
                                         onValueChange={editor.handleInsertValueChange}
                                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
@@ -904,6 +905,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     <InsertRow
                         mode={editor.editorMode}
                         characters={editor.characters}
+                        commandContext={editor.commandContext}
                         inputRef={editor.insertInputRef}
                         onValueChange={editor.handleInsertValueChange}
                         onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}

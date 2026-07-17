@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { getCommandCandidates } from "./storyCommandCandidates";
+import { getCommandCandidates, hasCandidateSource } from "./storyCommandCandidates";
+import { getCommandDef } from "./storyCommandGrammar";
 import { completionFor, defaultHighlights, getCommandCursor, type StoryCommandCursor } from "./storyCommandCursor";
 import type { StoryCommandContext } from "./storyCommandResolution";
 
@@ -142,6 +143,33 @@ describe("getCommandCandidates", () => {
 
     it("offers nothing inside a greedy body", () => {
         expect(values("/say Alice hello |")).toEqual([]);
+    });
+});
+
+describe("hasCandidateSource", () => {
+    /** `/<token>`'s param by name. */
+    function param(token: string, name: string) {
+        const def = getCommandDef(token);
+        const found = def?.params.find(entry => entry.name === name);
+        if (!found) {
+            throw new Error(`no param ${name} on /${token}`);
+        }
+        return found;
+    }
+
+    it("separates a name that found nothing from a value with nothing to find", () => {
+        // Drives whether an empty list is worth an empty state: "no matches" is useful for an asset
+        // name, and nonsense for a half-typed duration.
+        expect(hasCandidateSource(param("bg", "image"))).toBe(true);
+        expect(hasCandidateSource(param("bg", "t"))).toBe(true);
+        expect(hasCandidateSource(param("bg", "d"))).toBe(false);
+        expect(hasCandidateSource(param("say", "text"))).toBe(false);
+        expect(hasCandidateSource(param("set", "value"))).toBe(false);
+    });
+
+    it("counts a union enumerable when any branch is", () => {
+        // `/wait` is `click` or a number: `click` is worth offering.
+        expect(hasCandidateSource(param("wait", "ms"))).toBe(true);
     });
 });
 

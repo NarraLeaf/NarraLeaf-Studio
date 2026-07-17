@@ -118,6 +118,7 @@ export const story = {
         noCategoryActionFound: "No {category} action found.",
         actionTypes: "Action types",
         noCharacterFound: "No character found.",
+        noCandidates: "No matches.",
         doubleClickDialogue: "Double-click to enter dialogue",
         setBackground: "Set background",
         transform: "Transform",

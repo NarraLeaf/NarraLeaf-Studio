@@ -117,6 +117,7 @@ export const story = {
         noCategoryActionFound: "未找到{category}动作",
         actionTypes: "动作类型",
         noCharacterFound: "未找到角色",
+        noCandidates: "无匹配项",
         doubleClickDialogue: "双击输入对话",
         setBackground: "设置背景",
         transform: "变换",
