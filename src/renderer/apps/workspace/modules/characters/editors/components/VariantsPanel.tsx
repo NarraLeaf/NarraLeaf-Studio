@@ -1,7 +1,8 @@
 import React from "react";
 import { CharacterForm, CharacterVariantGroup } from "@/lib/workspace/services/character/types";
 import { useTranslation } from "@/lib/i18n";
-import { ChevronDown, ChevronLeft, ChevronRight, Image as ImageIcon, ImagePlus, MoreVertical, Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ImagePlus, MoreVertical, Pencil, Plus, Trash2 } from "lucide-react";
+import { HeadThumbnail } from "./HeadThumbnail";
 import { AssetView } from "./types";
 
 type VariantsPanelProps = {
@@ -109,13 +110,11 @@ export function VariantsPanel({
                                         onClick={() => onSelectVariant(variant.name)}
                                     >
                                         <div className="flex gap-3 px-3 py-2 items-center">
-                                            <div className="w-16 h-16 rounded-md bg-surface border border-edge flex items-center justify-center overflow-hidden">
-                                                {view?.url ? (
-                                                    <img src={view.url} alt={variant.name} className="w-full h-full object-cover" />
-                                                ) : (
-                                                    <ImageIcon className="w-5 h-5 text-fg-subtle" />
-                                                )}
-                                            </div>
+                                            <HeadThumbnail
+                                                url={view?.url}
+                                                alt={variant.name}
+                                                className="w-16 h-16 rounded-md bg-surface border border-edge"
+                                            />
                                             <div className="flex-1 min-w-0 space-y-1">
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-sm text-fg truncate">{variant.name}</span>
@@ -212,13 +211,11 @@ export function VariantsPanel({
                                                     onClick={() => onSelectVariant(variant.name)}
                                                 >
                                                     <div className="flex gap-3 px-3 py-2 items-center">
-                                                        <div className="w-16 h-16 rounded-md bg-surface border border-edge flex items-center justify-center overflow-hidden">
-                                                            {view?.url ? (
-                                                                <img src={view.url} alt={variant.name} className="w-full h-full object-cover" />
-                                                            ) : (
-                                                                <ImageIcon className="w-5 h-5 text-fg-subtle" />
-                                                            )}
-                                                        </div>
+                                                        <HeadThumbnail
+                                                            url={view?.url}
+                                                            alt={variant.name}
+                                                            className="w-16 h-16 rounded-md bg-surface border border-edge"
+                                                        />
                                                         <div className="flex-1 min-w-0 space-y-1">
                                                             <div className="flex items-center gap-2">
                                                                 <span className="text-sm text-fg truncate">{variant.name}</span>
