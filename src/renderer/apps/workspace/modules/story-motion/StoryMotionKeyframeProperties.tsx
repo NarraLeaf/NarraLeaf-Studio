@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { Trash2 } from "lucide-react";
 import { formatStoryBezierEasing, parseStoryEasing } from "@shared/utils/storyEasing";
+import { storyMsToSeconds, storySecondsToMs } from "@shared/utils/storyTime";
 import type {
     StoryAlignPositionValue,
     StoryAnimationAsset,
@@ -186,17 +187,18 @@ function createStoryMotionKeyframeSchema(
                 },
             }),
             defineField<StoryMotionKeyframeInspectorData, FieldDefinition<StoryMotionKeyframeInspectorData>>({
-                id: "timeMs",
+                id: "timeSeconds",
                 type: "number",
-                label: t("motion.keyframe.timeMs"),
+                label: t("motion.keyframe.timeSeconds"),
                 min: 0,
-                max: STORY_MOTION_MAX_DURATION_MS,
-                step: 1,
-                getValue: data => data.keyframe.timeMs,
+                max: storyMsToSeconds(STORY_MOTION_MAX_DURATION_MS),
+                // 0.001s is one stored millisecond — the finest step the timeline can hold.
+                step: 0.001,
+                getValue: data => storyMsToSeconds(data.keyframe.timeMs),
                 setValue: (_data, value) => {
                     updateKeyframe(keyframe => ({
                         ...keyframe,
-                        timeMs: clampStoryMotionTimeMs(value),
+                        timeMs: clampStoryMotionTimeMs(storySecondsToMs(value)),
                     }));
                 },
             }),

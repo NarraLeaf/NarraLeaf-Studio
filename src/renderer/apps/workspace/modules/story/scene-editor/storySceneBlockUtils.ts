@@ -1,6 +1,7 @@
 import { Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video } from "lucide-react";
 import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment, StoryVariableRef } from "@shared/types/story";
 import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
+import { storyMsToSeconds } from "@shared/utils/storyTime";
 import { richIfMeaningful } from "./richText";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { StoryBlockTarget, VisibleStoryRow } from "./storySceneEditorTypes";
@@ -265,7 +266,7 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
         }
         if (payload.action === "audio") return `${payload.operation} ${payload.objectName || payload.assetId || translate("story.describe.unassigned")}`;
         if (payload.action === "setVariable") return `${variableRefShortLabel(payload.target, scene)} = ${String(payload.value)}`;
-        if (payload.action === "wait") return payload.mode === "duration" ? translate("story.describe.waitDuration", { ms: payload.durationMs ?? 0 }) : translate("story.describe.waitClick");
+        if (payload.action === "wait") return payload.mode === "duration" ? translate("story.describe.waitDuration", { seconds: storyMsToSeconds(payload.durationMs ?? 0) }) : translate("story.describe.waitClick");
         if (payload.action === "image") return translate("story.describe.image", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
         if (payload.action === "displayable") return `${payload.operation} ${resolveDisplayableTargetRef(scene, payload.target).label || translate("story.describe.targetFallback")}`;
         if (payload.action === "text") return translate("story.describe.text", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });

@@ -25,8 +25,8 @@ export const storyInspector = {
         scope: "Scope",
         variable: "Variable",
         mode: "Mode",
-        durationMs: "Duration ms",
-        holdMs: "Hold ms",
+        duration: "Duration (s)",
+        hold: "Hold (s)",
         easing: "Easing",
         color: "Color",
         opacity: "Opacity",
@@ -224,7 +224,7 @@ export const storyInspector = {
 
     dialogue: {
         pauseAfter: "Pause after line",
-        pauseMs: "Pause ms (optional)",
+        pauseSeconds: "Pause (s, optional)",
     },
 
     choice: {
@@ -254,7 +254,7 @@ export const storyInspector = {
         soundName: "Sound name",
         bgmAsset: "BGM asset",
         soundAsset: "Sound asset",
-        fadeMs: "Fade ms",
+        fade: "Fade (s)",
         volume: "Volume",
         rate: "Rate",
         loop: "Loop",

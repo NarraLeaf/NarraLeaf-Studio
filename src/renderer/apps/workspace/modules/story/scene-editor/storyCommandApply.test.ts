@@ -42,7 +42,7 @@ function payload(source: string) {
 
 describe("background", () => {
     it("binds an image by name and folds t/d into the transition", () => {
-        expect(payload("/bg forest_day t=fade d=500")).toEqual({
+        expect(payload("/bg forest_day t=fade d=0.5")).toEqual({
             action: "setBackground",
             assetId: "img-forest",
             color: undefined,
@@ -59,7 +59,7 @@ describe("background", () => {
     });
 
     it("implies a transition when only a duration is given rather than dropping it", () => {
-        expect(payload("/bg forest_day d=250")).toMatchObject({ transition: { kind: "fadeIn", durationMs: 250 } });
+        expect(payload("/bg forest_day d=0.25")).toMatchObject({ transition: { kind: "fadeIn", durationMs: 250 } });
     });
 
     it("leaves an unfilled command valid — the palette commits these too", () => {
@@ -96,7 +96,7 @@ describe("say", () => {
 
 describe("show", () => {
     it("binds character, form, placement and duration", () => {
-        expect(payload("/show Alice form=smile at=left d=400")).toMatchObject({
+        expect(payload("/show Alice form=smile at=left d=0.4")).toMatchObject({
             action: "character",
             operation: "enter",
             characterId: "chr-alice",
@@ -116,8 +116,15 @@ describe("show", () => {
 
 describe("wait", () => {
     it("splits the two semantics of the same command across `mode`", () => {
-        expect(payload("/wait 800")).toEqual({ action: "wait", mode: "duration", durationMs: 800 });
+        expect(payload("/wait 0.8")).toEqual({ action: "wait", mode: "duration", durationMs: 800 });
         expect(payload("/wait click")).toEqual({ action: "wait", mode: "click" });
+    });
+
+    it("reads the author's number as seconds and stores milliseconds", () => {
+        expect(payload("/wait 1")).toMatchObject({ durationMs: 1000 });
+        expect(payload("/wait 0.5")).toMatchObject({ durationMs: 500 });
+        // A whole-number arg is seconds, not the milliseconds this once meant.
+        expect(payload("/wait 2")).toMatchObject({ durationMs: 2000 });
     });
 });
 
@@ -155,7 +162,7 @@ describe("jump / audio", () => {
     });
 
     it("binds audio with fade and loop", () => {
-        expect(payload("/bgm theme fade=800 loop=true")).toMatchObject({
+        expect(payload("/bgm theme fade=0.8 loop=true")).toMatchObject({
             action: "audio", operation: "setBgm", assetId: "aud-theme", fadeMs: 800, loop: true,
         });
     });

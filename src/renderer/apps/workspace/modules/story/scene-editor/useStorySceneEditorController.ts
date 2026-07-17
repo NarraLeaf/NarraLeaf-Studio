@@ -84,6 +84,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     // Anchor row for keyboard range-selection (Shift+Arrow grows the selection from here).
     const selectionAnchorRef = useRef<StoryBlockId | null>(null);
     const plainPasteRequestedRef = useRef(false);
+    /**
+     * True between discarding an insert slot and the state update landing. Escape's last rung moves
+     * focus, which blurs the slot in the same tick — and blur commits prose. Without this the ladder's
+     * "leaving an uncommitted slot creates nothing" would be false for every line that reached it.
+     */
+    const slotDiscardedRef = useRef(false);
     const undoStackRef = useRef<StorySceneHistoryState[]>([]);
     const redoStackRef = useRef<StorySceneHistoryState[]>([]);
     const [document, setDocument] = useState<StoryDocument | null>(null);
@@ -231,12 +237,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * through state so a drag never re-renders the list mid-gesture — and so this can be called from
      * the teardown paths (mouseup, pointercancel, window blur) that must not be able to leave the
      * editor stuck with unselectable text.
+     *
+     * Toggles a class rather than an inline `user-select`: the rows carry `.nl-selectable-text`, an
+     * explicit value that an inherited one from this root cannot override — see the rule in
+     * `styles.css`.
      */
     const setRowTextSelectable = useCallback((selectable: boolean) => {
-        const root = rootRef.current;
-        if (root) {
-            root.style.userSelect = selectable ? "" : "none";
-        }
+        rootRef.current?.classList.toggle("nl-text-select-suspended", !selectable);
     }, []);
 
     /**
@@ -244,6 +251,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * that selection (this is also how double-click-to-edit lands: the word the browser selected on
      * the second press is the selection we hand over). A collapsed one was a plain click, and the row
      * is already selected from the press.
+     *
+     * Every mouse gesture on a row therefore rests on the browser being *allowed* to select the row's
+     * text: the app resets `user-select: none` onto everything, so the rows opt back in with
+     * `.nl-selectable-text` (see `renderRowText`). Without that opt-in the selection here is always
+     * collapsed, this bails every time, and the row simply never opens — which is exactly how
+     * double-click-to-edit was broken while every unit test passed. jsdom implements neither
+     * `user-select` nor native selection, so nothing but driving the real app can catch it.
      */
     const finishTextSelectGesture = useCallback((pending: { blockId: StoryBlockId; textEl: HTMLElement }) => {
         const range = getSelectionUnitRange(pending.textEl);
@@ -578,6 +592,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [recordHistory, scene, sceneId, storyId, storyService, uuidService]);
 
     const startInsertAfter = useCallback((afterBlockId: StoryBlockId | null, focus = true) => {
+        slotDiscardedRef.current = false;
         setEditorMode({ kind: "insert", slot: { afterBlockId, focusToken: Date.now() }, value: "", chooser: "none" });
         if (afterBlockId) {
             setActiveBlockId(afterBlockId);
@@ -612,6 +627,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         ensureExpanded(parentId);
         const lastChildId = parent.childrenIds[parent.childrenIds.length - 1] ?? null;
+        // Every path that opens a slot must clear this, or a discard earlier in the session would go on
+        // silently swallowing this slot's blur-commit.
+        slotDiscardedRef.current = false;
         setEditorMode({
             kind: "insert",
             slot: { afterBlockId: lastChildId ?? parentId, focusToken: Date.now(), target: { parentId, beforeBlockId: null } },
@@ -845,11 +863,18 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [activeBlockId, scene, startInsertAfter]);
 
     const commitNarrationFromInsert = useCallback((focusNext: boolean) => {
-        if (editorMode.kind !== "insert") {
+        if (editorMode.kind !== "insert" || slotDiscardedRef.current) {
             return;
         }
         if (!editorMode.value.trim()) {
             setEditorMode({ kind: "idle" });
+            return;
+        }
+        // A `/` or `#` line is never prose — it resolves to a command, or it becomes an invalid row.
+        // This is reached on blur, which is the one caller that does not already know what the line is;
+        // without the guard, clicking away from a half-typed `/set` lands it as narration, which is the
+        // exact bug the Escape ladder was fixed to stop producing.
+        if (editorMode.value.startsWith("/") || editorMode.value.startsWith("#")) {
             return;
         }
         const block = createBlock("narration", editorMode.value);
@@ -883,6 +908,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     /** Escape, last press: an uncommitted slot never existed, so leaving it must not create anything. */
     const discardInsertSlot = useCallback(() => {
+        // Set before anything else: `focusRoot` blurs the slot synchronously, and the blur handler's job
+        // is to commit prose. The `setEditorMode` below has not flushed by then, so that commit would
+        // still see the slot and land the very line this is discarding. A ref is what the blur can read
+        // in the same tick; state cannot.
+        slotDiscardedRef.current = true;
         setEditorMode({ kind: "idle" });
         focusRoot();
     }, [focusRoot]);
@@ -1566,7 +1596,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     return {
         context, isInitialized, document, scene, loading,
         activeBlockId, selectedBlockIds, collapsedBlockIds, editorMode,
-        characters, visibleRows, shouldRenderActiveInsertSlot,
+        characters, commandContext, visibleRows, shouldRenderActiveInsertSlot,
         rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
         deleteRows, deleteSelection, startInsertAfter, selectRow, beginDragSelection,
