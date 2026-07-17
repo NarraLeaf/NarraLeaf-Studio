@@ -22,12 +22,21 @@ export type InsertSlot = {
 };
 
 /**
- * Where the caret lands when a row opens for editing. `"start"` / `"end"` are the keyboard's
- * arrow-in landings; the explicit unit range carries a selection the author already made in the
- * read-only row (drag- or double-click-select) into the editor, so the gesture that opened the row
- * is not thrown away.
+ * Where the caret lands when a row opens for editing. `"start"` / `"end"` are the plain edge
+ * landings; the explicit unit range carries a selection the author already made in the read-only row
+ * (drag- or double-click-select) into the editor, so the gesture that opened the row is not thrown
+ * away.
+ *
+ * `goalX` is the vertical-arrow landing: the caret's own x carried over from the row the author left,
+ * to be resolved against this row's text on the `line` they are arriving at (`"first"` coming down,
+ * `"last"` coming up). Rows are separate editors, so the goal column has to cross the boundary as
+ * data — the browser only maintains one within a single field.
  */
-export type StoryCaretTarget = "start" | "end" | { start: number; end: number };
+export type StoryCaretTarget =
+    | "start"
+    | "end"
+    | { start: number; end: number }
+    | { goalX: number; line: "first" | "last" };
 
 export type EditorMode =
     | { kind: "idle" }
