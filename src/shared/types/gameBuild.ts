@@ -292,6 +292,22 @@ export function deriveAndroidVersionCode(version: string): number | null {
 }
 
 /**
+ * CFBundleShortVersionString / CFBundleVersion from the project's semver. iOS
+ * accepts only dot-separated integers, so the pre-release and build-metadata
+ * suffixes semver allows ("1.2.0-beta.3") are stripped. Both keys take this one
+ * value: they mean different things to the App Store (marketing version vs.
+ * build number), but that distinction only exists once uploads do — and two
+ * different-looking versions on a sideloaded build would be a lie about which
+ * one shipped. The store batch gives CFBundleVersion its own meaning.
+ */
+export function deriveIosBundleVersion(version: string): string {
+    const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version.trim());
+    // Callers validate the version first (isValidProjectVersion), so the
+    // fallback only guards non-UI callers passing something unparseable.
+    return match ? `${Number(match[1])}.${Number(match[2])}.${Number(match[3])}` : "0.0.0";
+}
+
+/**
  * Make an app id usable as an Android package name, which is stricter than
  * reverse-domain: every segment must start with a letter and may contain only
  * letters, digits and underscores (hyphens are invalid anywhere). Hyphens and
