@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { createEmptyProjectStats, type BuildActivityRecord, type ProjectStatsV1 } from "@shared/types/stats";
+import {
+    DASHBOARD_OPEN_DEFAULT_KEY,
+    getDashboardOpenProjectKey,
+    resolveDashboardOpen,
+} from "@shared/constants/dashboard";
 import type { EditorTabComponentProps } from "@/lib/workspace/services/ui/types";
 import { Services } from "@/lib/workspace/services/services";
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
@@ -13,6 +18,7 @@ import {
     type ProjectStatsSnapshot,
 } from "@/lib/workspace/stats/projectStatsSnapshot";
 import { Button, Switch } from "@/lib/components/elements";
+import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { BarList, DashboardSection, NameChips, StatTile, type BarListItem } from "./DashboardPrimitives";
@@ -22,12 +28,12 @@ import {
     computeWritingStreak,
     formatActiveTime,
     formatBuildDuration,
+    formatGreeting,
     formatRelativeTime,
     getActivityWindow,
     summarizeActivityWindow,
 } from "./dashboardModel";
 
-const DASHBOARD_OPEN_SETTING_KEY = "dashboard.openOnWorkspaceOpen";
 const TOP_LIST_LIMIT = 8;
 const BUILD_HISTORY_LIMIT = 8;
 const NAME_LIST_LIMIT = 12;
@@ -140,6 +146,22 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
         }
     }, [context]);
 
+    const projectKey = useMemo(() => {
+        if (!context) {
+            return null;
+        }
+        try {
+            return getDashboardOpenProjectKey({
+                projectPath: context.project.getConfig().projectPath,
+                projectIdentifier: context.services
+                    .get<ProjectService>(Services.Project)
+                    .getProjectConfig().identifier,
+            });
+        } catch {
+            return null;
+        }
+    }, [context]);
+
     const refresh = useCallback(() => {
         if (!context) {
             return;
@@ -239,31 +261,54 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
     }, [context]);
 
     useEffect(() => {
-        if (!settingsService) {
+        if (!settingsService || !projectKey) {
             return;
         }
         let cancelled = false;
-        void settingsService
-            .get<boolean>(DASHBOARD_OPEN_SETTING_KEY, true)
-            .then(value => {
+        void Promise.all([
+            settingsService.get<boolean>(projectKey),
+            settingsService.get<boolean>(DASHBOARD_OPEN_DEFAULT_KEY, true),
+        ])
+            .then(([projectChoice, globalDefault]) => {
                 if (!cancelled) {
-                    setOpenOnWorkspaceOpen(value !== false);
+                    setOpenOnWorkspaceOpen(resolveDashboardOpen(projectChoice, globalDefault));
                 }
             })
             .catch(() => undefined);
+
+        // Until this project has a choice of its own it shows the global default, which the
+        // Settings window can change from another window — so follow that too, rather than
+        // displaying a stale default until the workspace restarts.
+        const token = getInterface().app.state.onGlobalStateChanged?.(change => {
+            if (cancelled) {
+                return;
+            }
+            if (change.key === projectKey) {
+                setOpenOnWorkspaceOpen(change.value !== false);
+                return;
+            }
+            if (change.key === DASHBOARD_OPEN_DEFAULT_KEY && !settingsService.has(projectKey)) {
+                setOpenOnWorkspaceOpen(change.value !== false);
+            }
+        });
+
         return () => {
             cancelled = true;
+            token?.cancel();
         };
-    }, [settingsService]);
+    }, [settingsService, projectKey]);
 
     const handleToggleOpenOnWorkspaceOpen = useCallback(
         (checked: boolean) => {
+            if (!projectKey) {
+                return;
+            }
             setOpenOnWorkspaceOpen(checked);
-            void settingsService?.set(DASHBOARD_OPEN_SETTING_KEY, checked).catch(error => {
+            void settingsService?.set(projectKey, checked).catch(error => {
                 console.warn("[Dashboard] Failed to persist setting", error);
             });
         },
-        [settingsService],
+        [projectKey, settingsService],
     );
 
     const scale = snapshot?.scale;
@@ -275,7 +320,10 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
         <div className="h-full overflow-y-auto overflow-x-hidden bg-surface">
             <div className="mx-auto flex max-w-4xl flex-col gap-8 px-6 py-6">
                 <header className="flex flex-col gap-1">
-                    <h1 className="truncate text-xl font-medium text-fg">{projectName}</h1>
+                    <h1 className="truncate text-xl font-medium text-fg">
+                        {formatGreeting(translator, now)}
+                    </h1>
+                    <p className="truncate text-sm text-fg-muted">{projectName}</p>
                     <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-2xs text-fg-subtle">
                         <span>
                             {t("dashboard.header.lastActive")}{" "}
@@ -373,7 +421,10 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
                 {structure && (
                     <DashboardSection title={t("dashboard.structure.title")}>
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                            <StatTile label={t("dashboard.structure.endings")} value={formatNumber(structure.endings)} />
+                            <StatTile
+                                label={t("dashboard.structure.chapters")}
+                                value={formatNumber(scale?.chapters ?? 0)}
+                            />
                             <StatTile label={t("dashboard.structure.branches")} value={formatNumber(structure.branches)} />
                         </div>
                         {structure.unreachableScenes.length === 0 && structure.emptyScenes.length === 0 ? (

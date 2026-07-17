@@ -1,5 +1,6 @@
 import { throwException } from "@shared/utils/error";
 import { getInterface } from "@/lib/app/bridge";
+import type { AppEventToken } from "@shared/types/app";
 import { WorkspaceContext } from "./services";
 import { Service } from "./Service";
 
@@ -8,13 +9,23 @@ import { Service } from "./Service";
  */
 export class GlobalSettingsService extends Service<GlobalSettingsService> {
     private cache: Record<string, any> = {};
+    private changeToken: AppEventToken | null = null;
 
     protected async init(_ctx: WorkspaceContext): Promise<void> {
         const result = throwException(await getInterface().app.state.getAllGlobalState());
         this.cache = result.settings;
+
+        // The cache is seeded once, but the Settings window is a separate window writing to the
+        // same store — without this, a preference changed there stays stale here for the lifetime
+        // of the workspace, and `get` would keep serving the value from before the change.
+        this.changeToken = getInterface().app.state.onGlobalStateChanged?.(change => {
+            this.cache[change.key] = change.value;
+        }) ?? null;
     }
 
     override dispose(_ctx: WorkspaceContext): void {
+        this.changeToken?.cancel();
+        this.changeToken = null;
         this.cache = {};
     }
 

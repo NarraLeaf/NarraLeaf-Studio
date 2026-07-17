@@ -62,6 +62,7 @@ export class ProjectStatsService extends Service<ProjectStatsService> {
     private activityTicker: ReturnType<typeof setInterval> | null = null;
 
     private lastInteractionAt = Date.now();
+    private lastStoryRevision = 0;
     private lastBuildStatus: GameBuildStatus = "idle";
     private lastWrittenSerialized: string | null = null;
     private disposed = false;
@@ -173,8 +174,9 @@ export class ProjectStatsService extends Service<ProjectStatsService> {
 
         try {
             const storyService = ctx.services.get<StoryService>(Services.Story);
+            this.lastStoryRevision = storyService.getRevision();
             this.subscriptions.push(
-                storyService.onDocumentChanged(() => this.handleDocumentChanged(ctx)),
+                storyService.onDocumentChanged(() => this.handleDocumentChanged(ctx, storyService)),
             );
         } catch (error) {
             console.warn("[ProjectStats] Story tracking unavailable", error);
@@ -206,10 +208,23 @@ export class ProjectStatsService extends Service<ProjectStatsService> {
         }
     }
 
-    private handleDocumentChanged(ctx: WorkspaceContext): void {
+    /**
+     * `documentChanged` fires for loads as well as edits, and only an edit moves the revision
+     * (`mutateDocument` bumps it; `loadStory` does not). Filtering on it is what separates
+     * authoring from mere reading — and it also breaks a feedback loop, since the word recount
+     * below loads every story and would otherwise re-trigger itself forever.
+     */
+    private handleDocumentChanged(ctx: WorkspaceContext, storyService: StoryService): void {
         if (this.disposed) {
             return;
         }
+
+        const revision = storyService.getRevision();
+        if (revision === this.lastStoryRevision) {
+            return;
+        }
+        this.lastStoryRevision = revision;
+
         this.markInteraction();
 
         if (this.editTimer) {

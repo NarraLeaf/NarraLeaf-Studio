@@ -19,6 +19,7 @@ import {
 } from "@shared/constants/zoom";
 import { DEFAULT_LOCALE, LOCALE_META, SUPPORTED_LOCALES } from "@shared/i18n";
 import { clearAllProjectStats } from "@/lib/stats/clearAllProjectStats";
+import { DASHBOARD_OPEN_DEFAULT_KEY } from "@shared/constants/dashboard";
 
 /**
  * Category metadata used by the shared settings UI.
@@ -208,16 +209,17 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: true,
     },
     {
-        // Read by `useWorkspaceEditorSession` during session restore: when on, the dashboard tab
-        // is opened alongside whatever tabs the previous session left behind. The dashboard
-        // mirrors this same key in its own footer toggle.
-        key: "dashboard.openOnWorkspaceOpen",
+        // The fallback half of a per-project preference (see `@shared/constants/dashboard`): read
+        // by `useWorkspaceEditorSession` only for projects whose dashboard toggle has never been
+        // touched. A project that has decided for itself ignores this.
+        key: DASHBOARD_OPEN_DEFAULT_KEY,
         category: "workspace",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
-        label: "Show the project dashboard on open",
+        label: "Show the project dashboard by default",
         labelKey: "settings.items.dashboardOnOpen.label",
-        description: "Open the project dashboard as a tab every time you enter a workspace.",
+        description:
+            "Whether projects you haven't decided about open their dashboard on entering the workspace. Each project can override this from its own dashboard.",
         descriptionKey: "settings.items.dashboardOnOpen.description",
         defaultValue: true,
     },
