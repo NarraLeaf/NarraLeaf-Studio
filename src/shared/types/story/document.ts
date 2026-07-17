@@ -1,5 +1,8 @@
 export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
-export const STORY_DOCUMENT_SCHEMA_VERSION = 3 as const;
+// v4 adds the `invalid` block kind and dialogue's `speakerName`. Both are additive — v3 documents
+// load unchanged — but a v3 Studio would silently drop an unresolved command line and render a
+// temp-speaker line with no speaker, so the bump makes it refuse the document instead.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 4 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -143,7 +146,7 @@ export type StoryPersistentDefinitionLegacy = {
     meta?: StoryMeta;
 };
 
-export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "code" | "note";
+export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "code" | "note" | "invalid";
 
 export type StoryBlock =
     | StoryNodeActionBlock
@@ -151,7 +154,8 @@ export type StoryBlock =
     | StoryControlBlock
     | StoryJumpBlock
     | StoryCodeBlock
-    | StoryNoteBlock;
+    | StoryNoteBlock
+    | StoryInvalidBlock;
 
 export type StoryBlockBase<TKind extends StoryBlockKind, TPayload> = {
     id: StoryBlockId;
@@ -168,6 +172,22 @@ export type StoryControlBlock = StoryBlockBase<"control", StoryControlPayload>;
 export type StoryJumpBlock = StoryBlockBase<"jump", StoryJumpPayload>;
 export type StoryCodeBlock = StoryBlockBase<"code", StoryCodePayload>;
 export type StoryNoteBlock = StoryBlockBase<"note", StoryNotePayload>;
+export type StoryInvalidBlock = StoryBlockBase<"invalid", StoryInvalidPayload>;
+
+/**
+ * A command line the author left unresolved — they dismissed the candidates, or nothing matched, and
+ * the text does not parse into an action.
+ *
+ * It is deliberately not a note and not narration: it has no runtime behaviour, and it is an *error*,
+ * not a comment. Committing one of these is how the editor refuses to silently turn a half-typed
+ * `/set` into a line of prose the author never meant to write — the text survives verbatim in
+ * `source`, re-editing the row resumes command entry from it, and nothing about it is quiet: preview
+ * skips it with an error diagnostic, and a production build refuses to compile at all.
+ */
+export type StoryInvalidPayload = {
+    /** The raw line as typed, so re-entering the row resumes command entry from exactly it. */
+    source: string;
+};
 
 export type StoryNodeActionPayload =
     | {
@@ -177,6 +197,16 @@ export type StoryNodeActionPayload =
     | {
           action: "dialogue";
           characterId?: string;
+          /**
+           * A speaker with no Studio character behind it, carried as a bare name.
+           *
+           * NarraLeaf's dialogue box does not bind to Studio's `Character` abstraction — it displays
+           * whatever name its `Character` instance carries — so an unknown name is a perfectly valid
+           * line, not an error. That is what lets the speaker picker always offer the typed name back
+           * as a candidate: "nothing matched" stops being a state the editor has to have an answer
+           * for. Ignored when `characterId` resolves.
+           */
+          speakerName?: string;
           text: StoryTextSegment;
           voiceAssetId?: string;
           /** Auto-pause after the line: `true` waits for a click, a number waits that many ms. */

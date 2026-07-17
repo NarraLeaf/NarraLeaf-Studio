@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { DevTools } from "narraleaf-react";
 import type { StoryBlock, StoryDocument } from "@shared/types/story";
+import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { compileStagePreviewToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 
 function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[] = Object.keys(blocks)): StoryDocument {
     return {
-        schemaVersion: 3,
+        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
         id: "story-1",
         name: "Story",
         chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1", "scene-2"] }],

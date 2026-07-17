@@ -1,7 +1,7 @@
 import { FsRequestResult } from "@shared/types/os";
 import { FileDetails, FileStat } from "@shared/utils/fs";
 import { Porject, ProjectConfig, ProjectIconConfig, ProjectIconPlatform, ProjectMetadata } from "../project/project";
-import type { NetworkConfiguration, SecurityConfiguration } from "../project/configuration";
+import type { MobileConfiguration, NetworkConfiguration, SecurityConfiguration } from "../project/configuration";
 import type {
     LocalizationConfiguration,
     LocalizationDocument,
@@ -156,6 +156,7 @@ interface IProjectService extends IService {
     updateNetworkConfiguration(patch: Partial<NetworkConfiguration>): Promise<ProjectConfig>;
     getSecurityConfiguration(): SecurityConfiguration;
     updateSecurityConfiguration(patch: Partial<SecurityConfiguration>): Promise<ProjectConfig>;
+    updateMobileConfiguration(patch: Partial<MobileConfiguration>): Promise<ProjectConfig>;
     importProjectIcon(platform: ProjectIconPlatform): Promise<{
         platform: ProjectIconPlatform;
         sourcePath: string;

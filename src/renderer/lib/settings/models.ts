@@ -21,11 +21,11 @@ export interface SettingDescriptor<T extends SettingValueType = SettingValueType
     options?: string[];
     /** Human-facing label per option value (e.g. locale code → endonym). */
     optionLabels?: Record<string, string>;
-    /** Slider bounds and granularity; required for `SettingValueType.Slider`. */
+    /** Numeric bounds and granularity: Slider needs them; number inputs clamp and step by them. */
     min?: number;
     max?: number;
     step?: number;
-    /** Rendered after a Slider's live value, e.g. "%". */
+    /** Rendered after the value, e.g. "%". */
     unit?: string;
     /** Action only: the button's resting label. */
     actionLabel?: string;
@@ -57,11 +57,11 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     optionLabels?: Record<string, string>;
     /** i18n key per option value; when set, overrides `optionLabels` at render time. */
     optionLabelKeys?: Record<string, TranslationKey>;
-    /** Slider bounds and granularity; required for `SettingValueType.Slider`. */
+    /** Numeric bounds and granularity: Slider needs them; number inputs clamp and step by them. */
     min?: number;
     max?: number;
     step?: number;
-    /** Rendered after a Slider's live value, e.g. "%". */
+    /** Rendered after the value, e.g. "%". */
     unit?: string;
     /**
      * `SettingValueType.Action` only: what the button does. It owns its own effects — the settings

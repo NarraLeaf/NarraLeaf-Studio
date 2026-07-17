@@ -6,6 +6,7 @@ import type {
     StoryDocument,
     StoryTransformRef,
 } from "@shared/types/story";
+import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { useTranslation } from "@/lib/i18n";
@@ -472,15 +473,15 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                             />
                                         </label>
                                         <label className="grid min-w-0 gap-1.5">
-                                            <span className="text-xs font-medium text-fg-subtle">{t("motion.panel.repeatDelayMs")}</span>
+                                            <span className="text-xs font-medium text-fg-subtle">{t("motion.panel.repeatDelaySeconds")}</span>
                                             <NumericDraftEnhancedInput
-                                                committedDisplay={selectedAsset.config?.repeatDelayMs ? String(selectedAsset.config.repeatDelayMs) : ""}
+                                                committedDisplay={selectedAsset.config?.repeatDelayMs ? formatStorySecondsValue(selectedAsset.config.repeatDelayMs) : ""}
                                                 draftResetKey={selectedAsset.id}
                                                 placeholder="0"
-                                                inputMode="numeric"
+                                                inputMode="decimal"
                                                 onEmpty={() => setConfig({}, ["repeatDelayMs"])}
-                                                onFiniteNumber={value => {
-                                                    const repeatDelayMs = Math.max(0, Math.round(value));
+                                                onFiniteNumber={seconds => {
+                                                    const repeatDelayMs = Math.max(0, storySecondsToMs(seconds));
                                                     setConfig(repeatDelayMs > 0 ? { repeatDelayMs } : {}, repeatDelayMs > 0 ? [] : ["repeatDelayMs"]);
                                                 }}
                                             />

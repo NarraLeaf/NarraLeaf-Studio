@@ -15,9 +15,9 @@ export type BlueprintPinSemantic = "exec" | "data";
 
 /**
  * Data pin value types that support optional on-card literal editing (see allowInlineLiteral).
- * Other types (e.g. json, boolean) must not use inline literals.
+ * Other types (e.g. json) must not use inline literals.
  */
-export const BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES = ["string", "integer", "float"] as const;
+export const BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES = ["string", "integer", "float", "boolean"] as const;
 export const BLUEPRINT_PIN_INLINE_LITERAL_CUSTOM_VALUE_TYPES = [
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
@@ -48,7 +48,8 @@ export type BlueprintNodePinDef = {
     optional?: boolean;
     /**
      * When true, the flow node may show a hover-only control to open an on-card input for this pin
-     * when it is unwired. Only valid with kind=input, semantic=data, and valueType string|integer|float.
+     * when it is unwired. Only valid with kind=input, semantic=data, and valueType
+     * string|integer|float|boolean.
      */
     allowInlineLiteral?: boolean;
 };
