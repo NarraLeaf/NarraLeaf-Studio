@@ -114,6 +114,8 @@ export const story = {
         dragRow: "Drag row",
         insert: "Insert",
         delete: "Delete",
+        insertTitle: "Insert a blank row after this one ({keys})",
+        deleteTitle: "Delete this row ({keys})",
         insertPlaceholder: "Type narration, / for actions, # for characters…",
         noCategoryActionFound: "No {category} action found.",
         actionTypes: "Action types",
