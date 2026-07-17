@@ -134,6 +134,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             close: () => ipcClient.invoke(IPCEventType.appWindowControl, { control: "close" }),
             status: () => ipcClient.invoke(IPCEventType.appWindowGetControl, {}),
             ability: () => ipcClient.invoke(IPCEventType.appWindowControlAbility, {}) as Promise<RequestStatus<WindowControlAbility>>,
+            getFullscreen: () => ipcClient.invoke(IPCEventType.appWindowGetFullscreen, {}),
+            onFullscreenChanged: (handler: (payload: { isFullscreen: boolean }) => void) =>
+                ipcClient.onMessage(IPCEventType.appWindowFullscreenChanged, handler),
         },
     },
     fs: {

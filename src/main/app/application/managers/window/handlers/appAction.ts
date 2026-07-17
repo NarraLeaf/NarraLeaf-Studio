@@ -133,6 +133,15 @@ export class AppWindowGetControlHandler extends IPCHandler<IPCEventType.appWindo
     }
 }
 
+export class AppWindowGetFullscreenHandler extends IPCHandler<IPCEventType.appWindowGetFullscreen> {
+    readonly name = IPCEventType.appWindowGetFullscreen;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow) {
+        return this.success({ isFullscreen: window.isFullScreen() });
+    }
+}
+
 export class AppWindowReadyHandler extends IPCHandler<IPCEventType.appWindowReady> {
     readonly name = IPCEventType.appWindowReady;
     readonly type = IPCMessageType.message;

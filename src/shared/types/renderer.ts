@@ -96,6 +96,9 @@ export interface RendererPreloadedInterface {
             close(): Promise<RequestStatus<void>>;
             status(): Promise<RequestStatus<{ status: WindowVisibilityStatus }>>;
             ability(): Promise<RequestStatus<WindowControlAbility>>;
+            /** Current fullscreen state of this window (macOS hides the traffic lights in fullscreen). */
+            getFullscreen(): Promise<RequestStatus<{ isFullscreen: boolean }>>;
+            onFullscreenChanged(handler: (payload: { isFullscreen: boolean }) => void): AppEventToken;
         };
     };
 
