@@ -9,6 +9,8 @@ import {
     normalizeLocalizationDocument,
     normalizeLocalizationKeysDocument,
 } from "@shared/types/localization";
+import type { GameVoiceBundle } from "@shared/types/voice";
+import { normalizeVoiceConfiguration, normalizeVoiceDocument } from "@shared/types/voice";
 import type { StoryAnimationAsset, StoryAnimationIndex, StoryDocument, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
@@ -36,6 +38,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const projectIdentifier = await readProjectIdentifier(context.projectPath);
     const storyLibrary = await loadStoryLibrary(context.projectPath);
     const localization = await loadGameLocalization(context.projectPath);
+    const voice = await loadGameVoice(context.projectPath);
     return {
         bundleId: context.bundleId,
         revision: context.revision,
@@ -48,6 +51,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         },
         storyLibrary,
         localization,
+        voice,
         compiled: context.compiled,
         blueprintCompiledScripts: context.blueprintCompiledScripts,
         blueprintScriptsCompileOk: context.blueprintScriptsCompileOk ?? true,
@@ -297,6 +301,51 @@ export async function loadGameLocalization(projectPath: string): Promise<GameLoc
         locales: localization.locales,
         tables,
         ...(keys ? { keys } : {}),
+    };
+}
+
+/**
+ * Load the game voice payload: config from `.nlproj` `app.voice` plus per-
+ * language unit id → asset id tables from `editor/voice/<code>.json`. Only the
+ * asset ids travel in the bundle; the compiler resolves them to URLs like every
+ * other story asset. Broken or missing files degrade silently — voice must
+ * never block a Dev Mode start or a pack. Returns undefined when the project has
+ * no voice set up. Exported for tests.
+ */
+export async function loadGameVoice(projectPath: string): Promise<GameVoiceBundle | undefined> {
+    const config = await readProjectConfigRecord(projectPath);
+    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+    const voice = normalizeVoiceConfiguration(app?.voice);
+    if (voice.voicedLocales.length === 0) {
+        return undefined;
+    }
+    const tables: Record<string, Record<string, string>> = {};
+    for (const locale of voice.voicedLocales) {
+        let raw: unknown;
+        try {
+            raw = await readOptionalJsonFile<unknown>(
+                path.join(projectPath, "editor", "voice", `${locale.code}.json`),
+            );
+        } catch {
+            continue;
+        }
+        if (!raw) {
+            continue;
+        }
+        const document = normalizeVoiceDocument(raw, locale.code);
+        const table: Record<string, string> = {};
+        for (const [unitId, unit] of Object.entries(document.units)) {
+            if (unit.assetId) {
+                table[unitId] = unit.assetId;
+            }
+        }
+        if (Object.keys(table).length > 0) {
+            tables[locale.code] = table;
+        }
+    }
+    return {
+        voicedLocales: voice.voicedLocales,
+        tables,
     };
 }
 

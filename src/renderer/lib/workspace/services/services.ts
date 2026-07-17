@@ -7,6 +7,11 @@ import type {
     LocalizationDocument,
     LocalizationLocaleEntry,
 } from "@shared/types/localization";
+import type {
+    VoiceConfiguration,
+    VoiceDocument,
+    VoiceLocaleEntry,
+} from "@shared/types/voice";
 import type { ProjectDependencyResolution, ProjectDependencyTable } from "@shared/types/pluginDependencies";
 import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import { ServiceRegistry } from "./serviceRegistry";
@@ -142,6 +147,7 @@ enum Services {
     // Build = "build",
     // Debug = "debug",
     Localization = "localization",
+    Voice = "voice",
     // VersionControl = "versionControl",
     // Plugin = "plugin",
 }
@@ -854,6 +860,22 @@ interface ILocalizationService extends IService {
     flushPendingChanges(): Promise<void>;
 }
 
+/**
+ * Game voice-over service: per-locale voice libraries linking story lines to
+ * imported audio assets. Voice languages are independent of localization
+ * locales (dub language ≠ subtitle language).
+ */
+interface IVoiceService extends IService {
+    getConfiguration(): VoiceConfiguration;
+    onConfigChanged(handler: (config: VoiceConfiguration) => void): () => void;
+    addLocale(entry: VoiceLocaleEntry): Promise<VoiceConfiguration>;
+    removeLocale(code: string): Promise<VoiceConfiguration>;
+    loadDocument(locale: string): Promise<VoiceDocument>;
+    getDocumentIfLoaded(locale: string): VoiceDocument | undefined;
+    onDocumentChanged(handler: (event: { locale: string; document: VoiceDocument }) => void): () => void;
+    flushPendingChanges(): Promise<void>;
+}
+
 interface IVersionControlService extends IService { }
 
 // Plugin Services
@@ -877,7 +899,7 @@ export {
     ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
     ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
-    IProjectDependencyService,
+    IProjectDependencyService, IVoiceService,
     Services, WorkspaceContext
 };
 

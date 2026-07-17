@@ -248,31 +248,10 @@ export const ACTION_COMMANDS: ActionCommand[] = [
     { id: "note", category: "utils", label: "Note", detail: "Studio-only note", icon: StickyNote, aliases: ["//"] },
 ];
 
-/**
- * Shared match used by both the inline "/" creator and the sidebar action palette.
- *
- * A query that begins with "/" means the author is typing a slash alias (e.g. "//" for Note). In the
- * inline creator the leading "/" is consumed as the action trigger, so the alias arrives here as "/";
- * in the sidebar search box it arrives as "//". Either way we match aliases exclusively so the alias
- * lands directly on its command instead of every action whose label/detail happens to contain "/".
- */
-export function actionCommandMatchesQuery(command: PaletteActionCommand, rawQuery: string): boolean {
-    const query = rawQuery.trim().toLowerCase();
-    if (!query) {
-        return true;
-    }
-    if (query.startsWith("/")) {
-        return (command.aliases ?? []).some(alias => {
-            const normalized = alias.toLowerCase();
-            return normalized.startsWith(query) || query.startsWith(normalized);
-        });
-    }
-    return command.label.toLowerCase().includes(query) ||
-        command.id.toLowerCase().includes(query) ||
-        command.detail.toLowerCase().includes(query) ||
-        Boolean(command.nlrCapability?.toLowerCase().includes(query)) ||
-        (command.aliases ?? []).some(alias => alias.toLowerCase().includes(query));
-}
+// Command-name matching for both the inline "/" creator and the sidebar palette now lives in
+// `storyCommandSearch.ts` (`searchActionCommands`), which bridges the grammar's short tokens (`/bg`,
+// `/show`) that a palette command's own fields never carry, and ranks fuzzy hits. Keeping it there,
+// not here, avoids storyActionCommands depending on the grammar and keeps the two menus single-source.
 
 export function getActionCommandCategory(categoryId: ActionCommandCategoryId): ActionCommandCategory {
     return ACTION_COMMAND_CATEGORIES.find(category => category.id === categoryId) ?? ACTION_COMMAND_CATEGORIES[0];
@@ -393,7 +372,9 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
 }
 
 export function isInspectorFirstCommand(commandId: ActionCommandId): boolean {
-    return !["narration", "dialogue", "note", "choiceOption"].includes(commandId);
+    // `condition` / `conditionBranch` are card-less (see `hasInspector`): creating one must not open a
+    // placeholder inspector — its logic is authored inline on the branch header.
+    return !["narration", "dialogue", "note", "choiceOption", "condition", "conditionBranch"].includes(commandId);
 }
 
 /**

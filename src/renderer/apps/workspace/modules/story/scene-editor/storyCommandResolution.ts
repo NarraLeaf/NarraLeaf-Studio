@@ -28,6 +28,16 @@ export type StoryCommandVariableEntry = {
     valueType: StoryVariableValueType;
 };
 
+/** The five kinds of named object a `show`/`hide`/`set` command can address by `objectName`. */
+export type StoryCommandStageObjectKind = "image" | "text" | "layer" | "video" | "audio";
+
+/** The object names on stage, per kind — the candidate source for `{ kind: "stageObject" }` params. */
+export type StoryCommandStageObjects = Readonly<Record<StoryCommandStageObjectKind, readonly string[]>>;
+
+export const EMPTY_STORY_COMMAND_STAGE_OBJECTS: StoryCommandStageObjects = {
+    image: [], text: [], layer: [], video: [], audio: [],
+};
+
 export type StoryCommandContext = {
     images: readonly StoryCommandNamedRef[];
     audio: readonly StoryCommandNamedRef[];
@@ -43,10 +53,13 @@ export type StoryCommandContext = {
     variables: readonly StoryCommandVariableEntry[];
     /** Form / appearance names per character id — the candidates for `form=`, which only exist once the character resolves. */
     formsByCharacterId: Readonly<Record<string, readonly string[]>>;
+    /** Named objects on stage in the current scene, per kind — the picker `/imgshow`, `/settext`, `/stop` lead with. */
+    stageObjects: StoryCommandStageObjects;
 };
 
 export const EMPTY_STORY_COMMAND_CONTEXT: StoryCommandContext = {
     images: [], audio: [], videos: [], characters: [], tempSpeakers: [], scenes: [], variables: [], formsByCharacterId: {},
+    stageObjects: EMPTY_STORY_COMMAND_STAGE_OBJECTS,
 };
 
 export type StoryCommandValue =
@@ -76,7 +89,13 @@ export type StoryCommandResolutionIssue =
     /** Two things share this name, so the line does not say which one. See the note on `findByName`. */
     | { code: "ambiguousName"; span: StoryCommandSpan; value: string }
     /** `/set gold true` where `gold` is a number. The dependent type, finally checked. */
-    | { code: "valueTypeMismatch"; span: StoryCommandSpan; value: string; expected: StoryVariableValueType };
+    | { code: "valueTypeMismatch"; span: StoryCommandSpan; value: string; expected: StoryVariableValueType }
+    /**
+     * Two args that a one-op-per-block command cannot honour together — `/font title 48 color=#f00`
+     * would set the size and silently drop the colour. Faulting keeps the line uncommitted (author
+     * splits it into two) rather than losing the second value without a word.
+     */
+    | { code: "conflictingParams"; span: StoryCommandSpan; keys: readonly string[] };
 
 export type StoryCommandResolution = {
     args: StoryCommandResolvedArgs;
@@ -226,7 +245,16 @@ function resolveAgainstType(
             // Displayables are static and bound to their creator block; resolving one needs the scene
             // graph, which arrives with the displayable candidate work. No P0 command uses it.
             return null;
+        case "stageObject":
+            // The name a `show`/`hide`/`set` addresses is just a string the payload stores as `objectName`
+            // — no binding to resolve. A free-typed name is legal (see `allowsFreeValue`), so this always
+            // succeeds; the candidate list is what makes it a pick rather than a guess. Carried as a text
+            // value so `applyArgs` writes it exactly as it writes a `create`'s free name.
+            return { value: { kind: "text", value: value.trim() } };
         case "literal":
+        // A dependent value carries the same literal the payload stores; the candidate list is the only
+        // thing `dependsOn` changes. The type check against the variable happens in the post-pass below.
+        case "variableValue":
             return { value: { kind: "literal", value: parseLiteral(value) } };
         case "text":
             return { value: { kind: "text", value } };
@@ -269,7 +297,68 @@ export function resolveCommandLine(line: StoryCommandLine, context: StoryCommand
         }
     }
 
+    autoNameCreatedObject(line.def.commandId, resolved, context);
+
+    // `/font title 48 color=#f00`: one block runs one op, so honouring both is impossible. Fault on the
+    // colour rather than let `applyArgs` keep the size and drop the colour on the floor.
+    if (line.def.commandId === "textFont" && resolved.size?.kind === "number" && resolved.color?.kind === "color") {
+        const span = line.args.find(arg => arg.param?.name === "color")?.valueSpan;
+        if (span) {
+            issues.push({ code: "conflictingParams", span, keys: ["size", "color"] });
+        }
+    }
+
     return { args: resolved, issues };
+}
+
+/**
+ * A `create` command whose object the author need not name: what to derive the name from, and the list
+ * to dedupe it against. `assetParam` is the positional whose filename seeds the name (image/video);
+ * text and layer have no asset, so they fall back to `base`.
+ */
+const CREATE_AUTO_NAME: Record<string, { stageKind: StoryCommandStageObjectKind; assetParam?: string; base: string }> = {
+    imageCreate: { stageKind: "image", assetParam: "image", base: "image" },
+    videoCreate: { stageKind: "video", assetParam: "video", base: "video" },
+    textCreate: { stageKind: "text", base: "text" },
+    layerCreate: { stageKind: "layer", base: "layer" },
+};
+
+/**
+ * Fill in the object name a `create` line left blank, so `/image forest.png` lands an image called
+ * `forest` — the same "no name needed" feel as `/bg`. Derived from the asset's filename when there is
+ * one, else a deduped default, so two `/text` lines become `text` and `text2` rather than colliding.
+ * Skipped when the author named it (`name=`) — their choice wins.
+ */
+function autoNameCreatedObject(commandId: string, resolved: Record<string, StoryCommandValue>, context: StoryCommandContext): void {
+    const spec = CREATE_AUTO_NAME[commandId];
+    if (!spec || resolved.name) {
+        return;
+    }
+    const asset = spec.assetParam ? resolved[spec.assetParam] : undefined;
+    const seed = asset?.kind === "asset" ? assetBaseName(context, spec.stageKind, asset.assetId) ?? spec.base : spec.base;
+    resolved.name = { kind: "text", value: dedupeObjectName(seed, context.stageObjects[spec.stageKind]) };
+}
+
+/** The asset's display name without its extension — `forest.png` → `forest` — or null when unknown. */
+function assetBaseName(context: StoryCommandContext, stageKind: StoryCommandStageObjectKind, assetId: string): string | null {
+    const list = stageKind === "video" ? context.videos : context.images;
+    const found = list.find(entry => entry.id === assetId);
+    const base = found?.name.replace(/\.[^./\\]+$/, "").trim();
+    return base ? base : null;
+}
+
+/** `base`, or `base2`, `base3`… — the first not already taken (case-insensitive) by an object on stage. */
+function dedupeObjectName(base: string, existing: readonly string[]): string {
+    const taken = new Set(existing.map(name => name.trim().toLowerCase()));
+    if (!taken.has(base.trim().toLowerCase())) {
+        return base;
+    }
+    for (let suffix = 2; ; suffix += 1) {
+        const candidate = `${base}${suffix}`;
+        if (!taken.has(candidate.toLowerCase())) {
+            return candidate;
+        }
+    }
 }
 
 function resolveParam(

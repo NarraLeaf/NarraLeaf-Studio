@@ -73,6 +73,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
@@ -4853,6 +4854,7 @@ describe("built-in blueprint nodes", () => {
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT)).toBe(false);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY)).toBe(false);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT)).toBe(false);
@@ -4879,6 +4881,9 @@ describe("built-in blueprint nodes", () => {
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP)).toBe(true);
         // Ambient window event: offered on widgets too, like broadcasts.
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED)).toBe(true);
+        // Window close request cancellation rides the dispatch's shared event control, which the
+        // widget dispatch path does not thread, so the head is global/surface only (not on widgets).
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED)).toBe(false);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL)).toBe(false);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)).toBe(false);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END)).toBe(false);

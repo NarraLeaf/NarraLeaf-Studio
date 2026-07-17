@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { derivePackKey } from "@narraleaf/encryption";
 import {
     openSealedBundle,
+
     RUNTIME_BUNDLE_FILENAME,
 
     RUNTIME_SUPPORT_FILENAME,
@@ -35,7 +36,27 @@ describe("game runtime artifact compiler", () => {
     });
 
     afterEach(async () => {
-        await fs.rm(tempDir, { recursive: true, force: true });
+        // The protected-store test process.dlopen()s the packed bindings.node; on
+        // Windows a loaded native module cannot be unlinked until the process
+        // exits, so a plain rm throws EPERM on that one file. Retry briefly, then
+        // leave the locked binary for the OS temp sweep rather than failing the
+        // suite on a cleanup artifact.
+        for (let attempt = 0; ; attempt++) {
+            try {
+                await fs.rm(tempDir, { recursive: true, force: true });
+                return;
+            } catch (error) {
+                const code = (error as { code?: string }).code;
+                if ((code === "EPERM" || code === "EBUSY") && attempt < 5) {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    continue;
+                }
+                if (code === "EPERM" || code === "EBUSY") {
+                    return; // give up on the locked native module only
+                }
+                throw error;
+            }
+        }
     });
 
     it("writes a real preview app with pack.json and flat copied assets", async () => {
@@ -265,8 +286,13 @@ describe("game runtime artifact compiler", () => {
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
         const pluginInstallDir = path.join(tempDir, "plugins", "acme.sample-plugin");
         await createRuntimeDist(runtimeDistDir);
-        // Protection injects the pack key into main.js at its placeholder.
+        // Protection writes its two tokens into
+        // main.js at their placeholders.
+        await fs.writeFile(
+            path.join(runtimeDistDir, "main.js"),
 
+            "utf-8",
+        );
         await createMinimalProject(projectPath);
         await writeAsset(projectPath, ASSET_ID, "local image bytes");
         await writeProjectIcon(projectPath, "configured icon bytes");
@@ -308,16 +334,30 @@ describe("game runtime artifact compiler", () => {
         expect(result.pack.assets.items[ASSET_ID].relativePath).toBe(`assets/${ASSET_ID}`);
         expect(result.pack.assets.items[ASSET_ID].mimeType).toBe("image/png");
 
-        // main.js received the real key in place of the placeholder.
+        // main.js received both tokens.
         const mainJs = await fs.readFile(path.join(result.appDir, "main.js"), "utf-8");
         expect(mainJs).toContain(packKey);
 
 
-        // The store round-trips through the runtime reader.
+        // Read the second token back.
+        const auxMatch = mainJs.match(/const A = "([A-Za-z0-9+/=]+)";/);
+        expect(auxMatch).not.toBeNull();
+
+
+
+        // The store round-trips through the runtime reader — but ONLY with both
+        // the key and the matching second token.
+        await expect(openSealedBundle(
+            path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
+            path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+            packKey,
+            crypto.randomBytes(32),
+        )).rejects.toThrow();
         const reader = await openSealedBundle(
             path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
             path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
             packKey,
+
         );
         try {
             const pack = JSON.parse((await reader.read("pack")).toString("utf-8"));

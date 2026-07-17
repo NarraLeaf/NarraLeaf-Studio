@@ -17,6 +17,7 @@ import type { ProjectConfigData } from "@shared/utils/nlproj";
 import {
     createSealedBundle,
     runtimeSupportPath,
+
     RUNTIME_BUNDLE_FILENAME,
 
     RUNTIME_SUPPORT_FILENAME,
@@ -168,10 +169,15 @@ export async function compileGameRuntimeArtifact(
     if (userDataDir) {
         await fs.mkdir(userDataDir, { recursive: true });
     }
+    // Second opaque protection token, generated fresh for each protected build
+    // and injected into the packed runtime alongside the pack key. Both are
+    // required by the protection layer; their meaning is opaque to Studio. Only
+    // produced when protection is on.
+
     await copyRuntimeFiles(input.runtimeDistDir, appDir, mode, shell);
     if (input.encryptionKey) {
         // Protection on: prepare the packed runtime and ship its support binary.
-        await embedPackKey(appDir, input.encryptionKey);
+
         await fs.copyFile(runtimeSupportPath(), path.join(appDir, RUNTIME_SUPPORT_FILENAME));
     }
 
@@ -194,7 +200,7 @@ export async function compileGameRuntimeArtifact(
     // Everything below either writes loose files or streams into the store; on
     // any failure the store handle is released so a failed compile leaks nothing.
     const target: PackTarget = input.encryptionKey
-        ? { kind: "sealed", writer: await createSealedBundle(path.join(appDir, RUNTIME_BUNDLE_FILENAME), input.encryptionKey) }
+
         : { kind: "loose" };
 
     try {
@@ -400,11 +406,13 @@ async function copyOptionalFile(sourcePath: string, targetPath: string): Promise
 }
 
 /**
- * Apply the pack key to the packed main.js through @narraleaf/encryption's
- * marker. Fails loudly if the marker is absent, meaning the runtime was built
- * without support.
+ * Substitute the pack key and the second protection token into the packed
+ * main.js at @narraleaf/encryption's markers. Both must be present or the
+ * packaged game cannot open its assets; the values are opaque to this layer.
+ * Fails loudly if a marker is absent, meaning the runtime was built without
+ * support.
  */
-async function embedPackKey(appDir: string, encryptionKey: string): Promise<void> {
+
     const mainJsPath = path.join(appDir, "main.js");
     const source = await fs.readFile(mainJsPath, "utf-8");
 
@@ -412,6 +420,8 @@ async function embedPackKey(appDir: string, encryptionKey: string): Promise<void
             "Runtime main.js is missing a required marker. Rebuild the runtime (\"yarn build:runtime\").",
         );
     }
+    const injected = source
+
 
     await fs.writeFile(mainJsPath, injected, "utf-8");
 }

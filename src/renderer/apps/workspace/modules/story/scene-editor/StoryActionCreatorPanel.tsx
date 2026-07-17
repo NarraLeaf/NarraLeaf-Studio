@@ -9,13 +9,13 @@ import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsSe
 import {
     ACTION_COMMAND_CATEGORIES,
     ACTION_COMMANDS,
-    actionCommandMatchesQuery,
     getActionCommandCategory,
     localizeActionCommand,
     translateActionCommandCategoryLabel,
     type ActionCommandCategory,
     type PaletteActionCommand,
 } from "./storyActionCommands";
+import { searchActionCommands } from "./storyCommandSearch";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import {
     dispatchStoryActionCreateRequest,
@@ -81,15 +81,18 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
     ].map(command => localizeActionCommand(command, t)), [pluginCommands, t]);
 
     const filteredCommands = useMemo(() => {
-        return allCommands.filter(command => {
+        const inCategory = allCommands.filter(command => {
             if (activeCategoryId === STARRED_CATEGORY_ID && !starredIds.has(command.id)) {
                 return false;
             }
             if (activeCategoryId !== STARRED_CATEGORY_ID && activeCategoryId !== "all" && command.category !== activeCategoryId) {
                 return false;
             }
-            return actionCommandMatchesQuery(command, query);
+            return true;
         });
+        // Same fuzzy, token-aware matcher the inline `/` creator uses — so `/bg`, a fuzzy abbreviation,
+        // or a translated label find the same commands in the sidebar as they do inline.
+        return searchActionCommands(inCategory, query);
     }, [activeCategoryId, allCommands, query, starredIds]);
 
     const createAction = useCallback((commandId: string) => {
