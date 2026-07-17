@@ -9,6 +9,7 @@ import type {
     StoryVariableRef,
 } from "@shared/types/story";
 import { layerActionTargetRef, resolveStoryLayerRef } from "@shared/types/story";
+import { formatStorySecondsLabel } from "@shared/utils/storyTime";
 import { getSceneName } from "../scene-editor/storySceneBlockUtils";
 
 export type EditableStoryLineKind = "narration" | "dialogue" | "note";
@@ -180,6 +181,10 @@ function projectBlockLine(
         const marker = block.payload.folded ? " folded" : "";
         return { text: `${indent}/code ${block.payload.language}${marker}`, editable: false, prefix: "" };
     }
+    if (block.kind === "invalid") {
+        // Verbatim: the line never parsed, so there is nothing to pretty-print from.
+        return { text: `${indent}${block.payload.source}`, editable: false, prefix: "" };
+    }
     const prefix = `${indent}// `;
     return {
         text: `${prefix}${block.payload.text.value}`,
@@ -238,7 +243,7 @@ function formatAction(payload: StoryActionPayload, scene: StoryScene, document?:
         return `/set ${describeVariableRef(payload.target, scene, document)} ${String(payload.value)}`;
     }
     if (payload.action === "wait") {
-        return payload.mode === "duration" ? `/wait ${payload.durationMs ?? 0}ms` : "/wait click";
+        return payload.mode === "duration" ? `/wait ${formatStorySecondsLabel(payload.durationMs ?? 0)}` : "/wait click";
     }
     if (payload.action === "image") {
         return `/image ${payload.operation} ${payload.objectName}`.trimEnd();

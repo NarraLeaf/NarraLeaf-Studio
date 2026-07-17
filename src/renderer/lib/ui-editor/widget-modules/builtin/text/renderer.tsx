@@ -19,10 +19,9 @@ import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/u
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { useLocalizedWidgetText } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
-import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
-import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
-import { beginInlineTextEdit } from "@/lib/ui-editor/interaction/inlineTextEdit";
+import { beginInlineTextEdit, resolveInlineTextEditHost } from "@/lib/ui-editor/interaction/inlineTextEdit";
 import { consumeSuppressNextCanvasWidgetDoubleClick } from "@/lib/ui-editor/interaction/containerDrillSelection";
 import { getSingleSelectedElementId } from "@/lib/ui-editor/interaction/surfaceInlineTextEditActivation";
 import {
@@ -76,11 +75,12 @@ export function TextRenderer({
     hostAdapter,
     useAppearanceInspectorPreview,
 }: WidgetRendererProps) {
-    const stateService = hostAdapter.editorStateService ?? UIEditorStateService.getInstance();
-    const documentService = hostAdapter.editorDocumentService ?? UIDocumentService.getInstance();
+    const editHost = resolveInlineTextEditHost(hostAdapter);
+    const stateService = editHost?.stateService ?? null;
+    const documentService = editHost?.documentService ?? null;
     useUIDocumentRevision(documentService);
     const initialText = getTextProps(element).text;
-    const [interactionOverride, setInteractionOverride] = useState(() => stateService.getInteractionOverride());
+    const [interactionOverride, setInteractionOverride] = useState(() => stateService?.getInteractionOverride() ?? null);
     const [draftText, setDraftText] = useState(initialText);
     const draftRef = useRef(initialText);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -89,6 +89,9 @@ export function TextRenderer({
     const skipOverrideCommitRef = useRef(false);
 
     useEffect(() => {
+        if (!stateService || !documentService) {
+            return undefined;
+        }
         return stateService.on("interactionOverrideChanged", payload => {
             const { previous, next } = payload;
             setInteractionOverride(next);
@@ -150,7 +153,7 @@ export function TextRenderer({
 
     const handleStartInlineTextEdit = useCallback(
         (e: MouseEvent<HTMLDivElement>) => {
-            if (isEditing || hostAdapter.blueprintRuntime) {
+            if (!stateService || isEditing) {
                 return;
             }
             if (consumeSuppressNextCanvasWidgetDoubleClick()) {
@@ -177,7 +180,7 @@ export function TextRenderer({
             e.stopPropagation();
             beginInlineTextEdit(stateService, surface.id, element.id);
         },
-        [element.id, hostAdapter.blueprintRuntime, isEditing, stateService, surface.id],
+        [element.id, isEditing, stateService, surface.id],
     );
 
     useLayoutEffect(() => {
@@ -332,6 +335,9 @@ export function TextRenderer({
 
     const commitAndClose = useCallback(
         (nextText: string) => {
+            if (!stateService || !documentService) {
+                return;
+            }
             draftRef.current = nextText;
             setDraftText(nextText);
             commitTextEditValue(documentService, element.id, nextText);
@@ -385,7 +391,7 @@ export function TextRenderer({
                     elementId: element.id,
                     surfaceId: surface.id,
                 });
-                stateService.setInteractionOverride(null);
+                stateService?.setInteractionOverride(null);
             }
         },
         [element.id, stateService, surface.id],

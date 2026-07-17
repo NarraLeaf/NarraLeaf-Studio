@@ -263,6 +263,9 @@ const EMPTY_IMAGE_SRC = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2
 const SCENE_INITIAL_BACKGROUND_BLOCK_ID = "__scene_initial_background";
 const EMPTY_STORY_ID = "__nlr_empty_story__";
 const EMPTY_SCENE_ID = "__nlr_empty_scene__";
+const UNKNOWN_CHARACTER_ID = "__unknown_character__";
+/** Nametag for a character that has no authored name. Must be non-empty, and must not be a UUID. */
+const UNKNOWN_CHARACTER_NAME = "Unknown";
 
 /**
  * Build a minimal, playable NLR story that mounts an empty scene. Used to boot the
@@ -729,6 +732,14 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
         return [];
     }
 
+    if (block.kind === "invalid") {
+        // Skipped rather than fatal so preview still runs: a half-typed command is a normal thing to
+        // have on screen while writing. `error` (not `warning`) is what stops it there — a production
+        // build refuses on error diagnostics, so an unfinished line cannot ship quietly.
+        diagnostic(ctx, "error", block.id, `Invalid command, skipped: ${block.payload.source}`);
+        return [];
+    }
+
     return [];
 }
 
@@ -786,7 +797,7 @@ async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryB
         if (!text.trim() && !segmentHasInterpolation(block.payload.text)) {
             return [];
         }
-        const character = getCharacter(ctx, block.payload.characterId);
+        const character = getCharacter(ctx, block.payload.characterId, block.payload.speakerName);
         const voiceUrl = block.payload.voiceAssetId
             ? await resolveAsset(ctx, block.payload.voiceAssetId, "audio", block.id)
             : null;
@@ -1036,7 +1047,7 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
     if (payload.action === "displayable") {
         const target = resolveDisplayableActionTarget(ctx, payload.target);
         if (!target) {
-            const label = resolveDisplayableTargetRef(ctx.scene, payload.target).name || "(empty)";
+            const label = resolveDisplayableTargetRef(ctx.scene, payload.target).label || "(empty)";
             diagnostic(ctx, "warning", block.id, `Displayable target not found: ${label}`);
             return [];
         }
@@ -1365,13 +1376,36 @@ async function compileNvl(ctx: SceneCompileContext, block: Extract<StoryBlock, {
     return [recordStatement(ctx, chain, block)];
 }
 
-function getCharacter(ctx: SceneCompileContext, characterId: string | undefined): Character {
-    const normalizedId = characterId?.trim() || "__unknown_character__";
+function getCharacter(ctx: SceneCompileContext, characterId: string | undefined, speakerName?: string): Character {
+    const id = characterId?.trim();
+    const tempName = speakerName?.trim();
+    // A temp speaker — a bare name with no Studio character behind it — is a valid line, not an
+    // error: NLR's dialogue box only ever displays the name its Character carries. It also covers
+    // the case where `characterId` no longer resolves (the character was deleted): falling back to
+    // the name the author wrote beats collapsing the line to "Unknown".
+    if (tempName && (!id || !ctx.characterSummaries.has(id))) {
+        // Keyed on the name so every line by the same temp speaker shares one Character. ':' cannot
+        // appear in a characterId UUID, so this can never collide with the real-character keys.
+        const key = `name:${tempName}`;
+        const cached = ctx.characters.get(key);
+        if (cached) {
+            return cached;
+        }
+        const created = new Character(tempName);
+        ctx.characters.set(key, created);
+        return created;
+    }
+    const normalizedId = id || UNKNOWN_CHARACTER_ID;
     const existing = ctx.characters.get(normalizedId);
     if (existing) {
         return existing;
     }
-    const displayName = ctx.characterSummaries.get(normalizedId)?.name ?? (normalizedId === "__unknown_character__" ? "Unknown" : normalizedId);
+    // Two things this fallback must never produce. An empty name makes the Character
+    // indistinguishable from NLR's Narrator (`Narrator = new Character(null)` collapses to
+    // `state.name === ""`), so `useDialog` reports a real character as `isNarrator` and the avatar
+    // silently disappears. `normalizedId` is a characterId UUID, which must never reach the UI.
+    // Identity is keyed on `normalizedId` above, so this string is cosmetic only.
+    const displayName = ctx.characterSummaries.get(normalizedId)?.name?.trim() || UNKNOWN_CHARACTER_NAME;
     const character = new Character(displayName);
     ctx.characters.set(normalizedId, character);
     return character;

@@ -84,6 +84,7 @@ const saveScreenshotIn: BlueprintNodePinDef = {
     valueType: "boolean",
     label: "Capture",
     optional: true,
+    allowInlineLiteral: true,
 };
 const sentenceCpsIn: BlueprintNodePinDef = {
     id: "cps",

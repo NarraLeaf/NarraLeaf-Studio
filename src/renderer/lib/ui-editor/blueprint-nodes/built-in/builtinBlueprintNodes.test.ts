@@ -1854,6 +1854,34 @@ describe("built-in blueprint nodes", () => {
         })).rejects.toThrow(/Skip Interval/);
     });
 
+    it("captures a save screenshot set through the Capture pin's on-card literal", async () => {
+        registerCoreBlueprintNodes();
+
+        // The pin is boolean and unwired here: without an inline literal there is no way to turn
+        // Capture on from the node card, which read as the pin being ignored.
+        const saveWrite = blueprintNodeRegistry.get(BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE)!;
+        expect(saveWrite.pins.find(pin => pin.id === "screenshot")?.allowInlineLiteral).toBe(true);
+
+        const writtenScreenshots: boolean[] = [];
+        await executeGraph({
+            graph: {
+                id: "writeSaveInlineCapture",
+                entries: { main: { start: { nodeId: "write", port: "in" } } },
+                nodes: {
+                    write: {
+                        id: "write",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
+                        params: { id: "slot-a", screenshot: true },
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "write", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ writtenScreenshots }),
+        });
+        expect(writtenScreenshots).toEqual([true]);
+    });
+
     it("executes game save nodes through host APIs", async () => {
         registerCoreBlueprintNodes();
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     initialDialogState,
+    isDesktopPlatform,
     requestToBuildConfiguration,
     stateFromRequest,
     stateToRequest,
@@ -9,10 +10,34 @@ import {
 } from "./buildDialogState";
 import type { BuildConfiguration } from "@/lib/workspace/project/configuration";
 
+describe("isDesktopPlatform", () => {
+    it("rejects web and the mobile platforms", () => {
+        // Type-predicate bodies are unchecked; a revert to `platform !== "web"`
+        // would hand android/ios an arch select and desktop treatment.
+        expect(isDesktopPlatform("windows")).toBe(true);
+        expect(isDesktopPlatform("macos")).toBe(true);
+        expect(isDesktopPlatform("linux")).toBe(true);
+        expect(isDesktopPlatform("web")).toBe(false);
+        expect(isDesktopPlatform("android")).toBe(false);
+        expect(isDesktopPlatform("ios")).toBe(false);
+    });
+});
+
 describe("initialDialogState", () => {
     it("starts a never-built project on the host platform only", () => {
         const state = initialDialogState(null, "macos", "arm64");
         expect(stateToRequest(state).targets.map(t => t.platform)).toEqual(["macos"]);
+    });
+
+    it("seeds a formats entry for every platform, including ones the dialog hides", () => {
+        // formats is typed as a total Record; the mobile platforms are not in
+        // DIALOG_PLATFORMS yet, but code trusting the type may index them.
+        const state = initialDialogState(null, "macos", "arm64");
+        expect(state.formats.android).toEqual(new Set());
+        expect(state.formats.ios).toEqual(new Set());
+        const restored = stateFromRequest({ targets: [] }, "macos", "arm64");
+        expect(restored.formats.android).toEqual(new Set());
+        expect(restored.formats.ios).toEqual(new Set());
     });
 
     it("never seeds a target the host cannot build, even if remembered", () => {
