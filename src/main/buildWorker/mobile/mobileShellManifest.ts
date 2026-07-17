@@ -15,6 +15,29 @@
 /** The schema version this Studio build understands. Bump on a breaking change. */
 export const SUPPORTED_SHELL_MANIFEST_SCHEMA = 1;
 
+/**
+ * Screen orientation the shell locks the game to at runtime. Applied by the
+ * shell (Android `setRequestedOrientation`) rather than patched into the
+ * template's manifest, so the repack never has to touch orientation attributes.
+ */
+export type MobileShellOrientation = "landscape" | "portrait" | "auto";
+
+/**
+ * The shell-config.json the repack writes into the template and the shell reads
+ * at startup. Its version is declared separately from the manifest's
+ * (`shellConfigSchemaVersion`) because the two evolve independently: a template
+ * can gain icon slots without changing what the shell reads at boot.
+ *
+ * `backgroundColor` is the pre-boot background — the same value the web shell's
+ * entry document paints, so the native window, the document and the game agree
+ * on the first frame instead of flashing white.
+ */
+export type MobileShellConfigV1 = {
+    schemaVersion: number;
+    orientation: MobileShellOrientation;
+    backgroundColor: string;
+};
+
 export type ShellPlaceholderIdentity = {
     /** Reverse-domain id baked into the template, replaced during repack. */
     applicationId: string;
