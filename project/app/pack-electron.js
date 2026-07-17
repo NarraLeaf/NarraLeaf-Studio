@@ -44,6 +44,9 @@ function run(cmd, args = [], opts = {}) {
         console.log('[pack] Preparing embedded preview runner...');
         await run('node', ['project/build/prepare-preview-runner.js']);
 
+        console.log('[pack] Staging mobile shell templates...');
+        await run('node', ['project/build/prepare-mobile-shell.js']);
+
         console.log('[pack] Packaging with electron-builder...');
         const extraArgs = process.argv.slice(2);
         // Force output dir to build/ unless user overrides via CLI

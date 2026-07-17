@@ -43,7 +43,7 @@ export function RichTextView(props: {
             resolveLabel,
             titles: {
                 pauseClick: t("story.richText.pauseClick"),
-                pauseMs: ms => t("story.richText.pauseMs", { ms }),
+                pauseSeconds: seconds => t("story.richText.pauseSeconds", { seconds }),
                 insertedValue: name => t("story.richText.insertedValue", { name }),
                 valueFallback: t("story.richText.valueFallback"),
             },

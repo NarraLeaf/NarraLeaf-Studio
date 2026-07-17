@@ -92,7 +92,15 @@ export type BuildPreflightCode =
     | "plugins-invalid"
     | "encryption-key-unavailable"
     | "web-unprotected"
+    | "mobile-unprotected"
+    | "mobile-template-missing"
+    | "mobile-payload-too-large"
+    | "version-uncodable"
+    | "appid-android-adjusted"
+    | "bundleid-ios-adjusted"
     | "unsigned"
+    | "unsigned-android"
+    | "unsigned-ios"
     | "cross-build-download"
     | "output-not-writable"
     | "output-not-empty";
@@ -289,6 +297,22 @@ export function deriveAndroidVersionCode(version: string): number | null {
     // 0.0.0 (the no-version fallback) still needs a valid code; installers
     // reject versionCode 0.
     return Math.max(1, major * 1_000_000 + minor * 1_000 + patch);
+}
+
+/**
+ * CFBundleShortVersionString / CFBundleVersion from the project's semver. iOS
+ * accepts only dot-separated integers, so the pre-release and build-metadata
+ * suffixes semver allows ("1.2.0-beta.3") are stripped. Both keys take this one
+ * value: they mean different things to the App Store (marketing version vs.
+ * build number), but that distinction only exists once uploads do — and two
+ * different-looking versions on a sideloaded build would be a lie about which
+ * one shipped. The store batch gives CFBundleVersion its own meaning.
+ */
+export function deriveIosBundleVersion(version: string): string {
+    const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version.trim());
+    // Callers validate the version first (isValidProjectVersion), so the
+    // fallback only guards non-UI callers passing something unparseable.
+    return match ? `${Number(match[1])}.${Number(match[2])}.${Number(match[3])}` : "0.0.0";
 }
 
 /**

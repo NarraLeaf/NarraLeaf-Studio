@@ -338,6 +338,21 @@ input[type="radio"]:focus {
         -webkit-user-select: text;
     }
 
+    /**
+     * Suspend selection inside a subtree that opted into `.nl-selectable-text`.
+     *
+     * An ancestor cannot do this by inheritance: `user-select: text` on the descendant is an
+     * explicit value, so it beats an inherited `none` from above. Suspending therefore needs a rule
+     * that outranks `.nl-selectable-text` on the same elements, which is what the extra class here
+     * buys. The story rows use it to stop painting a text selection once a drag that began on a
+     * row's text turns into a row-range selection.
+     */
+    .nl-text-select-suspended .nl-selectable-text,
+    .nl-text-select-suspended .nl-selectable-text * {
+        user-select: none;
+        -webkit-user-select: none;
+    }
+
     .nl-window-content-layer {
         position: fixed;
         left: 0;

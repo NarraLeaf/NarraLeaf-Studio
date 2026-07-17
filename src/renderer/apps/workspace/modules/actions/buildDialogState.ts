@@ -19,7 +19,7 @@ import { DEFAULT_BUILD_COMPRESSION, type BuildConfiguration } from "@/lib/worksp
  */
 
 /** Platforms shown, in display order. */
-export const DIALOG_PLATFORMS: GameBuildPlatform[] = ["windows", "macos", "linux", "web"];
+export const DIALOG_PLATFORMS: GameBuildPlatform[] = ["windows", "macos", "linux", "web", "android", "ios"];
 
 export const DESKTOP_PLATFORMS: GameBuildDesktopPlatform[] = ["windows", "macos", "linux"];
 
@@ -34,8 +34,6 @@ export const OFFERED_FORMATS: Record<GameBuildPlatform, GameBuildFormat[]> = {
     macos: ["zip", "dmg", "dir"],
     linux: ["zip", "appimage", "dir"],
     web: ["zip", "dir"],
-    // Not in DIALOG_PLATFORMS yet — the mobile pipeline lands worker-first;
-    // the UI batch adds them there once the repack path exists end to end.
     android: ["apk"],
     ios: ["ipa"],
 };
