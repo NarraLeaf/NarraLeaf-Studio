@@ -15,6 +15,25 @@ const DEFAULT_SWATCHES = ["#ffffff", "#f87171", "#fb923c", "#facc15", "#4ade80",
 const SWATCH_COUNT = 7;
 const BTN = "grid h-6 w-6 place-items-center rounded text-fg-muted hover:bg-fill hover:text-fg";
 const BTN_ACTIVE = "grid h-6 w-6 place-items-center rounded bg-primary/25 text-primary";
+/** Rendered heights of the two strips, and the breathing room between strip and row. */
+const TOOLBAR_HEIGHT = 24;
+const TOOLBAR_HEIGHT_EXPANDED = 30;
+const TOOLBAR_GAP = 4;
+
+/**
+ * The rect of the nearest ancestor that actually scrolls — the pane the toolbar has to stay inside.
+ * The toolbar is a `fixed` portal, so nothing clips it for free: without this it happily floats over
+ * the tab strip, or stays pinned in place after its row has scrolled away.
+ */
+function scrollClipRect(el: HTMLElement): DOMRect | null {
+    for (let node = el.parentElement; node; node = node.parentElement) {
+        const overflowY = globalThis.window.getComputedStyle(node).overflowY;
+        if (overflowY === "auto" || overflowY === "scroll") {
+            return node.getBoundingClientRect();
+        }
+    }
+    return null;
+}
 
 /** Case-insensitive normalized hex key so colors from mixed sources compare reliably. */
 function colorKey(color: string): string {
@@ -78,7 +97,21 @@ export function RichTextToolbar(props: {
                 return;
             }
             const rect = anchor.getBoundingClientRect();
-            setPos({ top: Math.max(4, rect.top - (expanded ? 34 : 28)), left: rect.left });
+            const clip = scrollClipRect(anchor);
+            // The row has been scrolled out of its pane. A chip still floating over whatever now
+            // occupies that spot reads as part of it, so there is nothing useful to show.
+            if (clip && (rect.bottom <= clip.top || rect.top >= clip.bottom)) {
+                setPos(null);
+                return;
+            }
+            const height = expanded ? TOOLBAR_HEIGHT_EXPANDED : TOOLBAR_HEIGHT;
+            const ceiling = clip ? clip.top : 0;
+            const floor = (clip ? clip.bottom : globalThis.window.innerHeight) - height;
+            const above = rect.top - height - TOOLBAR_GAP;
+            // Sit above the row; drop below it when the pane has no room above (the top row, or a
+            // scrolled-to-edge one) rather than escaping the pane and covering the tab strip.
+            const top = above >= ceiling ? above : rect.bottom + TOOLBAR_GAP;
+            setPos({ top: Math.min(Math.max(top, ceiling), Math.max(ceiling, floor)), left: rect.left });
         };
         update();
         // Re-measure across the next frames: entering edit mode focuses the row, which can scroll

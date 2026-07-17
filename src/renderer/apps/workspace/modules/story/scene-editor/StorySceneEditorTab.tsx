@@ -846,17 +846,19 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                             editor.setEditorMode({ kind: "text", blockId: row.block.id, value: text.value, rich: text.rich });
                                         }
                                     }}
-                                    onEditRichChange={(value, rich) =>
+                                    onEditRichChange={(value, rich) => {
+                                        editor.resetGoalColumn();
                                         editor.setEditorMode(current =>
                                             current.kind === "text" && current.blockId === row.block.id
                                                 ? { ...current, value, rich }
                                                 : current,
-                                        )
-                                    }
+                                        );
+                                    }}
                                     onCommitTextEdit={editor.commitTextEdit}
                                     onExitTextEdit={() => { editor.commitTextEdit(); editor.focusRoot(); }}
                                     onContinue={editor.insertContinuationAfterCurrentTextEdit}
                                     onArrowOut={editor.navigateFromTextEdit}
+                                    onGoalColumnInvalidated={editor.resetGoalColumn}
                                     onBackspaceAtEmptyStart={editor.handleBackspaceAtEmptyStart}
                                     // The row's stack is spent, so the caret is back where the edit opened and
                                     // committing is a no-op (`commitTextEdit` short-circuits when nothing

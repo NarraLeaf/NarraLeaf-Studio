@@ -17,6 +17,7 @@ import {
     setSelectionUnitRange,
     spliceRuns,
     totalUnits,
+    unitOffsetFromPoint,
     unitOffsetOfElement,
     type ResolveInterpolationLabel,
     type RichRenderOptions,
@@ -83,10 +84,19 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
      * The caret sat at a visual boundary and the author pressed an arrow that would leave the line:
      * ArrowUp on the first visual line, ArrowDown on the last, ArrowLeft at the very start, ArrowRight
      * at the very end. The parent moves focus to the adjacent story row.
+     *
+     * `caretX` is the caret's viewport x as it left, which the parent keeps as the goal column and
+     * hands to the row being entered.
      */
-    onArrowOut?: (direction: "up" | "down" | "left" | "right") => void;
+    onArrowOut?: (direction: "up" | "down" | "left" | "right", caretX: number | null) => void;
     /** Backspace pressed with a collapsed caret at the start of an empty line (row demote / delete). */
     onBackspaceAtEmptyStart?: () => void;
+    /**
+     * The author moved the caret by something other than a vertical arrow — a horizontal arrow, a
+     * click, a keystroke — so they have stated a new column and the parent's goal column is spent.
+     * Fires for moves *within* the row too, which never reach {@link onArrowOut}.
+     */
+    onGoalColumnInvalidated?: () => void;
     onPauseClick?: (info: PauseClickInfo) => void;
     onInterpolationClick?: (info: InterpolationClickInfo) => void;
     resolveInterpolationLabel?: ResolveInterpolationLabel;
@@ -129,15 +139,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         renderRunsToElement(el, runs, renderOptionsRef.current);
         el.focus();
         // An explicit range means the author already selected this text in the read-only row and we
-        // are carrying their selection across the swap into the editor. Only the keyboard's arrow-in
-        // landings collapse the caret to an edge.
+        // are carrying their selection across the swap into the editor; a goal column means they
+        // arrowed in vertically and the caret keeps its x. Only the plain landings collapse to an edge.
         const target = props.initialCaret;
-        const range = typeof target === "object"
-            ? target
-            : (() => {
-                const pos = target === "start" ? 0 : totalUnits(runs);
-                return { start: pos, end: pos };
-            })();
+        const range = resolveInitialCaret(el, runs, target);
         setSelectionUnitRange(el, range.start, range.end);
         savedRange.current = range;
         // Render initial content once; edits are model/DOM driven from here.
@@ -304,6 +309,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         const atEnd = !!unit && unit.end >= total;
         let atFirstLine = atStart;
         let atLastLine = atEnd;
+        let caretX: number | null = null;
         if (empty) {
             atFirstLine = true;
             atLastLine = true;
@@ -317,12 +323,19 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 const lineHeight = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4 || 18;
                 atFirstLine = caretRect.top - (elRect.top + padTop) <= lineHeight * 0.6;
                 atLastLine = (elRect.bottom - padBottom) - caretRect.bottom <= lineHeight * 0.6;
+                caretX = caretRect.left;
             }
         }
-        return { collapsed, atStart, atEnd, atFirstLine, atLastLine, empty };
+        return { collapsed, atStart, atEnd, atFirstLine, atLastLine, empty, caretX };
     }, []);
 
     const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+        // Only a vertical arrow continues a vertical run; every other key that reaches the field is
+        // the author saying where the caret goes now. Pressing a modifier on its own says nothing.
+        const modifierOnly = event.key === "Shift" || event.key === "Control" || event.key === "Alt" || event.key === "Meta";
+        if (event.key !== "ArrowUp" && event.key !== "ArrowDown" && !modifierOnly) {
+            props.onGoalColumnInvalidated?.();
+        }
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
             // Always take the key: Chromium's native stack is destroyed by every rich-text re-render, so
             // letting it through would undo into a state the row no longer agrees with.
@@ -376,6 +389,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         event.preventDefault();
         props.onArrowOut(
             event.key === "ArrowUp" ? "up" : event.key === "ArrowDown" ? "down" : event.key === "ArrowLeft" ? "left" : "right",
+            edges.caretX,
         );
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [getCaretEdges, props.onArrowOut, props.onBackspaceAtEmptyStart, props.onExit, props.onEnter, props.onShiftEnter, props.onUndoBeyondRow, props.onRedoBeyondRow, undo, redo]);
@@ -551,12 +565,48 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             }}
             onInput={emitChange}
             onKeyUp={saveSelection}
-            onMouseUp={saveSelection}
+            // Clicking into the text states a column as plainly as an arrow does. The row's own
+            // mousedown never sees this: a contentEditable counts as an interactive target.
+            onMouseUp={() => { saveSelection(); props.onGoalColumnInvalidated?.(); }}
             onBlur={() => { saveSelection(); props.onBlur(); }}
             onKeyDown={handleKeyDown}
         />
     );
 });
+
+/**
+ * The unit range the caret opens at.
+ *
+ * A goal column arrives as a viewport x plus the visual line to land on, and is resolved against
+ * this row's own text: aim at the middle of that line, clamped inside the field so an x from a
+ * longer row (or a row starting further left — a dialogue's text is indented past its nametag)
+ * still lands on the nearest character rather than missing the box entirely. Anything unresolvable
+ * degrades to the line's own edge, which is the pre-goal-column behaviour.
+ */
+function resolveInitialCaret(el: HTMLElement, runs: StoryRichRun[], target: StoryCaretTarget | undefined): { start: number; end: number } {
+    const edge = (position: number) => ({ start: position, end: position });
+    if (target && typeof target === "object" && "goalX" in target) {
+        const total = totalUnits(runs);
+        if (total === 0) {
+            return edge(0);
+        }
+        const rect = el.getBoundingClientRect();
+        const cs = globalThis.window.getComputedStyle(el);
+        const padTop = parseFloat(cs.paddingTop) || 0;
+        const padBottom = parseFloat(cs.paddingBottom) || 0;
+        const lineHeight = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4 || 18;
+        const y = target.line === "first"
+            ? rect.top + padTop + lineHeight / 2
+            : rect.bottom - padBottom - lineHeight / 2;
+        const x = Math.min(Math.max(target.goalX, rect.left + 1), rect.right - 1);
+        const offset = unitOffsetFromPoint(el, x, y);
+        return offset === null ? edge(target.line === "first" ? 0 : total) : edge(Math.min(offset, total));
+    }
+    if (typeof target === "object") {
+        return target;
+    }
+    return edge(target === "start" ? 0 : totalUnits(runs));
+}
 
 /** Bounding rect of a (usually collapsed) caret range, tolerant of Chromium's empty-rect edge cases. */
 function caretClientRect(range: Range): DOMRect | null {

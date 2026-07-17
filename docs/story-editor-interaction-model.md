@@ -27,12 +27,28 @@ top of them (see `docs/plans/2026-07-16-001-feat-story-command-system.md`).
 | `Tab` | indent | — | take highlight |
 | `Shift+Enter` | blank row after last selected | commit + blank row after | `#` line → invalid row; else resolve line |
 | `Shift+Tab` | outdent | — | — |
-| double-click | enter edit, native word selection preserved **(intended; currently broken — see Selection)** | — | — |
+| double-click | enter edit, native word selection preserved | — | — |
 
 `Mod+Enter` was removed: it did exactly what `Shift+Enter` does, had no UI path, and was silently
 downgraded to plain `Enter` inside the slot.
 
 There is no soft line break. `Enter` never inserts `\n` — rows are the line model.
+
+## The goal column
+
+Arrows walk out of a row only from its true edges (`ArrowUp` on the first visual line, `ArrowDown` on
+the last, `ArrowLeft`/`ArrowRight` at the very ends), so a wrapped row is walked line by line first.
+
+Crossing rows, the caret **keeps its x**: `ArrowDown` then `ArrowUp` puts the author back where they
+started, not on a line edge. Rows are separate editors — the browser's own goal column stops at the
+field boundary — so the x crosses as data (`{ goalX, line }`) and the arriving row resolves it against
+its own text, clamping to the nearest character when that row is shorter or starts further left (a
+dialogue's text is indented past its nametag).
+
+The column lives until the author states a new one. **Every key except a vertical arrow ends the run**
+— a horizontal arrow, a click in the text, a keystroke — which is the standard editor rule and the
+only one that behaves: `ArrowLeft` inside a row never reaches the row-boundary handler, so a run that
+only ended on arrow-*out* would drag a stale column across the next `ArrowDown`.
 
 ## Selection
 
@@ -43,13 +59,19 @@ One rule decides all three mouse gestures: **is the selection collapsed at mouse
 - Crossing a row boundary → abandon the text selection, switch to row-range selection, and suspend
   `user-select` for the rest of the gesture.
 
-> **This section describes intent, not current behaviour.** Double-click on a row with text does not
-> actually enter edit mode. The model is sound; the implementation is not. Being rebuilt — see
-> `docs/plans/2026-07-16-003-handoff-story-row.md`.
+**The whole model rests on one prerequisite: the browser must be allowed to select a row's text.**
+`styles.css` resets `user-select: none` onto everything (`*, *::before, *::after`), so a row that
+holds text opts back in with `.nl-selectable-text`. Without that opt-in the selection at mouseup is
+always collapsed, every gesture reads as a plain click, and no row ever opens — which is exactly how
+double-click-to-edit stayed broken for a whole pass while the event plumbing above it was correct and
+every unit test passed. jsdom implements neither `user-select` nor native selection, so **only
+driving the real app tests this.**
 
 The suspend/restore is the fragile part: teardown must cover `mouseup`, `pointercancel` **and**
 `window blur`, or text becomes permanently unselectable. Drag is safe from the row body because
-dnd-kit's listeners live only on the grip.
+dnd-kit's listeners live only on the grip. Suspending has to come from `.nl-text-select-suspended`
+rather than an inline `user-select` on the rows root: the rows' own `user-select: text` is an
+explicit value, and an inherited one cannot override it.
 
 ## Invalid rows (`kind: "invalid"`)
 

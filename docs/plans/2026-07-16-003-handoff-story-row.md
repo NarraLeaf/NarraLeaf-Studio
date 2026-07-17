@@ -7,21 +7,42 @@ date: 2026-07-16
 
 You own the story **row** in `src/renderer/apps/workspace/modules/story/scene-editor/` — selection,
 the rich-text row editor, and the row chrome. Read `docs/story-editor-interaction-model.md` first —
-it is the contract. The keyboard half of it is implemented and verified; the **mouse half is not**,
-and that is Job 0 below.
+it is the contract. Both halves of it, keyboard and mouse, are now implemented and driven in the app;
+Job 0 below records what the mouse half turned out to be. What is left is the list under
+"Then the rest".
 
-## Job 0 — the mouse interaction is broken. Walk it from scratch.
+## Job 0 — **DONE (2026-07-16).** Root cause was CSS, not the event plumbing.
 
-**Double-click on a row with text does not enter edit mode.** Reported from real use. Take this as
-your starting point and rebuild the whole mouse path — press, click, drag, double-click, cross-row
-drag — from first principles until each one is something you have personally watched work in the
-running app.
+`*, *::before, *::after { user-select: none }` (`styles.css:128`) made row text unselectable, so the
+browser never created a selection, so `finishTextSelectGesture` hit `range.start === range.end` and
+bailed on **every** gesture. The JS below is correct and always was — which is why reading it found
+nothing. The model needs a native selection the app's own global reset forbids.
 
-Read this next paragraph as a warning, not as background. The code below *looks* finished and is
-commented as if it works. A previous pass wrote those comments, marked the work done, and even put
-"double-click preserves the native word selection" into a handoff as **verified** — without ever
-double-clicking a row. Tests were green the whole time. **Trust nothing here that you have not driven
-yourself.**
+Fix: rows with text opt back in via `.nl-selectable-text`; `setRowTextSelectable` now toggles
+`.nl-text-select-suspended` instead of writing an inline `user-select` (an inherited value cannot
+override the rows' explicit one — the old inline write was a no-op *twice over*, since everything was
+already `none`).
+
+Driven in the app, all four gestures, via CDP `Input.dispatchMouseEvent`:
+
+| gesture | result |
+|---|---|
+| click | row selected, not editing |
+| double-click | editing, editor selection `"The"` — the word carried in |
+| drag in row | editing, editor selection `"The town is q"` |
+| cross-row drag | 4 rows selected, no text selection, `suspended:true` → `false` after mouseup |
+
+**Double-click stays implicit** (no `onDoubleClick` path for text rows). It now genuinely works, one
+rule still covers all three gestures, and an explicit path would duplicate the selection carry-over —
+two paths to drift apart, which is what this file is about.
+
+Two traps for whoever drives this next, both of which produced convincing lies mid-investigation:
+- A row's `getBoundingClientRect()` reports its layout position **even when the scroll container
+  clips it or the Console panel covers it**. Synthetic clicks then land on `<html>` and every probe
+  reads "no selection" — indistinguishable from the real bug. Hit-test the point
+  (`elementFromPoint(...).closest('[data-story-row-text]')`) before believing any result.
+- A restored session can come up with a modal open (a "Build for distribution" dialog was), which
+  swallows everything.
 
 ### The intended design (this part is sound — keep it)
 
@@ -38,36 +59,14 @@ word. That collapse is the good idea in here; the bug is in the execution, not t
 
 ### Where it lives
 
-- `StorySceneEditorRows.tsx:133-146` — the row's `onClick` / `onMouseDown` / `onDoubleClick`. Note
-  `onDoubleClick` **returns early** when the target is inside `[data-story-row-text]`, deliberately
-  deferring to the mouseup path. So on a text row, double-click depends *entirely* on that path.
-- `StorySceneEditorRows.tsx:1701,1715` — `data-story-row-text={hasValue ? "" : undefined}`. Present
-  only when the row has text. Empty rows fall through to `onDoubleClick` and open directly.
-- `useStorySceneEditorController.ts:1215` `beginDragSelection` — a plain press on row text stores
-  `textSelectRef` and returns *without* starting a row drag, letting the browser select natively.
-- `useStorySceneEditorController.ts:254` `finishTextSelectGesture` — reads
-  `getSelectionUnitRange(textEl)`, bails if collapsed, else sets `{ kind: "text", caret: range }`.
-- `useStorySceneEditorController.ts:315-366` — the window `mousemove` / `mouseup` / `pointercancel` /
-  `blur` effect.
-
-### Ruled out already — don't spend time re-checking these
-
-- The window `mouseup` listener is **not** gated on `dragSelectActive`; the effect mounts
-  unconditionally, so the listener is always attached.
-- `selectRow` does **not** reset `editorMode`, so the `click` that fires after mouseup is not
-  clobbering the edit mode that `finishTextSelectGesture` just set.
-- `data-story-row-text` **is** rendered on rows that have text.
-
-I narrowed it that far and did not find the cause. Reproduce it first, instrument the real event
-order (`mousedown → mouseup → click → dblclick`, twice), and find out which step actually fails
-before changing anything. Suspect areas worth instrumenting: whether `getSelectionUnitRange` returns
-non-collapsed for a double-clicked word in the **read-only** view's DOM, and whether anything clears
-the selection between mousedown #2 and mouseup #2.
-
-Once it works, decide whether keeping double-click implicit (via mouseup) is worth it, or whether an
-explicit `onDoubleClick` path is simply more honest. Either is fine if it works and the three
-gestures stay consistent — but if you make it explicit, it must still carry the word selection into
-the editor rather than resetting the caret.
+- `StorySceneEditorRows.tsx` — the row's `onClick` / `onMouseDown` / `onDoubleClick`; `onDoubleClick`
+  returns early inside `[data-story-row-text]`, deferring to the mouseup path.
+- `StorySceneEditorRows.tsx` — `data-story-row-text` + `nl-selectable-text`, both only when the row
+  has text. Empty rows fall through to `onDoubleClick` and open directly.
+- `useStorySceneEditorController.ts` `beginDragSelection` / `finishTextSelectGesture` / the window
+  `mousemove`/`mouseup`/`pointercancel`/`blur` effect.
+- `styles.css` — the global `user-select: none` reset, `.nl-selectable-text`, and
+  `.nl-text-select-suspended`.
 
 ## The rest of the model — already landed, don't renegotiate
 
@@ -100,38 +99,72 @@ The `InsertRow` slot's key routing is also that agent's. You own the *committed*
 
 Ordered by how much a real author would feel it.
 
-### Vertical arrow navigation has no goal column
+### ~~Vertical arrow navigation has no goal column~~ — **DONE (2026-07-16)**
 
-`useStorySceneEditorController.ts:778` — `caret: goingBack ? "end" : "start"`. ArrowDown lands at
-the start of the next row, ArrowUp at the end of the previous. **Down-then-up does not return you to
-where you were.** Every text editor maintains a goal column: the desired x-offset persists across
-vertical moves until a horizontal move or an edit resets it.
+Built as described: `goalColumnRef` in the controller, seeded from the caret x that `onArrowOut` now
+reports, carried to the next row as a new `StoryCaretTarget` variant `{ goalX, line }`, and resolved
+there by `resolveInitialCaret` → `unitOffsetFromPoint` (`caretRangeFromPoint` against the arriving
+row's own text, clamped into its box). Documented in the interaction model.
 
-Hold the goal column in a ref (it is not state — it must not re-render), seed it from the caret's
-client x on the first vertical move, and consume it when entering the next row (map x → unit offset
-via `caretClientRect`-style hit-testing). Reset on any horizontal arrow, click, or text change.
+The one thing worth knowing: **ending the run on arrow-*out* is not enough.** `ArrowLeft` inside a row
+never leaves it, so it never reaches `navigateFromTextEdit`, and the stale column survived to hijack
+the next `ArrowDown` — driving it is what caught that (Down → Left → Down landed on the old column).
+The rule is now the standard one, in `RichTextInput`: every key except a vertical arrow (bare
+modifiers excepted) invalidates the column, plus `mouseup` inside the field, since a click on a
+contentEditable is an "interactive target" the row's own mousedown deliberately ignores.
 
-### The rich-text toolbar covers the row above it
+Driven: Down holds the column; Down-then-Up returns to the same x in the same row; Down → Left → Down
+follows the new column; Down → type → Down follows the typed column.
 
-`RichTextToolbar.tsx:218` portals to `document.body` as `fixed z-[55]`, positioned at
-`Math.max(4, rect.top - 34)`. It is **not clipped to the editor pane and never flips below**.
+### ~~The rich-text toolbar covers the row above it~~ — **DONE (2026-07-16)**
 
-Observed: editing a row renders the toolbar chip opaquely over the *previous* row's text (a
-background row read as "ckground unassigned" — the label was covered). Also: edit the top row and it
-floats over the tab strip; scroll the row out of view and it stays pinned at `top: 4` over unrelated
-UI.
+`Math.max(4, rect.top - 34)` is gone. The toolbar now measures against the nearest scrolling ancestor
+(`scrollClipRect`): it sits above the row, **flips below** when the pane has no room above, clamps
+into the pane, and **unmounts when its row scrolls out of the pane** instead of hovering at `top: 4`
+over the tab strip.
 
-Fix: clip to the scroll container, flip below when there is no room above, and hide it when the
-anchor row scrolls out of view.
+Driven: mid row → above, inside pane; row flush with the pane's top edge → below, inside pane; row
+scrolled out → gone.
 
-### Blur with the chooser open is a stuck state
+It still overlaps the row above when it sits above one — that is what a floating format bar does, and
+it is why it hides and flips rather than pinning. If the overlap itself is the complaint, the fix is
+a reserved gutter, not more placement math.
 
-`StorySceneEditorRows.tsx:900` — `onBlur` only acts when `chooser === "none"`. The menus
-`preventDefault` on mousedown so they never take focus; click any *other* element while the chooser
-is open and the slot keeps rendering, with its menu, with nothing focused and no dismiss path.
+**Trap worth knowing before you "fix" the toolbar again**: it positions itself from
+`requestAnimationFrame`, which **Chromium suspends in an occluded window** — and a CDP-driven
+Electron window is occluded (`document.visibilityState === "hidden"`). The toolbar then never renders
+at all and looks stone dead, with no error. It is fine; you just cannot see it. Its `resize`/`scroll`
+listeners still fire, so `window.dispatchEvent(new Event('resize'))` forces a re-measure and the
+toolbar appears. Everything else in this file drives fine while hidden — this is the one thing that
+does not.
 
-Decide it deliberately and match the Escape ladder: blurring away from an open chooser should
-dismiss the candidates and leave the line, or discard the slot. It must not commit.
+### Blur with the chooser open is a stuck state — **NOT DONE: handing to the slash-command agent**
+
+The bug is real and the description is accurate. I am not fixing it, because it is not the committed
+row: it is the `InsertRow` slot's state machine, whose routing this file already assigns to
+`2026-07-16-002`. Both obvious fixes are wrong in ways that only show up from inside that machine:
+
+- **`onDismissChooser()`** sets `chooserDismissed: true`, which is sticky and *means something* —
+  "I know what I'm typing", a statement about the line. Blur would make that claim on the author's
+  behalf, and the candidates would then stay gone when they click back in and keep typing. Trading a
+  stuck menu for a menu that never returns is not a fix.
+- **`onDiscardSlot()`** throws away text the author typed, on an incidental click. Worse,
+  `discardInsertSlot` already interlocks with *this exact blur handler* through `slotDiscardedRef`
+  (`focusRoot()` blurs the slot synchronously, and the blur's job is to commit prose) — calling it
+  from blur is the re-entrancy that ref exists to guard.
+
+A third option neither of us listed may be the right one: keep the slot and its text, close only the
+menu, and do **not** set `chooserDismissed` — i.e. blur is not a statement about the line, so the
+candidates come back when the author returns and types. That needs a `chooser`-only reset the machine
+does not currently expose, which is why it belongs to whoever owns the machine.
+
+### ~~`aria-multiline="false"` on a field that wraps~~ — **reported but wrong; leave it alone**
+
+`aria-multiline` is about whether the textbox *accepts* multiple lines of input — whether `Enter`
+inserts a newline — not whether the text wraps visually. This field always `preventDefault`s `Enter`
+and never inserts `\n` (rule 3: rows are the line model), so it accepts exactly one line. `"false"`
+is correct. Setting it to `"true"` would announce to a screen-reader user that `Enter` starts a new
+line inside the field; it starts a new *row* instead. That is a worse lie than the wrap.
 
 ### Row actions are keyboard-unreachable
 

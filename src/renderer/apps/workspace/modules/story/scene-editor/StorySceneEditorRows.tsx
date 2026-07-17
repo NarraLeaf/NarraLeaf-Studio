@@ -79,7 +79,8 @@ export function StoryBlockRow(props: {
     /** Enter while editing: commit and open a new row that continues the same kind (dialogue keeps speaker). */
     onContinue: () => void;
     /** Caret left the line's top/bottom/edge — move focus to the adjacent story row. */
-    onArrowOut: (direction: "up" | "down" | "left" | "right") => void;
+    onArrowOut: (direction: "up" | "down" | "left" | "right", caretX: number | null) => void;
+    onGoalColumnInvalidated: () => void;
     /** Backspace on an empty line: demote dialogue → narration, or delete the row and step back. */
     onBackspaceAtEmptyStart: () => void;
     /** Mod+Z / Mod+Shift+Z once the row's own history is spent — hand off to story history. */
@@ -214,6 +215,7 @@ export function StoryBlockRow(props: {
                             onExitTextEdit={props.onExitTextEdit}
                             onContinue={props.onContinue}
                             onArrowOut={props.onArrowOut}
+                            onGoalColumnInvalidated={props.onGoalColumnInvalidated}
                             onBackspaceAtEmptyStart={props.onBackspaceAtEmptyStart}
                             onUndoBeyondRow={props.onUndoBeyondRow}
                             onRedoBeyondRow={props.onRedoBeyondRow}
@@ -290,7 +292,8 @@ function TextEditBox(props: {
     onCommitTextEdit: () => void;
     onExitTextEdit: () => void;
     onContinue: () => void;
-    onArrowOut: (direction: "up" | "down" | "left" | "right") => void;
+    onArrowOut: (direction: "up" | "down" | "left" | "right", caretX: number | null) => void;
+    onGoalColumnInvalidated: () => void;
     onBackspaceAtEmptyStart: () => void;
     onUndoBeyondRow: () => void;
     onRedoBeyondRow: () => void;
@@ -424,6 +427,7 @@ function TextEditBox(props: {
                 onEnter={props.onContinue}
                 onShiftEnter={() => { props.onCommitTextEdit(); props.onInsertAfter(); }}
                 onArrowOut={props.onArrowOut}
+                onGoalColumnInvalidated={props.onGoalColumnInvalidated}
                 onBackspaceAtEmptyStart={props.onBackspaceAtEmptyStart}
                 onUndoBeyondRow={props.onUndoBeyondRow}
                 onRedoBeyondRow={props.onRedoBeyondRow}

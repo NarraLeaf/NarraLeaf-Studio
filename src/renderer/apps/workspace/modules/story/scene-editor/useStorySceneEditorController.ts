@@ -37,7 +37,7 @@ import { getStoryEditorViewState, patchStoryEditorViewState } from "./storyEdito
 import { cloneSerializedBlock, insertSerializedClone, serializeBlockSubtree } from "./storySceneClipboard";
 import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
-import type { EditorMode, StoryBlockTarget } from "./storySceneEditorTypes";
+import type { EditorMode, StoryBlockTarget, StoryCaretTarget } from "./storySceneEditorTypes";
 import { useStorySceneClipboardHandlers } from "./useStorySceneClipboardHandlers";
 
 const STORY_EDITOR_HISTORY_LIMIT = 100;
@@ -81,6 +81,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const dragSelectPointerRef = useRef<{ x: number; y: number } | null>(null);
     const dragSelectAutoScrollRef = useRef<number | null>(null);
     const draggingBlockIdRef = useRef<StoryBlockId | null>(null);
+    /**
+     * The x the caret is trying to hold while walking rows vertically. Seeded from the caret as it
+     * leaves the first row and kept until something states a new column — a horizontal arrow, a
+     * click, an edit — so ArrowDown-then-ArrowUp returns the author to where they started rather
+     * than to a line edge. A ref, not state: reading it must never re-render the list mid-keypress.
+     */
+    const goalColumnRef = useRef<number | null>(null);
     // Anchor row for keyboard range-selection (Shift+Arrow grows the selection from here).
     const selectionAnchorRef = useRef<StoryBlockId | null>(null);
     const plainPasteRequestedRef = useRef(false);
@@ -753,10 +760,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     // Arrow navigation across the row boundary while editing text. The current line is committed first;
     // landing on a text row re-opens it for editing (caret at the near edge), landing on an action row
     // just selects it and hands focus back to the keyboard so plain arrows keep walking the list.
-    const navigateFromTextEdit = useCallback((direction: "up" | "down" | "left" | "right") => {
+    const navigateFromTextEdit = useCallback((direction: "up" | "down" | "left" | "right", caretX?: number | null) => {
         if (editorMode.kind !== "text") {
             return;
         }
+        const vertical = direction === "up" || direction === "down";
+        // A horizontal arrow is the author stating a new column; a vertical one keeps the column it
+        // already had, and only seeds it if this is the move that started the run.
+        if (!vertical) {
+            goalColumnRef.current = null;
+        } else if (goalColumnRef.current === null && typeof caretX === "number") {
+            goalColumnRef.current = caretX;
+        }
+        const goalX = vertical ? goalColumnRef.current : null;
         const currentId = editorMode.blockId;
         const currentIndex = rowIndexById.get(currentId);
         commitTextEdit();
@@ -783,7 +799,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         selectionAnchorRef.current = targetBlock.id;
         if (isTextEditableBlock(targetBlock)) {
             const segment = getTextSegment(targetBlock);
-            setEditorMode({ kind: "text", blockId: targetBlock.id, value: segment?.value ?? "", rich: segment?.rich, caret: goingBack ? "end" : "start" });
+            const caret: StoryCaretTarget = goalX === null
+                ? (goingBack ? "end" : "start")
+                : { goalX, line: goingBack ? "last" : "first" };
+            setEditorMode({ kind: "text", blockId: targetBlock.id, value: segment?.value ?? "", rich: segment?.rich, caret });
         } else {
             setEditorMode({ kind: "idle" });
             focusRoot();
@@ -1224,6 +1243,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (event.button !== 0 || isInteractiveTarget(event.target)) {
             return;
         }
+        // Pointing at a column states it: whatever vertical run was in flight is over.
+        goalColumnRef.current = null;
         selectRow(blockId, event);
         // Pressing on a row's own text starts a *text* selection, not a row-range drag: let the
         // browser select natively and read the author's intent off the mouseup (a plain click leaves
@@ -1242,6 +1263,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setDragSelectActive(true);
         startDragSelectAutoScroll();
     }, [selectRow, startDragSelectAutoScroll]);
+
+    /** Editing the text moves the caret by intent, which ends any vertical run. See {@link goalColumnRef}. */
+    const resetGoalColumn = useCallback(() => {
+        goalColumnRef.current = null;
+    }, []);
 
     const extendDragSelection = useCallback((blockId: StoryBlockId) => {
         if (dragSelectActive && dragSelectionStartRef.current) {
@@ -1607,7 +1633,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         insertContinuationAfterCurrentTextEdit, commitNarrationFromInsert, handleInsertBackspaceEmpty, chooseCommand, chooseCharacterForInsert,
         dismissInsertChooser, discardInsertSlot, resolveInsertLine, commitInvalidFromInsert, chooseTempSpeakerForInsert, tempSpeakers,
         createActionFromSidebar, addInsideContainer, addConditionBranch,
-        navigateFromTextEdit, handleBackspaceAtEmptyStart, enterEditOrInspectorForActive,
+        navigateFromTextEdit, resetGoalColumn, handleBackspaceAtEmptyStart, enterEditOrInspectorForActive,
         extendRowSelection, moveSelectedRows, duplicateSelection, jumpRowSelection, pageRowSelection,
         moveDraggedBlockAfter, moveDraggedBlockToSortablePosition, startDraggingBlock, endDraggingBlock,
         createLayerBeforeBlock,
