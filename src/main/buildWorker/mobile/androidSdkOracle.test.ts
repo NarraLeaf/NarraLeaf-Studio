@@ -128,6 +128,25 @@ describe.skipIf(!buildTools)("Google's tools on a Studio-built APK", () => {
         expect(output).not.toContain("WARNING:");
     });
 
+    it("rejects the same APK with one payload byte flipped", async () => {
+        // Proves the oracle has teeth, and proves what the signature covers:
+        // if apksigner said "Verifies" for a tampered game payload, every
+        // assertion above would be theatre and the signature would be
+        // protecting only the shell it came from.
+        const apk = await buildApk();
+        const bytes = await fs.readFile(apk);
+        // The ogg payload is stored uncompressed and far from any header, so
+        // this corrupts game content and nothing structural.
+        const marker = bytes.indexOf(Buffer.alloc(64, 9));
+        expect(marker, "payload bytes not found in the APK").toBeGreaterThan(0);
+        bytes[marker] ^= 0xff;
+        const tampered = path.join(path.dirname(apk), "tampered.apk");
+        await fs.writeFile(tampered, bytes);
+
+        expect(() => tool("apksigner", ["verify", "--min-sdk-version", String(MIN_SDK), tampered]))
+            .toThrow();
+    });
+
     it("is aligned as zipalign requires", async () => {
         const apk = await buildApk();
         // -c checks; a misaligned APK still installs but forces the platform to
