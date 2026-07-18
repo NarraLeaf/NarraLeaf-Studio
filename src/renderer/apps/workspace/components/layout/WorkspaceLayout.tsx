@@ -15,6 +15,8 @@ import { DialogContainer } from "../ui/DialogContainer";
 import { ResizableHandle } from "../ui/ResizableHandle";
 import { EditorClosedTabsKeybinding } from "./EditorClosedTabsKeybinding";
 import { WorkspaceEditorQuickSwitch } from "./WorkspaceEditorQuickSwitch";
+import { CommandPalette } from "./CommandPalette";
+import { EditorCommands } from "./EditorCommands";
 import { useRegistry } from "../../registry";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
@@ -679,6 +681,8 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
             {/* UI Overlays */}
             <WorkspaceEditorQuickSwitch />
+            <CommandPalette />
+            <EditorCommands />
             <EditorClosedTabsKeybinding />
             <NotificationContainer />
             <DialogContainer />

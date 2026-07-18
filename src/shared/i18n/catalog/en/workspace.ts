@@ -103,6 +103,23 @@ export const workspace = {
         stopPreview: "Stop Preview",
         logoAlt: "NarraLeaf Studio logo",
         editorTabsLabel: "Editor tabs",
+        // The searchable command palette (Cmd/Ctrl+Shift+P): one list of every action, menu
+        // command, and described shortcut, filtered as you type.
+        commandPalette: {
+            title: "Command Palette",
+            placeholder: "Type a command…",
+            empty: "No matching commands",
+            // Category shown on the "open <panel>" navigation entries.
+            categoryView: "View",
+            // Category + titles for the editor-tab commands (act on the active tab).
+            categoryEditor: "Editor",
+            editor: {
+                closeTab: "Close Tab",
+                closeOthers: "Close Other Tabs",
+                closeToRight: "Close Tabs to the Right",
+                closeAll: "Close All Tabs",
+            },
+        },
         // The PyCharm-style project switcher in the title bar: current project name plus a
         // dropdown of recent workspaces to jump between.
         projectSwitcher: {

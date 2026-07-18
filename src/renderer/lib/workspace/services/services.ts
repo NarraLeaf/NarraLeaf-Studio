@@ -124,7 +124,8 @@ enum Services {
     /** Blueprint node definitions (built-ins + plugin extensions); editor + runtime registry */
     BlueprintNodeCatalog = "blueprintNodeCatalog",
     // Storage = "storage",
-    // Command = "command",
+    /** Command palette registry + aggregator (actions, menus, keybindings) */
+    Command = "command",
     // Logger = "logger",
     // Editor = "editor",
     Story = "story",
@@ -221,6 +222,11 @@ interface IStorageService extends IService {
     set<T extends Record<string, any>>(namespace: string, name: string, value: T): Promise<FsRequestResult<void>>;
 }
 
+/**
+ * Command palette registry + aggregator. The concrete {@link CommandService} exposes
+ * `register`/`unregister`/`getRegistered` (mirroring the keybinding service) and `collect`, which
+ * converges toolbar actions, menu groups, and described keybindings into one runnable list.
+ */
 interface ICommandService extends IService { }
 
 interface ILoggerService extends IService { }
