@@ -125,6 +125,9 @@ export const assets = {
         pause: "暂停",
         mute: "静音",
         unmute: "取消静音",
+        waveformHint: "点击跳转 · ⌥ 点击添加 cue 点",
+        analyzing: "正在分析波形…",
+        cueChipHint: "点击跳转 · 双击删除",
         seek: "跳转",
         volume: "音量",
         playback: "播放控制",
@@ -152,5 +155,16 @@ export const assets = {
         character: "素材正被某个角色使用",
         scene: "素材正被某个场景使用",
         editor: "素材正被编辑器使用",
+    },
+    previewEditor: {
+        loadFailed: "素材加载失败",
+    },
+    fontPreview: {
+        sampleText: "The quick brown fox jumps over the lazy dog — 敏捷的棕色狐狸跳过懒狗 0123456789",
+        typePlaceholder: "输入文字以预览效果…",
+    },
+    jsonPreview: {
+        invalid: "此文件不是合法的 JSON——显示原始内容",
+        truncated: "文件过大，无法格式化——仅显示开头部分",
     },
 } satisfies LocaleNamespace<"assets">;

@@ -447,6 +447,14 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return this.getAssetsMetadataManager().updateAssetDescription(asset, description);
     }
 
+    /** Merge editor-side extras (waveform peak cache, cue points…) into the asset record. */
+    public async patchAssetExtras<T extends AssetType>(
+        asset: Asset<T>,
+        patch: Record<string, unknown>,
+    ): Promise<RequestStatus<void>> {
+        return this.getAssetsMetadataManager().patchAssetExtras(asset, patch);
+    }
+
     public async renameAsset<T extends AssetType>(
         asset: Asset<T>,
         newName: string
