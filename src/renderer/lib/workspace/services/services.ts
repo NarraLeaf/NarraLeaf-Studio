@@ -126,6 +126,8 @@ enum Services {
     // Storage = "storage",
     /** Command palette registry + aggregator (actions, menus, keybindings) */
     Command = "command",
+    /** Global project search index (story text, variable names, UI text keys, blueprint node titles) */
+    Search = "search",
     // Logger = "logger",
     // Editor = "editor",
     Story = "story",
