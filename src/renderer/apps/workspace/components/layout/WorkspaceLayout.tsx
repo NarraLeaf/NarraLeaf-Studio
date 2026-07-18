@@ -22,6 +22,7 @@ import { TitleBarSearchBox } from "./TitleBarSearchBox";
 import { StatusBar, STATUS_BAR_HEIGHT } from "./StatusBar";
 import { QuickOpenPicker } from "./QuickOpenPicker";
 import { WorkspaceBackground } from "./WorkspaceBackground";
+import { BackgroundImageDialog } from "./BackgroundImageDialog";
 import { useRegistry } from "../../registry";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
@@ -122,15 +123,21 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     // Status bar visibility (global setting); its height is only carved out of the dock layout
     // while it is actually shown.
     const [statusBarVisible, setStatusBarVisible] = useState(true);
+    // The title-bar search box is optional too; hiding it moves the palette's input into its own card.
+    const [titleBarSearchVisible, setTitleBarSearchVisible] = useState(true);
     useEffect(() => {
         if (!context) {
             return;
         }
         const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
         setStatusBarVisible(settings.getSync("ui.statusBar.visible") !== false);
+        setTitleBarSearchVisible(settings.getSync("ui.titleBarSearch.visible") !== false);
         const token = getInterface().app.state.onGlobalStateChanged?.(change => {
             if (change.key === "ui.statusBar.visible") {
                 setStatusBarVisible(change.value !== false);
+            }
+            if (change.key === "ui.titleBarSearch.visible") {
+                setTitleBarSearchVisible(change.value !== false);
             }
         });
         return () => token?.cancel();
@@ -623,7 +630,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             <TitleBar
                 title=""
                 iconSrc={iconSrc}
-                center={<TitleBarSearchBox />}
+                center={titleBarSearchVisible ? <TitleBarSearchBox /> : undefined}
                 actionBar={
                     <div className="flex items-center gap-0.5">
                         <ProjectSwitcher />
@@ -742,6 +749,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
             {/* UI Overlays */}
             <WorkspaceBackground />
+            <BackgroundImageDialog />
             <WorkspaceEditorQuickSwitch />
             <CommandPalette />
             <QuickOpenPicker />
