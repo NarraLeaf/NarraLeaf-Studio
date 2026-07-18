@@ -60,14 +60,32 @@ export class WorkspaceLaunchHandler extends IPCHandler<IPCEventType.workspaceLau
             });
         }
 
-        // Wait for workspace window to be ready before closing launcher
+        // Retire the opener only once the new workspace actually loaded its project — a window
+        // that comes up on the "not a project" screen must not consume the window it came from.
         if (closeCurrentWindow) {
-            workspaceWindow.onReady(() => {
-                window.close();
+            workspaceWindow.onLoadResult(ok => {
+                if (ok && !window.isClosed()) {
+                    window.close();
+                }
             });
         }
 
         return this.success(void 0);
+    }
+}
+
+/**
+ * The workspace renderer reports whether its project preflight succeeded. Replace-style
+ * launches gate the opener's retirement on this (see {@link WorkspaceLaunchHandler} and
+ * {@link App.openRecentProject}).
+ */
+export class WorkspaceReportLoadResultHandler extends IPCHandler<IPCEventType.workspaceReportLoadResult> {
+    readonly name = IPCEventType.workspaceReportLoadResult;
+    readonly type = IPCMessageType.message;
+
+    public handle(window: AppWindow, { ok }: IPCEvents[IPCEventType.workspaceReportLoadResult]["data"]) {
+        window.reportLoadResult(ok);
+        return this.success(void 0 as never);
     }
 }
 
