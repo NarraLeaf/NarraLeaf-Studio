@@ -3,6 +3,7 @@ import type { TranslationKey } from "@shared/i18n";
 import type { Workspace } from "@/lib/workspace/workspace";
 import type { FocusContext, Keybinding } from "@/lib/workspace/services/ui/types";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
+import { getKeybindingCatalogEntry } from "@/lib/workspace/services/ui/keybindingCatalog";
 import type { ActionDefinition, ActionGroup, ActionMenuItem, PanelDefinition } from "../../registry/types";
 import {
     getActionGroupItems,
@@ -253,23 +254,37 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
     });
 
     // 5) Keybindings that name a user-facing command and are not already reachable via an action.
+    //
+    //    Everything user-facing resolves through the *catalog*, keyed by `catalogId`, exactly as
+    //    KeybindingService.getEffectiveKey does. That matters twice over: registration ids are
+    //    often per-tab (`story-scene-editor-<tabId>-undo`), so keying on `id` would miss the
+    //    user's rebind and list one entry per open tab; and `description` is internal English
+    //    metadata that predates the catalog, so using it as a title leaks untranslated strings
+    //    into a localized palette. It survives only as the fallback for bindings with no catalog
+    //    entry, which are the ones nobody has named yet.
     keybindings.forEach(keybinding => {
-        const description = keybinding.description?.trim();
-        if (!description || seenIds.has(keybinding.id)) {
+        const catalogId = keybinding.catalogId ?? keybinding.id;
+        if (seenIds.has(catalogId)) {
             return;
         }
         if (keybinding.when && !keybinding.when(focusContext ?? FALLBACK_FOCUS)) {
             return;
         }
-        const effectiveKey = keybindingOverrides[keybinding.id] ?? keybinding.key;
+        const catalogEntry = getKeybindingCatalogEntry(catalogId);
+        const title = catalogEntry ? translate(catalogEntry.labelKey) : keybinding.description?.trim();
+        if (!title) {
+            return;
+        }
+        const effectiveKey = keybindingOverrides[catalogId] ?? catalogEntry?.key ?? keybinding.key;
         if (claimedBindings.has(canonicalBinding(effectiveKey))) {
             return;
         }
-        seenIds.add(keybinding.id);
+        seenIds.add(catalogId);
         claimBinding(effectiveKey);
         out.push({
-            id: keybinding.id,
-            title: description,
+            id: catalogId,
+            title,
+            category: catalogEntry ? translate(catalogEntry.categoryKey) : undefined,
             keybinding: effectiveKey,
             source: "keybinding",
             run: () => keybinding.handler(focusContext ?? FALLBACK_FOCUS),

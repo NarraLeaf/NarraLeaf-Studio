@@ -44,9 +44,6 @@ export const DEFAULT_BACKGROUND: BackgroundSettings = {
     anchor: "center center",
 };
 
-/** Global state written by the Settings window to ask the workspace to open the dialog. */
-export const BACKGROUND_OPEN_REQUEST_SETTINGS_KEY = "ui.backgroundImage.openRequest";
-
 /** Normalize whatever is stored (older projects predate fill/anchor) into a complete settings object. */
 export function readBackgroundSettings(get: (key: string) => unknown): BackgroundSettings {
     const image = get(BACKGROUND_KEYS.image);

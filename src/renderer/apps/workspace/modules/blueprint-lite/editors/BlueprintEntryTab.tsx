@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useEditorHistoryProvider } from "@/apps/workspace/components/layout/editorHistoryRegistry";
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { useOpenBlueprintTarget } from "../hooks/useOpenBlueprintTarget";
 import { EditorComponentProps } from "../../types";
@@ -474,31 +473,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const revision = useBlueprintDocumentRevision();
-
-    // Unified history: expose this blueprint's undo/redo to the shared tab-strip controls and
-    // the History panel. Registered before the early returns (hooks must be unconditional).
-    const historyBlueprintId = payload?.blueprintId;
-    const localBpHistory = context?.services.get<LocalBlueprintService>(Services.LocalBlueprint);
-    const [, bumpHistory] = useState(0);
-    useEffect(() => localBpHistory?.onBlueprintHistoryChanged(({ blueprintId: changed }) => {
-        if (changed === historyBlueprintId) {
-            bumpHistory(value => value + 1);
-        }
-    }), [localBpHistory, historyBlueprintId]);
-    useEditorHistoryProvider(tabId, {
-        canUndo: !!historyBlueprintId && !!localBpHistory?.canUndoBlueprint(historyBlueprintId),
-        canRedo: !!historyBlueprintId && !!localBpHistory?.canRedoBlueprint(historyBlueprintId),
-        undo: () => {
-            if (historyBlueprintId) {
-                localBpHistory?.undoBlueprint(historyBlueprintId);
-            }
-        },
-        redo: () => {
-            if (historyBlueprintId) {
-                localBpHistory?.redoBlueprint(historyBlueprintId);
-            }
-        },
-    });
 
     if (!isInitialized || !context || !payload?.blueprintId) {
         return (

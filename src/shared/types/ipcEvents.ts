@@ -2,7 +2,7 @@ import { FileDetails, FileStat } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
-import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults } from "./window";
+import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
@@ -48,6 +48,7 @@ export enum IPCEventType {
     appWindowReady = "app.window.ready",
     appLaunchSettings = "app.settings.launchWindow",
     appCountWorkspaceWindows = "app.countWorkspaceWindows",
+    appRequestWorkspaceView = "app.requestWorkspaceView",
     appOpenExternal = "app.openExternal",
     appPickBackgroundImage = "app.pickBackgroundImage",
     appReadBackgroundImage = "app.readBackgroundImage",
@@ -159,6 +160,7 @@ export enum IPCEventType {
     menuAction = "app.menu.action",
     workspaceMenuSync = "workspace.menu.sync",
     workspaceReportLoadResult = "workspace.reportLoadResult",
+    workspaceOpenView = "workspace.openView",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -287,6 +289,17 @@ export type IPCEvents = {
         data: Record<string, never>,
         response: {
             count: number;
+        };
+    };
+    [IPCEventType.appRequestWorkspaceView]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            view: WorkspaceViewRequest;
+        },
+        response: {
+            /** False when no workspace window was open to receive it. */
+            delivered: boolean;
         };
     };
     [IPCEventType.appOpenExternal]: {
@@ -1209,6 +1222,16 @@ export type IPCMenuEvents = {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
         data: { ok: boolean },
+        response: never;
+    };
+    /**
+     * Main asking one workspace window to reveal a surface, on behalf of the Settings window.
+     * Addressed to a single window: broadcasting would pop the same tab open in every workspace.
+     */
+    [IPCEventType.workspaceOpenView]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: { view: WorkspaceViewRequest },
         response: never;
     };
 };

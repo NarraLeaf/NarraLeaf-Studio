@@ -214,43 +214,6 @@ export class LocalAssetsManager {
         };
     }
 
-    /**
-     * Import bytes that were produced in the renderer rather than picked from disk. They are
-     * staged as a real file so the whole import path — format validation, unique naming, hashing,
-     * metadata — behaves identically to a user-picked file, then the staging file is removed.
-     */
-    public async importFromBytes<T extends AssetType>(
-        type: T,
-        fileName: string,
-        bytes: Uint8Array
-    ): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
-        const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        // The caller's name reaches the filesystem, so keep it to a plain basename.
-        const safeName = basename(fileName).replace(/[^\w.\-]+/g, "_") || "import";
-        const stagingPath = this.getContext().project.resolve(
-            ProjectNameConvention.EditorImportStagingFile(`${this.getUuidService().generate(true)}-${safeName}`)
-        );
-
-        const dirResult = await fsService.createDir(dirname(stagingPath));
-        if (!dirResult.ok) {
-            return { success: false, error: `Failed to prepare import staging: ${dirResult.error?.message}` };
-        }
-        const writeResult = await fsService.writeRaw(stagingPath, bytes);
-        if (!writeResult.ok) {
-            return { success: false, error: `Failed to stage import data: ${writeResult.error?.message}` };
-        }
-
-        try {
-            const imported = await this.importLocalAsset(type, stagingPath);
-            if (imported.success) {
-                this.assetsService.markDirty(type);
-            }
-            return imported;
-        } finally {
-            await fsService.deleteFile(stagingPath);
-        }
-    }
-
     private async importLocalAsset<T extends AssetType>(type: T, path: string): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
         // Validate file format before importing
         const formatValidation = await this.validateFileFormat(type, path);

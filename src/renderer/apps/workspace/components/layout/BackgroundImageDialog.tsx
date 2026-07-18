@@ -11,7 +11,6 @@ import {
     BACKGROUND_ANCHORS,
     BACKGROUND_FILLS,
     BACKGROUND_KEYS,
-    BACKGROUND_OPEN_REQUEST_SETTINGS_KEY,
     DEFAULT_BACKGROUND,
     readBackgroundSettings,
     type BackgroundAnchor,
@@ -66,14 +65,14 @@ export function BackgroundImageDialog() {
         });
     }, [context, openDialog]);
 
-    // The Settings window's button reaches this window through global state, like keybindings.
+    // The Settings window's button reaches this window through main, like keybindings.
     useEffect(() => {
-        const token = getInterface().app.state.onGlobalStateChanged?.(change => {
-            if (change.key === BACKGROUND_OPEN_REQUEST_SETTINGS_KEY && change.value) {
+        const token = getInterface().workspace.onOpenViewRequest(view => {
+            if (view === "backgroundImage") {
                 openDialog();
             }
         });
-        return () => token?.cancel();
+        return () => token.cancel();
     }, [openDialog]);
 
     const cancel = useCallback(() => {

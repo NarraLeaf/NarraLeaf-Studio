@@ -8,7 +8,6 @@ import {
     type CSSProperties,
 } from "react";
 import { EditorComponentProps } from "../../types";
-import { useEditorHistoryProvider } from "@/apps/workspace/components/layout/editorHistoryRegistry";
 import { UIEditorInteractionLayer, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
 import { UIEditorDockerBar } from "@/lib/ui-editor/docker";
 import { MousePointer2, Move, Play, Magnet, ChevronDown, PanelsTopLeft } from "lucide-react";
@@ -127,28 +126,6 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         () => context?.services.get<UIEditorHistoryService>(Services.UIEditorHistory) ?? null,
         [context],
     );
-
-    // Unified history: surface-scoped undo/redo for the shared tab-strip controls / History panel.
-    const [, bumpHistory] = useState(0);
-    useEffect(() => historyService?.on("historyChanged", ({ surfaceId: changed }) => {
-        if (changed === surfaceId) {
-            bumpHistory(value => value + 1);
-        }
-    }), [historyService, surfaceId]);
-    useEditorHistoryProvider(tabId, {
-        canUndo: !!surfaceId && !!historyService?.canUndo(surfaceId),
-        canRedo: !!surfaceId && !!historyService?.canRedo(surfaceId),
-        undo: () => {
-            if (surfaceId) {
-                historyService?.undo(surfaceId);
-            }
-        },
-        redo: () => {
-            if (surfaceId) {
-                historyService?.redo(surfaceId);
-            }
-        },
-    });
     const inputDialog = useMemo(() => (uiService ? createInputDialog(uiService) : null), [uiService]);
     const graphService = useMemo(() => context?.services.get<UIGraphService>(Services.UIGraph) ?? null, [context]);
     const [graphVersion, setGraphVersion] = useState(0);

@@ -202,13 +202,6 @@ export const workspace = {
             empty: "No notifications yet.",
             clearAll: "Clear",
         },
-        // Unified editor history (tab-strip controls + History panel).
-        history: {
-            undo: "Undo",
-            redo: "Redo",
-            empty: "The active editor has no undo history.",
-            activeEditor: "History for {name}",
-        },
         // The custom background dialog (opened from Settings or the command palette).
         background: {
             command: "Set background image…",

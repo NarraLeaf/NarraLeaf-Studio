@@ -15,7 +15,7 @@ import { GroupAssetsManager } from "../assets/mgr/GroupAssetsManager";
 import { LocalAssetsManager } from "../assets/mgr/LocalAssetsManager";
 import { RemoteAssetsManager } from "../assets/mgr/RemoteAssetsManager";
 import { OtherService } from "../assets/OtherService";
-import { Asset, AssetGroup, AssetsMap, AssetSource } from "../assets/types";
+import { Asset, AssetExtras, AssetGroup, AssetsMap, AssetSource } from "../assets/types";
 import { VideoService } from "../assets/VideoService";
 import { Service } from "../Service";
 import { IAssetService, Services, WorkspaceContext } from "../services";
@@ -447,10 +447,10 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return this.getAssetsMetadataManager().updateAssetDescription(asset, description);
     }
 
-    /** Merge editor-side extras (waveform peak cache, cue points…) into the asset record. */
+    /** Merge editor-authored extras (cue points…) into the asset record. */
     public async patchAssetExtras<T extends AssetType>(
         asset: Asset<T>,
-        patch: Record<string, unknown>,
+        patch: Partial<AssetExtras>,
     ): Promise<RequestStatus<void>> {
         return this.getAssetsMetadataManager().patchAssetExtras(asset, patch);
     }
@@ -499,19 +499,6 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         paths: string[]
     ): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
         return this.getLocalAssetsManager().importFromPaths(type, paths);
-    }
-
-    /**
-     * Import bytes produced in the renderer (an edited audio clip, say) as a new asset. It stages
-     * the bytes in a temp file and reuses the normal import path, so format validation, naming and
-     * metadata behave exactly as they do for a file the user picked.
-     */
-    public async importFromBytes<T extends AssetType>(
-        type: T,
-        fileName: string,
-        bytes: Uint8Array
-    ): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
-        return this.getLocalAssetsManager().importFromBytes(type, fileName, bytes);
     }
 
     // Magic Tag functionality

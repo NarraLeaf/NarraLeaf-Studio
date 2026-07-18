@@ -4,7 +4,7 @@ import { RendererInterfaceKey } from "./constants";
 import { BlueprintPersistenceProjectRef, RequestStatus } from "./ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
 import { FsRequestResult, PlatformInfo } from "./os";
-import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults } from "./window";
+import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "./devMode";
@@ -178,6 +178,8 @@ export interface RendererPreloadedInterface {
          * a window showing the "not a project" screen must not have consumed the window it came from.
          */
         reportLoadResult(ok: boolean): void;
+        /** Main asking this workspace to reveal a surface on the Settings window's behalf. */
+        onOpenViewRequest(handler: (view: WorkspaceViewRequest) => void): AppEventToken;
     };
 
     // App
@@ -185,6 +187,11 @@ export interface RendererPreloadedInterface {
         launchSettings(props: WindowProps[WindowAppType.Settings]): Promise<RequestStatus<void>>;
         /** Open workspace-window count — gates settings actions that need a workspace to act in. */
         countWorkspaceWindows(): Promise<RequestStatus<{ count: number }>>;
+        /**
+         * Ask one workspace window (the focused one, else the first) to reveal a surface that only
+         * exists there. `delivered: false` means no workspace was open to receive it.
+         */
+        requestWorkspaceView(view: WorkspaceViewRequest): Promise<RequestStatus<{ delivered: boolean }>>;
         /** Open an http(s) URL in the system browser (other schemes are refused). */
         openExternal(url: string): Promise<RequestStatus<void>>;
         /** Pick + store a custom background image; returns the stored filename (null = cancelled). */

@@ -3,7 +3,7 @@ import { RendererError } from "@shared/utils/error";
 import { FileSystemService } from "../../core/FileSystem";
 import { Services, WorkspaceContext } from "../../services";
 import { AssetType } from "../assetTypes";
-import { Asset, AssetSource, AssetsMap } from "../types";
+import { Asset, AssetExtras, AssetSource, AssetsMap } from "../types";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
 
@@ -59,12 +59,12 @@ export class AssetsMetadataManager {
     }
 
     /**
-     * Merge editor-side extras into the asset record (waveform peak caches, cue points…).
+     * Merge editor-authored extras into the asset record (see {@link AssetExtras}).
      * A key set to `undefined` is removed. Persisted with the asset and broadcast as `updated`.
      */
     public async patchAssetExtras<T extends AssetType>(
         asset: Asset<T, AssetSource>,
-        patch: Record<string, unknown>,
+        patch: Partial<AssetExtras>,
     ): Promise<RequestStatus<void>> {
         const metadata = this.getAssets();
         const existingAsset = metadata[asset.type][asset.id];
@@ -75,7 +75,7 @@ export class AssetsMetadataManager {
             };
         }
 
-        const extras = { ...(existingAsset.extras ?? {}) };
+        const extras: Record<string, unknown> = { ...(existingAsset.extras ?? {}) };
         for (const [key, value] of Object.entries(patch)) {
             if (value === undefined) {
                 delete extras[key];
@@ -83,7 +83,7 @@ export class AssetsMetadataManager {
                 extras[key] = value;
             }
         }
-        existingAsset.extras = extras;
+        existingAsset.extras = extras as AssetExtras;
         this.assetsService.markDirty(asset.type);
         this.assetsService.getEvents().emit("updated", existingAsset);
 

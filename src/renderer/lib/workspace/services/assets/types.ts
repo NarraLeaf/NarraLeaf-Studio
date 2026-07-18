@@ -37,11 +37,24 @@ export interface Asset<Type extends AssetType = AssetType, Source extends AssetS
     description: string;
     groupId?: string;
     /**
-     * Editor-side derived/authored data that rides with the asset record (persisted in
-     * assets.json). Audio uses `waveformPeaks: number[]` (downsampled 0..1 peaks, cached so the
-     * preview never re-decodes) and `cuePoints: { timeMs: number; label?: string }[]`.
+     * Editor-authored data that rides with the asset record. Persisted in the assets metadata,
+     * which is a project file under version control — so this is for things the *author* decided
+     * (and would want to keep and share), never for derived caches. Anything recomputable belongs
+     * under {@link ProjectNameConvention.EditorThumbnailCache}'s neighbours in `editor/cache/`.
      */
-    extras?: Record<string, unknown>;
+    extras?: AssetExtras;
+}
+
+/** A marker the author placed on an audio asset — e.g. a BGM's loop in/out points. */
+export interface AssetCuePoint {
+    /** Offset from the start of the clip, in milliseconds. */
+    timeMs: number;
+    label?: string;
+}
+
+export interface AssetExtras {
+    /** Audio only: cue points shown and edited by the audio preview. */
+    cuePoints?: AssetCuePoint[];
 }
 
 export type AssetsMap = {

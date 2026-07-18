@@ -21,6 +21,36 @@ export class AppCountWorkspaceWindowsHandler extends IPCHandler<IPCEventType.app
     }
 }
 
+/**
+ * Reveals a workspace-owned surface (the keybinding table, the background dialog) on behalf of the
+ * Settings window, which cannot open it itself: both surfaces need the workspace's live state.
+ *
+ * Addressed to exactly one window — the focused workspace if there is one, else the first — and
+ * focused so the user lands on what they asked for. Deliberately not a broadcast: with two
+ * workspaces open, every one of them would pop the same tab.
+ */
+export class AppRequestWorkspaceViewHandler extends IPCHandler<IPCEventType.appRequestWorkspaceView> {
+    readonly name = IPCEventType.appRequestWorkspaceView;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { view }: IPCEvents[IPCEventType.appRequestWorkspaceView]["data"],
+    ): Promise<RequestStatus<{ delivered: boolean }>> {
+        const workspaces = window
+            .getApp()
+            .windowManager.getWindows()
+            .filter(candidate => candidate.getWindowType() === WindowAppType.Workspace);
+        const target = workspaces.find(candidate => candidate.win.isFocused()) ?? workspaces[0];
+        if (!target) {
+            return this.success({ delivered: false });
+        }
+        target.sendIpcEvent(IPCEventType.workspaceOpenView, { view });
+        target.focus();
+        return this.success({ delivered: true });
+    }
+}
+
 export class AppSettingsWindowLaunchHandler extends IPCHandler<IPCEventType.appLaunchSettings> {
     readonly name = IPCEventType.appLaunchSettings;
     readonly type = IPCMessageType.request;

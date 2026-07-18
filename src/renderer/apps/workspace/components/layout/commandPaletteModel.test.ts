@@ -258,3 +258,58 @@ describe("collectPaletteCommands — panels", () => {
         expect(commands.map(c => c.id).sort()).toEqual(["assets", "panel:assets"]);
     });
 });
+
+describe("collectPaletteCommands — keybinding catalog resolution", () => {
+    // Per-tab registration ids with a stable catalog id, which is how every editor registers.
+    const storyUndo = (tabId: string) =>
+        keybinding({
+            id: `story-scene-editor-${tabId}-undo`,
+            key: "mod+z",
+            catalogId: "story.undo",
+            description: "Undo (internal English)",
+        });
+
+    it("titles and categorizes a catalogued binding from the catalog, not its description", () => {
+        const commands = collectPaletteCommands(build({ keybindings: [storyUndo("t1")] }));
+        expect(commands).toHaveLength(1);
+        expect(commands[0]).toMatchObject({
+            id: "story.undo",
+            title: "story.keybindings.undo",
+            category: "workspace.shell.keybindings.categories.story",
+        });
+    });
+
+    it("shows the user's override, which is keyed by catalog id and not by registration id", () => {
+        const commands = collectPaletteCommands(
+            build({
+                keybindings: [storyUndo("t1")],
+                keybindingOverrides: { "story.undo": "mod+alt+z" },
+            }),
+        );
+        expect(commands[0]?.keybinding).toBe("mod+alt+z");
+    });
+
+    it("ignores an override keyed by the per-tab registration id", () => {
+        const commands = collectPaletteCommands(
+            build({
+                keybindings: [storyUndo("t1")],
+                keybindingOverrides: { "story-scene-editor-t1-undo": "mod+alt+z" },
+            }),
+        );
+        expect(commands[0]?.keybinding).toBe("mod+z");
+    });
+
+    it("collapses the same command registered by several open tabs into one entry", () => {
+        const commands = collectPaletteCommands(
+            build({ keybindings: [storyUndo("t1"), storyUndo("t2"), storyUndo("t3")] }),
+        );
+        expect(commands).toHaveLength(1);
+    });
+
+    it("still falls back to the description for a binding with no catalog entry", () => {
+        const commands = collectPaletteCommands(
+            build({ keybindings: [keybinding({ id: "uncatalogued", key: "f9", description: "Do a thing" })] }),
+        );
+        expect(commands[0]).toMatchObject({ title: "Do a thing", category: undefined });
+    });
+});
