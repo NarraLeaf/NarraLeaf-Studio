@@ -5,10 +5,12 @@ import {
     closeCommandPalette,
     forwardCommandPaletteKey,
     openCommandPalette,
+    setCommandPaletteBoxPresent,
     setCommandPaletteQuery,
     subscribeCommandPaletteSession,
     type PaletteSessionState,
 } from "./commandPaletteController";
+import { compositionHandlers, isComposingText } from "./imeComposition";
 
 /** Shared pill chrome for both states, so opening never visually jumps. */
 const PILL_CLASS =
@@ -26,6 +28,13 @@ export function TitleBarSearchBox() {
     const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => subscribeCommandPaletteSession(setSession), []);
+
+    // Tell the palette it has somewhere to type; unmounting (setting turned off) makes the palette
+    // fall back to its own input.
+    useEffect(() => {
+        setCommandPaletteBoxPresent(true);
+        return () => setCommandPaletteBoxPresent(false);
+    }, []);
 
     // Grab keyboard focus whenever a session starts, with the caret after any prefilled `>`.
     useEffect(() => {
@@ -59,9 +68,17 @@ export function TitleBarSearchBox() {
                         className="h-full min-w-0 flex-1 bg-transparent text-left text-xs text-fg placeholder:text-fg-subtle focus:outline-none"
                         onChange={event => setCommandPaletteQuery(event.target.value)}
                         onKeyDown={forwardCommandPaletteKey}
+                        {...compositionHandlers}
                         // Focus moving anywhere else ends the session. Result-row clicks prevent
-                        // mousedown default, so they commit before any blur can fire.
-                        onBlur={closeCommandPalette}
+                        // mousedown default, so they commit before any blur can fire. An IME
+                        // candidate window also blurs us — keep the session and the focus.
+                        onBlur={() => {
+                            if (isComposingText()) {
+                                inputRef.current?.focus();
+                                return;
+                            }
+                            closeCommandPalette();
+                        }}
                     />
                 </div>
             ) : (
