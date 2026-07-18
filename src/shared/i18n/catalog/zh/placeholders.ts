@@ -23,7 +23,12 @@ export const placeholders = {
         dashboard: "仪表盘",
         audioPreview: "音频预览",
         imagePreview: "图片预览",
+        videoPreview: "视频预览",
+        fontPreview: "字体预览",
+        jsonPreview: "JSON 预览",
         search: "搜索",
         keybindings: "快捷键",
+        history: "历史",
+        notifications: "通知",
     },
 } satisfies LocaleNamespace<"placeholders">;
