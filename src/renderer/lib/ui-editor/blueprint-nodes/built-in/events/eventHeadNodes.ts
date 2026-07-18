@@ -51,6 +51,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED,
 } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_VALUE_TYPE_ELEMENT } from "@shared/types/blueprint/valueTypes";
 import { BUILTIN_WIDGET_LOGIC_APIS } from "@shared/types/ui-editor/widgetLogic";
@@ -712,6 +713,23 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         // window), so the palette offers it wherever the widget logic API lists the slot.
         scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain"] },
         pins: [THEN_PIN, PIN_IS_FULLSCREEN],
+        execute: eventHeadExecute,
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED,
+        displayName: "On Window Close Requested",
+        category: "Events",
+        keywords: ["window", "close", "quit", "exit", "requested", "intercept", "prevent", "app"],
+        graphKinds: ["event"],
+        isPure: false,
+        role: "eventHead",
+        // The main process holds the close open while this dispatch runs; a synchronous Stop Event
+        // Bubble node cancels the close, otherwise the window proceeds to close. In Dev Mode this
+        // covers the Dev Mode window; in preview/production it covers the game window. Scoped to the
+        // global and surface owners only: the cancellation travels on the dispatch's shared event
+        // control, which the widget dispatch path does not thread (like the keyboard event heads).
+        scope: { ownerKinds: ["globalMain", "surfaceMain"] },
+        pins: [THEN_PIN],
         execute: eventHeadExecute,
     },
 ];

@@ -1305,3 +1305,94 @@ describe("compileStudioStoryToNlr localization", () => {
         expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("darken");
     });
 });
+
+describe("compileStudioStoryToNlr voice", () => {
+    /** Compiled say action's Sentence (its `.config` carries voiceId/voice). */
+    function getSaySentence(compiled: Awaited<ReturnType<typeof compileStudioStoryToNlr>>, blockId: string): any {
+        const binding = compiled.actionIdBindings.find(entry => entry.blockId === blockId);
+        expect(binding, `say binding for ${blockId}`).toBeTruthy();
+        const content = (binding!.action as any).contentNode?.getContent?.();
+        const sentence = Array.isArray(content) ? content.find((item: any) => item?.text) : content;
+        expect(sentence?.text, `sentence of ${blockId}`).toBeTruthy();
+        return sentence;
+    }
+
+    function dialogueBlock(id: string, textId: string, value: string, extra: { voiceAssetId?: string } = {}): StoryBlock {
+        return {
+            id,
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "dialogue",
+                characterId: "char-alice",
+                text: { textId, value, role: "dialogue" },
+                ...(extra.voiceAssetId ? { voiceAssetId: extra.voiceAssetId } : {}),
+            },
+        };
+    }
+
+    const voiceSetup = (getVoiceLocale: () => string) => ({
+        voicedLocales: [{ code: "ja", displayName: "日本語" }],
+        tables: { ja: { "text-say": "asset-ja-say" } },
+        getVoiceLocale,
+    });
+
+    it("attaches the voiceId and resolves the take onto the scene voice map", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say: dialogueBlock("say", "text-say", "こんにちは。") }, ["say"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice" }],
+            voice: voiceSetup(() => "ja"),
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        expect(compiled.diagnostics).toEqual([]);
+        expect(getSaySentence(compiled, "say").config?.voiceId).toBe("text-say");
+        const scene = compiled.scenes["scene-1"] as any;
+        expect(scene.config?.voices?.["text-say"]).toBe("nlr://asset-ja-say");
+    });
+
+    it("voices narration lines as well", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say: narrationBlock("say", "text-say", "……。") }, ["say"]),
+            sceneId: "scene-1",
+            voice: voiceSetup(() => "ja"),
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        expect(getSaySentence(compiled, "say").config?.voiceId).toBe("text-say");
+    });
+
+    it("leaves unvoiced lines and voiceless projects untouched", async () => {
+        // A line with no take for the active language gets no voiceId.
+        const partial = await compileStudioStoryToNlr({
+            document: baseDocument({ say: dialogueBlock("say", "text-other", "no take") }, ["say"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice" }],
+            voice: voiceSetup(() => "ja"),
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        expect(getSaySentence(partial, "say").config?.voiceId ?? null).toBeNull();
+
+        // A project with no voice bundle compiles exactly as before.
+        const none = await compileStudioStoryToNlr({
+            document: baseDocument({ say: dialogueBlock("say", "text-say", "hi") }, ["say"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice" }],
+        });
+        expect(getSaySentence(none, "say").config?.voiceId ?? null).toBeNull();
+        expect((none.scenes["scene-1"] as any).config?.voices ?? null).toBeNull();
+    });
+
+    it("keeps the legacy per-line voiceAssetId as an inline fallback", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say: dialogueBlock("say", "text-legacy", "hi", { voiceAssetId: "asset-voice" }) }, ["say"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice" }],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        const sentence = getSaySentence(compiled, "say");
+        // Inline voice remains for back-compat; no id-keyed take overrides it.
+        expect(sentence.config?.voice).toBeTruthy();
+        expect(sentence.config?.voiceId ?? null).toBeNull();
+    });
+});

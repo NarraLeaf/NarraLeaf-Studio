@@ -1,8 +1,8 @@
 import React from "react";
-import { useRegistry } from "../../registry";
 import { useWorkspace } from "../../context";
 import { PanelPosition } from "../../registry/types";
 import { SidebarPanelRail } from "./SidebarPanelRail";
+import { useSidebarPanelContextMenu } from "./useSidebarPanelContextMenu";
 
 interface LeftSidebarSelectorProps {
     visible: boolean;
@@ -24,12 +24,11 @@ export function LeftSidebarSelector({
     onSelectPanel,
     onActivatePanelForDrop,
 }: LeftSidebarSelectorProps) {
-    const { getPanelsByPosition, reorderPanels } = useRegistry();
     const { context } = useWorkspace();
-    const panels = getPanelsByPosition(PanelPosition.Left);
+    const { railPanels, commitReorder, openMenu, menu } = useSidebarPanelContextMenu(PanelPosition.Left);
 
     const handlePanelClick = (panelId: string) => {
-        const panel = panels.find(entry => entry.id === panelId);
+        const panel = railPanels.find(entry => entry.id === panelId);
         if (panel?.railAction) {
             // A rail action leads somewhere else entirely (an editor tab, a window), so it neither
             // becomes the active panel nor disturbs the sidebar's current visibility.
@@ -55,15 +54,18 @@ export function LeftSidebarSelector({
         <div
             data-workspace-sidebar-rail=""
             className="bg-surface-sunken border-r border-edge flex flex-col items-center py-2 px-1 gap-1"
+            onContextMenu={(event) => openMenu(event)}
         >
             <SidebarPanelRail
-                panels={panels}
+                panels={railPanels}
                 activeId={activeId}
                 sidebarVisible={visible}
                 onPanelClick={handlePanelClick}
                 onActivateForDrop={onActivatePanelForDrop}
-                onReorder={(orderedIds) => reorderPanels(PanelPosition.Left, orderedIds)}
+                onReorder={commitReorder}
+                onPanelContextMenu={openMenu}
             />
+            {menu}
         </div>
     );
 }

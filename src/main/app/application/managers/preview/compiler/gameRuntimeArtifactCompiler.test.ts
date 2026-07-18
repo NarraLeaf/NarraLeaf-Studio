@@ -3,11 +3,10 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { derivePackEncryptionKey } from "@narraleaf/encryption";
+import { derivePackEncryptionKey, runtimeSupportPath } from "@narraleaf/encryption";
 import {
     openSealedBundle,
     RUNTIME_BUNDLE_FILENAME,
-    RUNTIME_KEY_PLACEHOLDER,
     RUNTIME_SUPPORT_FILENAME,
 } from "@narraleaf/encryption/runtime";
 import { GAME_RUNTIME_PACK_SCHEMA_VERSION } from "@shared/types/gameRuntime";
@@ -35,7 +34,27 @@ describe("game runtime artifact compiler", () => {
     });
 
     afterEach(async () => {
-        await fs.rm(tempDir, { recursive: true, force: true });
+        // The protected-store test process.dlopen()s the packed nlcrypto.node; on
+        // Windows a loaded native module cannot be unlinked until the process
+        // exits, so a plain rm throws EPERM on that one file. Retry briefly, then
+        // leave the locked binary for the OS temp sweep rather than failing the
+        // suite on a cleanup artifact.
+        for (let attempt = 0; ; attempt++) {
+            try {
+                await fs.rm(tempDir, { recursive: true, force: true });
+                return;
+            } catch (error) {
+                const code = (error as { code?: string }).code;
+                if ((code === "EPERM" || code === "EBUSY") && attempt < 5) {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    continue;
+                }
+                if (code === "EPERM" || code === "EBUSY") {
+                    return; // give up on the locked native module only
+                }
+                throw error;
+            }
+        }
     });
 
     it("writes a real preview app with pack.json and flat copied assets", async () => {
@@ -265,8 +284,9 @@ describe("game runtime artifact compiler", () => {
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
         const pluginInstallDir = path.join(tempDir, "plugins", "acme.sample-plugin");
         await createRuntimeDist(runtimeDistDir);
-        // Protection injects the pack key into main.js at its placeholder.
-        await fs.writeFile(path.join(runtimeDistDir, "main.js"), `const K = "${RUNTIME_KEY_PLACEHOLDER}";`, "utf-8");
+        // Protection carries no key material in main.js; the runtime bundle here
+        // is just a marker to prove the compiler never injects anything into it.
+        await fs.writeFile(path.join(runtimeDistDir, "main.js"), "// runtime main\n", "utf-8");
         await createMinimalProject(projectPath);
         await writeAsset(projectPath, ASSET_ID, "local image bytes");
         await writeProjectIcon(projectPath, "configured icon bytes");
@@ -308,16 +328,16 @@ describe("game runtime artifact compiler", () => {
         expect(result.pack.assets.items[ASSET_ID].relativePath).toBe(`assets/${ASSET_ID}`);
         expect(result.pack.assets.items[ASSET_ID].mimeType).toBe("image/png");
 
-        // main.js received the real key in place of the placeholder.
+        // main.js carries NO key material: the compiler injects nothing into it,
+        // so it is byte-for-byte what the runtime build produced.
         const mainJs = await fs.readFile(path.join(result.appDir, "main.js"), "utf-8");
-        expect(mainJs).toContain(packKey);
-        expect(mainJs).not.toContain(RUNTIME_KEY_PLACEHOLDER);
+        expect(mainJs).toBe("// runtime main\n");
 
-        // The store round-trips through the runtime reader.
+        // The shipped binary was patched with this build's per-title secret, so it
+        // opens the store with NO key passed at all.
         const reader = await openSealedBundle(
             path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
             path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
-            packKey,
         );
         try {
             const pack = JSON.parse((await reader.read("pack")).toString("utf-8"));
@@ -327,6 +347,13 @@ describe("game runtime artifact compiler", () => {
         } finally {
             await reader.close();
         }
+
+        // The per-title secret is load-bearing and lives ONLY in the shipped
+        // binary: the pristine, unpatched codec cannot open the store.
+        await expect(openSealedBundle(
+            runtimeSupportPath(),
+            path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+        )).rejects.toThrow();
     });
 
     it("writes a production app without a control channel or sibling userData", async () => {

@@ -139,6 +139,22 @@ export function isTextEditableBlock(block: StoryBlock): boolean {
 }
 
 /**
+ * Whether opening this block's property inspector shows anything worth a card.
+ *
+ * A condition container has nothing of its own to edit — its branches carry the logic, and its
+ * add-branch affordances live in the footer — and a condition branch (if / else-if / else) authors
+ * its condition inline through the header chip, not a card. Both would otherwise open a near-empty
+ * placeholder card, which reads as broken. They are "card-less": {@link isTextEditableBlock} still
+ * wins for text rows, so this is only consulted for the non-text action/control rows.
+ */
+export function hasInspector(block: StoryBlock): boolean {
+    if (block.kind === "control" && (block.payload.control === "condition" || block.payload.control === "conditionBranch")) {
+        return false;
+    }
+    return true;
+}
+
+/**
  * A block that owns nested children and should render as an accordion container (a titled header +
  * an indented, collapsible body) rather than a plain action row. Equivalent to `canAcceptChildren`;
  * kept as a distinct name so rendering intent reads clearly at call sites.
@@ -346,6 +362,39 @@ export function filterOutSelectedDescendants(scene: StoryScene, ids: StoryBlockI
         }
         return Boolean(scene.blocks[id]);
     });
+}
+
+/**
+ * The row to land on after deleting `roots` (and their descendants): the nearest survivor *above* the
+ * topmost deleted row — its previous line, the editor convention — or the first survivor below when the
+ * deletion starts at the very top of the list. `null` when nothing survives (the whole scene went).
+ *
+ * A row counts as deleted when it or any ancestor is a root, so a collapsed container's hidden children
+ * never need enumerating. Pure, so the post-delete focus is unit-tested rather than only observed in the
+ * running app.
+ */
+export function nextSelectionAfterDelete(scene: StoryScene, visibleRows: VisibleStoryRow[], roots: StoryBlockId[]): StoryBlockId | null {
+    const rootSet = new Set(roots);
+    const isDeleted = (blockId: StoryBlockId): boolean => {
+        let id: StoryBlockId | null = blockId;
+        while (id) {
+            if (rootSet.has(id)) {
+                return true;
+            }
+            id = scene.blocks[id]?.parentId ?? null;
+        }
+        return false;
+    };
+    const firstDeletedIndex = visibleRows.findIndex(row => isDeleted(row.block.id));
+    if (firstDeletedIndex === -1) {
+        return null;
+    }
+    // Every row above the first deleted one survives (it is the *first* deleted), so its previous line
+    // is a safe landing. Only when the top row itself is going do we fall to the first survivor below.
+    if (firstDeletedIndex > 0) {
+        return visibleRows[firstDeletedIndex - 1].block.id;
+    }
+    return visibleRows.find((row, index) => index > firstDeletedIndex && !isDeleted(row.block.id))?.block.id ?? null;
 }
 
 export function findPreviousSibling(scene: StoryScene, blockId: StoryBlockId): StoryBlock | null {
