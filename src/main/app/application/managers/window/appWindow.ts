@@ -238,6 +238,36 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         return this.getEvents().onReady(fn);
     }
 
+    /**
+     * Workspace load outcome, reported by the renderer once its project preflight settles
+     * (see `workspace.reportLoadResult`). Replace-style launches wait on this instead of
+     * `onReady`: a window can be "ready" showing the not-a-project error screen, and closing
+     * the opener then would trade a working workspace for a dead end.
+     */
+    private loadResult: boolean | null = null;
+    private loadResultCallbacks: Array<(ok: boolean) => void> = [];
+
+    public reportLoadResult(ok: boolean): void {
+        if (this.loadResult !== null) {
+            return; // First report wins; the preflight settles exactly once.
+        }
+        this.loadResult = ok;
+        const callbacks = this.loadResultCallbacks;
+        this.loadResultCallbacks = [];
+        for (const callback of callbacks) {
+            callback(ok);
+        }
+    }
+
+    /** Invoke `fn` with the load outcome — immediately if already reported. */
+    public onLoadResult(fn: (ok: boolean) => void): void {
+        if (this.loadResult !== null) {
+            fn(this.loadResult);
+            return;
+        }
+        this.loadResultCallbacks.push(fn);
+    }
+
     public showWhenReady(): AppEventToken {
         return this.getEvents().onReady(() => {
             this.show();
