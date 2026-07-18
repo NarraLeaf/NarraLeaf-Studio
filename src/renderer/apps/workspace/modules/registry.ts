@@ -11,6 +11,9 @@ import { welcomeModule } from "./welcome";
 import { globalActions, globalActionGroups } from "./actions";
 import { imagePreviewModule } from "./assets/editors/imagePreviewModule";
 import { audioPreviewModule } from "./assets/editors/audioPreviewModule";
+import { videoPreviewModule } from "./assets/editors/videoPreviewModule";
+import { fontPreviewModule } from "./assets/editors/fontPreviewModule";
+import { jsonPreviewModule } from "./assets/editors/jsonPreviewModule";
 import { charactersModule } from "./characters";
 import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./types";
 import { uiEditorSurfacesModule } from "./ui-editor";
@@ -22,6 +25,8 @@ import { voicePanelModule } from "./voice";
 import { dashboardPanelModule } from "./dashboard";
 import { searchPanelModule } from "./search";
 import { keybindingsModule } from "./keybindings";
+import { historyPanelModule } from "./history";
+import { notificationsPanelModule } from "./notifications";
 
 /**
  * Built-in panel modules
@@ -40,7 +45,9 @@ export const builtInPanels: PanelModule[] = [
     storyMotionPanelModule,
     assetsBottomModule,
     propertiesModule,
+    notificationsPanelModule,
     consoleModule,
+    historyPanelModule,
 ];
 
 /**
@@ -51,6 +58,9 @@ export const builtInEditors: EditorModule[] = [
     welcomeModule,
     imagePreviewModule,
     audioPreviewModule,
+    videoPreviewModule,
+    fontPreviewModule,
+    jsonPreviewModule,
     keybindingsModule,
 ];
 
