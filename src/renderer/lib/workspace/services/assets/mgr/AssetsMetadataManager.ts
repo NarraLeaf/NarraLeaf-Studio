@@ -58,6 +58,41 @@ export class AssetsMetadataManager {
         };
     }
 
+    /**
+     * Merge editor-side extras into the asset record (waveform peak caches, cue points…).
+     * A key set to `undefined` is removed. Persisted with the asset and broadcast as `updated`.
+     */
+    public async patchAssetExtras<T extends AssetType>(
+        asset: Asset<T, AssetSource>,
+        patch: Record<string, unknown>,
+    ): Promise<RequestStatus<void>> {
+        const metadata = this.getAssets();
+        const existingAsset = metadata[asset.type][asset.id];
+        if (!existingAsset) {
+            return {
+                success: false,
+                error: `Asset not found: ${asset.id}`,
+            };
+        }
+
+        const extras = { ...(existingAsset.extras ?? {}) };
+        for (const [key, value] of Object.entries(patch)) {
+            if (value === undefined) {
+                delete extras[key];
+            } else {
+                extras[key] = value;
+            }
+        }
+        existingAsset.extras = extras;
+        this.assetsService.markDirty(asset.type);
+        this.assetsService.getEvents().emit("updated", existingAsset);
+
+        return {
+            success: true,
+            data: void 0,
+        };
+    }
+
     public async updateAssetDescription<T extends AssetType>(
         asset: Asset<T, AssetSource>,
         description: string

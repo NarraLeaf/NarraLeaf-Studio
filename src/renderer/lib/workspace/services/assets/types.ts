@@ -36,6 +36,12 @@ export interface Asset<Type extends AssetType = AssetType, Source extends AssetS
     tags: string[];
     description: string;
     groupId?: string;
+    /**
+     * Editor-side derived/authored data that rides with the asset record (persisted in
+     * assets.json). Audio uses `waveformPeaks: number[]` (downsampled 0..1 peaks, cached so the
+     * preview never re-decodes) and `cuePoints: { timeMs: number; label?: string }[]`.
+     */
+    extras?: Record<string, unknown>;
 }
 
 export type AssetsMap = {
