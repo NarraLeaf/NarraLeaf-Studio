@@ -19,10 +19,15 @@ import { CommandPalette } from "./CommandPalette";
 import { EditorCommands } from "./EditorCommands";
 import { KeybindingCheatSheet } from "./KeybindingCheatSheet";
 import { TitleBarSearchBox } from "./TitleBarSearchBox";
+import { StatusBar, STATUS_BAR_HEIGHT } from "./StatusBar";
+import { QuickOpenPicker } from "./QuickOpenPicker";
+import { WorkspaceBackground } from "./WorkspaceBackground";
 import { useRegistry } from "../../registry";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
+import { CommandService } from "@/lib/workspace/services/ui/CommandService";
+import { getInterface } from "@/lib/app/bridge";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
@@ -114,10 +119,29 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const [rightSidebarWidth, setRightSidebarWidth] = useState(DOCK_REGIONS.right.default);
     const [bottomPanelHeight, setBottomPanelHeight] = useState(DOCK_REGIONS.bottom.default);
 
-    // Live viewport dimensions; drives the derived effective sizes so the layout reflows with the window.
+    // Status bar visibility (global setting); its height is only carved out of the dock layout
+    // while it is actually shown.
+    const [statusBarVisible, setStatusBarVisible] = useState(true);
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        setStatusBarVisible(settings.getSync("ui.statusBar.visible") !== false);
+        const token = getInterface().app.state.onGlobalStateChanged?.(change => {
+            if (change.key === "ui.statusBar.visible") {
+                setStatusBarVisible(change.value !== false);
+            }
+        });
+        return () => token?.cancel();
+    }, [context]);
+    const statusBarHeight = statusBarVisible ? STATUS_BAR_HEIGHT : 0;
+
+    // Live viewport dimensions; drives the derived effective sizes so the layout reflows with the
+    // window. Height excludes the status bar — the dock solver lays out into what is left above it.
     const [viewport, setViewport] = useState(() => ({
         width: typeof window !== "undefined" ? window.innerWidth : 1280,
-        height: typeof window !== "undefined" ? window.innerHeight : 800,
+        height: (typeof window !== "undefined" ? window.innerHeight : 800) - STATUS_BAR_HEIGHT,
     }));
 
     // Refs mirror the intended sizes for synchronous reads during fast dragging.
@@ -282,14 +306,14 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     // small window grows back toward its intent when space returns.
     useEffect(() => {
         const handleWindowResize = () => {
-            setViewport({ width: window.innerWidth, height: window.innerHeight });
+            setViewport({ width: window.innerWidth, height: window.innerHeight - statusBarHeight });
         };
         handleWindowResize();
         window.addEventListener("resize", handleWindowResize);
         return () => {
             window.removeEventListener("resize", handleWindowResize);
         };
-    }, []);
+    }, [statusBarHeight]);
 
     // Save state when it changes (but only after initial load)
     useEffect(() => {
@@ -403,47 +427,65 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const panelTogglesRef = useRef({ toggleLeftSidebar, toggleBottomPanel, toggleRightSidebar });
     panelTogglesRef.current = { toggleLeftSidebar, toggleBottomPanel, toggleRightSidebar };
 
-    // Publish the dock toggles to the macOS Window menu. Registered only on macOS: elsewhere the
-    // ControlBar buttons are the only entry point and this group would just clutter the in-app
-    // action bar.
+    // One command table for the dock toggles, consumed by every surface: the CommandService (so
+    // the palette reaches them on every platform) and — on macOS only — the Window menu group,
+    // generated from the same definitions. ControlBar buttons stay the pointer-first entry point.
     useEffect(() => {
-        if (!isMacPlatform()) {
-            return;
+        const toggleDefs = [
+            {
+                id: WorkspaceMenuAction.ToggleLeftSidebar,
+                labelKey: "menu.window.leftSidebar" as const,
+                checked: leftSidebarVisible,
+                run: () => panelTogglesRef.current.toggleLeftSidebar(),
+            },
+            {
+                id: WorkspaceMenuAction.ToggleBottomPanel,
+                labelKey: "menu.window.bottomPanel" as const,
+                checked: bottomPanelVisible,
+                run: () => panelTogglesRef.current.toggleBottomPanel(),
+            },
+            {
+                id: WorkspaceMenuAction.ToggleRightSidebar,
+                labelKey: "menu.window.rightSidebar" as const,
+                checked: rightSidebarVisible,
+                run: () => panelTogglesRef.current.toggleRightSidebar(),
+            },
+        ];
+
+        const commandService = context?.services.get<CommandService>(Services.Command);
+        const disposeCommands = commandService?.registerMany(
+            toggleDefs.map(def => ({
+                id: def.id,
+                titleKey: def.labelKey,
+                categoryKey: "workspace.shell.commandPalette.categoryView" as const,
+                run: () => def.run(),
+            })),
+        );
+
+        // The in-app dropdown would only duplicate the ControlBar buttons, so the group goes to
+        // the native menu bar alone — which exists on macOS only.
+        if (isMacPlatform()) {
+            registerActionGroup({
+                id: PANEL_TOGGLES_GROUP_ID,
+                label: t("menu.window.title"),
+                menuSlot: "window",
+                items: toggleDefs.map((def, order) => ({
+                    id: def.id,
+                    label: t(def.labelKey),
+                    checked: def.checked,
+                    onClick: def.run,
+                    order,
+                })),
+            });
         }
 
-        registerActionGroup({
-            id: PANEL_TOGGLES_GROUP_ID,
-            label: t("menu.window.title"),
-            menuSlot: "window",
-            items: [
-                {
-                    id: WorkspaceMenuAction.ToggleLeftSidebar,
-                    label: t("menu.window.leftSidebar"),
-                    checked: leftSidebarVisible,
-                    onClick: () => panelTogglesRef.current.toggleLeftSidebar(),
-                    order: 0,
-                },
-                {
-                    id: WorkspaceMenuAction.ToggleBottomPanel,
-                    label: t("menu.window.bottomPanel"),
-                    checked: bottomPanelVisible,
-                    onClick: () => panelTogglesRef.current.toggleBottomPanel(),
-                    order: 1,
-                },
-                {
-                    id: WorkspaceMenuAction.ToggleRightSidebar,
-                    label: t("menu.window.rightSidebar"),
-                    checked: rightSidebarVisible,
-                    onClick: () => panelTogglesRef.current.toggleRightSidebar(),
-                    order: 2,
-                },
-            ],
-        });
-
         return () => {
-            unregisterActionGroup(PANEL_TOGGLES_GROUP_ID);
+            disposeCommands?.();
+            if (isMacPlatform()) {
+                unregisterActionGroup(PANEL_TOGGLES_GROUP_ID);
+            }
         };
-    }, [t, leftSidebarVisible, bottomPanelVisible, rightSidebarVisible, registerActionGroup, unregisterActionGroup]);
+    }, [t, context, leftSidebarVisible, bottomPanelVisible, rightSidebarVisible, registerActionGroup, unregisterActionGroup]);
 
     const activateLeftPanelForDrop = useCallback(
         (panelId: string) => {
@@ -684,8 +726,11 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 />
             </div>
 
-            {/* Bottom Panel Selector (overlays left selector at bottom) */}
-            <div className="absolute left-0 bottom-0">
+            {/* Status Bar */}
+            {statusBarVisible && <StatusBar />}
+
+            {/* Bottom Panel Selector (overlays left selector, just above the status bar) */}
+            <div className="absolute left-0" style={{ bottom: statusBarHeight }}>
                 <BottomPanelSelector
                     visible={bottomPanelVisible}
                     activeId={activeBottomPanelId}
@@ -696,8 +741,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             </div>
 
             {/* UI Overlays */}
+            <WorkspaceBackground />
             <WorkspaceEditorQuickSwitch />
             <CommandPalette />
+            <QuickOpenPicker />
             <EditorCommands />
             <KeybindingCheatSheet />
             <EditorClosedTabsKeybinding />
