@@ -84,6 +84,7 @@ export class CommandService extends Service<CommandService> {
             panels: store.getPanels(),
             openBodyPanel: panelId => store.setPanelVisibility(panelId, true),
             panelCategory: translate("workspace.shell.commandPalette.categoryView"),
+            keybindingOverrides: uiService.keybindings.getOverridesSnapshot(),
             workspace,
             focusContext: uiService.focus.getFocus(),
             translate,

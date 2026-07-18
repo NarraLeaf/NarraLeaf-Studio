@@ -17,6 +17,8 @@ import { EditorClosedTabsKeybinding } from "./EditorClosedTabsKeybinding";
 import { WorkspaceEditorQuickSwitch } from "./WorkspaceEditorQuickSwitch";
 import { CommandPalette } from "./CommandPalette";
 import { EditorCommands } from "./EditorCommands";
+import { KeybindingCheatSheet } from "./KeybindingCheatSheet";
+import { TitleBarSearchBox } from "./TitleBarSearchBox";
 import { useRegistry } from "../../registry";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
@@ -566,6 +568,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             <TitleBar
                 title=""
                 iconSrc={iconSrc}
+                center={<TitleBarSearchBox />}
                 actionBar={
                     <div className="flex items-center gap-0.5">
                         <ProjectSwitcher />
@@ -683,6 +686,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             <WorkspaceEditorQuickSwitch />
             <CommandPalette />
             <EditorCommands />
+            <KeybindingCheatSheet />
             <EditorClosedTabsKeybinding />
             <NotificationContainer />
             <DialogContainer />

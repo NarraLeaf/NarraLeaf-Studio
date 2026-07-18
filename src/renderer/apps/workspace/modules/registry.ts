@@ -19,6 +19,8 @@ import { storyPanelModule } from "./story";
 import { storyMotionPanelModule } from "./story-motion";
 import { localizationPanelModule } from "./localization";
 import { dashboardPanelModule } from "./dashboard";
+import { searchPanelModule } from "./search";
+import { keybindingsModule } from "./keybindings";
 
 /**
  * Built-in panel modules
@@ -28,6 +30,7 @@ export const builtInPanels: PanelModule[] = [
     dashboardPanelModule,
     projectPanelModule,
     storyPanelModule,
+    searchPanelModule,
     uiEditorSurfacesModule,
     charactersModule,
     assetsModule,
@@ -46,6 +49,7 @@ export const builtInEditors: EditorModule[] = [
     welcomeModule,
     imagePreviewModule,
     audioPreviewModule,
+    keybindingsModule,
 ];
 
 /**
