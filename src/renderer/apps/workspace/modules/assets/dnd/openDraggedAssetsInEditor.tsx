@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Image, Music } from "lucide-react";
+import { Braces, Film, Image, Music, Type } from "lucide-react";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -8,6 +8,9 @@ import type { WorkspaceContext } from "@/lib/workspace/services/services";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { ImagePreviewEditor } from "../editors/ImagePreviewEditor";
 import { AudioPreviewEditor } from "../editors/AudioPreviewEditor";
+import { VideoPreviewEditor } from "../editors/VideoPreviewEditor";
+import { FontPreviewEditor } from "../editors/FontPreviewEditor";
+import { JsonPreviewEditor } from "../editors/JsonPreviewEditor";
 
 export interface OpenAssetPreviewTabsOptions {
     /** Target editor group; omit for default group. */
@@ -33,7 +36,13 @@ export function openAssetPreviewTabsInEditor(
     const { groupId, returnFocusToAssetsPanel, showPropertiesPanel } = options;
     const uiService = context.services.get<UIService>(Services.UI);
 
-    const previewable = assets.filter(a => a.type === AssetType.Image || a.type === AssetType.Audio);
+    const previewable = assets.filter(a =>
+        a.type === AssetType.Image ||
+        a.type === AssetType.Audio ||
+        a.type === AssetType.Video ||
+        a.type === AssetType.Font ||
+        a.type === AssetType.JSON,
+    );
     if (previewable.length === 0) {
         return;
     }
@@ -66,6 +75,45 @@ export function openAssetPreviewTabsInEditor(
                 groupId,
                 { activate }
             );
+        } else if (asset.type === AssetType.Video) {
+            uiService.editor.open(
+                {
+                    id: `narraleaf-studio:assets:video-preview-${asset.id}`,
+                    title: asset.name,
+                    icon: videoIcon(),
+                    component: VideoPreviewEditor,
+                    closable: true,
+                    payload: { asset: asset as Asset<AssetType.Video> },
+                },
+                groupId,
+                { activate }
+            );
+        } else if (asset.type === AssetType.Font) {
+            uiService.editor.open(
+                {
+                    id: `narraleaf-studio:assets:font-preview-${asset.id}`,
+                    title: asset.name,
+                    icon: fontIcon(),
+                    component: FontPreviewEditor,
+                    closable: true,
+                    payload: { asset: asset as Asset<AssetType.Font> },
+                },
+                groupId,
+                { activate }
+            );
+        } else if (asset.type === AssetType.JSON) {
+            uiService.editor.open(
+                {
+                    id: `narraleaf-studio:assets:json-preview-${asset.id}`,
+                    title: asset.name,
+                    icon: jsonIcon(),
+                    component: JsonPreviewEditor,
+                    closable: true,
+                    payload: { asset: asset as Asset<AssetType.JSON> },
+                },
+                groupId,
+                { activate }
+            );
         }
     });
 
@@ -92,4 +140,16 @@ function audioIcon(): ReactNode {
 export function setWorkspaceSelectionToPrimaryAsset(context: WorkspaceContext, primary: Asset): void {
     const uiService = context.services.get<UIService>(Services.UI);
     uiService.getStore().setSelection({ type: "asset", data: primary });
+}
+
+function videoIcon(): ReactNode {
+    return <Film className="w-4 h-4" />;
+}
+
+function fontIcon(): ReactNode {
+    return <Type className="w-4 h-4" />;
+}
+
+function jsonIcon(): ReactNode {
+    return <Braces className="w-4 h-4" />;
 }
