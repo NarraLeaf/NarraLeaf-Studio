@@ -110,7 +110,8 @@ function getSurfaceDisplayLabel(surface: UISurface, t: UseTranslation["t"]): str
     return surface.kind === "appSurface" ? t("uiEditor.surfaceKind.page") : t("uiEditor.surfaceKind.gameUi");
 }
 
-function createSurfaceEditorTab(surface: UISurface) {
+// Exported for the quick-open picker, so surfaces open through the exact same tab definition.
+export function createSurfaceEditorTab(surface: UISurface) {
     return {
         id: getSurfaceTabId(surface.id),
         title: surface.name,
