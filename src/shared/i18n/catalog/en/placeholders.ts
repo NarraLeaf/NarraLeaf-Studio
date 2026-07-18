@@ -23,7 +23,12 @@ export const placeholders = {
         dashboard: "Dashboard",
         audioPreview: "Audio Preview",
         imagePreview: "Image Preview",
+        videoPreview: "Video Preview",
+        fontPreview: "Font Preview",
+        jsonPreview: "JSON Preview",
         search: "Search",
         keybindings: "Keyboard Shortcuts",
+        history: "History",
+        notifications: "Notifications",
     },
 } as const;

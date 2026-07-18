@@ -1,7 +1,8 @@
 import { IUIService, WorkspaceContext } from "../services";
 import { Service } from "../Service";
 import { UIStore } from "../ui/UIStore";
-import { NotificationService } from "../ui/NotificationService";
+import { NotificationService, type NotificationHistoryEntry } from "../ui/NotificationService";
+import { ServiceAssetsService } from "./ServiceAssetsService";
 import { ActionBarService } from "../ui/ActionBarService";
 import { PanelService } from "../ui/PanelService";
 import { EditorService } from "../ui/EditorService";
@@ -41,6 +42,9 @@ export class UIService extends Service<UIService> implements IUIService {
     private assetEventsUnsubs: (() => void)[] = [];
     /** Cross-window sync for keybinding overrides (the Settings window shares the store). */
     private keybindingOverridesToken: AppEventToken | null = null;
+    /** Notification-history persistence (ring buffer, debounced writes). */
+    private notificationHistoryUnsub: (() => void) | null = null;
+    private notificationHistoryTimer: ReturnType<typeof setTimeout> | null = null;
     private _notifications: NotificationService;
     private _actionBar: ActionBarService;
     private _panels: PanelService;
@@ -79,6 +83,34 @@ export class UIService extends Service<UIService> implements IUIService {
                 this._keybindings.setOverrides(sanitizeKeybindingOverrides(change.value));
             }
         }) ?? null;
+
+        // Notification history: seed the ring buffer from the per-project store, then follow
+        // changes with debounced writes (same pattern as RecentColors).
+        const serviceAssets = ctx.services.get<ServiceAssetsService>(Services.ServiceAssets);
+        await depend([serviceAssets]);
+        try {
+            const stored = await serviceAssets.readStore<{ version: 1; entries: NotificationHistoryEntry[] }>(
+                "notification_history",
+            );
+            if (stored.ok && stored.data?.version === 1 && Array.isArray(stored.data.entries)) {
+                this._notifications.seedHistory(stored.data.entries);
+            }
+        } catch {
+            // Unreadable history is not worth failing startup over.
+        }
+        this.notificationHistoryUnsub?.();
+        this.notificationHistoryUnsub = this._notifications.onHistoryChanged(() => {
+            if (this.notificationHistoryTimer) {
+                clearTimeout(this.notificationHistoryTimer);
+            }
+            this.notificationHistoryTimer = setTimeout(() => {
+                this.notificationHistoryTimer = null;
+                void serviceAssets.writeStore("notification_history", {
+                    version: 1 as const,
+                    entries: [...this._notifications.getHistory()],
+                });
+            }, 500);
+        });
 
         // Start keybinding service
         this._keybindings.start();
@@ -277,6 +309,12 @@ export class UIService extends Service<UIService> implements IUIService {
         this.assetEventsUnsubs = [];
         this.keybindingOverridesToken?.cancel();
         this.keybindingOverridesToken = null;
+        this.notificationHistoryUnsub?.();
+        this.notificationHistoryUnsub = null;
+        if (this.notificationHistoryTimer) {
+            clearTimeout(this.notificationHistoryTimer);
+            this.notificationHistoryTimer = null;
+        }
         this._keybindings.stop();
         this._keybindings.clear();
         this.store.clear();

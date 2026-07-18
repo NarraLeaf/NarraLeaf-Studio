@@ -7,15 +7,85 @@ import {
 } from "./types";
 
 /**
+ * A history record: the serializable core of a notification, kept after the toast is dismissed.
+ * Callbacks/actions are deliberately dropped — history is a log, not a live surface.
+ */
+export interface NotificationHistoryEntry {
+    id: string;
+    type: NotificationType;
+    message: string;
+    detail?: string;
+    timestamp: number;
+}
+
+/**
  * Notification Service
- * Manages VSCode-style notifications
+ * Manages VSCode-style notifications. Toasts behave exactly as before; additionally every shown
+ * notification lands in a ring-buffered history (persisted by UIService through ServiceAssets)
+ * that the notification-center drawer reads.
  */
 export class NotificationService {
+    private static readonly HistoryLimit = 100;
+
     private store: UIStore;
     private nextId = 1;
+    private history: NotificationHistoryEntry[] = [];
+    private readonly historyListeners = new Set<() => void>();
 
     constructor(store: UIStore) {
         this.store = store;
+    }
+
+    // === History (survives dismissal; ring-buffered) ===
+
+    /** Stable snapshot, newest first. */
+    public getHistory(): readonly NotificationHistoryEntry[] {
+        return this.history;
+    }
+
+    /** Seed from persistence at startup (replaces the current buffer). */
+    public seedHistory(entries: NotificationHistoryEntry[]): void {
+        this.history = entries.slice(0, NotificationService.HistoryLimit);
+        this.emitHistoryChanged();
+    }
+
+    public clearHistory(): void {
+        if (this.history.length === 0) {
+            return;
+        }
+        this.history = [];
+        this.emitHistoryChanged();
+    }
+
+    public onHistoryChanged(listener: () => void): () => void {
+        this.historyListeners.add(listener);
+        return () => {
+            this.historyListeners.delete(listener);
+        };
+    }
+
+    // Unread tracking is shared here so the bell badge and the notifications panel agree —
+    // opening the panel through any path (bell, rail icon) marks everything seen.
+    private lastSeenTimestamp = 0;
+
+    public markHistorySeen(): void {
+        this.lastSeenTimestamp = Date.now();
+        this.emitHistoryChanged();
+    }
+
+    public getUnreadCount(): number {
+        return this.history.filter(entry => entry.timestamp > this.lastSeenTimestamp).length;
+    }
+
+    private recordHistory(entry: NotificationHistoryEntry): void {
+        this.history = [entry, ...this.history].slice(0, NotificationService.HistoryLimit);
+        this.emitHistoryChanged();
+    }
+
+    private emitHistoryChanged(): void {
+        for (const listener of this.historyListeners) {
+            listener();
+        }
     }
 
     /**
@@ -95,6 +165,13 @@ export class NotificationService {
         };
 
         this.store.addNotification(notification);
+        this.recordHistory({
+            id,
+            type: notification.type,
+            message: notification.message,
+            detail: notification.detail,
+            timestamp: notification.timestamp,
+        });
 
         // Auto-dismiss if timeout is set
         if (notification.timeout && notification.timeout > 0) {
