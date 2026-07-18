@@ -66,6 +66,13 @@ export type GameAppHost = {
     setFullscreen?: (fullscreen: boolean) => Promise<void>;
     /** Subscribe to fullscreen transitions; returns an unsubscribe function. */
     subscribeFullscreenChanged?: (listener: (isFullscreen: boolean) => void) => () => void;
+    /**
+     * Subscribe to window-close requests (the user asked to close the window). The main process
+     * holds the close open until the listener resolves: `true` lets the window close, `false`
+     * cancels it. The listener runs the blueprint dispatch and reports whether a handler cancelled
+     * the close. Returns an unsubscribe function. Hosts without a real window (story preview) omit it.
+     */
+    subscribeCloseRequested?: (listener: () => Promise<boolean> | boolean) => () => void;
 };
 
 /** Context handed to host-rendered overlays (e.g. the Dev Mode debug panel). */

@@ -65,6 +65,23 @@ const WINDOW_FULLSCREEN_EVENTS: readonly LifecycleEventDef[] = [
     },
 ];
 
+/**
+ * Fires when the user asks to close the application window (native close box, OS shortcut). The
+ * main process holds the close open while the blueprint runs: synchronously running a Stop Event
+ * Bubble node during this dispatch cancels the close, otherwise the window proceeds to close.
+ * In Dev Mode this covers the Dev Mode window; in preview/production it covers the game window.
+ * Shared by the global and surface owners so either can intercept.
+ */
+const WINDOW_CLOSE_EVENTS: readonly LifecycleEventDef[] = [
+    {
+        id: "windowCloseRequested",
+        displayName: "Window close requested",
+        description: "Fires when the user asks to close the window; run Stop Event Bubble to cancel the close.",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.windowCloseRequested"],
+    },
+];
+
 // ---------------------------------------------------------------------------
 // Global (app-level) lifecycle
 // ---------------------------------------------------------------------------
@@ -86,6 +103,7 @@ export const GLOBAL_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
     ...KEYBOARD_EVENTS,
     ...GAME_PREFERENCE_EVENTS,
     ...WINDOW_FULLSCREEN_EVENTS,
+    ...WINDOW_CLOSE_EVENTS,
 ];
 
 export const GLOBAL_LIFECYCLE_API: OwnerLifecycleApi = {
@@ -140,6 +158,7 @@ export const SURFACE_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
     ...KEYBOARD_EVENTS,
     ...GAME_PREFERENCE_EVENTS,
     ...WINDOW_FULLSCREEN_EVENTS,
+    ...WINDOW_CLOSE_EVENTS,
 ];
 
 export const SURFACE_LIFECYCLE_API: OwnerLifecycleApi = {

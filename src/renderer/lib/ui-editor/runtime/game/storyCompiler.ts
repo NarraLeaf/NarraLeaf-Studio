@@ -64,6 +64,7 @@ import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { GameLocalizationBundle } from "@shared/types/localization";
 import { resolveLocaleChain } from "@shared/types/localization";
+import type { GameVoiceBundle } from "@shared/types/voice";
 import { parseTranslatedText } from "@shared/utils/localizationText";
 import {
     boolProp,
@@ -135,6 +136,58 @@ function createSceneLocalizationResolver(input: StoryLocalizationRuntime): Scene
             return null;
         },
     };
+}
+
+/**
+ * Game voice input: the bundle payload (voice languages + per-language unit-id →
+ * asset-id tables) plus a current voice-language getter. Distinct from
+ * localization on purpose — dub language and subtitle language are separate.
+ */
+export type StoryVoiceRuntime = GameVoiceBundle & {
+    getVoiceLocale: () => string;
+};
+
+/**
+ * Resolve the active voice language's clips (unit id → asset id) into a flat
+ * unit id → URL map for the engine's `Scene.voices` resolver.
+ *
+ * The map (object) form is used deliberately over the function-generator form:
+ * the engine's generator path throws on an unresolved id, whereas a plain map
+ * returns null for a line with no take — exactly what partial voicing needs. The
+ * active locale is read once, at compile time; switching voice language is a
+ * recompile (mirrors how a background swap recompiles, not how text re-resolves).
+ */
+async function buildSceneVoiceMap(input: {
+    voice: StoryVoiceRuntime;
+    resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
+    assetUrlCache: Map<string, string | null>;
+    diagnostics: NlrStoryCompileDiagnostic[];
+}): Promise<Record<string, string>> {
+    const locale = input.voice.getVoiceLocale();
+    const table = input.voice.tables[locale];
+    const map: Record<string, string> = {};
+    if (!table) {
+        return map;
+    }
+    for (const [unitId, assetId] of Object.entries(table)) {
+        const url = await resolveAssetUrlCached({
+            assetId,
+            assetType: "audio",
+            blockId: `voice:${locale}:${unitId}`,
+            resolveAssetUrl: input.resolveAssetUrl,
+            assetUrlCache: input.assetUrlCache,
+            diagnostics: input.diagnostics,
+        });
+        if (url) {
+            map[unitId] = url;
+        }
+    }
+    return map;
+}
+
+/** Sentence voice config for a line: attach the engine `voiceId` only when a take exists for the active voice language. */
+function voiceConfigForLine(ctx: SceneCompileContext, textId: string): { voiceId: string } | undefined {
+    return ctx.voiceIdMap && ctx.voiceIdMap[textId] ? { voiceId: textId } : undefined;
 }
 
 export type NlrStoryCompileDiagnostic = {
@@ -230,6 +283,8 @@ type SceneCompileContext = {
     blueprintDocument?: BlueprintDocument;
     /** Game localization resolver; absent when the project has no localization or the host passes none. */
     localization?: SceneLocalizationResolver;
+    /** Active voice language's unit id → clip URL map; absent when the project has no voice or the host passes none. */
+    voiceIdMap?: Record<string, string>;
     /** Fn declarations shared across all story-action blueprints in this scene. */
     sceneFnCatalog: StoryActionFnCatalog;
     images: Map<string, Image>;
@@ -257,6 +312,8 @@ type CompileInput = {
     persistence?: StoryPersistenceBridge;
     /** Game localization (bundle payload + current-locale getter); see {@link StoryLocalizationRuntime}. */
     localization?: StoryLocalizationRuntime;
+    /** Game voice (bundle payload + current voice-language getter); see {@link StoryVoiceRuntime}. */
+    voice?: StoryVoiceRuntime;
 };
 
 const EMPTY_IMAGE_SRC = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'></svg>";
@@ -305,11 +362,15 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const assetUrlCache = new Map<string, string | null>();
     let actionIndex = 0;
     const resolveAssetUrl = input.resolveAssetUrl ?? ((assetId: string) => assetId);
+    const voiceIdMap = input.voice
+        ? await buildSceneVoiceMap({ voice: input.voice, resolveAssetUrl, assetUrlCache, diagnostics })
+        : undefined;
     const allScenes = await createNlrScenes({
         document: input.document,
         resolveAssetUrl,
         assetUrlCache,
         diagnostics,
+        voiceIdMap,
     });
 
     // Single Storable-backed namespace seeded with every saved variable's default.
@@ -339,6 +400,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             persistence: input.persistence,
             blueprintDocument: input.blueprintDocument,
             localization,
+            voiceIdMap,
             sceneFnCatalog,
             images: new Map(),
             texts: new Map(),
@@ -634,8 +696,11 @@ async function createNlrScenes(input: {
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
+    /** Active voice language's unit id → clip URL map, shared by every scene (voice ids are global). */
+    voiceIdMap?: Record<string, string>;
 }): Promise<Record<string, Scene>> {
     const scenes: Record<string, Scene> = {};
+    const voices = input.voiceIdMap && Object.keys(input.voiceIdMap).length > 0 ? input.voiceIdMap : undefined;
     for (const scene of Object.values(input.document.scenes)) {
         const background = await resolveSceneInitialBackground({
             scene,
@@ -643,9 +708,16 @@ async function createNlrScenes(input: {
             assetUrlCache: input.assetUrlCache,
             diagnostics: input.diagnostics,
         });
+        const config: { background?: string; voices?: Record<string, string> } = {};
+        if (background) {
+            config.background = background;
+        }
+        if (voices) {
+            config.voices = voices;
+        }
         scenes[scene.id] = new Scene(
             scene.runtimeName || scene.name || scene.id,
-            background ? { background } : undefined,
+            Object.keys(config).length > 0 ? config : undefined,
         );
     }
     return scenes;
@@ -789,7 +861,8 @@ async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryB
         if (!segment.value.trim() && !segmentHasInterpolation(segment)) {
             return [];
         }
-        return [recordStatement(ctx, Narrator.say(buildLocalizedSentencePrompt(ctx, segment, block.id) as any), block, segment.textId)];
+        const voiceConfig = voiceConfigForLine(ctx, segment.textId);
+        return [recordStatement(ctx, Narrator.say(buildLocalizedSentencePrompt(ctx, segment, block.id) as any, voiceConfig as any), block, segment.textId)];
     }
 
     if (block.payload.action === "dialogue") {
@@ -798,10 +871,17 @@ async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryB
             return [];
         }
         const character = getCharacter(ctx, block.payload.characterId, block.payload.speakerName);
+        // Voice module (id-keyed take for the active language) wins; the legacy
+        // per-line `voiceAssetId` stays as an inline fallback the engine tries
+        // when the scene voice map has no entry (`scene.getVoice(id) || voice`).
+        const voiceConfig = voiceConfigForLine(ctx, block.payload.text.textId);
         const voiceUrl = block.payload.voiceAssetId
             ? await resolveAsset(ctx, block.payload.voiceAssetId, "audio", block.id)
             : null;
         const config: Record<string, unknown> = {};
+        if (voiceConfig) {
+            config.voiceId = voiceConfig.voiceId;
+        }
         if (voiceUrl) {
             config.voice = Sound.voice(voiceUrl);
         }

@@ -1,9 +1,10 @@
-import type { StoryDocument, StoryScene } from "@shared/types/story";
+import type { StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
 import { collectTempSpeakers } from "@/lib/workspace/services/story/storyModel";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsMap } from "@/lib/workspace/services/assets/types";
-import type { StoryCommandContext, StoryCommandNamedRef, StoryCommandVariableEntry } from "./storyCommandResolution";
+import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPreviewTarget";
+import type { StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjects, StoryCommandVariableEntry } from "./storyCommandResolution";
 
 /**
  * Project a live project onto the flat, name-keyed view the command line resolves against.
@@ -43,10 +44,50 @@ function variableEntries(document: StoryDocument | null, scene: StoryScene | nul
     return entries;
 }
 
+/**
+ * The named objects on stage in this scene, per kind — the picker `/imgshow`, `/settext`, `/stop`
+ * lead with instead of a blind name field.
+ *
+ * image / text / layer come from {@link listSceneDisplayableTargets}, the same collector the
+ * inspector's target picker reads, so the command line can never offer a name the inspector wouldn't.
+ * video and sound handles are not displayable targets, so they are scanned directly off the scene's
+ * action blocks. Scene-wide for now (`blockId` omitted): scoping the list to objects created *before*
+ * the caret is the position-aware refinement, cheap to add once the slot's anchor is threaded here.
+ */
+function collectStageObjects(document: StoryDocument | null, sceneId: StorySceneId | null | undefined, scene: StoryScene | null): StoryCommandStageObjects {
+    const image = new Set<string>();
+    const text = new Set<string>();
+    const layer = new Set<string>();
+    const video = new Set<string>();
+    const audio = new Set<string>();
+
+    for (const ref of listSceneDisplayableTargets(document, sceneId ?? undefined, undefined)) {
+        if (ref.kind === "image") {
+            image.add(ref.name);
+        } else if (ref.kind === "text") {
+            text.add(ref.name);
+        } else if (ref.kind === "layer") {
+            layer.add(ref.name);
+        }
+    }
+    for (const block of Object.values(scene?.blocks ?? {})) {
+        if (block.kind !== "action") {
+            continue;
+        }
+        if (block.payload.action === "video" && block.payload.objectName) {
+            video.add(block.payload.objectName);
+        } else if (block.payload.action === "audio" && block.payload.objectName) {
+            audio.add(block.payload.objectName);
+        }
+    }
+    return { image: [...image], text: [...text], layer: [...layer], video: [...video], audio: [...audio] };
+}
+
 export function buildStoryCommandContext(input: {
     assets: AssetsMap | undefined;
     characters: readonly Character[];
     document: StoryDocument | null;
+    sceneId: StorySceneId | null | undefined;
     scene: StoryScene | null;
 }): StoryCommandContext {
     const formsByCharacterId: Record<string, string[]> = {};
@@ -68,5 +109,6 @@ export function buildStoryCommandContext(input: {
         scenes: Object.values(input.document?.scenes ?? {}).map(entry => ({ id: entry.id, name: entry.name })),
         variables: variableEntries(input.document, input.scene),
         formsByCharacterId,
+        stageObjects: collectStageObjects(input.document, input.sceneId, input.scene),
     };
 }

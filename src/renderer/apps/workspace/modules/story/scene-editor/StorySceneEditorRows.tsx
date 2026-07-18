@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, RefObject, MouseEvent } from "react";
+import type { CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
 import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Music, Plus, Route, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
@@ -18,7 +18,6 @@ import type { Character } from "@/lib/workspace/services/character/Character";
 import {
     ACTION_COMMAND_CATEGORIES,
     ACTION_COMMANDS,
-    actionCommandMatchesQuery,
     getActionCommandCategory,
     localizeActionCommand,
     translateActionCommandCategoryLabel,
@@ -26,6 +25,7 @@ import {
     type ActionCommandCategoryId,
     type PaletteActionCommand,
 } from "./storyActionCommands";
+import { searchActionCommands } from "./storyCommandSearch";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import { getCommandDef, paramTypes } from "./storyCommandGrammar";
 import { completionFor, defaultHighlights, getCommandCursor, type StoryCommandCursor } from "./storyCommandCursor";
@@ -40,6 +40,7 @@ import { InterpolationPopover } from "./InterpolationPopover";
 import { collectStoryVariableOptions, resolveInterpolationName, type PersistentVariableOption } from "./storyInterpolation";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { RichTextView } from "./RichTextView";
+import { StoryVoiceIndicator } from "./StoryVoiceIndicator";
 import { PausePopover } from "./PausePopover";
 import { segmentToRuns } from "./richText";
 import { useStoryEditorTextStyle } from "./storyEditorTextStyle";
@@ -246,7 +247,10 @@ export function StoryBlockRow(props: {
                     {containerInfo ? (
                         <ContainerHeaderAdd info={containerInfo} onAdd={() => props.onAddInside(block.id)} />
                     ) : (
-                        <RowActions onInsertAfter={props.onInsertAfter} onDelete={props.onDeleteRow} active={active} />
+                        <div className="ml-auto flex shrink-0 items-center gap-1">
+                            <StoryVoiceIndicator block={block} />
+                            <RowActions onInsertAfter={props.onInsertAfter} onDelete={props.onDeleteRow} active={active} />
+                        </div>
                     )}
                 </div>
                 {containerInfo ? (
@@ -402,7 +406,7 @@ function TextEditBox(props: {
     };
 
     return (
-        <div ref={containerRef} className="relative flex min-w-0 flex-1 items-stretch overflow-visible rounded border border-primary/50 bg-surface-sunken">
+        <div ref={containerRef} className="relative flex min-w-0 flex-1 items-center gap-2 overflow-visible">
             <RichTextToolbar editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} hasVariables={variableOptions.scene.length + variableOptions.saved.length + variableOptions.persistent.length > 0} />
             {dialoguePayload ? (
                 <CharacterSelectTrigger
@@ -412,7 +416,6 @@ function TextEditBox(props: {
                     speakerName={dialoguePayload.speakerName}
                     onChoose={props.onSetSpeaker}
                     onCreateCharacter={props.onCreateCharacter}
-                    className="min-w-[128px] max-w-[200px] rounded-r-none border-r border-edge px-2"
                     style={textStyle}
                 />
             ) : null}
@@ -420,7 +423,10 @@ function TextEditBox(props: {
                 ref={props.editorRef}
                 initialRuns={initialRuns}
                 initialCaret={props.initialCaret}
-                className="min-h-[28px] flex-1 whitespace-pre-wrap break-words bg-transparent px-2 py-1 text-fg outline-none empty:before:italic empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]"
+                // Edit in place, VS Code style: no box, no sunken background, no horizontal padding — the
+                // caret lands exactly where the read-only text sat. The active/selected row highlight is
+                // the "you are here" signal, so the field needs none of its own. See the interaction model.
+                className="min-h-[20px] flex-1 whitespace-pre-wrap break-words bg-transparent text-fg outline-none empty:before:italic empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]"
                 style={textStyle}
                 placeholder={editorPlaceholder(props.block, t)}
                 onChange={props.onEditRichChange}
@@ -796,6 +802,8 @@ function candidateIcon(cursor: StoryCommandCursor, candidate: StoryCommandCandid
 
 export function InsertRow(props: {
     mode: Extract<EditorMode, { kind: "insert" }>;
+    /** Nesting depth of where the new block will land, so the slot lines up under its future siblings. */
+    depth?: number;
     characters: Character[];
     tempSpeakers: TempSpeakerRef[];
     /** What a name typed on this line may refer to — the same view the resolver reads. */
@@ -822,9 +830,10 @@ export function InsertRow(props: {
     const menuPlacement = useAutoMenuPlacement(menuAnchorRef, props.mode.chooser !== "none", 312);
     const pluginCommands = useStoryPluginActionCommands();
     const actionOptions = useMemo<PaletteActionCommand[]>(
-        () => [...ACTION_COMMANDS, ...pluginCommands]
-            .map(command => localizeActionCommand(command, t))
-            .filter(command => actionCommandMatchesQuery(command, chooserQuery)),
+        () => searchActionCommands(
+            [...ACTION_COMMANDS, ...pluginCommands].map(command => localizeActionCommand(command, t)),
+            chooserQuery,
+        ),
         [chooserQuery, pluginCommands, t],
     );
     const characterOptions = useMemo(
@@ -914,15 +923,25 @@ export function InsertRow(props: {
     };
 
     return (
-        <div className="relative grid min-h-[40px] grid-cols-[36px_28px_1fr] items-start pr-3">
-            <div className="pt-2 text-right text-[12px] text-fg-subtle">+</div>
-            <div className="flex justify-center pt-2">
+        <div className="relative grid min-h-[35px] grid-cols-[36px_28px_1fr] items-start border-l-2 border-transparent pr-3">
+            <div aria-hidden />
+            <div className="flex justify-center pt-1">
                 <Plus className="h-4 w-4 text-primary" />
             </div>
-            <div ref={menuAnchorRef} className="relative py-1.5">
+            <div ref={menuAnchorRef} className="relative min-w-0 py-1">
+                {/* Mirror a row's content column so the slot lines up with its future siblings: guide
+                    rails + depth indent, then a badge-sized spacer before the field (rows reserve the
+                    same 24px + gap, whether they show a badge or hide it). */}
+                <RailGuides depth={props.depth ?? 0} highlight={false} />
+                <div style={{ paddingLeft: (props.depth ?? 0) * RAIL_STEP }}>
+                <div className="flex min-h-[27px] items-center gap-2">
+                <span className="h-6 w-6 shrink-0" aria-hidden />
                 <textarea
                     ref={props.inputRef}
-                    className="min-h-[30px] w-full resize-none rounded border border-primary/40 bg-surface-sunken px-2 py-1 text-fg outline-none placeholder:italic placeholder:text-fg-subtle"
+                    // Same in-place surface as an editing row (see TextEditBox): the new line reads as a
+                    // line being typed, not a widget dropped into the list — which is what lets narration's
+                    // Enter fall into this slot without the text visibly jumping.
+                    className="min-h-[20px] min-w-0 flex-1 resize-none bg-transparent px-0 py-0 text-fg outline-none placeholder:italic placeholder:text-fg-subtle"
                     style={textStyle}
                     rows={1}
                     value={props.mode.value}
@@ -1031,6 +1050,8 @@ export function InsertRow(props: {
                         }
                     }}
                 />
+                </div>
+                </div>
                 {actionMenuOpen ? (
                     <ActionCommandMenu
                         categories={actionMenu.visibleCategories}
@@ -1702,6 +1723,27 @@ function toSortableTransform(transform: { x: number; y: number } | null): string
     return `translate3d(0, ${transform.y}px, 0)`;
 }
 
+/**
+ * A text row's read-only body, sized as a click-to-edit surface (filled *and* empty rows — an empty
+ * one just opens with the caret clamped to 0). It fills the row's height (`self-stretch`) and its
+ * remaining width (`flex-1`) while keeping the glyphs vertically centred, so a click anywhere on the
+ * line — the blank tail, or the strip above/below the text — lands the caret in the text rather than
+ * selecting the row. `data-story-row-text` + `nl-selectable-text` are what let the mouseup gesture read
+ * the click's unit offset out of it (see `finishTextSelectGesture`). Runs stay inside an inline
+ * `RichTextView` child so multi-run rich text still wraps normally.
+ */
+function TextClickTarget(props: { style?: CSSProperties; className?: string; children: ReactNode }) {
+    return (
+        <div
+            className={["flex min-w-0 flex-1 cursor-text items-center self-stretch nl-selectable-text", props.className].filter(Boolean).join(" ")}
+            style={props.style}
+            data-story-row-text=""
+        >
+            {props.children}
+        </div>
+    );
+}
+
 function BlockPreview(props: {
     block: StoryBlock;
     scene: StoryScene;
@@ -1719,7 +1761,7 @@ function BlockPreview(props: {
     if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
         const hasValue = Boolean(text?.value) || Boolean(text?.rich && text.rich.length > 0);
         return (
-            <div className="flex min-w-0 items-baseline gap-2 text-sm">
+            <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch text-sm">
                 <CharacterSelectTrigger
                     characters={props.characters}
                     tempSpeakers={props.tempSpeakers}
@@ -1729,36 +1771,32 @@ function BlockPreview(props: {
                     onCreateCharacter={props.onCreateCharacter}
                     style={textStyle}
                 />
-                <span
-                    className={["min-w-0 flex-1 whitespace-pre-wrap break-words", hasValue ? "nl-selectable-text text-fg" : "italic text-fg-subtle"].join(" ")}
-                    style={textStyle}
-                    // Marked only when it actually holds rich content: the controller reads the
-                    // author's selection out of this element (its unit structure matches the
-                    // editor's) to carry it into edit mode. The placeholder is not content.
-                    // `nl-selectable-text` is what makes that selection possible at all — the app
-                    // sets `user-select: none` on everything by default.
-                    data-story-row-text={hasValue ? "" : undefined}
-                >
-                    {hasValue && text ? <RichTextView segment={text} document={props.document} sceneId={props.scene.id} /> : t("story.rows.doubleClickDialogue")}
-                </span>
+                {hasValue && text ? (
+                    <TextClickTarget style={textStyle}>
+                        <RichTextView className="min-w-0 flex-1 whitespace-pre-wrap break-words text-fg" segment={text} document={props.document} sceneId={props.scene.id} />
+                    </TextClickTarget>
+                ) : (
+                    <TextClickTarget style={textStyle} className="italic text-fg-subtle">{getEmptyTextPlaceholder(block)}</TextClickTarget>
+                )}
             </div>
         );
     }
     if (text) {
         const hasValue = Boolean(text.value) || Boolean(text.rich && text.rich.length > 0);
         const note = block.kind === "note";
+        if (!hasValue) {
+            // Empty rows are click-to-edit too: the caret clamps to 0 in the empty editor, so the
+            // placeholder's own offset never matters — a single click just opens the line.
+            return (
+                <TextClickTarget style={textStyle} className={note ? "italic text-fg-muted" : "italic text-fg-subtle"}>
+                    {getEmptyTextPlaceholder(block)}
+                </TextClickTarget>
+            );
+        }
         return (
-            <span
-                className={[
-                    "min-w-0 flex-1 whitespace-pre-wrap break-words",
-                    hasValue ? "nl-selectable-text" : "",
-                    note ? "italic text-fg-muted" : hasValue ? "text-fg" : "italic text-fg-subtle",
-                ].filter(Boolean).join(" ")}
-                style={textStyle}
-                data-story-row-text={hasValue ? "" : undefined}
-            >
-                {hasValue ? <RichTextView segment={text} document={props.document} sceneId={props.scene.id} /> : getEmptyTextPlaceholder(block)}
-            </span>
+            <TextClickTarget style={textStyle} className={note ? "italic text-fg-muted" : "text-fg"}>
+                <RichTextView className="min-w-0 flex-1 whitespace-pre-wrap break-words" segment={text} document={props.document} sceneId={props.scene.id} />
+            </TextClickTarget>
         );
     }
     if (block.kind === "action" && block.payload.action === "setBackground") {

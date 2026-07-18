@@ -362,6 +362,38 @@ export function DevModeContent(props: DevModeContentProps) {
         return () => token.cancel();
     }, []);
 
+    // The Dev Mode window's close guard lives in the main process, which blocks the close until we
+    // answer. The blueprint's decision comes from GameApp, which sets the listener below once it is
+    // ready. Registered on mount rather than with the host, so closing while the game is still
+    // starting up never hangs on a listener that does not exist yet — it just agrees to close.
+    const closeListenerRef = useRef<null | (() => Promise<boolean> | boolean)>(null);
+    useEffect(() => {
+        const token = getInterface().devMode.onCloseRequested(async () => {
+            const listener = closeListenerRef.current;
+            if (!listener) {
+                return { success: true, data: { allow: true } };
+            }
+            try {
+                const allow = await listener();
+                return { success: true, data: { allow: allow !== false } };
+            } catch (error) {
+                // A failing close handler must not trap the window open.
+                console.error("[DevMode] Window close handler failed, allowing close:", error);
+                return { success: true, data: { allow: true } };
+            }
+        });
+        return () => token.cancel();
+    }, []);
+
+    const subscribeCloseRequested = useCallback((listener: () => Promise<boolean> | boolean): (() => void) => {
+        closeListenerRef.current = listener;
+        return () => {
+            if (closeListenerRef.current === listener) {
+                closeListenerRef.current = null;
+            }
+        };
+    }, []);
+
     // Runtime plugin entries must be registered before the game boots so
     // plugin blueprint nodes and widget renderers resolve at execution time.
     // Failed plugins are logged and skipped; they never block the game.
@@ -388,6 +420,7 @@ export function DevModeContent(props: DevModeContentProps) {
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
+            subscribeCloseRequested,
         };
     }, [
         bundle,
@@ -401,6 +434,7 @@ export function DevModeContent(props: DevModeContentProps) {
         saveStore,
         setFullscreen,
         subscribeFullscreenChanged,
+        subscribeCloseRequested,
         surface,
     ]);
 

@@ -26,6 +26,7 @@ import { BlueprintNodeCatalogService } from "./ui-editor/BlueprintNodeCatalogSer
 import { StoryService } from "./story/StoryService";
 import { ProjectDependencyService } from "./core/ProjectDependencyService";
 import { LocalizationService } from "./localization/LocalizationService";
+import { VoiceService } from "./voice/VoiceService";
 import { ProjectStatsService } from "./stats/ProjectStatsService";
 import { CommandService } from "./ui/CommandService";
 import { SearchService } from "./search/SearchService";
@@ -58,6 +59,7 @@ export class ServiceRegistry {
         [Services.BlueprintNodeCatalog]: BlueprintNodeCatalogService.getInstance(),
         [Services.ProjectDependency]: ProjectDependencyService.getInstance(),
         [Services.Localization]: LocalizationService.getInstance(),
+        [Services.Voice]: VoiceService.getInstance(),
         [Services.ProjectStats]: ProjectStatsService.getInstance(),
         [Services.Command]: CommandService.getInstance(),
         [Services.Search]: SearchService.getInstance(),

@@ -7,8 +7,9 @@ top of them (see `docs/plans/2026-07-16-001-feat-story-command-system.md`).
 ## The four rules
 
 1. **Escape is one exit ladder, one rung per press. It never commits and never destroys.**
-   Candidates first, then the slot. Leaving an *edit* saves (it goes through history, so `Mod+Z`
-   undoes it); leaving an *uncommitted slot* creates nothing.
+   Candidates first, then the slot; an open property editor is its own rung. Leaving an *edit* saves
+   (it goes through history, so `Mod+Z` undoes it); leaving an *uncommitted slot* creates nothing;
+   closing an *inspector* keeps the row selected.
 2. **The highlight is Enter's pointer.** Wherever a candidate is highlighted, Tab and Enter both take
    it — deliberately the same key. Where nothing is highlighted, Enter commits the line. This is why
    "must pick one" positions (command name, speaker name) highlight by default and "optional next
@@ -22,8 +23,8 @@ top of them (see `docs/plans/2026-07-16-001-feat-story-command-system.md`).
 
 | | idle | text edit | insert slot |
 |---|---|---|---|
-| `Esc` | — | commit + exit | ① dismiss candidates, keep text ② discard slot |
-| `Enter` | text row → edit; action row → inspector | commit + new same-kind row (carries speaker) | take highlight; else resolve line |
+| `Esc` | close inspector, if open | commit + exit | ① dismiss candidates, keep text ② discard slot |
+| `Enter` | text row → edit; action row → inspector (or its card-less op) | commit + new same-kind row (carries speaker); **narration → insert slot** | take highlight; else resolve line |
 | `Tab` | indent | — | take highlight |
 | `Shift+Enter` | blank row after last selected | commit + blank row after | `#` line → invalid row; else resolve line |
 | `Shift+Tab` | outdent | — | — |
@@ -33,6 +34,32 @@ top of them (see `docs/plans/2026-07-16-001-feat-story-command-system.md`).
 downgraded to plain `Enter` inside the slot.
 
 There is no soft line break. `Enter` never inserts `\n` — rows are the line model.
+
+**Narration is the exception to same-kind continuation.** A committed narration row cannot begin with
+`/` (see Known gaps), so "narration begets narration" would strand the author in prose with no
+keyboard path to an action. Its Enter opens the insert slot instead — the one surface where the next
+line can stay narration, turn into an action (`/`), or a line of dialogue (`#`). Dialogue keeps its
+successor (a back-and-forth wants the same speaker) and still demotes to the slot on Backspace, so it
+is not a trap.
+
+**Card-less action rows run their own operation, not a placeholder inspector.** Conditions and their
+branches have no card (`hasInspector`): the branch authors its condition inline on its header chip,
+and the container only manages branches. So Enter on a branch adds a line inside its body — the common
+next step when building an if/else — and Enter on the condition container folds it. Creating one never
+opens a card either (`isInspectorFirstCommand` excludes them).
+
+## Editing in place
+
+A row and the same row *being edited* are one surface: no border, no sunken box, no shift in x or
+height. The active/selected row highlight is the only "you are here" signal — the field carries none of
+its own — so entering and leaving an edit never makes the text jump (the VS Code feel). The insert
+slot is that same surface, indented to its future depth with a badge-sized spacer and its line number
+swapped for a `+`, which is what lets narration's Enter fall into it without the text visibly moving.
+
+A filled row's read-only text is a click target the full height of the row and the full width to its
+right (`TextClickTarget`), with the glyphs kept vertically centred — so a click anywhere on the line,
+including the strip above/below the text or the blank tail, lands the caret in the text rather than
+selecting the row underneath it.
 
 ## The goal column
 
@@ -52,12 +79,19 @@ only ended on arrow-*out* would drag a stale column across the next `ArrowDown`.
 
 ## Selection
 
-One rule decides all three mouse gestures: **is the selection collapsed at mouseup?**
+A press on a row's own text is a press *into that text* — the row is a line, and clicking a line
+edits it (the VS Code rule), so the browser's selection at mouseup carries straight in:
 
-- Collapsed (a click) → select the row.
-- Non-collapsed within one row (a drag, or a double-click) → enter edit, carrying the selection.
+- Click (collapsed) → enter edit, caret where the pointer landed (the blank tail lands it at line end).
+- Drag / double-click within one row → enter edit, carrying the selection.
 - Crossing a row boundary → abandon the text selection, switch to row-range selection, and suspend
   `user-select` for the rest of the gesture.
+
+**Selecting a row without editing** — for delete / move / indent / multi-select — comes from the parts
+that are *not* text: the line-number / grip gutter, a modified click (`Shift` / `Mod` for range /
+toggle), a drag that crosses rows, or `Escape` out of an edit (which leaves the row selected). Empty
+text rows are a click-to-edit surface too (the caret just clamps to 0 in the empty editor); only action
+rows — which have no text — select on click and open their inspector on double-click / `Enter`.
 
 **The whole model rests on one prerequisite: the browser must be allowed to select a row's text.**
 `styles.css` resets `user-select: none` onto everything (`*, *::before, *::after`), so a row that
@@ -104,7 +138,8 @@ last line does.
 
 ## Known gaps
 
-- Narration cannot begin with `/` — it resolves as a command or becomes an invalid row. Accepted;
-  create such a line via a command instead.
+- Narration cannot begin with `/` — inside a committed narration row `/` is literal text. This is why
+  narration's Enter opens the insert slot rather than another narration row: the slot is where `/`
+  starts a command.
 - The inspector's speaker select is real-characters-only (it speaks in `characterId`). Temp speakers
   are reachable from the nametag and the `#` slot.

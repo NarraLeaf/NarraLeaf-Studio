@@ -120,6 +120,7 @@ export enum IPCEventType {
     devModeFullscreenGet = "devMode.fullscreen.get",
     devModeFullscreenSet = "devMode.fullscreen.set",
     devModeFullscreenChanged = "devMode.fullscreen.changed",
+    devModeWindowCloseRequested = "devMode.window.closeRequested",
 
     previewLaunch = "preview.launch",
     previewStop = "preview.stop",
@@ -793,6 +794,17 @@ export type IPCDevModeEvents = {
             isFullscreen: boolean;
         },
         response: never;
+    };
+    /**
+     * Asks the Dev Mode renderer whether the window may close, giving its blueprints a chance to
+     * intercept the close (On Window Close Requested). Driven from the main process, which owns the
+     * window's close guard; `allow: false` cancels the close.
+     */
+    [IPCEventType.devModeWindowCloseRequested]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Client,
+        data: {};
+        response: RequestStatus<{ allow: boolean }>;
     };
     [IPCEventType.devModeControlReload]: {
         type: IPCMessageType.message,

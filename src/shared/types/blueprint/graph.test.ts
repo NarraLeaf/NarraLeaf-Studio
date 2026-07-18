@@ -9,6 +9,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED,
     blueprintKeyboardBindingMatchesEvent,
     collectBlueprintEventHeadNodeIdsForDispatch,
     collectGlobalEventHeadNodeIdsForDispatch,
@@ -120,5 +121,15 @@ describe("blueprint event head dispatch resolution", () => {
             .toEqual(["fs"]);
         // The head carries no inspector filter, so it fires regardless of payload.
         expect(collectGlobalEventHeadNodeIdsForDispatch(nodes, "windowFullscreenChanged")).toEqual(["fs"]);
+    });
+
+    it("dispatches the window close request head to both global and surface owners", () => {
+        const nodes = {
+            close: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED },
+            boot: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT },
+        };
+
+        expect(collectGlobalEventHeadNodeIdsForDispatch(nodes, "windowCloseRequested")).toEqual(["close"]);
+        expect(collectSurfaceEventHeadNodeIdsForDispatch(nodes, "windowCloseRequested")).toEqual(["close"]);
     });
 });

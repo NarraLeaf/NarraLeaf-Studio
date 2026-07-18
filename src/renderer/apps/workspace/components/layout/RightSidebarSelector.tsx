@@ -1,7 +1,7 @@
 import React from "react";
-import { useRegistry } from "../../registry";
 import { PanelPosition } from "../../registry/types";
 import { SidebarPanelRail } from "./SidebarPanelRail";
+import { useSidebarPanelContextMenu } from "./useSidebarPanelContextMenu";
 
 interface RightSidebarSelectorProps {
     visible: boolean;
@@ -22,8 +22,7 @@ export function RightSidebarSelector({
     onSelectPanel,
     onActivatePanelForDrop,
 }: RightSidebarSelectorProps) {
-    const { getPanelsByPosition, reorderPanels } = useRegistry();
-    const panels = getPanelsByPosition(PanelPosition.Right);
+    const { railPanels, commitReorder, openMenu, menu } = useSidebarPanelContextMenu(PanelPosition.Right);
 
     const handlePanelClick = (panelId: string) => {
         if (activeId === panelId && visible) {
@@ -40,15 +39,18 @@ export function RightSidebarSelector({
         <div
             data-workspace-sidebar-rail=""
             className="w-12 bg-surface-sunken border-l border-edge flex flex-col items-center py-2 gap-1"
+            onContextMenu={(event) => openMenu(event)}
         >
             <SidebarPanelRail
-                panels={panels}
+                panels={railPanels}
                 activeId={activeId}
                 sidebarVisible={visible}
                 onPanelClick={handlePanelClick}
                 onActivateForDrop={onActivatePanelForDrop}
-                onReorder={(orderedIds) => reorderPanels(PanelPosition.Right, orderedIds)}
+                onReorder={commitReorder}
+                onPanelContextMenu={openMenu}
             />
+            {menu}
         </div>
     );
 }

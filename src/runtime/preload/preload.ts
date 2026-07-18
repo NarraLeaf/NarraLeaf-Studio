@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from "electron";
 import {
     GAME_RUNTIME_BRIDGE_KEY,
+    GAME_RUNTIME_CLOSE_DECISION_CHANNEL,
+    GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL,
     GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL,
     GAME_RUNTIME_PROTOCOL,
     type GameRuntimePackV1,
@@ -13,6 +15,24 @@ import { readGameRuntimeAssetVersionArg } from "@shared/utils/gameRuntimeAssetUr
 // session-unique: a missing marker can only under-cache, never serve bytes
 // from an older pack.
 const assetVersion = readGameRuntimeAssetVersionArg(process.argv) ?? String(Date.now());
+
+// The main process asks before honouring a user-initiated window close so blueprints can intercept
+// it. Registered once here; until the game installs a handler (still loading), the close is allowed
+// immediately so the window never lags behind the click.
+let closeRequestedListener: null | (() => boolean | Promise<boolean>) = null;
+ipcRenderer.on(GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL, (_event, payload: { requestId: number }) => {
+    const respond = (allow: boolean) =>
+        ipcRenderer.send(GAME_RUNTIME_CLOSE_DECISION_CHANNEL, { requestId: payload?.requestId, allow });
+    const listener = closeRequestedListener;
+    if (!listener) {
+        respond(true);
+        return;
+    }
+    Promise.resolve()
+        .then(() => listener())
+        .then(allow => respond(allow !== false))
+        .catch(() => respond(true));
+});
 
 const bridge: GameRuntimePreloadBridge = {
     readPack: () => ipcRenderer.invoke("runtime:read-pack") as Promise<GameRuntimePackV1>,
@@ -34,6 +54,14 @@ const bridge: GameRuntimePreloadBridge = {
         ipcRenderer.on(GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL, handler);
         return () => {
             ipcRenderer.off(GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL, handler);
+        };
+    },
+    onCloseRequested: (listener: () => boolean | Promise<boolean>) => {
+        closeRequestedListener = listener;
+        return () => {
+            if (closeRequestedListener === listener) {
+                closeRequestedListener = null;
+            }
         };
     },
     save: {

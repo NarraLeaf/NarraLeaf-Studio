@@ -9,6 +9,14 @@ export const GAME_RUNTIME_BRIDGE_KEY = "__NLS_GAME_RUNTIME__" as const;
 export const GAME_RUNTIME_PROTOCOL = "nlgame" as const;
 /** Main -> renderer push when the window enters or leaves fullscreen. */
 export const GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL = "runtime:fullscreen:changed" as const;
+/**
+ * Main -> renderer request when the user asks to close the window, carrying a `requestId`. The
+ * renderer runs its blueprints and replies on {@link GAME_RUNTIME_CLOSE_DECISION_CHANNEL} with the
+ * same requestId and whether the close may proceed. Lets `On Window Close Requested` intercept.
+ */
+export const GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL = "runtime:close:requested" as const;
+/** Renderer -> main reply to a {@link GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL} request. */
+export const GAME_RUNTIME_CLOSE_DECISION_CHANNEL = "runtime:close:decision" as const;
 
 export type GameRuntimeLaunchEntry =
     | {
@@ -139,6 +147,12 @@ export type GameRuntimePreloadBridge = {
     setFullscreen(fullscreen: boolean): Promise<void>;
     /** Subscribe to window fullscreen transitions. Returns an unsubscribe function. */
     onFullscreenChanged(listener: (isFullscreen: boolean) => void): () => void;
+    /**
+     * Register the handler that decides whether a user-initiated window close may proceed. The main
+     * process holds the close open until the handler resolves: `true` closes the window, `false`
+     * cancels it. Only one handler is active; registering replaces it. Returns an unsubscribe fn.
+     */
+    onCloseRequested(listener: () => boolean | Promise<boolean>): () => void;
     save: GameRuntimeSaveBridge;
     persistence: GameRuntimePersistenceBridge;
 };
