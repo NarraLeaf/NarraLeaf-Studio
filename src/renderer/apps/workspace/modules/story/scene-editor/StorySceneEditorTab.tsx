@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent } from "react";
+import { useEditorHistoryProvider } from "@/apps/workspace/components/layout/editorHistoryRegistry";
 import { FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Trash2, Variable } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -239,6 +240,15 @@ function StorySceneOverviewBlock(props: {
 export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentProps<StorySceneEditorTabPayload | undefined>) {
     const { t } = useTranslation();
     const editor = useStorySceneEditorController(tabId, payload);
+
+    // Unified history: the story editor's stacks are refs (exact depth not observable), so the
+    // buttons stay enabled and undo/redo are safe no-ops on empty stacks.
+    useEditorHistoryProvider(tabId, {
+        canUndo: true,
+        canRedo: true,
+        undo: editor.undoEdit,
+        redo: editor.redoEdit,
+    });
     const sensors = useSensors(
         useSensor(PointerSensor),
     );
