@@ -23,9 +23,6 @@ export const dashboard = {
         words: {
             other: "{count} 字",
         },
-        lines: {
-            other: "{count} 句",
-        },
         nodes: {
             other: "{count} 个节点",
         },
@@ -86,30 +83,14 @@ export const dashboard = {
         failed: "失败",
         empty: "暂无构建记录",
         emptyHint: "该项目的构建完成后会显示在这里",
+        logEmpty: "本次构建没有输出记录",
+        logOmitted: "为控制记录体积，已省略开头 {count} 行",
     },
 
     structure: {
         title: "结构",
         chapters: "大纲",
         branches: "分支",
-        unreachable: "不可达场景",
-        unreachableHint: "从入口场景出发没有跳转路径能到达这些场景",
-        emptyScenes: "空场景",
-        emptyScenesHint: "这些场景还没有任何内容",
-        healthy: "没有不可达或空的场景",
-        more: "还有 {count} 个",
-    },
-
-    cast: {
-        title: "角色",
-        description: "按字数排列的有台词角色",
-        empty: "还没有角色说过话",
-    },
-
-    scenes: {
-        title: "场景",
-        description: "按字数排列的最长场景",
-        empty: "还没有场景包含文字",
     },
 
     localization: {

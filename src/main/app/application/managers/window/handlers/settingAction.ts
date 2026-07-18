@@ -51,11 +51,30 @@ export class AppRequestWorkspaceViewHandler extends IPCHandler<IPCEventType.appR
     }
 }
 
+/**
+ * Opens the Settings window — or focuses the one already open.
+ *
+ * Reuse matters because openers now address a specific setting (`props.highlight`): launching
+ * unconditionally would leave the user with two Settings windows disagreeing about what is
+ * selected. An open window is focused and told where to go instead.
+ */
 export class AppSettingsWindowLaunchHandler extends IPCHandler<IPCEventType.appLaunchSettings> {
     readonly name = IPCEventType.appLaunchSettings;
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow, { props }: IPCEvents[IPCEventType.appLaunchSettings]["data"]): Promise<RequestStatus<void>> {
+        const existing = window
+            .getApp()
+            .windowManager.getWindows()
+            .find(candidate => candidate.getWindowType() === WindowAppType.Settings);
+        if (existing) {
+            if (props?.highlight) {
+                existing.sendIpcEvent(IPCEventType.settingsHighlight, { highlight: props.highlight });
+            }
+            existing.focus();
+            return this.success(void 0);
+        }
+
         await window.getApp().launchSettings(window, props, {
             parent: window.win,
             minWidth: 800,

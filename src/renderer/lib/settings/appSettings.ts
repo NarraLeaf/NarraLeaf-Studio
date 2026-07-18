@@ -20,6 +20,7 @@ import {
 import { DEFAULT_LOCALE, LOCALE_META, SUPPORTED_LOCALES } from "@shared/i18n";
 import { clearAllProjectStats } from "@/lib/stats/clearAllProjectStats";
 import { DASHBOARD_OPEN_DEFAULT_KEY } from "@shared/constants/dashboard";
+import { KEYBINDING_OVERRIDES_SETTINGS_KEY } from "@/lib/workspace/services/ui/KeybindingService";
 
 /**
  * Category metadata used by the shared settings UI.
@@ -305,36 +306,19 @@ export const AppSettings: AppSettingDefinition[] = [
         },
     },
     {
-        // Nothing is stored under this key — it is only the button's identity. The keybinding
-        // table lives in the workspace (the binding registry only exists there), so the button
-        // asks main to open it in a single workspace window, then closes this one to reveal it.
-        key: "keybindings.open",
-        category: "workspace",
+        // The keyboard-shortcut table, rendered inline by `SETTING_PANELS.keybindings`. Nothing is
+        // written here by the settings layer — the panel reads and writes this key itself, as one
+        // `catalogId -> chord` map, and every open workspace picks the change up through the
+        // global-state broadcast (see UIService's keybinding override sync).
+        key: KEYBINDING_OVERRIDES_SETTINGS_KEY,
+        category: "editor",
         scope: SettingScope.Global,
-        type: SettingValueType.Action,
+        type: SettingValueType.Custom,
+        panel: "keybindings",
         label: "Keyboard shortcuts",
-        labelKey: "settings.items.openKeybindings.label",
-        description: "Customize keyboard shortcuts in the workspace's searchable binding table.",
-        descriptionKey: "settings.items.openKeybindings.description",
+        labelKey: "settings.items.keybindings.label",
+        description: "",
         defaultValue: null,
-        actionLabel: "Customize",
-        actionLabelKey: "settings.items.openKeybindings.action",
-        skipConfirm: true,
-        availability: async () => {
-            const { getInterface } = await import("@/lib/app/bridge");
-            const result = await getInterface().app.countWorkspaceWindows();
-            const enabled = result.success && result.data.count > 0;
-            return enabled
-                ? { enabled: true }
-                : { enabled: false, reasonKey: "settings.items.openKeybindings.needsWorkspace" };
-        },
-        onInvoke: async () => {
-            const { getInterface } = await import("@/lib/app/bridge");
-            const result = await getInterface().app.requestWorkspaceView("keybindings");
-            if (result.success && result.data.delivered) {
-                window.close();
-            }
-        },
     },
     {
         // Read by the main-process GameBuildManager (readElectronMirror) and

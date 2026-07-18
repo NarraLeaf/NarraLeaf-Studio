@@ -268,7 +268,7 @@ export function CommandPalette() {
                     key: hit.entry.id,
                     title: (
                         <span className="flex min-w-0 items-baseline gap-2">
-                            <span className="truncate">{renderHighlightedText(hit.entry.text, hit.titleRange)}</span>
+                            <span className="truncate">{renderHighlightedText(hit.entry.text, hit.titleRanges)}</span>
                             {hit.entry.detail && (
                                 <span className="min-w-0 shrink truncate text-xs text-fg-subtle">
                                     {hit.entry.detail}

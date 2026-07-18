@@ -15,6 +15,7 @@ export type WindowProps = {
     [WindowAppType.Launcher]: {
     },
     [WindowAppType.Settings]: {
+        /** A setting key (or category key) to select and scroll to on open. */
         highlight?: string;
     },
     [WindowAppType.Workspace]: {
@@ -34,11 +35,11 @@ export type WindowProps = {
 export type WindowVisibilityStatus = "minimized" | "maximized" | "normal";
 
 /**
- * A surface the Settings window can ask a workspace to reveal. Both live in the workspace because
- * that is where their state is (the keybinding registry, the background dialog's live preview),
- * so Settings can only ask — see `app.requestWorkspaceView`.
+ * A surface the Settings window can ask a workspace to reveal, because it lives in the workspace
+ * and needs its live state (the background dialog's preview) — Settings can only ask; see
+ * `app.requestWorkspaceView`.
  */
-export type WorkspaceViewRequest = "keybindings" | "backgroundImage";
+export type WorkspaceViewRequest = "backgroundImage";
 
 export enum WindowControlPolicy {
     Standard = "standard",

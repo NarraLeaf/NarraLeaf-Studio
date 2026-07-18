@@ -5,11 +5,22 @@ import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
-import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
+import {
+    formatKeybinding,
+    KEYBINDING_OVERRIDES_SETTINGS_KEY,
+} from "@/lib/workspace/services/ui/KeybindingService";
 import { KEYBINDING_CATALOG } from "@/lib/workspace/services/ui/keybindingCatalog";
 import { isMacPlatform } from "@/lib/app/platform";
 import { getInterface } from "@/lib/app/bridge";
-import { openKeybindingsTab } from "../../modules/keybindings";
+
+/**
+ * Reveal the keyboard-shortcut table, which lives in the Settings window under Editor. Main
+ * focuses an already-open Settings window rather than opening a second one, so this is safe to
+ * call from every surface that offers "customize shortcuts".
+ */
+function openKeybindingSettings(): void {
+    void getInterface().app.launchSettings({ highlight: KEYBINDING_OVERRIDES_SETTINGS_KEY });
+}
 
 // Module-level opener so surfaces outside this tree (the status bar's keyboard icon) can show
 // the sheet. Same pattern as commandPaletteController: one window-local function pointer.
@@ -52,7 +63,7 @@ export function KeybindingCheatSheet() {
         };
     }, []);
 
-    // The palette-facing command to open the customization tab.
+    // The palette-facing command to open the customization surface.
     useEffect(() => {
         if (!context) {
             return;
@@ -61,22 +72,8 @@ export function KeybindingCheatSheet() {
         return commandService.register({
             id: "workspace:open-keybindings",
             titleKey: "workspace.shell.keybindings.openSettings",
-            run: workspace => openKeybindingsTab(workspace.getContext()),
+            run: () => openKeybindingSettings(),
         });
-    }, [context]);
-
-    // The Settings window's "Customize" button reaches this window through main, which addresses
-    // exactly one workspace — so the tab opens where the user is looking, and only there.
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const token = getInterface().workspace.onOpenViewRequest(view => {
-            if (view === "keybindings") {
-                openKeybindingsTab(context);
-            }
-        });
-        return () => token.cancel();
     }, [context]);
 
     useEffect(() => {
@@ -166,9 +163,7 @@ export function KeybindingCheatSheet() {
                         type="button"
                         onClick={() => {
                             setOpen(false);
-                            if (context) {
-                                openKeybindingsTab(context);
-                            }
+                            openKeybindingSettings();
                         }}
                         className="rounded-md px-2 py-1 text-xs text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                     >

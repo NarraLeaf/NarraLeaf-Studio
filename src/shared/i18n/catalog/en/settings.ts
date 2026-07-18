@@ -108,11 +108,8 @@ export const settings = {
             action: "Configure…",
             needsWorkspace: "Open a workspace to configure the background image.",
         },
-        openKeybindings: {
+        keybindings: {
             label: "Keyboard shortcuts",
-            description: "Customize keyboard shortcuts in the workspace's searchable binding table.",
-            action: "Customize",
-            needsWorkspace: "Open a workspace to customize keyboard shortcuts.",
         },
     },
 } as const;

@@ -11,9 +11,11 @@ import {
     extractBlueprintEntries,
     extractLocalizationKeyEntries,
     extractStoryEntries,
+    indexEntries,
     querySearchIndex,
+    type IndexedSearchEntry,
     type SearchGroupResult,
-    type SearchIndexEntry,
+    type SearchQueryOptions,
 } from "./searchIndexModel";
 
 const REBUILD_DEBOUNCE_MS = 300;
@@ -39,10 +41,19 @@ const REBUILD_DEBOUNCE_MS = 300;
  * project startup does not pay for search nobody has opened yet.
  */
 export class SearchService extends Service<SearchService> {
-    private storyEntries = new Map<string, SearchIndexEntry[]>();
-    private blueprintEntries: SearchIndexEntry[] = [];
-    private keyEntries: SearchIndexEntry[] = [];
-    private assetEntries: SearchIndexEntry[] = [];
+    private storyEntries = new Map<string, IndexedSearchEntry[]>();
+    private blueprintEntries: IndexedSearchEntry[] = [];
+    private keyEntries: IndexedSearchEntry[] = [];
+    private assetEntries: IndexedSearchEntry[] = [];
+
+    /**
+     * All slices concatenated, rebuilt lazily on first query after a slice changes.
+     *
+     * Without this the concatenation ran per query — i.e. per keystroke — allocating a fresh array
+     * of the entire index each time. Invalidation hangs off {@link emitChanged}, which every slice
+     * mutation already ends with (it is the same invariant the change listeners depend on).
+     */
+    private flatCache: IndexedSearchEntry[] | null = null;
 
     private readyPromise: Promise<void> | null = null;
     private unsubs: Array<() => void> = [];
@@ -81,13 +92,25 @@ export class SearchService extends Service<SearchService> {
     }
 
     /** Query the current index. Empty query → empty result. Call {@link ensureReady} first. */
-    public search(query: string, options?: { maxPerGroup?: number }): SearchGroupResult[] {
-        const entries: SearchIndexEntry[] = [];
-        for (const slice of this.storyEntries.values()) {
-            entries.push(...slice);
+    public search(query: string, options?: SearchQueryOptions): SearchGroupResult[] {
+        return querySearchIndex(this.getFlatEntries(), query, options);
+    }
+
+    /** Number of indexed entries (diagnostics, and "searching N items" UI states). */
+    public size(): number {
+        return this.getFlatEntries().length;
+    }
+
+    private getFlatEntries(): IndexedSearchEntry[] {
+        if (!this.flatCache) {
+            const entries: IndexedSearchEntry[] = [];
+            for (const slice of this.storyEntries.values()) {
+                entries.push(...slice);
+            }
+            entries.push(...this.blueprintEntries, ...this.keyEntries, ...this.assetEntries);
+            this.flatCache = entries;
         }
-        entries.push(...this.blueprintEntries, ...this.keyEntries, ...this.assetEntries);
-        return querySearchIndex(entries, query, options);
+        return this.flatCache;
     }
 
     /** Notifies whenever any slice rebuilds (so open result lists can refresh). */
@@ -111,6 +134,7 @@ export class SearchService extends Service<SearchService> {
         this.blueprintEntries = [];
         this.keyEntries = [];
         this.assetEntries = [];
+        this.flatCache = null;
         this.readyPromise = null;
         this.changeListeners.clear();
     }
@@ -131,7 +155,7 @@ export class SearchService extends Service<SearchService> {
             entries.map(async entry => {
                 try {
                     const document = await storyService.loadStory(entry.id);
-                    this.storyEntries.set(entry.id, extractStoryEntries(document));
+                    this.storyEntries.set(entry.id, indexEntries(extractStoryEntries(document)));
                 } catch (error) {
                     console.warn(`[SearchService] Failed to index story ${entry.id}:`, error);
                 }
@@ -140,7 +164,7 @@ export class SearchService extends Service<SearchService> {
 
         try {
             const keysDocument = await localizationService.loadKeys();
-            this.keyEntries = extractLocalizationKeyEntries(keysDocument);
+            this.keyEntries = indexEntries(extractLocalizationKeyEntries(keysDocument));
         } catch (error) {
             console.warn("[SearchService] Failed to index localization keys:", error);
         }
@@ -176,7 +200,7 @@ export class SearchService extends Service<SearchService> {
                 });
             }),
             localizationService.onKeysChanged(document => {
-                this.keyEntries = extractLocalizationKeyEntries(document);
+                this.keyEntries = indexEntries(extractLocalizationKeyEntries(document));
                 this.emitChanged();
             }),
         );
@@ -215,7 +239,7 @@ export class SearchService extends Service<SearchService> {
         const storyService = this.getContext().services.get<StoryService>(Services.Story);
         try {
             const document = storyService.getStoryDocument(storyId);
-            this.storyEntries.set(storyId, extractStoryEntries(document));
+            this.storyEntries.set(storyId, indexEntries(extractStoryEntries(document)));
             this.emitChanged();
         } catch {
             // Story vanished between the event and the rebuild; the library resync removes it.
@@ -236,7 +260,7 @@ export class SearchService extends Service<SearchService> {
         for (const storyId of liveIds) {
             try {
                 const document = await storyService.loadStory(storyId);
-                this.storyEntries.set(storyId, extractStoryEntries(document));
+                this.storyEntries.set(storyId, indexEntries(extractStoryEntries(document)));
             } catch (error) {
                 console.warn(`[SearchService] Failed to index story ${storyId}:`, error);
             }
@@ -251,13 +275,13 @@ export class SearchService extends Service<SearchService> {
 
         try {
             const document = blueprintService.getBlueprintDocument();
-            this.blueprintEntries = extractBlueprintEntries(document, type => {
+            this.blueprintEntries = indexEntries(extractBlueprintEntries(document, type => {
                 try {
                     return catalog.resolveCatalogEntry(type).displayName;
                 } catch {
                     return undefined;
                 }
-            });
+            }));
         } catch (error) {
             console.warn("[SearchService] Failed to index blueprints:", error);
             this.blueprintEntries = [];
@@ -268,14 +292,19 @@ export class SearchService extends Service<SearchService> {
         const assetsService = this.getContext().services.get<AssetsService>(Services.Assets);
         try {
             const assets = Object.values(assetsService.getAssets()).flatMap(byId => Object.values(byId));
-            this.assetEntries = extractAssetEntries(assets);
+            this.assetEntries = indexEntries(extractAssetEntries(assets));
         } catch (error) {
             console.warn("[SearchService] Failed to index assets:", error);
             this.assetEntries = [];
         }
     }
 
+    /**
+     * Announce a slice rebuild. Every mutation path ends here, so this is also where the
+     * concatenated view is dropped — see {@link flatCache}.
+     */
     private emitChanged(): void {
+        this.flatCache = null;
         for (const listener of this.changeListeners) {
             listener();
         }

@@ -1,4 +1,4 @@
-/** `dashboard` — the project dashboard editor tab: scale, writing activity, builds, structure, cast, localization. */
+/** `dashboard` — the project dashboard editor tab: scale, writing activity, builds, structure, localization. */
 export const dashboard = {
     loading: "Reading the project…",
     failed: "Could not read the project statistics.",
@@ -22,10 +22,6 @@ export const dashboard = {
         words: {
             one: "{count} word",
             other: "{count} words",
-        },
-        lines: {
-            one: "{count} line",
-            other: "{count} lines",
         },
         nodes: {
             one: "{count} node",
@@ -89,30 +85,14 @@ export const dashboard = {
         failed: "Failed",
         empty: "No builds recorded",
         emptyHint: "Builds you run for this project will be listed here.",
+        logEmpty: "This build recorded no output.",
+        logOmitted: "The first {count} lines were dropped to keep the record small.",
     },
 
     structure: {
         title: "Structure",
         chapters: "Outline",
         branches: "Branches",
-        unreachable: "Unreachable scenes",
-        unreachableHint: "No jump path leads to these scenes from the entry scene.",
-        emptyScenes: "Empty scenes",
-        emptyScenesHint: "These scenes contain no authored content yet.",
-        healthy: "No unreachable or empty scenes.",
-        more: "and {count} more",
-    },
-
-    cast: {
-        title: "Cast",
-        description: "Speaking characters by word count.",
-        empty: "No character has spoken yet.",
-    },
-
-    scenes: {
-        title: "Scenes",
-        description: "Longest scenes by word count.",
-        empty: "No scene contains any words yet.",
     },
 
     localization: {

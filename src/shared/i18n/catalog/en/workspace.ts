@@ -248,8 +248,21 @@ export const workspace = {
             shortcuts: "Keyboard shortcuts",
             words: "{count} words",
             openDashboard: "Open the project dashboard",
+            // Names for the registered entries, shown only in the bar's right-click toggle menu —
+            // the cells themselves are icon-first and label their own state.
+            entries: {
+                devMode: "Dev Mode status",
+                preview: "Preview status",
+                build: "Build status",
+                unsavedChanges: "Unsaved changes",
+                wordCount: "Word count",
+                shortcuts: "Keyboard shortcuts",
+                notifications: "Notifications",
+                theme: "Theme switcher",
+                zoom: "Zoom level",
+            },
         },
-        // Keyboard-shortcut customization (settings tab) + the "?" cheat sheet overlay.
+        // Keyboard-shortcut customization (Settings window → Editor) + the "?" cheat sheet overlay.
         keybindings: {
             searchPlaceholder: "Search shortcuts…",
             hint: "Click a shortcut to record a new one. Esc cancels.",

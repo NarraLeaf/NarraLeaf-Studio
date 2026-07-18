@@ -35,7 +35,15 @@ export type BuildDialogDraft = {
 const IDLE_STATE: GameBuildStateSnapshot = { status: "idle" };
 
 /** Console channel the production build logs to; also where it drives the progress bar. */
-const BUILD_CONSOLE_CHANNEL = "build";
+export const BUILD_CONSOLE_CHANNEL = "build";
+
+/**
+ * `source` stamped on every console line the build pipeline emits. The channel is shared with Dev
+ * Mode and preview output, so this is what identifies a line as belonging to a build — which is how
+ * the dashboard's build history knows which lines to archive. Mirrors GameBuildManager, which
+ * stamps the same literal on the main-process side.
+ */
+export const BUILD_CONSOLE_SOURCE = "Build";
 
 /**
  * The pipeline reports only coarse phases (preparing → compiling → packaging), and the
@@ -146,11 +154,20 @@ export class BuildService extends Service<BuildService> {
     }
 
     public async start(request: GameBuildRequest): Promise<GameBuildStateSnapshot> {
+        // Stamped before the pre-build checks rather than alongside the "preparing" state below, so
+        // a run rejected by one of them still reports when it began. The dashboard's build history
+        // archives each run's console output from this instant, and those checks log to it.
+        const startedAt = Date.now();
         try {
             await this.prepareProjectForBuild();
         } catch (error) {
             console.error("[Build] failed to flush editor state before build", error);
-            this.updateState({ status: "error", error: "Failed to save the project before building" });
+            this.updateState({
+                status: "error",
+                startedAt,
+                finishedAt: Date.now(),
+                error: "Failed to save the project before building",
+            });
             return this.state;
         }
         // The story compiler runs inside the game at startup, not here, so it cannot be what stops an
@@ -163,15 +180,20 @@ export class BuildService extends Service<BuildService> {
                     story: ref.storyName,
                     scene: ref.sceneName,
                     source: ref.source,
-                }));
+                }), { source: BUILD_CONSOLE_SOURCE });
             }
-            this.updateState({ status: "error", error: translate("build.invalidCommandSummary", { count: invalid.length }) });
+            this.updateState({
+                status: "error",
+                startedAt,
+                finishedAt: Date.now(),
+                error: translate("build.invalidCommandSummary", { count: invalid.length }),
+            });
             return this.state;
         }
         // Committed: the selection is now persisted as BuildConfiguration, so
         // the draft has served its purpose and must not shadow it next time.
         this.clearDraft();
-        this.updateState({ status: "preparing", startedAt: Date.now() });
+        this.updateState({ status: "preparing", startedAt });
         const result = await getInterface().gameBuild.start(this.projectPath(), {
             kind: "surface",
             surfaceId: MAIN_APP_SURFACE_ID,

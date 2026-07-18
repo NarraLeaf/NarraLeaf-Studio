@@ -205,6 +205,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
 
     app: {
         launchSettings: (props: WindowProps[WindowAppType.Settings]) => ipcClient.invoke(IPCEventType.appLaunchSettings, { props }),
+        onSettingsHighlight: (handler: (highlight: string) => void) =>
+            ipcClient.onMessage(IPCEventType.settingsHighlight, (data) => handler(data.highlight)),
         countWorkspaceWindows: () => ipcClient.invoke(IPCEventType.appCountWorkspaceWindows, {}),
         requestWorkspaceView: (view: WorkspaceViewRequest) => ipcClient.invoke(IPCEventType.appRequestWorkspaceView, { view }),
         openExternal: (url: string) => ipcClient.invoke(IPCEventType.appOpenExternal, { url }),
