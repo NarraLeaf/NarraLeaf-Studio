@@ -94,5 +94,11 @@ export const settings = {
             action: "Clear",
             confirm: "Clear everything",
         },
+        openKeybindings: {
+            label: "Keyboard shortcuts",
+            description: "Customize keyboard shortcuts in the workspace's searchable binding table.",
+            action: "Customize",
+            needsWorkspace: "Open a workspace to customize keyboard shortcuts.",
+        },
     },
 } as const;

@@ -3,6 +3,7 @@ import { Keybinding, FocusContext } from "./types";
 import { FocusManager } from "./FocusManager";
 import { UIStore } from "./UIStore";
 import { isEditableKeyboardTarget } from "./keyboardEditable";
+import { getKeybindingCatalogEntry } from "./keybindingCatalog";
 
 /**
  * Parse a keybinding string (e.g., "mod+s") into modifier keys and key
@@ -134,6 +135,72 @@ function normalizeKeyboardEventKey(event: KeyboardEvent): string {
 }
 
 /**
+ * Global-state key holding the user's keybinding overrides as one `Record<id, binding>` map.
+ * A single key (not one per id) because ids may contain dots, which the dotted-path settings
+ * store would silently split into nested objects.
+ */
+export const KEYBINDING_OVERRIDES_SETTINGS_KEY = "keybindings.overrides";
+
+/**
+ * Global-state signal key: the Settings window writes a timestamp here to ask the workspace to
+ * open its keybinding-settings tab (global-state changes broadcast to every window; the Settings
+ * window has no other channel to the workspace's editor area).
+ */
+export const KEYBINDINGS_OPEN_REQUEST_SETTINGS_KEY = "keybindings.openRequest";
+
+/** Coerce persisted overrides (untrusted JSON) into id → non-empty binding string. */
+export function sanitizeKeybindingOverrides(raw: unknown): Record<string, string> {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return {};
+    }
+    const result: Record<string, string> = {};
+    for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof value === "string" && value.trim()) {
+            result[id] = value.trim();
+        }
+    }
+    return result;
+}
+
+/**
+ * Build a binding string from a keydown captured by the settings recorder, or null when the
+ * event is not a complete chord (a bare modifier, or a bare key with no modifier where one is
+ * required is still allowed — F-keys and the like bind fine alone).
+ *
+ * The primary modifier records as `mod` (⌘ on macOS, Ctrl elsewhere) so a recorded binding stays
+ * portable, matching how built-in bindings are declared. macOS's real Control key records as the
+ * literal `ctrl`.
+ */
+export function keybindingFromKeyboardEvent(
+    event: Pick<KeyboardEvent, "key" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey">,
+    isMac: boolean,
+): string | null {
+    const key = event.key === " " ? "space" : event.key.toLowerCase();
+    if (key === "control" || key === "alt" || key === "shift" || key === "meta") {
+        return null;
+    }
+
+    const parts: string[] = [];
+    if (isMac ? event.metaKey : event.ctrlKey) {
+        parts.push("mod");
+    }
+    if (isMac && event.ctrlKey) {
+        parts.push("ctrl");
+    }
+    if (!isMac && event.metaKey) {
+        parts.push("meta");
+    }
+    if (event.altKey) {
+        parts.push("alt");
+    }
+    if (event.shiftKey) {
+        parts.push("shift");
+    }
+    parts.push(key);
+    return parts.join("+");
+}
+
+/**
  * Check if keyboard event matches parsed keybinding. Exported for tests.
  */
 export function matchesKeybinding(event: KeyboardEvent, parsed: ParsedKeybinding): boolean {
@@ -156,11 +223,73 @@ export class KeybindingService {
     private focusManager: FocusManager;
     private uiStore: UIStore;
     private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
+    /**
+     * User rebinds, id → binding string. Applied at match time (and by every display surface via
+     * {@link getEffectiveKey}), so a registered binding never has to know it was overridden.
+     * Seeded from global state (`keybindings.overrides`) by UIService; persistence is the
+     * caller's job — this layer is intentionally storage-free.
+     */
+    private overrides = new Map<string, string>();
+    private overrideListeners = new Set<() => void>();
 
     constructor(focusManager: FocusManager, uiStore: UIStore) {
         this.keybindings = new Map();
         this.focusManager = focusManager;
         this.uiStore = uiStore;
+    }
+
+    // === Overrides ===
+
+    /** Replace the whole override map (startup seed / cross-window sync). */
+    public setOverrides(overrides: Record<string, string>): void {
+        this.overrides = new Map(Object.entries(overrides));
+        this.emitOverridesChanged();
+    }
+
+    /** Set (or clear, with null) one override. Does not persist — the caller does. */
+    public setOverride(id: string, key: string | null): void {
+        if (key && key.trim()) {
+            this.overrides.set(id, key.trim());
+        } else {
+            this.overrides.delete(id);
+        }
+        this.emitOverridesChanged();
+    }
+
+    public getOverride(id: string): string | undefined {
+        return this.overrides.get(id);
+    }
+
+    /** Snapshot of the current overrides (for persistence / display). */
+    public getOverridesSnapshot(): Record<string, string> {
+        return Object.fromEntries(this.overrides);
+    }
+
+    /**
+     * The binding that actually fires: the user's override, else the catalog default, else the
+     * inline registration key. Overrides and catalog defaults resolve by the *catalog* id, so a
+     * rebind recorded once applies to every per-tab registration of the same command.
+     */
+    public getEffectiveKey(binding: Pick<Keybinding, "id" | "key" | "catalogId">): string {
+        const catalogId = binding.catalogId ?? binding.id;
+        return (
+            this.overrides.get(catalogId) ??
+            getKeybindingCatalogEntry(catalogId)?.key ??
+            binding.key
+        );
+    }
+
+    public onOverridesChanged(listener: () => void): () => void {
+        this.overrideListeners.add(listener);
+        return () => {
+            this.overrideListeners.delete(listener);
+        };
+    }
+
+    private emitOverridesChanged(): void {
+        for (const listener of this.overrideListeners) {
+            listener();
+        }
     }
 
     /**
@@ -242,7 +371,7 @@ export class KeybindingService {
         // Find matching keybindings
         const isMac = isMacPlatform();
         for (const keybinding of this.keybindings.values()) {
-            const parsed = parseKeybinding(keybinding.key, isMac);
+            const parsed = parseKeybinding(this.getEffectiveKey(keybinding), isMac);
 
             if (matchesKeybinding(event, parsed)) {
                 if (inEditableField && !keybinding.allowInEditable) {
@@ -275,6 +404,8 @@ export class KeybindingService {
      */
     public clear(): void {
         this.keybindings.clear();
+        this.overrides.clear();
+        this.overrideListeners.clear();
     }
 }
 

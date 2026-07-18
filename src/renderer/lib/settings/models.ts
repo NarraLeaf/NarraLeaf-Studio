@@ -33,6 +33,10 @@ export interface SettingDescriptor<T extends SettingValueType = SettingValueType
     confirmLabel?: string;
     /** Action only: renders the button in the destructive variant. */
     danger?: boolean;
+    /** Action only: invoke on the first click — for navigation-style actions with no consequence. */
+    skipConfirm?: boolean;
+    /** Action only: renders the button disabled (the row description carries the reason). */
+    disabled?: boolean;
 }
 
 /**
@@ -76,6 +80,14 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     confirmLabelKey?: TranslationKey;
     /** Action only: renders the button in the destructive variant. */
     danger?: boolean;
+    /** Action only: invoke on the first click — for navigation-style actions with no consequence. */
+    skipConfirm?: boolean;
+    /**
+     * Action only: dynamic availability, re-evaluated on mount and whenever the Settings window
+     * regains focus (the condition usually depends on other windows, e.g. "a workspace is open").
+     * When unavailable, the button renders disabled and `reasonKey` replaces the description.
+     */
+    availability?: () => Promise<{ enabled: boolean; reasonKey?: TranslationKey }>;
 }
 
 /**

@@ -22,5 +22,7 @@ export const placeholders = {
         dashboard: "Dashboard",
         audioPreview: "Audio Preview",
         imagePreview: "Image Preview",
+        search: "Search",
+        keybindings: "Keyboard Shortcuts",
     },
 } as const;

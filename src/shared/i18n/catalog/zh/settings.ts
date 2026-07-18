@@ -87,5 +87,11 @@ export const settings = {
             action: "清空",
             confirm: "确认清空",
         },
+        openKeybindings: {
+            label: "快捷键",
+            description: "在工作区的可搜索绑定表中自定义快捷键",
+            action: "自定义",
+            needsWorkspace: "必须打开一个工作区才能修改快捷键",
+        },
     },
 } satisfies LocaleNamespace<"settings">;

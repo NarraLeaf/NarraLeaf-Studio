@@ -165,6 +165,13 @@ export interface Keybinding {
      * Default false: {@link KeybindingService} skips bindings while typing unless this is set.
      */
     allowInEditable?: boolean;
+    /**
+     * Stable identity in the declarative keybinding catalog. Registration ids are often per-tab
+     * (`story-scene-editor-<tabId>-duplicate`), which would make user overrides stick to one tab
+     * and duplicate rows in the settings table; the catalog id (`story.duplicate`) is what
+     * overrides key on and what the settings/cheat-sheet surfaces list. Defaults to `id`.
+     */
+    catalogId?: string;
 }
 
 /**

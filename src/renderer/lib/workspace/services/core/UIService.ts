@@ -8,12 +8,19 @@ import { EditorService } from "../ui/EditorService";
 import { DialogService } from "../ui/DialogService";
 import { StatusBarService } from "../ui/StatusBarService";
 import { FocusManager } from "../ui/FocusManager";
-import { KeybindingService } from "../ui/KeybindingService";
+import {
+    KeybindingService,
+    KEYBINDING_OVERRIDES_SETTINGS_KEY,
+    sanitizeKeybindingOverrides,
+} from "../ui/KeybindingService";
 import { EventEmitter } from "../ui/EventEmitter";
 import { UIStateEvents } from "../ui/UIStore";
 import { AssetsService } from "./AssetsService";
 import { Asset } from "../assets/types";
 import { Services } from "../services";
+import { GlobalSettingsService } from "../GlobalSettingsService";
+import { getInterface } from "@/lib/app/bridge";
+import type { AppEventToken } from "@shared/types/app";
 
 /**
  * UI Service
@@ -32,6 +39,8 @@ export class UIService extends Service<UIService> implements IUIService {
     private store: UIStore;
     /** Unsubscribers for AssetsService listeners registered in init */
     private assetEventsUnsubs: (() => void)[] = [];
+    /** Cross-window sync for keybinding overrides (the Settings window shares the store). */
+    private keybindingOverridesToken: AppEventToken | null = null;
     private _notifications: NotificationService;
     private _actionBar: ActionBarService;
     private _panels: PanelService;
@@ -57,7 +66,19 @@ export class UIService extends Service<UIService> implements IUIService {
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const assetsService = ctx.services.get<AssetsService>(Services.Assets);
-        await depend([assetsService]);
+        const globalSettings = ctx.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        await depend([assetsService, globalSettings]);
+
+        // User keybinding overrides: seed from global state, then follow cross-window writes.
+        this._keybindings.setOverrides(
+            sanitizeKeybindingOverrides(globalSettings.getSync(KEYBINDING_OVERRIDES_SETTINGS_KEY)),
+        );
+        this.keybindingOverridesToken?.cancel();
+        this.keybindingOverridesToken = getInterface().app.state.onGlobalStateChanged?.(change => {
+            if (change.key === KEYBINDING_OVERRIDES_SETTINGS_KEY) {
+                this._keybindings.setOverrides(sanitizeKeybindingOverrides(change.value));
+            }
+        }) ?? null;
 
         // Start keybinding service
         this._keybindings.start();
@@ -254,6 +275,8 @@ export class UIService extends Service<UIService> implements IUIService {
             unsub();
         }
         this.assetEventsUnsubs = [];
+        this.keybindingOverridesToken?.cancel();
+        this.keybindingOverridesToken = null;
         this._keybindings.stop();
         this._keybindings.clear();
         this.store.clear();

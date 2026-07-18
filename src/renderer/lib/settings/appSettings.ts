@@ -243,6 +243,40 @@ export const AppSettings: AppSettingDefinition[] = [
         onInvoke: clearAllProjectStats,
     },
     {
+        // Nothing is stored under this key — it is only the button's identity. The keybinding
+        // table lives in the workspace (the binding registry only exists there), so the button
+        // writes a request signal to global state (broadcast to all windows) and closes this
+        // window to reveal the workspace with the tab open.
+        key: "keybindings.open",
+        category: "workspace",
+        scope: SettingScope.Global,
+        type: SettingValueType.Action,
+        label: "Keyboard shortcuts",
+        labelKey: "settings.items.openKeybindings.label",
+        description: "Customize keyboard shortcuts in the workspace's searchable binding table.",
+        descriptionKey: "settings.items.openKeybindings.description",
+        defaultValue: null,
+        actionLabel: "Customize",
+        actionLabelKey: "settings.items.openKeybindings.action",
+        skipConfirm: true,
+        availability: async () => {
+            const { getInterface } = await import("@/lib/app/bridge");
+            const result = await getInterface().app.countWorkspaceWindows();
+            const enabled = result.success && result.data.count > 0;
+            return enabled
+                ? { enabled: true }
+                : { enabled: false, reasonKey: "settings.items.openKeybindings.needsWorkspace" };
+        },
+        onInvoke: async () => {
+            const { getInterface } = await import("@/lib/app/bridge");
+            const { KEYBINDINGS_OPEN_REQUEST_SETTINGS_KEY } = await import(
+                "@/lib/workspace/services/ui/KeybindingService"
+            );
+            await getInterface().app.state.setGlobalState(KEYBINDINGS_OPEN_REQUEST_SETTINGS_KEY, Date.now());
+            window.close();
+        },
+    },
+    {
         // Read by the main-process GameBuildManager (readElectronMirror) and
         // passed to electron-builder as electronDownload.mirror for cross-platform
         // game builds. Empty = official Electron download source.

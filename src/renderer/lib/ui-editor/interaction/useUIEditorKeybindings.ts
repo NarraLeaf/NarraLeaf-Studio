@@ -213,6 +213,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
         id: `ui-surface-editor-${tabId}-escape`,
         key: "escape",
         description: "Close menu / exit edit / clear selection",
+        catalogId: "ui-editor.escape",
         handler: escapeHandler,
         when: whenEditorFocused(tabId),
         enabled: enabled && Boolean(surfaceId && stateService),
@@ -223,5 +224,6 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
         enabled: enabled && Boolean(surfaceId && documentService && localBlueprint && historyService && stateService),
         when: and(whenEditorFocused(tabId), fromGetter(() => !isTypingInField())),
         idPrefix: `ui-surface-editor-${tabId}`,
+        catalogPrefix: "ui-editor.",
     });
 }

@@ -830,6 +830,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
         enabled: Boolean(asset && storyService),
         when: whenEditorFocused(tabId),
         idPrefix: `story-motion-editor-${tabId}`,
+        catalogPrefix: "story-motion.",
     });
 
     const deleteTrack = useCallback((track: StoryAnimationTrack) => {

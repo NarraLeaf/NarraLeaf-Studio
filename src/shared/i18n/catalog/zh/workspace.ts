@@ -105,6 +105,8 @@ export const workspace = {
             title: "命令面板",
             placeholder: "输入命令…",
             empty: "没有匹配的命令",
+            // 空态提示行：点击切换到命令模式（填入 ">"）。
+            goToCommands: "显示并运行命令",
             // 「打开 X 面板」这类导航命令显示的分类。
             categoryView: "视图",
             // 编辑器标签命令的分类与标题（作用于当前活动标签）。
@@ -114,6 +116,81 @@ export const workspace = {
                 closeOthers: "关闭其他标签页",
                 closeToRight: "关闭右侧标签页",
                 closeAll: "关闭全部标签页",
+            },
+        },
+        // 快捷键自定义（设置 tab）+「?」速查浮层。
+        keybindings: {
+            searchPlaceholder: "搜索快捷键…",
+            hint: "点击快捷键即可录制新组合，Esc 取消",
+            record: "录制快捷键",
+            recording: "按下新的快捷键…",
+            reset: "恢复默认",
+            resetAll: "全部重置",
+            customized: "已自定义",
+            conflict: "与「{name}」冲突",
+            empty: "没有匹配的快捷键",
+            openSettings: "自定义快捷键",
+            cheatSheetTitle: "快捷键速查",
+            cheatSheetCustomize: "自定义…",
+            // 设置表与速查表的分类标题（来自静态目录）。
+            categories: {
+                general: "通用",
+                story: "故事编辑器",
+                uiEditor: "UI 编辑器",
+                blueprint: "蓝图编辑器",
+                storyMotion: "故事动效",
+                assets: "素材",
+                other: "其他",
+            },
+            // 此前没有自带 i18n key 的目录条目标签。
+            catalog: {
+                commandPalette: "显示并运行命令",
+                quickSearch: "在项目里搜索",
+                cheatSheet: "显示快捷键速查",
+                reopenClosedTab: "重新打开关闭的标签",
+                quickSwitchNext: "切换到下一个编辑器标签",
+                quickSwitchPrevious: "切换到上一个编辑器标签",
+                uiEditor: {
+                    undo: "撤销",
+                    redo: "重做",
+                    copy: "复制",
+                    cut: "剪切",
+                    paste: "粘贴",
+                    duplicate: "创建副本",
+                    group: "编组",
+                    selectAll: "全选",
+                    delete: "删除所选",
+                    rename: "重命名",
+                    escape: "关闭菜单 / 退出编辑",
+                },
+                blueprint: {
+                    undo: "撤销",
+                    redo: "重做",
+                    copy: "复制节点",
+                    cut: "剪切节点",
+                    paste: "粘贴节点",
+                },
+                storyMotion: {
+                    undo: "撤销",
+                    redo: "重做",
+                    delete: "删除关键帧",
+                },
+            },
+        },
+        // 全局项目搜索：dock 面板与命令面板搜索模式共用。
+        search: {
+            placeholder: "搜索项目…",
+            // 顶栏搜索 pill 上的文案（点击后打开搜索模式的命令面板）。
+            titleBarPlaceholder: "在项目里搜索",
+            building: "正在建立搜索索引…",
+            empty: "没有匹配结果",
+            more: "还有 {count} 条",
+            groups: {
+                story: "剧情文本",
+                asset: "素材",
+                variable: "变量",
+                uiTextKey: "UI 文本 Key",
+                blueprintNode: "蓝图节点",
             },
         },
         // 标题栏里类 PyCharm 的项目切换器：显示当前项目名，下拉列出最近工作区以便跳转。
