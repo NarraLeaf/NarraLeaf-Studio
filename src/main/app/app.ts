@@ -359,8 +359,10 @@ export class App extends BaseApp {
             : { minWidth: 800, minHeight: 600, width: 1400, height: 900 });
 
         if (replaceOpener) {
-            workspaceWindow.onReady(() => {
-                if (!opener.isClosed()) {
+            // Load result, not window readiness: an error screen (not a project) is "ready" too,
+            // and retiring the opener for it would silently destroy a working workspace.
+            workspaceWindow.onLoadResult(ok => {
+                if (ok && !opener.isClosed()) {
                     opener.forceClose();
                 }
             });

@@ -96,9 +96,15 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
                     const projectConfig = projectService.getProjectConfig();
                     const projectPath = ctx.project.getConfig().projectPath;
                     getInterface().app.addRecentProject(projectConfig.name, projectPath);
+
+                    // Replace-style launches wait on this before retiring the opener window.
+                    getInterface().workspace.reportLoadResult(true);
                 });
             } catch (err) {
                 console.error("Failed to initialize workspace:", err);
+                // Tells a pending replace-launch to keep its opener: this window failed to
+                // become a workspace (e.g. the folder is not a project).
+                getInterface().workspace.reportLoadResult(false);
                 await disposeWorkspace();
                 if (mounted) {
                     setError(err instanceof Error ? err : new Error(String(err)));
