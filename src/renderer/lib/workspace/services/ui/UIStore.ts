@@ -608,12 +608,17 @@ export class UIStore {
 
     /**
      * Split a group: its active tab moves into a fresh group placed beside it ("horizontal" puts
-     * the new group to the right, "vertical" below). No-op when the group has no tabs — an empty
-     * split has nothing to show. The moved tab keeps focus, now in the new group.
+     * the new group to the right, "vertical" below). The moved tab keeps focus, now in the new
+     * group.
+     *
+     * Needs two tabs to be meaningful: splitting a single-tab group would move the only tab out
+     * and leave an empty pane sitting on half the editor area — exactly the state
+     * {@link pruneEmptyEditorGroups} exists to undo. Enforced here rather than only at the call
+     * sites so the chord, the palette command and the tab menu cannot disagree.
      */
     public splitEditorGroup(groupId: string, direction: "horizontal" | "vertical", tabId?: string): boolean {
         const group = this.findGroup(this.state.editorLayout, groupId);
-        if (!group || group.tabs.length === 0) {
+        if (!group || group.tabs.length < 2) {
             return false;
         }
         // `tabId` is the tab a context menu was opened on; commands and chords have no click

@@ -25,7 +25,6 @@ import { voicePanelModule } from "./voice";
 import { dashboardPanelModule } from "./dashboard";
 import { searchPanelModule } from "./search";
 import { keybindingsModule } from "./keybindings";
-import { historyPanelModule } from "./history";
 import { notificationsPanelModule } from "./notifications";
 
 /**
@@ -47,7 +46,6 @@ export const builtInPanels: PanelModule[] = [
     propertiesModule,
     notificationsPanelModule,
     consoleModule,
-    historyPanelModule,
 ];
 
 /**

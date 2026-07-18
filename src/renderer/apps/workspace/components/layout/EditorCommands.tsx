@@ -59,32 +59,6 @@ export function EditorCommands() {
 
         return commandService.registerMany([
             {
-                id: "editor:split-right",
-                titleKey: "workspace.shell.commandPalette.editor.splitRight",
-                categoryKey: "workspace.shell.commandPalette.categoryEditor",
-                keybinding: "mod+\\",
-                when: focus => !!activeTarget(focus),
-                run: () => {
-                    const target = activeTarget();
-                    if (target) {
-                        uiService.getStore().splitEditorGroup(target.group.id, "horizontal");
-                    }
-                },
-            },
-            {
-                id: "editor:split-down",
-                titleKey: "workspace.shell.commandPalette.editor.splitDown",
-                categoryKey: "workspace.shell.commandPalette.categoryEditor",
-                keybinding: "mod+alt+\\",
-                when: focus => !!activeTarget(focus),
-                run: () => {
-                    const target = activeTarget();
-                    if (target) {
-                        uiService.getStore().splitEditorGroup(target.group.id, "vertical");
-                    }
-                },
-            },
-            {
                 id: "editor:close-other-groups",
                 titleKey: "workspace.shell.commandPalette.editor.closeOtherGroups",
                 categoryKey: "workspace.shell.commandPalette.categoryEditor",
@@ -159,33 +133,39 @@ export function EditorCommands() {
         ]);
     }, [context]);
 
-    // The split chords fire through the keybinding service (customizable via the catalog); the
-    // palette lists the same actions through the registrations above and dedupes by chord.
-    const runSplit = (direction: "horizontal" | "vertical") => {
+    // Splitting is registered *only* as a keybinding. The palette picks it up from there and
+    // resolves its name and chord through the keybinding catalog, so a rebind shows up everywhere
+    // at once — registering it as a command as well would mean a second, hand-synced copy of the
+    // chord that goes stale the moment the user changes it.
+    const splitTarget = () => {
         if (!context) {
-            return;
+            return null;
         }
         const uiService = context.services.get<UIService>(Services.UI);
         const target = findActiveEditorTarget(stateRef.current.editorLayout, uiService.focus.getFocus());
-        if (target) {
-            uiService.getStore().splitEditorGroup(target.group.id, direction);
-        }
+        // A group needs a tab to keep behind; see UIStore.splitEditorGroup.
+        return target && target.group.tabs.length >= 2 ? { uiService, target } : null;
     };
-    const runSplitRef = useRef(runSplit);
-    runSplitRef.current = runSplit;
+    const splitTargetRef = useRef(splitTarget);
+    splitTargetRef.current = splitTarget;
+
+    const runSplit = (direction: "horizontal" | "vertical") => {
+        const resolved = splitTargetRef.current();
+        resolved?.uiService.getStore().splitEditorGroup(resolved.target.group.id, direction);
+    };
 
     useKeybinding({
         id: "editor-split-right",
         key: "mod+\\",
-        description: "Split editor to the right",
-        handler: () => runSplitRef.current("horizontal"),
+        when: () => splitTargetRef.current() !== null,
+        handler: () => runSplit("horizontal"),
     });
 
     useKeybinding({
         id: "editor-split-down",
         key: "mod+alt+\\",
-        description: "Split editor down",
-        handler: () => runSplitRef.current("vertical"),
+        when: () => splitTargetRef.current() !== null,
+        handler: () => runSplit("vertical"),
     });
 
     return null;

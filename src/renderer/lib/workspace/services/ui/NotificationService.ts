@@ -1,10 +1,19 @@
 import { UIStore } from "./UIStore";
+import type { ServiceAssetsService } from "../core/ServiceAssetsService";
 import {
     Notification,
     NotificationType,
     NotificationSeverity,
     NotificationAction,
 } from "./types";
+
+/** Per-project store namespace and payload shape for the persisted history. */
+const HISTORY_STORE_NAMESPACE = "notification_history";
+const HISTORY_STORE_VERSION = 1;
+interface NotificationHistoryStore {
+    version: typeof HISTORY_STORE_VERSION;
+    entries: NotificationHistoryEntry[];
+}
 
 /**
  * A history record: the serializable core of a notification, kept after the toast is dismissed.
@@ -21,16 +30,20 @@ export interface NotificationHistoryEntry {
 /**
  * Notification Service
  * Manages VSCode-style notifications. Toasts behave exactly as before; additionally every shown
- * notification lands in a ring-buffered history (persisted by UIService through ServiceAssets)
- * that the notification-center drawer reads.
+ * notification lands in a ring-buffered history that the notification-center drawer reads, and
+ * that survives a restart — see {@link startPersistence}.
  */
 export class NotificationService {
     private static readonly HistoryLimit = 100;
+    /** Notifications can arrive in bursts; one write per burst, not one per toast. */
+    private static readonly PersistDebounceMs = 500;
 
     private store: UIStore;
     private nextId = 1;
     private history: NotificationHistoryEntry[] = [];
     private readonly historyListeners = new Set<() => void>();
+    private persistenceUnsub: (() => void) | null = null;
+    private persistTimer: ReturnType<typeof setTimeout> | null = null;
 
     constructor(store: UIStore) {
         this.store = store;
@@ -38,12 +51,55 @@ export class NotificationService {
 
     // === History (survives dismissal; ring-buffered) ===
 
+    /**
+     * Load the persisted history and keep writing it back as it changes.
+     *
+     * Lives here rather than in UIService because the history is this service's state: UIService
+     * composes the UI services, and having it reach in to read, seed and save one of them made it
+     * the only place that knew this buffer was persistent at all.
+     *
+     * Unreadable history is not worth failing workspace startup over — it degrades to an empty log.
+     */
+    public async startPersistence(serviceAssets: ServiceAssetsService): Promise<void> {
+        this.stopPersistence();
+        try {
+            const stored = await serviceAssets.readStore<NotificationHistoryStore>(HISTORY_STORE_NAMESPACE);
+            if (stored.ok && stored.data?.version === HISTORY_STORE_VERSION && Array.isArray(stored.data.entries)) {
+                this.seedHistory(stored.data.entries);
+            }
+        } catch {
+            // Corrupt or absent store: start from empty.
+        }
+        this.persistenceUnsub = this.onHistoryChanged(() => {
+            if (this.persistTimer) {
+                clearTimeout(this.persistTimer);
+            }
+            this.persistTimer = setTimeout(() => {
+                this.persistTimer = null;
+                void serviceAssets.writeStore<NotificationHistoryStore>(HISTORY_STORE_NAMESPACE, {
+                    version: HISTORY_STORE_VERSION,
+                    entries: [...this.history],
+                });
+            }, NotificationService.PersistDebounceMs);
+        });
+    }
+
+    /** Detach persistence and drop any pending write (workspace teardown). */
+    public stopPersistence(): void {
+        this.persistenceUnsub?.();
+        this.persistenceUnsub = null;
+        if (this.persistTimer) {
+            clearTimeout(this.persistTimer);
+            this.persistTimer = null;
+        }
+    }
+
     /** Stable snapshot, newest first. */
     public getHistory(): readonly NotificationHistoryEntry[] {
         return this.history;
     }
 
-    /** Seed from persistence at startup (replaces the current buffer). */
+    /** Replace the current buffer (used when seeding from persistence). */
     public seedHistory(entries: NotificationHistoryEntry[]): void {
         this.history = entries.slice(0, NotificationService.HistoryLimit);
         this.emitHistoryChanged();

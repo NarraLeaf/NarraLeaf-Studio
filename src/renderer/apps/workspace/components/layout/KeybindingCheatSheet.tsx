@@ -5,10 +5,7 @@ import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
-import {
-    formatKeybinding,
-    KEYBINDINGS_OPEN_REQUEST_SETTINGS_KEY,
-} from "@/lib/workspace/services/ui/KeybindingService";
+import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
 import { KEYBINDING_CATALOG } from "@/lib/workspace/services/ui/keybindingCatalog";
 import { isMacPlatform } from "@/lib/app/platform";
 import { getInterface } from "@/lib/app/bridge";
@@ -68,18 +65,18 @@ export function KeybindingCheatSheet() {
         });
     }, [context]);
 
-    // The Settings window's "Customize" button signals through global state (its only channel to
-    // this window's editor area); each click writes a fresh timestamp.
+    // The Settings window's "Customize" button reaches this window through main, which addresses
+    // exactly one workspace — so the tab opens where the user is looking, and only there.
     useEffect(() => {
         if (!context) {
             return;
         }
-        const token = getInterface().app.state.onGlobalStateChanged?.(change => {
-            if (change.key === KEYBINDINGS_OPEN_REQUEST_SETTINGS_KEY && change.value) {
+        const token = getInterface().workspace.onOpenViewRequest(view => {
+            if (view === "keybindings") {
                 openKeybindingsTab(context);
             }
         });
-        return () => token?.cancel();
+        return () => token.cancel();
     }, [context]);
 
     useEffect(() => {

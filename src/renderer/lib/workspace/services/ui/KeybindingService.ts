@@ -141,13 +141,6 @@ function normalizeKeyboardEventKey(event: KeyboardEvent): string {
  */
 export const KEYBINDING_OVERRIDES_SETTINGS_KEY = "keybindings.overrides";
 
-/**
- * Global-state signal key: the Settings window writes a timestamp here to ask the workspace to
- * open its keybinding-settings tab (global-state changes broadcast to every window; the Settings
- * window has no other channel to the workspace's editor area).
- */
-export const KEYBINDINGS_OPEN_REQUEST_SETTINGS_KEY = "keybindings.openRequest";
-
 /** Coerce persisted overrides (untrusted JSON) into id → non-empty binding string. */
 export function sanitizeKeybindingOverrides(raw: unknown): Record<string, string> {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {

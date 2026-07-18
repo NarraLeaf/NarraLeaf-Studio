@@ -196,13 +196,6 @@ export const workspace = {
             empty: "暂无通知",
             clearAll: "清空",
         },
-        // 统一编辑器历史（tab 条控件 + 历史面板）。
-        history: {
-            undo: "撤销",
-            redo: "重做",
-            empty: "当前编辑器没有可用的撤销历史",
-            activeEditor: "{name} 的历史",
-        },
         // 自定义背景对话框（从设置或命令面板打开）。
         background: {
             command: "设置背景图像…",

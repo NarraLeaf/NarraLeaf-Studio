@@ -34,10 +34,6 @@ export const ProjectNameConvention = {
     EditorServices: ["editor", "services/"],
     EditorRemoteAssetsCache: ["editor", "assets", "remote/"],
     EditorRemoteAssetShard: (id: string) => ["editor", "assets", "remote", ...splitId(id)],
-    /** Staging area for bytes generated in the editor (e.g. an exported audio clip) on their way
-     *  through the normal file-based import path. Files here are deleted once imported. */
-    EditorImportStaging: ["editor", "cache", "import/"],
-    EditorImportStagingFile: (fileName: string) => ["editor", "cache", "import", fileName],
     EditorThumbnailCache: ["editor", "cache", "thumbnail/"],
     EditorThumbnailCacheShard: (id: string) => {
         const safeId = encodePathSegmentId(id);

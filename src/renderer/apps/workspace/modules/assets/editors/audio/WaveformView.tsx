@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef } from "react";
 import { computePeaks, type AudioClip, type SampleRange } from "./audioClip";
+import type { AssetCuePoint } from "@/lib/workspace/services/assets/types";
 
-export interface AudioCuePoint {
-    timeMs: number;
-    label?: string;
-}
+/** Cue points are stored on the asset; the view just draws whatever it is handed. */
+export type AudioCuePoint = AssetCuePoint;
 
 interface WaveformViewProps {
     clip: AudioClip;

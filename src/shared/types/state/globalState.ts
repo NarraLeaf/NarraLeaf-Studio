@@ -14,6 +14,27 @@ export interface GlobalStateType extends Record<string, any> {
     "ui.accentColor": string;
     "ui.compactMode": boolean;
     "ui.reduceMotion": boolean;
+    /** The slim strip along the bottom of the workspace; the dock reclaims its row when off. */
+    "ui.statusBar.visible": boolean;
+    /** The search pill in the title bar. With it hidden the command palette grows its own input. */
+    "ui.titleBarSearch.visible": boolean;
+    /**
+     * Watermark background. `ui.backgroundImage` is a *file name* inside userData/backgrounds,
+     * never a path — the main process resolves it by basename so a renderer cannot steer the read
+     * at arbitrary files. Null (or absent) means no background, which is what disables the layer.
+     */
+    "ui.backgroundImage": string | null;
+    /** Watermark strength, as a percentage; clamped to 2–40 when read. */
+    "ui.backgroundOpacity": number;
+    "ui.backgroundFill": "cover" | "contain" | "tile" | "center" | string;
+    /** CSS `background-position` keyword pair, e.g. "center center". */
+    "ui.backgroundAnchor": string;
+    /**
+     * User keybinding rebinds as one `catalogId -> chord` map. One key rather than one key per
+     * binding because catalog ids contain dots, which the dotted-path settings store would split
+     * into nested objects.
+     */
+    "keybindings.overrides": Record<string, string>;
     "editor.fontSize": number;
     "editor.fontFamily": string;
     "editor.lineNumbers": boolean;
@@ -68,6 +89,13 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "ui.accentColor": "blue",
     "ui.compactMode": false,
     "ui.reduceMotion": false,
+    "ui.statusBar.visible": true,
+    "ui.titleBarSearch.visible": true,
+    // The `ui.background*` keys deliberately have no defaults here. Persisted values are untrusted
+    // (opacity has to be clamped, fill/anchor whitelisted), so the renderer normalizes them through
+    // readBackgroundSettings — which necessarily carries the fallbacks. Repeating them here would
+    // be a second source of truth that can only drift.
+    "keybindings.overrides": {},
     "editor.fontSize": 14,
     "editor.fontFamily": "Default",
     "editor.lineNumbers": true,

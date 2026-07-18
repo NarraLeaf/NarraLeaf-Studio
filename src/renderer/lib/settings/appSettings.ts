@@ -272,8 +272,8 @@ export const AppSettings: AppSettingDefinition[] = [
         // Nothing is stored under this key — the background's own settings (image, opacity, fill,
         // anchor) are written by the workspace dialog this button opens. Picking a file, previewing
         // the opacity and choosing how it fills the window only make sense together, so they live
-        // in one dialog instead of three unrelated rows here. Same request-signal trick as
-        // `keybindings.open`, because the dialog can only exist in a workspace window.
+        // in one dialog instead of three unrelated rows here. Like `keybindings.open`, the button
+        // asks main to reveal the dialog, because it can only exist in a workspace window.
         key: "ui.backgroundImage.configure",
         category: "appearance",
         scope: SettingScope.Global,
@@ -296,18 +296,18 @@ export const AppSettings: AppSettingDefinition[] = [
         },
         onInvoke: async () => {
             const { getInterface } = await import("@/lib/app/bridge");
-            const { BACKGROUND_OPEN_REQUEST_SETTINGS_KEY } = await import(
-                "@/lib/workspace/services/ui/backgroundSettings"
-            );
-            await getInterface().app.state.setGlobalState(BACKGROUND_OPEN_REQUEST_SETTINGS_KEY, Date.now());
-            window.close();
+            const result = await getInterface().app.requestWorkspaceView("backgroundImage");
+            // Only step aside once the workspace has actually been handed the request; if none was
+            // open, closing would leave the user with nothing to show for the click.
+            if (result.success && result.data.delivered) {
+                window.close();
+            }
         },
     },
     {
         // Nothing is stored under this key — it is only the button's identity. The keybinding
         // table lives in the workspace (the binding registry only exists there), so the button
-        // writes a request signal to global state (broadcast to all windows) and closes this
-        // window to reveal the workspace with the tab open.
+        // asks main to open it in a single workspace window, then closes this one to reveal it.
         key: "keybindings.open",
         category: "workspace",
         scope: SettingScope.Global,
@@ -330,11 +330,10 @@ export const AppSettings: AppSettingDefinition[] = [
         },
         onInvoke: async () => {
             const { getInterface } = await import("@/lib/app/bridge");
-            const { KEYBINDINGS_OPEN_REQUEST_SETTINGS_KEY } = await import(
-                "@/lib/workspace/services/ui/KeybindingService"
-            );
-            await getInterface().app.state.setGlobalState(KEYBINDINGS_OPEN_REQUEST_SETTINGS_KEY, Date.now());
-            window.close();
+            const result = await getInterface().app.requestWorkspaceView("keybindings");
+            if (result.success && result.data.delivered) {
+                window.close();
+            }
         },
     },
     {
