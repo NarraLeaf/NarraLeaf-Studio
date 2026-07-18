@@ -26,6 +26,8 @@ export interface TitleBarProps {
     iconSrc: string;
     className?: string;
     actionBar?: ReactNode;
+    /** Interactive content for the centered slot; takes the place of `title` when provided. */
+    center?: ReactNode;
     controlBar?: ReactNode;
     initialControlAbility?: WindowControlAbility;
     windowControlPolicy?: WindowControlPolicy;
@@ -40,6 +42,7 @@ export function TitleBar({
     iconSrc,
     className = "",
     actionBar,
+    center,
     controlBar,
     initialControlAbility,
     windowControlPolicy = WindowControlPolicy.Standard,
@@ -83,17 +86,28 @@ export function TitleBar({
                 )}
             </div>
 
-            {/* Center - Title (if exists) or spacer */}
-            <div
-                className="pointer-events-none absolute inset-y-0 left-0 right-0 flex min-w-0 items-center justify-center px-2"
-                style={titleSafeAreaStyle}
-            >
-                {title && (
-                    <span className="text-sm text-fg-muted truncate">
-                        {title}
-                    </span>
-                )}
-            </div>
+            {/* Center. An interactive slot participates in the flex row (flex-1 = it gets exactly
+                the space the side clusters leave, so a w-full child can stretch without ever
+                overlapping them); the plain title keeps the absolute overlay so it stays visually
+                centered regardless of asymmetric sides. */}
+            {center ? (
+                <div className="flex h-full min-w-0 flex-1 items-center justify-center px-3">
+                    <ErrorBoundary fallback={() => null}>
+                        <>{center}</>
+                    </ErrorBoundary>
+                </div>
+            ) : (
+                <div
+                    className="pointer-events-none absolute inset-y-0 left-0 right-0 flex min-w-0 items-center justify-center px-2"
+                    style={titleSafeAreaStyle}
+                >
+                    {title && (
+                        <span className="text-sm text-fg-muted truncate">
+                            {title}
+                        </span>
+                    )}
+                </div>
+            )}
 
             {/* Right side - Control Bar and Window Controls */}
             <div className="no-drag ml-auto flex h-full shrink-0 items-center" style={rightSafeAreaStyle}>
