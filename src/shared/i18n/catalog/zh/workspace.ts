@@ -182,7 +182,50 @@ export const workspace = {
                 closeOthers: "关闭其他标签页",
                 closeToRight: "关闭右侧标签页",
                 closeAll: "关闭全部标签页",
+                splitRight: "向右拆分编辑器",
+                splitDown: "向下拆分编辑器",
+                closeOtherGroups: "关闭其他编辑器组",
             },
+        },
+        // 通知中心（控制栏铃铛；所有 toast 的环形历史）。
+        notifications: {
+            title: "通知",
+            empty: "暂无通知",
+            clearAll: "清空",
+        },
+        // 统一编辑器历史（tab 条控件 + 历史面板）。
+        history: {
+            undo: "撤销",
+            redo: "重做",
+            empty: "当前编辑器没有可用的撤销历史",
+            activeEditor: "{name} 的历史",
+        },
+        // 快速打开（mod+p）：可打开实体的模糊选择器。
+        quickOpen: {
+            title: "快速打开",
+            placeholder: "跳转到场景、角色、界面、素材、蓝图…",
+            empty: "没有匹配项",
+            kinds: {
+                scene: "场景",
+                character: "角色",
+                uiSurface: "界面",
+                asset: "素材",
+                blueprint: "蓝图",
+            },
+        },
+        // 底部状态条。各信号只在有意义时出现（运行中/构建中/未保存）。
+        statusBar: {
+            devMode: "开发模式",
+            devModeRunning: "开发模式运行中",
+            preview: "预览",
+            previewRunning: "预览运行中",
+            building: "构建中…",
+            unsavedChanges: "未保存的更改",
+            saveNow: "立即保存",
+            resetZoom: "重置缩放到 100%",
+            shortcuts: "快捷键速查",
+            words: "{count} 字",
+            openDashboard: "打开项目仪表盘",
         },
         // 快捷键自定义（设置 tab）+「?」速查浮层。
         keybindings: {
@@ -211,7 +254,7 @@ export const workspace = {
             // 此前没有自带 i18n key 的目录条目标签。
             catalog: {
                 commandPalette: "显示并运行命令",
-                quickSearch: "在项目里搜索",
+                quickOpen: "快速打开",
                 cheatSheet: "显示快捷键速查",
                 reopenClosedTab: "重新打开关闭的标签",
                 quickSwitchNext: "切换到下一个编辑器标签",

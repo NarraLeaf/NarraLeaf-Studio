@@ -188,7 +188,50 @@ export const workspace = {
                 closeOthers: "Close Other Tabs",
                 closeToRight: "Close Tabs to the Right",
                 closeAll: "Close All Tabs",
+                splitRight: "Split Editor Right",
+                splitDown: "Split Editor Down",
+                closeOtherGroups: "Close Other Editor Groups",
             },
+        },
+        // Notification center (bell in the control bar; ring-buffered history of all toasts).
+        notifications: {
+            title: "Notifications",
+            empty: "No notifications yet.",
+            clearAll: "Clear",
+        },
+        // Unified editor history (tab-strip controls + History panel).
+        history: {
+            undo: "Undo",
+            redo: "Redo",
+            empty: "The active editor has no undo history.",
+            activeEditor: "History for {name}",
+        },
+        // Quick Open (mod+p): fuzzy picker over openable entities.
+        quickOpen: {
+            title: "Quick Open",
+            placeholder: "Go to scene, character, surface, asset, blueprint…",
+            empty: "Nothing matches",
+            kinds: {
+                scene: "Scene",
+                character: "Character",
+                uiSurface: "UI",
+                asset: "Asset",
+                blueprint: "Blueprint",
+            },
+        },
+        // The bottom status strip. Signals only show while meaningful (running/ building/dirty).
+        statusBar: {
+            devMode: "Dev Mode",
+            devModeRunning: "Dev Mode is running",
+            preview: "Preview",
+            previewRunning: "Preview is running",
+            building: "Building…",
+            unsavedChanges: "Unsaved changes",
+            saveNow: "Save now",
+            resetZoom: "Reset zoom to 100%",
+            shortcuts: "Keyboard shortcuts",
+            words: "{count} words",
+            openDashboard: "Open the project dashboard",
         },
         // Keyboard-shortcut customization (settings tab) + the "?" cheat sheet overlay.
         keybindings: {
@@ -217,7 +260,7 @@ export const workspace = {
             // Labels for catalog entries that had no i18n key of their own.
             catalog: {
                 commandPalette: "Show and Run Commands",
-                quickSearch: "Search in Project",
+                quickOpen: "Quick Open",
                 cheatSheet: "Show Keyboard Shortcuts",
                 reopenClosedTab: "Reopen Closed Tab",
                 quickSwitchNext: "Switch to Next Editor Tab",
