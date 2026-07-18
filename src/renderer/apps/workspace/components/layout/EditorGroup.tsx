@@ -3,6 +3,7 @@ import { X, Circle } from "lucide-react";
 import { useRegistry } from "../../registry";
 import { useWorkspace } from "../../context";
 import { EditorGroup as EditorGroupType } from "../../registry/types";
+import { EditorHistoryControls } from "./EditorHistoryControls";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui";
@@ -302,19 +303,20 @@ export function EditorGroup({ group }: EditorGroupProps) {
         >
             {/* Tab Bar */}
             {group.tabs.length > 0 && (
-                <div
-                    className="relative bg-surface-sunken border-b border-edge overflow-x-auto outline-none"
-                    tabIndex={0}
-                    onMouseDown={(e) => {
-                        e.stopPropagation();
-                        focusTabStrip();
-                    }}
-                    onFocus={() => focusTabStrip()}
-                    onWheel={(e) => {
-                        e.preventDefault();
-                        e.currentTarget.scrollLeft += e.deltaY;
-                    }}
-                >
+                <div className="relative flex items-stretch bg-surface-sunken border-b border-edge">
+                    <div
+                        className="min-w-0 flex-1 overflow-x-auto outline-none"
+                        tabIndex={0}
+                        onMouseDown={(e) => {
+                            e.stopPropagation();
+                            focusTabStrip();
+                        }}
+                        onFocus={() => focusTabStrip()}
+                        onWheel={(e) => {
+                            e.preventDefault();
+                            e.currentTarget.scrollLeft += e.deltaY;
+                        }}
+                    >
                     <div className="flex items-stretch">
                         {group.tabs.map((tab) => {
                             const isActive = tab.id === group.focus;
@@ -385,6 +387,9 @@ export function EditorGroup({ group }: EditorGroupProps) {
                             );
                         })}
                     </div>
+                    </div>
+                    {/* Active editor's undo/redo, from the unified history registry. */}
+                    <EditorHistoryControls tabId={group.focus} />
                     <ContextMenu
                         items={tabMenuItems}
                         position={menuState.position}

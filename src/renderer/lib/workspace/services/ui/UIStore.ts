@@ -563,6 +563,127 @@ export class UIStore {
 
     // === Editor Layout ===
 
+    /** Replace the group node with the given id by an arbitrary layout subtree. */
+    private replaceGroupNode(
+        layout: EditorLayout,
+        groupId: string,
+        replacement: (group: EditorGroup) => EditorLayout,
+    ): EditorLayout {
+        if ("tabs" in layout) {
+            return layout.id === groupId ? replacement(layout) : layout;
+        }
+        return {
+            ...layout,
+            first: this.replaceGroupNode(layout.first, groupId, replacement),
+            second: this.replaceGroupNode(layout.second, groupId, replacement),
+        };
+    }
+
+    /** All groups in the layout, first/left before second/right. */
+    private collectGroups(layout: EditorLayout = this.state.editorLayout): EditorGroup[] {
+        if ("tabs" in layout) {
+            return [layout];
+        }
+        return [...this.collectGroups(layout.first), ...this.collectGroups(layout.second)];
+    }
+
+    /** A group/split id not used anywhere in the current layout. */
+    private nextLayoutNodeId(prefix: string): string {
+        const used = new Set<string>();
+        const visit = (layout: EditorLayout) => {
+            used.add(layout.id);
+            if (!("tabs" in layout)) {
+                visit(layout.first);
+                visit(layout.second);
+            }
+        };
+        visit(this.state.editorLayout);
+        for (let index = 1; ; index++) {
+            const candidate = `${prefix}-${index}`;
+            if (!used.has(candidate)) {
+                return candidate;
+            }
+        }
+    }
+
+    /**
+     * Split a group: its active tab moves into a fresh group placed beside it ("horizontal" puts
+     * the new group to the right, "vertical" below). No-op when the group has no tabs — an empty
+     * split has nothing to show. The moved tab keeps focus, now in the new group.
+     */
+    public splitEditorGroup(groupId: string, direction: "horizontal" | "vertical"): boolean {
+        const group = this.findGroup(this.state.editorLayout, groupId);
+        if (!group || group.tabs.length === 0) {
+            return false;
+        }
+        const movedTab = group.tabs.find((tab) => tab.id === group.focus) ?? group.tabs[group.tabs.length - 1];
+        const newGroupId = this.nextLayoutNodeId("group");
+        const splitId = this.nextLayoutNodeId("split");
+
+        this.state.editorLayout = this.replaceGroupNode(this.state.editorLayout, groupId, (target) => {
+            const remaining = target.tabs.filter((tab) => tab.id !== movedTab.id);
+            return {
+                id: splitId,
+                direction,
+                ratio: 0.5,
+                first: {
+                    ...target,
+                    tabs: remaining,
+                    focus: remaining.some((tab) => tab.id === target.focus)
+                        ? target.focus
+                        : remaining[remaining.length - 1]?.id ?? null,
+                },
+                second: { id: newGroupId, tabs: [movedTab], focus: movedTab.id },
+            };
+        });
+
+        this.recordEditorTabFocus(newGroupId, movedTab.id);
+        this.events.emit("editorLayoutChanged", this.state.editorLayout);
+        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+        return true;
+    }
+
+    /**
+     * Collapse the layout to a single group: every other group's tabs append into the kept group
+     * (nothing is closed — "close other groups" merges, it does not discard work).
+     */
+    public closeOtherEditorGroups(keepGroupId: string): boolean {
+        const keep = this.findGroup(this.state.editorLayout, keepGroupId);
+        if (!keep) {
+            return false;
+        }
+        const groups = this.collectGroups();
+        if (groups.length < 2) {
+            return false;
+        }
+
+        const merged: EditorGroup = { ...keep, tabs: [...keep.tabs] };
+        const knownIds = new Set(merged.tabs.map((tab) => tab.id));
+        for (const group of groups) {
+            if (group.id === keepGroupId) {
+                continue;
+            }
+            for (const tab of group.tabs) {
+                if (!knownIds.has(tab.id)) {
+                    knownIds.add(tab.id);
+                    merged.tabs.push(tab);
+                }
+            }
+        }
+        if (!merged.focus || !merged.tabs.some((tab) => tab.id === merged.focus)) {
+            merged.focus = merged.tabs[merged.tabs.length - 1]?.id ?? null;
+        }
+
+        this.state.editorLayout = merged;
+        this.pruneEditorTabFocusHistory();
+        if (merged.focus) {
+            this.recordEditorTabFocus(merged.id, merged.focus);
+        }
+        this.events.emit("editorLayoutChanged", this.state.editorLayout);
+        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+        return true;
+    }
+
     private findGroup(layout: EditorLayout, groupId?: string): EditorGroup | null {
         if ("tabs" in layout) {
             return !groupId || layout.id === groupId ? layout : null;

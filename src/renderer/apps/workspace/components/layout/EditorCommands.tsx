@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useWorkspace } from "../../context";
+import { useKeybinding } from "../../hooks";
 import { useRegistry } from "../../registry";
 import { Services } from "@/lib/workspace/services/services";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
@@ -50,7 +51,51 @@ export function EditorCommands() {
             }
         };
 
+        const groupCount = (): number => {
+            const count = (layout: typeof stateRef.current.editorLayout): number =>
+                "tabs" in layout ? 1 : count(layout.first) + count(layout.second);
+            return count(stateRef.current.editorLayout);
+        };
+
         return commandService.registerMany([
+            {
+                id: "editor:split-right",
+                titleKey: "workspace.shell.commandPalette.editor.splitRight",
+                categoryKey: "workspace.shell.commandPalette.categoryEditor",
+                keybinding: "mod+\\",
+                when: focus => !!activeTarget(focus),
+                run: () => {
+                    const target = activeTarget();
+                    if (target) {
+                        uiService.getStore().splitEditorGroup(target.group.id, "horizontal");
+                    }
+                },
+            },
+            {
+                id: "editor:split-down",
+                titleKey: "workspace.shell.commandPalette.editor.splitDown",
+                categoryKey: "workspace.shell.commandPalette.categoryEditor",
+                keybinding: "mod+alt+\\",
+                when: focus => !!activeTarget(focus),
+                run: () => {
+                    const target = activeTarget();
+                    if (target) {
+                        uiService.getStore().splitEditorGroup(target.group.id, "vertical");
+                    }
+                },
+            },
+            {
+                id: "editor:close-other-groups",
+                titleKey: "workspace.shell.commandPalette.editor.closeOtherGroups",
+                categoryKey: "workspace.shell.commandPalette.categoryEditor",
+                when: focus => !!activeTarget(focus) && groupCount() > 1,
+                run: () => {
+                    const target = activeTarget();
+                    if (target) {
+                        uiService.getStore().closeOtherEditorGroups(target.group.id);
+                    }
+                },
+            },
             {
                 id: "editor:close-tab",
                 titleKey: "workspace.shell.commandPalette.editor.closeTab",
@@ -113,6 +158,35 @@ export function EditorCommands() {
             },
         ]);
     }, [context]);
+
+    // The split chords fire through the keybinding service (customizable via the catalog); the
+    // palette lists the same actions through the registrations above and dedupes by chord.
+    const runSplit = (direction: "horizontal" | "vertical") => {
+        if (!context) {
+            return;
+        }
+        const uiService = context.services.get<UIService>(Services.UI);
+        const target = findActiveEditorTarget(stateRef.current.editorLayout, uiService.focus.getFocus());
+        if (target) {
+            uiService.getStore().splitEditorGroup(target.group.id, direction);
+        }
+    };
+    const runSplitRef = useRef(runSplit);
+    runSplitRef.current = runSplit;
+
+    useKeybinding({
+        id: "editor-split-right",
+        key: "mod+\\",
+        description: "Split editor to the right",
+        handler: () => runSplitRef.current("horizontal"),
+    });
+
+    useKeybinding({
+        id: "editor-split-down",
+        key: "mod+alt+\\",
+        description: "Split editor down",
+        handler: () => runSplitRef.current("vertical"),
+    });
 
     return null;
 }
