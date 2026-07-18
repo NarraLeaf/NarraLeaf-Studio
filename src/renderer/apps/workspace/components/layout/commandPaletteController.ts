@@ -49,6 +49,38 @@ export function closeCommandPalette(): void {
     bridge?.close();
 }
 
+// --- Box presence, published box → palette --------------------------------
+
+/**
+ * Whether a title-bar search box is on screen. It can be switched off in settings, and the
+ * palette must then grow its own input inside the candidate card — otherwise `mod+shift+p` would
+ * open a list with nowhere to type. Reported by the box itself rather than sniffed from the DOM,
+ * so the palette never renders a second input for one frame before the box is measured.
+ */
+let boxPresent = false;
+const boxListeners = new Set<() => void>();
+
+export function setCommandPaletteBoxPresent(present: boolean): void {
+    if (boxPresent === present) {
+        return;
+    }
+    boxPresent = present;
+    for (const listener of boxListeners) {
+        listener();
+    }
+}
+
+export function isCommandPaletteBoxPresent(): boolean {
+    return boxPresent;
+}
+
+export function subscribeCommandPaletteBoxPresence(listener: () => void): () => void {
+    boxListeners.add(listener);
+    return () => {
+        boxListeners.delete(listener);
+    };
+}
+
 // --- Session state, published palette → box -------------------------------
 
 export interface PaletteSessionState {

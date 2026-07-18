@@ -98,19 +98,15 @@ export const settings = {
             label: "Show status bar",
             description: "The slim strip along the bottom of the workspace (runtime status, word count, quick toggles).",
         },
+        titleBarSearchVisible: {
+            label: "Show title bar search box",
+            description: "The search pill in the middle of the title bar, which opens search and the command palette.",
+        },
         backgroundImage: {
             label: "Custom background image",
             description: "Overlay a picture of your choice across the workspace, watermark-style.",
-            action: "Choose…",
-        },
-        backgroundImageClear: {
-            label: "Remove background image",
-            description: "Go back to the plain workspace background.",
-            action: "Remove",
-        },
-        backgroundOpacity: {
-            label: "Background image opacity",
-            description: "How strongly the custom background shows through (percent).",
+            action: "Configure…",
+            needsWorkspace: "Open a workspace to configure the background image.",
         },
         openKeybindings: {
             label: "Keyboard shortcuts",
