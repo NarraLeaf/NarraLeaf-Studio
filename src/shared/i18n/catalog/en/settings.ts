@@ -94,6 +94,24 @@ export const settings = {
             action: "Clear",
             confirm: "Clear everything",
         },
+        statusBarVisible: {
+            label: "Show status bar",
+            description: "The slim strip along the bottom of the workspace (runtime status, word count, quick toggles).",
+        },
+        backgroundImage: {
+            label: "Custom background image",
+            description: "Overlay a picture of your choice across the workspace, watermark-style.",
+            action: "Choose…",
+        },
+        backgroundImageClear: {
+            label: "Remove background image",
+            description: "Go back to the plain workspace background.",
+            action: "Remove",
+        },
+        backgroundOpacity: {
+            label: "Background image opacity",
+            description: "How strongly the custom background shows through (percent).",
+        },
         openKeybindings: {
             label: "Keyboard shortcuts",
             description: "Customize keyboard shortcuts in the workspace's searchable binding table.",

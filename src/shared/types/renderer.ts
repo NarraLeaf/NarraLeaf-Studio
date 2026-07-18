@@ -187,6 +187,10 @@ export interface RendererPreloadedInterface {
         countWorkspaceWindows(): Promise<RequestStatus<{ count: number }>>;
         /** Open an http(s) URL in the system browser (other schemes are refused). */
         openExternal(url: string): Promise<RequestStatus<void>>;
+        /** Pick + store a custom background image; returns the stored filename (null = cancelled). */
+        pickBackgroundImage(): Promise<RequestStatus<{ file: string | null }>>;
+        /** Read a stored background image's bytes (basename lookup only). */
+        readBackgroundImage(file: string): Promise<RequestStatus<{ data: Uint8Array | null }>>;
         launchProjectWizard(props: WindowProps[WindowAppType.ProjectWizard]): Promise<RequestStatus<{ created: boolean; projectPath: string } | null>>;
         state: {
             getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<{ value: GlobalStateValue<K> }>>;

@@ -243,6 +243,76 @@ export const AppSettings: AppSettingDefinition[] = [
         onInvoke: clearAllProjectStats,
     },
     {
+        // Read by WorkspaceLayout: hides the bottom status bar and gives its height back to the
+        // dock layout when off.
+        key: "ui.statusBar.visible",
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Show status bar",
+        labelKey: "settings.items.statusBarVisible.label",
+        description: "The slim strip along the bottom of the workspace (runtime status, word count, quick toggles).",
+        descriptionKey: "settings.items.statusBarVisible.description",
+        defaultValue: true,
+    },
+    {
+        // Stores the filename inside userData/backgrounds (written by the pick handler). The
+        // workspace overlays this image across the whole window at the opacity below.
+        key: "ui.backgroundImage",
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Action,
+        label: "Custom background image",
+        labelKey: "settings.items.backgroundImage.label",
+        description: "Overlay a picture of your choice across the workspace, watermark-style.",
+        descriptionKey: "settings.items.backgroundImage.description",
+        defaultValue: null,
+        actionLabel: "Choose…",
+        actionLabelKey: "settings.items.backgroundImage.action",
+        skipConfirm: true,
+        onInvoke: async () => {
+            const { getInterface } = await import("@/lib/app/bridge");
+            const result = await getInterface().app.pickBackgroundImage();
+            if (result.success && result.data.file) {
+                await getInterface().app.state.setGlobalState("ui.backgroundImage", result.data.file);
+            }
+        },
+    },
+    {
+        key: "ui.backgroundImage.clear",
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Action,
+        label: "Remove background image",
+        labelKey: "settings.items.backgroundImageClear.label",
+        description: "Go back to the plain workspace background.",
+        descriptionKey: "settings.items.backgroundImageClear.description",
+        defaultValue: null,
+        actionLabel: "Remove",
+        actionLabelKey: "settings.items.backgroundImageClear.action",
+        skipConfirm: true,
+        onInvoke: async () => {
+            const { getInterface } = await import("@/lib/app/bridge");
+            await getInterface().app.state.setGlobalState("ui.backgroundImage", null);
+        },
+    },
+    {
+        // Read by the workspace's background overlay; percent so the slider reads naturally.
+        key: "ui.backgroundOpacity",
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Slider,
+        label: "Background image opacity",
+        labelKey: "settings.items.backgroundOpacity.label",
+        description: "How strongly the custom background shows through (percent).",
+        descriptionKey: "settings.items.backgroundOpacity.description",
+        defaultValue: 8,
+        min: 2,
+        max: 40,
+        step: 1,
+        unit: "%",
+    },
+    {
         // Nothing is stored under this key — it is only the button's identity. The keybinding
         // table lives in the workspace (the binding registry only exists there), so the button
         // writes a request signal to global state (broadcast to all windows) and closes this

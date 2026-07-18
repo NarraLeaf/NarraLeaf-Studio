@@ -49,6 +49,8 @@ export enum IPCEventType {
     appLaunchSettings = "app.settings.launchWindow",
     appCountWorkspaceWindows = "app.countWorkspaceWindows",
     appOpenExternal = "app.openExternal",
+    appPickBackgroundImage = "app.pickBackgroundImage",
+    appReadBackgroundImage = "app.readBackgroundImage",
     appGlobalStateGet = "app.globalState.get",
     appGlobalStateSet = "app.globalState.set",
     appGlobalStateGetAll = "app.globalState.getAll",
@@ -294,6 +296,25 @@ export type IPCEvents = {
             url: string;
         },
         response: void;
+    };
+    [IPCEventType.appPickBackgroundImage]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: {
+            /** Stored filename inside userData/backgrounds, or null when the dialog was cancelled. */
+            file: string | null;
+        };
+    };
+    [IPCEventType.appReadBackgroundImage]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            file: string;
+        },
+        response: {
+            data: Uint8Array | null;
+        };
     };
     [IPCEventType.appGlobalStateGet]: {
         type: IPCMessageType.request,

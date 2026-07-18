@@ -205,6 +205,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         launchSettings: (props: WindowProps[WindowAppType.Settings]) => ipcClient.invoke(IPCEventType.appLaunchSettings, { props }),
         countWorkspaceWindows: () => ipcClient.invoke(IPCEventType.appCountWorkspaceWindows, {}),
         openExternal: (url: string) => ipcClient.invoke(IPCEventType.appOpenExternal, { url }),
+        pickBackgroundImage: () => ipcClient.invoke(IPCEventType.appPickBackgroundImage, {}),
+        readBackgroundImage: (file: string) => ipcClient.invoke(IPCEventType.appReadBackgroundImage, { file }),
         launchProjectWizard: () => ipcClient.invoke(IPCEventType.projectWizardLaunch, {}) as Promise<RequestStatus<{created: boolean; projectPath: string} | null>>,    
         state: {
             getGlobalState: <K extends GlobalStateKeys>(key: K) => ipcClient.invoke(IPCEventType.appGlobalStateGet, { key }) as Promise<RequestStatus<{value: GlobalStateValue<K>}>>,
