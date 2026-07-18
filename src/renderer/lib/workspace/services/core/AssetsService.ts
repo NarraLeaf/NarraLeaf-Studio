@@ -501,6 +501,19 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return this.getLocalAssetsManager().importFromPaths(type, paths);
     }
 
+    /**
+     * Import bytes produced in the renderer (an edited audio clip, say) as a new asset. It stages
+     * the bytes in a temp file and reuses the normal import path, so format validation, naming and
+     * metadata behave exactly as they do for a file the user picked.
+     */
+    public async importFromBytes<T extends AssetType>(
+        type: T,
+        fileName: string,
+        bytes: Uint8Array
+    ): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
+        return this.getLocalAssetsManager().importFromBytes(type, fileName, bytes);
+    }
+
     // Magic Tag functionality
     /**
      * Analyze filenames and generate a magic tag template (auto-detect mode)
