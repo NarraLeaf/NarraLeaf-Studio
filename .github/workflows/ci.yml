@@ -57,3 +57,62 @@ jobs:
         run: yarn test
         env:
           REQUIRE_ANDROID_SDK_ORACLE: "1"
+
+  # Package the Studio itself for every desktop target on every run, so a change
+  # that only breaks packaging (native deps, electron-builder config, per-arch
+  # binaries) is caught here and not on release day. Artifacts are uploaded for
+  # manual smoke-testing; nothing is published from CI.
+  build:
+    strategy:
+      # One broken platform must not hide the results of the other two.
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            args: --win --x64
+          - name: macos-arm64
+            os: macos-latest
+            args: --mac --arm64
+          - name: macos-x64
+            os: macos-latest
+            args: --mac --x64
+
+    name: build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      # Same reasoning as the verify job: yarn.lock is deliberately not
+      # committed, so an immutable install would fail on every run.
+      - name: Install dependencies
+        run: yarn install --no-immutable
+
+      # --publish never: packaging is the test here, releasing is not.
+      # CSC_IDENTITY_AUTO_DISCOVERY=false keeps electron-builder from hunting
+      # for a signing identity the runner does not have.
+      - name: Package
+        run: yarn pack-electron ${{ matrix.args }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      # Only the installers — the unpacked app directories in build/ are
+      # hundreds of megabytes of intermediate output.
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: narraleaf-studio-${{ matrix.name }}
+          path: |
+            build/*.exe
+            build/*.dmg
+            build/*.zip
+          if-no-files-found: error
