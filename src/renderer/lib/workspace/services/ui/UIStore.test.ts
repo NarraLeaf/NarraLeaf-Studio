@@ -165,3 +165,69 @@ describe("UIStore panel visibility", () => {
         expect(store.getPanelVisibility().p).toBe(false);
     });
 });
+
+describe("UIStore editor group splitting", () => {
+    function groupCount(store: UIStore): number {
+        const walk = (layout: ReturnType<UIStore["getEditorLayout"]>): number =>
+            "tabs" in layout ? 1 : walk(layout.first) + walk(layout.second);
+        return walk(store.getEditorLayout());
+    }
+
+    it("refuses to split a group with a single tab, which would leave an empty pane", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("a"));
+
+        expect(store.splitEditorGroup("main", "horizontal")).toBe(false);
+        expect(groupCount(store)).toBe(1);
+        expect(mainGroup(store).tabs.map(t => t.id)).toEqual(["a"]);
+    });
+
+    it("refuses to split an empty group", () => {
+        const store = new UIStore();
+        expect(store.splitEditorGroup("main", "horizontal")).toBe(false);
+        expect(groupCount(store)).toBe(1);
+    });
+
+    it("moves the active tab into a new group beside it, leaving the rest behind", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("a"));
+        store.openEditorTabInGroup(tab("b"));
+        store.setActiveEditorTabInGroup("b", "main");
+
+        expect(store.splitEditorGroup("main", "horizontal")).toBe(true);
+
+        const layout = store.getEditorLayout();
+        if ("tabs" in layout) {
+            throw new Error("Expected a split layout");
+        }
+        expect(layout.direction).toBe("horizontal");
+        expect("tabs" in layout.first && layout.first.tabs.map(t => t.id)).toEqual(["a"]);
+        expect("tabs" in layout.second && layout.second.tabs.map(t => t.id)).toEqual(["b"]);
+    });
+
+    it("splits the named tab rather than the focused one when given an id", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("a"));
+        store.openEditorTabInGroup(tab("b"));
+        store.setActiveEditorTabInGroup("b", "main");
+
+        expect(store.splitEditorGroup("main", "vertical", "a")).toBe(true);
+
+        const layout = store.getEditorLayout();
+        if ("tabs" in layout) {
+            throw new Error("Expected a split layout");
+        }
+        expect("tabs" in layout.second && layout.second.tabs.map(t => t.id)).toEqual(["a"]);
+    });
+
+    it("merges every other group's tabs back instead of discarding them", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("a"));
+        store.openEditorTabInGroup(tab("b"));
+        store.splitEditorGroup("main", "horizontal");
+
+        expect(store.closeOtherEditorGroups("main")).toBe(true);
+        expect(groupCount(store)).toBe(1);
+        expect(mainGroup(store).tabs.map(t => t.id).sort()).toEqual(["a", "b"]);
+    });
+});

@@ -1,5 +1,4 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useEditorHistoryProvider } from "@/apps/workspace/components/layout/editorHistoryRegistry";
 import type {
     KeyboardEvent as ReactKeyboardEvent,
     MouseEvent as ReactMouseEvent,
@@ -762,15 +761,6 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
     const stepPlayhead = useCallback((frames: number) => {
         setPlayheadMs(current => Math.min(durationRef.current, stepStoryMotionTimeByFrames(current, frames, STORY_MOTION_FPS)));
     }, []);
-
-    // Unified history: stack depths are read per render (timeline edits re-render this tab), and
-    // undo/redo are safe no-ops on empty stacks.
-    useEditorHistoryProvider(tabId, {
-        canUndo: undoStackRef.current.length > 0,
-        canRedo: redoStackRef.current.length > 0,
-        undo: undoTimelineEdit,
-        redo: redoTimelineEdit,
-    });
 
     const keybindings = useMemo<KeybindingDefinition[]>(() => [
         {
