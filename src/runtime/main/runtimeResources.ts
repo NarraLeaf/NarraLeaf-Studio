@@ -53,19 +53,15 @@ export interface RuntimeResources {
 
 /**
  * Pick the backend for this packed app: the consolidated store when present,
- * loose files otherwise. `packKey` and `aux` are two opaque tokens the
- * protection layer requires to open a protected store; both are substituted into
- * main.js at pack time and are only consulted when a store exists. `aux` is
- * base64-encoded.
+ * loose files otherwise. A protected store is opened purely through the support
+ * binary in the app dir — the protection layer carries no key material in JS.
  */
-export async function createRuntimeResources(appDir: string, packKey: string, aux: string): Promise<RuntimeResources> {
+export async function createRuntimeResources(appDir: string): Promise<RuntimeResources> {
     const bundlePath = path.join(appDir, RUNTIME_BUNDLE_FILENAME);
     if (await fileExists(bundlePath)) {
         const reader = await openSealedBundle(
             path.join(appDir, RUNTIME_SUPPORT_FILENAME),
             bundlePath,
-            packKey,
-            Buffer.from(aux, "base64"),
         );
         return new SealedRuntimeResources(reader);
     }
