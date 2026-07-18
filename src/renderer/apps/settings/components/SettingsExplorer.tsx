@@ -8,7 +8,9 @@ import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox"
 import { Loader2 } from "lucide-react";
 import { SettingValueType } from "@/lib/settings/types";
 import { SettingCategory, SettingDescriptor } from "@/lib/settings/models";
+import { filterCategoryEntries } from "@/lib/settings/searchSettings";
 import { useTranslation } from "@/lib/i18n";
+import { SETTING_PANELS } from "../panels";
 
 /** `null` is the Action type's stand-in: it renders a button and stores nothing. */
 export type SettingValue = string | number | boolean | null;
@@ -27,6 +29,9 @@ interface SettingsExplorerProps<T> {
     /** Runs an `Action` entry once the user has confirmed it. Required if any entry is an Action. */
     onInvokeAction?: (setting: T, descriptor: SettingDescriptor) => Promise<void>;
     selectedCategory?: SettingCategory["key"];
+    /** A specific row to scroll to and flash; takes precedence over `selectedCategory`. */
+    selectedSettingId?: string;
+    /** Bump to re-run the scroll even when the selection itself did not change. */
     selectedCategoryScrollSignal?: number;
     searchQuery?: string;
     onSearchChange?: (value: string) => void;
@@ -82,6 +87,7 @@ export function SettingsExplorer<T>({
     onCommit,
     onInvokeAction,
     selectedCategory,
+    selectedSettingId,
     selectedCategoryScrollSignal,
     searchQuery,
     onSearchChange,
@@ -98,8 +104,11 @@ export function SettingsExplorer<T>({
     const [pendingBooleans, setPendingBooleans] = useState<Record<string, boolean>>({});
     /** Action ids awaiting their second, confirming click. */
     const [confirmingActions, setConfirmingActions] = useState<Set<string>>(new Set());
+    /** The row a navigation click just landed on; cleared on a timer so the tint is a hint, not a state. */
+    const [flashedSettingId, setFlashedSettingId] = useState<string | null>(null);
     const scrollContainerRef = useRef<HTMLDivElement | null>(null);
     const categoryRefs = useRef<Record<string, HTMLElement | null>>({});
+    const settingRefs = useRef<Record<string, HTMLElement | null>>({});
 
     const isSearchControlled = typeof searchQuery === "string";
     const effectiveSearch = isSearchControlled ? searchQuery! : localSearch;
@@ -126,31 +135,10 @@ export function SettingsExplorer<T>({
     }, [categories, getSettingsForCategory, describeSetting]);
 
     const filteredCategories = useMemo(() => {
-        if (!effectiveSearch.trim()) {
-            return categoryEntries;
-        }
-        const query = effectiveSearch.toLowerCase();
         return categoryEntries
             .map(entry => {
-                const matched = entry.entries.filter(item => {
-                    const { descriptor } = item;
-                    const targets = [
-                        descriptor.label,
-                        descriptor.description,
-                        descriptor.id,
-                        ...(descriptor.options ?? []),
-                    ];
-                    return targets.some(text => text.toLowerCase().includes(query));
-                });
-                const categoryMatch = entry.category.label.toLowerCase().includes(query)
-                    || entry.category.description.toLowerCase().includes(query);
-                if (categoryMatch || matched.length > 0) {
-                    return {
-                        category: entry.category,
-                        entries: matched.length > 0 ? matched : entry.entries,
-                    };
-                }
-                return null;
+                const matched = filterCategoryEntries(entry.category, entry.entries, effectiveSearch);
+                return matched ? { category: entry.category, entries: matched } : null;
             })
             .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
     }, [categoryEntries, effectiveSearch]);
@@ -426,31 +414,45 @@ export function SettingsExplorer<T>({
         }
     };
 
+    /**
+     * A Custom entry is its own editing surface, so it gets the full width with only its name
+     * above it — a label/control row cannot hold a table, and a description under the heading
+     * would just repeat what the panel's own chrome already says.
+     */
+    const renderPanel = (entry: SettingEntry<T>) => {
+        const { descriptor } = entry;
+        const Panel = descriptor.panel ? SETTING_PANELS[descriptor.panel] : undefined;
+        if (!Panel) {
+            return null;
+        }
+        return (
+            <div
+                key={descriptor.id}
+                ref={(node) => setSettingRef(descriptor.id, node)}
+                className={`rounded-md px-2 py-2 transition-colors duration-500 ${flashedSettingId === descriptor.id ? "bg-fill" : ""}`}
+            >
+                <span className="text-sm font-medium text-fg">{descriptor.label}</span>
+                <div className="mt-2">
+                    <Panel />
+                </div>
+            </div>
+        );
+    };
+
     const renderSetting = (entry: SettingEntry<T>) => {
         const { descriptor } = entry;
         const isSaving = saving.has(descriptor.id);
         const error = errors[descriptor.id];
-        if (descriptor.type === SettingValueType.Boolean) {
-            // boolean control already renders loader
-            return (
-                <div key={descriptor.id} className="px-2 py-2 transition duration-200 hover:bg-fill-subtle">
-                    <div className="flex items-start justify-between gap-4">
-                        <div className="flex flex-col gap-1 flex-1 min-w-0">
-                            <span className="text-sm font-medium text-fg">{descriptor.label}</span>
-                            <span className="text-xs text-fg-subtle">{descriptor.description}</span>
-                        </div>
-                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                            {renderControl(entry)}
-                            {isSaving && <Loader2 className="w-3 h-3 text-primary animate-spin" />}
-                        </div>
-                    </div>
-                    {error && <p className="mt-1 text-xs text-danger">{error}</p>}
-                </div>
-            );
+        if (descriptor.type === SettingValueType.Custom) {
+            return renderPanel(entry);
         }
-
+        // Boolean rows differ only in that their control renders its own loader.
         return (
-            <div key={descriptor.id} className="px-2 py-2 transition duration-200 hover:bg-fill-subtle">
+            <div
+                key={descriptor.id}
+                ref={(node) => setSettingRef(descriptor.id, node)}
+                className={`rounded-md px-2 py-2 transition duration-200 hover:bg-fill-subtle ${flashedSettingId === descriptor.id ? "bg-fill" : ""}`}
+            >
                 <div className="flex items-start justify-between gap-4">
                     <div className="flex flex-col gap-1 flex-1 min-w-0">
                         <span className="text-sm font-medium text-fg">{descriptor.label}</span>
@@ -468,26 +470,46 @@ export function SettingsExplorer<T>({
 
     const categoryEntriesToRender = filteredCategories.length > 0 ? filteredCategories : [];
 
+    // Scroll to whatever the navigation last pointed at: a specific row when one was named
+    // (opening Settings straight at the shortcut table), else the top of its category.
     useEffect(() => {
-        if (!selectedCategory || loading) {
+        if (loading) {
             return;
         }
+        const target = selectedSettingId
+            ? settingRefs.current[selectedSettingId]
+            : selectedCategory
+                ? categoryRefs.current[selectedCategory]
+                : null;
         const container = scrollContainerRef.current;
-        const section = categoryRefs.current[selectedCategory];
-        if (!container || !section) {
+        if (!container || !target) {
             return;
         }
         const containerRect = container.getBoundingClientRect();
-        const sectionRect = section.getBoundingClientRect();
-        const nextTop = container.scrollTop + sectionRect.top - containerRect.top - 12;
+        const targetRect = target.getBoundingClientRect();
+        const nextTop = container.scrollTop + targetRect.top - containerRect.top - 12;
         container.scrollTo({
             top: Math.max(0, nextTop),
             behavior: "smooth",
         });
-    }, [loading, selectedCategory, selectedCategoryScrollSignal, effectiveSearch]);
+    }, [loading, selectedCategory, selectedSettingId, selectedCategoryScrollSignal, effectiveSearch]);
+
+    // Tint the row that was navigated to, so a jump into a long category is visibly *at* something.
+    useEffect(() => {
+        if (loading || !selectedSettingId) {
+            return;
+        }
+        setFlashedSettingId(selectedSettingId);
+        const timer = window.setTimeout(() => setFlashedSettingId(null), 1600);
+        return () => window.clearTimeout(timer);
+    }, [loading, selectedSettingId, selectedCategoryScrollSignal]);
 
     const setCategoryRef = useCallback((categoryKey: SettingCategory["key"], node: HTMLElement | null) => {
         categoryRefs.current[categoryKey] = node;
+    }, []);
+
+    const setSettingRef = useCallback((settingId: string, node: HTMLElement | null) => {
+        settingRefs.current[settingId] = node;
     }, []);
 
     return (

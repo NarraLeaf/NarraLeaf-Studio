@@ -161,6 +161,7 @@ export enum IPCEventType {
     workspaceMenuSync = "workspace.menu.sync",
     workspaceReportLoadResult = "workspace.reportLoadResult",
     workspaceOpenView = "workspace.openView",
+    settingsHighlight = "settings.highlight",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -1232,6 +1233,16 @@ export type IPCMenuEvents = {
         type: IPCMessageType.message,
         consumer: IPCType.Client,
         data: { view: WorkspaceViewRequest },
+        response: never;
+    };
+    /**
+     * Main telling the already-open Settings window which setting to reveal. Sent instead of
+     * launching a second window when one is open, so "open settings at X" is idempotent.
+     */
+    [IPCEventType.settingsHighlight]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: { highlight: string },
         response: never;
     };
 };

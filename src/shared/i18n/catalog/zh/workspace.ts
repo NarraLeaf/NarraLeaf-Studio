@@ -242,6 +242,18 @@ export const workspace = {
             shortcuts: "快捷键速查",
             words: "{count} 字",
             openDashboard: "打开项目仪表盘",
+            // 已注册状态栏项目的名称，仅在状态栏右键开关菜单中显示。
+            entries: {
+                devMode: "开发模式状态",
+                preview: "预览状态",
+                build: "构建状态",
+                unsavedChanges: "未保存的更改",
+                wordCount: "字数统计",
+                shortcuts: "快捷键速查",
+                notifications: "通知",
+                theme: "主题切换",
+                zoom: "缩放比例",
+            },
         },
         // 快捷键自定义（设置 tab）+「?」速查浮层。
         keybindings: {

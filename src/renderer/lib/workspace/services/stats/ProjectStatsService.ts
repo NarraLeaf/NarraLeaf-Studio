@@ -1,6 +1,7 @@
 import {
     PROJECT_STATS_SETTINGS_KEY_PREFIX,
     ProjectStatsV1,
+    clipBuildLog,
     createEmptyActivityDay,
     createEmptyProjectStats,
     parseProjectStats,
@@ -11,7 +12,8 @@ import type { GameBuildStateSnapshot, GameBuildStatus } from "@shared/types/game
 import { stableProjectKeyToken } from "@shared/utils/stableKeyHash";
 import { getInterface } from "@/lib/app/bridge";
 import { computeTotalWordCount } from "@/lib/workspace/stats/projectStatsSnapshot";
-import { BuildService } from "../core/BuildService";
+import { BUILD_CONSOLE_CHANNEL, BUILD_CONSOLE_SOURCE, BuildService } from "../core/BuildService";
+import { ConsoleService, type ConsoleEntry } from "../core/ConsoleService";
 import { ProjectService } from "../core/ProjectService";
 import { StoryService } from "../story/StoryService";
 import { GlobalSettingsService } from "../GlobalSettingsService";
@@ -273,13 +275,38 @@ export class ProjectStatsService extends Service<ProjectStatsService> {
         // previous-status guard above is what keeps one build from being recorded repeatedly.
         const startedAt = state.startedAt ?? state.finishedAt ?? Date.now();
         const finishedAt = state.finishedAt ?? Date.now();
+        const { log, omitted } = clipBuildLog(this.collectBuildLog(startedAt));
         this.stats.builds.push({
             startedAt,
             finishedAt,
             durationMs: Math.max(0, finishedAt - startedAt),
             ok: state.status === "done",
+            ...(log.length > 0 ? { log } : {}),
+            ...(omitted > 0 ? { logOmittedLines: omitted } : {}),
         });
         this.emitAndPersist();
+    }
+
+    /**
+     * This build's console output, read from the live console buffer at the moment the build ends.
+     *
+     * Two filters make that buffer specific to one build: the `Build` source separates the
+     * pipeline's lines from the Dev Mode and preview output that shares the channel, and the
+     * timestamp floor drops earlier builds. The console keeps a bounded buffer, so a very long
+     * build can lose its own opening lines here — the same lines the console panel has already
+     * dropped, so the record matches what the author could still have read.
+     */
+    private collectBuildLog(startedAt: number): string[] {
+        try {
+            return this.getContext()
+                .services.get<ConsoleService>(Services.Console)
+                .getEntries(BUILD_CONSOLE_CHANNEL)
+                .filter(entry => entry.source === BUILD_CONSOLE_SOURCE && entry.timestamp >= startedAt)
+                .map(formatBuildLogLine);
+        } catch (error) {
+            console.warn("[ProjectStats] Build log capture unavailable", error);
+            return [];
+        }
     }
 
     private startActivityTracking(): void {
@@ -370,4 +397,19 @@ export class ProjectStatsService extends Service<ProjectStatsService> {
             console.warn("[ProjectStats] Failed to persist", error);
         }
     }
+}
+
+/**
+ * One archived log line: `[HH:MM:SS] LEVEL   message`. The console panel's own export uses the same
+ * shape, minus the `[Build]` source prefix — every line in a build record has that source already.
+ */
+function formatBuildLogLine(entry: ConsoleEntry): string {
+    const time = new Date(entry.timestamp).toLocaleTimeString([], {
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+    });
+    const text = entry.segments.map(segment => segment.text).join("");
+    return `[${time}] ${entry.level.toUpperCase().padEnd(7)} ${text}`;
 }

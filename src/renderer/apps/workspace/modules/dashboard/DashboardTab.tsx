@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronRight, XCircle } from "lucide-react";
 import { createEmptyProjectStats, type BuildActivityRecord, type ProjectStatsV1 } from "@shared/types/stats";
 import {
     DASHBOARD_OPEN_DEFAULT_KEY,
@@ -18,10 +18,11 @@ import {
     type ProjectStatsSnapshot,
 } from "@/lib/workspace/stats/projectStatsSnapshot";
 import { Button, Switch } from "@/lib/components/elements";
+import { cn } from "@/lib/utils/cn";
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
-import { BarList, DashboardSection, NameChips, StatTile, type BarListItem } from "./DashboardPrimitives";
+import { DashboardSection, StatTile } from "./DashboardPrimitives";
 import { WritingActivityChart } from "./WritingActivityChart";
 import {
     buildActivityTimeline,
@@ -34,9 +35,7 @@ import {
     summarizeActivityWindow,
 } from "./dashboardModel";
 
-const TOP_LIST_LIMIT = 8;
 const BUILD_HISTORY_LIMIT = 8;
-const NAME_LIST_LIMIT = 12;
 
 function useProjectStats(statsService: ProjectStatsService | null): ProjectStatsV1 {
     const [stats, setStats] = useState<ProjectStatsV1>(
@@ -56,27 +55,64 @@ function useProjectStats(statsService: ProjectStatsService | null): ProjectStats
     return stats;
 }
 
+/**
+ * One build, expanding to the console output that build produced. The log is archived text, not
+ * live console state — it is printed back verbatim and never re-filtered or re-styled, so a plain
+ * read-only code block is the whole of it.
+ */
 function BuildRow({ build, now }: { build: BuildActivityRecord; now: number }) {
     const translator = useTranslation();
-    const { t } = translator;
+    const { t, formatNumber } = translator;
+    const [open, setOpen] = useState(false);
 
     return (
-        <li className="flex items-center justify-between gap-3 rounded-md border border-edge bg-fill-subtle px-3 py-2">
-            <div className="flex min-w-0 items-center gap-2">
-                {build.ok ? (
-                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" />
-                ) : (
-                    <XCircle className="h-3.5 w-3.5 shrink-0 text-danger" />
-                )}
-                <span className="truncate text-xs text-fg-muted">
-                    {build.ok ? t("dashboard.builds.ok") : t("dashboard.builds.failed")}
-                </span>
-                {build.platform && <span className="truncate text-2xs text-fg-subtle">{build.platform}</span>}
-            </div>
-            <div className="flex shrink-0 items-center gap-3 text-2xs tabular-nums text-fg-subtle">
-                <span>{formatBuildDuration(translator, build.durationMs)}</span>
-                <span>{formatRelativeTime(translator, build.finishedAt, now)}</span>
-            </div>
+        <li className="overflow-hidden rounded-md border border-edge bg-fill-subtle">
+            <button
+                type="button"
+                aria-expanded={open}
+                onClick={() => setOpen(value => !value)}
+                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors hover:bg-fill"
+            >
+                <div className="flex min-w-0 items-center gap-2">
+                    <ChevronRight
+                        className={cn(
+                            "h-3.5 w-3.5 shrink-0 text-fg-subtle transition-transform duration-200",
+                            open && "rotate-90",
+                        )}
+                    />
+                    {build.ok ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" />
+                    ) : (
+                        <XCircle className="h-3.5 w-3.5 shrink-0 text-danger" />
+                    )}
+                    <span className="truncate text-xs text-fg-muted">
+                        {build.ok ? t("dashboard.builds.ok") : t("dashboard.builds.failed")}
+                    </span>
+                    {build.platform && <span className="truncate text-2xs text-fg-subtle">{build.platform}</span>}
+                </div>
+                <div className="flex shrink-0 items-center gap-3 text-2xs tabular-nums text-fg-subtle">
+                    <span>{formatBuildDuration(translator, build.durationMs)}</span>
+                    <span>{formatRelativeTime(translator, build.finishedAt, now)}</span>
+                </div>
+            </button>
+            {open && (
+                <div className="flex flex-col gap-1 border-t border-edge px-3 py-2">
+                    {build.logOmittedLines ? (
+                        <span className="text-2xs text-fg-subtle">
+                            {t("dashboard.builds.logOmitted", { count: formatNumber(build.logOmittedLines) })}
+                        </span>
+                    ) : null}
+                    {build.log?.length ? (
+                        /* Wraps rather than scrolls sideways: the dashboard column is narrow, and a
+                           build's payload — the error, the artifact path — is at the end of the line. */
+                        <pre className="max-h-72 select-text overflow-y-auto whitespace-pre-wrap break-words rounded border border-edge bg-surface px-2.5 py-2 font-mono text-2xs leading-5 text-fg-muted">
+                            {build.log.join("\n")}
+                        </pre>
+                    ) : (
+                        <span className="text-2xs text-fg-subtle">{t("dashboard.builds.logEmpty")}</span>
+                    )}
+                </div>
+            )}
         </li>
     );
 }
@@ -204,31 +240,6 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
     const recentBuilds = useMemo(
         () => [...stats.builds].sort((a, b) => b.finishedAt - a.finishedAt).slice(0, BUILD_HISTORY_LIMIT),
         [stats],
-    );
-
-    const castItems = useMemo<BarListItem[]>(
-        () =>
-            (snapshot?.topCharacters ?? []).slice(0, TOP_LIST_LIMIT).map(character => ({
-                id: character.characterId,
-                name: character.name,
-                value: character.words,
-                detail: `${tn("dashboard.units.lines", character.lines, { count: character.lines })} · ${tn("dashboard.units.words", character.words, { count: character.words })}`,
-            })),
-        [snapshot, tn],
-    );
-
-    const sceneItems = useMemo<BarListItem[]>(
-        () =>
-            (snapshot?.topScenes ?? [])
-                .filter(scene => scene.words > 0)
-                .slice(0, TOP_LIST_LIMIT)
-                .map(scene => ({
-                    id: scene.sceneId,
-                    name: scene.sceneName,
-                    value: scene.words,
-                    detail: `${tn("dashboard.units.lines", scene.lines, { count: scene.lines })} · ${tn("dashboard.units.words", scene.words, { count: scene.words })}`,
-                })),
-        [snapshot, tn],
     );
 
     const handleClear = useCallback(() => {
@@ -427,64 +438,6 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
                             />
                             <StatTile label={t("dashboard.structure.branches")} value={formatNumber(structure.branches)} />
                         </div>
-                        {structure.unreachableScenes.length === 0 && structure.emptyScenes.length === 0 ? (
-                            <p className="text-xs text-fg-subtle">{t("dashboard.structure.healthy")}</p>
-                        ) : (
-                            <div className="flex flex-col gap-3">
-                                {structure.unreachableScenes.length > 0 && (
-                                    <div className="flex flex-col gap-1.5">
-                                        <div className="flex flex-col gap-0.5">
-                                            <span className="text-xs text-fg-muted">
-                                                {t("dashboard.structure.unreachable")}
-                                            </span>
-                                            <span className="text-2xs text-fg-subtle">
-                                                {t("dashboard.structure.unreachableHint")}
-                                            </span>
-                                        </div>
-                                        <NameChips names={structure.unreachableScenes.slice(0, NAME_LIST_LIMIT)} />
-                                        {structure.unreachableScenes.length > NAME_LIST_LIMIT && (
-                                            <span className="text-2xs text-fg-subtle">
-                                                {t("dashboard.structure.more", {
-                                                    count: structure.unreachableScenes.length - NAME_LIST_LIMIT,
-                                                })}
-                                            </span>
-                                        )}
-                                    </div>
-                                )}
-                                {structure.emptyScenes.length > 0 && (
-                                    <div className="flex flex-col gap-1.5">
-                                        <div className="flex flex-col gap-0.5">
-                                            <span className="text-xs text-fg-muted">
-                                                {t("dashboard.structure.emptyScenes")}
-                                            </span>
-                                            <span className="text-2xs text-fg-subtle">
-                                                {t("dashboard.structure.emptyScenesHint")}
-                                            </span>
-                                        </div>
-                                        <NameChips names={structure.emptyScenes.slice(0, NAME_LIST_LIMIT)} />
-                                        {structure.emptyScenes.length > NAME_LIST_LIMIT && (
-                                            <span className="text-2xs text-fg-subtle">
-                                                {t("dashboard.structure.more", {
-                                                    count: structure.emptyScenes.length - NAME_LIST_LIMIT,
-                                                })}
-                                            </span>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </DashboardSection>
-                )}
-
-                {snapshot && (
-                    <DashboardSection title={t("dashboard.cast.title")} description={t("dashboard.cast.description")}>
-                        <BarList items={castItems} emptyLabel={t("dashboard.cast.empty")} />
-                    </DashboardSection>
-                )}
-
-                {snapshot && (
-                    <DashboardSection title={t("dashboard.scenes.title")} description={t("dashboard.scenes.description")}>
-                        <BarList items={sceneItems} emptyLabel={t("dashboard.scenes.empty")} />
                     </DashboardSection>
                 )}
 
