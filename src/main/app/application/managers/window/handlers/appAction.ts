@@ -4,7 +4,7 @@ import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { Platform } from "@shared/types/os";
 import { WindowControlAbility } from "@shared/types/window";
-import { app as electronApp } from "electron";
+import { app as electronApp, shell } from "electron";
 
 export class AppPlatformInfoHandler extends IPCHandler<IPCEventType.getPlatform> {
     readonly name = IPCEventType.getPlatform;
@@ -202,6 +202,23 @@ export class AppAddRecentProjectHandler extends IPCHandler<IPCEventType.appAddRe
         // Keep the native "Open Recent" submenu in step with the history it renders. No-op off
         // macOS, where the application menu is empty.
         window.app.menuManager.updateMenu();
+        return this.success(void 0);
+    }
+}
+
+/**
+ * Opens a URL in the system browser. Restricted to http(s): a renderer must never be able to
+ * hand arbitrary schemes (file:, app protocols) to the OS.
+ */
+export class AppOpenExternalHandler extends IPCHandler<IPCEventType.appOpenExternal> {
+    readonly name = IPCEventType.appOpenExternal;
+    readonly type = IPCMessageType.request;
+
+    public async handle(_window: AppWindow, { url }: IPCEvents[IPCEventType.appOpenExternal]["data"]): Promise<RequestStatus<void>> {
+        if (!/^https?:\/\//i.test(url)) {
+            return this.failed(new Error(`Refusing to open non-http(s) URL: ${url}`));
+        }
+        await shell.openExternal(url);
         return this.success(void 0);
     }
 }

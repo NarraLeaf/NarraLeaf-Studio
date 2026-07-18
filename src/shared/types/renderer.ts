@@ -172,11 +172,21 @@ export interface RendererPreloadedInterface {
         onBlueprintNavigateFromPreview(handler: (payload: PreviewStudioBlueprintOpenPayload) => void): AppEventToken;
         onMenuAction(handler: (action: MenuActionId) => void): AppEventToken;
         syncNativeMenu(model: NativeMenuModel): void;
+        /**
+         * Tell the main process whether this workspace actually loaded its project. Replace-style
+         * launches (`closeCurrentWindow`/`replaceOpener`) only retire the opener on `ok: true` —
+         * a window showing the "not a project" screen must not have consumed the window it came from.
+         */
+        reportLoadResult(ok: boolean): void;
     };
 
     // App
     app: {
         launchSettings(props: WindowProps[WindowAppType.Settings]): Promise<RequestStatus<void>>;
+        /** Open workspace-window count — gates settings actions that need a workspace to act in. */
+        countWorkspaceWindows(): Promise<RequestStatus<{ count: number }>>;
+        /** Open an http(s) URL in the system browser (other schemes are refused). */
+        openExternal(url: string): Promise<RequestStatus<void>>;
         launchProjectWizard(props: WindowProps[WindowAppType.ProjectWizard]): Promise<RequestStatus<{ created: boolean; projectPath: string } | null>>;
         state: {
             getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<{ value: GlobalStateValue<K> }>>;

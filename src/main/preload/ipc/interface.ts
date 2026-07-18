@@ -197,10 +197,14 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.menuAction, (data) => handler(data.action)),
         syncNativeMenu: (model: NativeMenuModel) =>
             ipcClient.send(IPCEventType.workspaceMenuSync, { model }),
+        reportLoadResult: (ok: boolean) =>
+            ipcClient.send(IPCEventType.workspaceReportLoadResult, { ok }),
     },
 
     app: {
         launchSettings: (props: WindowProps[WindowAppType.Settings]) => ipcClient.invoke(IPCEventType.appLaunchSettings, { props }),
+        countWorkspaceWindows: () => ipcClient.invoke(IPCEventType.appCountWorkspaceWindows, {}),
+        openExternal: (url: string) => ipcClient.invoke(IPCEventType.appOpenExternal, { url }),
         launchProjectWizard: () => ipcClient.invoke(IPCEventType.projectWizardLaunch, {}) as Promise<RequestStatus<{created: boolean; projectPath: string} | null>>,    
         state: {
             getGlobalState: <K extends GlobalStateKeys>(key: K) => ipcClient.invoke(IPCEventType.appGlobalStateGet, { key }) as Promise<RequestStatus<{value: GlobalStateValue<K>}>>,
