@@ -123,18 +123,8 @@ export function CommandPalette() {
         allowInEditable: true,
     });
 
-    useKeybinding({
-        id: "workspace-quick-search",
-        key: "mod+p",
-        handler: () => {
-            if (openRef.current && !queryRef.current.startsWith(COMMAND_PREFIX)) {
-                setOpen(false);
-                return;
-            }
-            openWith("");
-        },
-        allowInEditable: true,
-    });
+    // mod+p belongs to the Quick Open picker (QuickOpenPicker) — the palette's search mode stays
+    // reachable through the title-bar box and by deleting the `>` prefix.
 
     // Snapshot the available commands when the palette opens (and if the registry changes while open).
     useEffect(() => {
