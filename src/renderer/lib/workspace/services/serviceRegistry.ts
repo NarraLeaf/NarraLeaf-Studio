@@ -27,6 +27,7 @@ import { StoryService } from "./story/StoryService";
 import { ProjectDependencyService } from "./core/ProjectDependencyService";
 import { LocalizationService } from "./localization/LocalizationService";
 import { ProjectStatsService } from "./stats/ProjectStatsService";
+import { CommandService } from "./ui/CommandService";
 
 export class ServiceRegistry {
     private services: Record<Services, Service> = {
@@ -57,6 +58,7 @@ export class ServiceRegistry {
         [Services.ProjectDependency]: ProjectDependencyService.getInstance(),
         [Services.Localization]: LocalizationService.getInstance(),
         [Services.ProjectStats]: ProjectStatsService.getInstance(),
+        [Services.Command]: CommandService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {
