@@ -153,6 +153,9 @@ export const workspace = {
             closeOthers: "关闭其他",
             closeToRight: "关闭右侧标签",
             closeAll: "全部关闭",
+            splitRight: "向右拆分",
+            splitDown: "向下拆分",
+            closeSplit: "关闭拆分",
             reopenClosed: "重新打开关闭的标签",
         },
         toggleLeftSidebar: "切换左侧边栏",
@@ -199,6 +202,26 @@ export const workspace = {
             redo: "重做",
             empty: "当前编辑器没有可用的撤销历史",
             activeEditor: "{name} 的历史",
+        },
+        // 自定义背景对话框（从设置或命令面板打开）。
+        background: {
+            command: "设置背景图像…",
+            title: "背景图像",
+            image: "图像",
+            imagePlaceholder: "未选择图像",
+            browse: "浏览…",
+            opacity: "不透明度",
+            fillMode: "填充方式",
+            anchor: "位置",
+            fill: {
+                cover: "缩放填满",
+                contain: "适应",
+                tile: "平铺",
+                center: "居中",
+            },
+            cancel: "取消",
+            clear: "清除并关闭",
+            apply: "完成",
         },
         // 快速打开（mod+p）：可打开实体的模糊选择器。
         quickOpen: {
