@@ -12,6 +12,7 @@ import { SettingValueType } from "@/lib/settings/types";
 import { getInterface } from "@/lib/app/bridge";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import { useTranslation } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
 
 export function SettingsApp() {
     const { t } = useTranslation();
@@ -85,14 +86,49 @@ export function SettingsApp() {
         return () => token?.cancel();
     }, []);
 
+    // Availability of workspace-bound actions, keyed by setting key. Evaluated on mount and
+    // whenever this window regains focus — the user may have opened or closed a workspace since.
+    const [availability, setAvailability] = useState<Record<string, { enabled: boolean; reasonKey?: TranslationKey }>>({});
+    useEffect(() => {
+        let mounted = true;
+        const evaluate = async () => {
+            const entries = await Promise.all(
+                getAllAppSettings()
+                    .filter(setting => setting.availability)
+                    .map(async setting => {
+                        try {
+                            return [setting.key, await setting.availability!()] as const;
+                        } catch {
+                            return [setting.key, { enabled: true }] as const;
+                        }
+                    }),
+            );
+            if (mounted) {
+                setAvailability(Object.fromEntries(entries));
+            }
+        };
+        void evaluate();
+        const handleFocus = () => void evaluate();
+        window.addEventListener("focus", handleFocus);
+        return () => {
+            mounted = false;
+            window.removeEventListener("focus", handleFocus);
+        };
+    }, []);
+
     const describeAppSetting = useCallback(
-        (setting: AppSettingDefinition): SettingDescriptor => ({
+        (setting: AppSettingDefinition): SettingDescriptor => {
+            const settingAvailability = availability[setting.key];
+            const unavailable = settingAvailability ? !settingAvailability.enabled : false;
+            return {
             id: setting.key,
             type: setting.type,
             label: setting.labelKey ? t(setting.labelKey) : setting.label,
-            description: setting.descriptionKey
-                ? t(setting.descriptionKey, setting.descriptionParams)
-                : setting.description,
+            description: unavailable && settingAvailability?.reasonKey
+                ? t(settingAvailability.reasonKey)
+                : setting.descriptionKey
+                    ? t(setting.descriptionKey, setting.descriptionParams)
+                    : setting.description,
             defaultValue: setting.defaultValue,
             options: setting.options,
             optionLabels: setting.optionLabelKeys
@@ -107,8 +143,11 @@ export function SettingsApp() {
             actionLabel: setting.actionLabelKey ? t(setting.actionLabelKey) : setting.actionLabel,
             confirmLabel: setting.confirmLabelKey ? t(setting.confirmLabelKey) : undefined,
             danger: setting.danger,
-        }),
-        [t],
+            skipConfirm: setting.skipConfirm,
+            disabled: unavailable,
+            };
+        },
+        [t, availability],
     );
 
     const invokeSettingAction = useCallback(

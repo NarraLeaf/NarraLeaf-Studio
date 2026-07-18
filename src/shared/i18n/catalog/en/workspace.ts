@@ -109,6 +109,8 @@ export const workspace = {
             title: "Command Palette",
             placeholder: "Type a command…",
             empty: "No matching commands",
+            // Empty-state hint row that switches the palette into command mode (inserts ">").
+            goToCommands: "Show and Run Commands",
             // Category shown on the "open <panel>" navigation entries.
             categoryView: "View",
             // Category + titles for the editor-tab commands (act on the active tab).
@@ -118,6 +120,81 @@ export const workspace = {
                 closeOthers: "Close Other Tabs",
                 closeToRight: "Close Tabs to the Right",
                 closeAll: "Close All Tabs",
+            },
+        },
+        // Keyboard-shortcut customization (settings tab) + the "?" cheat sheet overlay.
+        keybindings: {
+            searchPlaceholder: "Search shortcuts…",
+            hint: "Click a shortcut to record a new one. Esc cancels.",
+            record: "Record shortcut",
+            recording: "Press the new shortcut…",
+            reset: "Reset to default",
+            resetAll: "Reset All",
+            customized: "Customized",
+            conflict: "Also bound to {name}",
+            empty: "No matching shortcuts",
+            openSettings: "Customize Keyboard Shortcuts",
+            cheatSheetTitle: "Keyboard Shortcuts",
+            cheatSheetCustomize: "Customize…",
+            // Category headers in the settings table and cheat sheet (from the static catalog).
+            categories: {
+                general: "General",
+                story: "Story Editor",
+                uiEditor: "UI Editor",
+                blueprint: "Blueprint Editor",
+                storyMotion: "Story Motion",
+                assets: "Assets",
+                other: "Other",
+            },
+            // Labels for catalog entries that had no i18n key of their own.
+            catalog: {
+                commandPalette: "Show and Run Commands",
+                quickSearch: "Search in Project",
+                cheatSheet: "Show Keyboard Shortcuts",
+                reopenClosedTab: "Reopen Closed Tab",
+                quickSwitchNext: "Switch to Next Editor Tab",
+                quickSwitchPrevious: "Switch to Previous Editor Tab",
+                uiEditor: {
+                    undo: "Undo",
+                    redo: "Redo",
+                    copy: "Copy",
+                    cut: "Cut",
+                    paste: "Paste",
+                    duplicate: "Duplicate",
+                    group: "Group",
+                    selectAll: "Select All",
+                    delete: "Delete Selection",
+                    rename: "Rename",
+                    escape: "Close Menu / Exit Edit",
+                },
+                blueprint: {
+                    undo: "Undo",
+                    redo: "Redo",
+                    copy: "Copy Nodes",
+                    cut: "Cut Nodes",
+                    paste: "Paste Nodes",
+                },
+                storyMotion: {
+                    undo: "Undo",
+                    redo: "Redo",
+                    delete: "Delete Keyframe",
+                },
+            },
+        },
+        // Global project search: the dock panel and the palette's search mode share these.
+        search: {
+            placeholder: "Search project…",
+            // Label on the title-bar search pill (opens the palette in search mode).
+            titleBarPlaceholder: "Search in project",
+            building: "Building search index…",
+            empty: "No results",
+            more: "{count} more",
+            groups: {
+                story: "Story Text",
+                asset: "Assets",
+                variable: "Variables",
+                uiTextKey: "UI Text Keys",
+                blueprintNode: "Blueprint Nodes",
             },
         },
         // The PyCharm-style project switcher in the title bar: current project name plus a

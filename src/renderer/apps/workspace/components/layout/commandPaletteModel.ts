@@ -56,6 +56,11 @@ export interface PaletteCommandSources {
     keybindings: readonly Keybinding[];
     /** Registered sidebar/dock panels — turned into "open <panel>" navigation commands. */
     panels: readonly PanelDefinition[];
+    /**
+     * User keybinding overrides (id → binding). Applied so the palette shows what a chord
+     * *actually* is after rebinding; action shortcuts register under `action:<id>`.
+     */
+    keybindingOverrides?: Readonly<Record<string, string>>;
     /** Opens a body panel by id (its dock reacts to the visibility change and switches to it). */
     openBodyPanel: (panelId: string) => void;
     /** Category label for the panel-navigation commands (e.g. "View"), already localized. */
@@ -120,6 +125,7 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
         panels,
         openBodyPanel,
         panelCategory,
+        keybindingOverrides = {},
         workspace,
         focusContext,
         translate,
@@ -176,12 +182,14 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
             return;
         }
         seenIds.add(action.id);
-        claimBinding(action.shortcut);
+        // Action shortcuts auto-register on the keybinding service as `action:<id>`.
+        const effectiveShortcut = keybindingOverrides[`action:${action.id}`] ?? action.shortcut;
+        claimBinding(effectiveShortcut);
         out.push({
             id: action.id,
             title,
             category,
-            keybinding: action.shortcut,
+            keybinding: effectiveShortcut,
             icon: action.icon,
             source: "action",
             run: () => action.onClick(workspace),
@@ -253,15 +261,16 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
         if (keybinding.when && !keybinding.when(focusContext ?? FALLBACK_FOCUS)) {
             return;
         }
-        if (claimedBindings.has(canonicalBinding(keybinding.key))) {
+        const effectiveKey = keybindingOverrides[keybinding.id] ?? keybinding.key;
+        if (claimedBindings.has(canonicalBinding(effectiveKey))) {
             return;
         }
         seenIds.add(keybinding.id);
-        claimBinding(keybinding.key);
+        claimBinding(effectiveKey);
         out.push({
             id: keybinding.id,
             title: description,
-            keybinding: keybinding.key,
+            keybinding: effectiveKey,
             source: "keybinding",
             run: () => keybinding.handler(focusContext ?? FALLBACK_FOCUS),
         });

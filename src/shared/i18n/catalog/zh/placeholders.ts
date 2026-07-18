@@ -22,5 +22,7 @@ export const placeholders = {
         dashboard: "仪表盘",
         audioPreview: "音频预览",
         imagePreview: "图片预览",
+        search: "搜索",
+        keybindings: "快捷键",
     },
 } satisfies LocaleNamespace<"placeholders">;

@@ -401,6 +401,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         enabled: editor.isInitialized && Boolean(editor.context && payload?.storyId && payload.sceneId),
         when: whenEditorFocused(tabId),
         idPrefix: `story-scene-editor-${tabId}`,
+        catalogPrefix: "story.",
     });
 
     // Side panels are global (keyed by fixed ids), so only the visible scene tab may own them —

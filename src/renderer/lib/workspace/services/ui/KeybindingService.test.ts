@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { formatKeybinding, matchesKeybinding, parseKeybinding } from "./KeybindingService";
+import {
+    formatKeybinding,
+    keybindingFromKeyboardEvent,
+    matchesKeybinding,
+    parseKeybinding,
+    sanitizeKeybindingOverrides,
+} from "./KeybindingService";
 
 function keyEvent(init: Partial<KeyboardEvent> & { key: string }): KeyboardEvent {
     return {
@@ -68,5 +74,52 @@ describe("formatKeybinding", () => {
         expect(formatKeybinding("delete", false)).toBe("Delete");
         expect(formatKeybinding("mod+=", true)).toBe("⌘+");
         expect(formatKeybinding("escape", false)).toBe("Esc");
+    });
+});
+
+describe("sanitizeKeybindingOverrides", () => {
+    it("keeps only non-empty string values", () => {
+        expect(
+            sanitizeKeybindingOverrides({
+                "save": "mod+shift+s",
+                "blank": "   ",
+                "num": 3,
+                "obj": { key: "x" },
+            }),
+        ).toEqual({ save: "mod+shift+s" });
+    });
+
+    it("returns empty for non-object input", () => {
+        expect(sanitizeKeybindingOverrides(undefined)).toEqual({});
+        expect(sanitizeKeybindingOverrides("mod+s")).toEqual({});
+        expect(sanitizeKeybindingOverrides(["mod+s"])).toEqual({});
+    });
+});
+
+describe("keybindingFromKeyboardEvent", () => {
+    it("returns null for a bare modifier press", () => {
+        expect(keybindingFromKeyboardEvent(keyEvent({ key: "Shift", shiftKey: true }), true)).toBeNull();
+        expect(keybindingFromKeyboardEvent(keyEvent({ key: "Meta", metaKey: true }), true)).toBeNull();
+    });
+
+    it("records the primary modifier as mod on both platforms", () => {
+        expect(keybindingFromKeyboardEvent(keyEvent({ key: "k", metaKey: true }), true)).toBe("mod+k");
+        expect(keybindingFromKeyboardEvent(keyEvent({ key: "k", ctrlKey: true }), false)).toBe("mod+k");
+    });
+
+    it("keeps macOS Control as literal ctrl alongside mod", () => {
+        expect(
+            keybindingFromKeyboardEvent(keyEvent({ key: "k", metaKey: true, ctrlKey: true }), true),
+        ).toBe("mod+ctrl+k");
+    });
+
+    it("stacks alt/shift and normalizes space", () => {
+        expect(
+            keybindingFromKeyboardEvent(keyEvent({ key: " ", altKey: true, shiftKey: true }), false),
+        ).toBe("alt+shift+space");
+    });
+
+    it("allows a bare non-modifier key (function keys bind alone)", () => {
+        expect(keybindingFromKeyboardEvent(keyEvent({ key: "F2" }), true)).toBe("f2");
     });
 });

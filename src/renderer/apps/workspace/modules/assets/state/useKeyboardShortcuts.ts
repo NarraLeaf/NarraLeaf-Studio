@@ -81,5 +81,6 @@ export function useKeyboardShortcuts({
         enabled: isInitialized,
         when: whenFocused(FocusArea.LeftPanel, panelId),
         idPrefix: `assets-${panelId}`,
+        catalogPrefix: "assets.",
     });
 }

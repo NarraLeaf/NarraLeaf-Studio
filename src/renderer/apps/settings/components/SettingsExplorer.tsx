@@ -298,8 +298,12 @@ export function SettingsExplorer<T>({
                         <Button
                             size="sm"
                             variant={descriptor.danger ? "danger" : "secondary"}
-                            disabled={isSaving}
-                            onClick={() => setActionConfirming(descriptor.id, true)}
+                            disabled={isSaving || descriptor.disabled}
+                            onClick={() =>
+                                descriptor.skipConfirm
+                                    ? handleInvokeAction(entry)
+                                    : setActionConfirming(descriptor.id, true)
+                            }
                         >
                             {descriptor.actionLabel ?? descriptor.label}
                         </Button>

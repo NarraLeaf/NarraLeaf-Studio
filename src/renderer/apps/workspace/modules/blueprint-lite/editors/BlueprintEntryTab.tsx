@@ -786,6 +786,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         enabled: Boolean(payload.blueprintId),
         when: whenEditorFocused(tabId),
         idPrefix: `blueprint-editor-${tabId}`,
+        catalogPrefix: "blueprint.",
     });
 
     const persistGraphViewToTabPayload = useCallback(
