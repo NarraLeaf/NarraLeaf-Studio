@@ -91,19 +91,15 @@ export const settings = {
             label: "显示状态栏",
             description: "工作区底部的细条（运行状态、字数、快捷开关）",
         },
+        titleBarSearchVisible: {
+            label: "显示标题栏搜索框",
+            description: "标题栏中间的搜索条，用于打开搜索和命令面板",
+        },
         backgroundImage: {
             label: "自定义背景图",
             description: "以水印方式在整个工作区叠加一张你选择的图片",
-            action: "选择…",
-        },
-        backgroundImageClear: {
-            label: "移除背景图",
-            description: "恢复为纯色工作区背景",
-            action: "移除",
-        },
-        backgroundOpacity: {
-            label: "背景图不透明度",
-            description: "自定义背景的显示强度（百分比）",
+            action: "配置…",
+            needsWorkspace: "必须打开一个工作区才能配置背景图",
         },
         openKeybindings: {
             label: "快捷键",

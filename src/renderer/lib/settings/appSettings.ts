@@ -256,9 +256,25 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: true,
     },
     {
-        // Stores the filename inside userData/backgrounds (written by the pick handler). The
-        // workspace overlays this image across the whole window at the opacity below.
-        key: "ui.backgroundImage",
+        // Read by WorkspaceLayout: drops the title-bar search pill. The palette keeps working —
+        // with the box gone it renders its own input inside the candidate card.
+        key: "ui.titleBarSearch.visible",
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Show title bar search box",
+        labelKey: "settings.items.titleBarSearchVisible.label",
+        description: "The search pill in the middle of the title bar, which opens search and the command palette.",
+        descriptionKey: "settings.items.titleBarSearchVisible.description",
+        defaultValue: true,
+    },
+    {
+        // Nothing is stored under this key — the background's own settings (image, opacity, fill,
+        // anchor) are written by the workspace dialog this button opens. Picking a file, previewing
+        // the opacity and choosing how it fills the window only make sense together, so they live
+        // in one dialog instead of three unrelated rows here. Same request-signal trick as
+        // `keybindings.open`, because the dialog can only exist in a workspace window.
+        key: "ui.backgroundImage.configure",
         category: "appearance",
         scope: SettingScope.Global,
         type: SettingValueType.Action,
@@ -267,50 +283,25 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Overlay a picture of your choice across the workspace, watermark-style.",
         descriptionKey: "settings.items.backgroundImage.description",
         defaultValue: null,
-        actionLabel: "Choose…",
+        actionLabel: "Configure…",
         actionLabelKey: "settings.items.backgroundImage.action",
         skipConfirm: true,
+        availability: async () => {
+            const { getInterface } = await import("@/lib/app/bridge");
+            const result = await getInterface().app.countWorkspaceWindows();
+            const enabled = result.success && result.data.count > 0;
+            return enabled
+                ? { enabled: true }
+                : { enabled: false, reasonKey: "settings.items.backgroundImage.needsWorkspace" };
+        },
         onInvoke: async () => {
             const { getInterface } = await import("@/lib/app/bridge");
-            const result = await getInterface().app.pickBackgroundImage();
-            if (result.success && result.data.file) {
-                await getInterface().app.state.setGlobalState("ui.backgroundImage", result.data.file);
-            }
+            const { BACKGROUND_OPEN_REQUEST_SETTINGS_KEY } = await import(
+                "@/lib/workspace/services/ui/backgroundSettings"
+            );
+            await getInterface().app.state.setGlobalState(BACKGROUND_OPEN_REQUEST_SETTINGS_KEY, Date.now());
+            window.close();
         },
-    },
-    {
-        key: "ui.backgroundImage.clear",
-        category: "appearance",
-        scope: SettingScope.Global,
-        type: SettingValueType.Action,
-        label: "Remove background image",
-        labelKey: "settings.items.backgroundImageClear.label",
-        description: "Go back to the plain workspace background.",
-        descriptionKey: "settings.items.backgroundImageClear.description",
-        defaultValue: null,
-        actionLabel: "Remove",
-        actionLabelKey: "settings.items.backgroundImageClear.action",
-        skipConfirm: true,
-        onInvoke: async () => {
-            const { getInterface } = await import("@/lib/app/bridge");
-            await getInterface().app.state.setGlobalState("ui.backgroundImage", null);
-        },
-    },
-    {
-        // Read by the workspace's background overlay; percent so the slider reads naturally.
-        key: "ui.backgroundOpacity",
-        category: "appearance",
-        scope: SettingScope.Global,
-        type: SettingValueType.Slider,
-        label: "Background image opacity",
-        labelKey: "settings.items.backgroundOpacity.label",
-        description: "How strongly the custom background shows through (percent).",
-        descriptionKey: "settings.items.backgroundOpacity.description",
-        defaultValue: 8,
-        min: 2,
-        max: 40,
-        step: 1,
-        unit: "%",
     },
     {
         // Nothing is stored under this key — it is only the button's identity. The keybinding

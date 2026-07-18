@@ -175,7 +175,8 @@ export function StatusBar() {
 
     return (
         <div
-            className="flex shrink-0 items-stretch justify-between overflow-hidden border-t border-edge bg-surface-sunken"
+            // Extra side padding keeps entries clear of the window's rounded corners.
+            className="flex shrink-0 items-stretch justify-between overflow-hidden border-t border-edge bg-surface-sunken px-3"
             style={{ height: STATUS_BAR_HEIGHT }}
         >
             <div className="flex min-w-0 items-stretch">
