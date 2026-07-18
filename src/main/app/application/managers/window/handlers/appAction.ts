@@ -4,7 +4,9 @@ import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { Platform } from "@shared/types/os";
 import { WindowControlAbility } from "@shared/types/window";
-import { app as electronApp, shell } from "electron";
+import { app as electronApp, dialog, shell } from "electron";
+import { promises as fs } from "fs";
+import path from "path";
 
 export class AppPlatformInfoHandler extends IPCHandler<IPCEventType.getPlatform> {
     readonly name = IPCEventType.getPlatform;
@@ -203,6 +205,54 @@ export class AppAddRecentProjectHandler extends IPCHandler<IPCEventType.appAddRe
         // macOS, where the application menu is empty.
         window.app.menuManager.updateMenu();
         return this.success(void 0);
+    }
+}
+
+/**
+ * Picks a background image via the native dialog and copies it into userData/backgrounds. Only
+ * the stored filename travels back — renderers never hand us arbitrary paths to copy from later.
+ */
+export class AppPickBackgroundImageHandler extends IPCHandler<IPCEventType.appPickBackgroundImage> {
+    readonly name = IPCEventType.appPickBackgroundImage;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<{ file: string | null }>> {
+        const result = await dialog.showOpenDialog(window.win, {
+            title: "Choose Background Image",
+            properties: ["openFile"],
+            filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+        });
+        const source = result.filePaths[0];
+        if (result.canceled || !source) {
+            return this.success({ file: null });
+        }
+        const extension = path.extname(source).toLowerCase() || ".png";
+        const directory = path.join(electronApp.getPath("userData"), "backgrounds");
+        await fs.mkdir(directory, { recursive: true });
+        const fileName = `background${extension}`;
+        await fs.copyFile(source, path.join(directory, fileName));
+        return this.success({ file: fileName });
+    }
+}
+
+/**
+ * Reads a stored background image (basename-only lookup inside userData/backgrounds — path
+ * separators are rejected so this can never be steered at arbitrary files).
+ */
+export class AppReadBackgroundImageHandler extends IPCHandler<IPCEventType.appReadBackgroundImage> {
+    readonly name = IPCEventType.appReadBackgroundImage;
+    readonly type = IPCMessageType.request;
+
+    public async handle(_window: AppWindow, { file }: IPCEvents[IPCEventType.appReadBackgroundImage]["data"]): Promise<RequestStatus<{ data: Uint8Array | null }>> {
+        if (!file || file !== path.basename(file)) {
+            return this.failed(new Error("Invalid background image name"));
+        }
+        try {
+            const data = await fs.readFile(path.join(electronApp.getPath("userData"), "backgrounds", file));
+            return this.success({ data: new Uint8Array(data) });
+        } catch {
+            return this.success({ data: null });
+        }
     }
 }
 
