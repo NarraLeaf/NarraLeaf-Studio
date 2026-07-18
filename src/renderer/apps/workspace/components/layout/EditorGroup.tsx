@@ -26,7 +26,7 @@ interface EditorGroupProps {
  */
 export function EditorGroup({ group }: EditorGroupProps) {
     const { t } = useTranslation();
-    const { closeEditorTab, closeEditorTabs, setActiveEditorTab } = useRegistry();
+    const { closeEditorTab, closeEditorTabs, setActiveEditorTab, editorLayout } = useRegistry();
     const { context } = useWorkspace();
     // True when THIS group owns the active editor focus — either the editor body (a tab is
     // focused) or its tab strip. Drives the accent edge on this group's active tab so the whole
@@ -135,6 +135,20 @@ export function EditorGroup({ group }: EditorGroupProps) {
         showMenu(e);
     };
 
+    // Split actions on the clicked tab (the palette commands act on the focused one instead).
+    const splitGroup = useCallback(
+        (direction: "horizontal" | "vertical", tabId: string) => {
+            if (!context) return;
+            context.services.get<UIService>(Services.UI).getStore().splitEditorGroup(group.id, direction, tabId);
+        },
+        [context, group.id],
+    );
+    const closeOtherGroups = useCallback(() => {
+        if (!context) return;
+        context.services.get<UIService>(Services.UI).getStore().closeOtherEditorGroups(group.id);
+    }, [context, group.id]);
+    const hasSplit = !("tabs" in editorLayout);
+
     const tabMenuItems = useMemo<ContextMenuDef>(() => {
         const tabs = group.tabs;
         const targetIndex = tabs.findIndex((tab) => tab.id === menuTabId);
@@ -172,6 +186,27 @@ export function EditorGroup({ group }: EditorGroupProps) {
                 disabled: all.length === 0,
                 onClick: () => closeEditorTabs(all, group.id),
             },
+            { separator: true, id: "sep-split" },
+            {
+                id: "split-right",
+                label: t("workspace.shell.tabMenu.splitRight"),
+                // Splitting moves this tab out of its group; with only one tab that would leave
+                // an empty pane behind, so the group needs a second tab to stay behind.
+                disabled: !context || tabs.length < 2,
+                onClick: () => splitGroup("horizontal", target.id),
+            },
+            {
+                id: "split-down",
+                label: t("workspace.shell.tabMenu.splitDown"),
+                disabled: !context || tabs.length < 2,
+                onClick: () => splitGroup("vertical", target.id),
+            },
+            {
+                id: "close-split",
+                label: t("workspace.shell.tabMenu.closeSplit"),
+                disabled: !context || !hasSplit,
+                onClick: () => closeOtherGroups(),
+            },
             { separator: true, id: "sep-reopen" },
             {
                 id: "reopen-closed",
@@ -185,7 +220,18 @@ export function EditorGroup({ group }: EditorGroupProps) {
                 },
             },
         ];
-    }, [closeEditorTab, closeEditorTabs, context, group.id, group.tabs, menuTabId, t]);
+    }, [
+        closeEditorTab,
+        closeEditorTabs,
+        context,
+        group.id,
+        group.tabs,
+        menuTabId,
+        t,
+        splitGroup,
+        closeOtherGroups,
+        hasSplit,
+    ]);
 
     const activateTabFromStrip = useCallback((tabId: string) => {
         setActiveEditorTab(tabId, group.id);

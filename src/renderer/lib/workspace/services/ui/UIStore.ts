@@ -611,12 +611,17 @@ export class UIStore {
      * the new group to the right, "vertical" below). No-op when the group has no tabs — an empty
      * split has nothing to show. The moved tab keeps focus, now in the new group.
      */
-    public splitEditorGroup(groupId: string, direction: "horizontal" | "vertical"): boolean {
+    public splitEditorGroup(groupId: string, direction: "horizontal" | "vertical", tabId?: string): boolean {
         const group = this.findGroup(this.state.editorLayout, groupId);
         if (!group || group.tabs.length === 0) {
             return false;
         }
-        const movedTab = group.tabs.find((tab) => tab.id === group.focus) ?? group.tabs[group.tabs.length - 1];
+        // `tabId` is the tab a context menu was opened on; commands and chords have no click
+        // target and split the focused tab instead.
+        const movedTab =
+            (tabId ? group.tabs.find((tab) => tab.id === tabId) : undefined) ??
+            group.tabs.find((tab) => tab.id === group.focus) ??
+            group.tabs[group.tabs.length - 1];
         const newGroupId = this.nextLayoutNodeId("group");
         const splitId = this.nextLayoutNodeId("split");
 
@@ -682,6 +687,31 @@ export class UIStore {
         this.events.emit("editorLayoutChanged", this.state.editorLayout);
         this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
         return true;
+    }
+
+    /**
+     * Drop split panes that no longer hold an editor. Closing the last tab of one side of a split
+     * would otherwise leave an empty pane with a bare tab strip sitting on half the editor area;
+     * the split exists to show two editors, so it collapses back to the surviving side. The root
+     * group is kept even when empty — that is the "no tabs open" drop zone.
+     */
+    private pruneEmptyEditorGroups(): void {
+        const prune = (layout: EditorLayout): EditorLayout => {
+            if ("tabs" in layout) {
+                return layout;
+            }
+            const first = prune(layout.first);
+            const second = prune(layout.second);
+            const isEmptyGroup = (node: EditorLayout) => "tabs" in node && node.tabs.length === 0;
+            if (isEmptyGroup(first)) {
+                return second;
+            }
+            if (isEmptyGroup(second)) {
+                return first;
+            }
+            return first === layout.first && second === layout.second ? layout : { ...layout, first, second };
+        };
+        this.state.editorLayout = prune(this.state.editorLayout);
     }
 
     private findGroup(layout: EditorLayout, groupId?: string): EditorGroup | null {
@@ -877,6 +907,7 @@ export class UIStore {
 
             return { ...group, tabs, focus: activeTabId };
         });
+        this.pruneEmptyEditorGroups();
 
         const entriesAfterClose = this.collectEditorTabFocusEntries();
         this.pruneEditorTabFocusHistory(entriesAfterClose);
@@ -940,6 +971,7 @@ export class UIStore {
 
             return { ...group, tabs, focus: activeTabId };
         });
+        this.pruneEmptyEditorGroups();
 
         const entriesAfterClose = this.collectEditorTabFocusEntries();
         this.pruneEditorTabFocusHistory(entriesAfterClose);
