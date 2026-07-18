@@ -156,6 +156,9 @@ export const workspace = {
             closeOthers: "Close others",
             closeToRight: "Close tabs to the right",
             closeAll: "Close all",
+            splitRight: "Split right",
+            splitDown: "Split down",
+            closeSplit: "Close split",
             reopenClosed: "Reopen closed tab",
         },
         toggleLeftSidebar: "Toggle left sidebar",
@@ -205,6 +208,26 @@ export const workspace = {
             redo: "Redo",
             empty: "The active editor has no undo history.",
             activeEditor: "History for {name}",
+        },
+        // The custom background dialog (opened from Settings or the command palette).
+        background: {
+            command: "Set background image…",
+            title: "Background Image",
+            image: "Image",
+            imagePlaceholder: "No image selected",
+            browse: "Browse…",
+            opacity: "Opacity",
+            fillMode: "Fill",
+            anchor: "Position",
+            fill: {
+                cover: "Scale to fill",
+                contain: "Fit",
+                tile: "Tile",
+                center: "Center",
+            },
+            cancel: "Cancel",
+            clear: "Clear and close",
+            apply: "Done",
         },
         // Quick Open (mod+p): fuzzy picker over openable entities.
         quickOpen: {
