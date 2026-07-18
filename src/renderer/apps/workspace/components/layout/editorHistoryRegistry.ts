@@ -46,38 +46,40 @@ export function useEditorHistoryProvider(tabId: string | undefined, snapshot: Ed
     const snapshotRef = useRef(snapshot);
     snapshotRef.current = snapshot;
 
-    // Stable delegating callbacks, so consumers can hold one object identity per tab.
-    const stableRef = useRef<EditorHistorySnapshot | null>(null);
+    // Registrations are replaced, never mutated: `useSyncExternalStore` compares snapshots by
+    // identity, so an in-place can-state edit would notify subscribers that then see no change
+    // and skip the re-render. The delegating callbacks read the ref, so the identity swap costs
+    // nothing but a shallow object.
+    const register = (id: string, canUndo: boolean, canRedo: boolean) => {
+        providers.set(id, {
+            canUndo,
+            canRedo,
+            undo: () => snapshotRef.current.undo(),
+            redo: () => snapshotRef.current.redo(),
+        });
+        emit();
+    };
 
     useEffect(() => {
         if (!tabId) {
             return;
         }
-        stableRef.current = {
-            canUndo: snapshotRef.current.canUndo,
-            canRedo: snapshotRef.current.canRedo,
-            undo: () => snapshotRef.current.undo(),
-            redo: () => snapshotRef.current.redo(),
-        };
-        providers.set(tabId, stableRef.current);
-        emit();
+        register(tabId, snapshotRef.current.canUndo, snapshotRef.current.canRedo);
         return () => {
             providers.delete(tabId);
-            stableRef.current = null;
             emit();
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tabId]);
 
-    // Push can-state changes into the stable registration (and notify) without re-registering.
+    // Re-register whenever the observable state changes, so subscribers see a new identity.
     useEffect(() => {
-        const registered = stableRef.current;
-        if (!registered) {
+        if (!tabId) {
             return;
         }
-        if (registered.canUndo !== snapshot.canUndo || registered.canRedo !== snapshot.canRedo) {
-            registered.canUndo = snapshot.canUndo;
-            registered.canRedo = snapshot.canRedo;
-            emit();
+        const registered = providers.get(tabId);
+        if (registered && (registered.canUndo !== snapshot.canUndo || registered.canRedo !== snapshot.canRedo)) {
+            register(tabId, snapshot.canUndo, snapshot.canRedo);
         }
     });
 }
