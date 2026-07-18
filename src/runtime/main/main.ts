@@ -59,14 +59,6 @@ const previewUserDataDir = path.resolve(appDir, "..", "userData");
 const useSiblingUserData = shellMode !== "production" && fsSync.existsSync(previewUserDataDir);
 const userDataDir = useSiblingUserData ? previewUserDataDir : app.getPath("userData");
 
-/**
- * Build-time placeholders. The compiler substitutes real opaque values when
- * asset protection is on and leaves them untouched (and unused) otherwise. Both
- * are required to open a protected store; their meaning is opaque here. Must
- * match the placeholders exported by @narraleaf/encryption.
- */
-const PACK_KEY = "__NLS_ENC_KEY_PLACEHOLDER__";
-const PACK_AUX = "__NLS_ENC_AUX_PLACEHOLDER__";
 
 /** Node inspector / Chromium remote-debugging switches refused in production. */
 const DEBUG_SWITCHES = [
@@ -154,7 +146,7 @@ void app.whenReady().then(async () => {
     if (startupBlocked) {
         return;
     }
-    resources = await createRuntimeResources(appDir, PACK_KEY, PACK_AUX);
+    resources = await createRuntimeResources(appDir);
     const pack = await readPack();
     if (pack.mode === "production" && hasDebuggingSwitch()) {
         // Refuse to run a production game under an attached debugger/CDP.
@@ -468,6 +460,13 @@ function registerRuntimeProtocol(allowHttp: boolean): void {
  * long-lived cache entries can never go stale. Caching matters here — the
  * game engine drops and re-fetches images on every scene change, and without
  * it each of those requests round-trips into this process.
+ *
+ * Verified on Electron 38: custom-protocol responses never enter Chromium's
+ * HTTP cache — no disk-cache entries are written and fetch() re-requests the
+ * same URL every time. This header is honored only by the renderer's
+ * in-memory resource cache (notably decoded images), which is the desired
+ * shape: repeat <img> loads are served inside the renderer without a
+ * round-trip here, while asset bytes never persist to the user's disk.
  */
 const ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
 

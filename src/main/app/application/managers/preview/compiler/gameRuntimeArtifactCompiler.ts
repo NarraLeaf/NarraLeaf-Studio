@@ -17,9 +17,7 @@ import type { ProjectConfigData } from "@shared/utils/nlproj";
 import {
     createSealedBundle,
     runtimeSupportPath,
-    RUNTIME_AUX_PLACEHOLDER,
     RUNTIME_BUNDLE_FILENAME,
-    RUNTIME_KEY_PLACEHOLDER,
     RUNTIME_SUPPORT_FILENAME,
     type SealedBundleWriter,
 } from "@narraleaf/encryption";
@@ -169,15 +167,11 @@ export async function compileGameRuntimeArtifact(
     if (userDataDir) {
         await fs.mkdir(userDataDir, { recursive: true });
     }
-    // Second opaque protection token, generated fresh for each protected build
-    // and injected into the packed runtime alongside the pack key. Both are
-    // required by the protection layer; their meaning is opaque to Studio. Only
-    // produced when protection is on.
-    const auxToken = input.encryptionKey ? crypto.randomBytes(32) : null;
     await copyRuntimeFiles(input.runtimeDistDir, appDir, mode, shell);
     if (input.encryptionKey) {
-        // Protection on: prepare the packed runtime and ship its support binary.
-        await embedPackKey(appDir, input.encryptionKey, auxToken!);
+        // Protection on: ship the support binary. createSealedBundle binds this
+        // pack's protection material into it when it opens the store (below), so
+        // no key material is handled here or written into any JS.
         await fs.copyFile(runtimeSupportPath(), path.join(appDir, RUNTIME_SUPPORT_FILENAME));
     }
 
@@ -200,7 +194,13 @@ export async function compileGameRuntimeArtifact(
     // Everything below either writes loose files or streams into the store; on
     // any failure the store handle is released so a failed compile leaks nothing.
     const target: PackTarget = input.encryptionKey
-        ? { kind: "sealed", writer: await createSealedBundle(path.join(appDir, RUNTIME_BUNDLE_FILENAME), input.encryptionKey, auxToken!) }
+        ? {
+            kind: "sealed",
+            writer: await createSealedBundle(
+                path.join(appDir, RUNTIME_BUNDLE_FILENAME),
+                path.join(appDir, RUNTIME_SUPPORT_FILENAME),
+            ),
+        }
         : { kind: "loose" };
 
     try {
@@ -403,27 +403,6 @@ async function copyOptionalFile(sourcePath: string, targetPath: string): Promise
         }
         throw error;
     }
-}
-
-/**
- * Substitute the pack key and the second protection token into the packed
- * main.js at @narraleaf/encryption's markers. Both must be present or the
- * packaged game cannot open its assets; the values are opaque to this layer.
- * Fails loudly if a marker is absent, meaning the runtime was built without
- * support.
- */
-async function embedPackKey(appDir: string, encryptionKey: string, auxToken: Buffer): Promise<void> {
-    const mainJsPath = path.join(appDir, "main.js");
-    const source = await fs.readFile(mainJsPath, "utf-8");
-    if (!source.includes(RUNTIME_KEY_PLACEHOLDER) || !source.includes(RUNTIME_AUX_PLACEHOLDER)) {
-        throw new Error(
-            "Runtime main.js is missing a required marker. Rebuild the runtime (\"yarn build:runtime\").",
-        );
-    }
-    const injected = source
-        .split(RUNTIME_KEY_PLACEHOLDER).join(encryptionKey)
-        .split(RUNTIME_AUX_PLACEHOLDER).join(auxToken.toString("base64"));
-    await fs.writeFile(mainJsPath, injected, "utf-8");
 }
 
 async function copyProjectAssets(input: {
