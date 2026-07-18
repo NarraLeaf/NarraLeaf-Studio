@@ -100,6 +100,22 @@ export const workspace = {
         stopPreview: "停止预览",
         logoAlt: "NarraLeaf Studio 徽标",
         editorTabsLabel: "编辑器标签页",
+        // 可搜索的命令面板（Cmd/Ctrl+Shift+P）：把所有动作、菜单命令与带说明的快捷键汇成一个列表，随输入过滤。
+        commandPalette: {
+            title: "命令面板",
+            placeholder: "输入命令…",
+            empty: "没有匹配的命令",
+            // 「打开 X 面板」这类导航命令显示的分类。
+            categoryView: "视图",
+            // 编辑器标签命令的分类与标题（作用于当前活动标签）。
+            categoryEditor: "编辑器",
+            editor: {
+                closeTab: "关闭标签页",
+                closeOthers: "关闭其他标签页",
+                closeToRight: "关闭右侧标签页",
+                closeAll: "关闭全部标签页",
+            },
+        },
         // 标题栏里类 PyCharm 的项目切换器：显示当前项目名，下拉列出最近工作区以便跳转。
         projectSwitcher: {
             switchProject: "切换项目",
