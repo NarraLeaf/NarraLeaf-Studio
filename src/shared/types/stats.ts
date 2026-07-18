@@ -17,6 +17,17 @@ export type BuildActivityRecord = {
     ok: boolean;
     /** Build target as reported by the build service, when it named one. */
     platform?: string;
+    /**
+     * The build's console output, one already-rendered plain-text line per entry. Stored
+     * formatted rather than structured because this is an archived artifact, not live console
+     * state: nothing re-styles or re-filters it, and the dashboard only ever prints it back.
+     *
+     * Absent on records written before build logs were kept, and on builds that produced no
+     * output at all.
+     */
+    log?: string[];
+    /** Lines dropped from the front of `log` by the retention cap; omitted when none were. */
+    logOmittedLines?: number;
 };
 
 /**
@@ -53,6 +64,9 @@ export type ProjectStatsV1 = {
 /** Roughly 14 months — enough for a year-over-year look without unbounded growth. */
 export const PROJECT_STATS_MAX_DAYS = 400;
 export const PROJECT_STATS_MAX_BUILDS = 50;
+/** Console lines kept per build. Fifty builds of these live in the global config, so it is a cap. */
+export const PROJECT_STATS_MAX_BUILD_LOG_LINES = 300;
+export const PROJECT_STATS_MAX_BUILD_LOG_LINE_CHARS = 1000;
 
 /** Settings-key prefix; the per-project token is appended. See `getProjectStatsSettingsKey`. */
 export const PROJECT_STATS_SETTINGS_KEY_PREFIX = "stats.project";
@@ -92,17 +106,60 @@ function isActivityDay(value: unknown): value is ProjectActivityDay {
     );
 }
 
-function isBuildRecord(value: unknown): value is BuildActivityRecord {
+/**
+ * Rebuild a stored build record field by field rather than trusting the stored shape: the log is
+ * the one part of a record that can be arbitrarily large and arbitrarily wrong, and it is rendered
+ * verbatim.
+ */
+function parseBuildRecord(value: unknown): BuildActivityRecord | null {
     if (!value || typeof value !== "object") {
-        return false;
+        return null;
     }
     const record = value as Record<string, unknown>;
-    return (
-        typeof record.startedAt === "number" &&
-        typeof record.finishedAt === "number" &&
-        typeof record.durationMs === "number" &&
-        typeof record.ok === "boolean"
-    );
+    if (
+        typeof record.startedAt !== "number" ||
+        typeof record.finishedAt !== "number" ||
+        typeof record.durationMs !== "number" ||
+        typeof record.ok !== "boolean"
+    ) {
+        return null;
+    }
+
+    const parsed: BuildActivityRecord = {
+        startedAt: record.startedAt,
+        finishedAt: record.finishedAt,
+        durationMs: record.durationMs,
+        ok: record.ok,
+    };
+    if (typeof record.platform === "string") {
+        parsed.platform = record.platform;
+    }
+    if (Array.isArray(record.log)) {
+        const log = record.log.filter((line): line is string => typeof line === "string");
+        if (log.length > 0) {
+            parsed.log = log;
+        }
+    }
+    if (typeof record.logOmittedLines === "number" && record.logOmittedLines > 0) {
+        parsed.logOmittedLines = Math.floor(record.logOmittedLines);
+    }
+    return parsed;
+}
+
+/**
+ * Clip a captured build log down to the retention caps, keeping the **tail**: a failed build says
+ * why it failed at the end of its output, which is the reason the log is archived at all.
+ */
+export function clipBuildLog(lines: readonly string[]): { log: string[]; omitted: number } {
+    const omitted = Math.max(0, lines.length - PROJECT_STATS_MAX_BUILD_LOG_LINES);
+    return {
+        log: lines.slice(omitted).map(line =>
+            line.length > PROJECT_STATS_MAX_BUILD_LOG_LINE_CHARS
+                ? `${line.slice(0, PROJECT_STATS_MAX_BUILD_LOG_LINE_CHARS)}…`
+                : line,
+        ),
+        omitted,
+    };
 }
 
 /**
@@ -128,7 +185,11 @@ export function parseProjectStats(raw: unknown): ProjectStatsV1 | null {
         }
     }
 
-    const builds = Array.isArray(record.builds) ? record.builds.filter(isBuildRecord) : [];
+    const builds = Array.isArray(record.builds)
+        ? record.builds
+              .map(parseBuildRecord)
+              .filter((build): build is BuildActivityRecord => build !== null)
+        : [];
 
     return {
         version: 1,

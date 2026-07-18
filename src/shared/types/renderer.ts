@@ -184,7 +184,14 @@ export interface RendererPreloadedInterface {
 
     // App
     app: {
+        /**
+         * Open the Settings window, or focus the one already open. `props.highlight` names a
+         * setting (or category) key to reveal; an existing window is told about it through
+         * {@link onSettingsHighlight} rather than a second window being stacked on top.
+         */
         launchSettings(props: WindowProps[WindowAppType.Settings]): Promise<RequestStatus<void>>;
+        /** Settings window only: another window asked this one to reveal a setting. */
+        onSettingsHighlight(handler: (highlight: string) => void): AppEventToken;
         /** Open workspace-window count — gates settings actions that need a workspace to act in. */
         countWorkspaceWindows(): Promise<RequestStatus<{ count: number }>>;
         /**

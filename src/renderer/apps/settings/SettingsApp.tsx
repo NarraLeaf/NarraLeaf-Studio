@@ -2,17 +2,26 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/lib/components/layout";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
 import { SettingsExplorer, SettingValue } from "./components/SettingsExplorer";
+import { SettingsNavTree, SettingsNavCategory } from "./components/SettingsNavTree";
 import {
     getAllAppSettings,
     getAppSettingCategories,
+    getSettingByKey,
     getSettingsByCategory,
 } from "@/lib/settings/registry";
 import { AppSettingDefinition, AppSettingCategoryKey, SettingCategory, SettingDescriptor } from "@/lib/settings/models";
+import { filterCategoryEntries } from "@/lib/settings/searchSettings";
 import { SettingValueType } from "@/lib/settings/types";
 import { getInterface } from "@/lib/app/bridge";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
+import { WindowAppType } from "@shared/types/window";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
+
+/** Entry kinds that own their storage; the value layer must not try to load or write them. */
+function isStoredSetting(setting: AppSettingDefinition): boolean {
+    return setting.type !== SettingValueType.Action && setting.type !== SettingValueType.Custom;
+}
 
 export function SettingsApp() {
     const { t } = useTranslation();
@@ -31,7 +40,11 @@ export function SettingsApp() {
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedCategory, setSelectedCategory] = useState<string>(categories[0]?.key ?? "");
+    const [selectedSettingId, setSelectedSettingId] = useState<string | undefined>(undefined);
     const [categoryScrollSignal, setCategoryScrollSignal] = useState(0);
+    const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
+        () => new Set(categories[0] ? [categories[0].key] : []),
+    );
 
     useEffect(() => {
         let mounted = true;
@@ -39,8 +52,9 @@ export function SettingsApp() {
             const nextValues: Record<string, SettingValue> = {};
             await Promise.all(
                 getAllAppSettings().map(async (setting) => {
-                    // Actions store nothing; their `key` is an identity, not a state key.
-                    if (setting.type === SettingValueType.Action) {
+                    // Actions and panels store nothing here; their `key` is an identity (or, for a
+                    // panel, a key the panel itself owns), not something this layer reads.
+                    if (!isStoredSetting(setting)) {
                         return;
                     }
                     try {
@@ -73,7 +87,7 @@ export function SettingsApp() {
     // global key. Follow the broadcast so the fields show what is actually stored
     // instead of a snapshot from mount.
     useEffect(() => {
-        const keys = new Set<string>(getAllAppSettings().map(setting => setting.key));
+        const keys = new Set<string>(getAllAppSettings().filter(isStoredSetting).map(setting => setting.key));
         const token = getInterface().app.state.onGlobalStateChanged?.((change) => {
             if (!keys.has(change.key)) {
                 return;
@@ -145,6 +159,7 @@ export function SettingsApp() {
             danger: setting.danger,
             skipConfirm: setting.skipConfirm,
             disabled: unavailable,
+            panel: setting.panel,
             };
         },
         [t, availability],
@@ -183,18 +198,94 @@ export function SettingsApp() {
         [t],
     );
 
+    /** The tree mirrors the list exactly, search included — see `filterCategoryEntries`. */
+    const navCategories = useMemo<SettingsNavCategory[]>(() => {
+        return localizedCategories
+            .map(category => {
+                const entries = getSettingsByCategory(category.key as AppSettingCategoryKey)
+                    .map(setting => ({ descriptor: describeAppSetting(setting) }));
+                const matched = filterCategoryEntries(category, entries, searchQuery);
+                return matched
+                    ? { category, entries: matched.map(entry => entry.descriptor) }
+                    : null;
+            })
+            .filter((entry): entry is SettingsNavCategory => entry !== null);
+    }, [localizedCategories, describeAppSetting, searchQuery]);
+
     const handleCategoryClick = useCallback((categoryKey: string) => {
         setSelectedCategory(categoryKey);
+        setSelectedSettingId(undefined);
+        setExpandedCategories(prev => new Set(prev).add(categoryKey));
         setCategoryScrollSignal(value => value + 1);
     }, []);
+
+    const handleSettingClick = useCallback((categoryKey: string, settingId: string) => {
+        setSelectedCategory(categoryKey);
+        setSelectedSettingId(settingId);
+        setCategoryScrollSignal(value => value + 1);
+    }, []);
+
+    const handleToggleCategory = useCallback((categoryKey: string) => {
+        setExpandedCategories(prev => {
+            const next = new Set(prev);
+            if (next.has(categoryKey)) {
+                next.delete(categoryKey);
+            } else {
+                next.add(categoryKey);
+            }
+            return next;
+        });
+    }, []);
+
+    /**
+     * Jump to whatever the opener asked for. `highlight` is a setting key (the workspace's
+     * "Customize keyboard shortcuts" sends `keybindings.overrides`) or a category key; anything
+     * unrecognized is ignored and the window opens on its first category as usual.
+     */
+    const applyHighlight = useCallback((highlight: string | undefined) => {
+        if (!highlight) {
+            return;
+        }
+        const setting = getSettingByKey(highlight);
+        if (setting) {
+            setSelectedCategory(setting.category);
+            setSelectedSettingId(setting.key);
+            setExpandedCategories(prev => new Set(prev).add(setting.category));
+            setCategoryScrollSignal(value => value + 1);
+            return;
+        }
+        if (categories.some(category => category.key === highlight)) {
+            setSelectedCategory(highlight);
+            setSelectedSettingId(undefined);
+            setExpandedCategories(prev => new Set(prev).add(highlight));
+            setCategoryScrollSignal(value => value + 1);
+        }
+    }, [categories]);
+
+    // On open, and again whenever an already-open Settings window is asked to show something else
+    // (main focuses the existing window rather than stacking a second one).
+    useEffect(() => {
+        let mounted = true;
+        void getInterface()
+            .getWindowProps<WindowAppType.Settings>()
+            .then(result => {
+                if (mounted && result.success) {
+                    applyHighlight(result.data?.highlight);
+                }
+            })
+            .catch(() => undefined);
+        const token = getInterface().app.onSettingsHighlight?.(highlight => applyHighlight(highlight));
+        return () => {
+            mounted = false;
+            token?.cancel();
+        };
+    }, [applyHighlight]);
 
     return (
         <AppLayout title={t("settings.title")} iconSrc="/favicon.ico">
             <div className="flex h-full overflow-hidden rounded-md border border-edge bg-surface shadow-xl">
-                <aside className="w-64 shrink-0 border-r border-edge-subtle bg-surface-sunken p-4 space-y-4">
-                    <div>
-                        <p className="text-lg font-semibold text-fg">{t("settings.title")}</p>
-                    </div>
+                <aside className="flex w-64 shrink-0 flex-col gap-3 border-r border-edge-subtle bg-surface-sunken p-4">
+                    <p className="text-lg font-semibold text-fg">{t("settings.title")}</p>
                     {localizedCategories.length > 0 ? (
                         <>
                             <SearchBox
@@ -203,20 +294,15 @@ export function SettingsApp() {
                                 placeholder={t("settings.searchPlaceholder")}
                                 className="w-full"
                             />
-                            <div className="flex-1 space-y-2 overflow-y-auto pr-1">
-                                {localizedCategories.map((category) => {
-                                    const isActive = selectedCategory === category.key;
-                                    return (
-                                        <button
-                                            key={category.key}
-                                            onClick={() => handleCategoryClick(category.key)}
-                                            className={`w-full rounded-md px-3 py-2 text-left transition-colors ${isActive ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg"}`}
-                                        >
-                                            <div className="text-sm font-medium">{category.label}</div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
+                            <SettingsNavTree
+                                categories={navCategories}
+                                expanded={expandedCategories}
+                                onToggle={handleToggleCategory}
+                                selectedCategory={selectedCategory}
+                                selectedSettingId={selectedSettingId}
+                                onSelectCategory={handleCategoryClick}
+                                onSelectSetting={handleSettingClick}
+                            />
                         </>
                     ) : (
                         <p className="text-xs text-fg-subtle">
@@ -238,6 +324,7 @@ export function SettingsApp() {
                         loading={loading}
                         emptyStateMessage={t("settings.empty")}
                         selectedCategory={selectedCategory}
+                        selectedSettingId={selectedSettingId}
                         selectedCategoryScrollSignal={categoryScrollSignal}
                     />
                 </section>

@@ -24,7 +24,6 @@ import { localizationPanelModule } from "./localization";
 import { voicePanelModule } from "./voice";
 import { dashboardPanelModule } from "./dashboard";
 import { searchPanelModule } from "./search";
-import { keybindingsModule } from "./keybindings";
 import { notificationsPanelModule } from "./notifications";
 
 /**
@@ -59,7 +58,6 @@ export const builtInEditors: EditorModule[] = [
     videoPreviewModule,
     fontPreviewModule,
     jsonPreviewModule,
-    keybindingsModule,
 ];
 
 /**
@@ -90,3 +88,4 @@ export { storyMotionPanelModule } from "./story-motion";
 export { localizationPanelModule } from "./localization";
 export { voicePanelModule } from "./voice";
 export { dashboardPanelModule } from "./dashboard";
+export { builtInStatusBarEntries } from "./status-bar";

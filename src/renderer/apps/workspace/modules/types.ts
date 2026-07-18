@@ -2,6 +2,7 @@ import { ComponentType, ReactNode } from "react";
 import { ActionSeparator } from "@/apps/workspace/registry/types";
 import { PanelPosition } from "../registry/types";
 import { FocusContext } from "@/lib/workspace/services/ui";
+import { StatusBarAlignment } from "@/lib/workspace/services/ui/types";
 import type { WorkspaceContext } from "@/lib/workspace/services/services";
 import { Workspace } from "@/lib/workspace/workspace";
 import { TranslationKey } from "@shared/i18n";
@@ -141,6 +142,27 @@ export interface PanelModule<TPayload = any> {
     onLoad?: () => void | Promise<void>;
     /** Optional cleanup function called when module unloads */
     onUnload?: () => void | Promise<void>;
+}
+
+/**
+ * Status bar entry definition
+ *
+ * One cell in the bottom status bar. Unlike panels and editors these carry no payload and take no
+ * props — an entry owns its own subscriptions and renders `null` whenever it has nothing to report,
+ * which is how the bar stays empty on an idle workspace.
+ *
+ * Placement comes from the order entries are registered in (see `builtInStatusBarEntries`), not
+ * from a sort key: users may hide an entry but never move it.
+ */
+export interface StatusBarEntryModule {
+    /** Unique identifier, namespaced like every other module id. Also the persisted hide key. */
+    id: string;
+    /** i18n key for the label in the status bar's right-click toggle menu. */
+    labelKey: TranslationKey;
+    /** Which end of the bar the entry belongs to. */
+    alignment: StatusBarAlignment;
+    /** Renders the cell; returns null when the entry currently has nothing to say. */
+    component: ComponentType;
 }
 
 /**

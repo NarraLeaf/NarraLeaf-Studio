@@ -15,6 +15,14 @@ export enum SettingValueType {
      * worth confirming.
      */
     Action = "action",
+    /**
+     * A whole panel rather than a value — the entry renders its own UI across the row.
+     *
+     * Reserved for settings whose editing surface is a table or an editor in its own right (the
+     * keyboard-shortcut catalog), where a label plus one control cannot express it. Needs `panel`;
+     * the panel owns its storage, so the settings layer reads and writes nothing for it.
+     */
+    Custom = "custom",
 }
 
 export type TypeofSettingSchema<T extends SettingValueType> =
@@ -25,6 +33,7 @@ export type TypeofSettingSchema<T extends SettingValueType> =
     T extends SettingValueType.Enum ? string :
     T extends SettingValueType.Slider ? number :
     T extends SettingValueType.Action ? null :
+    T extends SettingValueType.Custom ? null :
     never;
 
 export type SettingValueProps<T extends SettingValueType> = T extends SettingValueType.Enum ? {

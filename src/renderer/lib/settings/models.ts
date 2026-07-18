@@ -10,6 +10,13 @@ export enum SettingScope {
 }
 
 /**
+ * Panels a `SettingValueType.Custom` entry can render. Referenced by id rather than by component
+ * so this module — which the workspace imports too — stays free of React: the Settings window
+ * resolves the id against its own panel registry.
+ */
+export type SettingPanelId = "keybindings";
+
+/**
  * Lightweight descriptor that the shared UI layer understands.
  */
 export interface SettingDescriptor<T extends SettingValueType = SettingValueType> {
@@ -37,6 +44,8 @@ export interface SettingDescriptor<T extends SettingValueType = SettingValueType
     skipConfirm?: boolean;
     /** Action only: renders the button disabled (the row description carries the reason). */
     disabled?: boolean;
+    /** Custom only: which panel to render in place of a control. */
+    panel?: SettingPanelId;
 }
 
 /**
@@ -72,6 +81,11 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
      * layer stores nothing for an Action and `key` is only an identity for it.
      */
     onInvoke?: () => Promise<void>;
+    /**
+     * `SettingValueType.Custom` only: which panel renders this entry. The panel owns its own
+     * storage, so nothing is read or written for it here and `key` is only an identity.
+     */
+    panel?: SettingPanelId;
     /** Action only: the button's resting label. */
     actionLabel?: string;
     /** i18n key; when set, it overrides `actionLabel` at render time. */

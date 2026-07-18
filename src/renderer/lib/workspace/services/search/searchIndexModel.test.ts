@@ -4,6 +4,8 @@ import {
     extractBlueprintEntries,
     extractLocalizationKeyEntries,
     extractStoryEntries,
+    indexEntries,
+    parseSearchQuery,
     querySearchIndex,
     type SearchIndexEntry,
 } from "./searchIndexModel";
@@ -212,13 +214,45 @@ describe("extractAssetEntries", () => {
     });
 });
 
+describe("parseSearchQuery", () => {
+    it("lowercases terms and splits on whitespace", () => {
+        expect(parseSearchQuery("Good MORNING").terms).toEqual(["good", "morning"]);
+    });
+
+    it("keeps a quoted phrase as one term", () => {
+        expect(parseSearchQuery('"good morning" inko').terms).toEqual(["good morning", "inko"]);
+    });
+
+    it("pulls known key:value pairs out as filters", () => {
+        const parsed = parseSearchQuery("morning type:story scene:Opening speaker:Inko");
+        expect(parsed.terms).toEqual(["morning"]);
+        expect(parsed.filters).toMatchObject({
+            groups: ["story"],
+            sceneName: "opening",
+            speaker: "inko",
+        });
+    });
+
+    it("leaves an unknown prefix as a literal term so URLs stay searchable", () => {
+        expect(parseSearchQuery("https://example.com").terms).toEqual(["https://example.com"]);
+        expect(parseSearchQuery("nope:value").terms).toEqual(["nope:value"]);
+    });
+
+    it("treats an unrecognized group name as a literal term, not a silent empty filter", () => {
+        const parsed = parseSearchQuery("type:nonsense");
+        expect(parsed.terms).toEqual(["type:nonsense"]);
+        expect(parsed.filters.groups).toBeUndefined();
+    });
+});
+
 describe("querySearchIndex", () => {
-    const entries: SearchIndexEntry[] = [
-        { id: "1", group: "story", text: "Good morning, Inko!", detail: "Main Story › Opening", target: { kind: "localizationKey", keyName: "x" } },
-        { id: "2", group: "story", text: "It is a fine morning.", detail: "Main Story › Opening", target: { kind: "localizationKey", keyName: "x" } },
+    const entries = indexEntries([
+        { id: "1", group: "story", text: "Good morning, Inko!", detail: "Main Story › Opening", fields: { sceneName: "Opening", speaker: "Inko" }, target: { kind: "localizationKey", keyName: "x" } },
+        { id: "2", group: "story", text: "It is a fine morning.", detail: "Main Story › Opening", fields: { sceneName: "Opening" }, target: { kind: "localizationKey", keyName: "x" } },
         { id: "3", group: "variable", text: "MorningFlag", target: { kind: "localizationKey", keyName: "x" } },
         { id: "4", group: "uiTextKey", text: "menu.start", detail: "Start the morning", target: { kind: "localizationKey", keyName: "x" } },
-    ];
+        { id: "5", group: "asset", text: "bgm-dawn.ogg", aux: "morning theme", fields: { assetType: "audio" }, target: { kind: "localizationKey", keyName: "x" } },
+    ] satisfies SearchIndexEntry[]);
 
     it("returns empty for a blank query", () => {
         expect(querySearchIndex(entries, "   ")).toEqual([]);
@@ -230,20 +264,28 @@ describe("querySearchIndex", () => {
         expect(story?.hits).toHaveLength(2);
         const hit = story?.hits.find(h => h.entry.id === "1");
         // "morning" in "Good morning, Inko!" starts at index 5
-        expect(hit?.titleRange).toEqual([5, 12]);
+        expect(hit?.titleRanges).toEqual([[5, 12]]);
     });
 
     it("groups results in the fixed group order", () => {
         const groups = querySearchIndex(entries, "morning");
-        expect(groups.map(g => g.group)).toEqual(["story", "variable", "uiTextKey"]);
+        expect(groups.map(g => g.group)).toEqual(["story", "asset", "variable", "uiTextKey"]);
     });
 
     it("matches detail at a lower score without a title highlight", () => {
         const groups = querySearchIndex(entries, "morning");
         const keyHit = groups.find(g => g.group === "uiTextKey")?.hits[0];
-        expect(keyHit?.titleRange).toBeNull();
+        expect(keyHit?.titleRanges).toEqual([]);
+        expect(keyHit?.matchReason).toBe("detail");
         const titleHit = groups.find(g => g.group === "variable")?.hits[0];
         expect(titleHit && keyHit && titleHit.score > keyHit.score).toBe(true);
+    });
+
+    it("matches hidden aux text and says so", () => {
+        const asset = querySearchIndex(entries, "morning").find(g => g.group === "asset")?.hits[0];
+        expect(asset?.entry.id).toBe("5");
+        expect(asset?.matchReason).toBe("aux");
+        expect(asset?.titleRanges).toEqual([]);
     });
 
     it("ranks a word-boundary start above a mid-word occurrence", () => {
@@ -252,15 +294,104 @@ describe("querySearchIndex", () => {
         expect(boundary?.hits[0]?.entry.id).toBe("1");
     });
 
+    it("ANDs terms regardless of word order, across text and detail", () => {
+        const forward = querySearchIndex(entries, "good morning");
+        const reversed = querySearchIndex(entries, "morning good");
+        expect(forward.find(g => g.group === "story")?.hits.map(h => h.entry.id)).toEqual(["1"]);
+        expect(reversed.find(g => g.group === "story")?.hits.map(h => h.entry.id)).toEqual(["1"]);
+        // "inko" is in the title, "opening" only in the detail line — both must still match.
+        expect(querySearchIndex(entries, "inko opening").find(g => g.group === "story")?.hits).toHaveLength(1);
+    });
+
+    it("drops an entry when any term is missing", () => {
+        expect(querySearchIndex(entries, "morning nonexistent")).toEqual([]);
+    });
+
+    it("highlights every matched term in the title", () => {
+        const hit = querySearchIndex(entries, "good inko").find(g => g.group === "story")?.hits[0];
+        expect(hit?.titleRanges).toEqual([[0, 4], [14, 18]]);
+    });
+
+    it("honours a quoted phrase as a single term", () => {
+        expect(querySearchIndex(entries, '"fine morning"').find(g => g.group === "story")?.hits.map(h => h.entry.id))
+            .toEqual(["2"]);
+        expect(querySearchIndex(entries, '"morning fine"')).toEqual([]);
+    });
+
+    it("narrows by a group filter from query syntax", () => {
+        const groups = querySearchIndex(entries, "morning type:variable");
+        expect(groups.map(g => g.group)).toEqual(["variable"]);
+    });
+
+    it("narrows by a field filter from query syntax", () => {
+        expect(querySearchIndex(entries, "morning speaker:inko").find(g => g.group === "story")?.hits.map(h => h.entry.id))
+            .toEqual(["1"]);
+        expect(querySearchIndex(entries, "morning speaker:nobody")).toEqual([]);
+    });
+
+    it("intersects supplied filters with query-syntax filters", () => {
+        const groups = querySearchIndex(entries, "morning type:story", { filters: { groups: ["variable"] } });
+        expect(groups).toEqual([]);
+    });
+
+    it("returns nothing for a facet-only query", () => {
+        expect(querySearchIndex(entries, "type:story")).toEqual([]);
+    });
+
     it("caps per group and reports the uncapped total", () => {
-        const many: SearchIndexEntry[] = Array.from({ length: 30 }, (_, i) => ({
-            id: `m${i}`,
-            group: "story",
-            text: `morning line ${i}`,
-            target: { kind: "localizationKey", keyName: "x" },
-        }));
+        const many = indexEntries(
+            Array.from({ length: 30 }, (_, i) => ({
+                id: `m${i}`,
+                group: "story" as const,
+                text: `morning line ${i}`,
+                target: { kind: "localizationKey" as const, keyName: "x" },
+            })),
+        );
         const groups = querySearchIndex(many, "morning", { maxPerGroup: 5 });
         expect(groups[0]?.hits).toHaveLength(5);
         expect(groups[0]?.total).toBe(30);
+    });
+
+    it("lifts the cap for an expanded group only", () => {
+        const many = indexEntries([
+            ...Array.from({ length: 30 }, (_, i) => ({
+                id: `s${i}`,
+                group: "story" as const,
+                text: `morning line ${i}`,
+                target: { kind: "localizationKey" as const, keyName: "x" },
+            })),
+            ...Array.from({ length: 30 }, (_, i) => ({
+                id: `v${i}`,
+                group: "variable" as const,
+                text: `morning var ${i}`,
+                target: { kind: "localizationKey" as const, keyName: "x" },
+            })),
+        ]);
+        const groups = querySearchIndex(many, "morning", { maxPerGroup: 5, expandedGroups: ["story"] });
+        expect(groups.find(g => g.group === "story")?.hits).toHaveLength(30);
+        expect(groups.find(g => g.group === "variable")?.hits).toHaveLength(5);
+    });
+});
+
+describe("indexEntries", () => {
+    it("precomputes case-folded haystacks", () => {
+        const [entry] = indexEntries([
+            { id: "1", group: "story", text: "Good Morning", detail: "Ch. ONE", aux: "TAG", target: { kind: "localizationKey", keyName: "x" } },
+        ]);
+        expect(entry.textLower).toBe("good morning");
+        expect(entry.detailLower).toBe("ch. one");
+        expect(entry.auxLower).toBe("tag");
+        expect(entry.textFoldable).toBe(true);
+    });
+
+    it("flags text whose folding is not length-preserving so ranges are not misreported", () => {
+        // "İ" (U+0130) folds to two code units, desyncing folded indices from the original.
+        const [entry] = indexEntries([
+            { id: "1", group: "story", text: "İstanbul", target: { kind: "localizationKey", keyName: "x" } },
+        ]);
+        expect(entry.textFoldable).toBe(false);
+        const hit = querySearchIndex([entry], "stanbul")[0]?.hits[0];
+        expect(hit).toBeDefined();
+        expect(hit?.titleRanges).toEqual([]);
     });
 });

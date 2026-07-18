@@ -4,7 +4,7 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StorageManager } from "../storageManager";
 import type { AppWindow } from "../window/appWindow";
-import { FileSystemHashHandler } from "./fileSystemHandler";
+import { FileSystemHandler, FileSystemHashHandler } from "./fileSystemHandler";
 
 vi.mock("electron", () => ({
     app: {
@@ -27,6 +27,44 @@ function makeRequest(hash: string): Request {
     // test independent of undici's scheme handling for custom protocols.
     return { url: `app://fs/${hash}`, method: "GET" } as unknown as Request;
 }
+
+describe("FileSystemHandler status codes", () => {
+    let tempDir: string;
+    let handler: FileSystemHandler;
+
+    beforeEach(async () => {
+        tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-fs-serve-"));
+        handler = new FileSystemHandler("app", {}, () => tempDir, "windows");
+        handler.addRule({
+            include: (requested) => new URL(requested).hostname === "windows",
+            handler: (requested) => ({ path: handler.formatFileUrl(requested), noCache: false }),
+        });
+    });
+
+    afterEach(async () => {
+        await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    function makeAppRequest(pathname: string): Request {
+        return { url: `app://windows${pathname}`, method: "GET" } as unknown as Request;
+    }
+
+    it("serves a built entry", async () => {
+        await fs.mkdir(path.join(tempDir, "workspace"), { recursive: true });
+        await fs.writeFile(path.join(tempDir, "workspace", "index.html"), "<html></html>");
+
+        const response = await handler.handle(makeAppRequest("/workspace/index.html"));
+        expect(response.statusCode).toBe(200);
+        expect(response.headers["Content-Type"]).toContain("html");
+    });
+
+    it("reports a never-built entry as 404 rather than 500", async () => {
+        // A workspace bundle missing from `dist` used to surface as an opaque 500,
+        // which hid the fact that the app had simply failed to compile.
+        const response = await handler.handle(makeAppRequest("/workspace/index.html"));
+        expect(response.statusCode).toBe(404);
+    });
+});
 
 describe("FileSystemHashHandler grant lifetimes", () => {
     let tempDir: string;

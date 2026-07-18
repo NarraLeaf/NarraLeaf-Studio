@@ -16,6 +16,12 @@ export interface GlobalStateType extends Record<string, any> {
     "ui.reduceMotion": boolean;
     /** The slim strip along the bottom of the workspace; the dock reclaims its row when off. */
     "ui.statusBar.visible": boolean;
+    /**
+     * Status bar entries the user switched off, as one list of registry ids. Hidden-by-id rather
+     * than shown-by-id so entries added in a later release start visible without a migration; one
+     * key rather than one per entry because entry ids contain dots the settings store would split.
+     */
+    "ui.statusBar.hiddenItems": string[];
     /** The search pill in the title bar. With it hidden the command palette grows its own input. */
     "ui.titleBarSearch.visible": boolean;
     /**
@@ -90,6 +96,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "ui.compactMode": false,
     "ui.reduceMotion": false,
     "ui.statusBar.visible": true,
+    "ui.statusBar.hiddenItems": [],
     "ui.titleBarSearch.visible": true,
     // The `ui.background*` keys deliberately have no defaults here. Persisted values are untrusted
     // (opacity has to be clamped, fill/anchor whitelisted), so the renderer normalizes them through

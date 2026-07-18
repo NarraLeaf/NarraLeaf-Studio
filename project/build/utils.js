@@ -9,6 +9,14 @@ const templatePath = path.join(rootDir, 'project', 'assets', 'app-entry-html.ejs
 const distRoot = path.join(rootDir, 'dist');
 const distWindows = path.join(distRoot, 'windows');
 
+/**
+ * Port the dev server listens on for renderer reload sockets. Owning it is what
+ * marks a live `yarn dev` session, so `yarn stop` looks here too — keep the two
+ * in sync via this constant rather than re-typing the number.
+ * The renderer side connects in src/main/app/application/baseApp.ts.
+ */
+const DEV_RELOAD_PORT = 5588;
+
 function isDev(argv = process.argv) {
     return argv.includes('--dev');
 }
@@ -48,6 +56,7 @@ module.exports = {
     templatePath,
     distRoot,
     distWindows,
+    DEV_RELOAD_PORT,
     isDev,
     getRendererApps,
     renderHtml,

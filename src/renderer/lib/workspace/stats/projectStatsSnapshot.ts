@@ -1,9 +1,8 @@
 /**
  * On-demand static statistics for the open project: scale (scenes, lines,
- * words, assets, blueprints), structural findings (branches,
- * unreachable/empty scenes), per-scene and per-character word counts, and
- * per-language translation progress. Nothing here is persisted or cached —
- * the snapshot is recomputed by whoever renders it.
+ * words, assets, blueprints), branch count, and per-language translation
+ * progress. Nothing here is persisted or cached — the snapshot is recomputed
+ * by whoever renders it.
  * Comments in English per project convention.
  */
 
@@ -21,11 +20,9 @@ import {
     type TranslatableUnitRef,
 } from "@/lib/workspace/services/localization/localizationModel";
 import { countWords } from "@/lib/workspace/stats/wordCount";
-import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
+import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene } from "@shared/types/story";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 
-export type SceneWordStat = { sceneId: string; sceneName: string; words: number; lines: number };
-export type CharacterWordStat = { characterId: string; name: string; lines: number; words: number };
 export type LocaleProgressStat = {
     locale: string;
     total: number;
@@ -55,15 +52,9 @@ export type ProjectStatsSnapshot = {
     };
     structure: {
         branches: number;
-        unreachableScenes: string[];
-        emptyScenes: string[];
     };
-    topScenes: SceneWordStat[];
-    topCharacters: CharacterWordStat[];
     localization: LocaleProgressStat[];
 };
-
-type WordTally = { lines: number; words: number };
 
 type SceneScan = {
     dialogueLines: number;
@@ -71,10 +62,6 @@ type SceneScan = {
     choices: number;
     choiceOptions: number;
     words: number;
-    /** Blocks that carry authored content; notes are editor-only and don't make a scene non-empty. */
-    contentBlocks: number;
-    jumpTargets: Set<StorySceneId>;
-    characterTallies: Map<string, WordTally>;
 };
 
 type StoriesScan = {
@@ -88,10 +75,6 @@ type StoriesScan = {
     sceneVariables: number;
     savedVariables: number;
     branches: number;
-    unreachableScenes: string[];
-    emptyScenes: string[];
-    sceneStats: SceneWordStat[];
-    characterTallies: Map<string, WordTally>;
 };
 
 function createStoriesScan(): StoriesScan {
@@ -106,21 +89,7 @@ function createStoriesScan(): StoriesScan {
         sceneVariables: 0,
         savedVariables: 0,
         branches: 0,
-        unreachableScenes: [],
-        emptyScenes: [],
-        sceneStats: [],
-        characterTallies: new Map(),
     };
-}
-
-function addTally(tallies: Map<string, WordTally>, key: string, words: number): void {
-    const tally = tallies.get(key);
-    if (tally) {
-        tally.lines += 1;
-        tally.words += words;
-        return;
-    }
-    tallies.set(key, { lines: 1, words });
 }
 
 /**
@@ -148,9 +117,6 @@ function scanScene(scene: StoryScene): SceneScan {
         choices: 0,
         choiceOptions: 0,
         words: 0,
-        contentBlocks: 0,
-        jumpTargets: new Set(),
-        characterTallies: new Map(),
     };
     const visited = new Set<StoryBlockId>();
     const visit = (blockId: StoryBlockId): void => {
@@ -159,24 +125,14 @@ function scanScene(scene: StoryScene): SceneScan {
             return;
         }
         visited.add(blockId);
-        if (block.kind !== "note") {
-            scan.contentBlocks += 1;
-        }
-        if (block.kind === "jump") {
-            scan.jumpTargets.add(block.payload.targetSceneId);
-        } else if (block.kind === "nodeAction") {
+        if (block.kind === "nodeAction") {
             const payload = block.payload;
             if (payload.action === "narration") {
-                const words = countWords(payload.text.value);
                 scan.narrationLines += 1;
-                scan.words += words;
+                scan.words += countWords(payload.text.value);
             } else if (payload.action === "dialogue") {
-                const words = countWords(payload.text.value);
                 scan.dialogueLines += 1;
-                scan.words += words;
-                if (payload.characterId) {
-                    addTally(scan.characterTallies, payload.characterId, words);
-                }
+                scan.words += countWords(payload.text.value);
             } else if (payload.action === "choice") {
                 scan.choices += 1;
             } else if (payload.action === "choiceOption") {
@@ -193,53 +149,6 @@ function scanScene(scene: StoryScene): SceneScan {
     return scan;
 }
 
-/**
- * Entry scene of a story: the explicit one, else the first scene of the first
- * non-empty chapter. Unassigned scenes never count as an entry.
- */
-function findEntrySceneId(document: StoryDocument): StorySceneId | undefined {
-    if (document.entrySceneId && document.scenes[document.entrySceneId]) {
-        return document.entrySceneId;
-    }
-    for (const chapter of document.chapters) {
-        for (const sceneId of chapter.sceneIds) {
-            if (document.scenes[sceneId]) {
-                return sceneId;
-            }
-        }
-    }
-    return undefined;
-}
-
-/**
- * Reachability is deliberately conservative: a story with no identifiable entry
- * scene reports nothing unreachable, because the alternative — declaring every
- * scene unreachable — would be a confident lie about a project we can't trace.
- */
-function collectUnreachableSceneNames(
-    document: StoryDocument,
-    jumpTargetsByScene: Map<StorySceneId, Set<StorySceneId>>,
-): string[] {
-    const entrySceneId = findEntrySceneId(document);
-    if (!entrySceneId) {
-        return [];
-    }
-    const reached = new Set<StorySceneId>([entrySceneId]);
-    const queue: StorySceneId[] = [entrySceneId];
-    while (queue.length > 0) {
-        const sceneId = queue.shift() as StorySceneId;
-        for (const targetId of jumpTargetsByScene.get(sceneId) ?? []) {
-            if (document.scenes[targetId] && !reached.has(targetId)) {
-                reached.add(targetId);
-                queue.push(targetId);
-            }
-        }
-    }
-    return Object.values(document.scenes)
-        .filter(scene => !reached.has(scene.id))
-        .map(scene => scene.name);
-}
-
 function scanStories(documents: readonly StoryDocument[]): StoriesScan {
     const scan = createStoriesScan();
     for (const document of documents) {
@@ -247,10 +156,8 @@ function scanStories(documents: readonly StoryDocument[]): StoriesScan {
         scan.chapters += document.chapters.length;
         scan.savedVariables += Object.keys(document.savedVariables ?? {}).length;
 
-        const jumpTargetsByScene = new Map<StorySceneId, Set<StorySceneId>>();
         for (const scene of Object.values(document.scenes)) {
             const sceneScan = scanScene(scene);
-            jumpTargetsByScene.set(scene.id, sceneScan.jumpTargets);
 
             scan.scenes += 1;
             scan.dialogueLines += sceneScan.dialogueLines;
@@ -259,28 +166,8 @@ function scanStories(documents: readonly StoryDocument[]): StoriesScan {
             scan.branches += sceneScan.choiceOptions;
             scan.totalWords += sceneScan.words;
             scan.sceneVariables += Object.keys(scene.sceneVariables ?? {}).length;
-            if (sceneScan.contentBlocks === 0) {
-                scan.emptyScenes.push(scene.name);
-            }
-            scan.sceneStats.push({
-                sceneId: scene.id,
-                sceneName: scene.name,
-                words: sceneScan.words,
-                lines: sceneScan.dialogueLines + sceneScan.narrationLines,
-            });
-            for (const [characterId, tally] of sceneScan.characterTallies) {
-                const total = scan.characterTallies.get(characterId);
-                if (total) {
-                    total.lines += tally.lines;
-                    total.words += tally.words;
-                } else {
-                    scan.characterTallies.set(characterId, { ...tally });
-                }
-            }
         }
-        scan.unreachableScenes.push(...collectUnreachableSceneNames(document, jumpTargetsByScene));
     }
-    scan.sceneStats.sort((a, b) => b.words - a.words);
     return scan;
 }
 
@@ -324,27 +211,8 @@ function countBlueprints(ctx: WorkspaceContext): {
     };
 }
 
-function resolveCharacterStats(
-    ctx: WorkspaceContext,
-    tallies: Map<string, WordTally>,
-): { characters: number; topCharacters: CharacterWordStat[] } {
-    const characters = ctx.services.get<CharacterService>(Services.Character).listCharacter();
-    const stats: CharacterWordStat[] = [];
-    for (const character of characters) {
-        const characterId = character.profile.getId();
-        const tally = tallies.get(characterId);
-        if (!tally) {
-            continue;
-        }
-        stats.push({
-            characterId,
-            name: character.profile.getName(),
-            lines: tally.lines,
-            words: tally.words,
-        });
-    }
-    stats.sort((a, b) => b.words - a.words);
-    return { characters: characters.length, topCharacters: stats };
+function countCharacters(ctx: WorkspaceContext): number {
+    return ctx.services.get<CharacterService>(Services.Character).listCharacter().length;
 }
 
 /** Every translatable unit of the project, mirroring the localization panel's aggregation. */
@@ -431,14 +299,11 @@ export async function computeProjectStatsSnapshot(ctx: WorkspaceContext): Promis
         uiSurfaces = 0;
     }
 
-    let characterStats: { characters: number; topCharacters: CharacterWordStat[] } = {
-        characters: 0,
-        topCharacters: [],
-    };
+    let characters = 0;
     try {
-        characterStats = resolveCharacterStats(ctx, stories.characterTallies);
+        characters = countCharacters(ctx);
     } catch {
-        characterStats = { characters: 0, topCharacters: [] };
+        characters = 0;
     }
 
     let localization: LocaleProgressStat[] = [];
@@ -457,7 +322,7 @@ export async function computeProjectStatsSnapshot(ctx: WorkspaceContext): Promis
             narrationLines: stories.narrationLines,
             choices: stories.choices,
             totalWords: stories.totalWords,
-            characters: characterStats.characters,
+            characters,
             assets: assets.total,
             assetsByType: assets.byType,
             blueprints: blueprints.blueprints,
@@ -471,11 +336,7 @@ export async function computeProjectStatsSnapshot(ctx: WorkspaceContext): Promis
         },
         structure: {
             branches: stories.branches,
-            unreachableScenes: stories.unreachableScenes,
-            emptyScenes: stories.emptyScenes,
         },
-        topScenes: stories.sceneStats,
-        topCharacters: characterStats.topCharacters,
         localization,
     };
 }
