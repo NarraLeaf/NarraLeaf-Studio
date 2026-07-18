@@ -126,6 +126,9 @@ export const assets = {
         pause: "Pause",
         mute: "Mute",
         unmute: "Unmute",
+        waveformHint: "Click to seek · ⌥-click to add a cue point",
+        analyzing: "Analyzing waveform…",
+        cueChipHint: "Click to seek · double-click to remove",
         seek: "Seek",
         volume: "Volume",
         playback: "Playback",
@@ -154,5 +157,16 @@ export const assets = {
         character: "Asset is used by a character",
         scene: "Asset is used by a scene",
         editor: "Asset is used by the Editor",
+    },
+    previewEditor: {
+        loadFailed: "Failed to load this asset.",
+    },
+    fontPreview: {
+        sampleText: "The quick brown fox jumps over the lazy dog — 敏捷的棕色狐狸跳过懒狗 0123456789",
+        typePlaceholder: "Type to preview your own text…",
+    },
+    jsonPreview: {
+        invalid: "This file is not valid JSON — showing raw content.",
+        truncated: "File is too large to pretty-print — showing the beginning only.",
     },
 } as const;

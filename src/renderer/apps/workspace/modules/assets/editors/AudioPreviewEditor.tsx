@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
+import { AudioWaveform, type AudioCuePoint } from "./AudioWaveform";
 import { RefreshCw, AlertCircle, Play, Pause, Volume2, VolumeX } from "lucide-react";
 import { EditorComponentProps } from "../../types";
 import { Asset } from "@/lib/workspace/services/assets/types";
@@ -40,6 +41,49 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
     const [isMuted, setIsMuted] = useState(false);
     const audioUrlRef = useRef<string | null>(null);
     const audioRef = useRef<HTMLAudioElement>(null);
+
+    // Waveform + cue points. Cues live in the asset's persisted extras; local state is the
+    // editing copy, written back through patchAssetExtras on every change.
+    const [cuePoints, setCuePoints] = useState<AudioCuePoint[]>(
+        () => (payload?.asset.extras?.cuePoints as AudioCuePoint[] | undefined) ?? [],
+    );
+    const persistExtras = useCallback(
+        (patch: Record<string, unknown>) => {
+            if (!context || !payload?.asset) {
+                return;
+            }
+            const assetsService = context.services.get<AssetsService>(Services.Assets);
+            void assetsService.patchAssetExtras(payload.asset, patch);
+        },
+        [context, payload?.asset],
+    );
+    const handleWaveformSeek = useCallback((timeSeconds: number) => {
+        const element = audioRef.current;
+        if (element) {
+            element.currentTime = timeSeconds;
+            setCurrentTime(timeSeconds);
+        }
+    }, []);
+    const handleAddCue = useCallback(
+        (timeMs: number) => {
+            setCuePoints(previous => {
+                const next = [...previous, { timeMs }].sort((a, b) => a.timeMs - b.timeMs);
+                persistExtras({ cuePoints: next });
+                return next;
+            });
+        },
+        [persistExtras],
+    );
+    const handleRemoveCue = useCallback(
+        (index: number) => {
+            setCuePoints(previous => {
+                const next = previous.filter((_, i) => i !== index);
+                persistExtras({ cuePoints: next.length > 0 ? next : undefined });
+                return next;
+            });
+        },
+        [persistExtras],
+    );
 
     const { registerActionGroup, unregisterActionGroup } = useRegistry();
 
@@ -262,6 +306,19 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     onLoadedMetadata={handleLoadedMetadata}
                     onTimeUpdate={handleTimeUpdate}
                 />
+                <div className="mb-4 w-full max-w-2xl">
+                    <AudioWaveform
+                        bytes={audioData.data as Uint8Array}
+                        cachedPeaks={payload?.asset.extras?.waveformPeaks as number[] | undefined}
+                        cuePoints={cuePoints}
+                        currentTime={currentTime}
+                        duration={duration || metadata.duration}
+                        onSeek={handleWaveformSeek}
+                        onAddCue={handleAddCue}
+                        onRemoveCue={handleRemoveCue}
+                        onPeaksComputed={peaks => persistExtras({ waveformPeaks: peaks })}
+                    />
+                </div>
                 <div className="w-full max-w-2xl bg-surface-raised border border-edge rounded-md px-4 py-3">
                     <div className="flex items-center gap-3">
                         <button
