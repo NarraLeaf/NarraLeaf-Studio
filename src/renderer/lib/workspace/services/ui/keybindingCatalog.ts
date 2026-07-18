@@ -42,11 +42,13 @@ function entry(id: string, key: string, labelKey: string, categoryKey: Translati
 export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     // --- Workspace-wide -----------------------------------------------------
     entry("workspace-command-palette", "mod+shift+p", "workspace.shell.keybindings.catalog.commandPalette", CATEGORY.general),
-    entry("workspace-quick-search", "mod+p", "workspace.shell.keybindings.catalog.quickSearch", CATEGORY.general),
+    entry("workspace-quick-open", "mod+p", "workspace.shell.keybindings.catalog.quickOpen", CATEGORY.general),
     entry("workspace-keybinding-cheatsheet", "shift+?", "workspace.shell.keybindings.catalog.cheatSheet", CATEGORY.general),
     entry("workspace-reopen-closed-tab", "mod+shift+t", "workspace.shell.keybindings.catalog.reopenClosedTab", CATEGORY.general),
     entry("workspace-editor-quick-switch-next", "ctrl+tab", "workspace.shell.keybindings.catalog.quickSwitchNext", CATEGORY.general),
     entry("workspace-editor-quick-switch-previous", "ctrl+shift+tab", "workspace.shell.keybindings.catalog.quickSwitchPrevious", CATEGORY.general),
+    entry("editor-split-right", "mod+\\", "workspace.shell.commandPalette.editor.splitRight", CATEGORY.general),
+    entry("editor-split-down", "mod+alt+\\", "workspace.shell.commandPalette.editor.splitDown", CATEGORY.general),
 
     // --- Story scene editor (idle mode) ------------------------------------
     entry("story.edit-active", "enter", "story.keybindings.editRow", CATEGORY.story),
