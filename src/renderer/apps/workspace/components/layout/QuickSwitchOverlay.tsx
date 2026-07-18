@@ -40,6 +40,19 @@ interface QuickSwitchOverlayProps {
     emptyText?: string;
     /** Stacking context for the outer layer; command palette sits above the quick switch. */
     zClassName?: string;
+    /**
+     * Where the card lands inside the window-content layer. Default is the quick-switch's
+     * centered drop; the command palette anchors flush under the title bar instead, so it reads
+     * as a dropdown of the title-bar search box (VSCode Quick Open).
+     */
+    placementClassName?: string;
+    /** Card width; the palette widens to mirror the title-bar search box. */
+    widthClassName?: string;
+    /**
+     * Inline style for the card (e.g. a measured `marginLeft` pinning it under an anchor element
+     * whose center is not the window's center). Pair with a placement that omits justify-center.
+     */
+    cardStyle?: React.CSSProperties;
 }
 
 /**
@@ -58,6 +71,9 @@ export function QuickSwitchOverlay({
     search,
     emptyText,
     zClassName = "z-[45]",
+    placementClassName = "items-start justify-center pt-[12vh]",
+    widthClassName = "w-[min(560px,calc(100vw-32px))]",
+    cardStyle,
 }: QuickSwitchOverlayProps) {
     const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
@@ -72,10 +88,11 @@ export function QuickSwitchOverlay({
 
     return (
         <div
-            className={`nl-window-content-layer ${zClassName} flex items-start justify-center pt-[12vh] pointer-events-none`}
+            className={`nl-window-content-layer ${zClassName} flex ${placementClassName} pointer-events-none`}
         >
             <div
-                className="flex w-[min(560px,calc(100vw-32px))] max-h-[min(480px,70vh)] flex-col overflow-hidden rounded-md border border-edge bg-surface-raised/95 shadow-2xl backdrop-blur-sm pointer-events-auto"
+                className={`flex ${widthClassName} max-h-[min(480px,70vh)] flex-col overflow-hidden rounded-md border border-edge bg-surface-raised/95 shadow-2xl backdrop-blur-sm pointer-events-auto`}
+                style={cardStyle}
             >
                 {search && (
                     <div className="shrink-0 border-b border-edge px-3">
