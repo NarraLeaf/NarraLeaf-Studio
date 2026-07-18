@@ -47,6 +47,8 @@ export enum IPCEventType {
     appInfo = "app.info",
     appWindowReady = "app.window.ready",
     appLaunchSettings = "app.settings.launchWindow",
+    appCountWorkspaceWindows = "app.countWorkspaceWindows",
+    appOpenExternal = "app.openExternal",
     appGlobalStateGet = "app.globalState.get",
     appGlobalStateSet = "app.globalState.set",
     appGlobalStateGetAll = "app.globalState.getAll",
@@ -153,6 +155,7 @@ export enum IPCEventType {
 
     menuAction = "app.menu.action",
     workspaceMenuSync = "workspace.menu.sync",
+    workspaceReportLoadResult = "workspace.reportLoadResult",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -272,6 +275,22 @@ export type IPCEvents = {
         consumer: IPCType.Host,
         data: {
             props: WindowProps[WindowAppType.Settings];
+        },
+        response: void;
+    };
+    [IPCEventType.appCountWorkspaceWindows]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: {
+            count: number;
+        };
+    };
+    [IPCEventType.appOpenExternal]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            url: string;
         },
         response: void;
     };
@@ -1151,6 +1170,12 @@ export type IPCMenuEvents = {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
         data: { model: NativeMenuModel },
+        response: never;
+    };
+    [IPCEventType.workspaceReportLoadResult]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: { ok: boolean },
         response: never;
     };
 };
