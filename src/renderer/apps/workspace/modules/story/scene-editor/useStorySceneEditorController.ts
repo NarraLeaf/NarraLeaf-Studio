@@ -24,10 +24,12 @@ import {
     describeBlock,
     filterOutSelectedDescendants,
     findPreviousSibling,
+    nextSelectionAfterDelete,
     getInsertionTargetAfter,
     getMoveTargetBefore,
     getMoveTargetAfter,
     getTextSegment,
+    hasInspector,
     isTextEditableBlock,
     selectRange,
     updateTextPayload,
@@ -187,8 +189,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     /** What a name typed on the command line may refer to. Rebuilt as the project changes under it. */
     const commandContext = useMemo(
-        () => buildStoryCommandContext({ assets: assetsService?.getAssets(), characters, document, scene }),
-        [assetsService, characters, document, scene],
+        () => buildStoryCommandContext({ assets: assetsService?.getAssets(), characters, document, sceneId, scene }),
+        [assetsService, characters, document, sceneId, scene],
     );
     const visibleRows = useMemo(() => (scene ? buildVisibleRows(scene, collapsedBlockIds) : []), [collapsedBlockIds, document, scene]);
     const rowIndexById = useMemo(() => {
@@ -254,29 +256,28 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, []);
 
     /**
-     * Mouse released without leaving the row. A real selection opens the row for editing carrying
-     * that selection (this is also how double-click-to-edit lands: the word the browser selected on
-     * the second press is the selection we hand over). A collapsed one was a plain click, and the row
-     * is already selected from the press.
+     * Mouse released without leaving the row: open the row for editing, VS Code style. The browser's
+     * own selection at mouseup carries straight in as the caret — a plain click lands a collapsed caret
+     * exactly where the pointer was (clicking past the text end lands it at the line end, since the
+     * browser clamps to the nearest character), and a drag / double-click hands over the range it
+     * selected. Selecting a row *without* editing is still available from the gutter, a modified click,
+     * or Escape out of the edit.
      *
-     * Every mouse gesture on a row therefore rests on the browser being *allowed* to select the row's
-     * text: the app resets `user-select: none` onto everything, so the rows opt back in with
-     * `.nl-selectable-text` (see `renderRowText`). Without that opt-in the selection here is always
-     * collapsed, this bails every time, and the row simply never opens — which is exactly how
-     * double-click-to-edit was broken while every unit test passed. jsdom implements neither
-     * `user-select` nor native selection, so nothing but driving the real app can catch it.
+     * The whole gesture rests on the browser being *allowed* to select the row's text: the app resets
+     * `user-select: none` onto everything, so the rows opt back in with `.nl-selectable-text` (see
+     * `renderRowText`). Without that opt-in `getSelectionUnitRange` is always null and the row would
+     * only ever open at its end — jsdom implements neither `user-select` nor native selection, so
+     * nothing but driving the real app can catch a regression here.
      */
     const finishTextSelectGesture = useCallback((pending: { blockId: StoryBlockId; textEl: HTMLElement }) => {
-        const range = getSelectionUnitRange(pending.textEl);
-        if (!range || range.start === range.end) {
-            return;
-        }
         const block = scene?.blocks[pending.blockId];
         if (!block || !isTextEditableBlock(block)) {
             return;
         }
+        const range = getSelectionUnitRange(pending.textEl);
         const segment = getTextSegment(block);
-        setEditorMode({ kind: "text", blockId: pending.blockId, value: segment?.value ?? "", rich: segment?.rich, caret: range });
+        const caret: StoryCaretTarget = range ? { start: range.start, end: range.end } : "end";
+        setEditorMode({ kind: "text", blockId: pending.blockId, value: segment?.value ?? "", rich: segment?.rich, caret });
     }, [scene]);
 
     const runDragSelectAutoScroll = useCallback(() => {
@@ -861,8 +862,43 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [editorMode, focusRoot, recordHistory, rowIndexById, scene, sceneId, startInsertAfter, storyId, storyService, visibleRows]);
 
+    /**
+     * A selected non-text row was activated (Enter, double-click). A block with a real inspector opens
+     * it; a card-less one (see {@link hasInspector}) runs its own operation instead. A condition branch
+     * — where Enter into a placeholder card would be a dead end — adds a line inside its body, the
+     * common next step when building an if/else; the condition container, which only manages branches,
+     * folds. (Collapse is inlined rather than calling `toggleCollapsed`, which is declared later.)
+     */
+    const activateBlockForInspectorOrOp = useCallback((blockId: StoryBlockId) => {
+        const block = scene?.blocks[blockId];
+        if (!block) {
+            return;
+        }
+        if (hasInspector(block)) {
+            setEditorMode({ kind: "inspector", blockId });
+            return;
+        }
+        if (block.kind === "control" && block.payload.control === "condition") {
+            setCollapsedBlockIds(previous => {
+                const next = new Set(previous);
+                next.has(blockId) ? next.delete(blockId) : next.add(blockId);
+                return next;
+            });
+            return;
+        }
+        // Any other card-less container (a condition branch, incl. else) adds a line in its body.
+        if (canAcceptChildren(block)) {
+            startInsertInside(blockId);
+        }
+    }, [scene, startInsertInside]);
+
+    /** Escape's inspector rung: close the property editor, keeping the row selected. */
+    const closeInspector = useCallback(() => {
+        setEditorMode(current => (current.kind === "inspector" ? { kind: "idle" } : current));
+    }, []);
+
     // Enter on a selected-but-not-editing row: text rows open for editing (caret at the end); action rows
-    // open their inspector; with nothing selected it falls back to a fresh insert slot.
+    // open their inspector (or their card-less operation); with nothing selected it falls back to a slot.
     const enterEditOrInspectorForActive = useCallback(() => {
         if (!scene || !activeBlockId) {
             startInsertAfter(null, true);
@@ -876,10 +912,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (isTextEditableBlock(block)) {
             const segment = getTextSegment(block);
             setEditorMode({ kind: "text", blockId: activeBlockId, value: segment?.value ?? "", rich: segment?.rich, caret: "end" });
-        } else {
-            setEditorMode({ kind: "inspector", blockId: activeBlockId });
+            return;
         }
-    }, [activeBlockId, scene, startInsertAfter]);
+        activateBlockForInspectorOrOp(activeBlockId);
+    }, [activeBlockId, activateBlockForInspectorOrOp, scene, startInsertAfter]);
 
     const commitNarrationFromInsert = useCallback((focusNext: boolean) => {
         if (editorMode.kind !== "insert" || slotDiscardedRef.current) {
@@ -1358,13 +1394,24 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (roots.length === 0) {
             return;
         }
+        // Which row to land on, computed against the tree *before* it changes.
+        const focusTargetId = nextSelectionAfterDelete(scene, visibleRows, roots);
         recordHistory();
         roots.forEach(id => storyService.deleteBlock(storyId, sceneId, id));
-        setSelectedBlockIds(new Set());
-        setActiveBlockId(null);
         setEditorMode({ kind: "idle" });
+        if (focusTargetId) {
+            // Select it (not edit it): a delete is a row operation, so staying in row-selection keeps
+            // the arrows walking the list. Refocus the root or the keybindings have nothing to fire on.
+            setActiveBlockId(focusTargetId);
+            setSelectedBlockIds(new Set([focusTargetId]));
+            selectionAnchorRef.current = focusTargetId;
+            focusRoot();
+        } else {
+            setSelectedBlockIds(new Set());
+            setActiveBlockId(null);
+        }
         setStatusText(`Deleted ${roots.length} row${roots.length === 1 ? "" : "s"}.`);
-    }, [recordHistory, scene, sceneId, storyId, storyService, uiService]);
+    }, [focusRoot, recordHistory, scene, sceneId, storyId, storyService, uiService, visibleRows]);
 
     const deleteSelection = useCallback(async (options?: { confirmMultiple?: boolean }) => {
         const ids = selectedBlockIds.size > 0 ? [...selectedBlockIds] : activeBlockId ? [activeBlockId] : [];
@@ -1634,6 +1681,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         dismissInsertChooser, discardInsertSlot, resolveInsertLine, commitInvalidFromInsert, chooseTempSpeakerForInsert, tempSpeakers,
         createActionFromSidebar, addInsideContainer, addConditionBranch,
         navigateFromTextEdit, resetGoalColumn, handleBackspaceAtEmptyStart, enterEditOrInspectorForActive,
+        activateBlockForInspectorOrOp, closeInspector,
         extendRowSelection, moveSelectedRows, duplicateSelection, jumpRowSelection, pageRowSelection,
         moveDraggedBlockAfter, moveDraggedBlockToSortablePosition, startDraggingBlock, endDraggingBlock,
         createLayerBeforeBlock,
@@ -1643,13 +1691,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 /**
  * The action command a text row's Enter continues with — a same-kind successor. Kinds with no natural
  * successor (a choice prompt) return null so the caller falls back to the generic insert slot.
+ *
+ * Narration is deliberately absent: a committed narration row cannot begin with `/`, so "narration
+ * begets narration" would trap the author in prose with no keyboard path to an action. Its Enter
+ * falls through to the insert slot instead — the one surface where the next line can stay narration,
+ * become an action (`/`), or a line of dialogue (`#`). Dialogue keeps its successor: continuing a
+ * speaker is what a back-and-forth wants, and an empty dialogue still demotes to the slot on
+ * Backspace, so it is not a trap.
  */
 function continuationCommandFor(block: StoryBlock): ActionCommandId | null {
     if (block.kind === "note") {
         return "note";
     }
     if (block.kind === "nodeAction") {
-        if (block.payload.action === "narration") return "narration";
         if (block.payload.action === "dialogue") return "dialogue";
         if (block.payload.action === "choiceOption") return "choiceOption";
     }

@@ -1,6 +1,7 @@
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
 import type { GameLocalizationBundle } from "./localization";
+import type { GameVoiceBundle } from "./voice";
 import type { UIDocument } from "./ui-editor/document";
 import type { UIGraphDocument } from "./ui-editor/graph";
 import type { UISurfaceId } from "./ui-editor/document";
@@ -101,6 +102,14 @@ export type DevModeBundle = {
      * when the project has no localization set up.
      */
     localization?: GameLocalizationBundle;
+    /**
+     * Game voice payload (config + per-language unit id → asset id tables),
+     * assembled from `.nlproj` `app.voice` + `editor/voice/*.json`. Carried by
+     * the bundle so Dev Mode and the packaged runtime share one channel; the
+     * compiler resolves the asset ids to URLs. Absent when the project has no
+     * voice set up.
+     */
+    voice?: GameVoiceBundle;
     scripts?: Record<string, unknown>;
     compiled?: Record<string, unknown>;
     meta?: Record<string, unknown>;

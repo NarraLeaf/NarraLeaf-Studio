@@ -84,7 +84,9 @@ describe("parseCommandLine — command resolution", () => {
     });
 
     it("gives the paramless remainder no params, so the caller can route them to the menu path", () => {
-        expect(command("/imageCreate").def?.params).toEqual([]);
+        // `displayableShow` needs a resolved displayable target, so it stays out of the grammar and keeps
+        // the menu path until that candidate work lands (see the P1 section note in the grammar).
+        expect(command("/displayableShow").def?.params).toEqual([]);
         expect(command("/bg").def?.params.length).toBeGreaterThan(0);
     });
 

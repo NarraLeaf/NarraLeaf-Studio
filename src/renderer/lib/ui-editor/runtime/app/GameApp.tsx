@@ -15,6 +15,7 @@ import {
     matchSystemLocale,
     resolveLocalizedUnitText,
 } from "@shared/types/localization";
+import { VOICE_LOCALE_STORAGE_KEY } from "@shared/types/voice";
 import {
     GameLocalizationContext,
     type GameLocalizationRuntime,
@@ -53,7 +54,10 @@ import {
     dispatchWidgetsBlueprintEvent,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import { subscribeGamePreferenceChanges } from "@/lib/ui-editor/blueprint-runtime/gamePreferenceSubscription";
-import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
+import {
+    createEventPropagationControl,
+    getOrCreateDomEventPropagationControl,
+} from "@/lib/ui-editor/runtime/eventPropagationControl";
 import {
     compileStudioStoryToNlr,
     createEmptyCompiledNlrStory,
@@ -690,6 +694,19 @@ export function GameApp(props: GameAppProps): ReactNode {
                           return typeof stored === "string" && stored
                               ? stored
                               : bundle.localization!.sourceLocale;
+                      },
+                  }
+                : undefined,
+            voice: bundle.voice && core
+                ? {
+                      ...bundle.voice,
+                      getVoiceLocale: () => {
+                          const stored = core.scopeBridge.persistenceGet(VOICE_LOCALE_STORAGE_KEY);
+                          if (typeof stored === "string" && stored
+                              && bundle.voice!.voicedLocales.some(locale => locale.code === stored)) {
+                              return stored;
+                          }
+                          return bundle.voice!.voicedLocales[0]?.code ?? "";
                       },
                   }
                 : undefined,
@@ -1539,6 +1556,51 @@ export function GameApp(props: GameAppProps): ReactNode {
                 setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
                 executionManager: core.executionManager,
             })).catch(err => host.log("error", normalizeError(err)));
+        });
+    }, [activeSurface, bundle, core, host, hostAdapterBundle]);
+
+    // The user asked to close the window; the main process holds the close open until the blueprint
+    // decides. A shared event control travels through the global then surface dispatch, so a Stop
+    // Event Bubble node in either cancels the close. Absent that, the window closes. Scoped like the
+    // keyboard heads (global + surface): the widget dispatch path does not thread the event control.
+    // Owned by the host, so the effect subscribes directly (like fullscreen).
+    useEffect(() => {
+        if (!host.ready || !core || !hostAdapterBundle || !activeSurface || !host.subscribeCloseRequested) {
+            return;
+        }
+        return host.subscribeCloseRequested(async () => {
+            const eventControl = createEventPropagationControl();
+            const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
+            try {
+                await dispatchGlobalBlueprintEvent({
+                    blueprintDocument: bundle.ui.localBlueprints,
+                    eventName: "windowCloseRequested",
+                    eventControl,
+                    hostAdapter: hostAdapterBundle.hostAdapter,
+                    debug: core.debug,
+                    getSurfaceState: stateKey => surfaceStore.get(stateKey),
+                    setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
+                    executionManager: core.executionManager,
+                });
+                if (!eventControl.isPropagationStopped()) {
+                    await dispatchSurfaceBlueprintEvent({
+                        blueprintDocument: bundle.ui.localBlueprints,
+                        surfaceId: activeSurface.id,
+                        runtimeScopeId: hostAdapterBundle.runtimeScopeId,
+                        eventName: "windowCloseRequested",
+                        eventControl,
+                        hostAdapter: hostAdapterBundle.hostAdapter,
+                        debug: core.debug,
+                        getSurfaceState: stateKey => surfaceStore.get(stateKey),
+                        setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
+                        executionManager: core.executionManager,
+                    });
+                }
+            } catch (err) {
+                host.log("error", normalizeError(err));
+            }
+            // Default is to close; a handler that ran Stop Event Bubble cancels it.
+            return !eventControl.isPropagationStopped();
         });
     }, [activeSurface, bundle, core, host, hostAdapterBundle]);
 

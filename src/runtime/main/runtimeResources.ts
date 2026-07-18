@@ -53,12 +53,16 @@ export interface RuntimeResources {
 
 /**
  * Pick the backend for this packed app: the consolidated store when present,
- * loose files otherwise. `packKey` is only consulted when a store exists.
+ * loose files otherwise. A protected store is opened purely through the support
+ * binary in the app dir — the protection layer carries no key material in JS.
  */
-export async function createRuntimeResources(appDir: string, packKey: string): Promise<RuntimeResources> {
+export async function createRuntimeResources(appDir: string): Promise<RuntimeResources> {
     const bundlePath = path.join(appDir, RUNTIME_BUNDLE_FILENAME);
     if (await fileExists(bundlePath)) {
-        const reader = await openSealedBundle(path.join(appDir, RUNTIME_SUPPORT_FILENAME), bundlePath, packKey);
+        const reader = await openSealedBundle(
+            path.join(appDir, RUNTIME_SUPPORT_FILENAME),
+            bundlePath,
+        );
         return new SealedRuntimeResources(reader);
     }
     return new LooseRuntimeResources(appDir);

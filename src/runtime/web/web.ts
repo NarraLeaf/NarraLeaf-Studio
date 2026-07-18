@@ -119,6 +119,10 @@ const bridge: GameRuntimePreloadBridge = {
         document.addEventListener("fullscreenchange", handler);
         return () => document.removeEventListener("fullscreenchange", handler);
     },
+    // The browser owns tab/window closing and won't let a page reliably intercept it (beforeunload
+    // is synchronous and heavily restricted), so there is no host-driven close request on the web:
+    // registering a handler is a no-op and the blueprint close event simply never fires here.
+    onCloseRequested: () => () => undefined,
     save: {
         write: async (id, savedGame, capture, metadata) =>
             (await getStorage()).writeSave(id, savedGame, capture, metadata),
