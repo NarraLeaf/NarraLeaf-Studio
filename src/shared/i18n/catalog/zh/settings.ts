@@ -87,6 +87,24 @@ export const settings = {
             action: "清空",
             confirm: "确认清空",
         },
+        statusBarVisible: {
+            label: "显示状态栏",
+            description: "工作区底部的细条（运行状态、字数、快捷开关）",
+        },
+        backgroundImage: {
+            label: "自定义背景图",
+            description: "以水印方式在整个工作区叠加一张你选择的图片",
+            action: "选择…",
+        },
+        backgroundImageClear: {
+            label: "移除背景图",
+            description: "恢复为纯色工作区背景",
+            action: "移除",
+        },
+        backgroundOpacity: {
+            label: "背景图不透明度",
+            description: "自定义背景的显示强度（百分比）",
+        },
         openKeybindings: {
             label: "快捷键",
             description: "在工作区的可搜索绑定表中自定义快捷键",
