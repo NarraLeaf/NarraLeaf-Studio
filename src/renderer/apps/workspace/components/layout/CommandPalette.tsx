@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useWorkspace } from "../../context";
 import { useKeybinding } from "../../hooks";
 import { useRegistry } from "../../registry";
@@ -11,9 +11,16 @@ import { isMacPlatform } from "@/lib/app/platform";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { QuickSwitchOverlay, type QuickListRow } from "./QuickSwitchOverlay";
+import { isComposingText, isImeKeyEvent } from "./imeComposition";
+import { PALETTE_CARD_WIDTH_CLASS, usePaletteAnchorLeft } from "./paletteAnchor";
 import { clampIndex, rankFuzzyList, wrapIndex } from "./fuzzyListModel";
 import { buildEditorQuickSwitchOrder } from "./editorQuickSwitchModel";
-import { publishCommandPaletteSession, registerCommandPaletteBridge } from "./commandPaletteController";
+import {
+    isCommandPaletteBoxPresent,
+    publishCommandPaletteSession,
+    registerCommandPaletteBridge,
+    subscribeCommandPaletteBoxPresence,
+} from "./commandPaletteController";
 import type { PaletteCommand } from "./commandPaletteModel";
 import type { SearchGroup, SearchHit } from "@/lib/workspace/services/search/searchIndexModel";
 import { jumpToSearchTarget } from "../../modules/search/searchJump";
@@ -168,35 +175,30 @@ export function CommandPalette() {
         if (!open) {
             return;
         }
-        const handleBlur = () => setOpen(false);
+        // An IME candidate window is a separate native window: it blurs us without the user ever
+        // leaving the palette, so composing sessions are exempt.
+        const handleBlur = () => {
+            if (!isComposingText()) {
+                setOpen(false);
+            }
+        };
         window.addEventListener("blur", handleBlur);
         return () => window.removeEventListener("blur", handleBlur);
     }, [open]);
 
-    // Pin the dropdown horizontally under the title-bar search box (typing happens *in* the box;
-    // this card is only the candidate list). The box is centered in the title bar's *leftover*
-    // flex space, not the window, so a window-centered card would sit visibly off its anchor.
-    // Null (no box found) falls back to window-centered.
-    const [anchorLeft, setAnchorLeft] = useState<number | null>(null);
+    // Typing happens *in* the title-bar box; this card is only the candidate list, dropped under it.
+    const anchorLeft = usePaletteAnchorLeft(open);
+
+    // …unless the box is switched off in settings, in which case the card carries the input.
+    const boxPresent = useSyncExternalStore(subscribeCommandPaletteBoxPresence, isCommandPaletteBoxPresent);
+    const ownInputRef = useRef<HTMLInputElement>(null);
     useEffect(() => {
-        if (!open) {
+        if (!open || boxPresent) {
             return;
         }
-        const measure = () => {
-            const box = document.querySelector("[data-titlebar-search-box]");
-            if (!box) {
-                setAnchorLeft(null);
-                return;
-            }
-            const rect = box.getBoundingClientRect();
-            const cardWidth = Math.min(720, window.innerWidth - 32);
-            const ideal = rect.left + rect.width / 2 - cardWidth / 2;
-            setAnchorLeft(Math.round(Math.min(Math.max(ideal, 16), window.innerWidth - cardWidth - 16)));
-        };
-        measure();
-        window.addEventListener("resize", measure);
-        return () => window.removeEventListener("resize", measure);
-    }, [open]);
+        const frame = requestAnimationFrame(() => ownInputRef.current?.focus());
+        return () => cancelAnimationFrame(frame);
+    }, [open, boxPresent]);
 
     const rankedCommands = useMemo(() => {
         if (!isCommandMode) {
@@ -365,6 +367,10 @@ export function CommandPalette() {
     // in a real text box they move the caret.
     const handleInputKeyDown = useCallback(
         (event: React.KeyboardEvent<HTMLInputElement>) => {
+            // While composing, Enter/Escape/arrows belong to the IME candidate list.
+            if (isImeKeyEvent(event)) {
+                return;
+            }
             const handled = () => {
                 event.preventDefault();
                 // Keep navigation keys from also reaching the global keybinding service.
@@ -432,7 +438,7 @@ export function CommandPalette() {
                 // Candidates only — typing happens in the title-bar box itself. Drop the list
                 // flush under the title bar at the box's horizontal position.
                 placementClassName={anchorLeft === null ? "items-start justify-center pt-1" : "items-start pt-1"}
-                widthClassName="w-[min(720px,calc(100vw-32px))]"
+                widthClassName={PALETTE_CARD_WIDTH_CLASS}
                 cardStyle={anchorLeft === null ? undefined : { marginLeft: anchorLeft }}
                 rows={rows}
                 selectedIndex={selectedIndex}
@@ -440,6 +446,18 @@ export function CommandPalette() {
                 onHoverIndex={setSelectedIndex}
                 ariaLabel={t("workspace.shell.commandPalette.title")}
                 emptyText={emptyText}
+                search={
+                    boxPresent
+                        ? undefined
+                        : {
+                              value: query,
+                              placeholder: t("workspace.shell.search.titleBarPlaceholder"),
+                              ariaLabel: t("workspace.shell.commandPalette.title"),
+                              onChange: setQuery,
+                              onKeyDown: handleInputKeyDown,
+                              inputRef: ownInputRef,
+                          }
+                }
             />
         </>
     );

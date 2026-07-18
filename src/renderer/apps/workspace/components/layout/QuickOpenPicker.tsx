@@ -7,6 +7,8 @@ import { SearchService } from "@/lib/workspace/services/search/SearchService";
 import { QuickSwitchOverlay, type QuickListRow } from "./QuickSwitchOverlay";
 import { clampIndex, rankFuzzyList, wrapIndex } from "./fuzzyListModel";
 import { collectQuickOpenEntries, QUICK_OPEN_KIND_LABEL_KEYS, type QuickOpenEntry } from "./quickOpenModel";
+import { isComposingText, isImeKeyEvent } from "./imeComposition";
+import { PALETTE_CARD_WIDTH_CLASS, usePaletteAnchorLeft } from "./paletteAnchor";
 
 const MAX_ROWS = 50;
 
@@ -25,6 +27,7 @@ export function QuickOpenPicker() {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [entries, setEntries] = useState<QuickOpenEntry[]>([]);
     const inputRef = useRef<HTMLInputElement>(null);
+    const anchorLeft = usePaletteAnchorLeft(open);
 
     useKeybinding({
         id: "workspace-quick-open",
@@ -66,7 +69,12 @@ export function QuickOpenPicker() {
         if (!open) {
             return;
         }
-        const handleBlur = () => setOpen(false);
+        // An IME candidate window blurs us without the user leaving the picker.
+        const handleBlur = () => {
+            if (!isComposingText()) {
+                setOpen(false);
+            }
+        };
         window.addEventListener("blur", handleBlur);
         return () => window.removeEventListener("blur", handleBlur);
     }, [open]);
@@ -95,6 +103,10 @@ export function QuickOpenPicker() {
 
     const handleKeyDown = useCallback(
         (event: React.KeyboardEvent<HTMLInputElement>) => {
+            // While composing, these keys drive the IME candidate list, not this one.
+            if (isImeKeyEvent(event)) {
+                return;
+            }
             const handled = () => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -152,22 +164,32 @@ export function QuickOpenPicker() {
     }));
 
     return (
-        <QuickSwitchOverlay
-            zClassName="z-[46]"
-            rows={rows}
-            selectedIndex={selectedIndex}
-            onCommit={commit}
-            onHoverIndex={setSelectedIndex}
-            ariaLabel={t("workspace.shell.quickOpen.title")}
-            emptyText={query.trim() ? t("workspace.shell.quickOpen.empty") : t("workspace.shell.quickOpen.placeholder")}
-            search={{
-                value: query,
-                placeholder: t("workspace.shell.quickOpen.placeholder"),
-                ariaLabel: t("workspace.shell.quickOpen.title"),
-                onChange: setQuery,
-                onKeyDown: handleKeyDown,
-                inputRef,
-            }}
-        />
+        <>
+            {/* Same click-away dim + title-bar anchoring as the command palette — the two pickers
+                are siblings and should not appear to come from different places. */}
+            <div className="nl-window-content-layer z-[45] bg-black/15 animate-fade-in" onMouseDown={close} />
+            <QuickSwitchOverlay
+                zClassName="z-[46]"
+                placementClassName={anchorLeft === null ? "items-start justify-center pt-1" : "items-start pt-1"}
+                widthClassName={PALETTE_CARD_WIDTH_CLASS}
+                cardStyle={anchorLeft === null ? undefined : { marginLeft: anchorLeft }}
+                rows={rows}
+                selectedIndex={selectedIndex}
+                onCommit={commit}
+                onHoverIndex={setSelectedIndex}
+                ariaLabel={t("workspace.shell.quickOpen.title")}
+                emptyText={
+                    query.trim() ? t("workspace.shell.quickOpen.empty") : t("workspace.shell.quickOpen.placeholder")
+                }
+                search={{
+                    value: query,
+                    placeholder: t("workspace.shell.quickOpen.placeholder"),
+                    ariaLabel: t("workspace.shell.quickOpen.title"),
+                    onChange: setQuery,
+                    onKeyDown: handleKeyDown,
+                    inputRef,
+                }}
+            />
+        </>
     );
 }
