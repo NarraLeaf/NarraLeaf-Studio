@@ -14,6 +14,15 @@ import { isMacPlatform } from "@/lib/app/platform";
 import { getInterface } from "@/lib/app/bridge";
 import { openKeybindingsTab } from "../../modules/keybindings";
 
+// Module-level opener so surfaces outside this tree (the status bar's keyboard icon) can show
+// the sheet. Same pattern as commandPaletteController: one window-local function pointer.
+let cheatSheetOpener: (() => void) | null = null;
+
+/** Open the keyboard cheat sheet (no-op until the workspace layout has mounted it). */
+export function openKeybindingCheatSheet(): void {
+    cheatSheetOpener?.();
+}
+
 /**
  * The "?" keyboard cheat sheet: a read-only overlay generated straight from the keybinding
  * registry (every described binding, actions' shortcuts included, with user overrides applied),
@@ -38,6 +47,13 @@ export function KeybindingCheatSheet() {
         description: "Show keyboard shortcuts",
         handler: () => setOpen(previous => !previous),
     });
+
+    useEffect(() => {
+        cheatSheetOpener = () => setOpen(true);
+        return () => {
+            cheatSheetOpener = null;
+        };
+    }, []);
 
     // The palette-facing command to open the customization tab.
     useEffect(() => {
