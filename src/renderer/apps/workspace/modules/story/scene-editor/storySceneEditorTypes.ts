@@ -19,6 +19,13 @@ export type InsertSlot = {
      * a container" affordances) instead of being placed as a sibling after `afterBlockId`.
      */
     target?: StoryBlockTarget;
+    /**
+     * The block this slot is *rewriting* rather than inserting after — set when re-opening an invalid
+     * row for editing. On commit the new block takes its place and this one is removed; on Escape
+     * nothing happens and the row survives untouched, which is why the original is not deleted up
+     * front. Its text seeds the slot's `value`.
+     */
+    replaceBlockId?: StoryBlockId;
 };
 
 /**
