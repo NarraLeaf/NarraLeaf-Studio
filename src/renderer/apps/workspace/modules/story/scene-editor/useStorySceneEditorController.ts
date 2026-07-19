@@ -602,7 +602,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         return block;
     }, [document, uuidService]);
 
-    const insertBlock = useCallback((block: StoryBlock, afterBlockId: StoryBlockId | null, openInspector = false, options?: { recordHistory?: boolean; target?: StoryBlockTarget }) => {
+    const insertBlock = useCallback((block: StoryBlock, afterBlockId: StoryBlockId | null, openInspector = false, options?: { recordHistory?: boolean; target?: StoryBlockTarget; replaceBlockId?: StoryBlockId }) => {
         if (!storyService || !storyId || !sceneId || !scene) {
             return;
         }
@@ -611,6 +611,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         // An explicit target ("add inside a container") overrides the default sibling-after placement.
         storyService.insertBlock(storyId, sceneId, block, options?.target ?? getInsertionTargetAfter(scene, afterBlockId));
+        // Rewriting a row rather than adding one: the replacement is in place, so the original goes.
+        // Done here, after the insert, so a failed insert cannot leave the author with neither.
+        if (options?.replaceBlockId) {
+            storyService.deleteBlock(storyId, sceneId, options.replaceBlockId);
+        }
         setActiveBlockId(block.id);
         setSelectedBlockIds(new Set([block.id]));
         setStatusText(`Inserted ${describeBlock(block, characters, scene, document?.scenes)}.`);
@@ -647,6 +652,39 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             window.requestAnimationFrame(() => insertInputRef.current?.focus());
         }
     }, []);
+
+    /**
+     * Re-open a row as an editable line, seeded with its source.
+     *
+     * The slot lands *where the row is* (after its previous sibling, inside its parent) and carries
+     * `replaceBlockId`, so committing swaps the row in place and Escape leaves it exactly as it was.
+     * Only invalid rows use this today: they are the one kind whose whole content is raw text the
+     * author still needs to fix.
+     */
+    const startLineEdit = useCallback((block: StoryBlock) => {
+        if (!scene) {
+            return;
+        }
+        const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds ?? [] : scene.rootBlockIds;
+        const index = siblings.indexOf(block.id);
+        slotDiscardedRef.current = false;
+        setEditorMode({
+            kind: "insert",
+            slot: {
+                afterBlockId: index > 0 ? siblings[index - 1] : null,
+                focusToken: Date.now(),
+                target: { parentId: block.parentId, beforeBlockId: block.id },
+                replaceBlockId: block.id,
+            },
+            value: block.kind === "invalid" ? block.payload.source : getTextSegment(block)?.value ?? "",
+            chooser: "none",
+            // The menu must not spring open on a line the author is returning to fix — they have
+            // already seen it once. It reopens as soon as they actually type.
+            chooserDismissed: true,
+        });
+        setActiveBlockId(block.id);
+        window.requestAnimationFrame(() => insertInputRef.current?.focus());
+    }, [scene]);
 
     /** Expand a collapsed container so a just-added child / insert slot is actually visible. */
     const ensureExpanded = useCallback((blockId: StoryBlockId) => {
@@ -918,6 +956,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!block) {
             return;
         }
+        // An invalid row is the author's own text, kept verbatim because it did not resolve. Its only
+        // sensible edit is to that text, so it re-opens the line editor seeded with the source rather
+        // than a property inspector — a card of fields for a row that has no fields yet is a dead end,
+        // and it was the first thing anyone hit after mistyping a command.
+        if (block.kind === "invalid") {
+            startLineEdit(block);
+            return;
+        }
         if (hasInspector(block)) {
             setEditorMode({ kind: "inspector", blockId });
             return;
@@ -980,7 +1026,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!block) {
             return;
         }
-        insertBlock(block, editorMode.slot.afterBlockId, false, { target: editorMode.slot.target });
+        insertBlock(block, editorMode.slot.afterBlockId, false, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
         if (focusNext) {
             startInsertAfter(block.id, true);
         }
@@ -1037,7 +1083,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             childrenIds: [],
             payload: { source },
         };
-        insertBlock(block, editorMode.slot.afterBlockId, false, { target: editorMode.slot.target });
+        insertBlock(block, editorMode.slot.afterBlockId, false, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
         startInsertAfter(block.id, true);
     }, [editorMode, insertBlock, startInsertAfter, uuidService]);
 
@@ -1106,11 +1152,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         const target = editorMode.slot.target;
+        const replaceBlockId = editorMode.slot.replaceBlockId;
         const initialText = editorMode.value.replace(/^\/\S*\s?/, "");
         if (!isActionCommandId(commandId)) {
             const block = createPluginActionBlock(commandId, initialText);
             if (block) {
-                insertBlock(block, editorMode.slot.afterBlockId, true, { target });
+                insertBlock(block, editorMode.slot.afterBlockId, true, { target, replaceBlockId });
             }
             return;
         }
@@ -1118,7 +1165,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!block) {
             return;
         }
-        insertBlock(block, editorMode.slot.afterBlockId, isInspectorFirstCommand(commandId), { target });
+        insertBlock(block, editorMode.slot.afterBlockId, isInspectorFirstCommand(commandId), { target, replaceBlockId });
         scaffoldContainer(block);
         if (!isInspectorFirstCommand(commandId) && isTextEditableBlock(block)) {
             setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
@@ -1130,11 +1177,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         const target = editorMode.slot.target;
+        const replaceBlockId = editorMode.slot.replaceBlockId;
         // Empty, not the typed text: everything after `#` was the speaker query (see `chooserQuery`),
         // so reusing it as the body would put the speaker's own name in their first line.
         const block = createBlock("dialogue", "", characterId);
         if (block) {
-            insertBlock(block, editorMode.slot.afterBlockId, false, { target });
+            insertBlock(block, editorMode.slot.afterBlockId, false, { target, replaceBlockId });
             setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
         }
     }, [createBlock, editorMode, insertBlock]);
@@ -1223,14 +1271,24 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // has to be intercepted before `createBlock`, which throws for these commands precisely so
         // that a missing interception cannot quietly land a stray row.
         if (STORY_DECLARATION_COMMANDS[commandId]) {
-            return commitVariableDeclaration(STORY_DECLARATION_COMMANDS[commandId], args);
+            if (!commitVariableDeclaration(STORY_DECLARATION_COMMANDS[commandId], args)) {
+                return false;
+            }
+            // A declaration inserts no block, so it never reaches `insertBlock` — the one place that
+            // clears a rewritten row. Fixing a mistyped `/local` therefore has to drop the invalid row
+            // here, or the declaration would land and the broken line would stay next to it.
+            if (editorMode.slot.replaceBlockId && storyService && storyId && sceneId) {
+                storyService.deleteBlock(storyId, sceneId, editorMode.slot.replaceBlockId);
+                setEditorMode({ kind: "idle" });
+            }
+            return true;
         }
         const base = createBlock(commandId);
         if (!base) {
             return false;
         }
         const block = applyCommandArgs(base, commandId, args);
-        insertBlock(block, editorMode.slot.afterBlockId, false, { target: editorMode.slot.target });
+        insertBlock(block, editorMode.slot.afterBlockId, false, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
         scaffoldContainer(block, args.test?.kind === "expression" ? args.test.expression : undefined);
         // A speaker with no line yet (`/say Alice`) lands the caret in the body, exactly as picking a
         // speaker after `#` does. A line that already carries its text moves on to the next row -
@@ -1285,13 +1343,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         const target = editorMode.slot.target;
+        const replaceBlockId = editorMode.slot.replaceBlockId;
         // Empty for the same reason as `chooseCharacterForInsert`: the post-`#` text was the name.
         const block = createBlock("dialogue", "");
         if (!block || block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
             return;
         }
         block.payload = { ...block.payload, speakerName: name, characterId: undefined };
-        insertBlock(block, editorMode.slot.afterBlockId, false, { target });
+        insertBlock(block, editorMode.slot.afterBlockId, false, { target, replaceBlockId });
         setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
     }, [createBlock, editorMode, insertBlock]);
 

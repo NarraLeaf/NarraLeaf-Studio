@@ -96,10 +96,15 @@ describe("getCommandCursor", () => {
 });
 
 describe("defaultHighlights", () => {
-    it("highlights must-pick positions", () => {
+    /** The candidate list the slot would be showing, which the rule reads along with the cursor. */
+    const items = (...values: ({ free?: true })[]) => values;
+    const real = () => ({});
+    const freeEcho = () => ({ free: true as const });
+
+    it("highlights a partly-typed value that has to resolve to something in the list", () => {
         expect(defaultHighlights(at("/b|"))).toBe(true);
-        expect(defaultHighlights(at("/bg |"))).toBe(true);
-        expect(defaultHighlights(at("/bg forest_day t=|"))).toBe(true);
+        expect(defaultHighlights(at("/bg fo|"), items(real(), real()))).toBe(true);
+        expect(defaultHighlights(at("/bg forest_day t=fa|"), items(real()))).toBe(true);
         expect(defaultHighlights(at("#Ali|"))).toBe(true);
     });
 
@@ -107,6 +112,25 @@ describe("defaultHighlights", () => {
         // The whole point: with `t=` highlighted, `/bg forest_day` + Enter would grab `t=` and the line
         // could never be committed without an extra Escape.
         expect(defaultHighlights(at("/bg forest_day |"))).toBe(false);
+    });
+
+    it("does not highlight a slot the author has not typed into, so an optional param can be skipped", () => {
+        // Reported from real use: `/var gold ` offers true/false, and with one highlighted there was no
+        // key left meaning "I am done" - Enter declared a boolean nobody asked for.
+        expect(defaultHighlights(at("/var gold |"), items(real(), real()))).toBe(false);
+        expect(defaultHighlights(at("/bg |"), items(real()))).toBe(false);
+    });
+
+    it("does not highlight when the slot found nothing to offer", () => {
+        // `/var gold 1` - `1` matches neither true nor false, and it is a perfectly good default.
+        expect(defaultHighlights(at("/var gold 1|"), [])).toBe(false);
+    });
+
+    it("does not highlight when the best offer is the author's own text echoed back", () => {
+        // Taking a free echo and submitting the line build the same block, so Enter should submit.
+        expect(defaultHighlights(at("/say Zoe|"), items(freeEcho()))).toBe(false);
+        // ...but a real match still wins: `/say Ali` puts Alice first, so Enter picks Alice.
+        expect(defaultHighlights(at("/say Ali|"), items(real(), freeEcho()))).toBe(true);
     });
 });
 

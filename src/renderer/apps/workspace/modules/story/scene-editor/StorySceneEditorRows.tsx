@@ -948,10 +948,13 @@ export function InsertRow(props: {
                 icon: icon?.icon,
                 iconClassName: icon?.className,
                 tag: candidate.free ? t("story.rows.tempSpeaker") : undefined,
+                ...(candidate.free ? { free: true as const } : {}),
             };
         });
     }, [cursor, props.commandContext, resolvedArgs, t]);
-    const argMenu = useStoryCandidateMenuState(argItems, defaultHighlights(cursor));
+    // The candidates decide the highlight along with the cursor: an untyped slot and a slot whose best
+    // offer is the author's own text both have to leave Enter meaning "submit". See `defaultHighlights`.
+    const argMenu = useStoryCandidateMenuState(argItems, defaultHighlights(cursor, argItems));
 
     /**
      * The argument menu owns the slot whenever the caret is past the command name.
