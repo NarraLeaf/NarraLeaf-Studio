@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent } from "react";
-import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneUpdate } from "@shared/types/story";
+import type {
+    StoryBlock,
+    StoryBlockId,
+    StoryDocument,
+    StoryExpression,
+    StoryLiteralValue,
+    StoryScene,
+    StorySceneUpdate,
+    StoryVariableScope,
+    StoryVariableValueType,
+} from "@shared/types/story";
 import { translate } from "@/lib/i18n";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
@@ -15,7 +25,24 @@ import type { AssetsService } from "@/lib/workspace/services/core/AssetsService"
 import { applyCommandArgs } from "./storyCommandApply";
 import { buildStoryCommandContext } from "./storyCommandContext";
 import { canCommit, parseCommandLine } from "./storyCommandParser";
-import { resolveCommandLine } from "./storyCommandResolution";
+import { resolveCommandLine, type StoryCommandResolvedArgs } from "./storyCommandResolution";
+import { STORY_DECLARATION_COMMANDS } from "./storyCommandGrammar";
+import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import { GLOBAL_MAIN_OWNER_KEY } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
+
+/** The type a declaration without an explicit `type=` gets: the default's own, or boolean for a bare flag. */
+function inferDeclaredType(defaultValue: StoryLiteralValue | undefined): StoryVariableValueType {
+    if (typeof defaultValue === "number") {
+        return "number";
+    }
+    if (typeof defaultValue === "string") {
+        return "string";
+    }
+    if (typeof defaultValue === "boolean" || defaultValue === undefined) {
+        return "boolean";
+    }
+    return "json";
+}
 import { collectTempSpeakers, promoteTempSpeaker } from "@/lib/workspace/services/story/storyModel";
 import { CHARACTERS_PANEL_ID } from "../../characters";
 import {
@@ -67,8 +94,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const characterService = useMemo(() => (context && isInitialized ? context.services.get<CharacterService>(Services.Character) : null), [context, isInitialized]);
     const assetsService = useMemo(() => (context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null), [context, isInitialized]);
     // Per-project persistent store for the editor's view state (focus/selection/scroll). Available on
-    // the first render — the workspace only mounts editors once services (incl. this one) are ready.
+    // the first render - the workspace only mounts editors once services (incl. this one) are ready.
     const panelStateService = useMemo(() => (context && isInitialized ? context.services.get<PanelStateService>(Services.PanelState) : null), [context, isInitialized]);
+    /** Owner of the persistent-variable declarations the story's `persistent` scope points at. */
+    const blueprintService = useMemo(() => (context && isInitialized ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint) : null), [context, isInitialized]);
 
     const storyId = payload?.storyId;
     const sceneId = payload?.sceneId;
@@ -85,8 +114,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const draggingBlockIdRef = useRef<StoryBlockId | null>(null);
     /**
      * The x the caret is trying to hold while walking rows vertically. Seeded from the caret as it
-     * leaves the first row and kept until something states a new column — a horizontal arrow, a
-     * click, an edit — so ArrowDown-then-ArrowUp returns the author to where they started rather
+     * leaves the first row and kept until something states a new column - a horizontal arrow, a
+     * click, an edit - so ArrowDown-then-ArrowUp returns the author to where they started rather
      * than to a line edge. A ref, not state: reading it must never re-render the list mid-keypress.
      */
     const goalColumnRef = useRef<number | null>(null);
@@ -95,7 +124,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const plainPasteRequestedRef = useRef(false);
     /**
      * True between discarding an insert slot and the state update landing. Escape's last rung moves
-     * focus, which blurs the slot in the same tick — and blur commits prose. Without this the ladder's
+     * focus, which blurs the slot in the same tick - and blur commits prose. Without this the ladder's
      * "leaving an uncommitted slot creates nothing" would be false for every line that reached it.
      */
     const slotDiscardedRef = useRef(false);
@@ -104,7 +133,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const [document, setDocument] = useState<StoryDocument | null>(null);
     const [loading, setLoading] = useState(false);
     // Seed the focused row + selection from the persisted view state so switching tabs/pages (which
-    // fully unmounts the editor) — and restarting Studio — keeps the author's place. An explicit
+    // fully unmounts the editor) - and restarting Studio - keeps the author's place. An explicit
     // `payload.activeBlockId` (e.g. deep-link navigation to a block) wins over the remembered focus.
     const [activeBlockId, setActiveBlockId] = useState<StoryBlockId | null>(() => {
         if (payload?.activeBlockId) {
@@ -125,6 +154,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const [dragSelectActive, setDragSelectActive] = useState(false);
     const [, setStatusText] = useState("Action row editor. Slash and hash only trigger on the first character.");
     const [characterRevision, setCharacterRevision] = useState(0);
+    /**
+     * Bumped when the blueprint document changes, because that is where persistent (game-level)
+     * variables are declared - a `/persis` line, or one declared over in the blueprint editor, has to
+     * show up in this editor's candidates without a reload.
+     */
+    const [blueprintRevision, setBlueprintRevision] = useState(0);
 
     // Persist the focused row + selection so they survive the tab unmounting when the author switches
     // away and a Studio restart (paired with the seed above and the scroll persistence in the tab).
@@ -178,10 +213,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         });
     }, [characterService]);
 
+    useEffect(() => {
+        if (!blueprintService) {
+            return;
+        }
+        return blueprintService.onBlueprintHistoryChanged(() => {
+            setBlueprintRevision(revision => revision + 1);
+        });
+    }, [blueprintService]);
+
     const scene = useMemo(() => (document && sceneId ? document.scenes[sceneId] ?? null : null), [document, sceneId]);
     /**
      * Temp speakers alive anywhere in this story, offered back as candidates. Derived from the
-     * document rather than stored, so one goes away exactly when its last line does — and so a name
+     * document rather than stored, so one goes away exactly when its last line does - and so a name
      * used earlier in the story is findable later without anyone maintaining a registry.
      */
     const tempSpeakers = useMemo(() => (document ? collectTempSpeakers(document) : []), [document]);
@@ -189,8 +233,15 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     /** What a name typed on the command line may refer to. Rebuilt as the project changes under it. */
     const commandContext = useMemo(
-        () => buildStoryCommandContext({ assets: assetsService?.getAssets(), characters, document, sceneId, scene }),
-        [assetsService, characters, document, sceneId, scene],
+        () => buildStoryCommandContext({
+            assets: assetsService?.getAssets(),
+            characters,
+            document,
+            sceneId,
+            scene,
+            blueprintDocument: blueprintService?.getBlueprintDocument() ?? null,
+        }),
+        [assetsService, blueprintService, blueprintRevision, characters, document, sceneId, scene],
     );
     const visibleRows = useMemo(() => (scene ? buildVisibleRows(scene, collapsedBlockIds) : []), [collapsedBlockIds, document, scene]);
     const rowIndexById = useMemo(() => {
@@ -243,12 +294,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     /**
      * Let the rows paint a native text selection again. Written straight to the node rather than
-     * through state so a drag never re-renders the list mid-gesture — and so this can be called from
+     * through state so a drag never re-renders the list mid-gesture - and so this can be called from
      * the teardown paths (mouseup, pointercancel, window blur) that must not be able to leave the
      * editor stuck with unselectable text.
      *
      * Toggles a class rather than an inline `user-select`: the rows carry `.nl-selectable-text`, an
-     * explicit value that an inherited one from this root cannot override — see the rule in
+     * explicit value that an inherited one from this root cannot override - see the rule in
      * `styles.css`.
      */
     const setRowTextSelectable = useCallback((selectable: boolean) => {
@@ -257,7 +308,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     /**
      * Mouse released without leaving the row: open the row for editing, VS Code style. The browser's
-     * own selection at mouseup carries straight in as the caret — a plain click lands a collapsed caret
+     * own selection at mouseup carries straight in as the caret - a plain click lands a collapsed caret
      * exactly where the pointer was (clicking past the text end lands it at the line end, since the
      * browser clamps to the nearest character), and a drag / double-click hands over the range it
      * selected. Selecting a row *without* editing is still available from the gutter, a modified click,
@@ -266,7 +317,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * The whole gesture rests on the browser being *allowed* to select the row's text: the app resets
      * `user-select: none` onto everything, so the rows opt back in with `.nl-selectable-text` (see
      * `renderRowText`). Without that opt-in `getSelectionUnitRange` is always null and the row would
-     * only ever open at its end — jsdom implements neither `user-select` nor native selection, so
+     * only ever open at its end - jsdom implements neither `user-select` nor native selection, so
      * nothing but driving the real app can catch a regression here.
      */
     const finishTextSelectGesture = useCallback((pending: { blockId: StoryBlockId; textEl: HTMLElement }) => {
@@ -356,7 +407,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setRowTextSelectable(true);
             stopDragSelection();
         };
-        // Backstops for a gesture that never gets its mouseup — the pointer taken away by the OS, or
+        // Backstops for a gesture that never gets its mouseup - the pointer taken away by the OS, or
         // the window losing focus mid-drag. They abandon the gesture rather than complete it (losing
         // focus is not a decision to open a row), but they must still hand text selection back, or
         // the rows stay permanently unselectable.
@@ -536,7 +587,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         const block = scene.blocks[editorMode.blockId];
         // Prefer the live editor DOM so a popover edit (e.g. binding an inline blueprint) that hasn't
-        // flushed into the draft is still committed — otherwise it is lost when we navigate away.
+        // flushed into the draft is still committed - otherwise it is lost when we navigate away.
         const liveRuns = textInputRef.current?.getRuns();
         const value = liveRuns ? richRunsToPlain(liveRuns) : editorMode.value;
         const rich = liveRuns ?? editorMode.rich;
@@ -708,20 +759,26 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     // Seed a freshly-created container with its default child so the author gets a usable structure in
     // one step (Condition → an `if` branch; Menu → one option), inside the same undo entry as the parent.
-    const scaffoldContainer = useCallback((block: StoryBlock) => {
+    const scaffoldContainer = useCallback((block: StoryBlock, condition?: StoryExpression) => {
         if (!storyService || !storyId || !sceneId || !uuidService) {
             return;
         }
         if (block.kind === "control" && block.payload.control === "condition") {
             const branch = createBlockForCommand("conditionBranch", () => uuidService.generate());
-            storyService.insertBlock(storyId, sceneId, branch, { parentId: block.id, beforeBlockId: null });
+            // `/if gold >= 100` builds the container here and its first branch below, so the condition
+            // the author typed lands on the branch - the container has nowhere to hold one. Picking
+            // Condition from the palette passes nothing and gets the same empty branch as before.
+            const seeded = condition && branch.kind === "control" && branch.payload.control === "conditionBranch"
+                ? { ...branch, payload: { ...branch.payload, condition: { kind: "expression" as const, expression: condition } } }
+                : branch;
+            storyService.insertBlock(storyId, sceneId, seeded, { parentId: block.id, beforeBlockId: null });
         } else if (block.kind === "nodeAction" && block.payload.action === "choice") {
             const option = createBlockForCommand("choiceOption", () => uuidService.generate());
             storyService.insertBlock(storyId, sceneId, option, { parentId: block.id, beforeBlockId: null });
         }
     }, [sceneId, storyId, storyService, uuidService]);
 
-    // Enter while editing a text row: commit and open a new row that continues the same kind — narration
+    // Enter while editing a text row: commit and open a new row that continues the same kind - narration
     // begets narration, a dialogue keeps its speaker, a menu option adds a sibling option. Kinds without a
     // natural successor (e.g. a choice prompt) fall back to the generic "/"-and-"#" insert slot.
     const insertContinuationAfterCurrentTextEdit = useCallback(() => {
@@ -784,7 +841,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         const target = visibleRows[goingBack ? currentIndex - 1 : currentIndex + 1];
         if (!target) {
             if (!goingBack) {
-                // Past the last row — drop into a fresh insert slot so the author can keep writing downward.
+                // Past the last row - drop into a fresh insert slot so the author can keep writing downward.
                 startInsertAfter(currentId, true);
             } else {
                 setActiveBlockId(currentId);
@@ -810,7 +867,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [commitTextEdit, editorMode, focusRoot, rowIndexById, startInsertAfter, visibleRows]);
 
-    // Backspace on an empty line. An empty dialogue drops a rung to a blank insert slot in the same spot —
+    // Backspace on an empty line. An empty dialogue drops a rung to a blank insert slot in the same spot -
     // a completely empty line that can become anything (type narration, "/" for an action, "#" for another
     // speaker) rather than a committed narration row. Any other empty text row is deleted and focus steps
     // back to the line above.
@@ -826,7 +883,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
             // Anchor the fresh slot to the previous sibling so it reappears at the dialogue's own level and
             // position (the continuation flow that creates these always has one). A dialogue that opens its
-            // container has no sibling to anchor to — fall through to the plain delete-and-step-back.
+            // container has no sibling to anchor to - fall through to the plain delete-and-step-back.
             const previousSibling = findPreviousSibling(scene, id);
             if (previousSibling) {
                 recordHistory();
@@ -865,7 +922,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     /**
      * A selected non-text row was activated (Enter, double-click). A block with a real inspector opens
      * it; a card-less one (see {@link hasInspector}) runs its own operation instead. A condition branch
-     * — where Enter into a placeholder card would be a dead end — adds a line inside its body, the
+     * - where Enter into a placeholder card would be a dead end - adds a line inside its body, the
      * common next step when building an if/else; the condition container, which only manages branches,
      * folds. (Collapse is inlined rather than calling `toggleCollapsed`, which is declared later.)
      */
@@ -925,7 +982,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setEditorMode({ kind: "idle" });
             return;
         }
-        // A `/` or `#` line is never prose — it resolves to a command, or it becomes an invalid row.
+        // A `/` or `#` line is never prose - it resolves to a command, or it becomes an invalid row.
         // This is reached on blur, which is the one caller that does not already know what the line is;
         // without the guard, clicking away from a half-typed `/set` lands it as narration, which is the
         // exact bug the Escape ladder was fixed to stop producing.
@@ -998,8 +1055,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [editorMode, insertBlock, startInsertAfter, uuidService]);
 
 
-    // Backspace on an empty insert slot: dismiss the blank line and step back onto the row above it —
-    // re-entering it for editing when it holds text — so the demote ladder keeps walking upward.
+    // Backspace on an empty insert slot: dismiss the blank line and step back onto the row above it -
+    // re-entering it for editing when it holds text - so the demote ladder keeps walking upward.
     const handleInsertBackspaceEmpty = useCallback(() => {
         if (editorMode.kind !== "insert") {
             return;
@@ -1096,8 +1153,65 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [createBlock, editorMode, insertBlock]);
 
     /**
+     * Commit a `/local` `/var` `/persis` line: declare the variable and insert nothing.
+     *
+     * These are the only commands with no row to show for themselves, which is a real cost - the
+     * author gets no visible confirmation from the scene. The status line is what pays for it, and the
+     * variables panel updates live off the same document, so the declaration does land somewhere the
+     * author can see it.
+     *
+     * Persistent variables are declared in the *blueprint* document, so `/persis` routes through
+     * `LocalBlueprintService`. That has a consequence worth knowing: it lands in the blueprint's undo
+     * stack, not the story editor's, so Ctrl+Z in this editor will not take it back.
+     */
+    const commitVariableDeclaration = useCallback((scope: StoryVariableScope, args: StoryCommandResolvedArgs): boolean => {
+        if (!storyService || !storyId) {
+            return false;
+        }
+        const name = args.name?.kind === "text" ? args.name.value.trim() : "";
+        if (!name) {
+            return false;
+        }
+        // A declaration's default must be constant - resolution has already rejected one that reads a
+        // variable - so the tree is either a literal or absent, and needs no evaluation.
+        const declared = args.default?.kind === "expression" && args.default.expression.ast.kind === "literal"
+            ? args.default.expression.ast.value
+            : undefined;
+        // An explicit `type=` wins; otherwise the default's own type is the best guess, and boolean is
+        // the house fallback because a flag is what an author declares without thinking about types.
+        const valueType = (args.type?.kind === "enum" ? args.type.value : inferDeclaredType(declared)) as StoryVariableValueType;
+        const defaultValue = declared ?? undefined;
+
+        if (scope === "persistent") {
+            if (!blueprintService) {
+                return false;
+            }
+            const owner = blueprintService.getBlueprintDocument().ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.activeBlueprintId;
+            if (!owner) {
+                // No global blueprint means no history owner to attribute the edit to. Refusing keeps
+                // the author's text as an invalid row rather than dropping the declaration silently.
+                return false;
+            }
+            blueprintService.createPersistentVariable(owner, { name, valueType, defaultValue });
+            setStatusText(`Declared global variable "${name}".`);
+            return true;
+        }
+
+        recordHistory();
+        if (scope === "scene") {
+            if (!sceneId || !storyService.createSceneVariable(storyId, sceneId, { name, valueType, defaultValue })) {
+                return false;
+            }
+        } else if (!storyService.createSavedVariable(storyId, { name, valueType, defaultValue })) {
+            return false;
+        }
+        setStatusText(`Declared ${scope} variable "${name}".`);
+        return true;
+    }, [blueprintService, recordHistory, sceneId, storyId, storyService]);
+
+    /**
      * Enter on a `/…` line: parse it, resolve every name it mentions, and commit the action it
-     * describes — arguments and all.
+     * describes - arguments and all.
      *
      * Returns false when the line does not stand on its own (unknown command, a name that resolves to
      * nothing, a value the variable cannot hold), so the caller lands an invalid row and the author's
@@ -1126,15 +1240,21 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return false;
         }
         const commandId = line.def.commandId;
+        // A declaration writes a variable and leaves the scene alone - there is no row to insert. It
+        // has to be intercepted before `createBlock`, which throws for these commands precisely so
+        // that a missing interception cannot quietly land a stray row.
+        if (STORY_DECLARATION_COMMANDS[commandId]) {
+            return commitVariableDeclaration(STORY_DECLARATION_COMMANDS[commandId], args);
+        }
         const base = createBlock(commandId);
         if (!base) {
             return false;
         }
         const block = applyCommandArgs(base, commandId, args);
         insertBlock(block, editorMode.slot.afterBlockId, false, { target: editorMode.slot.target });
-        scaffoldContainer(block);
+        scaffoldContainer(block, args.test?.kind === "expression" ? args.test.expression : undefined);
         // A speaker with no line yet (`/say Alice`) lands the caret in the body, exactly as picking a
-        // speaker after `#` does. A line that already carries its text moves on to the next row —
+        // speaker after `#` does. A line that already carries its text moves on to the next row -
         // the command line never routes to the inspector, or it would stop the author mid-flow.
         if (isTextEditableBlock(block) && !args.text) {
             setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
@@ -1145,7 +1265,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [chooseCommand, commandContext, createBlock, editorMode, insertBlock, scaffoldContainer, startInsertAfter]);
 
     /**
-     * Enter / Shift+Enter with no candidate to take — the chooser was dismissed, or never opened.
+     * Enter / Shift+Enter with no candidate to take - the chooser was dismissed, or never opened.
      * The line has to stand on its own now: prose commits, a resolvable command commits, and anything
      * still wearing a `/` or `#` becomes an invalid row rather than silently becoming prose.
      */
@@ -1217,7 +1337,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     /**
      * Point a dialogue row at a speaker: a real character, a bare name, or nobody.
      *
-     * The two are mutually exclusive on purpose — a leftover `speakerName` under a real `characterId`
+     * The two are mutually exclusive on purpose - a leftover `speakerName` under a real `characterId`
      * would silently win back if that character were ever deleted (see the payload's docs).
      */
     const setDialogueSpeaker = useCallback((block: StoryBlock, speaker: { characterId: string } | { speakerName: string } | null) => {
@@ -1236,7 +1356,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     /**
      * Promote the name on a dialogue row to a real character: create it, rebind every line that used
-     * the bare name, and reveal the character manager so the author can give it a face — but leave the
+     * the bare name, and reveal the character manager so the author can give it a face - but leave the
      * caret in the line they were writing. The manager is the destination for later, not for now.
      */
     const createCharacterFromSpeaker = useCallback((block: StoryBlock, name: string) => {
@@ -1456,7 +1576,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     /**
      * Shift+Enter's anchor: the last selected row in document order, not the active one. The active
-     * row is the selection's head, which sits *above* its tail after Shift+ArrowUp — anchoring there
+     * row is the selection's head, which sits *above* its tail after Shift+ArrowUp - anchoring there
      * would drop the new row into the middle of the selection.
      */
     const startInsertAfterSelection = useCallback(() => {
@@ -1495,7 +1615,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [activeBlockId, rowIndexById, selectSingleRow, visibleRows]);
 
-    // Shift+Arrow — grow (or shrink) the selection between the anchor row and the moving head.
+    // Shift+Arrow - grow (or shrink) the selection between the anchor row and the moving head.
     const extendRowSelection = useCallback((direction: "up" | "down") => {
         if (visibleRows.length === 0) {
             return;
@@ -1540,7 +1660,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [activeBlockId, rowIndexById, selectSingleRow, visibleRows]);
 
-    // Alt+Arrow — reorder the selected row among its siblings (keyboard equivalent of drag-to-reorder).
+    // Alt+Arrow - reorder the selected row among its siblings (keyboard equivalent of drag-to-reorder).
     // Deliberately single-row for predictability; multi-row keyboard moves are surprising in outliners.
     const moveSelectedRows = useCallback((direction: "up" | "down") => {
         if (!storyService || !storyId || !sceneId || !scene) {
@@ -1580,7 +1700,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setStatusText("Moved row.");
     }, [activeBlockId, recordHistory, scene, sceneId, selectSingleRow, selectedBlockIds, storyId, storyService]);
 
-    // Cmd/Ctrl+D — duplicate the selected rows (with their subtrees, new ids) directly below the block.
+    // Cmd/Ctrl+D - duplicate the selected rows (with their subtrees, new ids) directly below the block.
     const duplicateSelection = useCallback(() => {
         if (!storyService || !uuidService || !storyId || !sceneId || !scene) {
             return;
@@ -1689,12 +1809,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 }
 
 /**
- * The action command a text row's Enter continues with — a same-kind successor. Kinds with no natural
+ * The action command a text row's Enter continues with - a same-kind successor. Kinds with no natural
  * successor (a choice prompt) return null so the caller falls back to the generic insert slot.
  *
  * Narration is deliberately absent: a committed narration row cannot begin with `/`, so "narration
  * begets narration" would trap the author in prose with no keyboard path to an action. Its Enter
- * falls through to the insert slot instead — the one surface where the next line can stay narration,
+ * falls through to the insert slot instead - the one surface where the next line can stay narration,
  * become an action (`/`), or a line of dialogue (`#`). Dialogue keeps its successor: continuing a
  * speaker is what a back-and-forth wants, and an empty dialogue still demotes to the slot on
  * Backspace, so it is not a trap.

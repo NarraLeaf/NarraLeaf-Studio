@@ -61,7 +61,7 @@ export type StoryCommandLine =
           /** The command token as typed, or null when nothing follows the slash yet. */
           token: string | null;
           tokenSpan: StoryCommandSpan;
-          /** null when the token matches no command — `issues` then carries `unknownCommand`. */
+          /** null when the token matches no command - `issues` then carries `unknownCommand`. */
           def: StoryCommandDef | null;
           args: StoryCommandArg[];
           issues: StoryCommandIssue[];
@@ -159,15 +159,17 @@ function acceptsType(type: StoryCommandParamType, value: string): boolean {
         case "displayable":
         case "stageObject":
         case "literal":
-        case "variableValue":
         case "text":
+        // An expression's validity depends on which variables exist, so the parser - which by
+        // construction has no project state - has nothing to check. Resolution parses it for real.
+        case "expression":
             return true;
     }
 }
 
 /**
  * Whether the grammar alone can reject this value. A value is bad only when EVERY branch of the
- * union rejects it, and only when at least one branch is checkable at all — `/bg forest_day` must
+ * union rejects it, and only when at least one branch is checkable at all - `/bg forest_day` must
  * not be flagged just because `forest_day` fails the `color` branch, since the `asset` branch is
  * unresolvable here and might well accept it.
  */
@@ -205,6 +207,26 @@ function parseCommand(source: string): Extract<StoryCommandLine, { kind: "comman
         const token = tokens[index];
         const equals = firstUnquotedEquals(token.raw);
 
+        // A greedy param claims the rest of the line, and it has to win against the `key=value` split
+        // *unless* the token really is one of this command's params.
+        //
+        // Both halves matter. Without the greedy check first, `/set gold += 1` splits at the `=` into
+        // a param named `+` and the expression never reaches the resolver. Without the "is it a real
+        // param" exception, `/text name=hero Hello` loses its documented leading `name=` handle,
+        // because the greedy content would claim `name=hero` as prose.
+        //
+        // So the question a token has to answer is not "does it contain `=`" but "does it name
+        // something this command declares" - which is the same question the named branch below asks,
+        // just asked one step earlier.
+        const pending = positionals[positionalIndex];
+        const namesRealParam = equals > 0 && findParam(def, token.raw.slice(0, equals)) !== null;
+        if (pending?.greedy && !namesRealParam) {
+            const span = { start: token.span.start, end: source.length };
+            seen.add(pending.name);
+            args.push({ param: pending, key: null, value: source.slice(span.start), valueSpan: span });
+            return { kind: "command", token: nameToken.text, tokenSpan: nameToken.span, def, args, issues };
+        }
+
         if (equals > 0) {
             const key = token.raw.slice(0, equals);
             const value = stripQuotes(token.raw.slice(equals + 1));
@@ -234,14 +256,6 @@ function parseCommand(source: string): Extract<StoryCommandLine, { kind: "comman
         positionalIndex += 1;
         seen.add(param.name);
 
-        // A greedy param swallows the rest of the line verbatim — spaces, quotes and anything that
-        // would otherwise read as `key=value`. `/say alice 3 = 5` is a line of dialogue, not an arg.
-        if (param.greedy) {
-            const span = { start: token.span.start, end: source.length };
-            args.push({ param, key: null, value: source.slice(span.start), valueSpan: span });
-            return { kind: "command", token: nameToken.text, tokenSpan: nameToken.span, def, args, issues };
-        }
-
         if (isBadValue(param, token.text)) {
             issues.push({ code: "badValue", span: token.span, value: token.text, expected: paramTypes(param) });
         }
@@ -268,7 +282,7 @@ function parseCharacterLine(source: string): Extract<StoryCommandLine, { kind: "
 /**
  * Classify and parse an insert-row line.
  *
- * `/` and `#` are triggers only at the start of an empty line — mid-line they are ordinary
+ * `/` and `#` are triggers only at the start of an empty line - mid-line they are ordinary
  * characters, or `他/她` and `#1` would turn into commands. The caller enforces the "empty line"
  * half of that rule; this function owns the "line starts with" half.
  */
@@ -290,7 +304,7 @@ export function getArgValue(line: Extract<StoryCommandLine, { kind: "command" }>
     return line.args.find(arg => arg.param?.name === paramName)?.value;
 }
 
-/** Params with no arg yet — the candidate source for the param-name stage, and the ghost hint. */
+/** Params with no arg yet - the candidate source for the param-name stage, and the ghost hint. */
 export function unfilledParams(line: Extract<StoryCommandLine, { kind: "command" }>): readonly StoryCommandParam[] {
     if (!line.def) {
         return [];

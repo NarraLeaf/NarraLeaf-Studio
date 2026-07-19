@@ -341,8 +341,16 @@ export const story = {
         },
         setVariable: {
             label: "设置变量",
-            detail: "场景局部值或故事持久化值",
+            detail: "赋一个值或一个表达式",
         },
+        incrementVariable: { label: "增加变量", detail: "为数值变量加上一个量" },
+        decrementVariable: { label: "减少变量", detail: "为数值变量减去一个量" },
+        toggleVariable: { label: "翻转变量", detail: "取反一个真/假变量" },
+        resetVariable: { label: "重置变量", detail: "恢复变量声明时的默认值" },
+        declareSceneVariable: { label: "声明场景变量", detail: "仅在本场景内存活" },
+        declareSavedVariable: { label: "声明存档变量", detail: "随存档一起保存" },
+        declarePersistentVariable: { label: "声明全局变量", detail: "跨存档存活--游戏级 flag" },
+        conditionIf: { label: "如果（表达式）", detail: "按表达式分支，例如 gold >= 100" },
         executeScript: {
             label: "执行脚本",
             detail: "运行一个故事动作蓝图",

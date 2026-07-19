@@ -1,10 +1,10 @@
-import { getCommandDef, positionalParams, type StoryCommandDef, type StoryCommandParam } from "./storyCommandGrammar";
+import { getCommandDef, paramTypes, positionalParams, type StoryCommandDef, type StoryCommandParam } from "./storyCommandGrammar";
 import { tokenizeCommandLine, type StoryCommandSpan, type StoryCommandToken } from "./storyCommandParser";
 
 /**
  * Where the caret is, and therefore what the slot should offer.
  *
- * A pure function of (text, caret) — the editor's chooser state is derived, never stored. The one
+ * A pure function of (text, caret) - the editor's chooser state is derived, never stored. The one
  * thing it cannot derive is whether the author pressed Escape: `EditorMode.insert.chooserDismissed`
  * stays on the slot, because "the menu was dismissed" is not in the text (see the plan's §4.1).
  */
@@ -21,6 +21,8 @@ export type StoryCommandCursor =
     | { kind: "paramValue"; param: StoryCommandParam; query: string; replace: StoryCommandSpan }
     /** Inside free text that runs to the end of the line. No candidates, by nature. */
     | { kind: "greedy" }
+    /** Inside a greedy expression. `query` is the identifier fragment at the caret, not the whole line. */
+    | { kind: "expression"; param: StoryCommandParam; query: string; replace: StoryCommandSpan }
     /** After `#`, naming the speaker. */
     | { kind: "characterName"; query: string; replace: StoryCommandSpan };
 
@@ -29,7 +31,7 @@ export type StoryCommandCursor =
  *
  * This is the rule the interaction model calls the one most likely to be lost, so it lives here
  * rather than in the component: **must-pick positions default-highlight; optional-next-step positions
- * do not.** The highlight is Enter's pointer — Tab and Enter both take it — so highlighting `t=` in
+ * do not.** The highlight is Enter's pointer - Tab and Enter both take it - so highlighting `t=` in
  * `/bg forest_day ` would mean Enter grabs `t=` instead of submitting, and the line could never be
  * committed without an extra Escape.
  *
@@ -45,6 +47,10 @@ export function defaultHighlights(cursor: StoryCommandCursor): boolean {
             return true;
         case "paramName":
         case "greedy":
+        // An expression must not default-highlight. The author is writing, not picking: Enter has to
+        // mean "commit this line", or `/set gold gold + 1` would grab whatever variable the menu
+        // happened to be showing instead of submitting. Tab still takes the highlight.
+        case "expression":
         case "none":
             return false;
     }
@@ -121,7 +127,7 @@ function commandCursor(source: string, caret: number): StoryCommandCursor {
     const activeStart = active ? active.span.start : caret;
     const replace: StoryCommandSpan = active ? active.span : { start: caret, end: caret };
 
-    // `key=value` — the caret is past the `=`, so it is giving that param's value.
+    // `key=value` - the caret is past the `=`, so it is giving that param's value.
     if (active) {
         const equals = firstUnquotedEquals(active.raw);
         if (equals > 0 && caret > active.span.start + equals) {
@@ -143,10 +149,18 @@ function commandCursor(source: string, caret: number): StoryCommandCursor {
     const positionals = positionalParams(def);
     const index = positionalIndexBefore(tokens, activeStart);
 
-    // A greedy param runs to the end of the line, so everything from where it starts is prose — the
+    // A greedy param runs to the end of the line, so everything from where it starts is prose - the
     // positional counter must stop there rather than reading `hello there` as two more arguments.
     const greedyIndex = positionals.findIndex(param => param.greedy);
     if (greedyIndex >= 0 && index >= greedyIndex) {
+        const greedy = positionals[greedyIndex];
+        // A greedy *expression* is the exception: it runs to the end of the line like prose, but it is
+        // made of names the author should be picking rather than remembering. So instead of giving up
+        // on candidates, narrow the query to the identifier fragment the caret sits in - `/set gold go`
+        // offers `gold`, and completing it replaces `go` rather than the whole expression.
+        if (paramTypes(greedy).some(type => type.kind === "expression")) {
+            return expressionCursor(greedy, source, caret, tokens[greedyIndex + 1]?.span.start ?? caret);
+        }
         return { kind: "greedy" };
     }
 
@@ -160,6 +174,33 @@ function commandCursor(source: string, caret: number): StoryCommandCursor {
     return { kind: "paramName", params: paramsNotYetNamed(def, tokens, activeStart), query, replace };
 }
 
+/**
+ * Identifier characters, matching the expression tokenizer's rule - including non-ASCII, so a Chinese
+ * variable name completes like any other. Kept in step with `isIdentifierPart` there: if the two
+ * disagree, the fragment the menu replaces is not the fragment the parser reads.
+ */
+function isExpressionIdentifierChar(char: string): boolean {
+    return /[A-Za-z0-9_$.]/.test(char) || char.charCodeAt(0) > 0x7f;
+}
+
+/**
+ * The caret inside an expression: what fragment is being typed, and what a completion replaces.
+ *
+ * `expressionStart` bounds the scan so a completion can never reach back past the expression into the
+ * command token or an earlier positional.
+ */
+function expressionCursor(param: StoryCommandParam, source: string, caret: number, expressionStart: number): StoryCommandCursor {
+    let start = caret;
+    while (start > expressionStart && isExpressionIdentifierChar(source[start - 1])) {
+        start -= 1;
+    }
+    let end = caret;
+    while (end < source.length && isExpressionIdentifierChar(source[end])) {
+        end += 1;
+    }
+    return { kind: "expression", param, query: source.slice(start, caret), replace: { start, end } };
+}
+
 function characterCursor(source: string, caret: number): StoryCommandCursor {
     const boundary = source.indexOf(" ");
     const nameEnd = boundary === -1 ? source.length : boundary;
@@ -171,7 +212,7 @@ function characterCursor(source: string, caret: number): StoryCommandCursor {
 }
 
 /**
- * Classify the caret. `/` and `#` are triggers only at the start of the line — mid-line they are
+ * Classify the caret. `/` and `#` are triggers only at the start of the line - mid-line they are
  * ordinary characters, or `他/她` would open a menu. The caller owns the "empty slot" half of that
  * rule (see `handleInsertValueChange`).
  */
@@ -193,7 +234,7 @@ export function getCommandCursor(source: string, caret: number): StoryCommandCur
  * The text to write and where, for taking a candidate.
  *
  * A param name completes to `key=` with **no** trailing space, so the value's candidates open
- * immediately — the two-stage Tab. Everything else completes to a whole token and a space, ready for
+ * immediately - the two-stage Tab. Everything else completes to a whole token and a space, ready for
  * the next one. Values with spaces are quoted, or the tokenizer would split them back apart.
  */
 export function completionFor(cursor: StoryCommandCursor, value: string): { text: string; replace: StoryCommandSpan } | null {
@@ -207,6 +248,11 @@ export function completionFor(cursor: StoryCommandCursor, value: string): { text
             return { text: `${value.includes(" ") ? `"${value}"` : value} `, replace: cursor.replace };
         case "characterName":
             return { text: `${value} `, replace: cursor.replace };
+        case "expression":
+            // No trailing space, and never quoted: this replaces one identifier inside a larger
+            // expression. `min(` completes to `min(` with the caret ready for its arguments, and a
+            // variable name completes to just the name so `gold` can be followed by `+ 1`.
+            return { text: value, replace: cursor.replace };
         case "greedy":
         case "none":
             return null;

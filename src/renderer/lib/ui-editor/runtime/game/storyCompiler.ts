@@ -49,6 +49,8 @@ import type {
     StoryControlPayload,
     StoryDisplayableTargetRef,
     StoryDocument,
+    StoryExpr,
+    StoryExpression,
     StoryInterpolationRef,
     StoryLayerRef,
     StoryLiteralValue,
@@ -60,7 +62,16 @@ import type {
     StoryTransformRef,
     StoryVariableRef,
 } from "@shared/types/story";
-import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
+import {
+    collectStoryExpressionVariables,
+    isStoryExpressionEvaluable,
+    layerActionTargetRef,
+    resolveDisplayableTargetRef,
+    resolveStoryLayerRef,
+    storyVariableRefKey,
+} from "@shared/types/story";
+import type { StoryExpressionReader } from "@shared/utils/storyExpressionEval";
+import { evaluateStoryExpression, isTruthy, toDisplayString } from "@shared/utils/storyExpressionEval";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { GameLocalizationBundle } from "@shared/types/localization";
 import { resolveLocaleChain } from "@shared/types/localization";
@@ -104,7 +115,7 @@ const SAVED_PERSISTENT_NAMESPACE = "__nlr_story_saved__";
  * Game localization input: the bundle payload (locales + translation tables)
  * plus a synchronous current-locale getter (host persistence snapshot). Text
  * segments with translations compile to dynamic NLR Words that re-resolve on
- * every render, so switching the language applies immediately — no recompile.
+ * every render, so switching the language applies immediately - no recompile.
  */
 export type StoryLocalizationRuntime = GameLocalizationBundle & {
     getLocale: () => string;
@@ -141,7 +152,7 @@ function createSceneLocalizationResolver(input: StoryLocalizationRuntime): Scene
 /**
  * Game voice input: the bundle payload (voice languages + per-language unit-id →
  * asset-id tables) plus a current voice-language getter. Distinct from
- * localization on purpose — dub language and subtitle language are separate.
+ * localization on purpose - dub language and subtitle language are separate.
  */
 export type StoryVoiceRuntime = GameVoiceBundle & {
     getVoiceLocale: () => string;
@@ -153,7 +164,7 @@ export type StoryVoiceRuntime = GameVoiceBundle & {
  *
  * The map (object) form is used deliberately over the function-generator form:
  * the engine's generator path throws on an unresolved id, whereas a plain map
- * returns null for a line with no take — exactly what partial voicing needs. The
+ * returns null for a line with no take - exactly what partial voicing needs. The
  * active locale is read once, at compile time; switching voice language is a
  * recompile (mirrors how a background swap recompiles, not how text re-resolves).
  */
@@ -251,14 +262,14 @@ export type StagePreviewCompileInput = {
     persistence?: StoryPersistenceBridge;
     /**
      * Fires synchronously once the pre-posed stage state has been fully applied (elements
-     * registered, residual effects settled) — the first frame at which the stage is a faithful
+     * registered, residual effects settled) - the first frame at which the stage is a faithful
      * still of the snapshot. Precedes the reveal gate.
      */
     onStagePosed?: () => void;
     /**
      * Reveal gate for double-buffered hosts: after `onStagePosed`, execution pauses until this
      * promise resolves, so the host can swap the posed (but hidden) stage in before the target's
-     * own action plays. Superseded runs never need it resolved — disposing the game aborts the wait.
+     * own action plays. Superseded runs never need it resolved - disposing the game aborts the wait.
      */
     revealGate?: Promise<void>;
     /** Fires synchronously immediately before the target's own statements. */
@@ -446,7 +457,7 @@ function previewMarker(callback: () => void): NlrStatement {
  * elements are constructed pre-posed at their settled transform state (constructor config, so the
  * pose survives `newGame()`), registered in a single synchronous `Script` via
  * `DevTools.registerDisplayable`, followed by the target block's own action between the two
- * markers. No runtime fast-forwarding is involved — the compiled story IS the state, and looping
+ * markers. No runtime fast-forwarding is involved - the compiled story IS the state, and looping
  * a replay is a plain `newGame()`.
  */
 export async function compileStagePreviewToNlr(input: StagePreviewCompileInput): Promise<CompiledNlrStory> {
@@ -550,7 +561,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         }
     }
     // Injected elements sit outside the action tree, so story construction never assigns them
-    // ids — give each a unique one or they collide as React keys on the stage.
+    // ids - give each a unique one or they collide as React keys on the stage.
     registrations.forEach((registration, index) => {
         DevTools.setElementId(registration.element as any, `preview-e-${index}`);
     });
@@ -616,7 +627,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     statements.push(previewMarker(input.onAfterTarget));
 
     // Register every image URL this compile resolved (snapshot poses AND the target's own
-    // sources) with the scene's preloader — injected elements bypass NLR's usual preload
+    // sources) with the scene's preloader - injected elements bypass NLR's usual preload
     // prediction, which would otherwise warn per image.
     for (const [cacheKey, url] of assetUrlCache) {
         if (cacheKey.startsWith("image:") && url) {
@@ -806,7 +817,7 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
 
     if (block.kind === "invalid") {
         // Skipped rather than fatal so preview still runs: a half-typed command is a normal thing to
-        // have on screen while writing. `error` (not `warning`) is what stops it there — a production
+        // have on screen while writing. `error` (not `warning`) is what stops it there - a production
         // build refuses on error diagnostics, so an unfinished line cannot ship quietly.
         diagnostic(ctx, "error", block.id, `Invalid command, skipped: ${block.payload.source}`);
         return [];
@@ -818,7 +829,7 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
 /**
  * Compile a preview target block's OWN statements (no trailing children): the action that plays
  * live on the pre-posed snapshot stage. Container targets (choice, condition, control, nvl) keep
- * their full body so the row previews as the real construct — e.g. a choice target renders its
+ * their full body so the row previews as the real construct - e.g. a choice target renders its
  * menu and holds.
  */
 async function compilePreviewTargetOwnStatements(ctx: SceneCompileContext, block: StoryBlock): Promise<NlrStatement[]> {
@@ -902,7 +913,7 @@ function buildSentencePrompt(segment: StoryTextSegment, ctx: SceneCompileContext
 
 /**
  * Build the sentence prompt and, alongside it, the compiled interpolation Words in
- * segment order — the `{n}` placeholder targets when a translation renders instead.
+ * segment order - the `{n}` placeholder targets when a translation renders instead.
  */
 function buildSentenceParts(
     segment: StoryTextSegment,
@@ -943,7 +954,7 @@ function buildSentenceParts(
  * re-resolves per render: the current locale's translation (with `{n}` placeholders
  * mapped back to the source line's interpolation Words), or the original
  * source-language prompt when no translation applies. Untranslated segments keep
- * their plain compiled form — zero overhead.
+ * their plain compiled form - zero overhead.
  */
 function buildLocalizedSentencePrompt(ctx: SceneCompileContext, segment: StoryTextSegment, blockId: string): string | unknown[] {
     const { prompt, interpolationWords } = buildSentenceParts(segment, ctx, blockId);
@@ -970,7 +981,7 @@ function segmentHasInterpolation(segment: StoryTextSegment): boolean {
 }
 
 /**
- * Assemble the shared compile input for a scene's Story Action Blueprints — used by both block-level
+ * Assemble the shared compile input for a scene's Story Action Blueprints - used by both block-level
  * actions (compiled to a `Script`) and inline interpolations (evaluated synchronously). Callers must
  * ensure `ctx.blueprintDocument` is present.
  */
@@ -1031,6 +1042,21 @@ function buildInterpolationWord(
                 return "";
             }
         }) as unknown) as any), marks);
+    }
+    if (interp.kind === "expression") {
+        const { expression } = interp;
+        if (!isStoryExpressionEvaluable(expression.ast)) {
+            diagnostic(ctx, "warning", blockId, `Inline expression \`${expression.source}\` did not resolve; interpolation skipped.`);
+            return null;
+        }
+        const readerFor = buildExpressionReader(ctx, expression.ast, blockId);
+        if (!readerFor) {
+            return null;
+        }
+        // `toDisplayString`, not `String(...)`: a null variable renders as nothing rather than as the
+        // word "null" in the middle of a line of dialogue.
+        return applyInterpolationWordMarks(new Word((((scriptCtx: ScriptCtx) =>
+            toDisplayString(evaluateStoryExpression(expression.ast, readerFor(scriptCtx)))) as unknown) as any), marks);
     }
     const target = interp.target;
     if (target.scope === "scene") {
@@ -1098,7 +1124,7 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
     }
 
     if (payload.action === "setVariable") {
-        const chain = setVariable(ctx, payload.target, payload.value, block.id);
+        const chain = setVariable(ctx, payload.target, payload.value, block.id, payload.expression);
         return chain ? [recordStatement(ctx, chain, block)] : [];
     }
 
@@ -1202,7 +1228,7 @@ async function compileCharacterStageAction(
     const image = getImage(ctx, name, { autoFit: true, src });
     if (payload.operation === "enter") {
         // An entering character has no prior image to transition from, so `enter` never uses a
-        // transition — its entrance is driven entirely by the show transform. (A transition only
+        // transition - its entrance is driven entirely by the show transform. (A transition only
         // applies to `expression`, which swaps a visible character's source.)
         const chain = image.char(src as any).show(createShowTransform(payload.transform, ctx, block.id) as any);
         statements.push(recordStatement(ctx, chain, block));
@@ -1321,8 +1347,8 @@ function compileLayerAction(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "layer" }>,
 ): NlrStatement[] {
-    // `create` names a new custom layer; every other op resolves an existing layer — a built-in
-    // (background / displayable) or a custom one — via the target ref (falling back to the default
+    // `create` names a new custom layer; every other op resolves an existing layer - a built-in
+    // (background / displayable) or a custom one - via the target ref (falling back to the default
     // displayable layer), so a transform can now target the background instead of only named layers.
     const layer = payload.operation === "create"
         ? getLayer(ctx, payload.objectName, payload.zIndex)
@@ -1459,7 +1485,7 @@ async function compileNvl(ctx: SceneCompileContext, block: Extract<StoryBlock, {
 function getCharacter(ctx: SceneCompileContext, characterId: string | undefined, speakerName?: string): Character {
     const id = characterId?.trim();
     const tempName = speakerName?.trim();
-    // A temp speaker — a bare name with no Studio character behind it — is a valid line, not an
+    // A temp speaker - a bare name with no Studio character behind it - is a valid line, not an
     // error: NLR's dialogue box only ever displays the name its Character carries. It also covers
     // the case where `characterId` no longer resolves (the character was deleted): falling back to
     // the name the author wrote beats collapsing the line to "Unknown".
@@ -1897,7 +1923,7 @@ function createTransition(transition: StoryTransitionRef | undefined, ctx: Scene
     if (transition.kind === "maskWipe") {
         const props = transition.props ?? {};
         // NOTE: NLR's MaskTransition.wipe `reverse` does not flip the wipe
-        // direction — it wipes the *new* background out to nothing, which (since
+        // direction - it wipes the *new* background out to nothing, which (since
         // setBackground discards the old background) ends on a black frame. It is
         // never a valid "reveal", so we always reveal (no reverse) here.
         return MaskTransition.wipe({
@@ -1957,7 +1983,92 @@ function createTransition(transition: StoryTransitionRef | undefined, ctx: Scene
     return undefined;
 }
 
-function setVariable(ctx: SceneCompileContext, target: StoryVariableRef, value: StoryLiteralValue, blockId: string): NlrStatement | null {
+/**
+ * Where a variable actually lives at runtime, resolved once at compile time.
+ *
+ * The two backings differ in more than their address. A `storable` slot is reached through the
+ * `ScriptCtx` NLR hands every script and condition, so reads and writes are ordinary synchronous
+ * calls inside the running game. A `host` slot is the app-level persistence bridge shared with UI
+ * blueprints: reads come synchronously off its snapshot, writes are fire-and-forget async - which is
+ * what lets a persistent variable be read inside an expression without making the row latent.
+ */
+type StoryVariableSlot =
+    | { kind: "storable"; namespace: string; key: string }
+    | { kind: "host"; key: string };
+
+/**
+ * Resolve a variable reference to its runtime slot, or emit a diagnostic and return null.
+ *
+ * The namespace is read off the live `Persistent` via `DevTools.getNamespaceName` rather than
+ * reconstructed from NLR's prefix convention - the prefix is an implementation detail of the engine
+ * and would silently desynchronize on an engine bump, whereas an accessor that disappears breaks the
+ * build.
+ */
+function resolveVariableSlot(ctx: SceneCompileContext, ref: StoryVariableRef, blockId: string): StoryVariableSlot | null {
+    if (ref.scope === "scene") {
+        const def = ctx.scene.sceneVariables?.[ref.variableId];
+        if (!def) {
+            diagnostic(ctx, "warning", blockId, "Scene variable not found; the assignment was skipped.");
+            return null;
+        }
+        return { kind: "storable", namespace: DevTools.getNamespaceName(ctx.nlrScene.local), key: def.storageKey };
+    }
+    if (ref.scope === "saved") {
+        const def = ctx.document.savedVariables?.[ref.variableId];
+        if (!def) {
+            diagnostic(ctx, "warning", blockId, "Saved variable not found; the assignment was skipped.");
+            return null;
+        }
+        return { kind: "storable", namespace: DevTools.getNamespaceName(ctx.savedPersistent), key: def.storageKey };
+    }
+    if (!ctx.persistence) {
+        diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence and were skipped.");
+        return null;
+    }
+    return { kind: "host", key: ref.storageKey };
+}
+
+/**
+ * Build the reader an expression evaluates against, with every referenced variable's slot resolved up
+ * front. Returns null when any of them fails to resolve: an expression that silently treated a
+ * deleted variable as `0` would produce a plausible wrong number, which is worse than not running.
+ */
+function buildExpressionReader(
+    ctx: SceneCompileContext,
+    expr: StoryExpr,
+    blockId: string,
+): ((scriptCtx: ScriptCtx) => StoryExpressionReader) | null {
+    const slots = new Map<string, StoryVariableSlot>();
+    for (const ref of collectStoryExpressionVariables(expr)) {
+        const slot = resolveVariableSlot(ctx, ref, blockId);
+        if (!slot) {
+            return null;
+        }
+        slots.set(storyVariableRefKey(ref), slot);
+    }
+    const persistence = ctx.persistence;
+
+    return (scriptCtx: ScriptCtx) => ref => {
+        const slot = slots.get(storyVariableRefKey(ref));
+        if (!slot) {
+            return undefined;
+        }
+        return slot.kind === "host"
+            ? (persistence?.get(slot.key) as StoryLiteralValue | undefined)
+            : (scriptCtx.storable.getNamespace(slot.namespace).get(slot.key) as StoryLiteralValue | undefined);
+    };
+}
+
+function setVariable(
+    ctx: SceneCompileContext,
+    target: StoryVariableRef,
+    value: StoryLiteralValue,
+    blockId: string,
+    expression?: StoryExpression,
+): NlrStatement | null {
+    if (expression) {
+        return setVariableFromExpression(ctx, target, expression, blockId);
+    }
     if (target.scope === "scene") {
         const def = ctx.scene.sceneVariables?.[target.variableId];
         if (!def) {
@@ -1986,13 +2097,58 @@ function setVariable(ctx: SceneCompileContext, target: StoryVariableRef, value: 
     });
 }
 
+/**
+ * `/set gold gold + 1` - one `Script` that reads its operands and writes the result.
+ *
+ * A single script for all three scopes, rather than routing through each backing's own chainable
+ * `set`, because an expression's reads and its write need not share a scope: `/set gold saved.bonus +
+ * 1` reads one namespace and writes another. Doing it in one script also makes the whole assignment
+ * atomic with respect to the action queue, so a read can never observe a half-applied earlier row.
+ */
+function setVariableFromExpression(
+    ctx: SceneCompileContext,
+    target: StoryVariableRef,
+    expression: StoryExpression,
+    blockId: string,
+): NlrStatement | null {
+    if (!isStoryExpressionEvaluable(expression.ast)) {
+        diagnostic(ctx, "warning", blockId, `Expression \`${expression.source}\` did not resolve; the assignment was skipped.`);
+        return null;
+    }
+    const readerFor = buildExpressionReader(ctx, expression.ast, blockId);
+    const slot = resolveVariableSlot(ctx, target, blockId);
+    if (!readerFor || !slot) {
+        return null;
+    }
+    const persistence = ctx.persistence;
+
+    return Script.execute(scriptCtx => {
+        const result = evaluateStoryExpression(expression.ast, readerFor(scriptCtx));
+        if (slot.kind === "host") {
+            void persistence?.set(slot.key, result);
+            return;
+        }
+        scriptCtx.storable.getNamespace(slot.namespace).set(slot.key, result as any);
+    });
+}
+
 function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRef | undefined, blockId: string): NlrCondition | undefined {
     if (!condition) {
         return undefined;
     }
     if (condition.kind === "expression") {
-        diagnostic(ctx, "warning", blockId, "Expression condition was skipped because raw script is outside the NLR Story action surface.");
-        return falseCondition;
+        const { expression } = condition;
+        if (!isStoryExpressionEvaluable(expression.ast)) {
+            diagnostic(ctx, "warning", blockId, `Condition \`${expression.source}\` did not resolve; it evaluates false.`);
+            return falseCondition;
+        }
+        const readerFor = buildExpressionReader(ctx, expression.ast, blockId);
+        if (!readerFor) {
+            return falseCondition;
+        }
+        // Re-read on every test, like the blueprint condition beside it: a branch inside a loop must
+        // see the value as it stands now, not as it stood when the scene compiled.
+        return (scriptCtx: ScriptCtx) => isTruthy(evaluateStoryExpression(expression.ast, readerFor(scriptCtx)));
     }
     if (condition.kind === "blueprint") {
         if (!ctx.blueprintDocument) {

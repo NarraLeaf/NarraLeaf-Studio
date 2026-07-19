@@ -1,4 +1,4 @@
-/** `story` — the story panel (library/outline) plus the scene editor: prose/dialogue
+/** `story` - the story panel (library/outline) plus the scene editor: prose/dialogue
  *  rows, rich-text toolbar, character/layer/target pickers, pause & interpolation
  *  popovers, and the live preview pane. */
 export const story = {
@@ -299,7 +299,15 @@ export const story = {
         sequence: { label: "In order", detail: "Run the enclosed actions one after another" },
         waitDuration: { label: "Wait duration", detail: "Pause for a number of seconds" },
         waitClick: { label: "Wait for click", detail: "Pause until the player clicks" },
-        setVariable: { label: "Set variable", detail: "Scene local or Story persistent value" },
+        setVariable: { label: "Set variable", detail: "Assign a value or an expression" },
+        incrementVariable: { label: "Increase variable", detail: "Add to a number variable" },
+        decrementVariable: { label: "Decrease variable", detail: "Subtract from a number variable" },
+        toggleVariable: { label: "Toggle variable", detail: "Flip a true/false variable" },
+        resetVariable: { label: "Reset variable", detail: "Restore a variable to its declared default" },
+        declareSceneVariable: { label: "Declare scene variable", detail: "Lives for this scene only" },
+        declareSavedVariable: { label: "Declare saved variable", detail: "Rides the save file" },
+        declarePersistentVariable: { label: "Declare global variable", detail: "Outlives saves - game-level flags" },
+        conditionIf: { label: "If (expression)", detail: "Branch on an expression, e.g. gold >= 100" },
         executeScript: { label: "Execute Script", detail: "Run a Story Action Blueprint" },
         imageCreate: { label: "Image", detail: "Create or update a named stage image" },
         imageSetSource: { label: "Image source", detail: "Change a named image source" },

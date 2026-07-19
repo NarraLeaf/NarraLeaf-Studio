@@ -4,11 +4,12 @@ import type {
     StoryBlockId,
     StoryConditionRef,
     StoryDocument,
+    StoryExpr,
     StoryNodeActionPayload,
     StoryScene,
     StoryVariableRef,
 } from "@shared/types/story";
-import { layerActionTargetRef, resolveStoryLayerRef } from "@shared/types/story";
+import { formatStoryLiteral, layerActionTargetRef, resolveStoryLayerRef, storyVariableRefKey } from "@shared/types/story";
 import { formatStorySecondsLabel } from "@shared/utils/storyTime";
 import { getSceneName } from "../scene-editor/storySceneBlockUtils";
 
@@ -240,7 +241,7 @@ function formatAction(payload: StoryActionPayload, scene: StoryScene, document?:
         return `/audio ${payload.operation}${payload.objectName ? ` ${payload.objectName}` : payload.assetId ? ` ${payload.assetId}` : ""}`;
     }
     if (payload.action === "setVariable") {
-        return `/set ${describeVariableRef(payload.target, scene, document)} ${String(payload.value)}`;
+        return describeAssignment(payload, scene, document);
     }
     if (payload.action === "wait") {
         return payload.mode === "duration" ? `/wait ${formatStorySecondsLabel(payload.durationMs ?? 0)}` : "/wait click";
@@ -277,12 +278,72 @@ function formatCondition(condition: StoryConditionRef | undefined, scene: StoryS
         return "<condition>";
     }
     if (condition.kind === "expression") {
-        return condition.source || "<expression>";
+        return condition.expression.source || "<expression>";
     }
     if (condition.kind === "blueprint") {
         return "<graph condition>";
     }
     return `${describeVariableRef(condition.target, scene, document)} ${condition.operator}${condition.value !== undefined ? ` ${String(condition.value)}` : ""}`;
+}
+
+/**
+ * Render an assignment back as the command that would produce it - including the shorthand.
+ *
+ * `/inc gold` must not come back as `/set gold gold + (1)`. The author typed a shorthand; showing
+ * them the desugared form would teach them their shorthand does not survive, and would make the row
+ * grow every time they glanced at it. So the sugar shapes are recognized structurally (a binary
+ * `+`/`-` whose left operand is the assignment target, a `!` of the target) and rendered back.
+ *
+ * Structural recognition rather than a stored "this was an /inc" flag, because the two must agree:
+ * a `/set gold gold + 1` typed longhand *is* an increment and should read as one.
+ */
+function describeAssignment(
+    payload: Extract<StoryActionPayload, { action: "setVariable" }>,
+    scene: StoryScene,
+    document?: StoryDocument,
+): string {
+    const name = describeVariableRef(payload.target, scene, document);
+    const ast = payload.expression?.ast;
+    if (!ast) {
+        return `/set ${name} ${String(payload.value)}`;
+    }
+
+    const targetKey = storyVariableRefKey(payload.target);
+    const readsTarget = (node: typeof ast): boolean => node.kind === "var" && storyVariableRefKey(node.target) === targetKey;
+
+    if (ast.kind === "unary" && ast.op === "!" && readsTarget(ast.operand)) {
+        return `/toggle ${name}`;
+    }
+    if (ast.kind === "binary" && (ast.op === "+" || ast.op === "-") && readsTarget(ast.left)) {
+        const token = ast.op === "+" ? "inc" : "dec";
+        // `by 1` is the default the command implies, so `/inc gold` reads better than `/inc gold 1`.
+        const step = ast.right.kind === "literal" && ast.right.value === 1 ? "" : ` ${formatExpr(ast.right)}`;
+        return `/${token} ${name}${step}`;
+    }
+    return `/set ${name} ${payload.expression?.source ?? formatExpr(ast)}`;
+}
+
+/**
+ * Re-render a subtree as source. Only reached for the step of an `/inc`/`/dec`, where the stored
+ * `source` describes the whole assignment and so cannot be sliced for just the operand.
+ */
+function formatExpr(expr: StoryExpr): string {
+    switch (expr.kind) {
+        case "literal":
+            return formatStoryLiteral(expr.value);
+        case "var":
+            return expr.name;
+        case "unary":
+            return `${expr.op}${formatExpr(expr.operand)}`;
+        case "binary":
+            return `(${formatExpr(expr.left)} ${expr.op} ${formatExpr(expr.right)})`;
+        case "ternary":
+            return `(${formatExpr(expr.test)} ? ${formatExpr(expr.consequent)} : ${formatExpr(expr.alternate)})`;
+        case "call":
+            return `${expr.fn}(${expr.args.map(formatExpr).join(", ")})`;
+        case "invalid":
+            return expr.source;
+    }
 }
 
 /** Compact, user-safe label for a variable reference (never exposes internal ids). */

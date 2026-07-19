@@ -79,7 +79,19 @@ describe("getCommandCursor", () => {
 
     it("counts positionals by their own token, so editing an earlier one stays put", () => {
         expect(at("/set go|ld 100")).toMatchObject({ kind: "positional", query: "go" });
-        expect(at("/set gold 10|0")).toMatchObject({ kind: "positional", query: "10" });
+        // `/set`'s right-hand side is a greedy expression, so the caret there is in an `expression`
+        // slot rather than a plain positional - but it still reports the fragment under the caret, so
+        // editing an earlier character stays put exactly as it did.
+        expect(at("/set gold 10|0")).toMatchObject({ kind: "expression", query: "10" });
+    });
+
+    it("narrows an expression to the identifier under the caret, not the whole line", () => {
+        // This is what lets a completion replace `go` with `gold` in the middle of `gold + 1` rather
+        // than clobbering the expression the author is halfway through writing.
+        expect(at("/set gold go| + 1")).toMatchObject({ kind: "expression", query: "go" });
+        expect(at("/set gold gold + go|")).toMatchObject({ kind: "expression", query: "go" });
+        // Sitting on an operator is not sitting on a name: nothing to complete.
+        expect(at("/set gold gold +| 1")).toMatchObject({ kind: "expression", query: "" });
     });
 });
 
@@ -127,7 +139,7 @@ describe("getCommandCandidates", () => {
     });
 
     it("offers the speaker picker's order: characters, then names used in the story, then the typed name", () => {
-        // Matches `getSpeakerCandidates`. The typed name is offered even alongside a partial match —
+        // Matches `getSpeakerCandidates`. The typed name is offered even alongside a partial match -
         // that is what makes the list never empty, so Tab and Enter never need a "nothing matched" rule.
         expect(values("#Ali|")).toEqual(["Alice", "Ali"]);
         expect(values("#Zo|")).toEqual(["Zoe", "Zo"]);
@@ -137,16 +149,16 @@ describe("getCommandCandidates", () => {
     });
 
     it("does not offer a bare name where a portrait is required", () => {
-        // `/show Zoe` has no image to show — unlike a speaker, it must resolve.
+        // `/show Zoe` has no image to show - unlike a speaker, it must resolve.
         expect(values("/show Zo|")).toEqual([]);
         expect(values("/show Al|")).toEqual(["Alice"]);
     });
 
     it("leads a show/hide/set with the objects on stage, each kind its own list", () => {
-        // The headline of this pass: `/imgshow` is a pick from what exists, like `/bg`'s asset picker —
+        // The headline of this pass: `/imgshow` is a pick from what exists, like `/bg`'s asset picker -
         // not a remembered string. A text name is never offered to an image slot.
         expect(values("/imgshow |")).toEqual(["hero", "portrait"]);
-        // The typed fragment is offered back alongside the match, exactly as the speaker picker does —
+        // The typed fragment is offered back alongside the match, exactly as the speaker picker does -
         // that is the never-empty invariant, applied to object references.
         expect(values("/imgshow he|")).toEqual(["hero", "he"]);
         expect(values("/settext |")).toEqual(["title"]);
@@ -163,18 +175,32 @@ describe("getCommandCandidates", () => {
 
     it("offers Alice's forms as the positional after her name once she resolves", () => {
         // `form` is positional now (`/expr Alice angry`), so it depends on the resolved character just
-        // as `form=` did — an empty list until the speaker is known.
+        // as `form=` did - an empty list until the speaker is known.
         expect(values("/expr Alice |")).toEqual([]);
         expect(values("/expr Alice |", { character: { kind: "character", characterId: "c1" } })).toEqual(["smile", "angry"]);
     });
 
-    it("offers a boolean variable's values once it resolves, and nothing for other types", () => {
-        const variable = (valueType: "number" | "boolean") => ({ variable: { kind: "variable" as const, ref: { scope: "scene" as const, variableId: "v1" }, valueType } });
-        // Unresolved or non-boolean: nothing to enumerate, so `/set gold ` stays a free field.
-        expect(values("/set gold |")).toEqual([]);
-        expect(values("/set gold |", variable("number"))).toEqual([]);
-        // A boolean stops being a blank field — true/false, like `/bg`'s asset picker.
-        expect(values("/set gold |", variable("boolean"))).toEqual(["true", "false"]);
+    it("offers the variables in scope inside an expression, leading with true/false for a boolean target", () => {
+        const variable = (valueType: "number" | "boolean") => ({
+            variable: { kind: "variable" as const, ref: { scope: "scene" as const, variableId: "v1" }, valueType, name: "gold" },
+        });
+        // Every slot in the command line should be a pick rather than a memory test, and an
+        // expression's operands are names - so the variable list is always on offer.
+        expect(values("/set gold |")).toEqual(["gold"]);
+        expect(values("/set gold |", variable("number"))).toEqual(["gold"]);
+        // A boolean target leads with its constants: setting a flag to true is the common case, and
+        // it must not sit below a list of variable names. This is the behaviour the old dependent
+        // literal slot had, kept intact.
+        expect(values("/set gold |", variable("boolean"))).toEqual(["true", "false", "gold"]);
+    });
+
+    it("offers the function whitelist once the author starts typing one", () => {
+        // Only once something is typed - an unprompted list of ten function names would bury the
+        // variables, which are what an author reaches for far more often.
+        // The inserted text carries the open paren so the caret lands ready for arguments; the label
+        // the author reads is the bare name.
+        expect(values("/set gold mi|")).toEqual(["min("]);
+        expect(values("/set gold cl|")).toEqual(["clamp("]);
     });
 
     it("offers nothing inside a greedy body", () => {
@@ -200,7 +226,9 @@ describe("hasCandidateSource", () => {
         expect(hasCandidateSource(param("bg", "t"))).toBe(true);
         expect(hasCandidateSource(param("bg", "d"))).toBe(false);
         expect(hasCandidateSource(param("say", "text"))).toBe(false);
-        expect(hasCandidateSource(param("set", "value"))).toBe(false);
+        // An expression always has the variable list behind it, so an empty result really does mean
+        // "nothing matched what you typed" - unlike a half-typed duration.
+        expect(hasCandidateSource(param("set", "value"))).toBe(true);
         // A stage-object reference has a source (the objects on stage); a create's invented name does not.
         expect(hasCandidateSource(param("imgshow", "name"))).toBe(true);
         expect(hasCandidateSource(param("image", "name"))).toBe(false);

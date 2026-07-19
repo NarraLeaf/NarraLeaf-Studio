@@ -1,4 +1,13 @@
-import type { StoryBlock, StoryTransformRef, StoryTransitionRef } from "@shared/types/story";
+import type {
+    StoryActionPayload,
+    StoryBlock,
+    StoryExpr,
+    StoryExpression,
+    StoryLiteralValue,
+    StoryTransformRef,
+    StoryTransitionRef,
+    StoryVariableValueType,
+} from "@shared/types/story";
 import { storySecondsToMs } from "@shared/utils/storyTime";
 import type { ActionCommandId } from "./storyActionCommands";
 import type { StoryCommandResolvedArgs, StoryCommandValue } from "./storyCommandResolution";
@@ -8,7 +17,7 @@ import type { StoryCommandResolvedArgs, StoryCommandValue } from "./storyCommand
  *
  * Hand-written per command, deliberately. The grammar is declarative because parsing, candidates and
  * hints all pay for it; deriving the *payload* does not. `StoryActionPayload` is a discriminated union
- * whose members disagree at every turn — `setBackground` is `assetId` XOR `color`, `character` carries
+ * whose members disagree at every turn - `setBackground` is `assetId` XOR `color`, `character` carries
  * both a `transition` and a `transform`, `wait` splits two semantics across a `mode` field, `dialogue`
  * is `characterId` XOR `speakerName`. A declarative mapping expressive enough for all of that costs
  * more than the switch below and hides the XORs that matter. See the plan's §7-2.
@@ -23,7 +32,7 @@ function asNumber(value: StoryCommandValue | undefined): number | undefined {
     return value?.kind === "number" ? value.value : undefined;
 }
 
-/** Durations are typed in seconds and stored in milliseconds — `d=0.3` means 300ms. */
+/** Durations are typed in seconds and stored in milliseconds - `d=0.3` means 300ms. */
 function asDurationMs(value: StoryCommandValue | undefined): number | undefined {
     const seconds = asNumber(value);
     return seconds === undefined ? undefined : storySecondsToMs(seconds);
@@ -54,7 +63,7 @@ function asObjectName(value: StoryCommandValue | undefined): string | undefined 
  * Fold `t=` / `d=` into a transition.
  *
  * A duration with no kind still means "animate", so it implies a transition rather than being
- * dropped on the floor — silently ignoring a value the author typed is worse than picking the house
+ * dropped on the floor - silently ignoring a value the author typed is worse than picking the house
  * default.
  */
 function withTransition(current: StoryTransitionRef | undefined, args: StoryCommandResolvedArgs): StoryTransitionRef | undefined {
@@ -86,8 +95,8 @@ function withTransform(current: StoryTransformRef | undefined, args: StoryComman
 
 /**
  * Fold a stage object's transform: placement (`at=`, on a create) or reveal (`t=`, on a show/hide),
- * plus `d=`. Images and texts have no separate `StoryTransitionRef` — their entrance and exit animate
- * through the transform preset — so both the placement and the reveal land here; a command never sets
+ * plus `d=`. Images and texts have no separate `StoryTransitionRef` - their entrance and exit animate
+ * through the transform preset - so both the placement and the reveal land here; a command never sets
  * both, so reading whichever is present is unambiguous.
  */
 function withStageTransform(current: StoryTransformRef | undefined, args: StoryCommandResolvedArgs): StoryTransformRef | undefined {
@@ -100,6 +109,74 @@ function withStageTransform(current: StoryTransformRef | undefined, args: StoryC
         ...(current ?? {}),
         ...(preset !== undefined ? { preset } : {}),
         ...(durationMs !== undefined ? { durationMs } : {}),
+    };
+}
+
+/**
+ * Write a computed right-hand side onto a `setVariable` payload.
+ *
+ * A tree that is nothing but a literal folds back into `value` and clears `expression`. That keeps
+ * `/set met true` producing byte-identical output to what it produced before expressions existed -
+ * the inspector's literal editor still binds to it, the compiler still takes the direct
+ * `Persistent.set` path, and the document does not grow an expression object around a constant.
+ */
+function withAssignedExpression(
+    payload: Extract<StoryActionPayload, { action: "setVariable" }>,
+    expression: StoryExpression,
+): Extract<StoryActionPayload, { action: "setVariable" }> {
+    if (expression.ast.kind === "literal") {
+        return { ...payload, value: expression.ast.value, expression: undefined };
+    }
+    return { ...payload, expression };
+}
+
+/** The zero value of a type - what a variable declared without an explicit default holds. */
+function defaultForType(valueType: StoryVariableValueType): StoryLiteralValue {
+    switch (valueType) {
+        case "boolean":
+            return false;
+        case "number":
+            return 0;
+        case "string":
+            return "";
+        case "json":
+            return null;
+    }
+}
+
+/**
+ * `/inc gold`, `/dec gold 5`, `/toggle met`, `/reset gold` - all four lower to the `setVariable`
+ * block `/set` would have built, differing only in the expression they synthesize.
+ *
+ * The trees are built directly rather than by re-parsing a synthesized source string: there is no
+ * user text to honour here, and going through the parser would make these commands able to fail on
+ * a variable name that happens to contain a space or an operator character.
+ */
+function applyAssignmentSugar(block: StoryBlock, commandId: ActionCommandId, args: StoryCommandResolvedArgs): StoryBlock {
+    if (block.kind !== "action" || block.payload.action !== "setVariable" || args.variable?.kind !== "variable") {
+        return block;
+    }
+    const variable = args.variable;
+    const payload = { ...block.payload, target: variable.ref };
+    const self: StoryExpr = { kind: "var", target: variable.ref, name: variable.name };
+
+    if (commandId === "toggleVariable") {
+        return { ...block, payload: { ...payload, expression: { source: `!${variable.name}`, ast: { kind: "unary", op: "!", operand: self } } } };
+    }
+    if (commandId === "resetVariable") {
+        // Resetting is an assignment of the declared default, snapshotted here rather than resolved at
+        // runtime: NLR has no "restore to default" action, and a row that silently changed meaning when
+        // someone edited the declaration would be worse than one that says what it assigns.
+        return { ...block, payload: { ...payload, value: variable.defaultValue ?? defaultForType(variable.valueType), expression: undefined } };
+    }
+
+    const op = commandId === "incrementVariable" ? "+" : "-";
+    // `by` defaults to 1: `/inc gold` is the line this command exists for.
+    const step: StoryExpr = args.by?.kind === "expression" ? args.by.expression.ast : { kind: "literal", value: 1 };
+    const stepSource = args.by?.kind === "expression" ? args.by.source : "1";
+    return {
+        ...block,
+        payload: { ...payload, expression: { source: `${variable.name} ${op} (${stepSource})`, ast: { kind: "binary", op, left: self, right: step } } },
     };
 }
 
@@ -154,7 +231,7 @@ export function applyCommandArgs(block: StoryBlock, commandId: ActionCommandId, 
                 return block;
             }
             const payload = { ...block.payload };
-            // characterId XOR speakerName — the row points at a record or carries a bare name, never both.
+            // characterId XOR speakerName - the row points at a record or carries a bare name, never both.
             if (args.character?.kind === "character") {
                 payload.characterId = args.character.characterId;
                 payload.speakerName = undefined;
@@ -230,9 +307,23 @@ export function applyCommandArgs(block: StoryBlock, commandId: ActionCommandId, 
             }
             if (args.value?.kind === "literal") {
                 payload.value = args.value.value;
+            } else if (args.value?.kind === "expression") {
+                return { ...block, payload: withAssignedExpression(payload, args.value.expression) };
             }
             return { ...block, payload };
         }
+
+        case "incrementVariable":
+        case "decrementVariable":
+        case "toggleVariable":
+        case "resetVariable":
+            return applyAssignmentSugar(block, commandId, args);
+
+        case "conditionIf":
+            // The expression rides on the *branch*, which does not exist yet - `scaffoldContainer`
+            // creates it right after this block is inserted, and reads the condition back off here.
+            // Nothing to write onto the container itself.
+            return block;
 
         case "choice": {
             if (block.kind !== "nodeAction" || block.payload.action !== "choice" || !block.payload.prompt) {
@@ -241,7 +332,7 @@ export function applyCommandArgs(block: StoryBlock, commandId: ActionCommandId, 
             if (args.text?.kind !== "text") {
                 return block;
             }
-            // Typed on one line, so the prompt is plain — drop any `rich` the placeholder carried.
+            // Typed on one line, so the prompt is plain - drop any `rich` the placeholder carried.
             return { ...block, payload: { ...block.payload, prompt: { ...block.payload.prompt, value: args.text.value, rich: undefined } } };
         }
 
@@ -257,7 +348,7 @@ export function applyCommandArgs(block: StoryBlock, commandId: ActionCommandId, 
             if (block.kind !== "action" || block.payload.action !== "nvl") {
                 return block;
             }
-            // NVL's transition is a transform (preset), not a StoryTransitionRef — see the grammar note.
+            // NVL's transition is a transform (preset), not a StoryTransitionRef - see the grammar note.
             const preset = asEnum(args.t) as StoryTransformRef["preset"] | undefined;
             const durationMs = asDurationMs(args.d);
             if (preset === undefined && durationMs === undefined) {
@@ -286,7 +377,7 @@ export function applyCommandArgs(block: StoryBlock, commandId: ActionCommandId, 
             if (args.image?.kind === "asset") {
                 payload.assetId = args.image.assetId;
             }
-            // Images animate through `transform` — placement on create (`at=`), reveal on show/hide (`t=`).
+            // Images animate through `transform` - placement on create (`at=`), reveal on show/hide (`t=`).
             const transform = withStageTransform(payload.transform, args);
             return { ...block, payload: { ...payload, ...(transform ? { transform } : {}) } };
         }
