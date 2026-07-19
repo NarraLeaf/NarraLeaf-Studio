@@ -25,9 +25,11 @@ export interface GlobalStateType extends Record<string, any> {
     /** The search pill in the title bar. With it hidden the command palette grows its own input. */
     "ui.titleBarSearch.visible": boolean;
     /**
-     * Watermark background. `ui.backgroundImage` is a *file name* inside userData/backgrounds,
-     * never a path — the main process resolves it by basename so a renderer cannot steer the read
-     * at arbitrary files. Null (or absent) means no background, which is what disables the layer.
+     * Watermark background. `ui.backgroundImage` is a *file name* inside the userData/backgrounds
+     * cache, never a path — the main process resolves it by basename so a renderer cannot steer
+     * the read at arbitrary files. The name is `<content hash>.<ext>`, so picking a different
+     * picture always changes this value and every window notices. Null (or absent) means no
+     * background, which is what disables the layer.
      */
     "ui.backgroundImage": string | null;
     /** Watermark strength, as a percentage; clamped to 2–40 when read. */
@@ -35,6 +37,8 @@ export interface GlobalStateType extends Record<string, any> {
     "ui.backgroundFill": "cover" | "contain" | "tile" | "center" | string;
     /** CSS `background-position` keyword pair, e.g. "center center". */
     "ui.backgroundAnchor": string;
+    /** Blur radius in CSS pixels; 0 (the default) leaves the picture sharp. Clamped to 0–40. */
+    "ui.backgroundBlur": number;
     /**
      * User keybinding rebinds as one `catalogId -> chord` map. One key rather than one key per
      * binding because catalog ids contain dots, which the dotted-path settings store would split

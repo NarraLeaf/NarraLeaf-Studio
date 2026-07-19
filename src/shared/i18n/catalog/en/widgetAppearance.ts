@@ -53,7 +53,7 @@ export const widgetAppearance = {
         sidesTitle: "Border sides",
         sidesExpandAria: "Expand border sides",
         toggleVisibilityAria: "Toggle border visibility",
-        multipleSidesHint: "Multiple sides — use the compact Border panel to edit.",
+        multipleSidesHint: "Multiple sides. Use the compact Border panel to edit.",
         styleLabel: "Border Style",
         styleSolid: "Solid",
         styleDashed: "Dashed",

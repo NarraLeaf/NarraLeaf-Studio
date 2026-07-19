@@ -452,7 +452,7 @@ export class MenuManager {
             return;
         }
 
-        void target.getApp().openRecentProject(target, projectPath).catch((error) => {
+        void target.getApp().openProject(target, projectPath).catch((error) => {
             this.app.logger.error("Failed to open recent project from menu:", error);
         });
     }

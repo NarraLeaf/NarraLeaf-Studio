@@ -105,7 +105,7 @@ function formatExportTimestamp(timestamp: number): string {
  */
 function buildExportContent(entries: ConsoleEntry[], label: string): string {
     const header = [
-        `NarraLeaf Studio — ${label} console log`,
+        `NarraLeaf Studio ${label} console log`,
         `Exported: ${formatExportTimestamp(Date.now())}`,
         `Entries: ${entries.length}`,
         "",

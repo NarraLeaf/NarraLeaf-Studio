@@ -14,6 +14,12 @@ import { useOpenRecentProject, useRecentProjects } from "../../hooks/useRecentPr
  * recent workspaces to jump between. Selecting one focuses its window if already open, otherwise
  * opens it in a new window — the current project is never closed out from under the user.
  *
+ * That last part is the whole contract, and it is why none of these actions asks to reuse this
+ * window. One project, one window (the JetBrains model the rest of the shell follows): going to
+ * another project is not a request to close the one you are in, and a switcher that retires the
+ * window behind it destroys unsaved context for a gesture the user reads as navigation. Closing a
+ * project is its own explicit action, with its own confirmation.
+ *
  * Lives at the left of the title bar (before the action bar), so it reads as the window's identity
  * the way an IDE's project name does.
  */
@@ -59,8 +65,8 @@ export function ProjectSwitcher() {
 
     const handleSwitch = useCallback((projectPath: string) => {
         setOpen(false);
-        // Reuse this window: the picked project takes its place and the current one closes.
-        void openRecentProject(projectPath, { replaceCurrentWindow: true });
+        // Focuses the project's window when it already has one; opens one alongside otherwise.
+        void openRecentProject(projectPath);
     }, [openRecentProject]);
 
     const handleOpenFolder = useCallback(() => {
@@ -68,8 +74,7 @@ export function ProjectSwitcher() {
         void (async () => {
             const result = await getInterface().selectFolder();
             if (result.success && result.data?.path) {
-                // Reuse this window, like File ▸ Open and switching to a recent project do.
-                await getInterface().workspace.launch({ projectPath: result.data.path }, true);
+                await getInterface().workspace.launch({ projectPath: result.data.path });
             }
         })();
     }, []);
@@ -79,7 +84,7 @@ export function ProjectSwitcher() {
         void (async () => {
             const result = await getInterface().app.launchProjectWizard({});
             if (result.success && result.data?.created) {
-                await getInterface().workspace.launch({ projectPath: result.data.projectPath }, true);
+                await getInterface().workspace.launch({ projectPath: result.data.projectPath });
             }
         })();
     }, []);

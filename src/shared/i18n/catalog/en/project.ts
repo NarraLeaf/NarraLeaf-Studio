@@ -63,10 +63,10 @@ export const project = {
     dependencies: {
         rescan: "Rescan",
         scanning: "Scanning project…",
-        empty: "No plugin dependencies — this project uses only built-in Studio features.",
+        empty: "No plugin dependencies. This project uses only built-in Studio features.",
         banner: {
             blocked: "One or more plugins are disabled for this project because their installed version is incompatible. Update or reinstall them to restore full functionality.",
-            warnings: "Some dependencies need attention — a plugin is outdated or a soft dependency is unavailable.",
+            warnings: "Some dependencies need attention. A plugin is outdated or a soft dependency is unavailable.",
         },
         status: {
             ready: "Ready",

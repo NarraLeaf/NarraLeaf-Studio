@@ -1369,7 +1369,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 .sort(([a], [b]) => a.localeCompare(b))
                 .map(([name, definition]) => ({
                     value: name,
-                    label: definition.sourceText.trim() ? `${definition.sourceText} — ${name}` : name,
+                    label: definition.sourceText.trim() ? `${definition.sourceText} (${name})` : name,
                 }));
         } catch {
             // Outside a workspace context; no key options.

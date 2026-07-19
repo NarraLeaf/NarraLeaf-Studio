@@ -196,14 +196,14 @@ describe("fnCatalog", () => {
             uiDocument: testUiDocument(),
             caller: { kind: "widgetMain", surfaceId: "s1", elementId: "other" },
         });
-        expect(options.map(o => o.label)).toEqual(["GlobalFn — Global", "SurfaceFn — Menu", "WidgetFn — Confirm"]);
+        expect(options.map(o => o.label)).toEqual(["GlobalFn (Global)", "SurfaceFn (Menu)", "WidgetFn (Confirm)"]);
 
         const globalOnly = listCallableBlueprintFnOptions({
             blueprintDocument: testDocument(),
             uiDocument: testUiDocument(),
             caller: { kind: "globalMain" },
         });
-        expect(globalOnly.map(o => o.label)).toEqual(["GlobalFn — Global"]);
+        expect(globalOnly.map(o => o.label)).toEqual(["GlobalFn (Global)"]);
     });
 
     it("detects stale signature snapshots", () => {

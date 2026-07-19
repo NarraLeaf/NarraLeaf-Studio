@@ -111,7 +111,7 @@ export const build = {
         "appid-android-adjusted": "The app id {appId} is not a valid Android package name; the build ships {applicationId}.",
         "bundleid-ios-adjusted": "The app id {appId} is not a valid iOS bundle identifier; the build ships {bundleId}.",
         unsigned: "Builds are not code-signed. Players may see a warning from macOS Gatekeeper or Windows SmartScreen the first time they open the game.",
-        "unsigned-android": "The Android build is signed with a local debug identity for sideloading — it cannot be published to Google Play.",
+        "unsigned-android": "The Android build is signed with a local debug identity for sideloading, so it cannot be published to Google Play.",
         "unsigned-ios": "The iOS build is an unsigned .ipa. iOS installs nothing unsigned, so it must be re-signed with your own Apple identity before it will run on a device.",
         "cross-build-download": "Cross-building for {platforms} downloads Electron on first use (cached afterwards).",
         "output-not-writable": "Cannot write to {outputDir}.",
@@ -121,7 +121,7 @@ export const build = {
     unsignedNotice: "Builds are not code-signed. Players may see a security warning from macOS Gatekeeper or Windows SmartScreen the first time they open the game; a signing certificate is needed for a warning-free install.",
     selectAtLeastOne: "Select at least one platform and format.",
     toast: {
-        submitted: "Build task submitted — see the console for progress.",
+        submitted: "Build task submitted. See the console for progress.",
         done: "Build finished.",
         failed: "Build failed.",
     },

@@ -66,7 +66,7 @@ function NotificationItem({ notification, onClose }: { notification: Notificatio
             <div className="flex-shrink-0 mt-0.5">{getIcon()}</div>
             
             <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-fg">{notification.message}</p>
+                <p className="nl-selectable-text text-sm font-medium text-fg">{notification.message}</p>
                 {notification.detail && (
                     <p className="mt-1 text-xs text-fg-muted">{notification.detail}</p>
                 )}
