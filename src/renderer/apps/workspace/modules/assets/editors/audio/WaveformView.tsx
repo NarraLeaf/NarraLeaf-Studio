@@ -22,9 +22,19 @@ const RULER_HEIGHT = 18;
 /** Drags shorter than this are a click (seek), not a selection. */
 const DRAG_THRESHOLD_PX = 3;
 
-function readCssColor(element: HTMLElement, token: string, fallback: string): string {
+/**
+ * Resolve a design-system color token for the canvas, which cannot use CSS.
+ *
+ * The channel tokens (`--nl-fg-muted`, `--nl-primary`, …) hold space-separated RGB channels, not
+ * a color, so they are wrapped here. `--nl-edge` and friends are already whole colors and are
+ * read with `whole: true`.
+ */
+function readCssColor(element: HTMLElement, token: string, fallback: string, whole = false): string {
     const value = getComputedStyle(element).getPropertyValue(token).trim();
-    return value.length > 0 ? value : fallback;
+    if (value.length === 0) {
+        return fallback;
+    }
+    return whole ? value : `rgb(${value})`;
 }
 
 /** Choose a tick spacing whose labels stay readable at the current zoom. */
@@ -106,10 +116,10 @@ export function WaveformView({
             context.clearRect(0, 0, width, height);
 
             const styleHost = canvas.parentElement ?? canvas;
-            const waveColor = readCssColor(styleHost, "--color-fg-muted", "#8a8a8a");
-            const subtleColor = readCssColor(styleHost, "--color-fg-subtle", "#6a6a6a");
-            const primaryColor = readCssColor(styleHost, "--color-primary", "#40a8c4");
-            const edgeColor = readCssColor(styleHost, "--color-edge", "#3a3a3a");
+            const waveColor = readCssColor(styleHost, "--nl-fg-muted", "#8a8a8a");
+            const subtleColor = readCssColor(styleHost, "--nl-fg-subtle", "#6a6a6a");
+            const primaryColor = readCssColor(styleHost, "--nl-primary", "#40a8c4");
+            const edgeColor = readCssColor(styleHost, "--nl-edge", "#3a3a3a", true);
 
             const waveTop = RULER_HEIGHT;
             const waveHeight = height - RULER_HEIGHT;

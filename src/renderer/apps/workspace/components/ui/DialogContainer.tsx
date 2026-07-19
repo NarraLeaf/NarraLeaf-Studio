@@ -123,7 +123,7 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
                                     ${button.disabled
                                         ? "bg-fill text-fg-subtle cursor-not-allowed"
                                         : button.primary
-                                            ? "bg-primary hover:bg-primary/80 text-white font-medium"
+                                            ? "bg-primary hover:bg-primary/80 text-on-primary font-medium"
                                             : "bg-fill-subtle hover:bg-fill text-fg-muted"
                                     }
                                 `}

@@ -314,7 +314,7 @@ export function PluginPermissionApp() {
                             type="button"
                             onClick={() => handleApprove(showPersistentChoices ? "permanent" : undefined)}
                             disabled={!request || busy}
-                            className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded bg-primary px-3 text-sm font-semibold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded bg-primary px-3 text-sm font-semibold text-on-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <Check size={15} className="shrink-0" />
                             <span className="whitespace-nowrap">{busy ? t("pluginPermission.button.granting") : showPersistentChoices ? t("pluginPermission.button.alwaysAllow") : t("pluginPermission.button.allow")}</span>

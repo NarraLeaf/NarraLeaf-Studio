@@ -6,7 +6,7 @@ import {
     useState,
     type ReactNode,
 } from "react";
-import { AnimatePresence, useReducedMotion } from "motion/react";
+import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
 import { type LiveGame, type SavedGame } from "narraleaf-react";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import {
@@ -1722,47 +1722,54 @@ export function GameApp(props: GameAppProps): ReactNode {
             .filter((item): item is { entry: GameAppNavEntry; surface: UISurface } => Boolean(item))
         : [];
 
+    // `nl-motion-keep` + `reducedMotion="never"` hold the game's own motion outside the Studio
+    // reduced-motion preference (styles.css and the MotionConfig in lib/renderApp): what plays
+    // in here is the author's work, and it has to move the way it will move for a player. The
+    // PLAYER's own OS preference still lands — `useReducedMotion` above reads the media query
+    // directly and is unaffected by this config. The host frame around it stays Studio chrome.
     const content = (
-        <div className="relative h-full w-full overflow-hidden">
-            {nlrStageLayer}
-            {/* Surface system starts only after the NLR environment boot preload finishes. */}
-            <div className="pointer-events-none absolute inset-0 z-10">
-                <AnimatePresence
-                    custom={navState.direction}
-                    initial={false}
-                    mode={surfacePresenceMode}
-                    onExitComplete={handleSurfaceExitComplete}
-                >
-                    {nlrPreloadDone
-                        ? visibleSurfaceEntries.map(({ entry, surface }, layerIndex) => (
-                            <AppSurfaceLayerWithAdapter
-                                key={entry.key}
-                                uidoc={bundle.ui.uidoc}
-                                blueprintDocument={bundle.ui.localBlueprints}
-                                core={core}
-                                entry={entry}
-                                layerIndex={layerIndex}
-                                surface={surface}
-                                rendererRegistry={rendererRegistry}
-                                scale={scale}
-                                createHostAdapterBundle={createHostAdapterBundle}
-                                widgetPatchesByScope={widgetPatchesByScope}
-                                widgetPatchesByScopeRef={widgetPatchesByScopeRef}
-                                widgetRuntimeStore={widgetRuntimeStore}
-                                lifecycleRef={lifecycleRef}
-                                nestedSurfaceRuntime={nestedSurfaceRuntime}
-                                blueprintLifecycleReady={prepaintReadyKeys.has(entry.key)}
-                                reducedMotion={prefersReducedMotion === true}
-                                active={entry.key === activeEntry.key}
-                                onInteractionReadyChange={handleSurfaceInteractionReadyChange}
-                                onPrepaintReady={handleSurfaceLayerPrepaintReady}
-                                onEnterComplete={markActiveEnterComplete}
-                            />
-                        ))
-                        : null}
-                </AnimatePresence>
+        <MotionConfig reducedMotion="never">
+            <div className="nl-motion-keep relative h-full w-full overflow-hidden">
+                {nlrStageLayer}
+                {/* Surface system starts only after the NLR environment boot preload finishes. */}
+                <div className="pointer-events-none absolute inset-0 z-10">
+                    <AnimatePresence
+                        custom={navState.direction}
+                        initial={false}
+                        mode={surfacePresenceMode}
+                        onExitComplete={handleSurfaceExitComplete}
+                    >
+                        {nlrPreloadDone
+                            ? visibleSurfaceEntries.map(({ entry, surface }, layerIndex) => (
+                                <AppSurfaceLayerWithAdapter
+                                    key={entry.key}
+                                    uidoc={bundle.ui.uidoc}
+                                    blueprintDocument={bundle.ui.localBlueprints}
+                                    core={core}
+                                    entry={entry}
+                                    layerIndex={layerIndex}
+                                    surface={surface}
+                                    rendererRegistry={rendererRegistry}
+                                    scale={scale}
+                                    createHostAdapterBundle={createHostAdapterBundle}
+                                    widgetPatchesByScope={widgetPatchesByScope}
+                                    widgetPatchesByScopeRef={widgetPatchesByScopeRef}
+                                    widgetRuntimeStore={widgetRuntimeStore}
+                                    lifecycleRef={lifecycleRef}
+                                    nestedSurfaceRuntime={nestedSurfaceRuntime}
+                                    blueprintLifecycleReady={prepaintReadyKeys.has(entry.key)}
+                                    reducedMotion={prefersReducedMotion === true}
+                                    active={entry.key === activeEntry.key}
+                                    onInteractionReadyChange={handleSurfaceInteractionReadyChange}
+                                    onPrepaintReady={handleSurfaceLayerPrepaintReady}
+                                    onEnterComplete={markActiveEnterComplete}
+                                />
+                            ))
+                            : null}
+                    </AnimatePresence>
+                </div>
             </div>
-        </div>
+        </MotionConfig>
     );
 
     return (
