@@ -1,4 +1,4 @@
-/** `assets` — the asset browser/manager: search, filters, grid/list views,
+/** `assets` - the asset browser/manager: search, filters, grid/list views,
  * context menus, import controls, image/audio preview editors, and dialogs. */
 export const assets = {
     loading: "Loading assets…",
@@ -126,9 +126,7 @@ export const assets = {
         pause: "Pause",
         mute: "Mute",
         unmute: "Unmute",
-        waveformHint: "Click to seek · ⌥-click to add a cue point",
         analyzing: "Analyzing waveform…",
-        cueChipHint: "Click to seek · double-click to remove",
         seek: "Seek",
         volume: "Volume",
         playback: "Playback",
@@ -138,20 +136,39 @@ export const assets = {
             one: "{count} channel",
             other: "{count} channels",
         },
-        // The waveform editor: destructive-looking operations act on an in-memory copy and are
-        // only written out through "Save as new asset".
+        // The preview's transport and view controls. Nothing here touches the audio file -
+        // markers are the only thing written back, and they go to the asset record.
         editor: {
-            stop: "Stop",
+            toStart: "Go to start",
             loop: "Loop",
             zoomIn: "Zoom in",
             zoomOut: "Zoom out",
             zoomFit: "Fit whole clip",
             zoomSelection: "Zoom to selection",
-            selectionLabel: "Selection: {duration}",
-            wholeClipLabel: "Drag across the waveform to audition a range",
-            addCue: "Mark playhead",
-            markSelectionEnds: "Mark selection in/out",
+            addCue: "Add marker at playhead",
             channels: "{count} ch",
+        },
+        // Shown in the keybinding settings table and the "?" cheat sheet.
+        keybindings: {
+            playPause: "Play or pause",
+            toStart: "Go to start",
+            toEnd: "Go to end",
+            nudgeBack: "Nudge playhead back",
+            nudgeForward: "Nudge playhead forward",
+            nudgeBackCoarse: "Nudge playhead back one second",
+            nudgeForwardCoarse: "Nudge playhead forward one second",
+            loop: "Toggle loop",
+            addCue: "Add marker at playhead",
+            removeCue: "Remove nearest marker",
+            nextCue: "Go to next marker",
+            previousCue: "Go to previous marker",
+            undo: "Undo marker change",
+            redo: "Redo marker change",
+            selectAll: "Select whole clip",
+            clearSelection: "Clear selection",
+            zoomIn: "Zoom in",
+            zoomOut: "Zoom out",
+            zoomFit: "Fit whole clip",
         },
     },
     image: {
@@ -177,7 +194,7 @@ export const assets = {
         loadFailed: "Failed to load this asset.",
     },
     fontPreview: {
-        sampleText: "The quick brown fox jumps over the lazy dog — 敏捷的棕色狐狸跳过懒狗 0123456789",
+        sampleText: "The quick brown fox jumps over the lazy dog - 敏捷的棕色狐狸跳过懒狗 0123456789",
         typePlaceholder: "Type to preview your own text…",
     },
     jsonPreview: {
