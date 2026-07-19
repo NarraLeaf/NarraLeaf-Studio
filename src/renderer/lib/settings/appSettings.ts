@@ -13,6 +13,11 @@ import {
     MAX_ACTIVE_EDITORS_MIN,
 } from "@/lib/settings/editorLayoutOptions";
 import {
+    ACCENT_COLOR_DEFAULT,
+    ACCENT_PRESETS,
+    ACCENT_SWATCHES,
+} from "@shared/constants/accent";
+import {
     ZOOM_PERCENT_DEFAULT,
     ZOOM_PERCENT_MAX,
     ZOOM_PERCENT_MIN,
@@ -122,6 +127,55 @@ export const AppSettings: AppSettingDefinition[] = [
             light: "settings.items.themeMode.options.light",
             dark: "settings.items.themeMode.options.dark",
         },
+    },
+    {
+        // Applied by the renderer (`lib/appearance`): the stored value overrides the
+        // `--nl-primary` channels on the root element, which every `*-primary` utility in the
+        // product resolves through. Stored as a preset id or a `#rrggbb` hex — the presets are
+        // the guided path (hue-shifts of the brand anchor at low saturation, see
+        // @shared/constants/accent), the picker is there for anything else. What keeps "any
+        // color" honest is `--nl-on-primary`, the derived ink that stops a pale accent from
+        // making every primary button unreadable. Studio chrome only; a game keeps the anchor.
+        key: "ui.accentColor",
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Color,
+        label: "Accent color",
+        labelKey: "settings.items.accentColor.label",
+        description: "Color used for selection, focus rings, and primary buttons across the Studio interface.",
+        descriptionKey: "settings.items.accentColor.description",
+        defaultValue: ACCENT_COLOR_DEFAULT,
+        options: ACCENT_PRESETS.map(preset => preset.id),
+        optionLabels: Object.fromEntries(ACCENT_PRESETS.map(preset => [preset.id, preset.label])),
+        optionLabelKeys: {
+            teal: "settings.items.accentColor.options.teal",
+            sky: "settings.items.accentColor.options.sky",
+            indigo: "settings.items.accentColor.options.indigo",
+            rose: "settings.items.accentColor.options.rose",
+            slate: "settings.items.accentColor.options.slate",
+        },
+        optionColors: ACCENT_SWATCHES,
+        allowCustomColor: true,
+        // Live preview while dragging; the commit on release is what persists and broadcasts.
+        onPreview: (value) => {
+            void import("@/lib/appearance").then(({ previewAccentColor }) => previewAccentColor(value));
+        },
+    },
+    {
+        // Applied by the renderer in two halves, because one cannot reach the other: the
+        // `.nl-reduce-motion` class on the root element neutralizes CSS transitions and
+        // animations (styles.css), and the MotionConfig in `lib/renderApp` does the same for
+        // framer-motion, which animates from JS where no CSS rule applies. Game content — the
+        // story preview's stage, Dev Mode — is exempt from both.
+        key: "ui.reduceMotion",
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Reduce motion",
+        labelKey: "settings.items.reduceMotion.label",
+        description: "Turn off animated transitions in the Studio interface. Your game's own animations are unaffected, in the editor and when it ships.",
+        descriptionKey: "settings.items.reduceMotion.description",
+        defaultValue: false,
     },
     {
         // Applied by the main process to every Studio window's webContents

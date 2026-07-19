@@ -10,7 +10,7 @@ import { Services } from "@/lib/workspace/services/services";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
-import type { StoryDocument, StoryScene, StorySceneUpdate } from "@shared/types/story";
+import type { StoryBlockId, StoryDocument, StoryScene, StorySceneUpdate } from "@shared/types/story";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
@@ -683,6 +683,19 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         });
     }, [panelStateService]);
 
+    const openPreview = useCallback(() => {
+        setPreviewPane(current => {
+            const base = current ?? DEFAULT_STORY_SCENE_PREVIEW_PANE_STATE;
+            if (base.open) {
+                return base;
+            }
+            if (panelStateService) {
+                patchStoryScenePreviewPaneState(panelStateService, { open: true });
+            }
+            return { ...base, open: true };
+        });
+    }, [panelStateService]);
+
     // Switch the (open) pane between docked and picture-in-picture. Popping out for the first time
     // seeds a bottom-right float placement from the editor body's current size.
     const setPreviewMode = useCallback((mode: StoryScenePreviewPaneMode) => {
@@ -752,6 +765,13 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         active,
         open: previewOpen,
     });
+
+    // A row's play button is also how the preview gets opened: asking to play something and then
+    // having to find the pane toggle would be a step nobody wants.
+    const playFromRow = useCallback((blockId: StoryBlockId) => {
+        openPreview();
+        preview.startPlayback(blockId);
+    }, [openPreview, preview]);
 
     if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
         return (
@@ -891,6 +911,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     onDeleteRow={() => void editor.deleteRows([row.block.id])}
                                     onAddInside={parentId => editor.addInsideContainer(parentId)}
                                     onAddBranch={(conditionId, branch) => editor.addConditionBranch(conditionId, branch)}
+                                    onPlayFromRow={playFromRow}
                                 />
                                 {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && editor.editorMode.slot.afterBlockId === row.block.id ? (
                                     <InsertRow

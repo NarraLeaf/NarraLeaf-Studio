@@ -28,6 +28,20 @@ export interface SettingDescriptor<T extends SettingValueType = SettingValueType
     options?: string[];
     /** Human-facing label per option value (e.g. locale code → endonym). */
     optionLabels?: Record<string, string>;
+    /** Color only: the swatch each option value paints, as a CSS color. */
+    optionColors?: Record<string, string>;
+    /**
+     * Color only: offer a full picker alongside the preset swatches, storing a `#rrggbb` hex
+     * instead of an option id. Off by default — a setting whose colors are a design decision
+     * should not quietly accept any value.
+     */
+    allowCustomColor?: boolean;
+    /**
+     * Color only: apply a value locally, without storing it, while the user is still dragging in
+     * the picker. Nothing is persisted and no other window sees it — the commit does that. A
+     * setting that can be previewed knows how to apply itself; the settings layer does not.
+     */
+    onPreview?: (value: string) => void;
     /** Numeric bounds and granularity: Slider needs them; number inputs clamp and step by them. */
     min?: number;
     max?: number;
@@ -70,6 +84,20 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     optionLabels?: Record<string, string>;
     /** i18n key per option value; when set, overrides `optionLabels` at render time. */
     optionLabelKeys?: Record<string, TranslationKey>;
+    /** Color only: the swatch each option value paints, as a CSS color. */
+    optionColors?: Record<string, string>;
+    /**
+     * Color only: offer a full picker alongside the preset swatches, storing a `#rrggbb` hex
+     * instead of an option id. Off by default — a setting whose colors are a design decision
+     * should not quietly accept any value.
+     */
+    allowCustomColor?: boolean;
+    /**
+     * Color only: apply a value locally, without storing it, while the user is still dragging in
+     * the picker. Nothing is persisted and no other window sees it — the commit does that. A
+     * setting that can be previewed knows how to apply itself; the settings layer does not.
+     */
+    onPreview?: (value: string) => void;
     /** Numeric bounds and granularity: Slider needs them; number inputs clamp and step by them. */
     min?: number;
     max?: number;

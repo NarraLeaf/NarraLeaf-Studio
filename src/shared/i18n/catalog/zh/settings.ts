@@ -9,6 +9,7 @@ export const settings = {
     noneExposed: "当前没有已实装的设置可供配置",
     invalidValue: "请输入有效的值",
     persistFailed: "保存设置失败",
+    customColor: "自定义颜色…",
     categories: {
         general: {
             label: "常规",
@@ -48,6 +49,21 @@ export const settings = {
                 light: "亮色",
                 dark: "暗色",
             },
+        },
+        accentColor: {
+            label: "强调色",
+            description: "Studio 界面中选中项、焦点框和主要按钮所用的颜色",
+            options: {
+                teal: "叶青",
+                sky: "天蓝",
+                indigo: "靛蓝",
+                rose: "玫瑰",
+                slate: "石板",
+            },
+        },
+        reduceMotion: {
+            label: "减少动效",
+            description: "关闭 Studio 界面中的动画过渡。不影响你的游戏本身的动画，编辑时和发行后都不受影响",
         },
         zoomPercent: {
             label: "界面缩放",
