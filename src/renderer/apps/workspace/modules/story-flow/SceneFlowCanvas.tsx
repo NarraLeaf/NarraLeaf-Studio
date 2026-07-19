@@ -10,7 +10,6 @@ import {
     useEdgesState,
     useNodesState,
     useReactFlow,
-    type Connection,
     type Edge,
     type Node,
     type NodeTypes,
@@ -21,9 +20,6 @@ import { SceneFlowNode, type SceneFlowNodeData } from "./SceneFlowNode";
 import {
     SCENE_FLOW_NODE_HEIGHT,
     SCENE_FLOW_NODE_WIDTH,
-    validateSceneFlowConnection,
-    type SceneFlowConnectionRejection,
-    type SceneFlowEdgeModel,
     type SceneFlowGraph,
 } from "./sceneFlowModel";
 import { SceneFlowZoomControls } from "./SceneFlowZoomControls";
@@ -46,19 +42,6 @@ export interface SceneFlowCanvasProps {
     onOpenScene: (sceneId: StorySceneId) => void;
     onMoveScene: (sceneId: StorySceneId, position: { x: number; y: number }) => void;
     onViewportChange?: (viewport: SceneFlowViewport) => void;
-    /** Draw a new jump from one scene to another. */
-    onCreateJump: (sourceSceneId: StorySceneId, targetSceneId: StorySceneId) => void;
-    /** Drag an edge's end onto a different scene. */
-    onRetargetJump: (edge: SceneFlowEdgeModel, nextTargetSceneId: StorySceneId) => void;
-    onDeleteJump: (edge: SceneFlowEdgeModel) => void;
-    /**
-     * Asked before React Flow drops the edge from its own state. Returning false leaves the canvas
-     * untouched — vetoing here is the only way to cancel cleanly, because `onEdgesDelete` fires
-     * after the removal has already happened.
-     */
-    onConfirmDeleteJump: (edge: SceneFlowEdgeModel) => Promise<boolean>;
-    /** Surfaced when a drawn connection is refused, so the refusal is never silent. */
-    onConnectionRejected: (reason: SceneFlowConnectionRejection) => void;
 }
 
 function resolvePosition(
@@ -76,11 +59,6 @@ function SceneFlowCanvasInner({
     onOpenScene,
     onMoveScene,
     onViewportChange,
-    onCreateJump,
-    onRetargetJump,
-    onDeleteJump,
-    onConfirmDeleteJump,
-    onConnectionRejected,
 }: SceneFlowCanvasProps) {
     // React Flow derives document-wide ids from this (the dot-grid `<pattern>`, edge markers, handle
     // element ids) and falls back to a literal "1" when unset, so two canvases on one page collide.
@@ -182,65 +160,6 @@ function SceneFlowCanvasInner({
         onViewportChange?.({ x: viewport.x, y: viewport.y, zoom: viewport.zoom });
     }, [onViewportChange]);
 
-    /**
-     * Validation lives here rather than in `isValidConnection` on purpose. That prop gates the drop
-     * *before* this handler runs, so a refused connection would vanish with no explanation — and
-     * the live "invalid handle" styling it buys is invisible here, since these handles are plain
-     * dots with no connecting state of their own. Refusing at commit time is what lets the author
-     * be told why. Nothing is written until the checks pass, so a rejected drag leaves no trace.
-     */
-    const handleConnect = useCallback((connection: Connection) => {
-        const rejection = validateSceneFlowConnection(graph, connection.source, connection.target);
-        if (rejection) {
-            onConnectionRejected(rejection);
-            return;
-        }
-        onCreateJump(connection.source, connection.target);
-    }, [graph, onConnectionRejected, onCreateJump]);
-
-    const handleReconnect = useCallback((oldEdge: Edge, connection: Connection) => {
-        const model = graph.edges.find(edge => edge.id === oldEdge.id);
-        if (!model) {
-            return;
-        }
-        // A jump block belongs to the scene it leaves, so dragging the *source* end would mean
-        // moving the block between scenes — a different operation than re-pointing it.
-        if (connection.source !== model.source) {
-            onConnectionRejected("sourceLocked");
-            return;
-        }
-        const rejection = validateSceneFlowConnection(graph, connection.source, connection.target, oldEdge.id);
-        if (rejection) {
-            onConnectionRejected(rejection);
-            return;
-        }
-        onRetargetJump(model, connection.target);
-    }, [graph, onConnectionRejected, onRetargetJump]);
-
-    const handleBeforeDelete = useCallback(async ({ edges: doomed }: { edges: Edge[] }) => {
-        const models = doomed
-            .map(edge => graph.edges.find(candidate => candidate.id === edge.id))
-            .filter((model): model is SceneFlowEdgeModel => Boolean(model));
-        if (models.length === 0) {
-            return false;
-        }
-        for (const model of models) {
-            if (!(await onConfirmDeleteJump(model))) {
-                return false;
-            }
-        }
-        return true;
-    }, [graph, onConfirmDeleteJump]);
-
-    const handleEdgesDelete = useCallback((deleted: Edge[]) => {
-        for (const edge of deleted) {
-            const model = graph.edges.find(candidate => candidate.id === edge.id);
-            if (model) {
-                onDeleteJump(model);
-            }
-        }
-    }, [graph, onDeleteJump]);
-
     return (
         <ReactFlow
             id={flowId}
@@ -254,18 +173,14 @@ function SceneFlowCanvasInner({
             onNodeDoubleClick={handleNodeDoubleClick}
             onMoveEnd={handleMoveEnd}
             defaultViewport={initialViewport ?? undefined}
-            // The default 20px demands the author hit an 8px dot. Scenes sit ~100px apart
-            // vertically, so half that pitch snaps generously without reaching a neighbour's handle.
-            connectionRadius={45}
-            onConnect={handleConnect}
-            onReconnect={handleReconnect}
-            onBeforeDelete={handleBeforeDelete}
-            onEdgesDelete={handleEdgesDelete}
-            edgesFocusable
-            elevateEdgesOnSelect
-            // Nodes are never deleted from the map — a scene is deleted from the story outline,
-            // where the consequences are visible. Only edges (jumps) answer to Delete here.
-            deleteKeyCode={["Delete", "Backspace"]}
+            // The map reports the story; it does not edit it. Jumps are authored in the scene
+            // editor, where the block they belong to and its surrounding control flow are visible -
+            // a line drawn between two boxes hides which scene owns the jump and what guards it.
+            // Dragging a node is still allowed: that moves the picture, not the story.
+            nodesConnectable={false}
+            edgesReconnectable={false}
+            edgesFocusable={false}
+            deleteKeyCode={null}
             nodesDraggable
             panOnScroll
             zoomOnScroll={false}

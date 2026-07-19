@@ -462,9 +462,12 @@ input[type="radio"]:focus {
     /**
      * Global `*` sets -webkit-user-drag: none (prevents accidental image/window drags).
      * Opt HTML5 drag sources back in for Chromium/Electron (required for draggable="true" to work).
+     *
+     * Every `draggable` element in the app needs this class. Without it the attribute is silently
+     * inert: no dragstart fires at all, so the source looks wired up and simply never drags.
      */
-    .nl-asset-drag-source,
-    .nl-asset-drag-source * {
+    .nl-drag-source,
+    .nl-drag-source * {
         -webkit-user-drag: element;
     }
 

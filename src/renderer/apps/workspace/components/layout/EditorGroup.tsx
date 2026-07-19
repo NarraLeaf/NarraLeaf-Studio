@@ -410,6 +410,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                         setDraggingTabId(null);
                                     }}
                                     className={`
+                                        nl-drag-source
                                         group relative flex items-center gap-2 px-3 h-9 border-r border-edge cursor-default
                                         transition-colors
                                         ${draggingTabId === tab.id ? "opacity-40" : ""}

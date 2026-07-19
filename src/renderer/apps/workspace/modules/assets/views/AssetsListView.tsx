@@ -194,7 +194,7 @@ function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType;
         >
             <div
                 draggable
-                className={`nl-asset-drag-source flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-fill ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`group:${group.id}`) ? 'bg-fill-subtle' : ''} ${isDragging ? 'opacity-50' : ''} ${isCut ? 'opacity-40' : ''}`}
+                className={`nl-drag-source flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-fill ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`group:${group.id}`) ? 'bg-fill-subtle' : ''} ${isDragging ? 'opacity-50' : ''} ${isCut ? 'opacity-40' : ''}`}
                 style={{ paddingLeft: `${20 + level * 12}px` }}
                 onClick={(e) => {
                     handleItemSelect(group.id, true, e);
@@ -229,7 +229,7 @@ function AssetItem({ asset, type, level }: { asset: Asset; type: AssetType; leve
     return (
         <div
             draggable
-            className={`nl-asset-drag-source flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-fill ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`asset:${asset.id}`) ? 'bg-fill-subtle' : ''} ${clipboard?.type === 'cut' && clipboard.assets.some(a => a.id === asset.id) ? 'opacity-40' : ''} ${isDragging ? 'opacity-50' : ''}`}
+            className={`nl-drag-source flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-fill ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`asset:${asset.id}`) ? 'bg-fill-subtle' : ''} ${clipboard?.type === 'cut' && clipboard.assets.some(a => a.id === asset.id) ? 'opacity-40' : ''} ${isDragging ? 'opacity-50' : ''}`}
             style={{ paddingLeft: `${20 + level * 12}px` }}
             onClick={(e) => {
                 handleItemSelect(asset.id, false, e);
