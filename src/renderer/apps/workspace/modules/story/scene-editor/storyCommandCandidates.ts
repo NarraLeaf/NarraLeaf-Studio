@@ -145,6 +145,11 @@ function candidatesForType(
                     .map(fn => ({ value: `${fn}(`, label: fn, detail: "fn" })),
             ];
         }
+        case "constant":
+            // `true`/`false` and nothing else. A declaration's default cannot read a variable, so
+            // offering variable names here — which is what modelling this slot as an expression did —
+            // pointed the author at values that would then be rejected.
+            return ["true", "false"].filter(value => !query || value.startsWith(query.toLowerCase())).map(value => ({ value, label: value }));
         // Nothing to enumerate: a number, a colour, free text or an unconstrained literal is whatever
         // the author types.
         case "number":
@@ -188,6 +193,8 @@ export function hasCandidateSource(param: StoryCommandParam): boolean {
             // An expression always has the variable list to offer, so an empty result really does mean
             // "nothing matched what you typed" - worth saying, unlike a half-typed number.
             case "expression":
+            // A constant enumerates true/false, so "no matches" is meaningful once something is typed.
+            case "constant":
                 return true;
             case "number":
             case "color":

@@ -801,7 +801,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     }
 
     const lastVisibleRowId = editor.visibleRows[editor.visibleRows.length - 1]?.block.id ?? null;
-    const isInsertingAfterLastRow = editor.editorMode.kind === "insert" && editor.editorMode.slot.afterBlockId === lastVisibleRowId;
+    const isInsertingAfterLastRow = editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === lastVisibleRowId;
     const sortableRowIds = editor.visibleRows.map(row => row.block.id);
     const assetsService = editor.context.services.get<AssetsService>(Services.Assets);
     const backgroundAsset = scene.defaultBackgroundAssetId
@@ -856,6 +856,30 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     <SortableContext items={sortableRowIds} strategy={verticalListSortingStrategy}>
                         {editor.visibleRows.map(row => (
                             <div key={row.block.id}>
+                                {/* A row being rewritten (an invalid line re-opened for editing) renders
+                                    *as* the editable line, in its own place. Rendering the slot beside it
+                                    instead would show the row twice — once broken, once being fixed —
+                                    which reads as "double-click added a row", the way it was reported. */}
+                                {editor.editorMode.kind === "insert" && editor.editorMode.slot.replaceBlockId === row.block.id ? (
+                                    <InsertRow
+                                        mode={editor.editorMode}
+                                        depth={row.depth}
+                                        characters={editor.characters}
+                                        commandContext={editor.commandContext}
+                                        inputRef={editor.insertInputRef}
+                                        onValueChange={editor.handleInsertValueChange}
+                                        onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
+                                        onDismissChooser={editor.dismissInsertChooser}
+                                        onDiscardSlot={editor.discardInsertSlot}
+                                        onResolveLine={editor.resolveInsertLine}
+                                        onCommitInvalid={editor.commitInvalidFromInsert}
+                                        onChooseCommand={editor.chooseCommand}
+                                        onChooseCharacter={editor.chooseCharacterForInsert}
+                                        onChooseTempSpeaker={editor.chooseTempSpeakerForInsert}
+                                        tempSpeakers={editor.tempSpeakers}
+                                        onBackspaceEmpty={editor.handleInsertBackspaceEmpty}
+                                    />
+                                ) : (
                                 <StoryBlockRow
                                     row={row}
                                     scene={scene}
@@ -913,7 +937,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     onAddBranch={(conditionId, branch) => editor.addConditionBranch(conditionId, branch)}
                                     onPlayFromRow={playFromRow}
                                 />
-                                {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && editor.editorMode.slot.afterBlockId === row.block.id ? (
+                                )}
+                                {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === row.block.id ? (
                                     <InsertRow
                                         mode={editor.editorMode}
                                         // Inserting *inside* this row (its `+ Add action`) nests one level
@@ -939,7 +964,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         ))}
                     </SortableContext>
                 </DndContext>
-                {editor.editorMode.kind === "insert" && editor.editorMode.slot.afterBlockId === null ? (
+                {editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === null ? (
                     <InsertRow
                         mode={editor.editorMode}
                         depth={0}

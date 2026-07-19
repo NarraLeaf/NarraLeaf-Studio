@@ -1,6 +1,6 @@
 import { Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video } from "lucide-react";
-import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment, StoryVariableRef } from "@shared/types/story";
-import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
+import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryExpr, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment, StoryVariableRef } from "@shared/types/story";
+import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef, storyVariableRefKey } from "@shared/types/story";
 import { storyMsToSeconds } from "@shared/utils/storyTime";
 import { richIfMeaningful } from "./richText";
 import type { Character } from "@/lib/workspace/services/character/Character";
@@ -265,6 +265,39 @@ function variableRefShortLabel(ref: StoryVariableRef, scene?: StoryScene): strin
     return translate("story.describe.persistent");
 }
 
+/**
+ * How an assignment row reads in the list.
+ *
+ * `gold = 100` for a constant, and the *shorthand* for the shapes that have one — `/inc gold` rather
+ * than `gold = gold + (1)`. The author typed a shorthand; echoing back the desugared form would make
+ * the row grow every time they glanced at it and teach them the shorthand does not survive.
+ *
+ * Recognized structurally rather than from a stored "this was an /inc" flag, so a `/set gold gold + 1`
+ * typed longhand reads as an increment too — it *is* one.
+ *
+ * This mirrors `describeAssignment` in `storySceneProjection`, which formats the same block for the
+ * text projection. Two renderers for one payload is pre-existing here (every action has both); the
+ * expression case was added to the projection first and this one was missed, which is why an
+ * `/inc gold` row displayed as `gold = true` — the seed value — while the stored payload was correct.
+ */
+function describeAssignment(payload: Extract<StoryActionPayload, { action: "setVariable" }>, name: string): string {
+    const ast = payload.expression?.ast;
+    if (!ast) {
+        return `${name} = ${String(payload.value)}`;
+    }
+    const targetKey = storyVariableRefKey(payload.target);
+    const readsTarget = (node: StoryExpr) => node.kind === "var" && storyVariableRefKey(node.target) === targetKey;
+
+    if (ast.kind === "unary" && ast.op === "!" && readsTarget(ast.operand)) {
+        return `${name} = !${name}`;
+    }
+    if (ast.kind === "binary" && (ast.op === "+" || ast.op === "-") && readsTarget(ast.left)) {
+        const step = ast.right.kind === "literal" ? String(ast.right.value) : "…";
+        return `${name} ${ast.op}= ${step}`;
+    }
+    return `${name} = ${payload.expression?.source ?? ""}`;
+}
+
 export function describeBlock(block: StoryBlock, characters: Character[], scene?: StoryScene, scenes?: Record<StorySceneId, StoryScene>): string {
     if (block.kind === "nodeAction") {
         const payload = block.payload;
@@ -281,7 +314,7 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
             return `${payload.operation} ${name}`;
         }
         if (payload.action === "audio") return `${payload.operation} ${payload.objectName || payload.assetId || translate("story.describe.unassigned")}`;
-        if (payload.action === "setVariable") return `${variableRefShortLabel(payload.target, scene)} = ${String(payload.value)}`;
+        if (payload.action === "setVariable") return describeAssignment(payload, variableRefShortLabel(payload.target, scene));
         if (payload.action === "wait") return payload.mode === "duration" ? translate("story.describe.waitDuration", { seconds: storyMsToSeconds(payload.durationMs ?? 0) }) : translate("story.describe.waitClick");
         if (payload.action === "image") return translate("story.describe.image", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
         if (payload.action === "displayable") return `${payload.operation} ${resolveDisplayableTargetRef(scene, payload.target).label || translate("story.describe.targetFallback")}`;
