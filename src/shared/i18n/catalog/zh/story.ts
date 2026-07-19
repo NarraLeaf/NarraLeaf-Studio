@@ -29,6 +29,67 @@ export const story = {
         deleteSceneConfirm: "删除场景“{name}”？",
         deleteSceneDetail: "此操作将从故事文档中移除该场景及其所有区块，且无法撤销",
     },
+    flow: {
+        tabTitle: "场景流程",
+        tabTitleNamed: "场景流程 — {name}",
+        node: {
+            blocks: {
+                other: "{count} 个块",
+            },
+        },
+        badge: {
+            entry: "入口场景",
+            unreachable: "无法从入口场景到达",
+            selfJump: {
+                other: "{count} 处跳回本场景",
+            },
+            dangling: {
+                other: "{count} 处跳转没有有效目标",
+            },
+        },
+        summary: {
+            scenes: {
+                other: "{count} 个场景",
+            },
+            jumps: {
+                other: "{count} 条跳转",
+            },
+            dangling: {
+                other: "{count} 条断开的跳转",
+            },
+            unreachable: {
+                other: "{count} 个不可达",
+            },
+        },
+        hint: {
+            openScene: "双击场景可打开",
+            edit: "双击打开 · 在场景之间拖拽可新建跳转",
+        },
+        status: {
+            jumpCreated: "已新建跳转：{source} → {target}",
+            jumpRetargeted: "{source} 现在跳转到 {target}",
+            jumpDeleted: "已删除跳转：{source} → {target}",
+        },
+        reject: {
+            selfJump: "地图上不能让场景跳转到自身，请在场景编辑器里添加。",
+            duplicate: "该跳转已存在。",
+            sourceLocked: "拖箭头那一端可改跳转目标；跳转的起始场景不能在这里改。",
+            unknownScene: "无法建立这条连线。",
+        },
+        confirm: {
+            deleteJump: "删除从「{source}」到「{target}」的跳转？",
+            deleteJumpMultiple: "这条边代表 {count} 个跳转块，将全部删除。",
+            deleteJumpConditional: "这条边包含嵌套在条件或循环里的跳转，地图并未完整展示。将删除 {count} 个跳转块。",
+        },
+        action: {
+            resetLayout: "重置布局",
+            openFlow: "打开场景流程",
+        },
+        empty: {
+            noStory: "没有可展示的故事。",
+            noScenes: "该故事还没有场景。",
+        },
+    },
     stage: {
         notOnStage: "不在舞台上",
         builtin: "内置",
