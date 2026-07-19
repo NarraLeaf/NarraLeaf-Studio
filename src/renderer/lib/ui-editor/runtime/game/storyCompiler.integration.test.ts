@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { DevTools } from "narraleaf-react";
 import type { StoryAnimationAsset, StoryBlock, StoryDocument, StoryTransitionRef } from "@shared/types/story";
+import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
 
 function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[] = Object.keys(blocks)): StoryDocument {
     return {
-        schemaVersion: 3,
+        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
         id: "story-1",
         name: "Story",
         chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1", "scene-2"] }],
@@ -19,6 +20,7 @@ function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[]
                 sceneVariables: {
                     locked: { id: "locked", name: "locked", valueType: "boolean", storageKey: "locked" },
                     started: { id: "started", name: "started", valueType: "boolean", storageKey: "started" },
+                    gold: { id: "gold", name: "gold", valueType: "number", storageKey: "gold", defaultValue: 100 },
                 },
             },
             "scene-2": {
@@ -782,6 +784,172 @@ describe("compileStudioStoryToNlr", () => {
         expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("say");
     });
 
+    describe("character nametag fallbacks", () => {
+        function dialogueBlocks(characterId: string): Record<string, StoryBlock> {
+            return {
+                say: {
+                    id: "say",
+                    kind: "nodeAction",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: {
+                        action: "dialogue",
+                        characterId,
+                        text: { textId: "text-say", value: "Hello", role: "dialogue" },
+                    },
+                },
+            };
+        }
+
+        /** The Character the compiler bound to the `say` block, via `sentence.config.character`. */
+        async function compileSpeaker(characters: { id: string; name: string }[], characterId = "char-alice") {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument(dialogueBlocks(characterId), ["say"]),
+                sceneId: "scene-1",
+                characters,
+            });
+            expect(compiled.diagnostics).toEqual([]);
+            const sayAction = compiled.actionIdBindings.find(binding => binding.blockId === "say")?.action as any;
+            const speaker = sayAction?.contentNode?.getContent?.()?.config?.character;
+            expect(speaker).toBeTruthy();
+            return speaker;
+        }
+
+        it("keeps an authored name as the nametag", async () => {
+            const speaker = await compileSpeaker([{ id: "char-alice", name: "Alice" }]);
+            expect(speaker.state.name).toBe("Alice");
+        });
+
+        // A blank name must not produce `new Character("")`: NLR's Narrator collapses to
+        // `state.name === ""`, so useDialog would report this real character as `isNarrator` and
+        // Avatar would bail on `!character.state.name` - both silent.
+        it.each([
+            ["empty", ""],
+            ["whitespace-only", "   "],
+        ])("does not collapse a %s character name into the Narrator", async (_label, name) => {
+            const speaker = await compileSpeaker([{ id: "char-alice", name }]);
+
+            expect(speaker.state.name).not.toBe("");
+            expect(speaker.state.name).toBeTruthy();
+        });
+
+        it("falls back to a neutral label rather than leaking the characterId UUID", async () => {
+            const uuid = "0f1c6b3e-8a2d-4c77-9f5a-1b2c3d4e5f60";
+
+            // Unnamed character, and a character the host never sent a summary for.
+            const unnamed = await compileSpeaker([{ id: uuid, name: "" }], uuid);
+            const missing = await compileSpeaker([], uuid);
+
+            for (const speaker of [unnamed, missing]) {
+                expect(speaker.state.name).not.toBe(uuid);
+                expect(speaker.state.name).toBe("Unknown");
+            }
+        });
+
+        it("still binds one Character instance per characterId when names collide", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    say: dialogueBlocks("char-alice").say,
+                    say2: {
+                        id: "say2",
+                        kind: "nodeAction",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: {
+                            action: "dialogue",
+                            characterId: "char-bob",
+                            text: { textId: "text-say2", value: "Hi", role: "dialogue" },
+                        },
+                    },
+                }, ["say", "say2"]),
+                sceneId: "scene-1",
+                characters: [{ id: "char-alice", name: "" }, { id: "char-bob", name: "" }],
+            });
+
+            const speakers = ["say", "say2"].map(blockId => {
+                const action = compiled.actionIdBindings.find(binding => binding.blockId === blockId)?.action as any;
+                return action?.contentNode?.getContent?.()?.config?.character;
+            });
+
+            // Both render "Unknown", but identity is keyed on characterId, not the nametag.
+            expect(speakers[0].state.name).toBe("Unknown");
+            expect(speakers[1].state.name).toBe("Unknown");
+            expect(speakers[0]).not.toBe(speakers[1]);
+        });
+    });
+
+    // A speaker the author typed that has no Studio character behind it. NLR's dialogue box only
+    // displays the name its Character carries, so these are valid lines rather than errors.
+    describe("temp speakers", () => {
+        function speakerLine(id: string, payload: { characterId?: string; speakerName?: string }): StoryBlock {
+            return {
+                id,
+                kind: "nodeAction",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "dialogue",
+                    ...payload,
+                    text: { textId: `text-${id}`, value: "Hello", role: "dialogue" },
+                },
+            };
+        }
+
+        async function compileSpeakers(blocks: Record<string, StoryBlock>, characters: { id: string; name: string }[] = []) {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument(blocks, Object.keys(blocks)),
+                sceneId: "scene-1",
+                characters,
+            });
+            expect(compiled.diagnostics).toEqual([]);
+            return Object.keys(blocks).map(blockId => {
+                const action = compiled.actionIdBindings.find(binding => binding.blockId === blockId)?.action as any;
+                return action?.contentNode?.getContent?.()?.config?.character;
+            });
+        }
+
+        it("renders a bare speakerName as the nametag", async () => {
+            const [speaker] = await compileSpeakers({ say: speakerLine("say", { speakerName: "Alice" }) });
+            expect(speaker.state.name).toBe("Alice");
+        });
+
+        it("binds one Character instance per temp speaker name", async () => {
+            const [first, second, other] = await compileSpeakers({
+                say: speakerLine("say", { speakerName: "Alice" }),
+                say2: speakerLine("say2", { speakerName: "Alice" }),
+                say3: speakerLine("say3", { speakerName: "Bob" }),
+            });
+
+            expect(first).toBe(second);
+            expect(first).not.toBe(other);
+        });
+
+        it("prefers a resolving characterId over speakerName", async () => {
+            const [speaker] = await compileSpeakers(
+                { say: speakerLine("say", { characterId: "char-alice", speakerName: "Stale" }) },
+                [{ id: "char-alice", name: "Alice" }],
+            );
+            expect(speaker.state.name).toBe("Alice");
+        });
+
+        // Deleting a character should degrade the line to the name the author wrote, not to "Unknown".
+        it("falls back to speakerName when the characterId no longer resolves", async () => {
+            const [speaker] = await compileSpeakers({ say: speakerLine("say", { characterId: "char-gone", speakerName: "Alice" }) });
+            expect(speaker.state.name).toBe("Alice");
+        });
+
+        // Same trap as the authored-name case: `new Character("")` collapses into NLR's Narrator.
+        it.each([
+            ["empty", ""],
+            ["whitespace-only", "   "],
+        ])("does not collapse a %s speakerName into the Narrator", async (_label, speakerName) => {
+            const [speaker] = await compileSpeakers({ say: speakerLine("say", { speakerName }) });
+
+            expect(speaker.state.name).not.toBe("");
+            expect(speaker.state.name).toBe("Unknown");
+        });
+    });
+
     it("compiles choice, condition, variables, and skips script-only blocks with diagnostics", async () => {
         const optionChild = narrationBlock("option-child", "text-option-child", "Selected");
         optionChild.parentId = "option";
@@ -876,6 +1044,102 @@ describe("compileStudioStoryToNlr", () => {
                 message: "Code/Script blocks are not part of the NLR Story action surface and were skipped.",
             },
         ]);
+    });
+
+    describe("expression assignments and conditions", () => {
+        /** A `setVariable` whose right-hand side is computed - `/set gold gold + 1`. */
+        function incrementGold(): StoryBlock {
+            return {
+                id: "set-var",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "setVariable",
+                    target: { scope: "scene", variableId: "gold" },
+                    value: null,
+                    expression: {
+                        source: "gold + 1",
+                        ast: {
+                            kind: "binary",
+                            op: "+",
+                            left: { kind: "var", target: { scope: "scene", variableId: "gold" }, name: "gold" },
+                            right: { kind: "literal", value: 1 },
+                        },
+                    },
+                },
+            };
+        }
+
+        it("compiles a computed assignment with no diagnostics", async () => {
+            // The headline of the change: adding one to a number no longer needs a blueprint. If this
+            // regresses, `/set gold gold + 1` silently stops assigning.
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({ "set-var": incrementGold() }, ["set-var"]),
+                sceneId: "scene-1",
+            });
+            expect(compiled.diagnostics).toEqual([]);
+            expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("set-var");
+        });
+
+        it("skips the assignment and says so when the expression never resolved", async () => {
+            // A tree carrying an `invalid` node must not be evaluated around - writing whatever the
+            // rest of it computes would produce a plausible wrong number.
+            const broken: StoryBlock = {
+                id: "set-var",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "setVariable",
+                    target: { scope: "scene", variableId: "gold" },
+                    value: null,
+                    expression: { source: "gone + 1", ast: { kind: "invalid", source: "gone + 1" } },
+                },
+            };
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({ "set-var": broken }, ["set-var"]),
+                sceneId: "scene-1",
+            });
+            expect(compiled.diagnostics).toEqual([
+                { level: "warning", blockId: "set-var", message: "Expression `gone + 1` did not resolve; the assignment was skipped." },
+            ]);
+        });
+
+        it("compiles an expression condition instead of refusing it", async () => {
+            // v4 returned a constant false here and emitted a "raw script is outside the NLR action
+            // surface" warning. A clean compile is the whole point of the v5 migration.
+            const branch: StoryBlock = {
+                id: "if-branch",
+                kind: "control",
+                parentId: "condition",
+                childrenIds: [],
+                payload: {
+                    control: "conditionBranch",
+                    branch: "if",
+                    condition: {
+                        kind: "expression",
+                        expression: {
+                            source: "gold >= 100",
+                            ast: {
+                                kind: "binary",
+                                op: ">=",
+                                left: { kind: "var", target: { scope: "scene", variableId: "gold" }, name: "gold" },
+                                right: { kind: "literal", value: 100 },
+                            },
+                        },
+                    },
+                },
+            };
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    condition: { id: "condition", kind: "control", parentId: null, childrenIds: ["if-branch"], payload: { control: "condition" } },
+                    "if-branch": branch,
+                }, ["condition"]),
+                sceneId: "scene-1",
+            });
+            expect(compiled.diagnostics).toEqual([]);
+        });
     });
 
     it("maps the custom transition kinds onto real NLR transitions without diagnostics", async () => {
@@ -1089,5 +1353,143 @@ describe("compileStudioStoryToNlr localization", () => {
         locale = "zh-CN";
         expect(renderDynamicResult(promptWords[0].text({}))).toBe("怎么办？");
         expect(renderDynamicResult(optionWords[0].text({}))).toBe("留下");
+    });
+
+    /**
+     * A character enter block has no `objectName` until the author types one, so its portrait is
+     * registered under `characterId`. A displayable op that resolved the same creator block to the
+     * word "Character" looked up a name nothing was registered under, and compiled to nothing.
+     */
+    it("compiles a displayable effect against a character portrait with no explicit stage name", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            enter: {
+                id: "enter",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "character",
+                    operation: "enter",
+                    characterId: "char-alice",
+                    assetId: "asset-alice",
+                    transform: { preset: "center", durationMs: 300 },
+                },
+            },
+            darken: {
+                id: "darken",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "displayable",
+                    operation: "darken",
+                    target: { name: "Character", kind: "character", sourceBlockId: "enter" },
+                    darkness: 0.6,
+                    durationMs: 400,
+                },
+            },
+        };
+
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["enter", "darken"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice" }],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        // The op resolved to a real object, so it emitted a statement bound to the block.
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("darken");
+    });
+});
+
+describe("compileStudioStoryToNlr voice", () => {
+    /** Compiled say action's Sentence (its `.config` carries voiceId/voice). */
+    function getSaySentence(compiled: Awaited<ReturnType<typeof compileStudioStoryToNlr>>, blockId: string): any {
+        const binding = compiled.actionIdBindings.find(entry => entry.blockId === blockId);
+        expect(binding, `say binding for ${blockId}`).toBeTruthy();
+        const content = (binding!.action as any).contentNode?.getContent?.();
+        const sentence = Array.isArray(content) ? content.find((item: any) => item?.text) : content;
+        expect(sentence?.text, `sentence of ${blockId}`).toBeTruthy();
+        return sentence;
+    }
+
+    function dialogueBlock(id: string, textId: string, value: string, extra: { voiceAssetId?: string } = {}): StoryBlock {
+        return {
+            id,
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "dialogue",
+                characterId: "char-alice",
+                text: { textId, value, role: "dialogue" },
+                ...(extra.voiceAssetId ? { voiceAssetId: extra.voiceAssetId } : {}),
+            },
+        };
+    }
+
+    const voiceSetup = (getVoiceLocale: () => string) => ({
+        voicedLocales: [{ code: "ja", displayName: "日本語" }],
+        tables: { ja: { "text-say": "asset-ja-say" } },
+        getVoiceLocale,
+    });
+
+    it("attaches the voiceId and resolves the take onto the scene voice map", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say: dialogueBlock("say", "text-say", "こんにちは。") }, ["say"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice" }],
+            voice: voiceSetup(() => "ja"),
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        expect(compiled.diagnostics).toEqual([]);
+        expect(getSaySentence(compiled, "say").config?.voiceId).toBe("text-say");
+        const scene = compiled.scenes["scene-1"] as any;
+        expect(scene.config?.voices?.["text-say"]).toBe("nlr://asset-ja-say");
+    });
+
+    it("voices narration lines as well", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say: narrationBlock("say", "text-say", "……。") }, ["say"]),
+            sceneId: "scene-1",
+            voice: voiceSetup(() => "ja"),
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        expect(getSaySentence(compiled, "say").config?.voiceId).toBe("text-say");
+    });
+
+    it("leaves unvoiced lines and voiceless projects untouched", async () => {
+        // A line with no take for the active language gets no voiceId.
+        const partial = await compileStudioStoryToNlr({
+            document: baseDocument({ say: dialogueBlock("say", "text-other", "no take") }, ["say"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice" }],
+            voice: voiceSetup(() => "ja"),
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        expect(getSaySentence(partial, "say").config?.voiceId ?? null).toBeNull();
+
+        // A project with no voice bundle compiles exactly as before.
+        const none = await compileStudioStoryToNlr({
+            document: baseDocument({ say: dialogueBlock("say", "text-say", "hi") }, ["say"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice" }],
+        });
+        expect(getSaySentence(none, "say").config?.voiceId ?? null).toBeNull();
+        expect((none.scenes["scene-1"] as any).config?.voices ?? null).toBeNull();
+    });
+
+    it("keeps the legacy per-line voiceAssetId as an inline fallback", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say: dialogueBlock("say", "text-legacy", "hi", { voiceAssetId: "asset-voice" }) }, ["say"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice" }],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        const sentence = getSaySentence(compiled, "say");
+        // Inline voice remains for back-compat; no id-keyed take overrides it.
+        expect(sentence.config?.voice).toBeTruthy();
+        expect(sentence.config?.voiceId ?? null).toBeNull();
     });
 });

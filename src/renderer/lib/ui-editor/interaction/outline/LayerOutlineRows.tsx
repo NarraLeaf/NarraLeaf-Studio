@@ -91,13 +91,13 @@ export function OutlineRow({
     const guideLevels = Array.from({ length: depth }, (_, index) => index + 1);
     const rowToneClass = rowSelected
         ? isPrimary
-            ? "bg-primary/25 text-white ring-1 ring-primary/45"
-            : "bg-primary/[0.12] text-white"
+            ? "bg-primary/25 text-fg ring-1 ring-primary/45"
+            : "bg-primary/[0.12] text-fg"
         : isDropParentPreview
           ? "bg-primary/[0.10] text-fg ring-1 ring-primary/25"
-          : "text-fg-muted hover:bg-white/[0.055]";
+          : "text-fg-muted hover:bg-fill-subtle";
     const rowDropPreviewClass = isDropParentPreview
-        ? "shadow-[inset_2px_0_0_rgba(64,168,196,0.55)]"
+        ? "shadow-[inset_2px_0_0_rgb(var(--nl-primary)/0.55)]"
         : "";
 
     return (
@@ -108,7 +108,7 @@ export function OutlineRow({
                     <span
                         key={level}
                         aria-hidden
-                        className="pointer-events-none absolute bottom-0 top-0 w-px bg-white/[0.055]"
+                        className="pointer-events-none absolute bottom-0 top-0 w-px bg-fill-subtle"
                         style={{ left: x }}
                     />
                 );
@@ -131,7 +131,7 @@ export function OutlineRow({
             >
                 <button
                     type="button"
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-subtle transition-colors hover:bg-fill-subtle hover:text-white disabled:pointer-events-none disabled:opacity-25"
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-subtle transition-colors hover:bg-fill-subtle hover:text-fg disabled:pointer-events-none disabled:opacity-25"
                     disabled={!hasChildren}
                     aria-label={expanded ? t("common.collapse") : t("common.expand")}
                     onClick={e => {
@@ -155,7 +155,7 @@ export function OutlineRow({
                 <button
                     type="button"
                     ref={setActivatorNodeRef}
-                    className="flex h-5 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded text-fg-subtle/70 opacity-60 transition hover:text-white hover:opacity-100 active:cursor-grabbing group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100"
+                    className="flex h-5 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded text-fg-subtle/70 opacity-60 transition hover:text-fg hover:opacity-100 active:cursor-grabbing group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100"
                     aria-label={t("widgetChrome.outline.dragToReorder")}
                     {...attributes}
                     {...listeners}
@@ -189,7 +189,7 @@ export function OutlineRow({
                 </button>
                 <button
                     type="button"
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-subtle transition hover:bg-fill-subtle hover:text-white disabled:pointer-events-none disabled:opacity-25 ${
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-subtle transition hover:bg-fill-subtle hover:text-fg disabled:pointer-events-none disabled:opacity-25 ${
                         visible ? "opacity-0 group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100" : "opacity-100"
                     }`}
                     aria-label={visible ? t("common.hide") : t("common.show")}
@@ -234,7 +234,7 @@ export function OutlineDragPreview({ element }: { element: UIElement }) {
 
     return (
         <div
-            className={`flex h-[26px] min-w-40 max-w-72 items-center gap-1 rounded border border-primary/35 bg-[#15181d]/90 px-2 pr-2 text-xs text-white opacity-90 shadow-lg shadow-black/30 ${
+            className={`flex h-[26px] min-w-40 max-w-72 items-center gap-1 rounded border border-primary/35 bg-surface-raised/90 px-2 pr-2 text-xs text-fg opacity-90 shadow-lg shadow-black/30 ${
                 visible ? "" : "opacity-70"
             }`}
         >
@@ -304,7 +304,7 @@ export function OutlineGapDropZone({
                     aria-hidden
                     className={`pointer-events-none absolute left-0 right-0 top-1/2 -translate-y-1/2 rounded-full transition-[background-color,box-shadow,opacity,height] duration-100 ${
                         isActiveDropLine
-                            ? "bg-primary/85 opacity-100 shadow-[0_0_0_1px_rgba(64,168,196,0.22)]"
+                            ? "bg-primary/85 opacity-100 shadow-[0_0_0_1px_rgb(var(--nl-primary)/0.22)]"
                             : "bg-primary/40 opacity-30"
                     }`}
                     style={{ height: isActiveDropLine ? 2 : 1 }}

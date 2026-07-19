@@ -315,7 +315,7 @@ function ListContentPaddingEditor({
                       ref={panelRef}
                       role="dialog"
                       aria-label={t("widgets.list.contentPaddingDialog")}
-                      className="fixed z-[70] rounded-lg border border-edge bg-[#17181c] p-3 shadow-2xl"
+                      className="fixed z-[70] rounded-lg border border-edge bg-surface-raised p-3 shadow-2xl"
                       style={{
                           left: popoverPos.left,
                           top: popoverPos.top,
@@ -508,7 +508,7 @@ function ListToggleControl({
                 aria-hidden="true"
             >
                 <span
-                    className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-gray-100 shadow transition ${
+                    className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-fg shadow transition ${
                         checked ? "left-[17px]" : "left-0.5"
                     }`}
                 />

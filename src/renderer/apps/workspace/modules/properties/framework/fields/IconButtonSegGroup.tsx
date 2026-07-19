@@ -7,9 +7,9 @@ import type {
 } from "../types";
 
 const groupColors = {
-    base: "bg-[#1c1d20]",
+    base: "bg-surface-raised",
     border: "border border-edge",
-    active: "bg-fill text-white",
+    active: "bg-fill text-fg",
     idle: "bg-transparent text-fg-muted hover:bg-fill",
 };
 

@@ -22,6 +22,7 @@ import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { mathBlueprintNodes } from "./mathNodes";
 import { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 import { sliderBlueprintNodes } from "./sliderNodes";
+import { textInputBlueprintNodes } from "./textInputNodes";
 import { storyVariableBlueprintNodes } from "./storyVariableNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
@@ -46,6 +47,7 @@ export { mathBlueprintNodes } from "./mathNodes";
 export { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 export { storyVariableBlueprintNodes } from "./storyVariableNodes";
 export { sliderBlueprintNodes } from "./sliderNodes";
+export { textInputBlueprintNodes } from "./textInputNodes";
 export { navigationBlueprintNodes } from "./navigationNodes";
 export { stringBlueprintNodes } from "./stringNodes";
 export { textBlueprintNodes } from "./textNodes";
@@ -75,6 +77,7 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...stringBlueprintNodes,
     ...textBlueprintNodes,
     ...sliderBlueprintNodes,
+    ...textInputBlueprintNodes,
     ...widgetPropertyBlueprintNodes,
     ...devtoolsBlueprintNodes,
 ];

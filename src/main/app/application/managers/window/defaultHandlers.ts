@@ -1,7 +1,7 @@
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { IPCHandler } from "./handlers/IPCHandler";
-import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppInfoHandler, AppPlatformInfoHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowGetControlHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler } from "./handlers/appAction";
-import { AppSettingsWindowLaunchHandler } from "./handlers/settingAction";
+import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler } from "./handlers/appAction";
+import { AppCountWorkspaceWindowsHandler, AppRequestWorkspaceViewHandler, AppSettingsWindowLaunchHandler } from "./handlers/settingAction";
 import {
     FsStatHandler, FsListHandler, FsDetailsHandler, FsRequestReadHandler, FsRequestWriteHandler,
     FsCreateDirHandler, FsEnsureRegularFileHandler, FsWriteFileNoFollowHandler, FsRecoverCorruptedJsonFileHandler, FsDeleteFileHandler, FsDeleteDirHandler, FsRenameHandler,
@@ -9,10 +9,16 @@ import {
     FsFileExistsHandler, FsDirExistsHandler, FsIsFileHandler, FsIsDirHandler,
     FsSelectFileHandler, FsSelectDirectoryHandler, FsGrantFileAccessHandler, FsHashHandler,
 } from "./handlers/fsAction";
+import {
+    VcsGetAvailabilityHandler, VcsIsRepositoryHandler, VcsGetInfoHandler, VcsGetHistoryHandler, VcsReadBlobHandler,
+    VcsGetChangedPathsHandler, VcsGetThreeWayHandler, VcsGetMergeBaseHandler,
+} from "./handlers/vcsAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
 import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./handlers/projectPackageAction";
-import { WorkspaceLaunchHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler } from "./handlers/workspaceAction";
+import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler } from "./handlers/workspaceAction";
 import {
+    DevModeFullscreenGetHandler,
+    DevModeFullscreenSetHandler,
     DevModeGetStatusHandler,
     DevModeLaunchHandler,
     DevModeOpenBlueprintInWorkspaceHandler,
@@ -34,6 +40,13 @@ import {
     PreviewLaunchHandler,
     PreviewStopHandler,
 } from "./handlers/previewAction";
+import {
+    GameBuildCancelHandler,
+    GameBuildGetStatusHandler,
+    GameBuildPreflightHandler,
+    GameBuildSelectOutputDirHandler,
+    GameBuildStartHandler,
+} from "./handlers/gameBuildAction";
 import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./handlers/pluginPermissionAction";
 import {
     PluginApproveHandler,
@@ -60,8 +73,8 @@ import {
 } from "./handlers/privilegedAction";
 
 /**
- * All default IPC handlers. Handlers are stateless — they receive the target
- * window on every handle() call — so the app instantiates this list once and
+ * All default IPC handlers. Handlers are stateless - they receive the target
+ * window on every handle() call - so the app instantiates this list once and
  * routes requests to the right window by sender.
  */
 export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
@@ -72,8 +85,10 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AppPropsHandler(),
         new AppWindowControlHandler(),
         new AppWindowCloseHandler(),
+        new AppWindowEditCommandHandler(),
         new AppWindowCloseWithHandler(),
         new AppWindowGetControlHandler(),
+        new AppWindowGetFullscreenHandler(),
         new AppWindowControlAbilityHandler(),
         new AppWindowReadyHandler(),
         new AppTerminateHandler(),
@@ -81,9 +96,15 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AppGlobalStateSetHandler(),
         new AppGlobalStateGetAllHandler(),
         new AppAddRecentProjectHandler(),
+        new AppRemoveRecentProjectHandler(),
         new AppSystemPathHandler(),
 
         new AppSettingsWindowLaunchHandler(),
+        new AppCountWorkspaceWindowsHandler(),
+        new AppRequestWorkspaceViewHandler(),
+        new AppOpenExternalHandler(),
+        new AppPickBackgroundImageHandler(),
+        new AppReadBackgroundImageHandler(),
 
         // Project wizard handlers
         new ProjectWizardLaunchHandler(),
@@ -92,16 +113,22 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
 
         // Workspace handlers
         new WorkspaceLaunchHandler(),
+        new WorkspaceOpenRecentHandler(),
         new WorkspaceSelectFolderHandler(),
         new WorkspaceCloseHandler(),
         new WorkspaceExportProjectPackageHandler(),
         new WorkspaceImportProjectPackageHandler(),
+        new WorkspaceExportConsoleLogsHandler(),
+        new WorkspaceMenuSyncHandler(),
+        new WorkspaceReportLoadResultHandler(),
 
         // Dev mode handlers
         new DevModeLaunchHandler(),
         new DevModeStopHandler(),
         new DevModeReloadHandler(),
         new DevModeGetStatusHandler(),
+        new DevModeFullscreenGetHandler(),
+        new DevModeFullscreenSetHandler(),
         new DevModeOpenBlueprintInWorkspaceHandler(),
         new DevModeForwardBlueprintDebugEventHandler(),
         new DevModeResolveAssetUrlHandler(),
@@ -116,6 +143,13 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new PreviewLaunchHandler(),
         new PreviewStopHandler(),
         new PreviewGetStatusHandler(),
+
+        // Production game build handlers
+        new GameBuildStartHandler(),
+        new GameBuildCancelHandler(),
+        new GameBuildGetStatusHandler(),
+        new GameBuildSelectOutputDirHandler(),
+        new GameBuildPreflightHandler(),
 
         // Blueprint persistent variable storage handlers
         new BlueprintPersistenceGetAllHandler(),
@@ -167,5 +201,15 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new FsSelectDirectoryHandler(),
         new FsGrantFileAccessHandler(),
         new FsHashHandler(),
+
+        // Version control (read-only surface; see docs/version-control.md)
+        new VcsGetAvailabilityHandler(),
+        new VcsIsRepositoryHandler(),
+        new VcsGetInfoHandler(),
+        new VcsGetHistoryHandler(),
+        new VcsReadBlobHandler(),
+        new VcsGetChangedPathsHandler(),
+        new VcsGetThreeWayHandler(),
+        new VcsGetMergeBaseHandler(),
     ] as IPCHandler<IPCEventType>[];
 }

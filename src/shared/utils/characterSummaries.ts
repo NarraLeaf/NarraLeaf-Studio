@@ -27,7 +27,10 @@ export function mapCharacterStoreEntriesToSummaries(entries: readonly unknown[])
         if (!id) {
             return [];
         }
-        const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : id;
+        // Left empty when unnamed, never substituted with `id`: `id` is a UUID, and every consumer
+        // of `name` treats it as display text (the story compiler feeds it straight to the NLR
+        // nametag). Naming the fallback is the compiler's job, not this mapper's.
+        const name = typeof raw.name === "string" ? raw.name.trim() : "";
         const forms = Array.isArray(raw.appearance?.forms)
             ? raw.appearance.forms.flatMap(formEntry => {
                 if (!formEntry || typeof formEntry !== "object") {

@@ -13,7 +13,7 @@ export function dialogFooterButtonClass(options: {
         return `${base} bg-fill-strong text-fg-subtle cursor-not-allowed`;
     }
     if (options.variant === "primary") {
-        return `${base} bg-primary hover:brightness-110 text-white font-medium`;
+        return `${base} bg-primary hover:brightness-110 text-on-primary font-medium`;
     }
     if (options.variant === "danger") {
         return `${base} bg-danger hover:brightness-110 text-white font-medium`;

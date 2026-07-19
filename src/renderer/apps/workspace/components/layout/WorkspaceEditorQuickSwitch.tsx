@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Circle } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useWorkspace } from "../../context";
 import { useKeybinding } from "../../hooks";
 import { useRegistry } from "../../registry";
@@ -12,6 +11,8 @@ import {
     getEditorQuickSwitchKey,
     type EditorQuickSwitchCandidate,
 } from "./editorQuickSwitchModel";
+import { wrapIndex } from "./fuzzyListModel";
+import { QuickSwitchOverlay, type QuickListRow } from "./QuickSwitchOverlay";
 import type { EditorLayout } from "../../registry/types";
 import { useTranslation } from "@/lib/i18n";
 
@@ -29,10 +30,6 @@ const CLOSED_STATE: QuickSwitchState = {
     groupCount: 0,
 };
 
-function wrapIndex(index: number, length: number): number {
-    return ((index % length) + length) % length;
-}
-
 export function WorkspaceEditorQuickSwitch() {
     const { t } = useTranslation();
     const { context } = useWorkspace();
@@ -42,7 +39,6 @@ export function WorkspaceEditorQuickSwitch() {
     const layoutRef = useRef<EditorLayout>(editorLayout);
     const mruKeysRef = useRef<string[]>([]);
     const activeKeyRef = useRef<string | null>(null);
-    const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
     useEffect(() => {
         stateRef.current = state;
@@ -198,6 +194,8 @@ export function WorkspaceEditorQuickSwitch() {
 
     useKeybinding({
         id: "workspace-editor-quick-switch-next",
+        // Deliberately ctrl, NOT mod: tab-switching is Ctrl+Tab on macOS too
+        // (⌘+Tab belongs to the OS app switcher).
         key: "ctrl+tab",
         description: "Switch to previous editor tab",
         handler: () => moveSelection(1),
@@ -246,76 +244,25 @@ export function WorkspaceEditorQuickSwitch() {
         };
     }, [closeSwitcher, commitSelection, state.open]);
 
-    useEffect(() => {
-        if (!state.open) {
-            return;
-        }
-
-        const key = state.candidates[state.selectedIndex]?.key;
-        if (!key) {
-            return;
-        }
-
-        rowRefs.current.get(key)?.scrollIntoView({ block: "nearest" });
-    }, [state.open, state.selectedIndex, state.candidates]);
-
     if (!state.open) {
         return null;
     }
 
-    return (
-        <div className="nl-window-content-layer z-[45] flex items-start justify-center pt-[12vh] pointer-events-none">
-            <div
-                className="w-[min(560px,calc(100vw-32px))] max-h-[min(480px,70vh)] overflow-hidden rounded-md border border-edge bg-[#171a21]/95 shadow-2xl backdrop-blur-sm pointer-events-auto"
-                role="listbox"
-                aria-label={t("workspace.shell.editorTabsLabel")}
-            >
-                <div className="max-h-[inherit] overflow-y-auto py-1">
-                    {state.candidates.map((candidate, index) => {
-                        const selected = index === state.selectedIndex;
-                        const showGroupId = state.groupCount > 1;
+    const showGroupId = state.groupCount > 1;
+    const rows: QuickListRow[] = state.candidates.map(candidate => ({
+        key: candidate.key,
+        icon: candidate.tab.icon,
+        title: String(candidate.tab.title),
+        modified: candidate.tab.modified,
+        trailing: showGroupId ? candidate.groupId : undefined,
+    }));
 
-                        return (
-                            <button
-                                key={candidate.key}
-                                ref={(node) => {
-                                    if (node) {
-                                        rowRefs.current.set(candidate.key, node);
-                                    } else {
-                                        rowRefs.current.delete(candidate.key);
-                                    }
-                                }}
-                                type="button"
-                                role="option"
-                                aria-selected={selected}
-                                data-editor-quick-switch-key={candidate.key}
-                                onMouseDown={event => event.preventDefault()}
-                                onClick={() => commitCandidate(candidate)}
-                                className={`flex h-10 w-full items-center gap-3 px-3 text-left transition-colors ${
-                                    selected
-                                        ? "bg-primary/20 text-white"
-                                        : "text-fg-muted hover:bg-fill-subtle hover:text-white"
-                                }`}
-                            >
-                                <span className="flex h-4 w-4 shrink-0 items-center justify-center text-fg-muted">
-                                    {candidate.tab.icon}
-                                </span>
-                                <span className="min-w-0 flex-1 truncate text-sm">
-                                    {String(candidate.tab.title)}
-                                </span>
-                                {candidate.tab.modified && (
-                                    <Circle className="h-2 w-2 shrink-0 fill-current text-primary" />
-                                )}
-                                {showGroupId && (
-                                    <span className="shrink-0 text-xs text-fg-subtle">
-                                        {candidate.groupId}
-                                    </span>
-                                )}
-                            </button>
-                        );
-                    })}
-                </div>
-            </div>
-        </div>
+    return (
+        <QuickSwitchOverlay
+            rows={rows}
+            selectedIndex={state.selectedIndex}
+            onCommit={index => commitCandidate(state.candidates[index])}
+            ariaLabel={t("workspace.shell.editorTabsLabel")}
+        />
     );
 }

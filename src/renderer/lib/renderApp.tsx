@@ -1,4 +1,5 @@
 import React from "react";
+import { MotionConfig } from "motion/react";
 import { AppInfo } from "@shared/types/app";
 import { PlatformInfo } from "@shared/types/os";
 import { createRoot } from "react-dom/client";
@@ -6,6 +7,8 @@ import { getInterface, hardenRendererBridge, initializeRendererBridge } from "./
 import { CriticalErrorBoundary } from "./app/errorHandling/CriticalErrorBoundary";
 import { RenderingStatusAnnouncer } from "./components/announcers/RenderingStatusAnnouncer";
 import { initI18n } from "./i18n";
+import { initAppearance, isReduceMotionEnabled, subscribeReduceMotion } from "./appearance";
+import { initZoom } from "./zoom";
 
 import "@/styles/styles.css";
 
@@ -30,6 +33,30 @@ export function getPlatformInfo() {
     return platformInfo;
 }
 
+/**
+ * The framer-motion half of the reduced-motion preference.
+ *
+ * The CSS blanket in styles.css cannot reach these animations: framer-motion
+ * writes styles frame by frame from JS, so there is no transition or animation
+ * for a `transition-duration` override to shorten. `reducedMotion="always"`
+ * makes it drop transform and layout animations of its own accord.
+ *
+ * When the setting is off this hands back framer-motion's own default rather
+ * than "user": the OS preference is already honored by `prefers-reduced-motion`
+ * in CSS, and letting the library read it too would double up on the parts it
+ * animates. Game content re-opts in with its own `MotionConfig` — see
+ * `GameApp` and `NlrStageLayer`.
+ */
+function MotionPreference({ children }: { children: React.ReactNode }) {
+    const [reduced, setReduced] = React.useState(isReduceMotionEnabled);
+    React.useEffect(() => subscribeReduceMotion(setReduced), []);
+    return (
+        <MotionConfig reducedMotion={reduced ? "always" : "never"}>
+            {children}
+        </MotionConfig>
+    );
+}
+
 async function renderApp(children: React.ReactNode) {
     // Validate environment
     validateEnv();
@@ -52,6 +79,13 @@ async function renderApp(children: React.ReactNode) {
     // paint, so every window renders in the right language with no flash.
     await initI18n();
 
+    // Publishes `--nl-zoom` for the titlebar's traffic-light safe area.
+    await initZoom();
+
+    // Accent color and reduced motion, applied to the root element before the
+    // first paint so no window renders a frame in the wrong accent.
+    await initAppearance();
+
     console.log("[renderer] platformInfo", platformInfo);
     console.log("[renderer] appInfo", appInfo);
 
@@ -61,7 +95,9 @@ async function renderApp(children: React.ReactNode) {
     const content = (<>
         <RenderingStatusAnnouncer />
         <CriticalErrorBoundary platformInfo={platformResult.data}>
-            {children as React.ReactElement}
+            <MotionPreference>
+                {children as React.ReactElement}
+            </MotionPreference>
         </CriticalErrorBoundary>
     </>);
 

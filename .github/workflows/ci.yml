@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches: [master, develop, nightly]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    # ubuntu-latest ships a licensed Android SDK. That is the point of running
+    # here: the SDK's components cannot be redistributed, so Studio never bundles
+    # them and the tools that judge a repacked APK (apksigner, aapt2, zipalign)
+    # only exist on the runner. See the mobile pipeline plan, §2.2.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # apksigner is a Java tool. Pinned rather than left to the image's default
+      # so the oracle does not break the day the runner image moves.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      # --no-immutable is required, not a shortcut: yarn defaults to --immutable
+      # under CI, and this repo deliberately does not commit yarn.lock, so every
+      # run legitimately writes one. The dependency the mobile tests rely on
+      # (@narraleaf/studio-shell) is pinned exactly in package.json, so a fresh
+      # resolve still gets the same templates.
+      - name: Install dependencies
+        run: yarn install --no-immutable
+
+      - name: Locate the Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$ANDROID_HOME/build-tools" || { echo "::error::no Android build-tools on this runner"; exit 1; }
+          echo "Using $(ls -1 "$ANDROID_HOME"/build-tools | sort -V | tail -1)"
+
+      - name: Typecheck
+        run: yarn lint
+
+      # REQUIRE_ANDROID_SDK_ORACLE turns a missing SDK into a failure rather than
+      # a skip: the oracle tests are the only external judgement of whether a
+      # repacked APK is installable, and a silent skip is indistinguishable from
+      # a pass.
+      - name: Test
+        run: yarn test
+        env:
+          REQUIRE_ANDROID_SDK_ORACLE: "1"
+
+  # Package the Studio for every desktop target, so a change that only breaks
+  # packaging (native deps, electron-builder config, per-arch binaries) is caught
+  # before release day. Artifacts are uploaded for manual smoke-testing; nothing
+  # is published from CI.
+  #
+  # Restricted to master and nightly (plus manual dispatch): this is three jobs
+  # with a 60-minute ceiling, two of them on macOS runners, which bill at ten
+  # times the Linux rate. On every push and every PR that cost buys almost
+  # nothing — packaging rarely breaks from ordinary feature work, and `verify`
+  # already guards correctness on those. Run it manually if a change touches
+  # native deps or builder config.
+  build:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/nightly'))
+    strategy:
+      # One broken platform must not hide the results of the other two.
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            args: --win --x64
+          - name: macos-arm64
+            os: macos-latest
+            args: --mac --arm64
+          - name: macos-x64
+            os: macos-latest
+            args: --mac --x64
+
+    name: build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      # Same reasoning as the verify job: yarn.lock is deliberately not
+      # committed, so an immutable install would fail on every run.
+      - name: Install dependencies
+        run: yarn install --no-immutable
+
+      # --publish never: packaging is the test here, releasing is not.
+      # CSC_IDENTITY_AUTO_DISCOVERY=false keeps electron-builder from hunting
+      # for a signing identity the runner does not have.
+      - name: Package
+        run: yarn pack-electron ${{ matrix.args }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      # Only the installers — the unpacked app directories in build/ are
+      # hundreds of megabytes of intermediate output.
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: narraleaf-studio-${{ matrix.name }}
+          path: |
+            build/*.exe
+            build/*.dmg
+            build/*.zip
+          if-no-files-found: error

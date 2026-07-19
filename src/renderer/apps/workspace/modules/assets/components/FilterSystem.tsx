@@ -111,7 +111,7 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
                     ))}
                     <button
                         onClick={handleClearAllFilters}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 transition-colors"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-danger/20 text-danger rounded hover:bg-danger/30 transition-colors"
                     >
                         <X className="w-3 h-3" />
                         {t("common.clear")}
@@ -121,7 +121,7 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
 
             {/* Filter Options Panel */}
             {isExpanded && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-surface-sunken border border-edge-strong rounded-lg shadow-xl z-10">
+                <div className="absolute top-full left-0 right-0 mt-2 bg-surface-overlay border border-edge-strong rounded-lg shadow-xl z-10">
                     <div className="p-3 space-y-3">
                         {filters.map(filter => (
                             <div key={filter.id} className="space-y-2">
@@ -139,7 +139,7 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
                                                 className={`
                                                     px-2 py-1 text-xs rounded transition-colors
                                                     ${isActive
-                                                        ? 'bg-primary text-white'
+                                                        ? 'bg-primary text-on-primary'
                                                         : 'bg-fill text-fg-muted hover:bg-fill-strong'
                                                     }
                                                 `}

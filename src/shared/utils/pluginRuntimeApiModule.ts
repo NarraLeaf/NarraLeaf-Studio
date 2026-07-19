@@ -9,9 +9,9 @@
  *
  * - `PLUGIN_REACT_MODULE_SOURCES`: React host externals. Each shim resolves
  *   externals from whichever plugin host global the current environment
- *   exposes — `__NLS_PLUGIN_MODULE__` (workspace studio entries) or
+ *   exposes - `__NLS_PLUGIN_MODULE__` (workspace studio entries) or
  *   `__NLS_RUNTIME_PLUGIN_MODULE__` (game environments, for plugin widget
- *   renderers) — so one set of sources serves every window. `react-dom/client`
+ *   renderers) - so one set of sources serves every window. `react-dom/client`
  *   is deliberately NOT available to runtime entries: plugins must not mount
  *   their own React roots inside the game.
  */

@@ -45,7 +45,7 @@ describe("computeStageViewportMetrics", () => {
     });
 
     it("treats a collapsed (zero-dimension) area as unmeasured instead of shrinking to nothing", () => {
-        // A height:100% collapse (unsized parent) yields area.height 0 — must not drive the stage to 0.
+        // A height:100% collapse (unsized parent) yields area.height 0 - must not drive the stage to 0.
         const m = computeStageViewportMetrics({
             area: { width: 1280, height: 0 },
             designSize: DESIGN,

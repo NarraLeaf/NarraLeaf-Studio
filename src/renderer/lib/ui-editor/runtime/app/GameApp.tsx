@@ -6,7 +6,7 @@ import {
     useState,
     type ReactNode,
 } from "react";
-import { AnimatePresence, useReducedMotion } from "motion/react";
+import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
 import { type LiveGame, type SavedGame } from "narraleaf-react";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import {
@@ -15,13 +15,18 @@ import {
     matchSystemLocale,
     resolveLocalizedUnitText,
 } from "@shared/types/localization";
+import { VOICE_LOCALE_STORAGE_KEY } from "@shared/types/voice";
 import {
     GameLocalizationContext,
     type GameLocalizationRuntime,
 } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
-import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
+import {
+    BLUEPRINT_GAME_NAMETAG_STATE_KEY,
+    BLUEPRINT_GAME_TEXT_READ_STATE_KEY,
+    BLUEPRINT_TEXT_READ_PERSISTENCE_KEY,
+} from "@shared/types/blueprint/hostApi";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type {
@@ -46,9 +51,13 @@ import {
 import {
     dispatchGlobalBlueprintEvent,
     dispatchSurfaceBlueprintEvent,
+    dispatchWidgetsBlueprintEvent,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import { subscribeGamePreferenceChanges } from "@/lib/ui-editor/blueprint-runtime/gamePreferenceSubscription";
-import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
+import {
+    createEventPropagationControl,
+    getOrCreateDomEventPropagationControl,
+} from "@/lib/ui-editor/runtime/eventPropagationControl";
 import {
     compileStudioStoryToNlr,
     createEmptyCompiledNlrStory,
@@ -71,7 +80,14 @@ import { createGameUiSlotComponents, createLiveGameUiCallbacks, createNlrGameWit
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
+import { isTextEntryTarget } from "./isTextEntryTarget";
 import { readNlrCharacterName } from "./nlrDialogReaders";
+import {
+    createNlrDialogReadHooks,
+    createReadKeyResolver,
+    createTextReadTracker,
+    type TextReadTracker,
+} from "./textReadTracker";
 import { waitForAnimationFrame } from "./frameTiming";
 import { NavigationController } from "./navigation/NavigationController";
 import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
@@ -235,6 +251,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
     const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
     const nlrPreferenceTokenRef = useRef<{ cancel(): void } | null>(null);
+    const textReadTrackerRef = useRef<TextReadTracker | null>(null);
     const preferenceSnapshotRef = useRef<Record<string, unknown>>({});
     const dispatchPreferenceChangeRef = useRef<
         ((key: string, value: unknown, previousValue: unknown) => void) | null
@@ -472,6 +489,41 @@ export function GameApp(props: GameAppProps): ReactNode {
         return Boolean(gameStageVisible && nlrSession?.id);
     }, [gameStageVisible, nlrSession?.id]);
 
+    const detachTextReadTracker = useCallback(() => {
+        textReadTrackerRef.current?.detach();
+        textReadTrackerRef.current = null;
+    }, []);
+
+    const isCurrentTextReadInGame = useCallback((): boolean => {
+        return textReadTrackerRef.current?.isCurrentTextRead() === true;
+    }, []);
+
+    const clearTextReadInGame = useCallback(async (): Promise<void> => {
+        const tracker = textReadTrackerRef.current;
+        if (tracker) {
+            // The live tracker owns the write path; a direct wipe would race
+            // its debounced persistence.
+            tracker.clearAll();
+            return;
+        }
+        if (!core) {
+            throw new Error("Clear Text Read: runtime is not ready");
+        }
+        await core.scopeBridge.persistenceSetAsync(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
+        core.scopeBridge.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, false);
+    }, [core]);
+
+    /**
+     * Surface a failed save screenshot to the Blueprint console. Capture is best-effort — the save
+     * still succeeds without a preview — but staying silent made a requested capture look like the
+     * Save Game node was ignoring its Capture pin.
+     */
+    const reportSaveCaptureFailure = useCallback((id: string, reason: string): void => {
+        const message = `Save Game: screenshot capture failed for "${id}": ${reason}`;
+        core?.debug.emit({ type: "devtools.log", level: "warn", message });
+        host.log("warning", message);
+    }, [core, host.log]);
+
     const setNlrDialogVirtualClickTarget = useCallback((target: HTMLElement | null): void => {
         nlrDialogVirtualClickTargetRef.current = target;
     }, []);
@@ -520,6 +572,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
         nlrPreferenceTokenRef.current = null;
+        detachTextReadTracker();
         preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
         gameReadyFiredRef.current = null;
@@ -531,16 +584,25 @@ export function GameApp(props: GameAppProps): ReactNode {
         await openSurface(targetSurfaceId, undefined, { presentation: "appPage" });
         setNlrSession(null);
         clearGameHiddenStudioPages();
-    }, [clearCurrentDialogNametag, clearGameHiddenStudioPages, openSurface, rejectPendingGameStarts]);
+    }, [clearCurrentDialogNametag, clearGameHiddenStudioPages, detachTextReadTracker, openSurface, rejectPendingGameStarts]);
 
     const writeSave = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
         const liveGame = requireActiveLiveGame("Save Game");
         let capture: string | undefined;
-        if (screenshot === true && typeof liveGame.capturePng === "function") {
-            capture = await liveGame.capturePng().catch(() => undefined);
+        if (screenshot === true) {
+            if (typeof liveGame.capturePng !== "function") {
+                reportSaveCaptureFailure(id, "the game runtime does not support capturePng");
+            } else {
+                try {
+                    capture = await liveGame.capturePng();
+                } catch (error) {
+                    // The save itself still goes through — a failed preview must not lose progress.
+                    reportSaveCaptureFailure(id, normalizeError(error));
+                }
+            }
         }
         await host.saveStore.write(id, liveGame.serialize(), capture, metadata);
-    }, [host.saveStore, requireActiveLiveGame]);
+    }, [host.saveStore, reportSaveCaptureFailure, requireActiveLiveGame]);
 
     const loadSave = useCallback(async (id: string) => {
         const liveGame = requireActiveLiveGame("Load Save");
@@ -635,6 +697,19 @@ export function GameApp(props: GameAppProps): ReactNode {
                       },
                   }
                 : undefined,
+            voice: bundle.voice && core
+                ? {
+                      ...bundle.voice,
+                      getVoiceLocale: () => {
+                          const stored = core.scopeBridge.persistenceGet(VOICE_LOCALE_STORAGE_KEY);
+                          if (typeof stored === "string" && stored
+                              && bundle.voice!.voicedLocales.some(locale => locale.code === stored)) {
+                              return stored;
+                          }
+                          return bundle.voice!.voicedLocales[0]?.code ?? "";
+                      },
+                  }
+                : undefined,
         });
         if (compiled.diagnostics.length > 0) {
             for (const diagnostic of compiled.diagnostics) {
@@ -673,6 +748,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             openSurfaceWithTransition: openSurface,
             closeLayerWithTransition: closeLayer,
             quitApplication: host.quitApplication,
+            getFullscreen: host.getFullscreen,
+            setFullscreen: host.setFullscreen,
             startStoryInGame: request =>
                 startStoryInGameRef.current?.(request) ??
                 Promise.reject(new Error("Start Game: runtime is not ready")),
@@ -688,6 +765,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             getNotificationsInGame,
             getChoiceCountInGame,
             isNvlModeInGame,
+            isCurrentTextReadInGame,
+            clearTextReadInGame,
             selectChoiceInGame,
             isInGame,
             quitGame,
@@ -716,6 +795,10 @@ export function GameApp(props: GameAppProps): ReactNode {
             height,
             contentContainerId: `__nlr_preview_stage_${sessionId.replace(/[^a-zA-Z0-9_-]/g, "_")}`,
             slots,
+            // NLR clamps its stage to 800×450 by default; windows smaller than that would crop
+            // and offset the stage instead of letterboxing down (same override as the story
+            // preview, which embeds into arbitrarily small panes).
+            minStageSize: { width: 1, height: 1 },
         });
         const environmentReady = new Promise<void>((resolve, reject) => {
             pendingEnvReadyRef.current.set(sessionId, { resolve, reject });
@@ -752,6 +835,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         hideDialogInGame,
         host.id,
         host.quitApplication,
+        host.getFullscreen,
+        host.setFullscreen,
+        isCurrentTextReadInGame,
+        clearTextReadInGame,
         isInGame,
         isNvlModeInGame,
         listSaveIds,
@@ -855,6 +942,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             onOpenSurface: openSurface,
             onCloseLayer: closeLayer,
             onQuitApplication: host.quitApplication,
+            onGetFullscreen: host.getFullscreen,
+            onSetFullscreen: host.setFullscreen,
             onStartStory: startStoryInGame,
             onIsInGame: isInGame,
             onIsGameOverlay: () => entry.presentation === "gameOverlay",
@@ -871,6 +960,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             onGetNotifications: getNotificationsInGame,
             onGetChoiceCount: getChoiceCountInGame,
             onIsNvlMode: isNvlModeInGame,
+            onIsCurrentTextRead: isCurrentTextReadInGame,
+            onClearTextRead: clearTextReadInGame,
             onSelectChoice: selectChoiceInGame,
             onNext: nextInGame,
             onSkip: skipInGame,
@@ -937,6 +1028,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         getSavePreview,
         hideDialogInGame,
         host.quitApplication,
+        host.getFullscreen,
+        host.setFullscreen,
+        isCurrentTextReadInGame,
+        clearTextReadInGame,
         isInGame,
         isNvlModeInGame,
         listSaveIds,
@@ -1068,6 +1163,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onOpenSurface: openSurface,
                     onCloseLayer: closeLayer,
                     onQuitApplication: host.quitApplication,
+                    onGetFullscreen: host.getFullscreen,
+                    onSetFullscreen: host.setFullscreen,
                     onStartStory: startStoryInGame,
                     onIsInGame: isInGame,
                     onIsGameOverlay: () =>
@@ -1085,6 +1182,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onGetNotifications: getNotificationsInGame,
                     onGetChoiceCount: getChoiceCountInGame,
                     onIsNvlMode: isNvlModeInGame,
+                    onIsCurrentTextRead: isCurrentTextReadInGame,
+                    onClearTextRead: clearTextReadInGame,
                     onSelectChoice: selectChoiceInGame,
                     onNext: nextInGame,
                     onSkip: skipInGame,
@@ -1181,6 +1280,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         getSavePreview,
         hideDialogInGame,
         host.quitApplication,
+        host.getFullscreen,
+        host.setFullscreen,
+        isCurrentTextReadInGame,
+        clearTextReadInGame,
         isInGame,
         isNvlModeInGame,
         listSaveIds,
@@ -1251,6 +1354,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
         nlrPreferenceTokenRef.current = null;
+        detachTextReadTracker();
         preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
         gameReadyFiredRef.current = null;
@@ -1269,6 +1373,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         bundle.bundleId,
         clearCurrentDialogNametag,
         clearGameHiddenStudioPages,
+        detachTextReadTracker,
         rejectPendingGameStarts,
     ]);
 
@@ -1277,6 +1382,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
         nlrPreferenceTokenRef.current = null;
+        detachTextReadTracker();
         preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
         gameReadyFiredRef.current = null;
@@ -1284,7 +1390,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrLiveGameSessionIdRef.current = null;
         choiceRuntimeRef.current = null;
         clearCurrentDialogNametag();
-    }, [clearCurrentDialogNametag, nlrSession?.id]);
+    }, [clearCurrentDialogNametag, detachTextReadTracker, nlrSession?.id]);
 
     useEffect(() => {
         if (!host.ready || !core || !hostAdapterBundle) {
@@ -1317,6 +1423,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             return;
         }
         const dispatchKeyboardEvent = (eventName: "keyDown" | "keyUp", event: KeyboardEvent) => {
+            // Typing into a text field must not also drive the game's global keys — otherwise
+            // entering a name would advance dialogue on space and open the menu on Escape. The
+            // widget's own keyboard event still fires: it arrives through DOM bubbling, not here.
+            if (isTextEntryTarget(event.target)) {
+                return;
+            }
             const payload = keyboardBlueprintPayload(event);
             const eventControl = getOrCreateDomEventPropagationControl(event);
             // A widget-level keyboard handler may already have stopped propagation
@@ -1401,6 +1513,97 @@ export function GameApp(props: GameAppProps): ReactNode {
         };
     }, [activeSurface, bundle, core, host, hostAdapterBundle]);
 
+    // Window fullscreen transitions come from the main process, so they also cover
+    // fullscreen toggled outside the game. Unlike the preference subscription this
+    // one is owned by the host, so the effect can subscribe directly.
+    useEffect(() => {
+        if (!host.ready || !core || !hostAdapterBundle || !activeSurface || !host.subscribeFullscreenChanged) {
+            return;
+        }
+        return host.subscribeFullscreenChanged(isFullscreen => {
+            const eventPayload = { isFullscreen };
+            const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
+            void dispatchGlobalBlueprintEvent({
+                blueprintDocument: bundle.ui.localBlueprints,
+                eventName: "windowFullscreenChanged",
+                eventPayload,
+                hostAdapter: hostAdapterBundle.hostAdapter,
+                debug: core.debug,
+                getSurfaceState: stateKey => surfaceStore.get(stateKey),
+                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
+                executionManager: core.executionManager,
+            }).then(() => dispatchSurfaceBlueprintEvent({
+                blueprintDocument: bundle.ui.localBlueprints,
+                surfaceId: activeSurface.id,
+                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
+                eventName: "windowFullscreenChanged",
+                eventPayload,
+                hostAdapter: hostAdapterBundle.hostAdapter,
+                debug: core.debug,
+                getSurfaceState: stateKey => surfaceStore.get(stateKey),
+                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
+                executionManager: core.executionManager,
+            })).then(() => dispatchWidgetsBlueprintEvent({
+                document: bundle.ui.uidoc,
+                blueprintDocument: bundle.ui.localBlueprints,
+                surfaceId: activeSurface.id,
+                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
+                eventName: "windowFullscreenChanged",
+                eventPayload,
+                hostAdapter: hostAdapterBundle.hostAdapter,
+                debug: core.debug,
+                getSurfaceState: stateKey => surfaceStore.get(stateKey),
+                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
+                executionManager: core.executionManager,
+            })).catch(err => host.log("error", normalizeError(err)));
+        });
+    }, [activeSurface, bundle, core, host, hostAdapterBundle]);
+
+    // The user asked to close the window; the main process holds the close open until the blueprint
+    // decides. A shared event control travels through the global then surface dispatch, so a Stop
+    // Event Bubble node in either cancels the close. Absent that, the window closes. Scoped like the
+    // keyboard heads (global + surface): the widget dispatch path does not thread the event control.
+    // Owned by the host, so the effect subscribes directly (like fullscreen).
+    useEffect(() => {
+        if (!host.ready || !core || !hostAdapterBundle || !activeSurface || !host.subscribeCloseRequested) {
+            return;
+        }
+        return host.subscribeCloseRequested(async () => {
+            const eventControl = createEventPropagationControl();
+            const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
+            try {
+                await dispatchGlobalBlueprintEvent({
+                    blueprintDocument: bundle.ui.localBlueprints,
+                    eventName: "windowCloseRequested",
+                    eventControl,
+                    hostAdapter: hostAdapterBundle.hostAdapter,
+                    debug: core.debug,
+                    getSurfaceState: stateKey => surfaceStore.get(stateKey),
+                    setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
+                    executionManager: core.executionManager,
+                });
+                if (!eventControl.isPropagationStopped()) {
+                    await dispatchSurfaceBlueprintEvent({
+                        blueprintDocument: bundle.ui.localBlueprints,
+                        surfaceId: activeSurface.id,
+                        runtimeScopeId: hostAdapterBundle.runtimeScopeId,
+                        eventName: "windowCloseRequested",
+                        eventControl,
+                        hostAdapter: hostAdapterBundle.hostAdapter,
+                        debug: core.debug,
+                        getSurfaceState: stateKey => surfaceStore.get(stateKey),
+                        setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
+                        executionManager: core.executionManager,
+                    });
+                }
+            } catch (err) {
+                host.log("error", normalizeError(err));
+            }
+            // Default is to close; a handler that ran Stop Event Bubble cancels it.
+            return !eventControl.isPropagationStopped();
+        });
+    }, [activeSurface, bundle, core, host, hostAdapterBundle]);
+
     if (!activeSurface || !activeEntry) {
         return renderPlaceholder?.() ?? null;
     }
@@ -1408,11 +1611,14 @@ export function GameApp(props: GameAppProps): ReactNode {
     const gameViewport = nlrSession ? { width: nlrSession.width, height: nlrSession.height } : null;
 
     if (!host.ready || !core || !hostAdapterBundle) {
+        // Keep the same root element shape as the ready branch below: switching the root type
+        // (Fragment → Provider) when the host becomes ready would make React unmount and
+        // remount the whole frame subtree (StageViewportFrame and everything inside it).
         return (
-            <>
+            <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
                 {renderFrame({ activeSurface, gameViewport, children: null })}
                 {renderOverlays?.({ core, activeSurface, widgetRuntimeStore })}
-            </>
+            </GameLocalizationContext.Provider>
         );
     }
 
@@ -1422,6 +1628,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         <NlrStageLayer
             session={nlrSession}
             interactive={gameStageVisible}
+            // The stage mounts (hidden) as soon as a session exists so the Player can preload,
+            // which is before the surface system starts; painting it that early would flash its
+            // black backdrop over the first frame. It only becomes visible on reveal.
+            visible={gameStageVisible}
             renderOnStage={gameStageVisible}
             onFirstSceneReady={sessionId => {
                 const pending = pendingGameStartsRef.current.get(sessionId);
@@ -1450,6 +1660,17 @@ export function GameApp(props: GameAppProps): ReactNode {
                     preferenceSnapshotRef,
                     (key, value, previousValue) => dispatchPreferenceChangeRef.current?.(key, value, previousValue),
                 );
+                detachTextReadTracker();
+                const dialogGameState = liveGame.getGameState();
+                if (dialogGameState) {
+                    textReadTrackerRef.current = createTextReadTracker({
+                        ...createNlrDialogReadHooks(dialogGameState),
+                        persistenceGetAsync: key => core.scopeBridge.persistenceGetAsync(key),
+                        persistenceSet: (key, value) => core.scopeBridge.persistenceSet(key, value),
+                        setMirror: value => core.scopeBridge.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, value),
+                        resolveReadKey: createReadKeyResolver(nlrSession?.compiled.actionIdBindings ?? []),
+                    });
+                }
                 nlrLiveGameRef.current = liveGame;
                 nlrLiveGameSessionIdRef.current = sessionId;
                 try {
@@ -1501,47 +1722,54 @@ export function GameApp(props: GameAppProps): ReactNode {
             .filter((item): item is { entry: GameAppNavEntry; surface: UISurface } => Boolean(item))
         : [];
 
+    // `nl-motion-keep` + `reducedMotion="never"` hold the game's own motion outside the Studio
+    // reduced-motion preference (styles.css and the MotionConfig in lib/renderApp): what plays
+    // in here is the author's work, and it has to move the way it will move for a player. The
+    // PLAYER's own OS preference still lands — `useReducedMotion` above reads the media query
+    // directly and is unaffected by this config. The host frame around it stays Studio chrome.
     const content = (
-        <div className="relative h-full w-full overflow-hidden">
-            {nlrStageLayer}
-            {/* Surface system starts only after the NLR environment boot preload finishes. */}
-            <div className="pointer-events-none absolute inset-0 z-10">
-                <AnimatePresence
-                    custom={navState.direction}
-                    initial={false}
-                    mode={surfacePresenceMode}
-                    onExitComplete={handleSurfaceExitComplete}
-                >
-                    {nlrPreloadDone
-                        ? visibleSurfaceEntries.map(({ entry, surface }, layerIndex) => (
-                            <AppSurfaceLayerWithAdapter
-                                key={entry.key}
-                                uidoc={bundle.ui.uidoc}
-                                blueprintDocument={bundle.ui.localBlueprints}
-                                core={core}
-                                entry={entry}
-                                layerIndex={layerIndex}
-                                surface={surface}
-                                rendererRegistry={rendererRegistry}
-                                scale={scale}
-                                createHostAdapterBundle={createHostAdapterBundle}
-                                widgetPatchesByScope={widgetPatchesByScope}
-                                widgetPatchesByScopeRef={widgetPatchesByScopeRef}
-                                widgetRuntimeStore={widgetRuntimeStore}
-                                lifecycleRef={lifecycleRef}
-                                nestedSurfaceRuntime={nestedSurfaceRuntime}
-                                blueprintLifecycleReady={prepaintReadyKeys.has(entry.key)}
-                                reducedMotion={prefersReducedMotion === true}
-                                active={entry.key === activeEntry.key}
-                                onInteractionReadyChange={handleSurfaceInteractionReadyChange}
-                                onPrepaintReady={handleSurfaceLayerPrepaintReady}
-                                onEnterComplete={markActiveEnterComplete}
-                            />
-                        ))
-                        : null}
-                </AnimatePresence>
+        <MotionConfig reducedMotion="never">
+            <div className="nl-motion-keep relative h-full w-full overflow-hidden">
+                {nlrStageLayer}
+                {/* Surface system starts only after the NLR environment boot preload finishes. */}
+                <div className="pointer-events-none absolute inset-0 z-10">
+                    <AnimatePresence
+                        custom={navState.direction}
+                        initial={false}
+                        mode={surfacePresenceMode}
+                        onExitComplete={handleSurfaceExitComplete}
+                    >
+                        {nlrPreloadDone
+                            ? visibleSurfaceEntries.map(({ entry, surface }, layerIndex) => (
+                                <AppSurfaceLayerWithAdapter
+                                    key={entry.key}
+                                    uidoc={bundle.ui.uidoc}
+                                    blueprintDocument={bundle.ui.localBlueprints}
+                                    core={core}
+                                    entry={entry}
+                                    layerIndex={layerIndex}
+                                    surface={surface}
+                                    rendererRegistry={rendererRegistry}
+                                    scale={scale}
+                                    createHostAdapterBundle={createHostAdapterBundle}
+                                    widgetPatchesByScope={widgetPatchesByScope}
+                                    widgetPatchesByScopeRef={widgetPatchesByScopeRef}
+                                    widgetRuntimeStore={widgetRuntimeStore}
+                                    lifecycleRef={lifecycleRef}
+                                    nestedSurfaceRuntime={nestedSurfaceRuntime}
+                                    blueprintLifecycleReady={prepaintReadyKeys.has(entry.key)}
+                                    reducedMotion={prefersReducedMotion === true}
+                                    active={entry.key === activeEntry.key}
+                                    onInteractionReadyChange={handleSurfaceInteractionReadyChange}
+                                    onPrepaintReady={handleSurfaceLayerPrepaintReady}
+                                    onEnterComplete={markActiveEnterComplete}
+                                />
+                            ))
+                            : null}
+                    </AnimatePresence>
+                </div>
             </div>
-        </div>
+        </MotionConfig>
     );
 
     return (

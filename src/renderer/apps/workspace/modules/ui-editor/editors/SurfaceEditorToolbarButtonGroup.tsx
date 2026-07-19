@@ -40,8 +40,8 @@ export const SurfaceEditorToolbarSegButton = forwardRef<HTMLButtonElement, Surfa
         ref,
     ) {
         const state = active
-            ? "bg-primary/20 text-white"
-            : "text-fg-muted hover:bg-fill hover:text-white";
+            ? "bg-primary/20 text-fg"
+            : "text-fg-muted hover:bg-fill hover:text-fg";
         return (
             <button
                 ref={ref}

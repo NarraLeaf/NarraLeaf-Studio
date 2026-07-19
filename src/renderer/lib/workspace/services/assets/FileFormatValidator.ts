@@ -12,6 +12,14 @@ export type FileFormatValidationResult = {
 };
 
 /**
+ * Editors on Windows commonly write UTF-8 with a byte-order mark, which `JSON.parse` rejects as
+ * an unexpected token. The mark is not part of the document, so it is dropped before parsing.
+ */
+function stripBom(text: string): string {
+    return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
+/**
  * Service for validating file formats based on content and extensions
  */
 export class FileFormatValidator {
@@ -49,20 +57,21 @@ export class FileFormatValidator {
                 detectedFormat = this.detectFontFormat(buffer);
                 break;
             case AssetType.JSON:
-                // JSON validation through parsing
+                // JSON is validated by parsing it: a file that cannot be parsed is refused here
+                // rather than imported and left to fail in every consumer downstream. The parser's
+                // own message carries the position, which is the only actionable part.
                 try {
-                    const text = new TextDecoder().decode(buffer);
-                    JSON.parse(text);
+                    JSON.parse(stripBom(new TextDecoder().decode(buffer)));
                     return { success: true, data: void 0 };
-                } catch {
+                } catch (e) {
                     return {
                         success: false,
-                        error: 'Invalid JSON file',
+                        error: `Not a valid JSON file: ${e instanceof Error ? e.message : 'parse failed'}`,
                     };
                 }
             case AssetType.Blueprint:
                 try {
-                    const text = new TextDecoder().decode(buffer);
+                    const text = stripBom(new TextDecoder().decode(buffer));
                     parseSharedBlueprintAssetJson(text);
                     return { success: true, data: void 0 };
                 } catch (e) {

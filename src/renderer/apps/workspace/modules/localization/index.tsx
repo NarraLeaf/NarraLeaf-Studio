@@ -8,6 +8,7 @@ export const localizationPanelModule: PanelModule = {
     metadata: {
         id: "narraleaf-studio:localization",
         // Resolved lazily on read (module registration runs after i18n init).
+        titleKey: "placeholders.moduleTitles.localization",
         get title() {
             return translate("placeholders.moduleTitles.localization");
         },

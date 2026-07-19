@@ -19,7 +19,11 @@ import {
     type BlueprintGamePreferenceValue,
     type DevModeWidgetRuntimePatch,
 } from "./BlueprintHostApiBridge";
-import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
+import {
+    BLUEPRINT_GAME_NAMETAG_STATE_KEY,
+    BLUEPRINT_GAME_TEXT_READ_STATE_KEY,
+    BLUEPRINT_TEXT_READ_PERSISTENCE_KEY,
+} from "@shared/types/blueprint/hostApi";
 import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 import { displayableMotionFromCurrent } from "@/lib/ui-editor/runtime/displayableMotion";
@@ -150,6 +154,8 @@ function createHostApi(options?: {
     onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
     onGetSavePreview?: (id: string) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
     onGetNametag?: () => string | null;
+    onIsCurrentTextRead?: () => boolean;
+    onClearTextRead?: () => Promise<void> | void;
     onIsInGame?: () => boolean;
     onIsGameOverlay?: () => boolean;
     onQuitGame?: (surfaceId: string) => Promise<void> | void;
@@ -179,6 +185,8 @@ function createHostApi(options?: {
         onGetSaveMetadata: options?.onGetSaveMetadata,
         onGetSavePreview: options?.onGetSavePreview,
         onGetNametag: options?.onGetNametag,
+        onIsCurrentTextRead: options?.onIsCurrentTextRead,
+        onClearTextRead: options?.onClearTextRead,
         onIsInGame: options?.onIsInGame,
         onIsGameOverlay: options?.onIsGameOverlay,
         onQuitGame: options?.onQuitGame,
@@ -421,6 +429,30 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         expect(hostApi.game.getNametag()).toBe("Narrator");
         expect(hostApi.game.isInGame()).toBe(false);
         expect(hostApi.game.isGameOverlay()).toBe(false);
+    });
+
+    it("reads current text read state from the callback or the mirrored global state", () => {
+        expect(createHostApi().game.isCurrentTextRead()).toBe(false);
+        expect(createHostApi({ onIsCurrentTextRead: () => true }).game.isCurrentTextRead()).toBe(true);
+
+        const scope = new ScopeStoreBridge();
+        const hostApi = createHostApi({ scope });
+        expect(hostApi.game.isCurrentTextRead()).toBe(false);
+        scope.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, true);
+        expect(hostApi.game.isCurrentTextRead()).toBe(true);
+    });
+
+    it("clears text read via the callback, or wipes persistence directly without one", async () => {
+        const cleared: boolean[] = [];
+        await createHostApi({ onClearTextRead: () => { cleared.push(true); } }).game.clearTextRead();
+        expect(cleared).toEqual([true]);
+
+        const scope = new ScopeStoreBridge();
+        scope.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, true);
+        const hostApi = createHostApi({ scope });
+        await hostApi.game.clearTextRead();
+        expect(await scope.persistenceGetAsync(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY)).toEqual([]);
+        expect(hostApi.game.isCurrentTextRead()).toBe(false);
     });
 
     it("returns null for missing Dialog nametag values", () => {
@@ -682,10 +714,8 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         expect(onWidgetPatch).toHaveBeenLastCalledWith("image", {
             layout: { opacity: 1 },
         });
-        expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
-            target: { opacity: { from: "current", to: 1 } },
-            resetOnComplete: false,
-        });
+        // Held motions commit into the layout patch and release the one-shot motion slot.
+        expect(store.getDisplayableMotion("scope\0image")).toBeNull();
     });
 
     it("commits held Displayable opacity only after natural animation completion", async () => {
@@ -978,10 +1008,11 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
             offsetY: -12,
         });
 
-        expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
-            target: { x: 24, y: -12 },
-            transition: { type: "tween", durationMs: 0, easing: "linear" },
-            resetOnComplete: false,
+        // Persistent offsets live in the base transform, not the one-shot motion slot.
+        expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+        expect(store.getDisplayableBaseTransform("scope\0image")).toMatchObject({
+            offsetX: 24,
+            offsetY: -12,
         });
         expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
             position: { x: 12, y: 48 },
@@ -1227,6 +1258,123 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
             expect(store.getDisplayableMotion("scope\0image")).toBeNull();
             expect(onWidgetPatch).not.toHaveBeenCalled();
             expect(hostApi.widget.getDisplayableProperties("image").position.x).toBe(0);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("keeps persistent Displayable offsets when a Variant opacity transition runs", async () => {
+        vi.useFakeTimers();
+        try {
+            const document = createDocument();
+            const image = document.elements.image!;
+            const appearance = (image.props as { appearance: AppearanceModel }).appearance;
+            const defaultVariant = appearance.variants[0]!;
+            const transparentVariant = {
+                ...defaultVariant,
+                id: "transparent",
+                name: "Transparent",
+                propertyGroups: defaultVariant.propertyGroups.map(group =>
+                    group.key === "transformOpacity"
+                        ? {
+                              ...group,
+                              rows: [{ conditions: null, value: 0 }],
+                              transition: {
+                                  type: "tween" as const,
+                                  durationMs: 25,
+                                  delayMs: 0,
+                                  easing: "linear" as const,
+                              },
+                          }
+                        : group,
+                ),
+            };
+            appearance.variants = [...appearance.variants, transparentVariant];
+            const store = new WidgetRuntimeStateStore();
+            const hostApi = createHostApi({ document, widgetRuntimeStore: store, runtimeScopeId: "scope" });
+
+            await hostApi.widget.setDisplayableProperties("image", { offsetX: 24, offsetY: -12 });
+            expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+
+            const pending = hostApi.widget.setVariant("image", "transparent", { waitForTransition: true });
+
+            // The variant opacity transition occupies the one-shot motion slot without
+            // evicting the persistent offset (it used to replace the offset motion and
+            // reset the widget to its un-offset origin on completion).
+            expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
+                target: { opacity: [1, 0] },
+                resetOnComplete: true,
+            });
+            expect(store.getDisplayableBaseTransform("scope\0image")).toMatchObject({
+                offsetX: 24,
+                offsetY: -12,
+            });
+            expect(hostApi.widget.getDisplayableProperties("image").offset).toEqual({ x: 24, y: -12 });
+
+            await vi.advanceTimersByTimeAsync(30);
+            await pending;
+
+            expect(hostApi.widget.getDisplayableProperties("image").offset).toEqual({ x: 24, y: -12 });
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("folds held Displayable offset animations into the base transform on completion", async () => {
+        vi.useFakeTimers();
+        try {
+            const store = new WidgetRuntimeStateStore();
+            const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+            const animation = hostApi.widget.animateDisplayable("image", {
+                target: { x: [0, 100] },
+                transition: { type: "tween", durationMs: 100, delayMs: 0, easing: "linear" },
+                resetOnComplete: false,
+            });
+
+            await vi.advanceTimersByTimeAsync(16);
+            expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
+                target: { x: [0, 100] },
+            });
+
+            await vi.advanceTimersByTimeAsync(100);
+            await expect(animation).resolves.toMatchObject({
+                target: { x: [0, 100] },
+            });
+
+            // Held offsets become the new persistent base and the motion slot is released,
+            // so a later motion cannot evict the held pose and reads stay consistent.
+            expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+            expect(store.getDisplayableBaseTransform("scope\0image")).toMatchObject({ offsetX: 100 });
+            expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
+                position: { x: 0, y: 48 },
+                offset: { x: 100, y: 0 },
+            });
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("resets to the persistent offset base when a held animation is stopped mid-flight", async () => {
+        vi.useFakeTimers();
+        try {
+            const store = new WidgetRuntimeStateStore();
+            const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+            await hostApi.widget.setDisplayableProperties("image", { offsetX: 24 });
+            const animation = hostApi.widget.animateDisplayable("image", {
+                id: "animation:offset",
+                target: { x: [24, 100] },
+                transition: { type: "tween", durationMs: 1000, delayMs: 0, easing: "linear" },
+                resetOnComplete: false,
+            });
+
+            await vi.advanceTimersByTimeAsync(100);
+            await hostApi.widget.stopDisplayableAnimation("animation:offset");
+            await expect(animation).resolves.toMatchObject({ id: "animation:offset" });
+
+            // Stop = cancel: nothing is committed and reads report the pre-animation base pose.
+            expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+            expect(store.getDisplayableBaseTransform("scope\0image")).toMatchObject({ offsetX: 24 });
+            expect(hostApi.widget.getDisplayableProperties("image").offset).toEqual({ x: 24, y: 0 });
         } finally {
             vi.useRealTimers();
         }

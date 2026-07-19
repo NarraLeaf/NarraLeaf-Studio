@@ -13,7 +13,7 @@ const DOCUMENTED_CATEGORY_ORDER = [
     "Flow",
     "Element",
     "Displayable",
-    "Page",
+    "App",
     "Variables",
     "Data",
     "Math",
@@ -68,10 +68,21 @@ export function blueprintAddNodeEntryKey(entry: BlueprintNodeEditorCatalogEntry)
     ].join("\0");
 }
 
+/**
+ * Localizer for search matching. Lets the search consider the same translated
+ * text the palette renders, so a user typing in their UI language finds nodes by
+ * their localized title/category rather than only the original English strings.
+ */
+export type BlueprintAddNodeLocalizer = {
+    title: (displayName: string) => string;
+    category: (category: string) => string;
+};
+
 export function filterBlueprintAddNodeEntries(
     entries: readonly BlueprintNodeEditorCatalogEntry[],
     activeCategoryId: string,
     query: string,
+    localizer?: BlueprintAddNodeLocalizer,
 ): BlueprintNodeEditorCatalogEntry[] {
     const queryTokens = tokenizeSearchText(query);
     const filtered = entries
@@ -92,7 +103,7 @@ export function filterBlueprintAddNodeEntries(
 
     return filtered
         .map(({ entry, index }) => {
-            const score = scoreBlueprintAddNodeEntry(entry, queryTokens);
+            const score = scoreBlueprintAddNodeEntry(entry, queryTokens, localizer);
             return score === null ? null : { entry, index, score };
         })
         .filter((item): item is { entry: BlueprintNodeEditorCatalogEntry; index: number; score: number } =>
@@ -117,9 +128,15 @@ const FIELD_WEIGHTS = {
 function scoreBlueprintAddNodeEntry(
     entry: BlueprintNodeEditorCatalogEntry,
     queryTokens: readonly string[],
+    localizer?: BlueprintAddNodeLocalizer,
 ): number | null {
+    const localizedTitle = localizer?.title(entry.displayName);
+    const localizedCategory = localizer?.category(entry.category);
     const fields: BlueprintAddNodeSearchField[] = [
         { text: entry.displayName, weight: FIELD_WEIGHTS.displayName },
+        ...(localizedTitle && localizedTitle !== entry.displayName
+            ? [{ text: localizedTitle, weight: FIELD_WEIGHTS.displayName }]
+            : []),
         ...(entry.magicElementRef
             ? [
                   { text: entry.magicElementRef.label, weight: FIELD_WEIGHTS.displayName + 2 },
@@ -128,6 +145,9 @@ function scoreBlueprintAddNodeEntry(
             : []),
         { text: entry.type, weight: FIELD_WEIGHTS.type },
         { text: entry.category, weight: FIELD_WEIGHTS.category },
+        ...(localizedCategory && localizedCategory !== entry.category
+            ? [{ text: localizedCategory, weight: FIELD_WEIGHTS.category }]
+            : []),
         ...(entry.keywords ?? []).map(keyword => ({ text: keyword, weight: FIELD_WEIGHTS.keyword })),
     ];
 

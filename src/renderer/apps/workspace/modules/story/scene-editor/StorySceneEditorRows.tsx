@@ -1,10 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, RefObject, MouseEvent } from "react";
-import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Plus } from "lucide-react";
+import type { CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
+import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Music, Play, Plus, Route, UserRoundPlus, Variable, Video } from "lucide-react";
+import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useTranslation } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
+import { getCommandGhost } from "./storyCommandGhost";
+import { getCommandLineReason } from "./storyCommandReason";
+import { isMacPlatform } from "@/lib/app/platform";
+import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
@@ -15,7 +21,6 @@ import type { Character } from "@/lib/workspace/services/character/Character";
 import {
     ACTION_COMMAND_CATEGORIES,
     ACTION_COMMANDS,
-    actionCommandMatchesQuery,
     getActionCommandCategory,
     localizeActionCommand,
     translateActionCommandCategoryLabel,
@@ -23,7 +28,14 @@ import {
     type ActionCommandCategoryId,
     type PaletteActionCommand,
 } from "./storyActionCommands";
+import { searchActionCommands } from "./storyCommandSearch";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
+import { getCommandDef, paramTypes } from "./storyCommandGrammar";
+import { completionFor, defaultHighlights, getCommandCursor, type StoryCommandCursor } from "./storyCommandCursor";
+import { getCommandCandidates, hasCandidateSource, type StoryCommandCandidate } from "./storyCommandCandidates";
+import { parseCommandLine } from "./storyCommandParser";
+import { resolveCommandLine, type StoryCommandContext } from "./storyCommandResolution";
+import { StoryCommandCandidateMenu, useStoryCandidateMenuState, type StoryCandidateItem } from "./StoryCommandCandidateMenu";
 import { ActionInspector } from "./StorySceneActionInspector";
 import { RichTextInput, type ActiveMarks, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle } from "./RichTextInput";
 import { RichTextToolbar } from "./RichTextToolbar";
@@ -31,10 +43,11 @@ import { InterpolationPopover } from "./InterpolationPopover";
 import { collectStoryVariableOptions, resolveInterpolationName, type PersistentVariableOption } from "./storyInterpolation";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { RichTextView } from "./RichTextView";
+import { StoryVoiceIndicator } from "./StoryVoiceIndicator";
 import { PausePopover } from "./PausePopover";
 import { segmentToRuns } from "./richText";
 import { useStoryEditorTextStyle } from "./storyEditorTextStyle";
-import type { EditorMode, VisibleStoryRow } from "./storySceneEditorTypes";
+import type { EditorMode, StoryCaretTarget, VisibleStoryRow } from "./storySceneEditorTypes";
 import {
     canAcceptChildren,
     describeBlock,
@@ -57,8 +70,8 @@ export function StoryBlockRow(props: {
     active: boolean;
     collapsed: boolean;
     editing: boolean;
-    /** Where the caret lands when this row opens for editing (arrow-navigation into it). */
-    editInitialCaret?: "start" | "end";
+    /** Where the caret lands when this row opens for editing (arrow-navigation, or a carried selection). */
+    editInitialCaret?: StoryCaretTarget;
     textInputRef: RefObject<RichTextInputHandle | null>;
     inspectorOpen: boolean;
     onSelect: (event: MouseEvent) => void;
@@ -68,24 +81,35 @@ export function StoryBlockRow(props: {
     onStartTextEdit: () => void;
     onEditRichChange: (value: string, runs: StoryRichRun[]) => void;
     onCommitTextEdit: () => void;
-    onCancelTextEdit: () => void;
+    onExitTextEdit: () => void;
     /** Enter while editing: commit and open a new row that continues the same kind (dialogue keeps speaker). */
     onContinue: () => void;
     /** Caret left the line's top/bottom/edge — move focus to the adjacent story row. */
-    onArrowOut: (direction: "up" | "down" | "left" | "right") => void;
+    onArrowOut: (direction: "up" | "down" | "left" | "right", caretX: number | null) => void;
+    onGoalColumnInvalidated: () => void;
     /** Backspace on an empty line: demote dialogue → narration, or delete the row and step back. */
     onBackspaceAtEmptyStart: () => void;
+    /** Mod+Z / Mod+Shift+Z once the row's own history is spent — hand off to story history. */
+    onUndoBeyondRow: () => void;
+    onRedoBeyondRow: () => void;
     onOpenInspector: () => void;
     onCloseInspector: () => void;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
+    tempSpeakers: TempSpeakerRef[];
+    onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
+    onCreateCharacter: (name: string) => void;
     generateTextId: () => string;
     onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
     onInsertAfter: () => void;
+    /** Quick-delete this row from its hover actions. */
+    onDeleteRow: () => void;
     /** Insert a fresh child (action / menu option) at the end of this container. */
     onAddInside: (parentId: StoryBlockId) => void;
     /** Append an if / else-if / else branch to a condition container. */
     onAddBranch: (conditionId: StoryBlockId, branch: "if" | "elseIf" | "else") => void;
+    /** Run the live preview forward from this row (on an option row: enter that branch). */
+    onPlayFromRow: (blockId: StoryBlockId) => void;
 }) {
     const { t } = useTranslation();
     const { row, scene, document, characters, selected, active, collapsed, editing, textInputRef, inspectorOpen } = props;
@@ -113,17 +137,27 @@ export function StoryBlockRow(props: {
             data-story-row-block-id={block.id}
             className={[
                 "group relative grid min-h-[35px] grid-cols-[36px_28px_1fr] items-start border-l-2 pr-3",
-                selected ? "border-primary bg-primary/20" : active ? "border-primary bg-white/[0.035]" : "border-transparent hover:bg-white/[0.025]",
+                selected ? "border-primary bg-primary/20" : active ? "border-primary bg-fill-subtle" : "border-transparent hover:bg-fill-subtle",
             ].join(" ")}
             onClick={props.onSelect}
             onMouseDown={props.onMouseDown}
             onMouseEnter={props.onMouseEnter}
             onDoubleClick={event => {
                 event.stopPropagation();
+                // A row that holds text enters edit from the mouseup gesture, which carries the
+                // author's selection in with it — a double-click there is that gesture's second
+                // click and is already handled. Empty text rows and action rows have no selection to
+                // preserve, so they still open from here.
+                if ((event.target as HTMLElement | null)?.closest?.("[data-story-row-text]")) {
+                    return;
+                }
                 textSegment ? props.onStartTextEdit() : props.onOpenInspector();
             }}
         >
-            <div className="flex h-full items-start justify-end pt-1 text-[12px] tabular-nums text-fg-subtle">
+            {block.kind === "action" && block.payload.action === "setBackground" && !inspectorOpen ? (
+                <BackgroundRowArtwork payload={block.payload} selected={selected} active={active} />
+            ) : null}
+            <div className="relative flex h-full items-start justify-end pt-1 text-[12px] tabular-nums text-fg-subtle">
                 <div className="flex min-h-[27px] items-center gap-1">
                     {canFold ? (
                         <button
@@ -142,7 +176,7 @@ export function StoryBlockRow(props: {
                     <span>{row.lineNumber}</span>
                 </div>
             </div>
-            <div className="flex self-stretch items-center justify-center">
+            <div className="relative flex self-stretch items-center justify-center">
                 <div
                     ref={setActivatorNodeRef}
                     {...attributes}
@@ -186,13 +220,19 @@ export function StoryBlockRow(props: {
                             initialCaret={props.editInitialCaret}
                             onEditRichChange={props.onEditRichChange}
                             onCommitTextEdit={props.onCommitTextEdit}
-                            onCancelTextEdit={props.onCancelTextEdit}
+                            onExitTextEdit={props.onExitTextEdit}
                             onContinue={props.onContinue}
                             onArrowOut={props.onArrowOut}
+                            onGoalColumnInvalidated={props.onGoalColumnInvalidated}
                             onBackspaceAtEmptyStart={props.onBackspaceAtEmptyStart}
+                            onUndoBeyondRow={props.onUndoBeyondRow}
+                            onRedoBeyondRow={props.onRedoBeyondRow}
                             onInsertAfter={props.onInsertAfter}
                             block={block}
                             scene={scene}
+                            tempSpeakers={props.tempSpeakers}
+                            onSetSpeaker={props.onSetSpeaker}
+                            onCreateCharacter={props.onCreateCharacter}
                             document={document}
                             characters={characters}
                             onSetDialogueCharacter={props.onSetDialogueCharacter}
@@ -201,17 +241,25 @@ export function StoryBlockRow(props: {
                         <BlockPreview
                             block={block}
                             scene={scene}
+                            tempSpeakers={props.tempSpeakers}
+                            onSetSpeaker={props.onSetSpeaker}
+                            onCreateCharacter={props.onCreateCharacter}
                             document={document}
                             characters={characters}
                             onSetDialogueCharacter={props.onSetDialogueCharacter}
-                            onTextDoubleClick={props.onStartTextEdit}
                         />
                     ) : null}
-                    {containerInfo ? (
-                        <ContainerHeaderAdd info={containerInfo} onAdd={() => props.onAddInside(block.id)} />
-                    ) : (
-                        <RowActions onInsertAfter={props.onInsertAfter} />
-                    )}
+                    <div className="ml-auto flex shrink-0 items-center gap-1">
+                        {containerInfo ? (
+                            <ContainerHeaderAdd info={containerInfo} onAdd={() => props.onAddInside(block.id)} />
+                        ) : (
+                            <>
+                                <StoryVoiceIndicator block={block} />
+                                <RowActions onInsertAfter={props.onInsertAfter} onDelete={props.onDeleteRow} active={active} />
+                            </>
+                        )}
+                        <RowPlayAction block={block} active={active} onPlay={() => props.onPlayFromRow(block.id)} />
+                    </div>
                 </div>
                 {containerInfo ? (
                     <ContainerFooter
@@ -253,19 +301,25 @@ function editorPlaceholder(block: StoryBlock, t: ReturnType<typeof useTranslatio
 
 function TextEditBox(props: {
     editorRef: RefObject<RichTextInputHandle | null>;
-    initialCaret?: "start" | "end";
+    initialCaret?: StoryCaretTarget;
     onEditRichChange: (value: string, runs: StoryRichRun[]) => void;
     onCommitTextEdit: () => void;
-    onCancelTextEdit: () => void;
+    onExitTextEdit: () => void;
     onContinue: () => void;
-    onArrowOut: (direction: "up" | "down" | "left" | "right") => void;
+    onArrowOut: (direction: "up" | "down" | "left" | "right", caretX: number | null) => void;
+    onGoalColumnInvalidated: () => void;
     onBackspaceAtEmptyStart: () => void;
+    onUndoBeyondRow: () => void;
+    onRedoBeyondRow: () => void;
     onInsertAfter: () => void;
     block: StoryBlock;
     scene: StoryScene;
     document: StoryDocument;
     characters: Character[];
     onSetDialogueCharacter: (characterId: string | undefined) => void;
+    tempSpeakers: TempSpeakerRef[];
+    onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
+    onCreateCharacter: (name: string) => void;
 }) {
     const { t } = useTranslation();
     const dialoguePayload = props.block.kind === "nodeAction" && props.block.payload.action === "dialogue"
@@ -360,14 +414,16 @@ function TextEditBox(props: {
     };
 
     return (
-        <div ref={containerRef} className="relative flex min-w-0 flex-1 items-stretch overflow-visible rounded border border-primary/50 bg-black/30">
+        <div ref={containerRef} className="relative flex min-w-0 flex-1 items-center gap-2 overflow-visible">
             <RichTextToolbar editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} hasVariables={variableOptions.scene.length + variableOptions.saved.length + variableOptions.persistent.length > 0} />
             {dialoguePayload ? (
                 <CharacterSelectTrigger
                     characters={props.characters}
+                    tempSpeakers={props.tempSpeakers}
                     characterId={dialoguePayload.characterId}
-                    onChoose={props.onSetDialogueCharacter}
-                    className="min-w-[128px] max-w-[200px] rounded-r-none border-r border-edge px-2"
+                    speakerName={dialoguePayload.speakerName}
+                    onChoose={props.onSetSpeaker}
+                    onCreateCharacter={props.onCreateCharacter}
                     style={textStyle}
                 />
             ) : null}
@@ -375,16 +431,22 @@ function TextEditBox(props: {
                 ref={props.editorRef}
                 initialRuns={initialRuns}
                 initialCaret={props.initialCaret}
-                className="min-h-[28px] flex-1 whitespace-pre-wrap break-words bg-transparent px-2 py-1 text-fg outline-none empty:before:italic empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]"
+                // Edit in place, VS Code style: no box, no sunken background, no horizontal padding — the
+                // caret lands exactly where the read-only text sat. The active/selected row highlight is
+                // the "you are here" signal, so the field needs none of its own. See the interaction model.
+                className="min-h-[20px] flex-1 whitespace-pre-wrap break-words bg-transparent text-fg outline-none empty:before:italic empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]"
                 style={textStyle}
                 placeholder={editorPlaceholder(props.block, t)}
                 onChange={props.onEditRichChange}
                 onBlur={handleBlur}
-                onCancel={props.onCancelTextEdit}
+                onExit={props.onExitTextEdit}
                 onEnter={props.onContinue}
-                onModEnter={() => { props.onCommitTextEdit(); props.onInsertAfter(); }}
+                onShiftEnter={() => { props.onCommitTextEdit(); props.onInsertAfter(); }}
                 onArrowOut={props.onArrowOut}
+                onGoalColumnInvalidated={props.onGoalColumnInvalidated}
                 onBackspaceAtEmptyStart={props.onBackspaceAtEmptyStart}
+                onUndoBeyondRow={props.onUndoBeyondRow}
+                onRedoBeyondRow={props.onRedoBeyondRow}
                 onPauseClick={openPause}
                 onInterpolationClick={openInterp}
                 resolveInterpolationLabel={resolveInterpolationLabel}
@@ -426,17 +488,93 @@ function TextEditBox(props: {
     );
 }
 
-function RowActions(props: { onInsertAfter: () => void }) {
+/**
+ * Insert / Delete for a row.
+ *
+ * Shown on hover *and* on the active row: the editor is keyboard-first, and a control that only
+ * exists under a pointer is a control a keyboard author never learns about. They stay `tabIndex={-1}`
+ * on purpose — `Tab` indents the row (see the interaction model), so it is not a focus-traversal key
+ * here and these must not swallow it. The keyboard path is the shortcut, which is why the shortcut is
+ * on the `title`: that is the whole point of showing them on the active row.
+ */
+function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; active: boolean }) {
     const { t } = useTranslation();
+    // Rendered from the bindings themselves, never spelled out: `mod` is ⌘ or Ctrl depending on the
+    // platform, and a hardcoded label is how a hint drifts from the key it claims to describe.
+    const isMac = isMacPlatform();
+    const insertKeys = formatKeybinding("shift+enter", isMac);
+    const deleteKeys = formatKeybinding("delete", isMac);
     return (
-        <div className="pointer-events-none ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
-            <button type="button" tabIndex={-1} className="rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill hover:text-primary" onClick={event => {
-                event.stopPropagation();
-                props.onInsertAfter();
-            }}>
+        <div
+            className={[
+                "ml-auto flex shrink-0 items-center gap-1 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100",
+                props.active ? "opacity-100" : "pointer-events-none opacity-0",
+            ].join(" ")}
+        >
+            <button
+                type="button"
+                tabIndex={-1}
+                title={t("story.rows.insertTitle", { keys: insertKeys })}
+                className="rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill hover:text-primary"
+                onClick={event => {
+                    event.stopPropagation();
+                    props.onInsertAfter();
+                }}
+            >
                 {t("story.rows.insert")}
             </button>
+            <button
+                type="button"
+                tabIndex={-1}
+                title={t("story.rows.deleteTitle", { keys: deleteKeys })}
+                className="rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-danger/10 hover:text-danger"
+                onClick={event => {
+                    event.stopPropagation();
+                    props.onDelete();
+                }}
+            >
+                {t("story.rows.delete")}
+            </button>
         </div>
+    );
+}
+
+/**
+ * "Play from here": hands this row to the live preview as a continuous playback start point.
+ *
+ * On a menu option or condition branch it is a *branch entry* — playback takes that road and keeps
+ * going past the container, which is the one thing the state preview can't show you by selecting a
+ * row. Those rows say so in words; ordinary rows keep the cluster quiet with an icon.
+ */
+function RowPlayAction(props: { block: StoryBlock; active: boolean; onPlay: () => void }) {
+    const { t } = useTranslation();
+    const { block } = props;
+    // Rows with no runtime behaviour have no meaningful "play from here" — starting there would
+    // silently begin somewhere else.
+    if (block.kind === "note" || block.kind === "code" || block.kind === "invalid") {
+        return null;
+    }
+    const branchEntry = (block.kind === "nodeAction" && block.payload.action === "choiceOption")
+        || (block.kind === "control" && block.payload.control === "conditionBranch");
+    const label = branchEntry ? t("story.rows.playBranch") : t("story.rows.playFromRow");
+    return (
+        <button
+            type="button"
+            tabIndex={-1}
+            title={label}
+            aria-label={label}
+            className={[
+                "flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-2xs text-fg-muted transition-opacity hover:bg-fill hover:text-primary group-hover:pointer-events-auto group-hover:opacity-100",
+                props.active ? "opacity-100" : "pointer-events-none opacity-0",
+            ].join(" ")}
+            onClick={event => {
+                event.stopPropagation();
+                props.onPlay();
+            }}
+        >
+            <Play className="h-3 w-3" />
+            {branchEntry ? <span>{label}</span> : null}
+        </button>
     );
 }
 
@@ -468,11 +606,11 @@ function RailGuides({ depth, highlight }: { depth: number; highlight: boolean })
 }
 
 const CONTAINER_PILL_TONE: Record<StoryContainerHeaderInfo["role"], string> = {
-    condition: "border-[#b2a6c9]/40 bg-[#b2a6c9]/10 text-[#d0c8e0]",
-    branch: "border-[#b2a6c9]/40 bg-[#b2a6c9]/10 text-[#d0c8e0]",
-    group: "border-[#96b8a0]/40 bg-[#96b8a0]/10 text-[#bcd6c2]",
-    menu: "border-[#9bb7d8]/40 bg-[#9bb7d8]/10 text-[#c6d7ee]",
-    option: "border-[#9bb7d8]/40 bg-[#9bb7d8]/10 text-[#c6d7ee]",
+    condition: "border-binding/40 bg-binding/10 text-binding",
+    branch: "border-binding/40 bg-binding/10 text-binding",
+    group: "border-success/40 bg-success/10 text-success",
+    menu: "border-primary/40 bg-primary/10 text-primary",
+    option: "border-primary/40 bg-primary/10 text-primary",
     nvl: "border-edge bg-fill-subtle text-fg-muted",
 };
 
@@ -509,7 +647,7 @@ function conditionSummary(condition: unknown, scene: StoryScene, document: Story
     const value = condition as
         | { kind: "variable"; target: { scope: string; variableId?: string; storageKey?: string }; operator: string; value?: unknown }
         | { kind: "blueprint"; blueprintId: string }
-        | { kind: "expression"; source: string }
+        | { kind: "expression"; expression: { source: string } }
         | undefined;
     if (!value) {
         return t("story.condition.summarySet");
@@ -518,7 +656,7 @@ function conditionSummary(condition: unknown, scene: StoryScene, document: Story
         return t("story.condition.summaryGraph");
     }
     if (value.kind === "expression") {
-        return value.source || t("story.condition.summaryExpression");
+        return value.expression?.source || t("story.condition.summaryExpression");
     }
     const target = value.target;
     const name = target.scope === "scene"
@@ -554,7 +692,7 @@ function ConditionChip(props: {
         <>
             <button
                 type="button"
-                className="min-w-0 max-w-[240px] truncate rounded border border-edge bg-black/20 px-2 py-0.5 text-xs text-fg-muted transition-colors hover:border-primary/50 hover:text-fg"
+                className="min-w-0 max-w-[240px] truncate rounded border border-edge bg-fill-subtle px-2 py-0.5 text-xs text-fg-muted transition-colors hover:border-primary/50 hover:text-fg"
                 onClick={openPopover}
                 onMouseDown={event => event.stopPropagation()}
             >
@@ -599,7 +737,7 @@ function RepeatTimesField(props: { block: StoryBlock; onUpdatePayload: (payload:
                 onChange={event =>
                     props.onUpdatePayload({ ...payload, times: Math.max(0, Math.floor(Number(event.target.value) || 0)) })
                 }
-                className="w-14 rounded border border-edge bg-black/20 px-1.5 py-0.5 text-fg outline-none focus:border-primary/50"
+                className="w-14 rounded border border-edge bg-fill-subtle px-1.5 py-0.5 text-fg outline-none focus:border-primary/50"
             />
             <span>{t("story.repeat.times")}</span>
         </label>
@@ -686,15 +824,93 @@ function ContainerFooter(props: {
     );
 }
 
+/**
+ * The icon for a candidate, chosen from what the param is asking for. A speaker with nobody behind it
+ * gets the outline icon the picker uses, so picking one is never mistaken for picking a character.
+ */
+function candidateIcon(cursor: StoryCommandCursor, candidate: StoryCommandCandidate): { icon: typeof Hash; className?: string } | null {
+    if (cursor.kind !== "positional" && cursor.kind !== "paramValue") {
+        return null;
+    }
+    const [type] = paramTypes(cursor.param);
+    switch (type?.kind) {
+        case "asset":
+            return { icon: type.assetType === "audio" ? Music : type.assetType === "video" ? Video : Image };
+        case "character":
+            return candidate.free ? { icon: UserRoundPlus } : { icon: Hash, className: "text-primary/80" };
+        case "scene":
+            return { icon: Route };
+        case "variable":
+            return { icon: Variable };
+        default:
+            return null;
+    }
+}
+
+/**
+ * The grey `<Var Name>` that trails the caret on a command line.
+ *
+ * Rendered as a mirror of the typed text — the text itself repeated but invisible, then the hint —
+ * rather than by measuring the caret's pixel offset. Measuring would need a canvas metrics pass that
+ * re-runs on every keystroke and still drifts on font fallback (a CJK variable name is the case that
+ * breaks it); repeating the text lets the browser do the layout with the same font, in the same box,
+ * and the hint lands exactly where the next character would.
+ *
+ * Consequently the mirror must match the textarea's own metrics exactly: same `textStyle`, same zero
+ * padding, `whitespace-pre` so runs of spaces measure as typed, and `pointer-events-none` so a click
+ * anywhere still lands in the field beneath.
+ */
+function CommandGhostHint(props: { value: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext }) {
+    const { t } = useTranslation();
+    const ghost = useMemo(() => getCommandGhost(props.value, props.caret), [props.caret, props.value]);
+    // Why the line will not commit, if it will not. It outranks the hint: naming the next slot while
+    // the line is already broken answers a question the author is no longer asking.
+    const reason = useMemo(
+        () => getCommandLineReason(props.value, props.commandContext),
+        [props.commandContext, props.value],
+    );
+    if (!ghost && !reason) {
+        return null;
+    }
+    return (
+        <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 select-none overflow-hidden whitespace-pre"
+            style={props.textStyle}
+        >
+            {/* Invisible, not `opacity-0` on the whole span: only the copy of the typed text should be
+                hidden, and it still has to occupy its exact width to push what follows into place. */}
+            <span className="invisible">{props.value}</span>
+            {reason ? (
+                <span className="text-danger/80">{`  ${t(reason.key, reason.params)}`}</span>
+            ) : (
+                <span className="italic text-fg-subtle">{`<${t(`story.paramHint.${ghost!.hintKey}` as TranslationKey)}>`}</span>
+            )}
+        </span>
+    );
+}
+
 export function InsertRow(props: {
     mode: Extract<EditorMode, { kind: "insert" }>;
+    /** Nesting depth of where the new block will land, so the slot lines up under its future siblings. */
+    depth?: number;
     characters: Character[];
+    tempSpeakers: TempSpeakerRef[];
+    /** What a name typed on this line may refer to — the same view the resolver reads. */
+    commandContext: StoryCommandContext;
     inputRef: RefObject<HTMLTextAreaElement | null>;
     onValueChange: (value: string) => void;
     onCommitNarration: (focusNext: boolean) => void;
-    onCancelActionChooser: () => void;
+    /** Escape #1 — drop the candidates, keep the line. */
+    onDismissChooser: () => void;
+    /** Escape #2 — an uncommitted slot leaves nothing behind. */
+    onDiscardSlot: () => void;
+    /** Enter / Shift+Enter with no candidate to take: the line stands on its own or becomes invalid. */
+    onResolveLine: () => void;
+    onCommitInvalid: () => void;
     onChooseCommand: (commandId: string) => void;
     onChooseCharacter: (characterId: string) => void;
+    onChooseTempSpeaker: (name: string) => void;
     /** Backspace on the empty slot — dismiss it and step back to the row above. */
     onBackspaceEmpty: () => void;
 }) {
@@ -704,31 +920,137 @@ export function InsertRow(props: {
     const menuPlacement = useAutoMenuPlacement(menuAnchorRef, props.mode.chooser !== "none", 312);
     const pluginCommands = useStoryPluginActionCommands();
     const actionOptions = useMemo<PaletteActionCommand[]>(
-        () => [...ACTION_COMMANDS, ...pluginCommands]
-            .map(command => localizeActionCommand(command, t))
-            .filter(command => actionCommandMatchesQuery(command, chooserQuery)),
+        () => searchActionCommands(
+            [...ACTION_COMMANDS, ...pluginCommands].map(command => localizeActionCommand(command, t)),
+            chooserQuery,
+        ),
         [chooserQuery, pluginCommands, t],
     );
-    const characterOptions = useMemo(() => getCharacterOptions(props.characters, chooserQuery), [props.characters, chooserQuery]);
+    const characterOptions = useMemo(
+        () => getSpeakerCandidates(props.characters, props.tempSpeakers, chooserQuery),
+        [chooserQuery, props.characters, props.tempSpeakers],
+    );
     const actionMenu = useActionCommandMenuState(actionOptions);
     const characterMenu = useCharacterPickerState(characterOptions);
     const textStyle = useStoryEditorTextStyle();
 
+    // Where the caret is decides what the slot offers, so it has to be state: `/bg fo|` asks for an
+    // image, `/bg forest_day t=|` for a transition, and only the caret tells them apart.
+    const [caret, setCaret] = useState(props.mode.value.length);
+    const cursor = useMemo(() => getCommandCursor(props.mode.value, caret), [caret, props.mode.value]);
+    // `form=` can only list the forms of the character this line already named, so the candidates need
+    // the args resolved so far.
+    const resolvedArgs = useMemo(() => {
+        const line = parseCommandLine(props.mode.value);
+        return line.kind === "command" && line.def ? resolveCommandLine(line, props.commandContext).args : {};
+    }, [props.commandContext, props.mode.value]);
+    const argItems = useMemo<StoryCandidateItem[]>(() => {
+        if (cursor.kind !== "positional" && cursor.kind !== "paramValue" && cursor.kind !== "paramName") {
+            return [];
+        }
+        return getCommandCandidates(cursor, props.commandContext, resolvedArgs).map((candidate, index) => {
+            const icon = candidateIcon(cursor, candidate);
+            return {
+                // Values are not unique on their own — two assets may share a name.
+                key: `${index}:${candidate.value}`,
+                value: candidate.value,
+                label: candidate.label,
+                detail: candidate.detail,
+                icon: icon?.icon,
+                iconClassName: icon?.className,
+                tag: candidate.free ? t("story.rows.tempSpeaker") : undefined,
+                ...(candidate.free ? { free: true as const } : {}),
+            };
+        });
+    }, [cursor, props.commandContext, resolvedArgs, t]);
+    // The candidates decide the highlight along with the cursor: an untyped slot and a slot whose best
+    // offer is the author's own text both have to leave Enter meaning "submit". See `defaultHighlights`.
+    const argMenu = useStoryCandidateMenuState(argItems, defaultHighlights(cursor, argItems));
+
+    /**
+     * The argument menu owns the slot whenever the caret is past the command name.
+     *
+     * An empty list still opens when the author typed something a param *could* have matched — that is
+     * the "no matches" the speaker picker also shows. It stays shut for a param with nothing to
+     * enumerate (a duration, a colour), where "no matches" would be nonsense, and at a `k=` position,
+     * where an empty list means every param is already given and there is nothing left to say.
+     */
+    const argValuePosition = cursor.kind === "positional" || cursor.kind === "paramValue";
+    const argMenuOpen = props.mode.chooser === "action"
+        && (cursor.kind === "paramName" ? argItems.length > 0
+            : argValuePosition && (argItems.length > 0 || (cursor.query.length > 0 && hasCandidateSource(cursor.param))));
+    const actionMenuOpen = props.mode.chooser === "action" && cursor.kind === "commandName";
+
+    /**
+     * Replace the token under the caret and put the caret after what was written. The slot's value is
+     * controlled, so the caret has to be restored by hand once React has rendered the new text.
+     */
+    const applyCompletion = (text: string, replace: { start: number; end: number }) => {
+        const value = props.mode.value;
+        const next = value.slice(0, replace.start) + text + value.slice(replace.end);
+        const nextCaret = replace.start + text.length;
+        props.onValueChange(next);
+        setCaret(nextCaret);
+        window.requestAnimationFrame(() => props.inputRef.current?.setSelectionRange(nextCaret, nextCaret));
+    };
+
+    const takeArgCandidate = (item: StoryCandidateItem) => {
+        const completion = completionFor(cursor, item.value);
+        if (completion) {
+            applyCompletion(completion.text, completion.replace);
+        }
+    };
+
+    /**
+     * Taking a command from the menu completes the line rather than committing it — but only for a
+     * command that has arguments to go on and fill. A command with no grammar has nothing more to say,
+     * so it commits exactly as it does today; `/note` and `/imageCreate` keep their behaviour.
+     */
+    const chooseCommandCandidate = (commandId: string) => {
+        const def = getCommandDef(commandId);
+        if (def && def.params.length > 0) {
+            applyCompletion(`/${def.token} `, { start: 0, end: props.mode.value.length });
+            return;
+        }
+        props.onChooseCommand(commandId);
+    };
+
     return (
-        <div className="relative grid min-h-[40px] grid-cols-[36px_28px_1fr] items-start pr-3">
-            <div className="pt-2 text-right text-[12px] text-fg-subtle">+</div>
-            <div className="flex justify-center pt-2">
+        <div className="relative grid min-h-[35px] grid-cols-[36px_28px_1fr] items-start border-l-2 border-transparent pr-3">
+            <div aria-hidden />
+            <div className="flex justify-center pt-1">
                 <Plus className="h-4 w-4 text-primary" />
             </div>
-            <div ref={menuAnchorRef} className="relative py-1.5">
+            <div ref={menuAnchorRef} className="relative min-w-0 py-1">
+                {/* Mirror a row's content column so the slot lines up with its future siblings: guide
+                    rails + depth indent, then a badge-sized spacer before the field (rows reserve the
+                    same 24px + gap, whether they show a badge or hide it). */}
+                <RailGuides depth={props.depth ?? 0} highlight={false} />
+                <div style={{ paddingLeft: (props.depth ?? 0) * RAIL_STEP }}>
+                <div className="flex min-h-[27px] items-center gap-2">
+                <span className="h-6 w-6 shrink-0" aria-hidden />
+                {/* The ghost hint sits in a wrapper around the textarea rather than the row's own
+                    anchor, so it is positioned against the field's box and inherits its exact metrics.
+                    `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
+                <div className="relative flex min-w-0 flex-1">
+                <CommandGhostHint value={props.mode.value} caret={caret} textStyle={textStyle} commandContext={props.commandContext} />
                 <textarea
                     ref={props.inputRef}
-                    className="min-h-[30px] w-full resize-none rounded border border-primary/40 bg-black/30 px-2 py-1 text-fg outline-none placeholder:italic placeholder:text-fg-subtle"
+                    // Same in-place surface as an editing row (see TextEditBox): the new line reads as a
+                    // line being typed, not a widget dropped into the list — which is what lets narration's
+                    // Enter fall into this slot without the text visibly jumping.
+                    className="relative min-h-[20px] w-full resize-none bg-transparent px-0 py-0 text-fg outline-none placeholder:italic placeholder:text-fg-subtle"
                     style={textStyle}
                     rows={1}
                     value={props.mode.value}
                     placeholder={t("story.rows.insertPlaceholder")}
-                    onChange={event => props.onValueChange(event.target.value)}
+                    onChange={event => {
+                        setCaret(event.target.selectionStart ?? event.target.value.length);
+                        props.onValueChange(event.target.value);
+                    }}
+                    // Fires on caret moves as well as selections — the slot has to follow the caret,
+                    // not just the text, or clicking back into `/bg |forest` would still offer transitions.
+                    onSelect={event => setCaret((event.target as HTMLTextAreaElement).selectionStart ?? 0)}
                     onBlur={() => {
                         if (props.mode.chooser === "none") {
                             props.onCommitNarration(false);
@@ -740,71 +1062,126 @@ export function InsertRow(props: {
                             props.onBackspaceEmpty();
                             return;
                         }
+                        // Escape is one ladder, one rung per press: candidates first, then the slot.
+                        // It never commits anything — that was the old behaviour that turned a
+                        // half-typed `/set` into a line of prose the author never wrote.
                         if (event.key === "Escape") {
                             event.preventDefault();
-                            props.mode.chooser === "action" ? props.onCancelActionChooser() : props.onCommitNarration(false);
+                            props.mode.chooser === "none" ? props.onDiscardSlot() : props.onDismissChooser();
                             return;
                         }
-                        if (props.mode.chooser === "action") {
-                            if (event.key === "Tab") {
+                        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                            if (argMenuOpen) {
                                 event.preventDefault();
-                                actionMenu.moveCategory(event.shiftKey ? -1 : 1);
+                                argMenu.move(event.key === "ArrowDown" ? 1 : -1);
                                 return;
                             }
-                            if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-                                event.preventDefault();
-                                actionMenu.moveCategory(event.key === "ArrowLeft" ? -1 : 1);
-                                return;
-                            }
-                            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                            if (actionMenuOpen) {
                                 event.preventDefault();
                                 actionMenu.moveCommand(event.key === "ArrowDown" ? 1 : -1);
                                 return;
                             }
+                            if (props.mode.chooser === "character") {
+                                event.preventDefault();
+                                characterMenu.moveCharacter(event.key === "ArrowDown" ? 1 : -1);
+                                return;
+                            }
                         }
-                        if (props.mode.chooser === "character" && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+                        // Tab and Enter both take the highlight. Keeping them identical here is the
+                        // point: the highlight is the pointer, so whichever key the author reaches for
+                        // does what the menu is showing. Tab no longer cycles categories.
+                        const takeHighlighted = () => {
+                            if (argMenuOpen) {
+                                // No highlight is the answer at a `k=` position: Enter falls through and
+                                // submits the line instead of grabbing `t=`.
+                                if (!argMenu.activeItem) {
+                                    return false;
+                                }
+                                takeArgCandidate(argMenu.activeItem);
+                                return true;
+                            }
+                            if (actionMenuOpen) {
+                                const command = actionMenu.activeCommand;
+                                if (!command) {
+                                    return false;
+                                }
+                                chooseCommandCandidate(command.id);
+                                return true;
+                            }
+                            if (props.mode.chooser === "character") {
+                                const candidate = characterMenu.activeCharacter;
+                                if (!candidate) {
+                                    return false;
+                                }
+                                candidate.kind === "character"
+                                    ? props.onChooseCharacter(candidate.character.profile.getId())
+                                    : props.onChooseTempSpeaker(candidate.name);
+                                return true;
+                            }
+                            return false;
+                        };
+                        if (event.key === "Tab") {
                             event.preventDefault();
-                            characterMenu.moveCharacter(event.key === "ArrowDown" ? 1 : -1);
+                            if (takeHighlighted()) {
+                                return;
+                            }
+                            // Tab advances *within* the row. With nothing highlighted — a `k=` position,
+                            // where Enter submits instead — it still takes the first candidate, which is
+                            // what walks the caret on to the next argument.
+                            if (argMenuOpen && argItems.length > 0) {
+                                takeArgCandidate(argItems[0]);
+                            }
                             return;
                         }
                         if (event.key === "Enter") {
                             event.preventDefault();
+                            // Shift+Enter always ends the line and opens a blank one. On a `#` line
+                            // there is no dialogue to keep, so it lands as invalid rather than as a
+                            // speaker with nothing to say.
                             if (event.shiftKey) {
+                                props.mode.chooser === "character" ? props.onCommitInvalid() : props.onResolveLine();
                                 return;
                             }
-                            if (props.mode.chooser === "action") {
-                                const command = actionMenu.activeCommand;
-                                command ? props.onChooseCommand(command.id) : props.onCommitNarration(true);
-                                return;
+                            if (!takeHighlighted()) {
+                                props.onResolveLine();
                             }
-                            if (props.mode.chooser === "character") {
-                                const character = characterMenu.activeCharacter;
-                                character ? props.onChooseCharacter(character.profile.getId()) : props.onCommitNarration(true);
-                                return;
-                            }
-                            props.onCommitNarration(true);
                         }
                     }}
                 />
-                {props.mode.chooser === "action" ? (
+                </div>
+                </div>
+                </div>
+                {actionMenuOpen ? (
                     <ActionCommandMenu
                         categories={actionMenu.visibleCategories}
                         activeCategoryId={actionMenu.activeCategoryId}
                         activeCommandId={actionMenu.activeCommand?.id ?? null}
                         onSelectCategory={actionMenu.selectCategory}
                         onHighlightCommand={actionMenu.selectCommand}
-                        onChoose={props.onChooseCommand}
-                        onCancel={props.onCancelActionChooser}
+                        onChoose={chooseCommandCandidate}
+                        onCancel={props.onDismissChooser}
+                        placement={menuPlacement}
+                    />
+                ) : null}
+                {argMenuOpen ? (
+                    <StoryCommandCandidateMenu
+                        items={argItems}
+                        activeKey={argMenu.activeItem?.key ?? null}
+                        onHighlight={argMenu.selectItem}
+                        onChoose={takeArgCandidate}
+                        onCancel={props.onDismissChooser}
                         placement={menuPlacement}
                     />
                 ) : null}
                 {props.mode.chooser === "character" ? (
                     <CharacterPicker
                         characters={characterOptions}
-                        activeCharacterId={characterMenu.activeCharacter?.profile.getId() ?? null}
+                        activeCharacterId={characterMenu.activeCharacter?.key ?? null}
                         onHighlight={characterMenu.selectCharacter}
-                        onChoose={props.onChooseCharacter}
-                        onClear={() => props.onCommitNarration(false)}
+                        onChoose={candidate => candidate.kind === "character"
+                            ? props.onChooseCharacter(candidate.character.profile.getId())
+                            : props.onChooseTempSpeaker(candidate.name)}
+                        onClear={props.onDismissChooser}
                         placement={menuPlacement}
                     />
                 ) : null}
@@ -813,12 +1190,53 @@ export function InsertRow(props: {
     );
 }
 
-function getCharacterOptions(characters: Character[], query: string) {
-    const normalizedQuery = query.trim().toLowerCase();
-    return characters.filter(character => {
-        const name = character.profile.getName().toLowerCase();
-        return !normalizedQuery || name.includes(normalizedQuery);
-    });
+/**
+ * A speaker the picker can offer: a real Studio character, or a bare name (one already used
+ * elsewhere in the story, or the one being typed right now).
+ */
+export type SpeakerCandidate =
+    | { key: string; kind: "character"; name: string; character: Character }
+    | { key: string; kind: "temp"; name: string };
+
+/** Temp-speaker keys cannot collide with a character's UUID, which has no ':'. */
+const tempSpeakerKey = (name: string) => `name:${name}`;
+
+/**
+ * Candidates for `#…`, ordered so the default highlight is the right answer: real characters first,
+ * then names already used in this story, then — always — the name being typed.
+ *
+ * That last entry is why this list is never empty, and it is the whole trick: "nothing matched" stops
+ * being a state with its own rules. An unknown name is just a candidate you pick like any other, so
+ * Tab and Enter mean one thing here rather than two.
+ */
+export function getSpeakerCandidates(characters: Character[], tempSpeakers: TempSpeakerRef[], query: string): SpeakerCandidate[] {
+    const typed = query.trim();
+    const needle = typed.toLowerCase();
+    const candidates: SpeakerCandidate[] = [];
+    const seen = new Set<string>();
+
+    for (const character of characters) {
+        const name = character.profile.getName();
+        if (needle && !name.toLowerCase().includes(needle)) {
+            continue;
+        }
+        candidates.push({ key: character.profile.getId(), kind: "character", name, character });
+        seen.add(name.toLowerCase());
+    }
+    for (const speaker of tempSpeakers) {
+        if (needle && !speaker.name.toLowerCase().includes(needle)) {
+            continue;
+        }
+        if (seen.has(speaker.name.toLowerCase())) {
+            continue;
+        }
+        candidates.push({ key: tempSpeakerKey(speaker.name), kind: "temp", name: speaker.name });
+        seen.add(speaker.name.toLowerCase());
+    }
+    if (typed && !seen.has(needle)) {
+        candidates.push({ key: tempSpeakerKey(typed), kind: "temp", name: typed });
+    }
+    return candidates;
 }
 
 type VisibleActionCommandCategory = ActionCommandCategory & {
@@ -906,17 +1324,6 @@ function useActionCommandMenuState(options: PaletteActionCommand[]) {
         setActiveCommandId(commandId);
     };
 
-    const moveCategory = (direction: -1 | 1) => {
-        if (visibleCategories.length === 0) {
-            return;
-        }
-        const currentIndex = Math.max(0, visibleCategories.findIndex(category => category.id === activeCategoryId));
-        const nextIndex = (currentIndex + direction + visibleCategories.length) % visibleCategories.length;
-        const nextCategory = visibleCategories[nextIndex];
-        setActiveCategoryId(nextCategory.id);
-        setActiveCommandId(nextCategory.commands[0]?.id ?? null);
-    };
-
     const moveCommand = (direction: -1 | 1) => {
         if (!activeCategory || activeCategory.commands.length === 0) {
             return;
@@ -932,7 +1339,6 @@ function useActionCommandMenuState(options: PaletteActionCommand[]) {
         activeCommand,
         selectCategory,
         selectCommand,
-        moveCategory,
         moveCommand,
     };
 }
@@ -976,7 +1382,7 @@ function ActionCommandMenu(props: {
 
     return (
         <div
-            className={["absolute left-0 z-50 w-[420px] overflow-hidden rounded-xl border border-edge bg-[#181b20] shadow-xl", getPopupPlacementClass(props.placement)].join(" ")}
+            className={["absolute left-0 z-50 w-[420px] overflow-hidden rounded-xl border border-edge bg-surface-raised shadow-xl", getPopupPlacementClass(props.placement)].join(" ")}
             onMouseDown={event => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -1000,7 +1406,7 @@ function ActionCommandMenu(props: {
                                     data-action-category-id={category.id}
                                     className={[
                                         "relative flex h-9 min-w-[74px] flex-none cursor-default items-center justify-center px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
-                                        active ? "bg-[#151922] text-white" : "text-fg-muted hover:bg-fill-subtle hover:text-fg",
+                                        active ? "bg-surface-raised text-fg" : "text-fg-muted hover:bg-fill-subtle hover:text-fg",
                                     ].join(" ")}
                                     onMouseDown={() => props.onSelectCategory(category.id)}
                                 >
@@ -1028,7 +1434,7 @@ function ActionCommandMenu(props: {
                                     data-action-command-id={command.id}
                                     className={[
                                         "flex w-full items-center gap-2 rounded px-2 py-2 text-left transition-colors",
-                                        active ? "bg-primary/15 text-white" : "hover:bg-fill",
+                                        active ? "bg-primary/15 text-fg" : "hover:bg-fill",
                                     ].join(" ")}
                                     onMouseDown={() => props.onChoose(command.id)}
                                     onMouseEnter={() => props.onHighlightCommand(command.id)}
@@ -1048,29 +1454,29 @@ function ActionCommandMenu(props: {
     );
 }
 
-function useCharacterPickerState(characters: Character[]) {
+function useCharacterPickerState(candidates: SpeakerCandidate[]) {
     const [activeCharacterId, setActiveCharacterId] = useState<string | null>(null);
-    const activeCharacter = characters.find(character => character.profile.getId() === activeCharacterId) ?? characters[0] ?? null;
+    const activeCharacter = candidates.find(candidate => candidate.key === activeCharacterId) ?? candidates[0] ?? null;
 
     useEffect(() => {
-        if (characters.length === 0) {
+        if (candidates.length === 0) {
             setActiveCharacterId(null);
             return;
         }
-        setActiveCharacterId(current => characters.some(character => character.profile.getId() === current) ? current : characters[0].profile.getId());
-    }, [characters]);
+        setActiveCharacterId(current => candidates.some(candidate => candidate.key === current) ? current : candidates[0].key);
+    }, [candidates]);
 
     const selectCharacter = (characterId: string) => {
         setActiveCharacterId(characterId);
     };
 
     const moveCharacter = (direction: -1 | 1) => {
-        if (characters.length === 0) {
+        if (candidates.length === 0) {
             return;
         }
-        const currentIndex = Math.max(0, characters.findIndex(character => character.profile.getId() === activeCharacter?.profile.getId()));
-        const nextIndex = (currentIndex + direction + characters.length) % characters.length;
-        setActiveCharacterId(characters[nextIndex].profile.getId());
+        const currentIndex = Math.max(0, candidates.findIndex(candidate => candidate.key === activeCharacter?.key));
+        const nextIndex = (currentIndex + direction + candidates.length) % candidates.length;
+        setActiveCharacterId(candidates[nextIndex].key);
     };
 
     return {
@@ -1081,12 +1487,15 @@ function useCharacterPickerState(characters: Character[]) {
 }
 
 function CharacterPicker(props: {
-    characters: Character[];
+    characters: SpeakerCandidate[];
     activeCharacterId: string | null;
-    onHighlight: (characterId: string) => void;
-    onChoose: (characterId: string) => void;
+    onHighlight: (candidateKey: string) => void;
+    onChoose: (candidate: SpeakerCandidate) => void;
     onClear: () => void;
     placement: PopupPlacement;
+    /** Rendered as a trailing action when the typed name is not already a character. */
+    createLabel?: string | null;
+    onCreate?: () => void;
 }) {
     const { t } = useTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
@@ -1105,7 +1514,7 @@ function CharacterPicker(props: {
     return (
         <div
             ref={listRef}
-            className={["absolute left-0 z-50 max-h-72 w-[320px] overflow-auto rounded-xl border border-edge bg-[#181b20] p-1 shadow-xl", getPopupPlacementClass(props.placement)].join(" ")}
+            className={["absolute left-0 z-50 max-h-72 w-[320px] overflow-auto rounded-xl border border-edge bg-surface-raised p-1 shadow-xl", getPopupPlacementClass(props.placement)].join(" ")}
             onMouseDown={event => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -1116,103 +1525,204 @@ function CharacterPicker(props: {
                     {t("story.rows.noCharacterFound")}
                 </button>
             ) : (
-                props.characters.map(character => {
-                    const characterId = character.profile.getId();
-                    const active = characterId === props.activeCharacterId;
+                props.characters.map(candidate => {
+                    const active = candidate.key === props.activeCharacterId;
+                    const temp = candidate.kind === "temp";
                     return (
                         <button
-                            key={characterId}
+                            key={candidate.key}
                             type="button"
                             role="option"
                             aria-selected={active}
-                            data-character-id={characterId}
+                            data-character-id={candidate.key}
                             className={[
                                 "flex w-full items-center gap-2 rounded px-2 py-2 text-left transition-colors",
-                                active ? "bg-primary/15 text-white" : "hover:bg-fill",
+                                active ? "bg-primary/15 text-fg" : "hover:bg-fill",
                             ].join(" ")}
-                            onMouseEnter={() => props.onHighlight(characterId)}
-                            onMouseDown={() => props.onChoose(characterId)}
+                            onMouseEnter={() => props.onHighlight(candidate.key)}
+                            onMouseDown={() => props.onChoose(candidate)}
                         >
-                            <Hash className={["h-4 w-4 shrink-0", active ? "text-primary" : "text-primary/80"].join(" ")} />
-                            <span className="truncate text-sm text-fg">{character.profile.getName()}</span>
+                            {/* A temp speaker is a name with nobody behind it — it gets the outline icon
+                                and a tag, so picking one is never mistaken for picking a real character. */}
+                            {temp
+                                ? <UserRoundPlus className={["h-4 w-4 shrink-0", active ? "text-fg-muted" : "text-fg-subtle"].join(" ")} />
+                                : <Hash className={["h-4 w-4 shrink-0", active ? "text-primary" : "text-primary/80"].join(" ")} />}
+                            <span className="truncate text-sm text-fg">{candidate.name}</span>
+                            {temp ? <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{t("story.rows.tempSpeaker")}</span> : null}
                         </button>
                     );
                 })
             )}
+            {props.createLabel ? (
+                <>
+                    <div className="my-1 h-px bg-edge" />
+                    <button
+                        type="button"
+                        className="flex w-full items-center gap-2 rounded px-2 py-2 text-left transition-colors hover:bg-fill"
+                        onMouseDown={props.onCreate}
+                    >
+                        <UserRoundPlus className="h-4 w-4 shrink-0 text-primary" />
+                        <span className="truncate text-sm text-fg">{props.createLabel}</span>
+                    </button>
+                </>
+            ) : null}
         </div>
     );
 }
 
+/**
+ * The speaker nametag on a dialogue row: a text field, not a menu.
+ *
+ * Clicking it puts the caret in the name with the same candidate list the `#` slot uses, which is what
+ * gives a temp speaker a way to be renamed — there is no character record to go and edit, so the
+ * nametag itself has to be the place you edit it. Committing a name that matches nothing keeps it as a
+ * temp speaker; "Create character" turns it into a real one.
+ */
 function CharacterSelectTrigger(props: {
     characters: Character[];
+    tempSpeakers: TempSpeakerRef[];
     characterId: string | undefined;
-    onChoose: (characterId: string | undefined) => void;
+    speakerName: string | undefined;
+    onChoose: (speaker: { characterId: string } | { speakerName: string } | null) => void;
+    onCreateCharacter: (name: string) => void;
     className?: string;
     style?: CSSProperties;
 }) {
+    const { t } = useTranslation();
     const rootRef = useRef<HTMLDivElement | null>(null);
-    const [open, setOpen] = useState(false);
-    const picker = useCharacterPickerState(props.characters);
-    const placement = useAutoMenuPlacement(rootRef, open, 288);
-    const label = getCharacterName(props.characters, props.characterId);
-    const unassigned = !props.characterId;
+    const inputRef = useRef<HTMLInputElement | null>(null);
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState("");
+    const placement = useAutoMenuPlacement(rootRef, editing, 288);
 
-    useEffect(() => {
-        if (open && props.characterId) {
-            picker.selectCharacter(props.characterId);
+    const committedName = props.characterId
+        ? getCharacterName(props.characters, props.characterId)
+        : props.speakerName ?? "";
+    const candidates = useMemo(
+        () => getSpeakerCandidates(props.characters, props.tempSpeakers, draft),
+        [draft, props.characters, props.tempSpeakers],
+    );
+    const picker = useCharacterPickerState(candidates);
+    const trimmed = draft.trim();
+    // Only worth offering when the name is genuinely new — otherwise it is a duplicate of a candidate.
+    const canCreate = Boolean(trimmed) && !candidates.some(candidate => candidate.kind === "character" && candidate.name.toLowerCase() === trimmed.toLowerCase());
+
+    const close = () => {
+        setEditing(false);
+        setDraft("");
+    };
+
+    const beginEditing = () => {
+        setDraft(committedName);
+        setEditing(true);
+        window.requestAnimationFrame(() => inputRef.current?.select());
+    };
+
+    const choose = (candidate: SpeakerCandidate) => {
+        props.onChoose(candidate.kind === "character"
+            ? { characterId: candidate.character.profile.getId() }
+            : { speakerName: candidate.name });
+        close();
+    };
+
+    /** Enter with nothing highlighted still has to mean something: keep whatever was typed. */
+    const commitDraft = () => {
+        const highlighted = picker.activeCharacter;
+        if (highlighted) {
+            choose(highlighted);
+            return;
         }
-    }, [open, props.characterId]);
+        props.onChoose(trimmed ? { speakerName: trimmed } : null);
+        close();
+    };
 
     useEffect(() => {
-        if (!open) {
+        if (!editing) {
             return;
         }
         const handlePointerDown = (event: PointerEvent) => {
             if (!rootRef.current?.contains(event.target as Node)) {
-                setOpen(false);
+                close();
             }
         };
         window.addEventListener("pointerdown", handlePointerDown);
         return () => window.removeEventListener("pointerdown", handlePointerDown);
-    }, [open]);
+    }, [editing]);
+
+    if (!editing) {
+        const unassigned = !committedName;
+        return (
+            <div ref={rootRef} className="relative shrink-0 overflow-visible">
+                <button
+                    type="button"
+                    className={[
+                        "flex h-full min-h-[28px] max-w-full items-center truncate rounded px-1 py-0.5 text-left text-sm hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
+                        unassigned ? "italic text-fg-subtle hover:text-primary" : props.speakerName ? "text-fg-muted" : "text-primary",
+                        props.className ?? "",
+                    ].join(" ")}
+                    style={props.style}
+                    onMouseDown={event => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }}
+                    onClick={event => {
+                        event.stopPropagation();
+                        beginEditing();
+                    }}
+                >
+                    <span className="truncate">{unassigned ? getCharacterName(props.characters, undefined) : committedName}</span>
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div ref={rootRef} className="relative shrink-0 overflow-visible">
-            <button
-                type="button"
+            <input
+                ref={inputRef}
+                value={draft}
                 className={[
-                    "flex h-full min-h-[28px] max-w-full items-center truncate rounded px-1 py-0.5 text-left text-sm hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
-                    unassigned ? "italic text-fg-subtle hover:text-primary" : "text-primary",
+                    "h-full min-h-[28px] w-[128px] rounded border border-primary/50 bg-surface-sunken px-1 py-0.5 text-sm text-fg outline-none",
                     props.className ?? "",
                 ].join(" ")}
                 style={props.style}
-                onMouseDown={event => {
-                    event.preventDefault();
+                onChange={event => setDraft(event.target.value)}
+                onMouseDown={event => event.stopPropagation()}
+                onKeyDown={event => {
                     event.stopPropagation();
+                    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                        event.preventDefault();
+                        picker.moveCharacter(event.key === "ArrowDown" ? 1 : -1);
+                        return;
+                    }
+                    // Same contract as the `#` slot: the highlight is what Tab and Enter both take.
+                    if (event.key === "Tab" || event.key === "Enter") {
+                        event.preventDefault();
+                        commitDraft();
+                        return;
+                    }
+                    if (event.key === "Escape") {
+                        event.preventDefault();
+                        close();
+                    }
                 }}
-                onClick={event => {
-                    event.stopPropagation();
-                    setOpen(current => !current);
+            />
+            <CharacterPicker
+                characters={candidates}
+                activeCharacterId={picker.activeCharacter?.key ?? null}
+                onHighlight={picker.selectCharacter}
+                onChoose={choose}
+                onClear={() => {
+                    props.onChoose(null);
+                    close();
                 }}
-            >
-                <span className="truncate">{label}</span>
-            </button>
-            {open ? (
-                <CharacterPicker
-                    characters={props.characters}
-                    activeCharacterId={picker.activeCharacter?.profile.getId() ?? null}
-                    onHighlight={picker.selectCharacter}
-                    onChoose={characterId => {
-                        props.onChoose(characterId);
-                        setOpen(false);
-                    }}
-                    onClear={() => {
-                        props.onChoose(undefined);
-                        setOpen(false);
-                    }}
-                    placement={placement}
-                />
-            ) : null}
+                placement={placement}
+                createLabel={canCreate ? t("story.rows.createCharacter", { name: trimmed }) : null}
+                onCreate={() => {
+                    props.onCreateCharacter(trimmed);
+                    close();
+                }}
+            />
         </div>
     );
 }
@@ -1312,13 +1822,36 @@ function toSortableTransform(transform: { x: number; y: number } | null): string
     return `translate3d(0, ${transform.y}px, 0)`;
 }
 
+/**
+ * A text row's read-only body, sized as a click-to-edit surface (filled *and* empty rows — an empty
+ * one just opens with the caret clamped to 0). It fills the row's height (`self-stretch`) and its
+ * remaining width (`flex-1`) while keeping the glyphs vertically centred, so a click anywhere on the
+ * line — the blank tail, or the strip above/below the text — lands the caret in the text rather than
+ * selecting the row. `data-story-row-text` + `nl-selectable-text` are what let the mouseup gesture read
+ * the click's unit offset out of it (see `finishTextSelectGesture`). Runs stay inside an inline
+ * `RichTextView` child so multi-run rich text still wraps normally.
+ */
+function TextClickTarget(props: { style?: CSSProperties; className?: string; children: ReactNode }) {
+    return (
+        <div
+            className={["flex min-w-0 flex-1 cursor-text items-center self-stretch nl-selectable-text", props.className].filter(Boolean).join(" ")}
+            style={props.style}
+            data-story-row-text=""
+        >
+            {props.children}
+        </div>
+    );
+}
+
 function BlockPreview(props: {
     block: StoryBlock;
     scene: StoryScene;
     document: StoryDocument;
     characters: Character[];
     onSetDialogueCharacter: (characterId: string | undefined) => void;
-    onTextDoubleClick: () => void;
+    tempSpeakers: TempSpeakerRef[];
+    onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
+    onCreateCharacter: (name: string) => void;
 }) {
     const { t } = useTranslation();
     const block = props.block;
@@ -1327,32 +1860,42 @@ function BlockPreview(props: {
     if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
         const hasValue = Boolean(text?.value) || Boolean(text?.rich && text.rich.length > 0);
         return (
-            <div className="flex min-w-0 items-baseline gap-2 text-sm">
+            <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch text-sm">
                 <CharacterSelectTrigger
                     characters={props.characters}
+                    tempSpeakers={props.tempSpeakers}
                     characterId={block.payload.characterId}
-                    onChoose={props.onSetDialogueCharacter}
+                    speakerName={block.payload.speakerName}
+                    onChoose={props.onSetSpeaker}
+                    onCreateCharacter={props.onCreateCharacter}
                     style={textStyle}
                 />
-                <span className={["min-w-0 flex-1 whitespace-pre-wrap break-words", hasValue ? "text-fg" : "italic text-fg-subtle"].join(" ")} style={textStyle} onDoubleClick={event => {
-                    event.stopPropagation();
-                    props.onTextDoubleClick();
-                }}>
-                    {hasValue && text ? <RichTextView segment={text} document={props.document} sceneId={props.scene.id} /> : t("story.rows.doubleClickDialogue")}
-                </span>
+                {hasValue && text ? (
+                    <TextClickTarget style={textStyle}>
+                        <RichTextView className="min-w-0 flex-1 whitespace-pre-wrap break-words text-fg" segment={text} document={props.document} sceneId={props.scene.id} />
+                    </TextClickTarget>
+                ) : (
+                    <TextClickTarget style={textStyle} className="italic text-fg-subtle">{getEmptyTextPlaceholder(block)}</TextClickTarget>
+                )}
             </div>
         );
     }
     if (text) {
         const hasValue = Boolean(text.value) || Boolean(text.rich && text.rich.length > 0);
         const note = block.kind === "note";
+        if (!hasValue) {
+            // Empty rows are click-to-edit too: the caret clamps to 0 in the empty editor, so the
+            // placeholder's own offset never matters — a single click just opens the line.
+            return (
+                <TextClickTarget style={textStyle} className={note ? "italic text-fg-muted" : "italic text-fg-subtle"}>
+                    {getEmptyTextPlaceholder(block)}
+                </TextClickTarget>
+            );
+        }
         return (
-            <span className={["min-w-0 flex-1 whitespace-pre-wrap break-words", note ? "italic text-fg-muted" : hasValue ? "text-fg" : "italic text-fg-subtle"].join(" ")} style={textStyle} onDoubleClick={event => {
-                event.stopPropagation();
-                props.onTextDoubleClick();
-            }}>
-                {hasValue ? <RichTextView segment={text} document={props.document} sceneId={props.scene.id} /> : getEmptyTextPlaceholder(block)}
-            </span>
+            <TextClickTarget style={textStyle} className={note ? "italic text-fg-muted" : "text-fg"}>
+                <RichTextView className="min-w-0 flex-1 whitespace-pre-wrap break-words" segment={text} document={props.document} sceneId={props.scene.id} />
+            </TextClickTarget>
         );
     }
     if (block.kind === "action" && block.payload.action === "setBackground") {
@@ -1370,7 +1913,76 @@ function BlockPreview(props: {
             />
         );
     }
+    if (block.kind === "invalid") {
+        // The muted fallback below would render this as a de-emphasized note — which is the one thing
+        // it must never look like. It is the author's text verbatim (monospace: it was a command), in
+        // danger, with the consequence stated: this row stops a build.
+        return (
+            <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                <span className="min-w-0 truncate font-mono text-sm text-danger">{block.payload.source}</span>
+                <span className="shrink-0 text-2xs text-danger/70">{t("story.rows.invalidHint")}</span>
+            </span>
+        );
+    }
     return <span className="min-w-0 flex-1 truncate text-sm text-fg-muted" style={textStyle}>{describeBlock(block, props.characters, props.scene, props.document.scenes)}</span>;
+}
+
+/**
+ * Share of the row width covered by the scrim that keeps the gutter, grip and label legible on top
+ * of the artwork. Fixed rather than label-driven so the seam lands in the same place down the list;
+ * `BACKGROUND_LABEL_MAX_WIDTH` truncates the label before it can reach the fade.
+ */
+const BACKGROUND_SCRIM_WIDTH = "56%";
+/** Softens the scrim's inner edge so it dissolves into the artwork instead of cutting a hard seam. */
+const BACKGROUND_SCRIM_MASK = "linear-gradient(to right, #000 68%, transparent)";
+/**
+ * The label's own cap, measured against the content column: the scrim's share of the row, less the
+ * gutter + grip + badge that sit ahead of the label. Kept a touch tighter than the fade's start so
+ * truncation always wins before the text hits thinning scrim.
+ */
+const BACKGROUND_LABEL_MAX_WIDTH = "calc(56% - 84px)";
+
+/**
+ * The picked background, painted across the whole row — gutter and drag grip included — with a
+ * translucent blurred panel holding the left side down so the text keeps its contrast. Rendered only
+ * for background rows with the inspector closed (its card carries its own picker), which also keeps
+ * the asset-url hook off every other row in the list.
+ *
+ * `bg-surface/75` rather than a literal black: on the dark theme it resolves to #0f1115 at 75%, but
+ * a fixed black would leave the light theme's near-black `fg` unreadable on top of it.
+ */
+function BackgroundRowArtwork({ payload, selected, active }: {
+    payload: Extract<StoryActionPayload, { action: "setBackground" }>;
+    selected: boolean;
+    active: boolean;
+}) {
+    const { url } = useAssetObjectUrl(payload.assetId ?? null);
+    const color = !payload.assetId && payload.color ? payload.color : null;
+    if (!url && !color) {
+        return null;
+    }
+    return (
+        <span className="pointer-events-none absolute inset-0 select-none overflow-hidden" aria-hidden>
+            {url ? (
+                <img src={url} alt="" draggable={false} className="h-full w-full object-cover object-center" />
+            ) : (
+                <span className="block h-full w-full" style={{ backgroundColor: color ?? undefined }} />
+            )}
+            <span
+                className="absolute inset-y-0 left-0 bg-surface/75 backdrop-blur-[3px]"
+                style={{
+                    width: BACKGROUND_SCRIM_WIDTH,
+                    maskImage: BACKGROUND_SCRIM_MASK,
+                    WebkitMaskImage: BACKGROUND_SCRIM_MASK,
+                }}
+            />
+            {selected ? (
+                <span className="absolute inset-0 bg-primary/25" />
+            ) : active ? (
+                <span className="absolute inset-0 bg-fill-subtle" />
+            ) : null}
+        </span>
+    );
 }
 
 function BackgroundBlockPreview({ payload }: { payload: Extract<StoryActionPayload, { action: "setBackground" }> }) {
@@ -1382,34 +1994,11 @@ function BackgroundBlockPreview({ payload }: { payload: Extract<StoryActionPaylo
         [context, isInitialized],
     );
     const asset = payload.assetId ? assetsService?.getAssets()[AssetType.Image]?.[payload.assetId] ?? null : null;
-    const { url } = useAssetObjectUrl(payload.assetId ?? null);
     const label = asset?.name ?? (payload.assetId ? t("story.background.missingImage") : payload.color || t("story.background.unassigned"));
-    const isColor = !payload.assetId && Boolean(payload.color);
 
     return (
         <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-fg-muted" style={textStyle}>
-            {payload.assetId ? (
-                <span className="h-5 w-8 shrink-0 overflow-hidden rounded border border-edge bg-surface">
-                    {url ? (
-                        <img
-                            src={url}
-                            alt=""
-                            className="h-full w-full object-cover"
-                            draggable={false}
-                        />
-                    ) : (
-                        <span className="flex h-full w-full items-center justify-center">
-                            <Image className="h-3 w-3 text-fg-subtle" />
-                        </span>
-                    )}
-                </span>
-            ) : isColor ? (
-                <span
-                    className="h-4 w-7 shrink-0 rounded border border-edge"
-                    style={{ backgroundColor: payload.color }}
-                />
-            ) : null}
-            <span className="min-w-0 truncate">
+            <span className="min-w-0 truncate" style={{ maxWidth: BACKGROUND_LABEL_MAX_WIDTH }}>
                 {t("story.rows.setBackground")} <span className={payload.assetId || payload.color ? "text-fg" : "italic text-fg-subtle"}>{label}</span>
             </span>
         </span>

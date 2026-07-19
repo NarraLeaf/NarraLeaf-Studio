@@ -14,6 +14,7 @@ import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { Select } from "@/lib/components/elements/Select";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
+import { motionSummary } from "./MotionSelector";
 import { createStoryMotionEditorTab } from "./StoryMotionEditorTab";
 import type { StoryMotionActionContext } from "./storyMotionTypes";
 import {
@@ -138,7 +139,7 @@ export function StoryMotionPicker(props: {
     }, [openEditorTab, props.actionContext]);
 
     return (
-        <div className="rounded-lg border border-edge bg-white/[0.025] p-2">
+        <div className="rounded-lg border border-edge bg-fill-subtle p-2">
             <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="text-xs font-medium text-fg-muted">{t("motion.storyMotion")}</div>
                 <button
@@ -175,13 +176,13 @@ export function StoryMotionPicker(props: {
                     </button>
                 </div>
             ) : (
-                <div className="rounded border border-dashed border-edge bg-black/10 p-3 text-xs text-fg-subtle">
+                <div className="rounded border border-dashed border-edge bg-fill-subtle p-3 text-xs text-fg-subtle">
                     {t("motion.picker.noMotionBound")}
                 </div>
             )}
 
             {pickerOpen ? (
-                <div className="mt-2 rounded-lg border border-edge bg-[#101216] p-2 shadow-xl">
+                <div className="mt-2 rounded-lg border border-edge bg-surface p-2 shadow-xl">
                     <div className="flex items-center gap-2">
                         <EnhancedInput
                             className="flex-1"
@@ -204,7 +205,7 @@ export function StoryMotionPicker(props: {
                             {t("common.create")}
                         </button>
                     </div>
-                    <div className="mt-2 max-h-56 overflow-auto rounded border border-white/[0.06]">
+                    <div className="mt-2 max-h-56 overflow-auto rounded border border-edge-subtle">
                         {filteredAssets.length === 0 ? (
                             <div className="p-4 text-xs text-fg-subtle">{t("motion.picker.noMatches")}</div>
                         ) : filteredAssets.map(asset => (
@@ -212,7 +213,7 @@ export function StoryMotionPicker(props: {
                                 key={asset.id}
                                 type="button"
                                 className={[
-                                    "flex w-full items-center gap-2 border-b border-white/[0.06] px-3 py-2 text-left last:border-b-0",
+                                    "flex w-full items-center gap-2 border-b border-edge-subtle px-3 py-2 text-left last:border-b-0",
                                     animationId === asset.id ? "bg-primary/10" : "hover:bg-fill-subtle",
                                 ].join(" ")}
                                 onClick={() => bindAsset(asset.id)}
@@ -234,12 +235,3 @@ export function StoryMotionPicker(props: {
     );
 }
 
-function motionSummary(asset: StoryAnimationAsset, t: UseTranslation["t"]): string {
-    const durationMs = getStoryMotionDurationMs(asset.timeline);
-    const tracks = asset.timeline?.tracks ?? [];
-    const labels = tracks
-        .slice(0, 3)
-        .map(track => t(`motion.propertyLabel.${track.property}`))
-        .join(", ");
-    return `${durationMs}ms${labels ? ` / ${labels}${tracks.length > 3 ? "..." : ""}` : ""}`;
-}

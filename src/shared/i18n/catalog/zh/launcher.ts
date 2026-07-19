@@ -67,6 +67,12 @@ export const launcher = {
         },
     },
     learning: {
-        placeholder: "这里将显示教程、文档和示例（占位）",
+        hint: "使用 NarraLeaf 创作所需的教程、示例与文档，链接会在浏览器中打开",
+        openInBrowser: "在浏览器中打开 {name}",
+        categories: {
+            tutorials: "教程",
+            examples: "示例",
+            docs: "文档",
+        },
     },
 } satisfies LocaleNamespace<"launcher">;

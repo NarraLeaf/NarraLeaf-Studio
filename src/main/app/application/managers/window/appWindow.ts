@@ -1,6 +1,7 @@
 import fs from "fs";
 import { AppEventToken } from "@shared/types/app";
 import { Namespace } from "@shared/types/ipc";
+import { IPCEventType } from "@shared/types/ipcEvents";
 import { App } from "@/app/app";
 import { WindowEventManager } from "./windowEvents";
 import { WindowInstanceConfig, WindowInstance } from "./windowInstance";
@@ -8,6 +9,9 @@ import { WindowIPC } from "./windowIPC";
 import { WindowProxy } from "./windowProxy";
 import { WindowUserHandlers } from "./windowUserHandlers";
 import { WindowProps, WindowAppType, WindowVisibilityStatus, WindowCloseResults, WindowControlPolicy } from "@shared/types/window";
+import { getWindowBackgroundColor } from "@/app/application/theme";
+import { applyTrafficLightPositionForZoom, applyZoomFactorToWebContents, windowTypeUsesZoom } from "@/app/application/zoom";
+import { ZOOM_PERCENT_DEFAULT, nextZoomPercent, normalizeZoomPercent } from "@shared/constants/zoom";
 import { decideWindowNavigation } from "./navigationGuard";
 
 export interface WindowConfig<T extends WindowAppType> {
@@ -25,9 +29,6 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         isolated: true,
         autoFocus: true,
         preload: null,
-        options: {
-            backgroundColor: "#fff",
-        }
     }
 
     private props: WindowProps[T];
@@ -37,11 +38,20 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
     private closeResult?: WindowCloseResults[T];
     private closeResultResolver?: (result: WindowCloseResults[T]) => void;
     private config: WindowConfig<T>;
+    private closeGuard?: (window: AppWindow<T>) => boolean;
+    private closeGuardBypassed: boolean = false;
 
     constructor(app: App, config: WindowConfig<T>, props: WindowProps[T]) {
         const windowConfig: WindowConfig<T> = {
             ...AppWindow.DefaultConfig,
             ...config,
+            options: {
+                // Paint-behind color for every Studio window, resolved from the
+                // current theme at creation time (kept live afterwards by the
+                // nativeTheme listener in baseApp).
+                backgroundColor: getWindowBackgroundColor(),
+                ...config.options,
+            },
         } as WindowConfig<T>;
 
         const instance = new WindowInstance(windowConfig);
@@ -130,6 +140,30 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         this.getBrowserWindow().close();
     }
 
+    /**
+     * Intercept close requests for this window, whichever way they arrive: the native
+     * traffic lights/close box, the renderer's title bar controls, or close() from main.
+     *
+     * Returning true swallows the close; the guard then owns the window's lifetime and must
+     * call forceClose() once it is done. Returning false lets the close proceed. The guard is
+     * skipped while the app is quitting, so it can never cancel a quit.
+     */
+    public setCloseGuard(guard: (window: AppWindow<T>) => boolean): void {
+        this.closeGuard = guard;
+    }
+
+    /**
+     * Close the window, ignoring any close guard. Safe to call after async work: the window may
+     * already be gone by then (app quit, crash), in which case this does nothing.
+     */
+    public forceClose(): void {
+        if (this.isClosed()) {
+            return;
+        }
+        this.closeGuardBypassed = true;
+        this.close();
+    }
+
     public closeWith(result: WindowCloseResults[T]): void {
         this.closeResult = result;
         this.close();
@@ -182,6 +216,10 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         this.getBrowserWindow().unmaximize();
     }
 
+    public focus(): void {
+        this.getBrowserWindow().focus();
+    }
+
     public getControl(): WindowVisibilityStatus {
         if (this.getBrowserWindow().isMinimized()) {
             return "minimized";
@@ -198,6 +236,36 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
 
     public onReady(fn: () => void): AppEventToken {
         return this.getEvents().onReady(fn);
+    }
+
+    /**
+     * Workspace load outcome, reported by the renderer once its project preflight settles
+     * (see `workspace.reportLoadResult`). Replace-style launches wait on this instead of
+     * `onReady`: a window can be "ready" showing the not-a-project error screen, and closing
+     * the opener then would trade a working workspace for a dead end.
+     */
+    private loadResult: boolean | null = null;
+    private loadResultCallbacks: Array<(ok: boolean) => void> = [];
+
+    public reportLoadResult(ok: boolean): void {
+        if (this.loadResult !== null) {
+            return; // First report wins; the preflight settles exactly once.
+        }
+        this.loadResult = ok;
+        const callbacks = this.loadResultCallbacks;
+        this.loadResultCallbacks = [];
+        for (const callback of callbacks) {
+            callback(ok);
+        }
+    }
+
+    /** Invoke `fn` with the load outcome - immediately if already reported. */
+    public onLoadResult(fn: (ok: boolean) => void): void {
+        if (this.loadResult !== null) {
+            fn(this.loadResult);
+            return;
+        }
+        this.loadResultCallbacks.push(fn);
     }
 
     public showWhenReady(): AppEventToken {
@@ -240,11 +308,99 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         this.prepareEvents();
     }
 
+    /** Re-read `ui.zoomPercent` and apply it. No-op for windows that don't zoom. */
+    public applyStoredZoom(): void {
+        if (!windowTypeUsesZoom(this.getWindowType())) {
+            return;
+        }
+        const percent = this.getApp().globalState.get("ui.zoomPercent");
+        try {
+            applyZoomFactorToWebContents(this.getWebContents(), percent);
+            // The traffic lights are drawn by macOS and ignore the zoom, so the CSS
+            // titlebar would otherwise grow or shrink out from under them.
+            if (this.getConfig().options?.frame === false) {
+                applyTrafficLightPositionForZoom(
+                    this.getBrowserWindow(),
+                    this.getConfig().windowControlPolicy ?? WindowControlPolicy.Standard,
+                    percent,
+                );
+            }
+        } catch (error) {
+            this.getApp().logger.debug(`[Zoom] Failed to apply zoom to ${this.getWindowType()}: ${String(error)}`);
+        }
+    }
+
+    /**
+     * Keep the window on the stored zoom, and let Cmd/Ctrl +/-/0 change it.
+     *
+     * The shortcuts write the setting rather than touching this webContents, so
+     * one keystroke re-zooms every open window through the same broadcast the
+     * Settings window uses. They are wired here (not in the macOS menu) because
+     * `buildMenuTemplate` returns an empty menu off darwin, which would leave
+     * Windows and Linux without any way to zoom.
+     */
+    private prepareZoom(webContents: Electron.WebContents): void {
+        if (!windowTypeUsesZoom(this.getWindowType())) {
+            return;
+        }
+
+        // Electron drops the zoom factor on every navigation, so re-apply on load
+        // rather than once at construction.
+        webContents.on("did-finish-load", () => this.applyStoredZoom());
+
+        webContents.on("before-input-event", (event, input) => {
+            if (input.type !== "keyDown" || !(input.control || input.meta) || input.alt) {
+                return;
+            }
+
+            const current = this.getApp().globalState.get("ui.zoomPercent");
+            let next: number | null = null;
+            // "=" and "+" share a key; the numpad reports "Add"/"Subtract".
+            if (input.key === "=" || input.key === "+" || input.key === "Add") {
+                next = nextZoomPercent(current, 1);
+            } else if (input.key === "-" || input.key === "_" || input.key === "Subtract") {
+                next = nextZoomPercent(current, -1);
+            } else if (input.key === "0") {
+                next = ZOOM_PERCENT_DEFAULT;
+            }
+
+            if (next === null) {
+                return;
+            }
+
+            event.preventDefault();
+            if (next === normalizeZoomPercent(current)) {
+                return;
+            }
+            this.getApp().setGlobalStateAndBroadcast("ui.zoomPercent", next);
+        });
+    }
+
     private prepareEvents(): void {
         const win = this.getInstance().getBrowserWindow();
         const webContents = win.webContents;
 
-        win.on("close", () => {
+        this.prepareZoom(webContents);
+
+        // The title bar reserves space for the macOS traffic lights, which the OS hides in
+        // fullscreen - so the renderer has to know when that happens to reclaim the gap. Pushed
+        // rather than polled because Electron's matchMedia change events are unreliable.
+        const forwardFullscreen = (isFullscreen: boolean) => () => {
+            if (!this.isClosed() && !this.isDestroyed()) {
+                this.sendIpcEvent(IPCEventType.appWindowFullscreenChanged, { isFullscreen });
+            }
+        };
+        win.on("enter-full-screen", forwardFullscreen(true));
+        win.on("leave-full-screen", forwardFullscreen(false));
+
+        win.on("close", (event) => {
+            if (this.closeGuard && !this.closeGuardBypassed && !this.getApp().isQuitting()) {
+                if (this.closeGuard(this)) {
+                    event.preventDefault();
+                    return;
+                }
+            }
+
             this.getEvents().emit("close", this);
 
             // Resolve close result if resolver is set

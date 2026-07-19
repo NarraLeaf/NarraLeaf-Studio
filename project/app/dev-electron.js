@@ -6,6 +6,7 @@ const {
     rootDir,
     distRoot,
     distWindows,
+    DEV_RELOAD_PORT,
     getRendererApps,
     renderHtml,
 } = require('../build/utils');
@@ -30,11 +31,17 @@ const runtimeSourceRoots = [
     path.join(rootDir, 'src', 'renderer', 'lib', 'ui-editor'),
 ];
 
-// Ensure dist directory exists
-fs.mkdirSync(distWindows, { recursive: true });
+// Bind the reload port BEFORE clearing `dist`. This used to be a `rimraf dist`
+// in the npm script, so a second `yarn dev` against a live session wiped the
+// running app's bundles and only then died on EADDRINUSE — leaving Electron up
+// with nothing behind `app://windows/...`. Binding first makes the port itself
+// the interlock: the losing session exits with `dist` untouched.
+const wss = new WebSocketServer({ port: DEV_RELOAD_PORT });
+const reloadServerReady = new Promise((resolve, reject) => {
+    wss.once('listening', resolve);
+    wss.once('error', reject);
+});
 
-// Initialize WebSocketServer
-const wss = new WebSocketServer({ port: 5588 });
 function broadcastReload(target = 'all') {
     wss.clients.forEach((client) => {
         if (client.readyState === 1) client.send(JSON.stringify({ type: 'reload', target }));
@@ -42,6 +49,24 @@ function broadcastReload(target = 'all') {
 }
 
 (async () => {
+    try {
+        await reloadServerReady;
+    } catch (error) {
+        if (error && error.code === 'EADDRINUSE') {
+            console.error(`[dev] port ${DEV_RELOAD_PORT} is already in use — another \`yarn dev\` session owns it.`);
+            console.error('[dev] dist was left untouched. Stop that session first, or run `yarn build:dev` to rebuild in place.');
+        } else {
+            console.error('[dev] failed to start the reload server:', error);
+        }
+        process.exit(1);
+    }
+
+    // Only now that this process owns the session is it safe to drop the last
+    // run's output.
+    wss.on('error', (error) => console.error('[dev] reload server error:', error));
+    fs.rmSync(distRoot, { recursive: true, force: true });
+    fs.mkdirSync(distWindows, { recursive: true });
+
     const distDir = distRoot;
 
     /** Restart electron process */
@@ -142,6 +167,10 @@ function broadcastReload(target = 'all') {
         runtimeBuildRunning = true;
         runtimeBuildQueued = false;
         try {
+            // The game runtime is ALWAYS a production bundle (NODE_ENV=production,
+            // minified) regardless of this flag — build-runtime.js enforces that so
+            // packs produced from a dev Studio session never ship dev React.
+            // `--dev` here only turns on sourcemaps for readable runtime stacks.
             await runNodeScript(['project/build/build-runtime.js', '--dev']);
             if (!initialRuntimeBuilt) {
                 initialRuntimeBuilt = true;
@@ -184,7 +213,7 @@ function broadcastReload(target = 'all') {
         platform: 'node',
         bundle: true,
         format: 'cjs',
-        external: ['electron', '@narraleaf/encryption'],
+        external: ['electron', '@narraleaf/encryption', '@lore-vcs/sdk', 'koffi'],
         sourcemap: true,
         target: ['node18'],
     }, () => {
@@ -210,6 +239,24 @@ function broadcastReload(target = 'all') {
         console.log('[main] chokidar detected changes, rebuilding...');
         // Don't restart electron here, let the esbuild watcher handle it
         // to avoid duplicate restarts
+    });
+
+    /** Build & watch the game build worker (forked by utilityProcess). */
+    await watchBuild({
+        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'buildWorker.ts')],
+        outfile: path.join(distDir, 'main', 'buildWorker.js'),
+        platform: 'node',
+        format: 'cjs',
+        bundle: true,
+        // electron-builder reads template files relative to itself at runtime;
+        // 7zip-bin resolves its 7za binary relative to its own __dirname. Both
+        // break if inlined, so keep this list in sync with build-main.js.
+        external: ['electron', 'electron-builder', '7zip-bin'],
+        sourcemap: true,
+        target: ['node18'],
+    }, () => {
+        // No Electron restart: the worker is spawned fresh per build.
+        console.log('[buildWorker] built.');
     });
 
     /** Build & watch preload script */
@@ -336,4 +383,10 @@ function broadcastReload(target = 'all') {
         console.log('[styles] rebuilt. broadcasting reload...');
         if (appStarted) broadcastReload();
     }
-})();
+})().catch((error) => {
+    // An initial build that throws (a renderer syntax error, say) otherwise leaves
+    // this process alive holding DEV_RELOAD_PORT with no Electron behind it, and
+    // the app's bundle directory empty. Fail loudly and free the port instead.
+    console.error('[dev] startup failed:', error);
+    process.exit(1);
+});

@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, MouseEvent } from "react";
 import {
     DndContext,
     PointerSensor,
@@ -24,6 +24,8 @@ interface SidebarPanelRailProps {
     onActivateForDrop?: (panelId: string) => void;
     /** Commit a new panel order (ids in display order) for this dock area. */
     onReorder: (orderedIds: string[]) => void;
+    /** Right-click on a specific panel icon (opens the rail's visibility context menu). */
+    onPanelContextMenu?: (event: MouseEvent, panelId: string) => void;
 }
 
 /**
@@ -40,6 +42,7 @@ export function SidebarPanelRail({
     onPanelClick,
     onActivateForDrop,
     onReorder,
+    onPanelContextMenu,
 }: SidebarPanelRailProps) {
     // A small activation distance lets plain clicks still select the panel; only a real drag reorders.
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -70,6 +73,11 @@ export function SidebarPanelRail({
                         sidebarVisible={sidebarVisible}
                         onPanelClick={() => onPanelClick(panel.id)}
                         onActivateForDrop={() => onActivateForDrop?.(panel.id)}
+                        onContextMenu={
+                            onPanelContextMenu
+                                ? (event) => onPanelContextMenu(event, panel.id)
+                                : undefined
+                        }
                     />
                 ))}
             </SortableContext>
@@ -83,6 +91,7 @@ interface SortableSidebarPanelIconProps {
     sidebarVisible: boolean;
     onPanelClick: () => void;
     onActivateForDrop: () => void;
+    onContextMenu?: (event: MouseEvent) => void;
 }
 
 function SortableSidebarPanelIcon({
@@ -91,6 +100,7 @@ function SortableSidebarPanelIcon({
     sidebarVisible,
     onPanelClick,
     onActivateForDrop,
+    onContextMenu,
 }: SortableSidebarPanelIconProps) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
         id: panel.id,
@@ -112,6 +122,7 @@ function SortableSidebarPanelIcon({
             sidebarVisible={sidebarVisible}
             onPanelClick={onPanelClick}
             onActivateForDrop={onActivateForDrop}
+            onContextMenu={onContextMenu}
             sortable={{ setNodeRef, style, attributes, listeners, isDragging }}
         />
     );

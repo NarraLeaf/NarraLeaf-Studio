@@ -73,7 +73,7 @@ export function BlueprintEditorLayout({
                         <span className="text-2xs font-medium text-fg-subtle">{t("blueprint.panelLabel")}</span>
                         <button
                             type="button"
-                            className="text-fg-muted transition-colors hover:text-white"
+                            className="text-fg-muted transition-colors hover:text-fg"
                             onClick={() => setLeftCollapsed(!isLeftCollapsed)}
                             title={isLeftCollapsed ? t("blueprint.sidePanel.expand") : t("blueprint.sidePanel.collapse")}
                         >
@@ -87,7 +87,7 @@ export function BlueprintEditorLayout({
                 {isLeftCollapsed ? (
                     <button
                         type="button"
-                        className="absolute left-3 top-3 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-edge-strong bg-surface-canvas/85 text-fg-muted hover:text-white focus:outline-none"
+                        className="absolute left-3 top-3 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-edge-strong bg-surface-canvas/85 text-fg-muted hover:text-fg focus:outline-none"
                         onClick={() => setLeftCollapsed(false)}
                         title={t("blueprint.sidePanel.expand")}
                     >

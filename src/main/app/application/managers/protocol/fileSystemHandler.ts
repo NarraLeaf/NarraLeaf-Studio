@@ -62,32 +62,35 @@ export class FileSystemHandler implements ProtocolHandler, AssetResolver {
         }
 
         const filePath = fileURLToPath(resolved.path);
+        const result = await Fs.readRaw(filePath);
 
-        try {
-            const { data, mimeType } = await this.readFile(filePath);
-
+        if (!result.ok) {
+            // A file that was never built is a 404, not a 500. `dist` can go missing
+            // under a running dev session, and an opaque 500 with an empty body hides
+            // which bundle is absent; 500 stays for genuine read failures.
+            const missing = result.error.code === FsRejectErrorCode.NOT_FOUND;
+            this.logger.error(`Error reading file: ${filePath} - ${result.error.message}`);
             return {
-                statusCode: 200,
-                headers: {
-                    "Content-Type": mimeType,
-                    ...((this.noCache || resolved.noCache) ? {
-                        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-                        "Pragma": "no-cache",
-                        "Expires": "0"
-                    } : {
-                        "Cache-Control": "public, max-age=180, immutable"
-                    })
-                },
-                data: data
-            } as ProtocolResponse;
-        } catch (error) {
-            this.logger.error(`Error reading file: ${filePath} - ${error}`);
-            return {
-                statusCode: 500,
+                statusCode: missing ? 404 : 500,
                 headers: {},
                 data: undefined
             };
         }
+
+        return {
+            statusCode: 200,
+            headers: {
+                "Content-Type": getMimeType(filePath),
+                ...((this.noCache || resolved.noCache) ? {
+                    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                } : {
+                    "Cache-Control": "public, max-age=180, immutable"
+                })
+            },
+            data: result.data
+        } as ProtocolResponse;
     }
 
     public formatFileUrl(requested: string): string {
@@ -97,20 +100,6 @@ export class FileSystemHandler implements ProtocolHandler, AssetResolver {
         const relativePath = pathname.replace(/^\//, "");
         const fullPath = path.join(this.getBaseDir(), relativePath);
         return `file://${normalizePath(fullPath)}`;
-    }
-
-    private async readFile(filePath: string): Promise<{ data: Buffer; mimeType: string }> {
-        const data = await Fs.readRaw(filePath);
-        const mimeType = getMimeType(filePath);
-
-        if (!data.ok) {
-            throw new Error(data.error.message);
-        }
-
-        return {
-            data: data.data,
-            mimeType,
-        };
     }
 
     private matchesPattern(pattern: string | RegExp | ((requested: string) => boolean), url: string): boolean {
@@ -219,17 +208,29 @@ export class FileSystemHashHandler implements ProtocolHandler {
             };
         }
 
-        // Cleanup hash after successful read
-        this.storageManager.cleanup(hash);
+        const sessionLived = storageInfo.lifetime === "session";
+        if (!sessionLived) {
+            // One-shot grants are destroyed after the first successful read;
+            // session grants stay valid until the owner window revokes them.
+            this.storageManager.cleanup(hash);
+        }
 
         const mimeType = getMimeType(storageInfo.path);
         return {
             statusCode: 200,
             headers: {
                 "Content-Type": storageInfo.raw ? "application/octet-stream" : mimeType,
-                "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-                "Pragma": "no-cache",
-                "Expires": "0"
+                // Session-lived grants back engine assets that get re-fetched on
+                // scene changes: let the renderer's HTTP cache absorb repeats.
+                // The hash URL is unique per grant (each re-resolve mints a new
+                // one), so cached bytes cannot go stale across recompiles.
+                ...(sessionLived ? {
+                    "Cache-Control": "private, max-age=3600"
+                } : {
+                    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                })
             },
             data: result.data
         };

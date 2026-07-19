@@ -3,10 +3,13 @@ import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_PREFERENCE_KEY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED,
     blueprintKeyboardBindingMatchesEvent,
     collectBlueprintEventHeadNodeIdsForDispatch,
     collectGlobalEventHeadNodeIdsForDispatch,
@@ -104,5 +107,29 @@ describe("blueprint event head dispatch resolution", () => {
         expect(collectGlobalEventHeadNodeIdsForDispatch(nodes, "gamePreferenceChanged", { key: "skip" })).toEqual([
             "any",
         ]);
+    });
+
+    it("dispatches the fullscreen change head to both global and surface owners", () => {
+        const nodes = {
+            fs: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED },
+            boot: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT },
+        };
+
+        expect(collectGlobalEventHeadNodeIdsForDispatch(nodes, "windowFullscreenChanged", { isFullscreen: true }))
+            .toEqual(["fs"]);
+        expect(collectSurfaceEventHeadNodeIdsForDispatch(nodes, "windowFullscreenChanged", { isFullscreen: false }))
+            .toEqual(["fs"]);
+        // The head carries no inspector filter, so it fires regardless of payload.
+        expect(collectGlobalEventHeadNodeIdsForDispatch(nodes, "windowFullscreenChanged")).toEqual(["fs"]);
+    });
+
+    it("dispatches the window close request head to both global and surface owners", () => {
+        const nodes = {
+            close: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED },
+            boot: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT },
+        };
+
+        expect(collectGlobalEventHeadNodeIdsForDispatch(nodes, "windowCloseRequested")).toEqual(["close"]);
+        expect(collectSurfaceEventHeadNodeIdsForDispatch(nodes, "windowCloseRequested")).toEqual(["close"]);
     });
 });

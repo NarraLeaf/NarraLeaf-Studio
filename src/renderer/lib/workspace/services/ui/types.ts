@@ -1,4 +1,6 @@
 import { ReactNode, ComponentType } from "react";
+import type { TranslationKey } from "@shared/i18n";
+import type { WorkspaceContext } from "../services";
 
 /**
  * Notification types
@@ -82,9 +84,17 @@ export interface PanelComponentProps<TPayload = any> {
 export interface PanelDefinition<TPayload = any> {
     id: string;
     title: string;
+    /** i18n key for the title; resolved reactively at render so it follows a live language switch. */
+    titleKey?: TranslationKey;
     icon: ReactNode;
+    /** Omitted only by rail actions, which have no panel body to render. */
+    component?: ComponentType<PanelComponentProps<TPayload>>;
     position: PanelPosition;
-    component: ComponentType<PanelComponentProps<TPayload>>;
+    /**
+     * Turns the rail icon into a button: clicking runs this instead of opening a panel body.
+     * See the mirror of this type in `@/apps/workspace/registry/types`.
+     */
+    railAction?: (workspace: WorkspaceContext) => void;
     defaultVisible?: boolean;
     order?: number;
     badge?: string | number;
@@ -146,7 +156,7 @@ export interface FocusContext {
  */
 export interface Keybinding {
     id: string;
-    key: string; // e.g., "ctrl+s", "cmd+shift+p"
+    key: string; // e.g., "mod+s" (mod = ⌘ on macOS, Ctrl elsewhere), "ctrl+tab", "cmd+shift+p"
     description?: string;
     handler: (context: FocusContext) => void | Promise<void>;
     when?: (context: FocusContext) => boolean; // Condition for when the keybinding is active
@@ -155,6 +165,13 @@ export interface Keybinding {
      * Default false: {@link KeybindingService} skips bindings while typing unless this is set.
      */
     allowInEditable?: boolean;
+    /**
+     * Stable identity in the declarative keybinding catalog. Registration ids are often per-tab
+     * (`story-scene-editor-<tabId>-duplicate`), which would make user overrides stick to one tab
+     * and duplicate rows in the settings table; the catalog id (`story.duplicate`) is what
+     * overrides key on and what the settings/cheat-sheet surfaces list. Defaults to `id`.
+     */
+    catalogId?: string;
 }
 
 /**

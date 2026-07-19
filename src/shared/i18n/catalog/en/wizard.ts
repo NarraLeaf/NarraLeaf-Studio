@@ -1,4 +1,4 @@
-/** `wizard` — new-project creation wizard (template, details, settings, review steps). */
+/** `wizard` - new-project creation wizard (template, details, settings, review steps). */
 export const wizard = {
     appTitle: "New Project",
     header: {
@@ -42,7 +42,7 @@ export const wizard = {
     template: {
         title: "Choose a Project Template",
         subtitle: "Select a project template to get started quickly with pre-configured structure and settings.",
-        // Template option labels — keyed by the template `id` in constants.ts.
+        // Template option labels - keyed by the template `id` in constants.ts.
         options: {
             empty: {
                 name: "Empty",
@@ -93,7 +93,7 @@ export const wizard = {
         directoryWillBeCreated: "This directory will be created automatically when you create the project",
         versionControlSystem: "Version Control System",
         versionControlPlaceholder: "Select version control…",
-        // Backup cadence option labels — keyed by the backup option `value` in constants.ts.
+        // Backup cadence option labels - keyed by the backup option `value` in constants.ts.
         backup: {
             none: "No backups",
             hourly: "Hourly",

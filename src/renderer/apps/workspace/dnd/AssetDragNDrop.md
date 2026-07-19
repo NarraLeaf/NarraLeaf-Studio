@@ -87,7 +87,11 @@ function MyDropZone({ groupId }: { groupId: string }) {
 }
 ```
 
-Reference implementation: `components/layout/MainEditorEmptyDropZone.tsx`, `components/layout/useEditorGroupAssetDrop.ts`.
+Reference implementation: `components/layout/MainEditorEmptyDropZone.tsx`.
+
+Editor groups do not use `useAssetDropTarget` — they accept editor tab drags too, so they share only
+its payload resolver (`useAssetDragResolver`) and handle the events themselves in
+`components/layout/useEditorGroupDrop.ts`. See that file for the five-way drop zone model.
 
 ### 2. Restrict drops with `canDrop` (e.g. images only)
 
@@ -118,7 +122,11 @@ Use **`useWorkspaceAssetDragOptional()`** in drag sources; it returns `null` out
 | Custom drag image for multi-asset drag | `modules/assets/dnd/multiAssetDragImage.ts` |
 | Open previews / focus after drop | `modules/assets/dnd/openDraggedAssetsInEditor.tsx` |
 | Panel-internal move (groups / root) | `modules/assets/state/useDragAndDrop.ts` |
-| Global `-webkit-user-drag` override for rows | `styles.css` (`.nl-asset-drag-source`) |
+| Global `-webkit-user-drag` override for rows | `styles.css` (`.nl-drag-source`) |
+
+> **Any** `draggable` element must carry `.nl-drag-source`. The global `*` rule sets
+> `-webkit-user-drag: none`, so without the class the attribute is inert and `dragstart` never
+> fires — the drag source looks correctly wired and simply does nothing.
 
 ## Behaviour summary for agents
 

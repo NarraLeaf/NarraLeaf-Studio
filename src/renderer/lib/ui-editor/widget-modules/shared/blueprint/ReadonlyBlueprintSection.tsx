@@ -53,10 +53,10 @@ export function ReadonlyBlueprintSection({ data }: CustomFieldProps<UIInspectorD
     const canOpenEntry = summary.hasWidgetMain && Boolean(summary.blueprintId);
 
     return (
-        <div className="rounded-lg border border-edge bg-[#111315] px-3 py-3 space-y-2">
+        <div className="rounded-lg border border-edge bg-surface px-3 py-3 space-y-2">
             <button
                 type="button"
-                className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 disabled:cursor-default"
+                className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/70 disabled:cursor-default"
                 disabled={!canOpenEntry}
                 onClick={openEntry}
                 aria-label={canOpenEntry ? t("widgetChrome.blueprint.openControlBlueprint") : t("widgetChrome.blueprint.noBlueprintForControl")}
@@ -64,12 +64,12 @@ export function ReadonlyBlueprintSection({ data }: CustomFieldProps<UIInspectorD
                 <BlueprintLayerPreview model={previewModel} />
             </button>
             {summary.legacyHookCount > 0 ? (
-                <p className="text-2xs text-amber-200/90 rounded border border-amber-500/25 bg-amber-500/10 px-2 py-1.5">
+                <p className="text-2xs text-warning rounded border border-warning/25 bg-warning/10 px-2 py-1.5">
                     {tn("widgetChrome.blueprint.legacyHookCount", summary.legacyHookCount)}
                 </p>
             ) : null}
             {summary.eventSchemaIssueCount > 0 ? (
-                <p className="text-2xs text-amber-200/90 rounded border border-amber-500/25 bg-amber-500/10 px-2 py-1.5">
+                <p className="text-2xs text-warning rounded border border-warning/25 bg-warning/10 px-2 py-1.5">
                     {t("widgetChrome.blueprint.eventSchemaMismatch")}
                 </p>
             ) : null}

@@ -1,4 +1,4 @@
-/** `placeholders` — empty-state copy for not-yet-implemented workspace panels. */
+/** `placeholders` - empty-state copy for not-yet-implemented workspace panels. */
 export const placeholders = {
     story: {
         title: "Story",
@@ -16,10 +16,19 @@ export const placeholders = {
         characters: "Characters",
         story: "Story",
         localization: "Localization",
+        voice: "Voice",
         assets: "Assets",
         console: "Console",
         storyMotion: "Story Motion",
+        dashboard: "Dashboard",
         audioPreview: "Audio Preview",
         imagePreview: "Image Preview",
+        videoPreview: "Video Preview",
+        fontPreview: "Font Preview",
+        jsonPreview: "JSON Preview",
+        search: "Search",
+        keybindings: "Keyboard Shortcuts",
+        history: "History",
+        notifications: "Notifications",
     },
 } as const;

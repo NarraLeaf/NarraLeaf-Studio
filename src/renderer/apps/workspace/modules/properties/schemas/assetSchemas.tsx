@@ -16,6 +16,7 @@ import {
     createPropertyEditorSchema,
 } from "../framework";
 import type { Translator } from "@shared/i18n";
+import { AssetReferencesSection } from "../components/AssetReferencesSection";
 
 /** Translator function, threaded into schema builders since they run outside React. */
 type TranslateFn = Translator["t"];
@@ -73,6 +74,14 @@ function createCommonAssetFields<T extends AssetType>(t: TranslateFn): FieldDefi
                 await ctx.onUpdate("description", value);
             },
             order: 300,
+        },
+        {
+            id: "references",
+            type: "custom",
+            // Last field on every asset type: "what breaks if I delete this?", answered in the
+            // panel the user is already in rather than in the delete dialog after the fact.
+            component: ({ data }) => <AssetReferencesSection assetId={data.asset.id} />,
+            order: 400,
         },
     ];
 }

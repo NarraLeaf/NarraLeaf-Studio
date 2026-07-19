@@ -26,12 +26,12 @@ export interface ProjectPluginDependency {
     authoredVersion: string;
     /**
      * True when the project references a *type* owned by the plugin (blueprint
-     * node / widget / story action) — the document breaks if the plugin is
+     * node / widget / story action) - the document breaks if the plugin is
      * absent, so a missing/incompatible hard dependency is suppressed. Soft
      * dependencies (storage data only) are informational.
      */
     hard: boolean;
-    /** What references the plugin, keyed by kind — ids/types/namespaces, for display. */
+    /** What references the plugin, keyed by kind - ids/types/namespaces, for display. */
     usedBy: Partial<Record<DependencyKind, string[]>>;
 }
 

@@ -64,7 +64,7 @@ export type StoryPreviewGameUiHost = {
  * services, a blueprint runtime core (IPC-free), and per-session Game UI slot host options with
  * real LiveGame callbacks and explicit no-op stubs for navigation/saves/quit.
  *
- * The bundle snapshots the uidoc/blueprints when `enabled` flips on — Game UI edits made while the
+ * The bundle snapshots the uidoc/blueprints when `enabled` flips on - Game UI edits made while the
  * preview is open apply the next time the preview reopens.
  */
 export function useStoryPreviewGameUi(input: {
@@ -179,7 +179,7 @@ export function useStoryPreviewGameUi(input: {
         const notAvailable = (operation: string) => async (): Promise<never> => {
             throw new Error(`${operation} is not available in the story preview`);
         };
-        // Frozen once per session — hostApi memos key off this object's identity.
+        // Frozen once per session - hostApi memos key off this object's identity.
         const slotHostOptions: GameUiSlotHostOptions = {
             sessionId: gameInput.sessionId,
             core: activeCore,
@@ -201,6 +201,9 @@ export function useStoryPreviewGameUi(input: {
             openSurfaceWithTransition: async () => undefined,
             closeLayerWithTransition: async () => undefined,
             quitApplication: async () => undefined,
+            // The preview renders into a Studio panel, not an application window.
+            getFullscreen: notAvailable("Get Fullscreen"),
+            setFullscreen: notAvailable("Set Fullscreen"),
             startStoryInGame: notAvailable("Start Story"),
             writeSaveInGame: notAvailable("Save Game"),
             loadSaveInGame: notAvailable("Load Save"),

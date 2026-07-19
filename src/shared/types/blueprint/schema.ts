@@ -1,5 +1,5 @@
 /**
- * Blueprint System — schema version constants and cross-cutting semantic tags.
+ * Blueprint System - schema version constants and cross-cutting semantic tags.
  * M2 persists BlueprintDocument inside `uigraphs.json` under `blueprintDocument`.
  */
 

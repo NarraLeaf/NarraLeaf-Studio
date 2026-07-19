@@ -20,4 +20,6 @@ export enum UserDataNamespace {
     Authorization = "authorization",
     BlueprintPersistence = "blueprint-persistence",
     DevModeSaves = "dev-mode-saves",
+    /** Cache of the pictures picked as a custom workspace background, named by content hash. */
+    Backgrounds = "backgrounds",
 }
