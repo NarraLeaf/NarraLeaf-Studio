@@ -2,7 +2,7 @@
  * The decoded audio behind the read-only audio preview.
  *
  * Samples are kept de-interleaved (one Float32Array per channel) because that is what both
- * `AudioBuffer` and the waveform renderer want. Nothing here mutates a clip — the preview shows
+ * `AudioBuffer` and the waveform renderer want. Nothing here mutates a clip - the preview shows
  * and plays the asset, it never rewrites it.
  */
 
@@ -48,21 +48,30 @@ export function resolveRange(clip: AudioClip, range: SampleRange | null): Sample
 /**
  * Per-bucket peaks for drawing, as `[min, max]` pairs. Min *and* max (rather than a single
  * max-abs) so an asymmetric or DC-offset waveform draws the way an audio editor draws it.
+ *
+ * `channel` picks one channel to measure; omitting it folds every channel into one envelope.
+ * The view draws a lane per channel when there is room, and folds them when there is not.
  */
-export function computePeaks(clip: AudioClip, range: SampleRange, buckets: number): Float32Array {
+export function computePeaks(
+    clip: AudioClip,
+    range: SampleRange,
+    buckets: number,
+    channel?: number,
+): Float32Array {
     const { start, end } = resolveRange(clip, range);
     const peaks = new Float32Array(buckets * 2);
     const span = end - start;
     if (span <= 0 || buckets <= 0) {
         return peaks;
     }
+    const sources = channel === undefined ? clip.channels : [clip.channels[channel]].filter(Boolean);
     const perBucket = span / buckets;
     for (let bucket = 0; bucket < buckets; bucket++) {
         const from = start + Math.floor(bucket * perBucket);
         const to = Math.max(from + 1, start + Math.floor((bucket + 1) * perBucket));
         let minimum = 0;
         let maximum = 0;
-        for (const samples of clip.channels) {
+        for (const samples of sources) {
             for (let i = from; i < to && i < end; i++) {
                 const value = samples[i];
                 if (value < minimum) minimum = value;

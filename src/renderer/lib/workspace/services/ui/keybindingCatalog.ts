@@ -1,13 +1,13 @@
 import type { TranslationKey } from "@shared/i18n";
 
 /**
- * The declarative keybinding catalog — the full, static list of every customizable shortcut in
+ * The declarative keybinding catalog - the full, static list of every customizable shortcut in
  * the workspace, independent of what is currently mounted.
  *
  * Why it exists: bindings *register* lazily (an editor's shortcuts appear when its tab mounts),
  * so a registry-driven settings table only ever showed a moment's snapshot. The catalog is the
  * display and customization source of truth: the settings table and the "?" cheat sheet render
- * it in full, and user overrides key on catalog ids — stable across per-tab registration ids
+ * it in full, and user overrides key on catalog ids - stable across per-tab registration ids
  * (see `Keybinding.catalogId`).
  *
  * Defaults also resolve through here: `KeybindingService.getEffectiveKey` prefers the catalog's
@@ -15,7 +15,7 @@ import type { TranslationKey } from "@shared/i18n";
  *
  * Adding a binding: register it as before, give it a `catalogId` (or `catalogPrefix` on
  * `useKeybindings`), and add the entry here with an i18n label. A binding without an entry still
- * works — it just only shows up in the settings table while registered ("Other" group).
+ * works - it just only shows up in the settings table while registered ("Other" group).
  */
 export interface KeybindingCatalogEntry {
     /** Stable id: what overrides persist under and what registrations reference via catalogId. */
@@ -104,6 +104,28 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("assets.cut", "mod+x", "assets.shortcuts.cut", CATEGORY.assets),
     entry("assets.paste", "mod+v", "assets.shortcuts.paste", CATEGORY.assets),
     entry("assets.rename", "f2", "assets.shortcuts.rename", CATEGORY.assets),
+
+    // --- Audio preview -------------------------------------------------------
+    entry("assets.audio.play-pause", "space", "assets.audio.keybindings.playPause", CATEGORY.assets),
+    entry("assets.audio.to-start", "home", "assets.audio.keybindings.toStart", CATEGORY.assets),
+    entry("assets.audio.to-end", "end", "assets.audio.keybindings.toEnd", CATEGORY.assets),
+    entry("assets.audio.nudge-back", "arrowleft", "assets.audio.keybindings.nudgeBack", CATEGORY.assets),
+    entry("assets.audio.nudge-forward", "arrowright", "assets.audio.keybindings.nudgeForward", CATEGORY.assets),
+    entry("assets.audio.nudge-back-coarse", "shift+arrowleft", "assets.audio.keybindings.nudgeBackCoarse", CATEGORY.assets),
+    entry("assets.audio.nudge-forward-coarse", "shift+arrowright", "assets.audio.keybindings.nudgeForwardCoarse", CATEGORY.assets),
+    entry("assets.audio.loop", "l", "assets.audio.keybindings.loop", CATEGORY.assets),
+    entry("assets.audio.add-cue", "m", "assets.audio.keybindings.addCue", CATEGORY.assets),
+    entry("assets.audio.next-cue", "shift+m", "assets.audio.keybindings.nextCue", CATEGORY.assets),
+    entry("assets.audio.previous-cue", "mod+shift+m", "assets.audio.keybindings.previousCue", CATEGORY.assets),
+    entry("assets.audio.remove-cue", "delete", "assets.audio.keybindings.removeCue", CATEGORY.assets),
+    entry("assets.audio.remove-cue-backspace", "backspace", "assets.audio.keybindings.removeCue", CATEGORY.assets),
+    entry("assets.audio.undo", "mod+z", "assets.audio.keybindings.undo", CATEGORY.assets),
+    entry("assets.audio.redo", "mod+shift+z", "assets.audio.keybindings.redo", CATEGORY.assets),
+    entry("assets.audio.select-all", "mod+a", "assets.audio.keybindings.selectAll", CATEGORY.assets),
+    entry("assets.audio.clear-selection", "escape", "assets.audio.keybindings.clearSelection", CATEGORY.assets),
+    entry("assets.audio.zoom-in", "=", "assets.audio.keybindings.zoomIn", CATEGORY.assets),
+    entry("assets.audio.zoom-out", "-", "assets.audio.keybindings.zoomOut", CATEGORY.assets),
+    entry("assets.audio.zoom-fit", "0", "assets.audio.keybindings.zoomFit", CATEGORY.assets),
 ];
 
 const CATALOG_BY_ID = new Map(KEYBINDING_CATALOG.map(item => [item.id, item]));
