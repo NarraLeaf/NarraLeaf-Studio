@@ -6,7 +6,7 @@ import type { CSSProperties } from "react";
  * transitions NarraLeaf-React ships out of the box.
  *
  * NLR's built-in `MaskTransition.wipe`/`.circle` animate a hard `clip-path`
- * (`inset()`/`circle()`) — there is no feathering, which is why the stock wipe
+ * (`inset()`/`circle()`) - there is no feathering, which is why the stock wipe
  * reads as a hard geometric cut rather than a soft erase. NLR does, however,
  * pass any resolver `style` straight onto the layer element and its render
  * pipeline whitelists `mask-image`/`filter`, so a genuinely soft (feathered)
@@ -197,7 +197,7 @@ export class Blinds extends ImageTransition<NumberChannel> {
 
 /**
  * A soft, feathered iris: the incoming image is revealed over the outgoing one
- * through an expanding `radial-gradient` circle with a feathered edge — the
+ * through an expanding `radial-gradient` circle with a feathered edge - the
  * soft-edged counterpart of NLR's hard `MaskTransition.circle`.
  */
 export class SoftIris extends ImageTransition<NumberChannel> {
@@ -229,7 +229,7 @@ export class SoftIris extends ImageTransition<NumberChannel> {
 
 /**
  * A blur dissolve: the outgoing image blurs out and fades while the incoming
- * one sharpens in — the dreamy crossfade used for flashbacks / dream states.
+ * one sharpens in - the dreamy crossfade used for flashbacks / dream states.
  */
 export class BlurDissolve extends ImageTransition<NumberChannel> {
     constructor(
@@ -272,15 +272,15 @@ export type ThroughColorOptions = {
 /**
  * The "through colour" engine (过色 / 黑场). A dedicated colour overlay covers
  * the frame using the chosen `pattern`, holds a solid-colour frame, then
- * uncovers to reveal the incoming image — so the target never appears until
+ * uncovers to reveal the incoming image - so the target never appears until
  * after the colour hold. The outgoing/incoming images simply swap opacity at
  * the midpoint, unseen behind the fully-covered frame.
  *
  * `pattern` selects how the colour covers:
- * - `plain`  — the overlay fades in/out          → fade through black/white, flash (hold ≈ 0)
- * - `linear` — a feathered directional edge       → soft wipe through black
- * - `blinds` — venetian slats                     → blinds black hold
- * - `iris`   — a circle closing from the rim in    → iris to black
+ * - `plain`  - the overlay fades in/out          → fade through black/white, flash (hold ≈ 0)
+ * - `linear` - a feathered directional edge       → soft wipe through black
+ * - `blinds` - venetian slats                     → blinds black hold
+ * - `iris`   - a circle closing from the rim in    → iris to black
  *
  * `color` is the hold colour (black, white, any tint) and `hold` is the
  * fraction (0–1) of the duration spent fully covered.
@@ -353,7 +353,7 @@ export class ThroughColor extends ImageTransition<NumberChannel> {
  * The offset is applied via the independent CSS `translate` property (not
  * `transform`) in percentages of the layer's own size. That composes additively
  * with whatever base positioning NLR gives the layer instead of overriding it,
- * and at offset `0` it is the identity — so neither image jumps at the
+ * and at offset `0` it is the identity - so neither image jumps at the
  * start/end of the slide, regardless of how the background is anchored.
  * Percentages (not viewport units!) matter: the transition layers live inside
  * the letterboxed stage box, so whenever the window aspect differs from the

@@ -5,7 +5,7 @@
  * inside a token value are neutralised). It drives both the exported recording
  * script's `filename` column and the reverse match when audio is batch-imported.
  *
- * Filenames are for humans in the booth — they can drift when scenes are
+ * Filenames are for humans in the booth - they can drift when scenes are
  * renamed or lines reordered, and a booth may swap spaces for underscores. The
  * recording script always carries the line's authoritative unit id alongside,
  * and audio matching goes through {@link matchKeyForFilename}, which reduces a

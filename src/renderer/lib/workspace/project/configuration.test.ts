@@ -62,7 +62,7 @@ describe("normalizeBuildConfiguration", () => {
 
     it("drops a mobile format the platform does not offer", () => {
         // A hand-edited state (or a newer Studio's) must not resurface a
-        // format the pipeline would reject — the mobile platforms have exactly
+        // format the pipeline would reject - the mobile platforms have exactly
         // one each.
         const config = normalizeBuildConfiguration({
             platforms: ["android", "ios"],

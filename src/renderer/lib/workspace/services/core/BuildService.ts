@@ -39,7 +39,7 @@ export const BUILD_CONSOLE_CHANNEL = "build";
 
 /**
  * `source` stamped on every console line the build pipeline emits. The channel is shared with Dev
- * Mode and preview output, so this is what identifies a line as belonging to a build — which is how
+ * Mode and preview output, so this is what identifies a line as belonging to a build - which is how
  * the dashboard's build history knows which lines to archive. Mirrors GameBuildManager, which
  * stamps the same literal on the main-process side.
  */
@@ -47,7 +47,7 @@ export const BUILD_CONSOLE_SOURCE = "Build";
 
 /**
  * The pipeline reports only coarse phases (preparing → compiling → packaging), and the
- * longest phase — electron-builder packaging — is fully opaque: there is no real
+ * longest phase - electron-builder packaging - is fully opaque: there is no real
  * fraction to show. Rather than fake a fill level that creeps upward (which is a lie
  * about how far along the build is), the bar runs as an indeterminate animation while a
  * build is active. It snaps to a solid 100% only on real completion.
@@ -95,7 +95,7 @@ export class BuildService extends Service<BuildService> {
      * real flow: the icon rows close the dialog to open the project panel's
      * asset settings, and the user expects to come back to what they had.
      *
-     * Deliberately memory-only and never persisted — only starting a build
+     * Deliberately memory-only and never persisted - only starting a build
      * writes BuildConfiguration to the project. A draft is a half-finished
      * thought, not a preference.
      */
@@ -171,7 +171,7 @@ export class BuildService extends Service<BuildService> {
             return this.state;
         }
         // The story compiler runs inside the game at startup, not here, so it cannot be what stops an
-        // unresolved command line from shipping — this is the only gate before the packer.
+        // unresolved command line from shipping - this is the only gate before the packer.
         const invalid = await this.collectInvalidStoryBlocks();
         if (invalid.length > 0) {
             const consoleService = this.tryGetConsole();
@@ -215,7 +215,7 @@ export class BuildService extends Service<BuildService> {
     }
 
     /**
-     * Every unresolved command line in the project, across every story — not just the loaded ones.
+     * Every unresolved command line in the project, across every story - not just the loaded ones.
      * An unfinished line in a story the author never opened this session still must not ship.
      */
     private async collectInvalidStoryBlocks(): Promise<InvalidStoryBlockRef[]> {
@@ -292,7 +292,7 @@ export class BuildService extends Service<BuildService> {
         }
 
         if (status === "error") {
-            // Solid full-width warning bar — the colour signals failure (the console
+            // Solid full-width warning bar - the colour signals failure (the console
             // logs carry the detail); it does not claim a completion fraction.
             consoleService.setProgress(BUILD_CONSOLE_CHANNEL, { value: 1, indeterminate: false, error: true });
             return;

@@ -21,7 +21,7 @@ import {
 const REBUILD_DEBOUNCE_MS = 300;
 
 /**
- * Search Service — the global project search index.
+ * Search Service - the global project search index.
  *
  * Renderer-side by design: every searchable document (story documents, the blueprint document,
  * the named-key registry) already lives in this process's services, complete with change events,
@@ -34,7 +34,7 @@ const REBUILD_DEBOUNCE_MS = 300;
  *    graph document, so its mutations surface there)
  *  - named-key slice: `LocalizationService.onKeysChanged`
  *
- * Rebuilds are debounced per slice — change events fire per keystroke during editing, and a slice
+ * Rebuilds are debounced per slice - change events fire per keystroke during editing, and a slice
  * rebuild is a full re-extraction (cheap at VN scale, but not per-keystroke cheap).
  *
  * The full build is lazy: {@link ensureReady} loads every story document once on first use, so
@@ -49,7 +49,7 @@ export class SearchService extends Service<SearchService> {
     /**
      * All slices concatenated, rebuilt lazily on first query after a slice changes.
      *
-     * Without this the concatenation ran per query — i.e. per keystroke — allocating a fresh array
+     * Without this the concatenation ran per query - i.e. per keystroke - allocating a fresh array
      * of the entire index each time. Invalidation hangs off {@link emitChanged}, which every slice
      * mutation already ends with (it is the same invariant the change listeners depend on).
      */
@@ -301,7 +301,7 @@ export class SearchService extends Service<SearchService> {
 
     /**
      * Announce a slice rebuild. Every mutation path ends here, so this is also where the
-     * concatenated view is dropped — see {@link flatCache}.
+     * concatenated view is dropped - see {@link flatCache}.
      */
     private emitChanged(): void {
         this.flatCache = null;

@@ -21,8 +21,8 @@ import type { NativeMenuGroup, NativeMenuItem, NativeMenuModel, NativeMenuSlot }
  *
  * The main process cannot build these itself: which groups exist depends on what is registered
  * (an image tab's Preview group is keyed by tab id) and what is visible depends on the current
- * focus. So the renderer computes the model — reusing the same visibility rules the in-app
- * dropdowns use — and pushes it up whenever it changes.
+ * focus. So the renderer computes the model - reusing the same visibility rules the in-app
+ * dropdowns use - and pushes it up whenever it changes.
  *
  * Only the shape is sent. Clicks come back as action ids and are dispatched by
  * `useMenuActionHandler`, so behaviour stays in one place. Each group carries the `menuSlot` it

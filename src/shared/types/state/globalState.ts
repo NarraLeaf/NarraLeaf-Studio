@@ -26,7 +26,7 @@ export interface GlobalStateType extends Record<string, any> {
     "ui.titleBarSearch.visible": boolean;
     /**
      * Watermark background. `ui.backgroundImage` is a *file name* inside the userData/backgrounds
-     * cache, never a path — the main process resolves it by basename so a renderer cannot steer
+     * cache, never a path - the main process resolves it by basename so a renderer cannot steer
      * the read at arbitrary files. The name is `<content hash>.<ext>`, so picking a different
      * picture always changes this value and every window notices. Null (or absent) means no
      * background, which is what disables the layer.
@@ -55,7 +55,7 @@ export interface GlobalStateType extends Record<string, any> {
      * Ask for confirmation before a workspace window closes.
      *
      * Replaces the legacy `workspace.confirmOnClose`, which shipped as an unread placeholder
-     * defaulting to true and is therefore already persisted as true in existing profiles —
+     * defaulting to true and is therefore already persisted as true in existing profiles -
      * defaulting *this* feature to off was only possible under a key nobody has on disk.
      */
     "workspace.confirmBeforeClose": boolean;
@@ -104,7 +104,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "ui.titleBarSearch.visible": true,
     // The `ui.background*` keys deliberately have no defaults here. Persisted values are untrusted
     // (opacity has to be clamped, fill/anchor whitelisted), so the renderer normalizes them through
-    // readBackgroundSettings — which necessarily carries the fallbacks. Repeating them here would
+    // readBackgroundSettings - which necessarily carries the fallbacks. Repeating them here would
     // be a second source of truth that can only drift.
     "keybindings.overrides": {},
     "editor.fontSize": 14,

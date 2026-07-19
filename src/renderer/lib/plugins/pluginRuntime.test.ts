@@ -201,7 +201,7 @@ describe("createPluginApp disposal", () => {
         const { ctx, store } = createFakeContext();
         const { app } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
 
-        // A group asking to merge into the native Edit menu and stand in for Paste — i.e. to
+        // A group asking to merge into the native Edit menu and stand in for Paste - i.e. to
         // become what Cmd+V does across the window.
         app.services.ui.actions.registerGroup({
             id: "test-plugin:group",

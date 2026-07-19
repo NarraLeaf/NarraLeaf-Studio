@@ -6,7 +6,7 @@ import { isVcsPlatformSupported, VCS_SUPPORTED_PLATFORMS } from "@shared/types/v
  *
  * The contract these defend: Studio ships on every platform, and a host with no
  * Lore native build loses version control WITHOUT losing the app. The failure
- * being guarded against is not subtle — `@lore-vcs/sdk` calls `koffi.load()` at
+ * being guarded against is not subtle - `@lore-vcs/sdk` calls `koffi.load()` at
  * module scope, so a static import on such a host throws during main-process
  * startup and takes Studio down entirely.
  */
@@ -78,7 +78,7 @@ describe("backend loading", () => {
         vi.stubEnv("LORE_LIB_PATH", "/opt/lore/liblore.dylib");
         await withHost("darwin", "x64", async (mod) => {
             // The gate is bypassed, so this now attempts a real load and fails on
-            // the bogus path — a *load* failure, not a platform refusal. That
+            // the bogus path - a *load* failure, not a platform refusal. That
             // distinction is what tells a user "your override is wrong" instead
             // of "your machine is unsupported".
             await expect(mod.loadVcsBackend()).resolves.toBeNull();
@@ -95,7 +95,7 @@ describe("backend loading", () => {
     //
     // A failed load is permanent for the process: `@lore-vcs/sdk` runs
     // `koffi.load()` during module evaluation, and once an ESM module throws
-    // while evaluating, Node caches that failure forever — `vi.resetModules()`
+    // while evaluating, Node caches that failure forever - `vi.resetModules()`
     // does not reach it, because the SDK lives in node_modules and is owned by
     // Node's own loader. So the LORE_LIB_PATH test above poisons the SDK for
     // every later test in this file. Vitest isolates files into separate
@@ -103,6 +103,6 @@ describe("backend loading", () => {
     //
     // This is not merely a test artifact: it means a Studio process that fails
     // to load the backend once cannot recover without a restart. `backend.ts`
-    // caches the negative verdict for exactly that reason — retrying would be
+    // caches the negative verdict for exactly that reason - retrying would be
     // pointless, and callers should treat unavailability as fixed for the run.
 });

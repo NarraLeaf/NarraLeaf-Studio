@@ -36,7 +36,7 @@ export type WindowVisibilityStatus = "minimized" | "maximized" | "normal";
 
 /**
  * A surface the Settings window can ask a workspace to reveal, because it lives in the workspace
- * and needs its live state (the background dialog's preview) — Settings can only ask; see
+ * and needs its live state (the background dialog's preview) - Settings can only ask; see
  * `app.requestWorkspaceView`.
  */
 export type WorkspaceViewRequest = "backgroundImage";

@@ -72,7 +72,7 @@ function findAsset(assetsService: AssetsService, assetId: string, assetType?: st
  * stored URL; local assets are fetched once and served as blob object URLs.
  *
  * Use this (not {@link createWorkspaceAssetUrlResolver}) whenever the consumer may load the same
- * URL more than once — `app://fs/{hash}` grants are single-use (the protocol handler cleans the
+ * URL more than once - `app://fs/{hash}` grants are single-use (the protocol handler cleans the
  * hash up after the first successful read), so a re-fetch of the same URL 404s. The embedded
  * story preview hits this constantly (engine preloading + rendering, session remounts).
  *

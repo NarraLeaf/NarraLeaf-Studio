@@ -1,7 +1,7 @@
 /**
  * Single-line text field the player types into.
  *
- * As with the slider, `props.value` is only the value the *author* set as a starting point — the
+ * As with the slider, `props.value` is only the value the *author* set as a starting point - the
  * value the player produces lives in `WidgetRuntimeStateStore` for the session and is never written
  * back to the document. See `resolveTextInputRuntimeValue`.
  */
@@ -24,7 +24,7 @@ export type UITextInputWidgetProps = {
 
 export type UITextInputRuntimeValue = {
     value: string;
-    /** Length in code points, so an emoji counts once — this is what `maxLength` is measured in. */
+    /** Length in code points, so an emoji counts once - this is what `maxLength` is measured in. */
     length: number;
 };
 

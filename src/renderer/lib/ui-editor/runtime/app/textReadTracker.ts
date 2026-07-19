@@ -49,7 +49,7 @@ export type TextReadTracker = {
     whenLoaded: Promise<void>;
     /**
      * Wipe the read record (memory + persistence). A dialog line currently on
-     * screen that already finished displaying is re-marked immediately — the
+     * screen that already finished displaying is re-marked immediately - the
      * player is looking at it, so it stays "read" by the display-finished rule.
      */
     clearAll: () => void;

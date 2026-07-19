@@ -74,7 +74,7 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
             if (!context) {
                 return false;
             }
-            // Resolve the live asset — the index only carries ids, and the asset may be gone.
+            // Resolve the live asset - the index only carries ids, and the asset may be gone.
             const assetsMap = context.services.get<AssetsService>(Services.Assets).getAssets();
             const asset = Object.values(assetsMap)
                 .flatMap(byId => Object.values(byId) as Asset[])
@@ -86,7 +86,7 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
                 openAssetPreviewTabsInEditor(context, [asset]);
                 return true;
             }
-            // No preview editor for this type — reveal it selected in the assets panel instead.
+            // No preview editor for this type - reveal it selected in the assets panel instead.
             deps.setPanelVisibility(ASSETS_PANEL_ID, true);
             context.services.get<UIService>(Services.UI).getStore().setSelection({ type: "asset", data: asset });
             return true;

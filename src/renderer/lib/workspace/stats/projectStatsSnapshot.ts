@@ -1,7 +1,7 @@
 /**
  * On-demand static statistics for the open project: scale (scenes, lines,
  * words, assets, blueprints), branch count, and per-language translation
- * progress. Nothing here is persisted or cached — the snapshot is recomputed
+ * progress. Nothing here is persisted or cached - the snapshot is recomputed
  * by whoever renders it.
  * Comments in English per project convention.
  */
@@ -341,7 +341,7 @@ export async function computeProjectStatsSnapshot(ctx: WorkspaceContext): Promis
     };
 }
 
-/** Total word count only — the cheap path used for the daily writing-curve snapshot. */
+/** Total word count only - the cheap path used for the daily writing-curve snapshot. */
 export async function computeTotalWordCount(ctx: WorkspaceContext): Promise<number> {
     try {
         const documents = await loadStoryDocuments(ctx);

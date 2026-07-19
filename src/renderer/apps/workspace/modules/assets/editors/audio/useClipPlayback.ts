@@ -32,7 +32,7 @@ export function useClipPlayback(clip: AudioClip | null) {
         return contextRef.current;
     }, []);
 
-    /** Monitoring volume only — it never touches the samples, so it is not an edit. */
+    /** Monitoring volume only - it never touches the samples, so it is not an edit. */
     const setGain = useCallback((value: number) => {
         gainValueRef.current = value;
         if (gainRef.current) {
@@ -48,7 +48,7 @@ export function useClipPlayback(clip: AudioClip | null) {
             try {
                 source.stop();
             } catch {
-                // Already stopped — nothing to unwind.
+                // Already stopped - nothing to unwind.
             }
             source.disconnect();
         }

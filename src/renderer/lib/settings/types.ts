@@ -7,7 +7,7 @@ export enum SettingValueType {
     /** A bounded number the user drags rather than types; needs `min`/`max`. */
     Slider = "slider",
     /**
-     * A button rather than a value — the one entry kind that stores nothing.
+     * A button rather than a value - the one entry kind that stores nothing.
      *
      * Reserved for operations that belong next to the settings they affect but have no state of
      * their own (clearing collected data, resetting a store). Needs `onInvoke`; the explorer
@@ -16,7 +16,7 @@ export enum SettingValueType {
      */
     Action = "action",
     /**
-     * A whole panel rather than a value — the entry renders its own UI across the row.
+     * A whole panel rather than a value - the entry renders its own UI across the row.
      *
      * Reserved for settings whose editing surface is a table or an editor in its own right (the
      * keyboard-shortcut catalog), where a label plus one control cannot express it. Needs `panel`;

@@ -246,7 +246,7 @@ describe("resolved target name matches the stage name the compiler registers", (
     ];
 
     for (const { label, payload } of CHARACTER_CASES) {
-        it(`character — ${label}`, () => {
+        it(`character - ${label}`, () => {
             // "Character" is what the legacy identity rule stored in the ref, so it doubles as a
             // regression guard: the stored name must never win over the creator's real stage name.
             expect(resolvedNameFor(payload, "Character")).toBe(characterStageObjectName(payload));
@@ -255,7 +255,7 @@ describe("resolved target name matches the stage name the compiler registers", (
 
     it("image / text / layer fall back to the compiler's stage name when unnamed", () => {
         // `normalizeStageObjectName` is what the compiler keys these on, so an empty name is
-        // "object" on both sides — not the display word "Image" / "Text" / "Layer".
+        // "object" on both sides - not the display word "Image" / "Text" / "Layer".
         expect(resolvedNameFor({ action: "image", operation: "create", objectName: "" }, "Image")).toBe("object");
         expect(resolvedNameFor({ action: "text", operation: "create", objectName: "  ", text: "hi" }, "Text")).toBe("object");
         expect(resolvedNameFor({ action: "layer", operation: "create", objectName: "" }, "Layer")).toBe("object");

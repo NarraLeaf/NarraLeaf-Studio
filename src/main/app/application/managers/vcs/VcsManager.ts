@@ -26,7 +26,7 @@ import type { LoreGlobals, LoreHex, StoreHandle } from "./loreClient";
  * 2. **Keyed per project, never a singleton.** Studio is one-project-one-window
  *    and a singleton runtime silently makes the second open project fight the
  *    first (the mistake DevModeManager shipped and had to undo). Compounding it,
- *    Lore's repository lock is exclusive and *blocking* — a singleton would not
+ *    Lore's repository lock is exclusive and *blocking* - a singleton would not
  *    race, it would deadlock. Every entry point takes a projectPath.
  *
  * Store handles are opened lazily and reused: reopening per call defeats the
@@ -169,7 +169,7 @@ export class VcsManager extends Manager {
     }
 
     /**
-     * Raw bytes of one file at one revision — the input to Studio's diff engine.
+     * Raw bytes of one file at one revision - the input to Studio's diff engine.
      * Returned as a Buffer; the IPC layer is responsible for encoding it.
      */
     public async readBlob(request: VcsBlobRequest): Promise<Buffer> {
@@ -201,7 +201,7 @@ export class VcsManager extends Manager {
         });
     }
 
-    /** Paths that differ between two revisions — the filter before diffing. */
+    /** Paths that differ between two revisions - the filter before diffing. */
     public async getChangedPaths(projectPath: string, from: string, to: string): Promise<string[]> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
@@ -212,7 +212,7 @@ export class VcsManager extends Manager {
     /**
      * base / mine / theirs for one path, base64-encoded for transport.
      * `base` is undefined when the sides share no ancestor or the file is new on
-     * both — an add/add, which must not be treated as an empty base.
+     * both - an add/add, which must not be treated as an empty base.
      */
     public async getThreeWay(
         projectPath: string,
@@ -254,7 +254,7 @@ export class VcsManager extends Manager {
      * and cheap when the backend was never loaded.
      *
      * Flushes first. Lore's mutable store is written lazily, so a session that
-     * ever wrote could otherwise lose its most recent commit — the call returns a
+     * ever wrote could otherwise lose its most recent commit - the call returns a
      * revision, then a later process sees only the previous one. Harmless for the
      * current read-only surface and load-bearing the moment writes land.
      *

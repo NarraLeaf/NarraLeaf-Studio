@@ -7,7 +7,7 @@ import { parseZipIndex, readEntryBytes } from "../../../../buildWorker/mobile/zi
 /**
  * Scaling an author's app icon into the per-slot PNGs a shell template expects.
  *
- * The sizes are read from the template itself — each icon slot already holds a
+ * The sizes are read from the template itself - each icon slot already holds a
  * placeholder PNG at exactly the size that slot needs (an Android density
  * bucket, an iOS @2x/@3x variant), so the replacement is scaled to match what
  * it replaces. That keeps the density/scale knowledge in the shell repo, where
@@ -73,7 +73,7 @@ export async function writeScaledIcons(
     await fs.mkdir(outputDir, { recursive: true });
     const written: Record<string, string> = {};
     for (const [index, { slot, width, height }] of slots.entries()) {
-        // "good" is nativeImage's highest-quality resampling — icons are
+        // "good" is nativeImage's highest-quality resampling - icons are
         // downscaled a long way (512 → 48 at mdpi) and this is a one-off cost.
         const resized = source.resize({ width, height, quality: "good" });
         const outputPath = path.join(outputDir, `${index}-${path.basename(slot)}`);

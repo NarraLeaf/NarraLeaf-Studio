@@ -3,8 +3,8 @@ import type { FocusContext } from "@/lib/workspace/services/ui/types";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 
 /**
- * The editor tab a global command should act on. The command palette has no click target — unlike
- * the tab context menu — so "the active tab" is the focused tab of whichever group currently holds
+ * The editor tab a global command should act on. The command palette has no click target - unlike
+ * the tab context menu - so "the active tab" is the focused tab of whichever group currently holds
  * editor focus.
  */
 export interface ActiveEditorTarget {

@@ -11,7 +11,7 @@ import {
  * Static web shell of an exported game. Where the desktop shell serves the
  * runtime through its own privileged protocol (custom scheme, in-memory
  * plugin-api modules, CSP injected at serve time), the web export has no
- * process of its own — everything the browser needs must exist as a plain
+ * process of its own - everything the browser needs must exist as a plain
  * file with a relative URL. This module emits those files next to the shared
  * renderer bundle: the entry document and the plugin-api ESM shims.
  */
@@ -20,7 +20,7 @@ export const WEB_FAVICON_FILENAME = "favicon.png";
 
 /**
  * Which host the emitted entry document targets. The mobile shells serve the
- * very same site — only the entry document differs, and only in its viewport —
+ * very same site - only the entry document differs, and only in its viewport -
  * so the mobile variant is generated from the same pack and injected into the
  * repack, leaving the compiled site on disk exactly what the web target ships.
  */
@@ -50,7 +50,7 @@ export async function writeWebShellFiles(input: {
  * renderer bundle: the bridge it installs must exist before the renderer
  * looks for it. The title and pre-boot background come from the pack, playing
  * the role the BrowserWindow title/backgroundColor play on desktop. No CSP is
- * baked in — the desktop network restriction is meaningless for a game that
+ * baked in - the desktop network restriction is meaningless for a game that
  * is itself served over HTTP(S); hosts that want one set it as a header.
  */
 export function buildWebIndexHtml(

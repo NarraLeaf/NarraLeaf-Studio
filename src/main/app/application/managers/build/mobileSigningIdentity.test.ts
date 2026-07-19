@@ -24,7 +24,7 @@ describe("resolveMobileSigningIdentity", () => {
         const userDataDir = await makeUserDataDir();
         const identity = await resolveMobileSigningIdentity(userDataDir);
 
-        // Usable means node:crypto can actually load both halves — a
+        // Usable means node:crypto can actually load both halves - a
         // structurally-plausible-but-invalid identity would only fail later,
         // inside signing.
         expect(() => crypto.createPrivateKey(identity.privateKeyPem)).not.toThrow();

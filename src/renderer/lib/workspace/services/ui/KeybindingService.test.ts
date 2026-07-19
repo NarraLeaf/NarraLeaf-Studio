@@ -60,7 +60,7 @@ describe("formatKeybinding", () => {
     });
 
     it("shows literal ctrl as Control on macOS rather than ⌘", () => {
-        // ctrl+tab really is Control there — displaying ⌘⇥ would be a lie.
+        // ctrl+tab really is Control there - displaying ⌘⇥ would be a lie.
         expect(formatKeybinding("ctrl+tab", true)).toBe("⌃Tab");
         expect(formatKeybinding("ctrl+tab", false)).toBe("Ctrl+Tab");
     });

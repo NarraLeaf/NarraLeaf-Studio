@@ -22,7 +22,7 @@ export type VisualEffectKind =
     | "glow"
     | "filter";
 
-/** Single shadow/glow layer (no inset — outer vs inner is determined by the effect slot). */
+/** Single shadow/glow layer (no inset - outer vs inner is determined by the effect slot). */
 export type EffectShadowLayer = EffectShadowLayerData;
 
 /**

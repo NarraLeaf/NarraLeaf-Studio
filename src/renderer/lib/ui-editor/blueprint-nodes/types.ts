@@ -224,7 +224,7 @@ export type BlueprintNodeDef = {
     isPure: boolean;
     /** Palette-only guard for nodes that read the active List item template scope. */
     requiresListItemContext?: boolean;
-    /** Latent/async execution (delay, host awaits) — disallowed in function graphs */
+    /** Latent/async execution (delay, host awaits) - disallowed in function graphs */
     isLatent?: boolean;
     pins: BlueprintNodePinDef[];
     /** When set, users may add/remove extra data input pins (persisted in params). */
@@ -253,10 +253,10 @@ export type BlueprintPaletteContext = {
     widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
     /**
      * When set (widgetMain event graph), restricts palette event heads to slots wired to this layer.
-     * Empty array means the layer exists but is not wired yet — offer all heads valid for this widget type.
+     * Empty array means the layer exists but is not wired yet - offer all heads valid for this widget type.
      */
     widgetEventLayerSlots?: string[];
-    /** Current graph already contains an event head — do not offer another */
+    /** Current graph already contains an event head - do not offer another */
     hasEventHead?: boolean;
     /** Current function graph already has an entry node */
     hasFunctionEntry?: boolean;

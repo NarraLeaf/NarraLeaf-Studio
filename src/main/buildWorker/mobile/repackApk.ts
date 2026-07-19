@@ -9,7 +9,7 @@ import type { SigningIdentity } from "./signingIdentity";
 /**
  * Android repack orchestration: turn the prebuilt, unsigned shell APK template
  * plus a game's web payload into an installable, v2-signed APK. Composes every
- * Android primitive — the binary AndroidManifest.xml patch (axml), the
+ * Android primitive - the binary AndroidManifest.xml patch (axml), the
  * resources.arsc package rename (arsc), 4-byte-aligned zip writing (zipWriter),
  * and APK Signature Scheme v2 signing (apkSigningV2).
  *
@@ -43,9 +43,9 @@ export type RepackApkInput = {
     applicationId: string;
     /** Home-screen label. */
     label: string;
-    /** android:versionName — the raw semver. */
+    /** android:versionName - the raw semver. */
     versionName: string;
-    /** android:versionCode — the monotonic integer. */
+    /** android:versionCode - the monotonic integer. */
     versionCode: number;
     /** The compiled game site, injected under the manifest's wwwRoot. */
     www: Iterable<ApkWwwEntry>;
@@ -130,8 +130,8 @@ export async function repackApk(input: RepackApkInput): Promise<Buffer> {
             appliedIconSlots.add(entry.name);
             continue;
         }
-        // Everything else — dex, other resources, the icons we are not
-        // overriding — passes through byte-identically.
+        // Everything else - dex, other resources, the icons we are not
+        // overriding - passes through byte-identically.
         entries.push({ name: entry.name, source: rawPassthrough(templateApk, entry) });
     }
 
@@ -163,7 +163,7 @@ export async function repackApk(input: RepackApkInput): Promise<Buffer> {
     }
 
     // Build the unsigned APK: 4-byte stored-entry alignment (zipalign), no
-    // zip64 (Android's installer cannot read it — an oversize APK is an error).
+    // zip64 (Android's installer cannot read it - an oversize APK is an error).
     const output = new BufferZipOutput();
     await writeZip(output, entries, { mtime: input.mtime, alignStoredEntries: 4, allowZip64: false });
 

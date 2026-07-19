@@ -19,7 +19,7 @@ export interface ModuleMetadata {
     title: string;
     /**
      * i18n key for the title. Preferred over `title` at render, and resolved reactively so the
-     * heading follows a live language switch — unlike `title`, which is captured as a plain string
+     * heading follows a live language switch - unlike `title`, which is captured as a plain string
      * when the panel is registered and would otherwise freeze in whatever locale was then active.
      */
     titleKey?: TranslationKey;
@@ -128,7 +128,7 @@ export interface PanelModule<TPayload = any> {
     /** Panel component; omitted only by rail actions, which have no panel body. */
     component?: ComponentType<PanelComponentProps<TPayload>>;
     /**
-     * Turns the rail icon into a button — clicking runs this instead of opening a panel body.
+     * Turns the rail icon into a button - clicking runs this instead of opening a panel body.
      * See `PanelDefinition.railAction`. Mutually exclusive with `component`.
      */
     railAction?: (workspace: WorkspaceContext) => void;
@@ -148,7 +148,7 @@ export interface PanelModule<TPayload = any> {
  * Status bar entry definition
  *
  * One cell in the bottom status bar. Unlike panels and editors these carry no payload and take no
- * props — an entry owns its own subscriptions and renders `null` whenever it has nothing to report,
+ * props - an entry owns its own subscriptions and renders `null` whenever it has nothing to report,
  * which is how the bar stays empty on an idle workspace.
  *
  * Placement comes from the order entries are registered in (see `builtInStatusBarEntries`), not

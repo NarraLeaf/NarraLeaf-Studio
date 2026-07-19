@@ -1,5 +1,5 @@
 /**
- * Blueprint System — debug event protocol (M1 freeze).
+ * Blueprint System - debug event protocol (M1 freeze).
  * Emitters and DevTools subscribe in M3+; types are stable from M1.
  */
 
@@ -34,7 +34,7 @@ export type BlueprintDebugEventLogLevel = "error" | "warning" | "log" | "verbose
  * Everything except errors and explicit `devtools.log` calls is per-node execution tracing
  * (node.enter/exit, state reads/writes, host API call/return, …) and classifies as `verbose`:
  * it is only useful when actively tracing a graph, and at one-or-more events per node it drowns
- * out real logs. `execution.cancelled` stays `verbose` for the same reason — cancellation is
+ * out real logs. `execution.cancelled` stays `verbose` for the same reason - cancellation is
  * routine when a surface closes mid-execution.
  */
 export function getBlueprintDebugEventLogLevel(event: BlueprintDebugEvent): BlueprintDebugEventLogLevel {

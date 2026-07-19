@@ -1,4 +1,4 @@
-/** `welcome` — the Welcome editor tab (intro header and getting-started guide). */
+/** `welcome` - the Welcome editor tab (intro header and getting-started guide). */
 export const welcome = {
     tagline: "All-in-one IDE for NarraLeaf Projects.",
     gettingStarted: {

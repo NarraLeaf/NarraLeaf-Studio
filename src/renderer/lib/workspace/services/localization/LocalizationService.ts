@@ -124,7 +124,7 @@ export class LocalizationService extends Service<LocalizationService> implements
 
     /**
      * Remove a language from the configuration. The translation file on disk is
-     * intentionally kept (non-destructive) — re-adding the language restores its
+     * intentionally kept (non-destructive) - re-adding the language restores its
      * translations. The source language cannot be removed while others exist.
      */
     public async removeLocale(code: string): Promise<LocalizationConfiguration> {
@@ -202,7 +202,7 @@ export class LocalizationService extends Service<LocalizationService> implements
         }
         let document: LocalizationDocument;
         if (!exists.data) {
-            // First time this language is opened — start empty, created on first save.
+            // First time this language is opened - start empty, created on first save.
             document = createEmptyLocalizationDocument(locale);
         } else {
             // A present-but-unreadable file throws instead of degrading to empty:
@@ -227,7 +227,7 @@ export class LocalizationService extends Service<LocalizationService> implements
 
     /**
      * Apply a translator edit to one unit. `sourceText` is the current source
-     * line (see extractStoryTranslationRows) — the unit re-anchors its
+     * line (see extractStoryTranslationRows) - the unit re-anchors its
      * `sourceHash` to it, which is what clears a derived "stale" state after
      * the translator has reviewed the changed line. Clearing the target (and
      * having no note) removes the unit entirely.

@@ -41,7 +41,7 @@ export type ProjectActivityDay = {
      * Total project word count as of the end of this day, so a daily delta is this minus the prior
      * day's value.
      *
-     * The earliest recorded day has no prior day and therefore no knowable delta — a project that
+     * The earliest recorded day has no prior day and therefore no knowable delta - a project that
      * already had 50k words when collection started records 50k on day one, which is a starting
      * balance, not a day's writing. Readers must skip that day rather than diff it against zero.
      */
@@ -61,7 +61,7 @@ export type ProjectStatsV1 = {
     builds: BuildActivityRecord[];
 };
 
-/** Roughly 14 months — enough for a year-over-year look without unbounded growth. */
+/** Roughly 14 months - enough for a year-over-year look without unbounded growth. */
 export const PROJECT_STATS_MAX_DAYS = 400;
 export const PROJECT_STATS_MAX_BUILDS = 50;
 /** Console lines kept per build. Fifty builds of these live in the global config, so it is a cap. */
@@ -165,7 +165,7 @@ export function clipBuildLog(lines: readonly string[]): { log: string[]; omitted
 /**
  * Parse stored stats defensively, dropping individual malformed entries rather than the whole
  * record. Stats are strictly nice-to-have, so a corrupt day must never cost the author their
- * remaining history — and must never take the dashboard down.
+ * remaining history - and must never take the dashboard down.
  */
 export function parseProjectStats(raw: unknown): ProjectStatsV1 | null {
     if (!raw || typeof raw !== "object") {

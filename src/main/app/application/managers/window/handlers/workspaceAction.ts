@@ -35,7 +35,7 @@ async function resolveAvailableLogPath(exportDir: string, defaultFileName: strin
 }
 
 /**
- * Handler for opening a project in a workspace window — the launcher's recent list and folder
+ * Handler for opening a project in a workspace window - the launcher's recent list and folder
  * picker, and the project wizard's hand-off.
  *
  * Shares {@link App.openProject} with {@link WorkspaceOpenRecentHandler}, so a project that is
@@ -74,7 +74,7 @@ export class WorkspaceReportLoadResultHandler extends IPCHandler<IPCEventType.wo
 }
 
 /**
- * Handler for opening a project from the recent list — the top-bar switcher and the "Open Recent"
+ * Handler for opening a project from the recent list - the top-bar switcher and the "Open Recent"
  * menus. Behaviour is shared with {@link WorkspaceLaunchHandler} through {@link App.openProject}.
  */
 export class WorkspaceOpenRecentHandler extends IPCHandler<IPCEventType.workspaceOpenRecent> {
@@ -120,7 +120,7 @@ export class WorkspaceSelectFolderHandler extends IPCHandler<IPCEventType.worksp
  * Handler for closing workspace window.
  *
  * Returning to the launcher is the workspace window's own close behaviour (see the close guard
- * installed in App.launchWorkspace), so this only has to request the close — the native close
+ * installed in App.launchWorkspace), so this only has to request the close - the native close
  * box takes the exact same path.
  */
 export class WorkspaceCloseHandler extends IPCHandler<IPCEventType.workspaceClose> {

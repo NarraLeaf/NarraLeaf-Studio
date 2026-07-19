@@ -55,7 +55,7 @@ export class DevModeManager {
 
     /**
      * Dev Mode status for a project. Without a path this reports whether *any* project is running,
-     * which only the app-wide surfaces (quit checks) should ask for — a workspace always passes its
+     * which only the app-wide surfaces (quit checks) should ask for - a workspace always passes its
      * own path, or it would show a neighbouring project's state as its own.
      */
     public getStatus(projectPath?: string): DevModeStatus {
@@ -192,7 +192,7 @@ export class DevModeManager {
         // close box, OS shortcut) via the `On Window Close Requested` head. Swallow the close, ask
         // the renderer, and re-issue it through forceClose() when nothing cancelled it. Programmatic
         // teardown (Quit Application node, workspace stop button, relaunch) uses forceClose() and so
-        // bypasses this entirely — that path must never fire the blueprint close event.
+        // bypasses this entirely - that path must never fire the blueprint close event.
         let closeRequestPending = false;
         window.setCloseGuard(() => {
             if (closeRequestPending) {
@@ -412,7 +412,7 @@ export class DevModeManager {
     }
 
     /**
-     * Drop a session from the table, but only if it is still the current one for its project — a
+     * Drop a session from the table, but only if it is still the current one for its project - a
      * relaunch installs its replacement before the outgoing window's close event arrives, and that
      * late event must not evict the new session.
      */

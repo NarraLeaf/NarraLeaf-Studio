@@ -20,7 +20,7 @@ import { resolvePreviewTargetBlockId } from "./storyScenePreviewTarget";
 import { STORY_CONSOLE_CHANNEL_ID } from "./storyPreviewConsole";
 
 const RECOMPILE_DEBOUNCE_MS = 300;
-/** Pure row switches (same document, new target) rebuild sooner — they are the hot path. */
+/** Pure row switches (same document, new target) rebuild sooner - they are the hot path. */
 const ROW_SWITCH_DEBOUNCE_MS = 150;
 /** Pre-posed state mounts within a few frames; anything longer means the marker never fired. */
 const STATE_SETTLE_TIMEOUT_MS = 5_000;
@@ -79,7 +79,7 @@ type PreviewRun = {
     wireDispose: (() => void) | null;
     /**
      * Releases the compiled story's reveal gate (a `Control.sleep` between the posed stage and the
-     * target's own action). Only ever resolved at promotion — superseded runs are disposed instead,
+     * target's own action). Only ever resolved at promotion - superseded runs are disposed instead,
      * which aborts the sleeping timeline.
      */
     resolveReveal: () => void;
@@ -94,11 +94,11 @@ type PreviewRun = {
  * Drives the story preview stage. The Studio computes the settled stage state at the selected row
  * (computeStoryStageSnapshot) and compiles it into a "state player" story whose elements mount
  * pre-posed; the target row's own action then plays once on that stage and the preview holds the
- * resulting frame. The shell never fast-forwards — mounting IS the state.
+ * resulting frame. The shell never fast-forwards - mounting IS the state.
  *
  * Rebuilds are double-buffered: the new session mounts *beneath* the currently visible frame,
  * poses itself, and is only revealed (old buffer unmounted, reveal gate released) once its images
- * have decoded and painted. Row switches therefore never flash black or show half-loaded content —
+ * have decoded and painted. Row switches therefore never flash black or show half-loaded content -
  * the previous frame simply holds until the next one is pixel-ready, and the target row's own
  * action plays entirely on the visible stage.
  */
@@ -211,7 +211,7 @@ export function useStoryScenePreviewController(input: {
                 liveGame.reset();
             }
         } catch {
-            // The game may never have fully initialised (no game state yet) — nothing to abort.
+            // The game may never have fully initialised (no game state yet) - nothing to abort.
         }
     }, []);
 
@@ -401,7 +401,7 @@ export function useStoryScenePreviewController(input: {
             }
             setDiagnostics(compiled.diagnostics);
             // Forward compile diagnostics to the Story console tab, but only the ones that are new
-            // versus the previous compile — the preview recompiles on every row switch/edit, so
+            // versus the previous compile - the preview recompiles on every row switch/edit, so
             // re-appending the whole (usually unchanged) set each time would flood the console.
             const diagnosticKeys = new Set<string>();
             for (const diag of compiled.diagnostics) {
@@ -567,7 +567,7 @@ export function useStoryScenePreviewController(input: {
         const run = findRunBySessionId(sessionId);
         if (!run || (run === displayRunRef.current && pendingRunRef.current !== null)) {
             // Teardown noise from a replaced session, or a stale frame kept only as the backdrop
-            // while the next state builds — neither may fail the current run.
+            // while the next state builds - neither may fail the current run.
             pushIssue({ level: "warning", message: `Previous preview session: ${error.message}` });
             return;
         }

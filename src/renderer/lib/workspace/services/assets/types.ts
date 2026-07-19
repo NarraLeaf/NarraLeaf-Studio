@@ -38,14 +38,14 @@ export interface Asset<Type extends AssetType = AssetType, Source extends AssetS
     groupId?: string;
     /**
      * Editor-authored data that rides with the asset record. Persisted in the assets metadata,
-     * which is a project file under version control — so this is for things the *author* decided
+     * which is a project file under version control - so this is for things the *author* decided
      * (and would want to keep and share), never for derived caches. Anything recomputable belongs
      * under {@link ProjectNameConvention.EditorThumbnailCache}'s neighbours in `editor/cache/`.
      */
     extras?: AssetExtras;
 }
 
-/** A marker the author placed on an audio asset — e.g. a BGM's loop in/out points. */
+/** A marker the author placed on an audio asset - e.g. a BGM's loop in/out points. */
 export interface AssetCuePoint {
     /** Offset from the start of the clip, in milliseconds. */
     timeMs: number;

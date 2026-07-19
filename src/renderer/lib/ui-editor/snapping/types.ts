@@ -1,5 +1,5 @@
 /**
- * UI Surface smart snapping — shared types (editor-only).
+ * UI Surface smart snapping - shared types (editor-only).
  */
 
 export type SnapGuideAxis = "vertical" | "horizontal";
