@@ -20,7 +20,7 @@ const sidePos: Record<TooltipSide, string> = {
 /**
  * Lightweight CSS hover/focus tooltip — a themed replacement for the native
  * `title=` attribute. Note: renders in-flow (no portal), so avoid inside
- * `overflow-hidden` containers that would clip it; use a portal tooltip there.
+ * `overflow-hidden` containers that would clip it; use {@link HintPopover} there.
  */
 export function Tooltip({ content, side = "top", children, className }: TooltipProps) {
     return (
