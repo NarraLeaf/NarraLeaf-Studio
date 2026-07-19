@@ -5,7 +5,7 @@
  * Namespacing every plugin store under a parseable, plugin-scoped prefix does
  * two things: it stops a plugin from colliding with (or overwriting) a core
  * store by picking a matching namespace, and it makes plugin-storage usage
- * attributable on disk so the dependency scanner can record it — even when the
+ * attributable on disk so the dependency scanner can record it - even when the
  * owning plugin is not installed.
  *
  * Layout stays flat (no nested directories, since the store writer only creates

@@ -4,8 +4,8 @@ import { trafficLightPositionForZoom, zoomPercentToFactor } from "@shared/consta
 /**
  * Whether a window follows the `ui.zoomPercent` setting.
  *
- * Only the Studio's own chrome does. The Dev Mode window hosts `GameApp` — the
- * player's game, rendered at the project's stage size — and zooming it would
+ * Only the Studio's own chrome does. The Dev Mode window hosts `GameApp` - the
+ * player's game, rendered at the project's stage size - and zooming it would
  * make the preview stop showing what actually ships. Same reasoning as the
  * `.nl-studio` scope on the light theme (see src/renderer/styles/styles.css).
  */
@@ -27,7 +27,7 @@ export function applyZoomFactorToWebContents(webContents: Electron.WebContents, 
  * Re-centre the macOS traffic lights for the current zoom.
  *
  * They are drawn by the OS, so `setZoomFactor` does not touch them while the CSS
- * titlebar around them grows or shrinks — left alone, they drift out of the bar.
+ * titlebar around them grows or shrinks - left alone, they drift out of the bar.
  * Only applies to frameless windows that show native buttons; everywhere else
  * this is a no-op.
  */

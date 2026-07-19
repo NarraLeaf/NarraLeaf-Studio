@@ -5,12 +5,12 @@ import type { StoryRichRun } from "@shared/types/story";
  *
  * The row cannot use Chromium's native contentEditable undo stack: `renderRunsToElement` clears the
  * root (`root.textContent = ""`) on every rich-text operation, which destroys that stack. And it
- * cannot use story history either — `KeybindingService` suppresses `Mod+Z` inside editable fields on
+ * cannot use story history either - `KeybindingService` suppresses `Mod+Z` inside editable fields on
  * purpose, because story undo works in whole blocks and would throw away the paragraph being typed
  * instead of the last keystroke. So the row owns its own stack, in the one model that survives a
  * re-render: the runs.
  *
- * Pure by construction — no DOM, no time source of its own. The caller snapshots and passes `now`.
+ * Pure by construction - no DOM, no time source of its own. The caller snapshots and passes `now`.
  */
 
 export type RichTextSelection = { start: number; end: number };
@@ -54,12 +54,12 @@ export class RichTextHistory {
     }
 
     /**
-     * Record the state *before* an edit. Call it on the way in — `beforeinput` for typing, and ahead of
+     * Record the state *before* an edit. Call it on the way in - `beforeinput` for typing, and ahead of
      * any programmatic mutation.
      *
      * Coalescing keeps a burst of typing as one entry: an edit joins the previous group when it is the
      * same kind, lands within {@link RICH_TEXT_COALESCE_IDLE_MS} of the last one, and is not a word
-     * boundary. `structural` edits (a pause chip, a mark, an inserted value) never coalesce — each is
+     * boundary. `structural` edits (a pause chip, a mark, an inserted value) never coalesce - each is
      * one deliberate act and undoes on its own.
      *
      * Takes ownership of `before`: pass a fresh snapshot, never a live reference.
@@ -82,7 +82,7 @@ export class RichTextHistory {
         this.lastAt = options.now;
     }
 
-    /** The state to restore, or null when this row has nothing left — the caller then falls through to story history. */
+    /** The state to restore, or null when this row has nothing left - the caller then falls through to story history. */
     undo(current: RichTextSnapshot): RichTextSnapshot | null {
         const previous = this.entries.pop();
         if (!previous) {

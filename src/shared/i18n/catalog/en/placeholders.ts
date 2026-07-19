@@ -1,4 +1,4 @@
-/** `placeholders` — empty-state copy for not-yet-implemented workspace panels. */
+/** `placeholders` - empty-state copy for not-yet-implemented workspace panels. */
 export const placeholders = {
     story: {
         title: "Story",

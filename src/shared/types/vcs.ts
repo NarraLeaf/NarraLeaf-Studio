@@ -14,7 +14,7 @@ export type RevisionId = string;
  * Version control is an OPTIONAL capability.
  *
  * The backend is a Rust shared library that Epic only ships for a subset of
- * platforms — notably there is no macOS x64 (Intel) build and no Windows ARM64
+ * platforms - notably there is no macOS x64 (Intel) build and no Windows ARM64
  * build. Studio still ships everywhere; on an unsupported host the VCS surface
  * reports itself unavailable and callers hide the feature.
  *
@@ -46,7 +46,7 @@ export const VCS_SUPPORTED_PLATFORMS: ReadonlyArray<{ platform: NodeJS.Platform;
  * Whether a native Lore build exists for this host.
  *
  * Pure and dependency-free so the renderer can use it too. A `true` here means
- * "a build should exist", not "it loaded" — only the main process knows that.
+ * "a build should exist", not "it loaded" - only the main process knows that.
  */
 export function isVcsPlatformSupported(
     platform: NodeJS.Platform = process.platform,
@@ -88,7 +88,7 @@ export interface VcsBlobRequest {
  *
  * `base` is undefined when the two sides share no common ancestor, or when the
  * file does not exist in the base revision. That is an add/add conflict and must
- * not be treated as an empty base — doing so would silently accept one side.
+ * not be treated as an empty base - doing so would silently accept one side.
  */
 export interface VcsThreeWayResult {
     baseRevision?: RevisionId;

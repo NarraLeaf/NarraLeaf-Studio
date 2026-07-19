@@ -27,8 +27,8 @@ export type RichChipTitles = {
  *
  * `interactive` is the *only* permitted difference between the two: editor chips open the pause /
  * value popovers, view chips do not, so only the editor gets a pointer cursor and a button role.
- * Everything else — tag structure, text content, and the `data-pause` / `data-interp` attributes the
- * unit model reads — must stay identical, or a selection made in the view cannot be mapped onto the
+ * Everything else - tag structure, text content, and the `data-pause` / `data-interp` attributes the
+ * unit model reads - must stay identical, or a selection made in the view cannot be mapped onto the
  * editor's unit offsets.
  */
 export type RichRenderOptions = {
@@ -249,7 +249,7 @@ function createInterpolationChip(interp: StoryInterpolationRef, label: string, m
     const labelSpan = globalThis.document.createElement("span");
     labelSpan.className = "ml-0.5";
     labelSpan.textContent = label;
-    // Marks style the value text only — never the chip background.
+    // Marks style the value text only - never the chip background.
     if (clean?.bold) labelSpan.style.fontWeight = "700";
     if (clean?.italic) labelSpan.style.fontStyle = "italic";
     if (clean?.color) labelSpan.style.color = clean.color;
@@ -263,7 +263,7 @@ function createInterpolationChip(interp: StoryInterpolationRef, label: string, m
  *
  * The one renderer for both surfaces: the contentEditable editor (`interactive: true`) and the
  * read-only row preview. Keeping them on this function is what lets {@link getSelectionUnitRange}
- * read a selection made in either — see {@link RichRenderOptions}.
+ * read a selection made in either - see {@link RichRenderOptions}.
  */
 export function renderRunsToElement(root: HTMLElement, runs: StoryRichRun[], options: RichRenderOptions): void {
     root.textContent = "";
@@ -498,7 +498,7 @@ export function getSelectionUnitRange(root: HTMLElement): { start: number; end: 
 }
 
 /**
- * The unit offset nearest a viewport point — how a goal column lands: the caret keeps its x across
+ * The unit offset nearest a viewport point - how a goal column lands: the caret keeps its x across
  * vertical moves, and the row it arrives in has to turn that x back into an offset in its own text.
  *
  * Chromium-only (`caretRangeFromPoint`); returns null where it is unavailable or the point falls

@@ -259,7 +259,7 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         }
     }
 
-    /** Invoke `fn` with the load outcome — immediately if already reported. */
+    /** Invoke `fn` with the load outcome - immediately if already reported. */
     public onLoadResult(fn: (ok: boolean) => void): void {
         if (this.loadResult !== null) {
             fn(this.loadResult);
@@ -383,7 +383,7 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         this.prepareZoom(webContents);
 
         // The title bar reserves space for the macOS traffic lights, which the OS hides in
-        // fullscreen — so the renderer has to know when that happens to reclaim the gap. Pushed
+        // fullscreen - so the renderer has to know when that happens to reclaim the gap. Pushed
         // rather than polled because Electron's matchMedia change events are unreliable.
         const forwardFullscreen = (isFullscreen: boolean) => () => {
             if (!this.isClosed() && !this.isDestroyed()) {

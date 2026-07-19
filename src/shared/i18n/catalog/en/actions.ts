@@ -1,4 +1,4 @@
-/** `actions` — global toolbar actions, groups, and their runtime messages. */
+/** `actions` - global toolbar actions, groups, and their runtime messages. */
 export const actions = {
     devMode: {
         tooltip: "Dev Mode",

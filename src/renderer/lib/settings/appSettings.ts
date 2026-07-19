@@ -127,7 +127,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // Applied by the main process to every Studio window's webContents
         // (`AppWindow.applyStoredZoom`). Cmd/Ctrl +/-/0 write this same key, so the
         // shortcuts and this field stay in agreement. The Dev Mode window is
-        // excluded — it renders the game at its real stage size.
+        // excluded - it renders the game at its real stage size.
         key: "ui.zoomPercent",
         category: "appearance",
         scope: SettingScope.Global,
@@ -225,7 +225,7 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: true,
     },
     {
-        // Handled entirely by `clearAllProjectStats`; nothing is stored under this key — it is
+        // Handled entirely by `clearAllProjectStats`; nothing is stored under this key - it is
         // only the identity of the button. Scoped to every project because the Settings window is
         // its own window and has no current project; the per-project reset lives on the dashboard.
         key: "dashboard.clearAllStats",
@@ -257,7 +257,7 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: true,
     },
     {
-        // Read by WorkspaceLayout: drops the title-bar search pill. The palette keeps working —
+        // Read by WorkspaceLayout: drops the title-bar search pill. The palette keeps working -
         // with the box gone it renders its own input inside the candidate card.
         key: "ui.titleBarSearch.visible",
         category: "appearance",
@@ -270,7 +270,7 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: true,
     },
     {
-        // Nothing is stored under this key — the background's own settings (image, opacity, fill,
+        // Nothing is stored under this key - the background's own settings (image, opacity, fill,
         // anchor) are written by the workspace dialog this button opens. Picking a file, previewing
         // the opacity and choosing how it fills the window only make sense together, so they live
         // in one dialog instead of three unrelated rows here. Like `keybindings.open`, the button
@@ -307,7 +307,7 @@ export const AppSettings: AppSettingDefinition[] = [
     },
     {
         // The keyboard-shortcut table, rendered inline by `SETTING_PANELS.keybindings`. Nothing is
-        // written here by the settings layer — the panel reads and writes this key itself, as one
+        // written here by the settings layer - the panel reads and writes this key itself, as one
         // `catalogId -> chord` map, and every open workspace picks the change up through the
         // global-state broadcast (see UIService's keybinding override sync).
         key: KEYBINDING_OVERRIDES_SETTINGS_KEY,

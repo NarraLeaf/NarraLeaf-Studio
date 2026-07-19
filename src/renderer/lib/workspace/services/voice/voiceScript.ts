@@ -2,7 +2,7 @@
  * Pure builders for the voice recording-script workflow: turning voiceable
  * lines into recording-script CSV rows, and building the filename → line index
  * used to reverse-match a batch of imported audio files. Side-effect free so the
- * naming/matching logic — the part most likely to silently mis-link takes — is
+ * naming/matching logic - the part most likely to silently mis-link takes - is
  * unit tested away from the asset library and the filesystem.
  * Comments in English per project convention.
  */
@@ -65,7 +65,7 @@ export type VoiceNameKey = { unitId: string; sourceText: string };
 
 /**
  * Map each line's expected filename (reduced to a match key) to its unit, for
- * reverse-matching imported audio. Keys that two lines would share are dropped —
+ * reverse-matching imported audio. Keys that two lines would share are dropped -
  * a silently ambiguous match is worse than an unmatched file the user can see.
  */
 export function buildVoiceNameKeyMap(

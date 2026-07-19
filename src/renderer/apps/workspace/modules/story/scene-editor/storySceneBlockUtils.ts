@@ -141,8 +141,8 @@ export function isTextEditableBlock(block: StoryBlock): boolean {
 /**
  * Whether opening this block's property inspector shows anything worth a card.
  *
- * A condition container has nothing of its own to edit — its branches carry the logic, and its
- * add-branch affordances live in the footer — and a condition branch (if / else-if / else) authors
+ * A condition container has nothing of its own to edit - its branches carry the logic, and its
+ * add-branch affordances live in the footer - and a condition branch (if / else-if / else) authors
  * its condition inline through the header chip, not a card. Both would otherwise open a near-empty
  * placeholder card, which reads as broken. They are "card-less": {@link isTextEditableBlock} still
  * wins for text rows, so this is only consulted for the non-text action/control rows.
@@ -175,7 +175,7 @@ export type StoryContainerHeaderInfo = {
     repeatTimes?: number;
 };
 
-/** Header descriptor for a container block — the pill text + which inline editors it exposes. */
+/** Header descriptor for a container block - the pill text + which inline editors it exposes. */
 export function getContainerHeaderInfo(block: StoryBlock): StoryContainerHeaderInfo | null {
     if (block.kind === "control") {
         const payload = block.payload;
@@ -309,7 +309,7 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
         return translate("story.describe.code", { language: block.payload.language });
     }
     if (block.kind === "invalid") {
-        // The author's own text is the most useful thing to show them — it never parsed, so there is
+        // The author's own text is the most useful thing to show them - it never parsed, so there is
         // nothing to describe in its place.
         return block.payload.source || translate("story.describe.invalid");
     }
@@ -366,7 +366,7 @@ export function filterOutSelectedDescendants(scene: StoryScene, ids: StoryBlockI
 
 /**
  * The row to land on after deleting `roots` (and their descendants): the nearest survivor *above* the
- * topmost deleted row — its previous line, the editor convention — or the first survivor below when the
+ * topmost deleted row - its previous line, the editor convention - or the first survivor below when the
  * deletion starts at the very top of the list. `null` when nothing survives (the whole scene went).
  *
  * A row counts as deleted when it or any ancestor is a root, so a collapsed container's hidden children

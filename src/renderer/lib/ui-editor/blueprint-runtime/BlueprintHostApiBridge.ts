@@ -111,7 +111,7 @@ export type BlueprintSliderPropertiesPatch = Partial<Pick<UISliderWidgetProps, "
 export type BlueprintTextInputProperties = UITextInputRuntimeValue;
 
 /**
- * Only `value` — the runtime value carries nothing else, so patching `placeholder`/`readOnly`/
+ * Only `value` - the runtime value carries nothing else, so patching `placeholder`/`readOnly`/
  * `disabled` here would be silently dropped. Those stay authored props, and an author who needs
  * them to react at runtime binds them to a graph (the Literal/Bound chip) instead.
  */

@@ -1,7 +1,7 @@
 import type * as React from "react";
 
 /**
- * IME (input-method) guards for the dismiss-on-blur overlays — the palette box and Quick Open.
+ * IME (input-method) guards for the dismiss-on-blur overlays - the palette box and Quick Open.
  *
  * Composing CJK text opens a candidate window that, on macOS, is its own native window: the web
  * contents fire `blur` on the input *and* on `window` while the candidate list is up. An overlay that

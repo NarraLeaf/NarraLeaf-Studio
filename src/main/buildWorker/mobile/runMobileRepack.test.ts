@@ -13,12 +13,12 @@ import { findMisalignedStoredEntries, parseZipIndex, readEntryBytes, ZIP_METHOD_
 import type { GameBuildWorkerMobileJob } from "../protocol";
 
 /**
- * The golden test for the mobile repack: the real, CI-built shell templates —
- * not synthetic fixtures — carrying a real payload, with every claim read back
+ * The golden test for the mobile repack: the real, CI-built shell templates -
+ * not synthetic fixtures - carrying a real payload, with every claim read back
  * out of the produced package by an independent parser.
  *
  * The synthetic fixtures elsewhere pin the patchers' behaviour on inputs we
- * construct; this pins the one thing they cannot — that the templates the
+ * construct; this pins the one thing they cannot - that the templates the
  * shell repo actually ships satisfy the contract Studio enforces, end to end.
  */
 
@@ -158,7 +158,7 @@ describe("runMobileRepack against the real shell templates", () => {
         const wwwPrefix = `${appPrefix}${job.templateManifest.ios.wwwRoot}`;
         expect(names).toContain(`${wwwPrefix}assets/bgm.ogg`);
         expect(names).toContain(`${appPrefix}${job.templateManifest.ios.shellConfigPath}`);
-        // The mobile entry document must replace the web one here too — the
+        // The mobile entry document must replace the web one here too - the
         // APK asserting it does not prove the iOS path injects it.
         const indexEntry = index.entries.find(entry => entry.name === `${wwwPrefix}index.html`)!;
         expect(readEntryBytes(ipa, indexEntry).toString("utf8")).toContain("mobile variant");
@@ -182,7 +182,7 @@ describe("runMobileRepack against the real shell templates", () => {
     });
 
     it("is reproducible: identical inputs give byte-identical packages", async () => {
-        // Guards the golden property the whole test rests on — if output drifted
+        // Guards the golden property the whole test rests on - if output drifted
         // run to run, no downstream assertion here would mean anything.
         const job = await makeJob();
         const [first, second] = [await tempDir("nls-out-"), await tempDir("nls-out-")];

@@ -80,7 +80,7 @@ let runtimeStorageFlushedForQuit = false;
 /**
  * Set once the app has started quitting (Quit Application node, window-all-closed, preview
  * shutdown). The window-close guard stands aside while this is true, so a programmatic quit never
- * fires the blueprint `On Window Close Requested` event — that is reserved for the user closing the
+ * fires the blueprint `On Window Close Requested` event - that is reserved for the user closing the
  * window.
  */
 let isQuitting = false;
@@ -457,12 +457,12 @@ function registerRuntimeProtocol(allowHttp: boolean): void {
 /**
  * Asset responses are effectively immutable: every asset URL carries a
  * per-pack version query, so a newer pack always requests different URLs and
- * long-lived cache entries can never go stale. Caching matters here — the
+ * long-lived cache entries can never go stale. Caching matters here - the
  * game engine drops and re-fetches images on every scene change, and without
  * it each of those requests round-trips into this process.
  *
  * Verified on Electron 38: custom-protocol responses never enter Chromium's
- * HTTP cache — no disk-cache entries are written and fetch() re-requests the
+ * HTTP cache - no disk-cache entries are written and fetch() re-requests the
  * same URL every time. This header is honored only by the renderer's
  * in-memory resource cache (notably decoded images), which is the desired
  * shape: repeat <img> loads are served inside the renderer without a

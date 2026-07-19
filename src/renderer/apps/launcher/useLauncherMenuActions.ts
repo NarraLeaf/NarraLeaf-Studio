@@ -8,7 +8,7 @@ import { createProjectFromWizard, openProjectFromFolder } from "./projectActions
  * Handles the macOS File menu on the home screen.
  *
  * The launcher has no action registry, so unlike the workspace there is nothing to look the menu
- * action up in — the two entries it supports are dispatched directly. Errors surface in the
+ * action up in - the two entries it supports are dispatched directly. Errors surface in the
  * console: the menu has no place to render an inline error the way the Projects tab does.
  *
  * Must be used from a component that stays mounted for the launcher's lifetime; hanging it off

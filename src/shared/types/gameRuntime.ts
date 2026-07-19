@@ -95,7 +95,7 @@ export type GameRuntimePackV1 = {
     plugins: GameRuntimePackPluginEntry[];
     /**
      * Network policy for the packaged/previewed game. Absent on packs produced
-     * before this field existed — the runtime treats a missing value as the
+     * before this field existed - the runtime treats a missing value as the
      * secure default ({@link GameRuntimeNetworkConfig} all disabled).
      */
     network?: GameRuntimeNetworkConfig;

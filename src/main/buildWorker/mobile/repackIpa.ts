@@ -5,12 +5,12 @@ import type { IosShellTemplate } from "./mobileShellManifest";
 
 /**
  * iOS repack orchestration: turn the prebuilt, unsigned shell `.app` template
- * plus a game's web payload into an unsigned `.ipa`. Manifest-driven — every
+ * plus a game's web payload into an unsigned `.ipa`. Manifest-driven - every
  * template internal (the `.app` dir name, the executable, the Info.plist and
  * icon locations, the injection roots) comes from the shell manifest, so this
  * hardcodes no template layout and stays valid across template revisions.
  *
- * No signing and no binary-format patching — iOS repack is pure zip re-layout
+ * No signing and no binary-format patching - iOS repack is pure zip re-layout
  * plus a text Info.plist rewrite, which is why v1 works on any host. The
  * output is unsigned: the user re-signs with their own identity to sideload.
  *
@@ -35,7 +35,7 @@ export type RepackIpaInput = {
     identity: {
         bundleId: string;
         /**
-         * CFBundleDisplayName — the name shown under the icon on the home
+         * CFBundleDisplayName - the name shown under the icon on the home
          * screen. Without it every repacked game would display the shell's
          * placeholder name; the template must carry the placeholder key.
          */
@@ -59,7 +59,7 @@ function assertSafeRelativePath(relativePath: string): void {
         throw new Error(`Unsafe www path: "${relativePath}"`);
     }
     for (const segment of relativePath.split("/")) {
-        // Reject "." / ".." and empty segments — the latter would produce a
+        // Reject "." / ".." and empty segments - the latter would produce a
         // double slash in the entry name that neither zip readers nor iOS
         // expect.
         if (segment === "." || segment === ".." || segment === "") {
@@ -117,7 +117,7 @@ export async function repackIpa(input: RepackIpaInput): Promise<Buffer> {
         }
         // A symlink would be silently rewritten as a regular file holding the
         // link target (zipWriter only emits regular files and dirs). The
-        // minimal shell has none — the template contract forbids them — so a
+        // minimal shell has none - the template contract forbids them - so a
         // symlink means the template drifted; stop rather than ship a broken
         // app.
         if ((entry.unixMode & 0o170000) === 0o120000) {
@@ -155,8 +155,8 @@ export async function repackIpa(input: RepackIpaInput): Promise<Buffer> {
             appliedIconSlots.add(intraPath);
             continue;
         }
-        // Everything else — the executable, storyboards, icons we are not
-        // overriding — passes through byte-identically, preserving its mode
+        // Everything else - the executable, storyboards, icons we are not
+        // overriding - passes through byte-identically, preserving its mode
         // bits (the executable's 0755 is what makes the app launchable).
         if (intraPath === ios.executableName) {
             sawExecutable = true;
@@ -175,7 +175,7 @@ export async function repackIpa(input: RepackIpaInput): Promise<Buffer> {
         throw new Error(`Template has no executable "${ios.executableName}" under ${appPrefix}`);
     }
     // A supplied icon override that matched no template entry means the
-    // manifest's iconSlots disagree with the template — surface it rather than
+    // manifest's iconSlots disagree with the template - surface it rather than
     // silently ship the placeholder icon the author tried to replace.
     for (const slot of Object.keys(input.iconPngBySlot ?? {})) {
         if (!appliedIconSlots.has(slot)) {

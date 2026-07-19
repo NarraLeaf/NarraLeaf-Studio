@@ -1,8 +1,8 @@
 const MS_PER_SECOND = 1000;
 
 /**
- * Story timings persist as milliseconds, but every author-facing surface — inspector fields,
- * slash commands, row summaries, the motion timeline — speaks seconds. These are the only
+ * Story timings persist as milliseconds, but every author-facing surface - inspector fields,
+ * slash commands, row summaries, the motion timeline - speaks seconds. These are the only
  * sanctioned crossings of that boundary; converting inline invites float noise and drift.
  */
 

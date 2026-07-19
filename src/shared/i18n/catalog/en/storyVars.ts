@@ -1,4 +1,4 @@
-/** `storyVars` — the Story Variables side panel (scene / saved / persistent variables). */
+/** `storyVars` - the Story Variables side panel (scene / saved / persistent variables). */
 export const storyVars = {
     empty: "Open a story scene to manage its variables.",
     valueType: {

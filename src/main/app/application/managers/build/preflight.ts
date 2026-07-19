@@ -9,7 +9,7 @@ import type { MobileShellOrientation } from "@/buildWorker/mobile/mobileShellMan
  * The checks a production build applies to a project, factored out of
  * GameBuildManager so the build dialog can run them BEFORE the user commits.
  *
- * GameBuildManager still owns enforcement — it keeps throwing on the blocking
+ * GameBuildManager still owns enforcement - it keeps throwing on the blocking
  * cases, because a stored selection carried across hosts (or any non-UI caller)
  * never passes through the dialog. What lives here is the shared judgement, so
  * the two can never disagree about what "valid" means.
@@ -41,7 +41,7 @@ export function readProjectIdentifier(projectConfig: ProjectConfigData | null): 
  * The orientation the mobile shells lock the game to. A project-level setting
  * (`app.mobile.orientation`), not per-target: it describes the game, and a
  * project that plays in landscape does so on both platforms. Visual novels are
- * overwhelmingly landscape, so that is the default — including for projects
+ * overwhelmingly landscape, so that is the default - including for projects
  * saved before the setting existed.
  */
 export function readMobileOrientation(projectConfig: ProjectConfigData | null): MobileShellOrientation {
@@ -52,8 +52,8 @@ export function readMobileOrientation(projectConfig: ProjectConfigData | null): 
 }
 
 /**
- * Platforms that carry their own app icon. The mobile shells take one too — the
- * repack scales it into the template's icon slots — so the same configured-icon
+ * Platforms that carry their own app icon. The mobile shells take one too - the
+ * repack scales it into the template's icon slots - so the same configured-icon
  * lookup serves both.
  */
 export type GameBuildIconPlatform = GameBuildDesktopPlatform | GameBuildMobilePlatform;
@@ -86,8 +86,8 @@ export type IconCheck =
 /**
  * Whether a platform's configured icon is usable. "missing" covers both "none
  * configured" and "configured but not on disk"; "unusable" means present but
- * too small or corrupt. Neither fails a build — the desktop packager ships the
- * default Electron icon and a mobile repack leaves the shell's placeholder — so
+ * too small or corrupt. Neither fails a build - the desktop packager ships the
+ * default Electron icon and a mobile repack leaves the shell's placeholder - so
  * both surface as warnings.
  */
 export async function checkIcon(
@@ -113,7 +113,7 @@ export async function checkIcon(
 }
 
 /**
- * Whether a PNG icon is unusable for electron-builder's conversion — either
+ * Whether a PNG icon is unusable for electron-builder's conversion - either
  * smaller than its 512×512 minimum, or corrupt/truncated so its dimensions
  * cannot be read. Both cases warn + fall back rather than hand a bad file to
  * electron-builder (which would hard-fail the whole build). Non-PNG files
@@ -147,8 +147,8 @@ export type OutputDirCheck = "ok" | "not-writable" | "not-empty";
 /**
  * Whether the chosen output directory can be written to, and whether it already
  * holds anything (a previous build's artifacts get overwritten, which is worth
- * a heads-up but not a block). A directory that does not exist yet is fine —
- * the packager creates it — as long as its nearest existing parent is writable.
+ * a heads-up but not a block). A directory that does not exist yet is fine -
+ * the packager creates it - as long as its nearest existing parent is writable.
  */
 export async function checkOutputDir(outputDir: string): Promise<OutputDirCheck> {
     try {

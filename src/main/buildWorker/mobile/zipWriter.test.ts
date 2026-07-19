@@ -276,7 +276,7 @@ describe("zip64", () => {
 
     it("switches to zip64 records at exactly 65535 entries (the EOCD sentinel) and parses back", async () => {
         // 0xFFFF in the EOCD count is the zip64 marker, so the boundary count
-        // itself already needs the real value in a zip64 record — an archive
+        // itself already needs the real value in a zip64 record - an archive
         // with a bare 0xFFFF count is one its own reader rejects.
         const output = new BufferZipOutput();
         const result = await writeZip(output, manyEntries(65535), IPA_OPTIONS);

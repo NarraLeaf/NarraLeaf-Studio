@@ -11,13 +11,13 @@ import {
  *
  * Android refuses to install an unsigned APK, so every repack must be signed
  * with something; v1 uses a debug-level self-signed identity (see
- * signingIdentity.ts — this is not a release identity and never will be).
+ * signingIdentity.ts - this is not a release identity and never will be).
  *
  * It is created once and reused for every project on the machine, which is the
  * load-bearing property: Android identifies an app by package name *and*
  * signature, so a per-build identity would make each build refuse to install
  * over the last ("App not installed"). Reuse keeps overwrite installs working
- * across rebuilds — the normal sideload development loop.
+ * across rebuilds - the normal sideload development loop.
  */
 
 const IDENTITY_RELATIVE = path.join("mobile-signing", "debug-identity.json");
@@ -42,7 +42,7 @@ function isUsableIdentity(value: unknown): value is SigningIdentity {
  *
  * A corrupt file is regenerated rather than trusted: a half-written identity
  * would fail deep inside signing with an opaque error. That does cost overwrite
- * installs of previously built APKs — unavoidable, since the old identity is
+ * installs of previously built APKs - unavoidable, since the old identity is
  * gone either way, and rare enough not to warrant preserving a broken file.
  */
 export async function resolveMobileSigningIdentity(userDataDir: string): Promise<SigningIdentity> {

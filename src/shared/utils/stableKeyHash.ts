@@ -5,7 +5,7 @@
  * `PersistentState.ensureValidKey`), so anything derived from a filesystem path has to be folded
  * into an alphanumeric token before it can be used as a key segment. Base36 keeps that guarantee.
  *
- * This is a keying primitive, not a security or integrity one — it only needs to be stable across
+ * This is a keying primitive, not a security or integrity one - it only needs to be stable across
  * runs and collision-free in practice for the handful of projects one user opens.
  */
 export function stableKeyHash(value: string): string {

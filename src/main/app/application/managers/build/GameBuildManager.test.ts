@@ -35,7 +35,7 @@ describe("deriveGameAppId", () => {
 });
 
 describe("isDesktopTarget", () => {
-    it("claims desktop platforms only — not web, not mobile", () => {
+    it("claims desktop platforms only - not web, not mobile", () => {
         // Type-predicate bodies are unchecked by TypeScript; this pins the
         // classification so a revert to `platform !== "web"` fails a test
         // instead of silently routing mobile targets into electron-builder.
@@ -50,7 +50,7 @@ describe("isDesktopTarget", () => {
 });
 
 describe("isMobileTarget", () => {
-    it("claims mobile platforms only — not web, not desktop", () => {
+    it("claims mobile platforms only - not web, not desktop", () => {
         // Same reasoning as isDesktopTarget: a type-predicate body is unchecked,
         // and this one decides whether a target reaches the repack at all.
         const formats = { formats: [] };
@@ -71,7 +71,7 @@ describe("GameBuildManager.start fail-fast guards", () => {
 
     it("fails loudly for a platform outside the union", async () => {
         // Regression: with the explicit desktop/mobile/web partitions, an
-        // unknown platform matches none of them — without this guard the
+        // unknown platform matches none of them - without this guard the
         // build would end "done" with zero artifacts.
         const manager = makeManager();
         const projectPath = path.join("/nonexistent", "unknown-platform-project");

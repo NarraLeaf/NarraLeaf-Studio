@@ -30,7 +30,7 @@ describe("storyEditorSessionStore view state", () => {
 
         // Controller persists the focused row + selection.
         patchStoryEditorViewState(panelState, sceneId, { activeBlockId: "block-1", selectedBlockIds: ["block-1"] });
-        // Tab persists the scroll anchor — must not wipe the focus fields.
+        // Tab persists the scroll anchor - must not wipe the focus fields.
         patchStoryEditorViewState(panelState, sceneId, { scroll: anchor("block-1") });
 
         expect(getStoryEditorViewState(panelState, sceneId)).toEqual({

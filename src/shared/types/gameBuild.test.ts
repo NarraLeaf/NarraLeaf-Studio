@@ -187,7 +187,7 @@ describe("platform membership predicates", () => {
         const all: GameBuildPlatform[] = ["windows", "macos", "linux", "web", "android", "ios"];
         expect(all.filter(isDesktopBuildPlatform)).toEqual(["windows", "macos", "linux"]);
         expect(all.filter(isMobileBuildPlatform)).toEqual(["android", "ios"]);
-        // web is neither — the old `platform !== "web"` desktop test would
+        // web is neither - the old `platform !== "web"` desktop test would
         // have claimed android/ios here.
         expect(all.filter(p => !isDesktopBuildPlatform(p) && !isMobileBuildPlatform(p))).toEqual(["web"]);
     });

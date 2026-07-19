@@ -4,7 +4,7 @@ import { stableProjectKeyToken } from "@shared/utils/stableKeyHash";
  * Whether the dashboard opens with a workspace is a per-project choice: one project may be a daily
  * driver you want the numbers for, another a library you only dip into.
  *
- * Stored in userData rather than the `.nlproj` for the same reason the statistics are — this is a
+ * Stored in userData rather than the `.nlproj` for the same reason the statistics are - this is a
  * personal habit, and a version-controlled copy would let one author's preference override their
  * teammates' on every pull.
  */

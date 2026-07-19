@@ -25,7 +25,7 @@ export function normalizeStageObjectName(value: string | undefined): string {
  * stands in. The literal `"character"` is treated as unset because it is the bare-block default,
  * not an authored choice.
  *
- * This is THE rule for character stage naming — the compiler, the stage snapshot and every target
+ * This is THE rule for character stage naming - the compiler, the stage snapshot and every target
  * reference resolve through it, so they cannot drift apart. See `displayableSourceIdentity`.
  */
 export function characterStageObjectName(payload: Extract<StoryActionPayload, { action: "character" }>): string {
@@ -77,7 +77,7 @@ export function displayableSourceIdentity(
  * Resolve a displayable target to the stage key + kind that should be used *right now*. When the
  * target carries a stable `sourceBlockId` that still resolves to a creator block, that block's
  * current identity wins, so the reference follows renames. Otherwise the stored `name`/`kind` is
- * returned — for legacy documents authored before stable ids, or a source block that was deleted.
+ * returned - for legacy documents authored before stable ids, or a source block that was deleted.
  *
  * Look objects up by `name` and render `label`; they differ whenever the stage key is not something
  * an author typed (see `displayableSourceIdentity`).

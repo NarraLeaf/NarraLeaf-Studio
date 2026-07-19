@@ -1,4 +1,4 @@
-/** `widgetChrome` — low-level UI-editor chrome: docker bar, surface tree, layer outline, effects/page-animation editors, chrome triggers, and blueprint value fields. */
+/** `widgetChrome` - low-level UI-editor chrome: docker bar, surface tree, layer outline, effects/page-animation editors, chrome triggers, and blueprint value fields. */
 export const widgetChrome = {
     docker: {
         insert: "Insert {name}",

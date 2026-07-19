@@ -6,8 +6,8 @@
  * archive fail with ENOENT (it wants the file, not a lookup inside it).
  *
  * Disabling the patch for this worker process lets electron-builder treat
- * .asar files as the plain files they are. This is imported first — before
- * electron-builder or any of its dependencies — so the flag is set before any
+ * .asar files as the plain files they are. This is imported first - before
+ * electron-builder or any of its dependencies - so the flag is set before any
  * of that code runs a build.
  *
  * Because the asar require hook is also affected, electron-builder and its

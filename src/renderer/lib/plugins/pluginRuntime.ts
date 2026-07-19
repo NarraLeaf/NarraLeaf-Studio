@@ -67,7 +67,7 @@ async function loadWorkspacePluginsNow(ctx: WorkspaceContext): Promise<Workspace
 
     // Skip plugins this project's dependency resolution flagged as incompatible
     // (e.g. a built-in plugin whose major version changed across a Studio update).
-    // Suppressing them here — before import()/setup() — keeps their nodes, widgets,
+    // Suppressing them here - before import()/setup() - keeps their nodes, widgets,
     // and actions from registering and corrupting the open project.
     const suppressed = new Set(
         ctx.services.get<ProjectDependencyService>(Services.ProjectDependency).getSuppressedPluginIds(),
@@ -219,7 +219,7 @@ function assertDeclaredWidget(descriptor: WorkspacePluginDescriptor, type: strin
  * A group declares where it lands on the macOS menu bar, and two of those slots are load-bearing
  * for Studio itself: `edit` lets a group's items stand in for the system Copy/Cut/Paste (and so
  * inherit their Cmd shortcuts), and `window` sits among the standard window commands. Those
- * belong to the surfaces Studio ships. A plugin still gets a full top-level menu — it just
+ * belong to the surfaces Studio ships. A plugin still gets a full top-level menu - it just
  * cannot quietly become the thing Cmd+V does.
  *
  * `menuRole` is dropped for the same reason: it only means anything in the `edit` slot.

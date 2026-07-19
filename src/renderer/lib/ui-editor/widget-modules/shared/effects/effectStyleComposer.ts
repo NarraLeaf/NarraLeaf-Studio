@@ -67,7 +67,7 @@ export function mergeBoxShadowLayers(user: string | undefined, strokeSimulatedIn
 
 export type TextEffectStyle = Pick<CSSProperties, "filter" | "mixBlendMode" | "textShadow">;
 
-/** Map effects to text / textarea nodes (no backdrop blur on glyph run — omit background blur). */
+/** Map effects to text / textarea nodes (no backdrop blur on glyph run - omit background blur). */
 export function composeTextEffectStyle(effects: ElementEffectValues): TextEffectStyle {
     const out: TextEffectStyle = {};
     const blurPart = effects.effectBlur > 0 ? `blur(${effects.effectBlur}px)` : "";

@@ -1,7 +1,7 @@
 /**
  * Game voice-over service: owns the per-locale voice library
  * (`editor/voice/<locale>.json`) and the project voice configuration
- * (`.nlproj` → `app.voice`). Studio does not record audio — a voice unit links
+ * (`.nlproj` → `app.voice`). Studio does not record audio - a voice unit links
  * a story line to an audio asset already imported into the asset library.
  *
  * Voiceable-line extraction and coverage reuse the localization row extractor so
@@ -96,7 +96,7 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
 
     /**
      * Remove a voice language from the configuration. The voice file on disk is
-     * intentionally kept (non-destructive) — re-adding the language restores its
+     * intentionally kept (non-destructive) - re-adding the language restores its
      * clip assignments.
      */
     public async removeLocale(code: string): Promise<VoiceConfiguration> {
@@ -150,7 +150,7 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
         }
         let document: VoiceDocument;
         if (!exists.data) {
-            // First time this language is opened — start empty, created on first save.
+            // First time this language is opened - start empty, created on first save.
             document = createEmptyVoiceDocument(locale);
         } else {
             // A present-but-unreadable file throws instead of degrading to empty:
@@ -175,7 +175,7 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
 
     /**
      * Link, re-link, approve, or unlink a line's voice for a locale. Passing
-     * `assetId` (re-)links the line and re-stamps the source hash — a new take
+     * `assetId` (re-)links the line and re-stamps the source hash - a new take
      * resets the unit to "linked" (needs re-approval) unless the patch says
      * otherwise. Passing an empty `assetId` unlinks the line. Status/note/
      * duration-only patches never touch the source hash, so approving cannot

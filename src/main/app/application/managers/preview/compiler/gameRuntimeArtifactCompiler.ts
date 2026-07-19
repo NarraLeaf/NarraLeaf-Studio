@@ -210,7 +210,7 @@ export async function compileGameRuntimeArtifact(
             target,
         });
         // The desktop icon set feeds the window/dock; a web site instead gets
-        // a favicon (best-effort — only a configured PNG qualifies).
+        // a favicon (best-effort - only a configured PNG qualifies).
         const projectIcon = shell === "web"
             ? undefined
             : await copyProjectIcon({
@@ -300,8 +300,8 @@ export async function compileGameRuntimeArtifact(
 
 /**
  * The loose app manifest Electron reads before any pack (possibly sealed) is
- * open. Production identity fields drive the shell's app name — and with it
- * the default OS userData location — plus the packager's product metadata.
+ * open. Production identity fields drive the shell's app name - and with it
+ * the default OS userData location - plus the packager's product metadata.
  * `narraleaf.mode` is the early mode marker the runtime consults before
  * app-ready; the pack's own `mode` stays authoritative.
  */

@@ -1,4 +1,4 @@
-/** `dashboard` — the project dashboard editor tab: scale, writing activity, builds, structure, localization. */
+/** `dashboard` - the project dashboard editor tab: scale, writing activity, builds, structure, localization. */
 export const dashboard = {
     loading: "Reading the project…",
     failed: "Could not read the project statistics.",

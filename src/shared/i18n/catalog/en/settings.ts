@@ -1,4 +1,4 @@
-/** `settings` — the Settings window (registry-driven; see appSettings.ts). */
+/** `settings` - the Settings window (registry-driven; see appSettings.ts). */
 export const settings = {
     title: "Settings",
     searchPlaceholder: "Search settings…",
@@ -8,7 +8,7 @@ export const settings = {
     noneExposed: "No implemented settings are currently exposed.",
     invalidValue: "Please provide a valid value",
     persistFailed: "Failed to persist setting",
-    // Category chrome — keys mirror the category `key` in appSettings.ts.
+    // Category chrome - keys mirror the category `key` in appSettings.ts.
     categories: {
         general: {
             label: "General",
@@ -35,7 +35,7 @@ export const settings = {
             description: "Telemetry, developer helpers and experimental toggles.",
         },
     },
-    // Individual settings — keyed by the setting they localize.
+    // Individual settings - keyed by the setting they localize.
     items: {
         language: {
             label: "Language",

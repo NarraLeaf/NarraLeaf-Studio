@@ -30,7 +30,7 @@ export const BLUEPRINT_TEXT_READ_PERSISTENCE_KEY = "nlr.textRead" as const;
 export type BlueprintHostApiContractVersion = typeof BLUEPRINT_HOST_API_CONTRACT_VERSION;
 
 /**
- * Blueprint System — host API contract surface.
+ * Blueprint System - host API contract surface.
  * Visual and TypeScript blueprints share this capability tree; implementations live in runtime (M3+).
  *
  * - purity: whether the operation is side-effect free from the blueprint semantics perspective

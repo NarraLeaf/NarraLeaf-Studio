@@ -8,7 +8,7 @@
  * This type is the authority: the shell repo's CI generates a manifest.json
  * that conforms to it (icon slot paths are enumerated from the actually-built
  * template, since AGP rewrites density directories). Studio only consumes the
- * declared paths — it hardcodes no template internals — so the repack stays
+ * declared paths - it hardcodes no template internals - so the repack stays
  * robust across template revisions that keep the schema.
  */
 
@@ -28,7 +28,7 @@ export type MobileShellOrientation = "landscape" | "portrait" | "auto";
  * (`shellConfigSchemaVersion`) because the two evolve independently: a template
  * can gain icon slots without changing what the shell reads at boot.
  *
- * `backgroundColor` is the pre-boot background — the same value the web shell's
+ * `backgroundColor` is the pre-boot background - the same value the web shell's
  * entry document paints, so the native window, the document and the game agree
  * on the first frame instead of flashing white.
  */

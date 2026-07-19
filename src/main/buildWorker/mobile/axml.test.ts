@@ -104,7 +104,7 @@ function startElement(nameIndex: number, attrs: Attr[]): Buffer {
 const UNKNOWN_CHUNK_PAYLOAD = Buffer.from([0xde, 0xad, 0xbe, 0xef, 0x13, 0x37, 0x42, 0x24]);
 
 /**
- * Independent structural validation of the emitted string pool — deliberately
+ * Independent structural validation of the emitted string pool - deliberately
  * NOT the module's own parser, whose symmetric bugs would otherwise vanish in
  * round-trips (a mutation probe showed dropped NUL terminators keep every
  * round-trip test green while Android's ResStringPool rejects the manifest at
@@ -266,7 +266,7 @@ describe("patchBinaryManifest", () => {
                 ...FULL_PATCH,
                 packageName: "com.a-very-long-organization-name.an-even-longer-game-identifier",
                 // >127 chars, forcing the long length encoding on the write side.
-                label: `My Game — ${"subtitle ".repeat(18)}`,
+                label: `My Game - ${"subtitle ".repeat(18)}`,
             });
             expect(parseBinaryManifest(longer.data).versionCode).toBe(1_002_003);
             validatePoolStructure(longer.data);

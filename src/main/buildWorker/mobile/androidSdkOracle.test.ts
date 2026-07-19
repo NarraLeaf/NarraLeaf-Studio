@@ -12,7 +12,7 @@ import type { GameBuildWorkerMobileJob } from "../protocol";
 /**
  * The Android SDK oracle: Google's own tools judging what Studio produced.
  *
- * Everything else about the APK is checked by code in this repo — the same code
+ * Everything else about the APK is checked by code in this repo - the same code
  * that wrote the bytes, which could be self-consistently wrong. apksigner and
  * aapt2 are the tools the platform itself is built from, so they are the
  * authority on the two questions Studio cannot answer about itself: is this
@@ -22,7 +22,7 @@ import type { GameBuildWorkerMobileJob } from "../protocol";
  * The SDK never ships with Studio (its components cannot be redistributed), so
  * this is gated on ANDROID_HOME: it skips on a normal dev machine and runs on
  * CI, where the runner's preinstalled SDK is licensed. CI sets
- * REQUIRE_ANDROID_SDK_ORACLE=1, which turns a missing SDK into a failure —
+ * REQUIRE_ANDROID_SDK_ORACLE=1, which turns a missing SDK into a failure -
  * otherwise a runner that lost its SDK would skip silently and look exactly
  * like a pass.
  */
@@ -99,7 +99,7 @@ async function buildApk(): Promise<string> {
 describe("the Android SDK oracle's availability", () => {
     it("is present when CI demands it", () => {
         // Without this, a runner whose SDK vanished would skip every oracle
-        // below and report a green build — the failure mode this whole file
+        // below and report a green build - the failure mode this whole file
         // exists to prevent.
         if (oracleRequired) {
             expect(buildTools, "REQUIRE_ANDROID_SDK_ORACLE is set but no Android build-tools were found").not.toBeNull();
@@ -124,7 +124,7 @@ describe.skipIf(!buildTools)("Google's tools on a Studio-built APK", () => {
         const apk = await buildApk();
         const output = tool("apksigner", ["verify", "--min-sdk-version", String(MIN_SDK), "--verbose", apk]);
         // A "WARNING:" line here is how apksigner reports things it tolerates
-        // but Android may not — e.g. unprotected entries outside the v2 digest.
+        // but Android may not - e.g. unprotected entries outside the v2 digest.
         expect(output).not.toContain("WARNING:");
     });
 

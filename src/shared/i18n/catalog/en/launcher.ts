@@ -1,4 +1,4 @@
-/** `launcher` — the launcher window (sidebar, projects, plugins, learning). */
+/** `launcher` - the launcher window (sidebar, projects, plugins, learning). */
 export const launcher = {
     nav: {
         projects: "Projects",
@@ -22,7 +22,7 @@ export const launcher = {
         errorOpenFolder: "Failed to open folder.",
         errorImport: "Failed to import project.",
     },
-    // Plural example — read with translator.tn("launcher.recentCount", count).
+    // Plural example - read with translator.tn("launcher.recentCount", count).
     recentCount: {
         one: "{count} recent project",
         other: "{count} recent projects",

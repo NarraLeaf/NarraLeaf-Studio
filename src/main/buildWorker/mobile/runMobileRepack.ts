@@ -13,7 +13,7 @@ import type { GameBuildWorkerMobileJob } from "../protocol";
  * disk, streams the site's files into the repack, and writes the finished
  * install packages out.
  *
- * The split matters for testing — repackApk/repackIpa are Buffer-in/Buffer-out
+ * The split matters for testing - repackApk/repackIpa are Buffer-in/Buffer-out
  * and fully unit-testable against synthetic fixtures, while this module holds
  * the unavoidable I/O.
  */

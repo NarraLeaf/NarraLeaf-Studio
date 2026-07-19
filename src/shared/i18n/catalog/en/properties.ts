@@ -1,4 +1,4 @@
-/** `properties` — the Properties/Inspector panel and its per-type property editors. */
+/** `properties` - the Properties/Inspector panel and its per-type property editors. */
 export const properties = {
     saving: "Saving…",
     preview: "Preview",

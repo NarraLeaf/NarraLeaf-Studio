@@ -3,7 +3,7 @@
  *
  * Global game keys (space to advance, Escape to open the menu) must stand down while a text field
  * has focus, or entering a name would drive the story. This is the same convention every editor and
- * web app follows, and it is checked at the app-level keyboard dispatch only — a widget's own
+ * web app follows, and it is checked at the app-level keyboard dispatch only - a widget's own
  * keyboard blueprint event still fires, since that arrives by DOM bubbling instead.
  */
 

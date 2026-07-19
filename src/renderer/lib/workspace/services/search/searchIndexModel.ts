@@ -5,7 +5,7 @@ import { getTextSegment } from "@/apps/workspace/modules/story/scene-editor/stor
 import { richRunsToPlain, segmentToRuns } from "@/apps/workspace/modules/story/scene-editor/richText";
 
 /**
- * Global project search — the pure model.
+ * Global project search - the pure model.
  *
  * Extraction turns each searchable document into flat {@link SearchIndexEntry} lists; the service
  * owns *when* slices rebuild (change events), this file owns *what* is searchable and how a query
@@ -13,18 +13,18 @@ import { richRunsToPlain, segmentToRuns } from "@/apps/workspace/modules/story/s
  *
  * Two deliberate departures from the other matchers in the codebase:
  *
- *  - **Substring, not fuzzy.** Content search wants substring matching — a fuzzy subsequence over
- *    prose surfaces junk hits — so this is not `fuzzyListModel`. Entity *names* are the opposite
+ *  - **Substring, not fuzzy.** Content search wants substring matching - a fuzzy subsequence over
+ *    prose surfaces junk hits - so this is not `fuzzyListModel`. Entity *names* are the opposite
  *    case and belong to quick-open's fuzzy matcher; keeping the two matchers apart is what keeps
  *    "find the line I wrote" and "open the thing called X" from polluting each other.
  *  - **Case-folded haystacks are precomputed.** {@link indexEntries} folds every searchable string
- *    once at extraction time. The alternative — folding inside the scorer — allocates one string per
+ *    once at extraction time. The alternative - folding inside the scorer - allocates one string per
  *    entry per keystroke, which at VN scale (tens of thousands of lines) is the dominant cost of a
  *    query.
  *
  * A query is AND over whitespace-separated terms, so word order never matters; `"…"` quotes a
  * phrase, and `key:value` pairs narrow by facet. Terms match three haystacks at descending weight:
- * `text` (the result title), `detail` (the context line), and `aux` (searchable but never shown —
+ * `text` (the result title), `detail` (the context line), and `aux` (searchable but never shown -
  * tags, object names, translations).
  */
 
@@ -62,7 +62,7 @@ export interface SearchEntryFields {
     sceneName?: string;
     /** Asset type discriminator (`image`, `audio`…), mirroring `AssetType`. */
     assetType?: string;
-    /** Dialogue speaker display name — a Studio character's name, or a bare typed speaker. */
+    /** Dialogue speaker display name - a Studio character's name, or a bare typed speaker. */
     speaker?: string;
     /**
      * Shared identity across text, translation, and voice (see `@shared/types/voice`). Carrying it
@@ -77,7 +77,7 @@ export interface SearchIndexEntry {
     /** Stable unique id (used as the React key of the result row). */
     id: string;
     group: SearchGroup;
-    /** Primary searchable text — what the result row shows as its title. */
+    /** Primary searchable text - what the result row shows as its title. */
     text: string;
     /** Context line (also searched, at a lower weight): story › scene, blueprint name, source text… */
     detail?: string;
@@ -95,7 +95,7 @@ export interface SearchIndexEntry {
  *
  * `*Foldable` records whether folding preserved length. Unicode case folding can change a string's
  * length (`İ` folds to two code units), which would desync a match index found in the folded string
- * from the original text it highlights — so when folding is not length-preserving the entry still
+ * from the original text it highlights - so when folding is not length-preserving the entry still
  * matches but reports no highlight range rather than a wrong one.
  */
 export interface IndexedSearchEntry extends SearchIndexEntry {
@@ -219,7 +219,7 @@ export function extractStoryEntries(document: StoryDocument): SearchIndexEntry[]
 
 /**
  * Blueprint slice: member variable names + persistent variable names ("variable") and graph node
- * display titles ("blueprintNode"). Only blueprints reachable through an owner record are indexed —
+ * display titles ("blueprintNode"). Only blueprints reachable through an owner record are indexed -
  * an unowned blueprint has no editor surface to jump to.
  */
 export function extractBlueprintEntries(
@@ -411,7 +411,7 @@ function tokenizeQuery(raw: string): string[] {
 /**
  * Parse raw input into terms plus facets. `type:`/`group:` narrow to result groups; `story:`,
  * `scene:` and `speaker:` narrow by name; `asset:` narrows by asset type. An unknown prefix is not
- * a facet — the token stays a literal search term, which is what keeps `http://…` searchable.
+ * a facet - the token stays a literal search term, which is what keeps `http://…` searchable.
  */
 export function parseSearchQuery(raw: string): ParsedSearchQuery {
     const terms: string[] = [];
@@ -516,7 +516,7 @@ export interface SearchHit {
     score: number;
     /**
      * Matched ranges in `entry.text`, sorted and non-overlapping. Empty when the entry matched only
-     * through `detail`/`aux` (or when folding was not index-safe) — see {@link IndexedSearchEntry}.
+     * through `detail`/`aux` (or when folding was not index-safe) - see {@link IndexedSearchEntry}.
      */
     titleRanges: Array<[start: number, end: number]>;
     /** Weakest field any term relied on, so the row can explain a match the title does not show. */
@@ -532,7 +532,7 @@ export interface SearchGroupResult {
 
 export interface SearchQueryOptions {
     maxPerGroup?: number;
-    /** Groups the user expanded — capped far higher, but still capped (the list is rendered eagerly). */
+    /** Groups the user expanded - capped far higher, but still capped (the list is rendered eagerly). */
     expandedGroups?: readonly SearchGroup[];
     filters?: SearchFilters;
 }
@@ -589,7 +589,7 @@ function normalizeRanges(ranges: Array<[number, number]>): Array<[number, number
 
 /**
  * Match one entry against every term (AND). Returns null as soon as a term is missing from all
- * three haystacks — the common case for most of the index, so it is the hot path.
+ * three haystacks - the common case for most of the index, so it is the hot path.
  */
 function matchEntry(entry: IndexedSearchEntry, terms: readonly string[]): SearchHit | null {
     let score = 0;
@@ -642,7 +642,7 @@ export function querySearchIndex(
 ): SearchGroupResult[] {
     const parsed = parseSearchQuery(rawQuery);
     const filters = mergeFilters(parsed.filters, options?.filters);
-    // A facet-only query (`type:asset` with no terms) is not a search — it would return the whole
+    // A facet-only query (`type:asset` with no terms) is not a search - it would return the whole
     // slice, which is a browse view's job, not this panel's.
     if (parsed.terms.length === 0) {
         return [];

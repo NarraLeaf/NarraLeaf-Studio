@@ -3,7 +3,7 @@ import { parseInfoPlist, patchInfoPlist, type InfoPlistPatch } from "./plist";
 
 /**
  * A representative template Info.plist: XML plist with the placeholder
- * identity, both orientation arrays, and — critically — a NESTED dict
+ * identity, both orientation arrays, and - critically - a NESTED dict
  * (CFBundleIcons) whose inner keys must never be mistaken for top-level ones,
  * plus a nested key literally named "CFBundleIdentifier" to prove the
  * depth-aware locator does not touch it.

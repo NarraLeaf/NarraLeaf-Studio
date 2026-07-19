@@ -919,7 +919,7 @@ export function countBlueprintBroadcastListeners(options: {
  * Unlike broadcast this resolves heads through the widget logic API slot table
  * (`collectBlueprintEventHeadNodeIdsForDispatch`), so registering a new ambient event
  * in `widgetLogic.ts` is all it takes to route it here. Interaction events do NOT use
- * this path — they reach a single widget through DOM targeting instead.
+ * this path - they reach a single widget through DOM targeting instead.
  *
  * Targets come from the document, not the mounted React tree (same as broadcast), and
  * only cover the active surface. A failing widget graph is reported and skipped so one

@@ -378,7 +378,7 @@ export class PluginManager {
      * When Studio is packaged the source lives inside app.asar. Electron's asar
      * shim patches `readdir`/`readFile` to work transparently on the virtual
      * archive, but it does NOT patch directory streaming (`opendir`), which is
-     * what `fs.cp({ recursive: true })` relies on — so `fs.cp` fails with
+     * what `fs.cp({ recursive: true })` relies on - so `fs.cp` fails with
      * `ENOTDIR` on asar-packed built-in plugins. Walking the tree with
      * `readdir` + `readFile`/`writeFile` keeps the copy asar-safe in both the
      * packaged and unpacked (dev) layouts.

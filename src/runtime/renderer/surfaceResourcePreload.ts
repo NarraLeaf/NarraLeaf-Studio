@@ -202,7 +202,7 @@ function preloadImage(url: string): Promise<void> {
                 return;
             }
             // A rejected decode() with loaded bytes is environmental
-            // (decoder pressure, hidden-page aborts) — truly corrupt images
+            // (decoder pressure, hidden-page aborts) - truly corrupt images
             // already failed via onerror. Count it preloaded either way.
             void image.decode().then(resolve).catch(() => resolve());
         };

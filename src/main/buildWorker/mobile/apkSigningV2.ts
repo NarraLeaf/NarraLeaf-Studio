@@ -9,7 +9,7 @@ import { loadSigningIdentity, type SigningIdentity } from "./signingIdentity";
  * Directory. The block holds a digest of everything except itself, plus a
  * signature over that digest and the signing certificate. The chunked digest
  * is computed with the End-of-Central-Directory's CD-offset field pointing at
- * the block's start — which is why the digest does not depend on the block's
+ * the block's start - which is why the digest does not depend on the block's
  * own (yet-unknown) size, breaking the chicken-and-egg. This module produces
  * descriptor-free archives (zipWriter guarantees that), so entry offsets are
  * stable and only the EOCD's CD offset is rewritten on output.
@@ -38,7 +38,7 @@ function u64(value: number): Buffer {
     return buffer;
 }
 
-/** uint32le length prefix + payload — the ubiquitous v2 framing. */
+/** uint32le length prefix + payload - the ubiquitous v2 framing. */
 function lengthPrefixed(payload: Buffer): Buffer {
     return Buffer.concat([u32(payload.length), payload]);
 }
@@ -82,7 +82,7 @@ function locateSections(apk: Buffer): ApkSections {
     }
     // Reject an already-signed APK rather than double-sign it. A v2 signature
     // sits between the entries and the central directory, so the well-formed
-    // check above still passes for a signed APK — the block's magic is the
+    // check above still passes for a signed APK - the block's magic is the
     // only reliable tell. The repack always signs a freshly built unsigned
     // APK, so an existing block means a caller mistake.
     if (centralDirOffset >= APK_SIGNING_BLOCK_MAGIC.length
@@ -270,7 +270,7 @@ function findSigningBlock(apk: Buffer): { block: Buffer; centralDirOffset: numbe
  * Independently verify a v2 signature: recompute the content digest, check it
  * against the signed digest, verify the signature with the embedded
  * certificate's key, and confirm that key matches the signer's public key.
- * The in-repo counterpart to the CI apksigner check — it catches structural
+ * The in-repo counterpart to the CI apksigner check - it catches structural
  * and digest mistakes without any Android toolchain.
  */
 export function verifyApkV2(apk: Buffer): ApkV2VerifyResult {

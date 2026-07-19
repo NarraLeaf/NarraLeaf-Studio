@@ -54,7 +54,7 @@ export interface RuntimeResources {
 /**
  * Pick the backend for this packed app: the consolidated store when present,
  * loose files otherwise. A protected store is opened purely through the support
- * binary in the app dir — the protection layer carries no key material in JS.
+ * binary in the app dir - the protection layer carries no key material in JS.
  */
 export async function createRuntimeResources(appDir: string): Promise<RuntimeResources> {
     const bundlePath = path.join(appDir, RUNTIME_BUNDLE_FILENAME);

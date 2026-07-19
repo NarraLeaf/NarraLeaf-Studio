@@ -229,7 +229,7 @@ export class AppRemoveRecentProjectHandler extends IPCHandler<IPCEventType.appRe
 
 /**
  * Picks a background image via the native dialog and caches it under userData/backgrounds. Only
- * the cache file name travels back — renderers never hand us arbitrary paths to copy from later.
+ * the cache file name travels back - renderers never hand us arbitrary paths to copy from later.
  */
 export class AppPickBackgroundImageHandler extends IPCHandler<IPCEventType.appPickBackgroundImage> {
     readonly name = IPCEventType.appPickBackgroundImage;
@@ -260,7 +260,7 @@ export class AppPickBackgroundImageHandler extends IPCHandler<IPCEventType.appPi
 }
 
 /**
- * Reads a cached background image (basename-only lookup inside userData/backgrounds — path
+ * Reads a cached background image (basename-only lookup inside userData/backgrounds - path
  * separators are rejected so this can never be steered at arbitrary files).
  */
 export class AppReadBackgroundImageHandler extends IPCHandler<IPCEventType.appReadBackgroundImage> {
