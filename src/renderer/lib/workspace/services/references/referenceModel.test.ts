@@ -3,12 +3,13 @@ import {
     buildReferenceIndex,
     extractBlueprintAssetReferences,
     extractCharacterAssetReferences,
+    extractStoryAnimationAssetReferences,
     extractStoryAssetReferences,
     extractUIDocumentAssetReferences,
     extractVoiceAssetReferences,
     isLibraryAssetId,
 } from "./referenceModel";
-import type { StoryBlock, StoryDocument } from "@shared/types/story";
+import type { StoryAnimationAsset, StoryBlock, StoryDocument } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { VoiceDocument } from "@shared/types/voice";
@@ -116,6 +117,34 @@ describe("extractStoryAssetReferences", () => {
     });
 });
 
+describe("extractStoryAnimationAssetReferences", () => {
+    function animation(overrides: Record<string, unknown>): StoryAnimationAsset {
+        return {
+            schemaVersion: 1,
+            id: "anim-1",
+            name: "Shake",
+            targetKind: "character",
+            sequences: [],
+            ...overrides,
+        } as unknown as StoryAnimationAsset;
+    }
+
+    it("covers both preview images, which no other extractor walks", () => {
+        const references = extractStoryAnimationAssetReferences(
+            animation({ previewAssetId: "preview-1", previewBackgroundAssetId: "bg-1" }),
+        );
+
+        expect(references).toEqual([
+            expect.objectContaining({ assetId: "preview-1", field: "animation.previewAssetId", label: "Shake" }),
+            expect.objectContaining({ assetId: "bg-1", field: "animation.previewBackgroundAssetId" }),
+        ]);
+    });
+
+    it("reports nothing for an animation with no preview set", () => {
+        expect(extractStoryAnimationAssetReferences(animation({}))).toEqual([]);
+    });
+});
+
 describe("extractBlueprintAssetReferences", () => {
     function blueprintDoc(nodes: Record<string, unknown>, slot: "events" | "functions" | "macros" = "events"): BlueprintDocument {
         return {
@@ -162,6 +191,24 @@ describe("extractBlueprintAssetReferences", () => {
         );
 
         expect(references[0]?.assetId).toBe("img-in-macro");
+    });
+
+    it("reads the pre-rename `assetId` pin, which Set Image Asset still falls back to", () => {
+        const references = extractBlueprintAssetReferences(
+            blueprintDoc({ n1: { id: "n1", type: "x", params: { assetId: { kind: "imageAsset", assetId: "img-old" } } } }),
+        );
+
+        expect(references).toHaveLength(1);
+        expect(references[0]).toMatchObject({ assetId: "img-old", field: "assetId" });
+    });
+
+    it("takes only `asset` when a migrated node still carries the old pin", () => {
+        // The node executes `asset`, so the stale `assetId` is not a second live reference.
+        const references = extractBlueprintAssetReferences(
+            blueprintDoc({ n1: { id: "n1", type: "x", params: { asset: "img-new", assetId: "img-old" } } }),
+        );
+
+        expect(references.map(reference => reference.assetId)).toEqual(["img-new"]);
     });
 
     it("reads bare font ids and skips builtin font stacks", () => {
@@ -220,12 +267,68 @@ describe("extractUIDocumentAssetReferences", () => {
         expect(references[0]).toMatchObject({ assetId: "legacy-1", field: "assetId" });
     });
 
-    it("prefers imageFill over the legacy prop when both are present", () => {
+    it("keeps the legacy prop as a dormant reference when an imageFill supplies the picture", () => {
+        // `getImageWidgetRectangleProps` renders img-1, so legacy-1 draws nothing today - but
+        // clearing the fill brings it back, which is the whole point of reporting dormant sites.
         const references = extractUIDocumentAssetReferences(
             doc([uiElement("e1", "nl.image", { assetId: "legacy-1", fillType: "image", imageFill: { mode: "cover", assetId: "img-1" } })]),
         );
 
-        expect(references.map(reference => reference.assetId)).toEqual(["img-1"]);
+        const byAsset = Object.fromEntries(references.map(reference => [reference.assetId, reference]));
+        expect(Object.keys(byAsset).sort()).toEqual(["img-1", "legacy-1"]);
+        expect(byAsset["img-1"].dormant).toBeUndefined();
+        expect(byAsset["legacy-1"].dormant).toBe(true);
+    });
+
+    it("still reads the legacy prop when imageFill exists but holds no asset", () => {
+        // The runtime gates on `!hasAssetInFill`, not on the presence of the object. Testing for the
+        // object dropped this reference and the widget rendered an asset nothing claimed to use.
+        const references = extractUIDocumentAssetReferences(
+            doc([uiElement("e1", "nl.image", { assetId: "legacy-1", imageFill: { mode: "cover", assetId: null } })]),
+        );
+
+        expect(references).toHaveLength(1);
+        expect(references[0]).toMatchObject({ assetId: "legacy-1", field: "assetId" });
+        expect(references[0].dormant).toBeUndefined();
+    });
+
+    it("treats the legacy prop as live even when fillType says colour", () => {
+        // The legacy upgrade forces `fillType: "image"`, so reading the stored fillType inverted the
+        // flag and showed a live reference as "inactive" in the delete dialog.
+        const references = extractUIDocumentAssetReferences(
+            doc([uiElement("e1", "nl.image", { assetId: "legacy-1", fillType: "color" })]),
+        );
+
+        expect(references).toHaveLength(1);
+        expect(references[0].dormant).toBeUndefined();
+    });
+
+    it("marks the legacy prop dormant when a backgroundImage wins instead", () => {
+        const references = extractUIDocumentAssetReferences(
+            doc([uiElement("e1", "nl.image", { assetId: "legacy-1", backgroundImage: "app://fs/abc" })]),
+        );
+
+        expect(references).toHaveLength(1);
+        expect(references[0]).toMatchObject({ assetId: "legacy-1", dormant: true });
+    });
+
+    it("descends into arrays so a fill in a list prop is still found", () => {
+        const references = extractUIDocumentAssetReferences(
+            doc([uiElement("e1", "nl.list", {
+                slides: [
+                    { fillType: "image", imageFill: { mode: "cover", assetId: "slide-1" } },
+                    { fillType: "color", imageFill: { mode: "cover", assetId: "slide-2" } },
+                ],
+            })]),
+        );
+
+        expect(references.map(reference => reference.field)).toEqual([
+            "slides[0].imageFill",
+            "slides[1].imageFill",
+        ]);
+        expect(references[0]).toMatchObject({ assetId: "slide-1" });
+        expect(references[0].dormant).toBeUndefined();
+        expect(references[1]).toMatchObject({ assetId: "slide-2", dormant: true });
     });
 
     it("reads assets out of appearance variant rows and labels them by variant", () => {
