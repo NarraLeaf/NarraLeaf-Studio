@@ -130,6 +130,56 @@ function withAssignedExpression(
     return { ...payload, expression };
 }
 
+/**
+ * The variable a `/local` `/var` `/persis` line declares, derived from its resolved args.
+ *
+ * Lives here, beside the other "resolved args → data" mappings, rather than inside the commit
+ * callback in the editor hook - which is where it started, and where a real bug hid: it read the
+ * default as an `expression` after the slot had become a `constant`, so `/local gold 100` silently
+ * declared a *boolean* named `gold` with no default. Nothing threw and nothing warned, because
+ * "no default" and "a default this code could not read" are the same value. Pure and exported, it is
+ * covered by a test that pins the whole line to the declaration it produces.
+ */
+export function declarationFromArgs(args: StoryCommandResolvedArgs): {
+    name: string;
+    valueType: StoryVariableValueType;
+    defaultValue: StoryLiteralValue | undefined;
+    description: string | undefined;
+} | null {
+    const name = args.name?.kind === "text" ? args.name.value.trim() : "";
+    if (!name) {
+        return null;
+    }
+    const defaultValue = args.default?.kind === "literal" ? args.default.value : undefined;
+    return {
+        name,
+        // An explicit `type=` wins; otherwise the default's own type is the best evidence available.
+        valueType: args.type?.kind === "enum" ? args.type.value as StoryVariableValueType : inferDeclaredType(defaultValue),
+        defaultValue,
+        description: args.desc?.kind === "text" && args.desc.value.trim() ? args.desc.value.trim() : undefined,
+    };
+}
+
+/**
+ * The type of a declaration with no explicit `type=`.
+ *
+ * Boolean is the fallback for a bare `/local met` because a flag is what an author declares without
+ * thinking about types at all. Note this makes the *default* carry the type: `/local gold 100` is a
+ * number only because `100` is, which is why reading the default correctly matters more than it looks.
+ */
+function inferDeclaredType(defaultValue: StoryLiteralValue | undefined): StoryVariableValueType {
+    if (typeof defaultValue === "number") {
+        return "number";
+    }
+    if (typeof defaultValue === "string") {
+        return "string";
+    }
+    if (typeof defaultValue === "boolean" || defaultValue === undefined) {
+        return "boolean";
+    }
+    return "json";
+}
+
 /** The zero value of a type - what a variable declared without an explicit default holds. */
 function defaultForType(valueType: StoryVariableValueType): StoryLiteralValue {
     switch (valueType) {

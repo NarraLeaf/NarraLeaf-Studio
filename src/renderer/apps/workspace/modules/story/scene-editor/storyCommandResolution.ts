@@ -114,8 +114,6 @@ export type StoryCommandResolutionIssue =
     | { code: "expressionNotBoolean"; span: StoryCommandSpan; value: string; received: StoryExprType }
     /** `/set gold "rich"` where `gold` is a number - the expression's result type cannot be stored. */
     | { code: "expressionTypeMismatch"; span: StoryCommandSpan; value: string; expected: StoryVariableValueType; received: StoryExprType }
-    /** `/local` with a default that reads a variable: a declaration is evaluated before any variable exists. */
-    | { code: "declarationDefaultNotConstant"; span: StoryCommandSpan; value: string }
     /** `/local gold` where a variable of that name already exists in that scope. */
     | { code: "duplicateVariable"; span: StoryCommandSpan; value: string };
 
@@ -261,6 +259,9 @@ function resolveAgainstType(
             // value so `applyArgs` writes it exactly as it writes a `create`'s free name.
             return { value: { kind: "text", value: value.trim() } };
         case "literal":
+        // A constant resolves exactly like a literal — the difference between them is what each
+        // *offers* and what each *forbids*, both of which are settled before we get here.
+        case "constant":
             return { value: { kind: "literal", value: parseLiteral(value) } };
         case "expression":
             return resolveExpression(type, value, span, context, resolved);
@@ -345,12 +346,10 @@ function resolveDeclaration(
         }
     }
 
-    const fallback = resolved.default;
-    const defaultSpan = line.args.find(arg => arg.param?.name === "default")?.valueSpan;
-    if (fallback?.kind === "expression" && defaultSpan && collectStoryExpressionVariables(fallback.expression.ast).length > 0) {
-        issues.push({ code: "declarationDefaultNotConstant", span: defaultSpan, value: fallback.source });
-    }
-
+    // There is deliberately no "the default reads a variable" check any more. The default slot is a
+    // `constant`, so a bare word in it *is* a string — `/local greeting hello` declares a default of
+    // "hello", which is what an author means. Modelling it as an expression made that same line an
+    // error about an undeclared variable named `hello`.
     return issues;
 }
 

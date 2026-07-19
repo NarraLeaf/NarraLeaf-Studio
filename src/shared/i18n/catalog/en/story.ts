@@ -172,6 +172,56 @@ export const story = {
         none: "No background",
         unassigned: "unassigned",
     },
+    /**
+     * Names for the inline ghost hint on the command line — the grey `<Var Name>` trailing the caret.
+     * Keyed by `StoryCommandParam.hint` (falling back to the param's `name`), so a slot is named once
+     * and every command that shares it reads the same. Written as a noun phrase, title case, no
+     * brackets: the renderer supplies the angle brackets.
+     */
+    paramHint: {
+        // Variables and logic
+        variableName: "Var Name",
+        variable: "Variable",
+        defaultValue: "Default Value",
+        valueType: "Type",
+        description: "Description",
+        expressionValue: "Value or Expression",
+        condition: "Condition",
+        amount: "Amount",
+        times: "Times",
+        // Stage and media
+        character: "Character",
+        speaker: "Speaker",
+        form: "Expression",
+        imageAsset: "Image",
+        imageOrColor: "Image or Color",
+        videoAsset: "Video",
+        audioAsset: "Audio",
+        objectName: "Name",
+        content: "Content",
+        lineText: "Text",
+        scene: "Scene",
+        // Modifiers
+        duration: "Seconds",
+        transition: "Transition",
+        reveal: "Reveal",
+        placement: "Position",
+        waitFor: "Seconds or click",
+        // Slots whose payload key already reads as its own name, so they carry no explicit `hint`
+        // and fall back to it. Listed here so the coverage test can see them.
+        fade: "Fade Seconds",
+        loop: "Loop",
+        vol: "Volume",
+        volume: "Volume",
+        rate: "Speed",
+        muted: "Muted",
+        color: "Color",
+        hold: "Hold Seconds",
+        opacity: "Opacity",
+        size: "Font Size",
+        z: "Z-Index",
+    },
+
     rows: {
         placeholderDialogue: "Dialogue…",
         placeholderNarration: "Narration…",
@@ -244,6 +294,9 @@ export const story = {
     condition: {
         title: "Condition",
         kindGraph: "Graph",
+        kindExpression: "Expression",
+        expressionPlaceholder: "gold >= 100 && !met",
+        expressionVariables: "In scope: {names}",
         opIsOn: "is on",
         opIsOff: "is off",
         opEquals: "equals",

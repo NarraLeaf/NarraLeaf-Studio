@@ -22,7 +22,7 @@ import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { StorySceneEditorTabPayload } from "./storySceneEditorTabId";
 import { createBlockForCommand, isActionCommandId, isInspectorFirstCommand, type ActionCommandId } from "./storyActionCommands";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
-import { applyCommandArgs } from "./storyCommandApply";
+import { applyCommandArgs, declarationFromArgs } from "./storyCommandApply";
 import { buildStoryCommandContext } from "./storyCommandContext";
 import { canCommit, parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandResolvedArgs } from "./storyCommandResolution";
@@ -30,19 +30,6 @@ import { STORY_DECLARATION_COMMANDS } from "./storyCommandGrammar";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { GLOBAL_MAIN_OWNER_KEY } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 
-/** The type a declaration without an explicit `type=` gets: the default's own, or boolean for a bare flag. */
-function inferDeclaredType(defaultValue: StoryLiteralValue | undefined): StoryVariableValueType {
-    if (typeof defaultValue === "number") {
-        return "number";
-    }
-    if (typeof defaultValue === "string") {
-        return "string";
-    }
-    if (typeof defaultValue === "boolean" || defaultValue === undefined) {
-        return "boolean";
-    }
-    return "json";
-}
 import { collectTempSpeakers, promoteTempSpeaker } from "@/lib/workspace/services/story/storyModel";
 import { CHARACTERS_PANEL_ID } from "../../characters";
 import {
@@ -1168,19 +1155,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!storyService || !storyId) {
             return false;
         }
-        const name = args.name?.kind === "text" ? args.name.value.trim() : "";
-        if (!name) {
+        const declaration = declarationFromArgs(args);
+        if (!declaration) {
             return false;
         }
-        // A declaration's default must be constant - resolution has already rejected one that reads a
-        // variable - so the tree is either a literal or absent, and needs no evaluation.
-        const declared = args.default?.kind === "expression" && args.default.expression.ast.kind === "literal"
-            ? args.default.expression.ast.value
-            : undefined;
-        // An explicit `type=` wins; otherwise the default's own type is the best guess, and boolean is
-        // the house fallback because a flag is what an author declares without thinking about types.
-        const valueType = (args.type?.kind === "enum" ? args.type.value : inferDeclaredType(declared)) as StoryVariableValueType;
-        const defaultValue = declared ?? undefined;
+        const { name, valueType, defaultValue } = declaration;
 
         if (scope === "persistent") {
             if (!blueprintService) {

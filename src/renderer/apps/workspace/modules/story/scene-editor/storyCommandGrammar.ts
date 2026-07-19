@@ -76,6 +76,19 @@ export type StoryCommandParamType =
      */
     | { kind: "literal" }
     /**
+     * A **constant** scalar — a value that must not read anything.
+     *
+     * Distinct from {@link literal} in what it offers and from {@link expression} in what it accepts.
+     * The case it exists for is a declaration's default: `/local hp 100` runs once, before any variable
+     * exists, so naming one is meaningless. Modelling that slot as an expression was actively harmful —
+     * the candidate list offered every variable in the project and resolution then rejected whichever
+     * one the author picked, so the completion led straight into an error.
+     *
+     * Its candidates are the only scalars that can be enumerated at all: `true` and `false`. A number
+     * or a string is whatever the author types.
+     */
+    | { kind: "constant" }
+    /**
      * Free text with no candidates. Two shapes use it: a `greedy` line of prose (`/say`'s text), and a
      * single-token *name the author invents* for a stage object (`/image hero …`). The latter cannot
      * offer candidates yet - the names of already-created objects live in the scene graph, which is the
@@ -112,6 +125,16 @@ export type StoryCommandParam = {
     /** The `key` in `key=value`. Positional params still need one - it keys `applyArgs` and the hint. */
     name: string;
     aliases?: readonly string[];
+    /**
+     * Key under `story.paramHint.*` naming this slot in the inline ghost hint — the grey `<Var Name>`
+     * that trails the caret once the previous token is complete.
+     *
+     * Defaults to {@link name}, so a param only declares this when its `name` is a terse payload key
+     * rather than something an author would recognize: `d` is a duration, `t` is a transition, and a
+     * `name` means something different on `/local` (a variable) than on `/image` (a stage object).
+     * The key is resolved by the caller, never here — the grammar carries no locale data.
+     */
+    hint?: string;
     /** An array is a union: the value is valid if any branch accepts it. */
     type: StoryCommandParamType | readonly StoryCommandParamType[];
     /** Positional params are filled in declaration order. Must precede all named params. */
@@ -158,12 +181,12 @@ const PLACEMENTS: readonly StoryCommandEnumOption[] = [
 ];
 
 /** A character that must have a portrait - show / hide / move. A bare name cannot resolve here. */
-const CHARACTER: StoryCommandParam = { name: "character", type: { kind: "character" }, positional: true };
+const CHARACTER: StoryCommandParam = { name: "character", hint: "character", type: { kind: "character" }, positional: true };
 /** The speaker of a dialogue row, where a bare name is a temp speaker rather than an error. */
-const SPEAKER: StoryCommandParam = { name: "character", type: { kind: "character", allowTemp: true }, positional: true };
-const DURATION: StoryCommandParam = { name: "d", aliases: ["duration"], type: { kind: "number", min: 0 } };
-const TRANSITION: StoryCommandParam = { name: "t", aliases: ["transition"], type: { kind: "enum", options: TRANSITIONS } };
-const PLACEMENT: StoryCommandParam = { name: "at", aliases: ["pos"], type: { kind: "enum", options: PLACEMENTS } };
+const SPEAKER: StoryCommandParam = { name: "character", hint: "speaker", type: { kind: "character", allowTemp: true }, positional: true };
+const DURATION: StoryCommandParam = { name: "d", hint: "duration", aliases: ["duration"], type: { kind: "number", min: 0 } };
+const TRANSITION: StoryCommandParam = { name: "t", hint: "transition", aliases: ["transition"], type: { kind: "enum", options: TRANSITIONS } };
+const PLACEMENT: StoryCommandParam = { name: "at", hint: "placement", aliases: ["pos"], type: { kind: "enum", options: PLACEMENTS } };
 
 /**
  * A brand-new object name the author *invents* on a `create` - free text, no candidates, because it
@@ -171,23 +194,23 @@ const PLACEMENT: StoryCommandParam = { name: "at", aliases: ["pos"], type: { kin
  * nothing to derive it from (a `/layer`). Image / video / text lead with their asset or content and
  * take the name as {@link NAME_OPTION} instead, so the common line never asks for a name at all.
  */
-const OBJECT_NAME: StoryCommandParam = { name: "name", type: { kind: "text" }, positional: true };
-const IMAGE_ASSET: StoryCommandParam = { name: "image", aliases: ["src"], type: { kind: "asset", assetType: "image" }, positional: true };
-const VIDEO_ASSET: StoryCommandParam = { name: "video", aliases: ["src"], type: { kind: "asset", assetType: "video" }, positional: true };
-const OBJECT_CONTENT: StoryCommandParam = { name: "content", type: { kind: "text" }, positional: true, greedy: true };
+const OBJECT_NAME: StoryCommandParam = { name: "name", hint: "objectName", type: { kind: "text" }, positional: true };
+const IMAGE_ASSET: StoryCommandParam = { name: "image", hint: "imageAsset", aliases: ["src"], type: { kind: "asset", assetType: "image" }, positional: true };
+const VIDEO_ASSET: StoryCommandParam = { name: "video", hint: "videoAsset", aliases: ["src"], type: { kind: "asset", assetType: "video" }, positional: true };
+const OBJECT_CONTENT: StoryCommandParam = { name: "content", hint: "content", type: { kind: "text" }, positional: true, greedy: true };
 /**
  * The optional handle for a created object. Named, not positional, so the asset/content leads the line
  * like `/bg` does. Left off, the resolver auto-derives the name from the asset filename (or a deduped
  * default), so `/image forest.png` lands an image called `forest` without the author naming it - see
  * the auto-name pass in `storyCommandResolution`.
  */
-const NAME_OPTION: StoryCommandParam = { name: "name", type: { kind: "text" } };
+const NAME_OPTION: StoryCommandParam = { name: "name", hint: "objectName", type: { kind: "text" } };
 
 /** A reference to an object already on stage - the picker the `show`/`hide`/`set` commands lead with. */
-const imageRef = (positional: boolean): StoryCommandParam => ({ name: "name", type: { kind: "stageObject", objectKind: "image" }, ...(positional ? { positional: true } : {}) });
-const textRef = (positional: boolean): StoryCommandParam => ({ name: "name", type: { kind: "stageObject", objectKind: "text" }, ...(positional ? { positional: true } : {}) });
-const videoRef = (positional: boolean): StoryCommandParam => ({ name: "name", type: { kind: "stageObject", objectKind: "video" }, ...(positional ? { positional: true } : {}) });
-const audioRef = (positional: boolean): StoryCommandParam => ({ name: "name", type: { kind: "stageObject", objectKind: "audio" }, ...(positional ? { positional: true } : {}) });
+const imageRef = (positional: boolean): StoryCommandParam => ({ name: "name", hint: "objectName", type: { kind: "stageObject", objectKind: "image" }, ...(positional ? { positional: true } : {}) });
+const textRef = (positional: boolean): StoryCommandParam => ({ name: "name", hint: "objectName", type: { kind: "stageObject", objectKind: "text" }, ...(positional ? { positional: true } : {}) });
+const videoRef = (positional: boolean): StoryCommandParam => ({ name: "name", hint: "objectName", type: { kind: "stageObject", objectKind: "video" }, ...(positional ? { positional: true } : {}) });
+const audioRef = (positional: boolean): StoryCommandParam => ({ name: "name", hint: "objectName", type: { kind: "stageObject", objectKind: "audio" }, ...(positional ? { positional: true } : {}) });
 
 /** The declarable value types, in the order the author is most likely to want them. */
 const VARIABLE_VALUE_TYPES: readonly StoryCommandEnumOption[] = [
@@ -201,9 +224,11 @@ const VARIABLE_VALUE_TYPES: readonly StoryCommandEnumOption[] = [
  * The params every `/local` `/var` `/persis` line takes - identical across all three, because the
  * only thing that differs between them is the scope, and the scope is the command name.
  *
- * `default` is an expression rather than a literal so it parses through one path with everything
- * else, but resolution requires it to fold to a constant: a declaration is evaluated once, before any
- * variable exists to read, so an expression naming one has nothing to name.
+ * `default` is a {@link constant}, not an expression. It was an expression at first, and that was a
+ * mistake worth naming: the slot offered every variable in the project as a candidate and resolution
+ * then rejected whichever one the author took, because a declaration runs before any variable exists
+ * to read. A completion that leads into an error is worse than no completion. As a constant the slot
+ * offers `true`/`false` and nothing else, which is the whole truth about what can go there.
  *
  * Deliberately **not** greedy, unlike the expression on `/set`. A greedy param claims the rest of the
  * line, which would swallow the `type=` in `/local hp 100 type=number` - and that ordering is the one
@@ -212,10 +237,10 @@ const VARIABLE_VALUE_TYPES: readonly StoryCommandEnumOption[] = [
  */
 function declarationParams(): readonly StoryCommandParam[] {
     return [
-        { name: "name", type: { kind: "text" }, positional: true },
-        { name: "default", aliases: ["value"], type: { kind: "expression" }, positional: true },
-        { name: "type", aliases: ["as"], type: { kind: "enum", options: VARIABLE_VALUE_TYPES } },
-        { name: "desc", aliases: ["note"], type: { kind: "text" } },
+        { name: "name", hint: "variableName", type: { kind: "text" }, positional: true },
+        { name: "default", hint: "defaultValue", aliases: ["value"], type: { kind: "constant" }, positional: true },
+        { name: "type", hint: "valueType", aliases: ["as"], type: { kind: "enum", options: VARIABLE_VALUE_TYPES } },
+        { name: "desc", hint: "description", aliases: ["note"], type: { kind: "text" } },
     ];
 }
 
@@ -234,7 +259,7 @@ export const STORY_DECLARATION_COMMANDS: Readonly<Record<string, StoryVariableSc
 };
 
 /** The character form/appearance, whose candidates only exist once the `character` positional resolves. */
-const FORM: StoryCommandParam = { name: "form", type: { kind: "characterForm", dependsOn: "character" }, positional: true };
+const FORM: StoryCommandParam = { name: "form", hint: "form", type: { kind: "characterForm", dependsOn: "character" }, positional: true };
 
 /**
  * The reveal animation of a `show`/`hide` - a `StoryTransformRef` preset the object animates *in* or
@@ -251,7 +276,7 @@ const REVEALS: readonly StoryCommandEnumOption[] = [
     { value: "zoom" },
     { value: "none" },
 ];
-const REVEAL: StoryCommandParam = { name: "t", aliases: ["transition", "reveal"], type: { kind: "enum", options: REVEALS } };
+const REVEAL: StoryCommandParam = { name: "t", hint: "reveal", aliases: ["transition", "reveal"], type: { kind: "enum", options: REVEALS } };
 
 /**
  * NVL's enter transition is a `StoryTransformRef` (preset-based), not the `StoryTransitionRef` the
@@ -275,7 +300,7 @@ export const STORY_COMMANDS: readonly StoryCommandDef[] = [
         commandId: "background",
         aliases: ["background", "scene"],
         params: [
-            { name: "image", type: [{ kind: "asset", assetType: "image" }, { kind: "color" }], positional: true },
+            { name: "image", hint: "imageOrColor", type: [{ kind: "asset", assetType: "image" }, { kind: "color" }], positional: true },
             TRANSITION,
             DURATION,
         ],
@@ -310,21 +335,21 @@ export const STORY_COMMANDS: readonly StoryCommandDef[] = [
         commandId: "dialogue",
         params: [
             SPEAKER,
-            { name: "text", type: { kind: "text" }, positional: true, greedy: true },
+            { name: "text", hint: "lineText", type: { kind: "text" }, positional: true, greedy: true },
         ],
     },
     {
         token: "wait",
         commandId: "waitDuration",
         params: [
-            { name: "seconds", type: [{ kind: "keyword", value: "click" }, { kind: "number", min: 0 }], positional: true },
+            { name: "seconds", hint: "waitFor", type: [{ kind: "keyword", value: "click" }, { kind: "number", min: 0 }], positional: true },
         ],
     },
     {
         token: "bgm",
         commandId: "bgm",
         params: [
-            { name: "audio", type: { kind: "asset", assetType: "audio" }, positional: true },
+            { name: "audio", hint: "audioAsset", type: { kind: "asset", assetType: "audio" }, positional: true },
             { name: "fade", type: { kind: "number", min: 0 } },
             { name: "loop", type: { kind: "boolean" } },
         ],
@@ -334,7 +359,7 @@ export const STORY_COMMANDS: readonly StoryCommandDef[] = [
         commandId: "sound",
         aliases: ["se"],
         params: [
-            { name: "audio", type: { kind: "asset", assetType: "audio" }, positional: true },
+            { name: "audio", hint: "audioAsset", type: { kind: "asset", assetType: "audio" }, positional: true },
             { name: "vol", aliases: ["volume"], type: { kind: "number", min: 0, max: 1 } },
             { name: "loop", type: { kind: "boolean" } },
         ],
@@ -343,7 +368,7 @@ export const STORY_COMMANDS: readonly StoryCommandDef[] = [
         token: "jump",
         commandId: "jump",
         params: [
-            { name: "scene", type: { kind: "scene" }, positional: true },
+            { name: "scene", hint: "scene", type: { kind: "scene" }, positional: true },
             TRANSITION,
             DURATION,
         ],
@@ -352,7 +377,7 @@ export const STORY_COMMANDS: readonly StoryCommandDef[] = [
         token: "set",
         commandId: "setVariable",
         params: [
-            { name: "variable", type: { kind: "variable" }, positional: true },
+            { name: "variable", hint: "variable", type: { kind: "variable" }, positional: true },
             /**
              * The right-hand side is a full expression, greedy so it survives spaces and `=`.
              *
@@ -361,7 +386,7 @@ export const STORY_COMMANDS: readonly StoryCommandDef[] = [
              * stores in `payload.value` exactly as before - so nothing about the common line changed;
              * it is only that the slot's *ceiling* is now `clamp(hp - dmg, 0, maxHp)`.
              */
-            { name: "value", type: { kind: "expression", assignTo: "variable" }, positional: true, greedy: true },
+            { name: "value", hint: "expressionValue", type: { kind: "expression", assignTo: "variable" }, positional: true, greedy: true },
         ],
     },
 
@@ -390,8 +415,8 @@ export const STORY_COMMANDS: readonly StoryCommandDef[] = [
         commandId: "incrementVariable",
         aliases: ["add"],
         params: [
-            { name: "variable", type: { kind: "variable" }, positional: true },
-            { name: "by", type: { kind: "expression" }, positional: true, greedy: true },
+            { name: "variable", hint: "variable", type: { kind: "variable" }, positional: true },
+            { name: "by", hint: "amount", type: { kind: "expression" }, positional: true, greedy: true },
         ],
     },
     {
@@ -399,12 +424,12 @@ export const STORY_COMMANDS: readonly StoryCommandDef[] = [
         commandId: "decrementVariable",
         aliases: ["sub"],
         params: [
-            { name: "variable", type: { kind: "variable" }, positional: true },
-            { name: "by", type: { kind: "expression" }, positional: true, greedy: true },
+            { name: "variable", hint: "variable", type: { kind: "variable" }, positional: true },
+            { name: "by", hint: "amount", type: { kind: "expression" }, positional: true, greedy: true },
         ],
     },
-    { token: "toggle", commandId: "toggleVariable", aliases: ["flip"], params: [{ name: "variable", type: { kind: "variable" }, positional: true }] },
-    { token: "reset", commandId: "resetVariable", params: [{ name: "variable", type: { kind: "variable" }, positional: true }] },
+    { token: "toggle", commandId: "toggleVariable", aliases: ["flip"], params: [{ name: "variable", hint: "variable", type: { kind: "variable" }, positional: true }] },
+    { token: "reset", commandId: "resetVariable", params: [{ name: "variable", hint: "variable", type: { kind: "variable" }, positional: true }] },
 
     // ── Conditions ────────────────────────────────────────────────────────────────────────────────
     //
@@ -416,7 +441,7 @@ export const STORY_COMMANDS: readonly StoryCommandDef[] = [
     // the caret happens to be in, and the insert slot carries no such enclosing-container context -
     // that is a change to how a slot resolves its parent, not a grammar entry. Extra branches are
     // added from the branch UI, which already does this correctly.
-    { token: "if", commandId: "conditionIf", params: [{ name: "test", type: { kind: "expression", expects: "boolean" }, positional: true, greedy: true }] },
+    { token: "if", commandId: "conditionIf", params: [{ name: "test", hint: "condition", type: { kind: "expression", expects: "boolean" }, positional: true, greedy: true }] },
 
     // ── P1: the rest of the palette that fits the P0 param types ──────────────────────────────────
     //
@@ -427,9 +452,9 @@ export const STORY_COMMANDS: readonly StoryCommandDef[] = [
     // and its timing as `d=`, mirroring `/bg`. The four `displayable*` ops, `layerZIndex` and
     // `executeScript` stay out: they need a resolved `DisplayableTargetRef` / blueprint id, not a name.
     { token: "expr", commandId: "characterExpression", aliases: ["face", "expression"], params: [CHARACTER, FORM] },
-    { token: "menu", commandId: "choice", aliases: ["choice"], params: [{ name: "text", type: { kind: "text" }, positional: true, greedy: true }] },
-    { token: "repeat", commandId: "repeat", aliases: ["loop"], params: [{ name: "times", type: { kind: "number", min: 1, integer: true }, positional: true }] },
-    { token: "nvl", commandId: "nvl", params: [{ name: "t", aliases: ["transition"], type: { kind: "enum", options: NVL_TRANSITIONS } }, DURATION] },
+    { token: "menu", commandId: "choice", aliases: ["choice"], params: [{ name: "text", hint: "lineText", type: { kind: "text" }, positional: true, greedy: true }] },
+    { token: "repeat", commandId: "repeat", aliases: ["loop"], params: [{ name: "times", hint: "times", type: { kind: "number", min: 1, integer: true }, positional: true }] },
+    { token: "nvl", commandId: "nvl", params: [{ name: "t", hint: "transition", aliases: ["transition"], type: { kind: "enum", options: NVL_TRANSITIONS } }, DURATION] },
 
     // Image - create leads with the asset (like `/bg`) and auto-names from it; the rest lead with the
     // picker of images on stage. `name=` overrides the auto-derived name when the author wants a handle.
@@ -570,6 +595,8 @@ export function allowsFreeValue(type: StoryCommandParamType): boolean {
         case "character":
             return type.allowTemp === true;
         case "literal":
+        // A constant is whatever scalar the author types; nothing to fail to resolve against.
+        case "constant":
         case "text":
         // A stage object name may point at something made dynamically or in another scene - an unknown
         // name is a valid reference, not an error (see the type's note).
