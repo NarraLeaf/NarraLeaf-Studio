@@ -25,8 +25,11 @@ export function StoryScenePreviewPane(props: {
     const { t } = useTranslation();
     const { controller, onClose, mode = "dock", onToggleFloat, onHeaderPointerDown } = props;
     const busy = controller.phase === "compiling" || controller.phase === "mounting" || controller.phase === "starting";
-    const showSceneStartHint = controller.stageLayers.length > 0 && controller.targetBlockId === null && !busy && controller.phase !== "error";
     const playing = controller.mode === "play";
+    // Playing from the top of a scene also has no target row, but the hint belongs to the "follow the
+    // selection" mode - during playback it would just drop a gradient band over a running stage.
+    const showSceneStartHint = controller.stageLayers.length > 0 && controller.targetBlockId === null && !busy
+        && !playing && controller.phase !== "error";
     const notes = [
         ...controller.diagnostics.map(diagnostic => ({ level: diagnostic.level, message: diagnostic.message })),
         ...controller.issues,

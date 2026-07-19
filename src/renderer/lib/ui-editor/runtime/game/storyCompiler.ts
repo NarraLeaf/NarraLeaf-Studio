@@ -44,6 +44,7 @@ import type {
     StoryAnimationTrack,
     StoryAnimationTrackProperty,
     StoryBlock,
+    StoryBlockId,
     StoryCharacterVariantSelection,
     StoryConditionRef,
     StoryControlPayload,
@@ -55,6 +56,7 @@ import type {
     StoryLayerRef,
     StoryLiteralValue,
     StoryScene,
+    StorySceneId,
     StoryTextMarks,
     StoryTextSegment,
     StoryTransitionRef,
@@ -301,6 +303,10 @@ type SceneCompileContext = {
     scene: StoryScene;
     nlrScene: Scene;
     allScenes: Record<string, Scene>;
+    /** Compiling the single-scene preview, where a jump ends playback instead of being followed. */
+    previewSingleScene?: boolean;
+    /** First jump met while compiling a preview tail, so the pane can name where playback stopped. */
+    previewEncounteredJump?: { blockId: StoryBlockId; targetSceneId: StorySceneId };
     characters: Map<string, Character>;
     characterSummaries: Map<string, DevModeCharacterSummary>;
     /** Single NLR Persistent (Storable-backed, per-save) holding all "saved" variables. */
@@ -522,6 +528,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         scene,
         nlrScene: previewScene,
         allScenes: { [scene.id]: previewScene },
+        previewSingleScene: true,
         characters: new Map(),
         characterSummaries,
         savedPersistent,
@@ -638,6 +645,11 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         const plan = collectStoryPlaybackPlan(scene, input.targetBlockId);
         playbackStop = plan.stop;
         statements.push(...await compilePlaybackTail(ctx, plan));
+        // A jump nested inside a container is invisible to the walk, so the plan reports the scene as
+        // running to its end. If compiling the tail met one, that is the real stop.
+        if (playbackStop.reason === "sceneEnd" && ctx.previewEncounteredJump) {
+            playbackStop = { reason: "jump", ...ctx.previewEncounteredJump };
+        }
     } else {
         const targetBlock = input.targetBlockId ? scene.blocks[input.targetBlockId] : undefined;
         if (targetBlock) {
@@ -864,6 +876,15 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
     }
 
     if (block.kind === "jump") {
+        if (ctx.previewSingleScene) {
+            // The preview holds one scene, so a jump is where playback ends rather than something to
+            // follow. The walk already truncates a jump it can see, but one nested inside a container
+            // is only reached here - and taking it would either report the author's own scene as
+            // "not found" or, when it points back at this scene, re-enter the preview with the reveal
+            // gate already spent. Record the first one and stop emitting for it.
+            ctx.previewEncounteredJump ??= { blockId: block.id, targetSceneId: block.payload.targetSceneId };
+            return [];
+        }
         const target = ctx.allScenes[block.payload.targetSceneId];
         if (!target) {
             diagnostic(ctx, "error", block.id, `Jump target scene not found: ${block.payload.targetSceneId || "(empty)"}`);

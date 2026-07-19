@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import type { StoryBlock, StoryDocument, StoryScene } from "@shared/types/story";
 import { buildSceneFlowGraph, validateSceneFlowConnection } from "./sceneFlowModel";
 
@@ -22,7 +23,7 @@ function scene(id: string, name: string, blocks: StoryBlock[]): StoryScene {
 
 function document(scenes: StoryScene[], entrySceneId?: string): StoryDocument {
     return {
-        schemaVersion: 4,
+        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
         id: "story-1",
         name: "Story",
         entrySceneId,

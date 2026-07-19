@@ -16,6 +16,9 @@ export const assets = {
         inUseTitle: "These assets are still in use",
         inUseMessage: "Deleting them will leave the following places without a source:",
         moreReferences: "…and {count} more",
+        unverifiedTitle: "Cannot check what uses these assets",
+        unverifiedMessage:
+            "The reference index could not be read, so there is no way to tell whether anything still points at these assets. Delete them anyway?",
         confirmTitle: {
             one: "Delete {count} item?",
             other: "Delete {count} items?",

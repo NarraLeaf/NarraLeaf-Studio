@@ -9,6 +9,7 @@ import {
     querySearchIndex,
     type SearchIndexEntry,
 } from "./searchIndexModel";
+import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import type { StoryBlock, StoryDocument } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { LocalizationKeysDocument } from "@shared/types/localization";
@@ -25,7 +26,7 @@ function dialogueBlock(id: string, text: string): StoryBlock {
 
 function storyDoc(): StoryDocument {
     return {
-        schemaVersion: 4,
+        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
         id: "story-1",
         name: "Main Story",
         entrySceneId: "scene-1",

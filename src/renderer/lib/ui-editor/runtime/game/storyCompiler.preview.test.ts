@@ -249,6 +249,34 @@ describe("compileStagePreviewToNlr", () => {
                 expect.objectContaining({ level: "warning", blockId: "jump", message: expect.stringContaining("Scene 2") }),
             ]));
         });
+
+        it("reports a jump nested inside a container instead of erroring on it", async () => {
+            // The walk only sees blocks it emits directly, so this jump is reached by the compiler's
+            // own recursion. It used to resolve against the single-scene `allScenes` and report the
+            // author's own scene as missing.
+            const document = baseDocument({
+                target: say("target", "Last line."),
+                group: block("group", "control", { control: "group" }, null, ["nested"]),
+                nested: block("nested", "jump", { targetSceneId: "scene-2" }, "group"),
+                after: say("after", "Never reached in the real game."),
+            }, ["target", "group", "after"]);
+
+            const compiled = await compilePlayback(document, "target");
+            expect(compiled.playbackStop).toEqual({ reason: "jump", blockId: "nested", targetSceneId: "scene-2" });
+            expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
+        });
+
+        it("does not re-enter the previewed scene when a nested jump points back at it", async () => {
+            const document = baseDocument({
+                target: say("target", "Last line."),
+                group: block("group", "control", { control: "group" }, null, ["nested"]),
+                nested: block("nested", "jump", { targetSceneId: "scene-1" }, "group"),
+            }, ["target", "group"]);
+
+            const compiled = await compilePlayback(document, "target");
+            expect(compiled.playbackStop).toEqual({ reason: "jump", blockId: "nested", targetSceneId: "scene-1" });
+            expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
+        });
     });
 
     it("seeds scene variables so the target's interpolations read accumulated values", async () => {
