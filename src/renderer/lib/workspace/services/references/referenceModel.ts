@@ -1,4 +1,4 @@
-import type { StoryDocument } from "@shared/types/story";
+import type { StoryAnimationAsset, StoryDocument } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { VoiceDocument } from "@shared/types/voice";
@@ -184,6 +184,37 @@ export function extractStoryAssetReferences(document: StoryDocument, storyName: 
     return references;
 }
 
+/**
+ * Story animation slice: the two preview images on an animation asset.
+ *
+ * Editor-only - the compiler ignores both, and neither affects the produced Transform. They are
+ * still library assets an author picked, so deleting one silently empties the Story Motion preview
+ * they set up. "Unused by the runtime" and "safe to delete" are different questions, and this index
+ * answers the second.
+ */
+export function extractStoryAnimationAssetReferences(animation: StoryAnimationAsset): AssetReference[] {
+    const references: AssetReference[] = [];
+
+    const push = (field: string, assetId: unknown) => {
+        if (!isLibraryAssetId(assetId)) {
+            return;
+        }
+        references.push({
+            id: `storyAnimation:${animation.id}:${field}`,
+            assetId: assetId.trim(),
+            kind: "story",
+            label: animation.name,
+            detail: animation.targetKind,
+            field: `animation.${field}`,
+        });
+    };
+
+    push("previewAssetId", animation.previewAssetId);
+    push("previewBackgroundAssetId", animation.previewBackgroundAssetId);
+
+    return references;
+}
+
 // ---------------------------------------------------------------------------
 // Blueprint
 // ---------------------------------------------------------------------------
@@ -240,15 +271,23 @@ export function extractBlueprintAssetReferences(
 
                 // `normalizeBlueprintImageAssetValue` also accepts a bare string, so legacy graphs
                 // that stored the raw id instead of the `{kind:"imageAsset"}` wrapper are covered.
-                const imageAssetId = blueprintImageAssetId(params.asset);
+                //
+                // The pin was renamed `assetId` → `asset`, and Set Image Asset still falls back to
+                // the old name when `asset` is unset (widgetPropertyNodes.ts). Mirroring that
+                // precedence rather than reading both keeps a graph saved before the rename from
+                // reporting its image as unused, without inventing a second live reference for a
+                // node that has already been migrated.
+                const assetParam = params.asset !== undefined ? params.asset : params.assetId;
+                const assetField = params.asset !== undefined ? "asset" : "assetId";
+                const imageAssetId = blueprintImageAssetId(assetParam);
                 if (isLibraryAssetId(imageAssetId)) {
                     references.push({
-                        id: `bp:${blueprint.id}:${graphId}:${node.id}:asset`,
+                        id: `bp:${blueprint.id}:${graphId}:${node.id}:${assetField}`,
                         assetId: imageAssetId,
                         kind: "blueprint",
                         label: nodeLabel,
                         detail: blueprint.name,
-                        field: "asset",
+                        field: assetField,
                         target,
                     });
                 }
@@ -317,7 +356,25 @@ function extractElementAssetReferences(element: UIElement, ownerLabel: string | 
      * Recursive because `imageFill` appears at four different depths on flat props alone (root,
      * scrollbar track, scrollbar thumb, and list item chrome). Enumerating the known paths meant a
      * new nested chrome prop silently stopped being scanned; the walk cannot drift that way.
+     *
+     * Arrays are descended too. No widget stores an asset-bearing bag in one today, so this buys
+     * nothing right now - but "the walk cannot drift" is only true if it holds for a prop shape
+     * nobody has written yet, and an array is the obvious next one.
      */
+    const walkValue = (value: unknown, childPath: string, depth: number) => {
+        if (depth > 6) {
+            return;
+        }
+        if (Array.isArray(value)) {
+            value.forEach((item, index) => walkValue(item, `${childPath}[${index}]`, depth + 1));
+            return;
+        }
+        const child = readRecord(value);
+        if (child) {
+            walk(child, childPath, depth + 1);
+        }
+    };
+
     const walk = (node: Record<string, unknown>, path: string, depth: number) => {
         if (depth > 6) {
             return;
@@ -341,18 +398,28 @@ function extractElementAssetReferences(element: UIElement, ownerLabel: string | 
                 push(childPath, childPath, value);
                 continue;
             }
-            const child = readRecord(value);
-            if (child) {
-                walk(child, childPath, depth + 1);
-            }
+            walkValue(value, childPath, depth);
         }
     };
     walk(props, "", 0);
 
     // Legacy `nl.image` stored the id bare on props; `getImageWidgetRectangleProps` upgrades it to
     // an `imageFill` lazily at read time, so the bare string is still what sits on disk.
-    if (element.type === "nl.image" && !readRecord(props.imageFill)) {
-        push("assetId", "assetId", props.assetId, isDormantFill(props));
+    //
+    // The upgrade fires on `legacyAssetId && !hasAssetInFill && !hasBg`, so the presence of an
+    // `imageFill` object is not what decides it - an `imageFill` with a null `assetId` still lets the
+    // bare id win. Testing for the object alone dropped that reference entirely, and the widget went
+    // on rendering an asset nothing claimed to use.
+    //
+    // Dormancy is the upgrade itself, not the stored `fillType`: when it fires it forces
+    // `fillType: "image"`, so the reference is live however the prop bag was left. When something
+    // else supplies the fill the bare id renders nothing - still reported, because clearing that fill
+    // brings it back (see the dormancy note in the file header).
+    if (element.type === "nl.image") {
+        const fill = readRecord(props.imageFill);
+        const hasAssetInFill = typeof fill?.assetId === "string" && fill.assetId.trim().length > 0;
+        const hasBackgroundImage = typeof props.backgroundImage === "string" && props.backgroundImage.trim().length > 0;
+        push("assetId", "assetId", props.assetId, hasAssetInFill || hasBackgroundImage);
     }
 
     const appearance = props.appearance;
