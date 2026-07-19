@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import type { StoryBlock, StoryDocument, StoryScene } from "@shared/types/story";
-import { buildSceneFlowGraph, validateSceneFlowConnection } from "./sceneFlowModel";
+import { buildSceneFlowGraph } from "./sceneFlowModel";
 
 function jumpBlock(id: string, targetSceneId: string, parentId: string | null = null): StoryBlock {
     return { id, kind: "jump", parentId, childrenIds: [], payload: { targetSceneId } };
@@ -136,39 +136,5 @@ describe("buildSceneFlowGraph", () => {
 
         expect(graph.edges).toHaveLength(2);
         expect(Object.keys(graph.positions)).toHaveLength(2);
-    });
-});
-
-describe("validateSceneFlowConnection", () => {
-    const graph = buildSceneFlowGraph(document([
-        scene("a", "Opening", [jumpBlock("j1", "b")]),
-        scene("b", "Hallway", []),
-        scene("c", "Attic", []),
-    ], "a"));
-
-    it("accepts a connection between two scenes that have none yet", () => {
-        expect(validateSceneFlowConnection(graph, "a", "c")).toBeNull();
-        expect(validateSceneFlowConnection(graph, "b", "a")).toBeNull();
-    });
-
-    it("refuses a self-jump, which the map draws as a badge rather than an edge", () => {
-        expect(validateSceneFlowConnection(graph, "a", "a")).toBe("selfJump");
-    });
-
-    it("refuses a duplicate of an edge that already exists", () => {
-        expect(validateSceneFlowConnection(graph, "a", "b")).toBe("duplicate");
-    });
-
-    it("lets a re-targeted edge ignore itself when checking for duplicates", () => {
-        const edgeId = graph.edges[0].id;
-        // Dropping the edge back where it started is a no-op, not a duplicate of itself.
-        expect(validateSceneFlowConnection(graph, "a", "b", edgeId)).toBeNull();
-        // ...but it still cannot become a self-jump.
-        expect(validateSceneFlowConnection(graph, "a", "a", edgeId)).toBe("selfJump");
-    });
-
-    it("refuses endpoints that are missing or not scenes in this story", () => {
-        expect(validateSceneFlowConnection(graph, "a", "ghost")).toBe("unknownScene");
-        expect(validateSceneFlowConnection(graph, null, "b")).toBe("unknownScene");
     });
 });

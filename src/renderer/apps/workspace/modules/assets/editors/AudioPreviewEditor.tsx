@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
     AlertCircle,
+    BetweenVerticalEnd,
+    BetweenVerticalStart,
     Crop,
-    Flag,
     Maximize,
     Pause,
     Play,
@@ -24,11 +25,21 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { useTranslation } from "@/lib/i18n";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
-import { WaveformView, type AudioCuePoint } from "./audio/WaveformView";
+import { WaveformView, type LoopEnd } from "./audio/WaveformView";
 import { useClipPlayback } from "./audio/useClipPlayback";
 import { clipDuration, clipLength, fromAudioBuffer, type AudioClip, type SampleRange } from "./audio/audioClip";
 import { clampView, ensureVisible, fitAll, scrollByFraction, zoomAt, zoomToRange } from "./audio/viewWindow";
-import { cueHistoryReducer, sameCues, type CueHistoryState } from "./audio/cueHistory";
+import { resolvePlayStart } from "./audio/transport";
+import {
+    clearPoint,
+    fromAssetExtras,
+    loopHistoryReducer,
+    markPoint,
+    sameLoop,
+    toAssetLoop,
+    type LoopHistoryState,
+    type LoopPoints,
+} from "./audio/loopHistory";
 
 interface AudioPreviewPayload {
     asset: Asset<AssetType.Audio>;
@@ -38,7 +49,7 @@ interface AudioPreviewPayload {
  * How tall the waveform is allowed to get, per channel lane.
  *
  * Bounded rather than filling the tab: a waveform stretched to the full height of a maximised
- * editor is all amplitude and no information — the shape stops being readable well before it
+ * editor is all amplitude and no information - the shape stops being readable well before it
  * stops growing. Stereo gets more room because it draws a lane per channel.
  */
 const MAX_LANE_HEIGHT_PX = 200;
@@ -59,20 +70,15 @@ function formatTime(seconds: number): string {
     return `${minutes}:${rest.toFixed(2).padStart(5, "0")}`;
 }
 
-/** Cue points are kept in time order; a drag can move one past its neighbours. */
-function sortCues(cues: AudioCuePoint[]): AudioCuePoint[] {
-    return [...cues].sort((a, b) => a.timeMs - b.timeMs);
-}
-
 /**
- * Audio preview: a read-only waveform over the asset — playback, zoom/scroll, range auditioning,
- * and cue points.
+ * Audio preview: a read-only waveform over the asset - playback, zoom/scroll, range auditioning,
+ * and the clip's in and out points.
  *
  * Deliberately not an editor. Studio's job is to tell you what a clip sounds like and where its
  * interesting moments are, not to be a DAW; trimming and gain belong in the tool the audio came
  * from. What survives is the part that informs authoring: drag a range and loop it to find a BGM's
- * in/out points, then drop cue points to record them. Cue points are the only thing written back
- * (to the asset record — they are authored data, not a cache); the audio file is never modified.
+ * in/out points, then mark them. Those two points are the only thing written back (to the asset
+ * record - they are authored data, not a cache); the audio file is never modified.
  *
  * That also makes cue points the only undoable thing here, which is what the history covers.
  */
@@ -93,21 +99,21 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
     const [volume, setVolume] = useState(1);
     const [muted, setMuted] = useState(false);
 
-    const [cueHistory, dispatchCues] = useReducer(
-        cueHistoryReducer,
-        payload?.asset.extras?.cuePoints ?? [],
-        (cues): CueHistoryState => ({ past: [], present: cues, future: [] }),
+    const [loopHistory, dispatchLoop] = useReducer(
+        loopHistoryReducer,
+        payload?.asset.extras,
+        (stored): LoopHistoryState => ({ past: [], present: fromAssetExtras(stored), future: [] }),
     );
     /**
-     * Cues mid-drag. A cue drag emits a position on every pointer move; routing those through the
-     * history would bury the previous state under a hundred one-pixel steps, so the drag renders
-     * from here and commits a single step when the pointer comes up.
+     * The region mid-drag. A drag emits a position on every pointer move; routing those through
+     * the history would bury the previous state under a hundred one-pixel steps, so the drag
+     * renders from here and commits a single step when the pointer comes up.
      */
-    const [draftCues, setDraftCues] = useState<AudioCuePoint[] | null>(null);
-    const cuePoints = draftCues ?? cueHistory.present;
+    const [draftLoop, setDraftLoop] = useState<LoopPoints | null>(null);
+    const loopPoints = draftLoop ?? loopHistory.present;
 
     const playback = useClipPlayback(clip);
-    const { playing, position, setPosition, loop, setLoop, play, stop, setGain } = playback;
+    const { playing, position, setPosition, finished, loop, setLoop, play, stop, setGain } = playback;
     useEffect(() => setGain(muted ? 0 : volume), [muted, volume, setGain]);
     const totalSamples = clip ? clipLength(clip) : 0;
 
@@ -182,15 +188,17 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
 
     const hasSelection = Boolean(selection && selection.end > selection.start);
 
-    // ---- cue points --------------------------------------------------------
+    // ---- in and out points -------------------------------------------------
 
-    // Cue points ride with the asset record, so they survive closing the tab and are visible to
+    // The region rides with the asset record, so it survives closing the tab and is visible to
     // anything else reading the asset.
-    const persistCuePoints = useCallback(
-        (next: AudioCuePoint[]) => {
+    const persistLoop = useCallback(
+        (next: LoopPoints) => {
             if (context && asset) {
                 void context.services.get<AssetsService>(Services.Assets).patchAssetExtras(asset, {
-                    cuePoints: next.length > 0 ? next : undefined,
+                    audioLoop: toAssetLoop(next),
+                    // Drop the superseded list, so a record never carries both shapes.
+                    cuePoints: undefined,
                 });
             }
         },
@@ -198,11 +206,11 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
     );
 
     /**
-     * The cue array last written to the asset. Persisting from here rather than from each command
-     * means undo and redo save their result too — they are edits like any other, and a cue list
+     * The region last written to the asset. Persisting from here rather than from each command
+     * means undo and redo save their result too - they are edits like any other, and a region
      * that reverts on screen but not on disk is the bug this avoids.
      */
-    const persistedRef = useRef<AudioCuePoint[] | null>(null);
+    const persistedRef = useRef<LoopPoints | null>(null);
     const loadedAssetRef = useRef(asset?.id);
 
     useEffect(() => {
@@ -211,90 +219,67 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
         }
         loadedAssetRef.current = asset?.id;
         persistedRef.current = null;
-        dispatchCues({ type: "load", cues: asset?.extras?.cuePoints ?? [] });
+        dispatchLoop({ type: "load", loop: fromAssetExtras(asset?.extras) });
     }, [asset?.id]);
 
     useEffect(() => {
-        const committed = cueHistory.present;
+        const committed = loopHistory.present;
         if (persistedRef.current === null) {
             // First pass for this asset: adopt what is already stored as the baseline.
             persistedRef.current = committed;
             return;
         }
-        if (sameCues(persistedRef.current, committed)) {
+        if (sameLoop(persistedRef.current, committed)) {
             return;
         }
         persistedRef.current = committed;
-        persistCuePoints(committed);
-    }, [cueHistory.present, persistCuePoints]);
+        persistLoop(committed);
+    }, [loopHistory.present, persistLoop]);
 
-    const commitCues = useCallback((next: AudioCuePoint[]) => {
-        setDraftCues(null);
-        dispatchCues({ type: "set", cues: sortCues(next) });
+    const commitLoop = useCallback((next: LoopPoints) => {
+        setDraftLoop(null);
+        dispatchLoop({ type: "set", loop: next });
     }, []);
 
-    const addCue = useCallback(
-        (sample: number) => {
-            if (!clip) {
-                return;
-            }
-            const timeMs = Math.round((sample / clip.sampleRate) * 1000);
-            commitCues([...cueHistory.present, { timeMs }]);
-        },
-        [clip, commitCues, cueHistory.present],
+    const sampleToMs = useCallback(
+        (sample: number) => (clip ? Math.max(0, Math.round((sample / clip.sampleRate) * 1000)) : 0),
+        [clip],
     );
 
-    const removeCue = useCallback(
-        (index: number) => {
-            commitCues(cueHistory.present.filter((_, i) => i !== index));
+    /** Mark one end at the playhead - the two toolbar buttons and their I/O shortcuts. */
+    const markLoopPoint = useCallback(
+        (end: LoopEnd) => {
+            if (clip) {
+                commitLoop(markPoint(loopHistory.present, end, sampleToMs(position)));
+            }
         },
-        [commitCues, cueHistory.present],
+        [clip, commitLoop, loopHistory.present, position, sampleToMs],
     );
 
-    /**
-     * Remove the cue nearest the playhead. The tolerance scales with the zoom — a second is a
-     * hair's breadth zoomed out and half the screen zoomed in — so "near" means what it looks
-     * like, and a press with nothing nearby does nothing rather than deleting something offscreen.
-     */
-    const removeNearestCue = useCallback(() => {
-        if (!clip || cueHistory.present.length === 0) {
-            return;
-        }
-        const tolerance = Math.max((view.end - view.start) * 0.02, clip.sampleRate * 0.05);
-        let bestIndex = -1;
-        let bestDistance = Infinity;
-        cueHistory.present.forEach((cue, index) => {
-            const distance = Math.abs((cue.timeMs / 1000) * clip.sampleRate - position);
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                bestIndex = index;
-            }
-        });
-        if (bestIndex >= 0 && bestDistance <= tolerance) {
-            removeCue(bestIndex);
-        }
-    }, [clip, cueHistory.present, position, removeCue, view]);
-
-    const dragCue = useCallback(
-        (index: number, sample: number) => {
-            if (!clip) {
-                return;
-            }
-            const timeMs = Math.max(0, Math.round((sample / clip.sampleRate) * 1000));
-            // Deliberately unsorted while dragging: re-sorting mid-gesture would renumber the
-            // cues and the drag would jump to a different marker as it crossed a neighbour.
-            setDraftCues(
-                (draftCues ?? cueHistory.present).map((cue, i) => (i === index ? { ...cue, timeMs } : cue)),
-            );
+    const clearLoopPoint = useCallback(
+        (end: LoopEnd) => {
+            commitLoop(clearPoint(loopHistory.present, end));
         },
-        [clip, draftCues, cueHistory.present],
+        [commitLoop, loopHistory.present],
     );
 
-    const endCueDrag = useCallback(() => {
-        if (draftCues) {
-            commitCues(draftCues);
+    const dragLoopPoint = useCallback(
+        (end: LoopEnd, sample: number) => {
+            if (clip) {
+                // markPoint, not a raw assignment: dragging one end past the other has to resolve
+                // the same way as marking it there, or the drag could build an inverted region.
+                setDraftLoop(markPoint(draftLoop ?? loopHistory.present, end, sampleToMs(sample)));
+            }
+        },
+        [clip, draftLoop, loopHistory.present, sampleToMs],
+    );
+
+    const endLoopDrag = useCallback(() => {
+        if (draftLoop) {
+            commitLoop(draftLoop);
         }
-    }, [draftCues, commitCues]);
+    }, [draftLoop, commitLoop]);
+
 
     // ---- transport ---------------------------------------------------------
 
@@ -302,10 +287,10 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
     const togglePlay = useCallback(() => {
         if (playing) {
             stop();
-        } else {
-            play(hasSelection && selection ? Math.max(selection.start, position) : position, selection);
+            return;
         }
-    }, [playing, stop, play, hasSelection, selection, position]);
+        play(resolvePlayStart({ position, selection, totalSamples, finished }), selection);
+    }, [playing, stop, play, position, selection, totalSamples, finished]);
 
     const seekTo = useCallback(
         (sample: number) => {
@@ -384,25 +369,18 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
         }
     }, [totalSamples]);
 
-    /** Jump the playhead to the next/previous marker, so a long clip is navigable by its marks. */
-    const goToMarker = useCallback(
-        (direction: 1 | -1) => {
-            if (!clip) {
+    /** Jump to a marked end, so a long clip is navigable by the points on it. */
+    const goToLoopPoint = useCallback(
+        (end: LoopEnd) => {
+            const ms = end === "in" ? loopPoints.inMs : loopPoints.outMs;
+            if (!clip || ms === null) {
                 return;
             }
-            const samples = cueHistory.present
-                .map(cue => Math.round((cue.timeMs / 1000) * clip.sampleRate))
-                .sort((a, b) => a - b);
-            const target =
-                direction === 1
-                    ? samples.find(sample => sample > position + 1)
-                    : [...samples].reverse().find(sample => sample < position - 1);
-            if (target !== undefined) {
-                seekTo(target);
-                setView(current => ensureVisible(current, clipLength(clip), target));
-            }
+            const target = Math.round((ms / 1000) * clip.sampleRate);
+            seekTo(target);
+            setView(current => ensureVisible(current, clipLength(clip), target));
         },
-        [clip, cueHistory.present, position, seekTo],
+        [clip, loopPoints, seekTo],
     );
 
     const keybindings = useMemo<KeybindingDefinition[]>(
@@ -425,20 +403,21 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                 handler: () => nudge(NUDGE_SECONDS_COARSE),
             },
             { id: "loop", key: "l", description: "Toggle loop", handler: () => setLoop(value => !value) },
-            { id: "add-cue", key: "m", description: "Mark playhead", handler: () => addCue(position) },
-            { id: "next-cue", key: "shift+m", description: "Go to next marker", handler: () => goToMarker(1) },
-            { id: "previous-cue", key: "mod+shift+m", description: "Go to previous marker", handler: () => goToMarker(-1) },
-            { id: "remove-cue", key: "delete", description: "Remove nearest cue", handler: removeNearestCue },
-            { id: "remove-cue-backspace", key: "backspace", description: "Remove nearest cue", handler: removeNearestCue },
-            { id: "undo", key: "mod+z", description: "Undo cue change", handler: () => dispatchCues({ type: "undo" }) },
-            { id: "redo", key: "mod+shift+z", description: "Redo cue change", handler: () => dispatchCues({ type: "redo" }) },
+            { id: "mark-in", key: "i", description: "Set in point", handler: () => markLoopPoint("in") },
+            { id: "mark-out", key: "o", description: "Set out point", handler: () => markLoopPoint("out") },
+            { id: "go-to-in", key: "shift+i", description: "Go to in point", handler: () => goToLoopPoint("in") },
+            { id: "go-to-out", key: "shift+o", description: "Go to out point", handler: () => goToLoopPoint("out") },
+            { id: "clear-in", key: "mod+shift+i", description: "Clear in point", handler: () => clearLoopPoint("in") },
+            { id: "clear-out", key: "mod+shift+o", description: "Clear out point", handler: () => clearLoopPoint("out") },
+            { id: "undo", key: "mod+z", description: "Undo point change", handler: () => dispatchLoop({ type: "undo" }) },
+            { id: "redo", key: "mod+shift+z", description: "Redo point change", handler: () => dispatchLoop({ type: "redo" }) },
             { id: "select-all", key: "mod+a", description: "Select whole clip", handler: selectAll },
             { id: "clear-selection", key: "escape", description: "Clear selection", handler: () => setSelection(null) },
             { id: "zoom-in", key: "=", description: "Zoom in", handler: () => zoomBy(1.4) },
             { id: "zoom-out", key: "-", description: "Zoom out", handler: () => zoomBy(1 / 1.4) },
             { id: "zoom-fit", key: "0", description: "Fit whole clip", handler: () => setView(fitAll(totalSamples)) },
         ],
-        [togglePlay, seekTo, totalSamples, nudge, setLoop, addCue, position, goToMarker, removeNearestCue, selectAll, zoomBy],
+        [togglePlay, seekTo, totalSamples, nudge, setLoop, markLoopPoint, goToLoopPoint, clearLoopPoint, selectAll, zoomBy],
     );
 
     useKeybindings({
@@ -551,11 +530,19 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
 
                 <button
                     type="button"
-                    onClick={() => addCue(position)}
-                    className={ICON_BUTTON_CLASS}
-                    title={t("assets.audio.editor.addCue")}
+                    onClick={() => markLoopPoint("in")}
+                    className={controlButtonClass(loopPoints.inMs !== null)}
+                    title={t("assets.audio.editor.markIn")}
                 >
-                    <Flag className="h-4 w-4" />
+                    <BetweenVerticalStart className="h-4 w-4" />
+                </button>
+                <button
+                    type="button"
+                    onClick={() => markLoopPoint("out")}
+                    className={controlButtonClass(loopPoints.outMs !== null)}
+                    title={t("assets.audio.editor.markOut")}
+                >
+                    <BetweenVerticalEnd className="h-4 w-4" />
                 </button>
 
                 <span className="flex-1" />
@@ -589,7 +576,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                 />
             </div>
 
-            {/* Waveform: bounded, and anchored under the toolbar rather than centred — centring it
+            {/* Waveform: bounded, and anchored under the toolbar rather than centred - centring it
                 leaves the clip floating in the middle of a tall tab with dead space above and
                 below. No title attribute either: a native tooltip over the editing surface covers
                 the very samples being aimed at. */}
@@ -602,20 +589,20 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                         clip={clip}
                         view={view}
                         selection={selection}
-                        cuePoints={cuePoints}
+                        loop={loopPoints}
                         playhead={playhead}
                         onSelectionChange={setSelection}
                         onSeek={seekTo}
-                        onAddCue={addCue}
-                        onRemoveCue={removeCue}
-                        onCueDrag={dragCue}
-                        onCueDragEnd={endCueDrag}
+                        onLoopDrag={dragLoopPoint}
+                        onLoopDragEnd={endLoopDrag}
+                        onClearLoopPoint={clearLoopPoint}
                         onSelectAll={selectAll}
                     />
                 </div>
             </div>
 
-            {/* One status bar. Values only — the selection reads as a range, the rest as facts. */}
+            {/* One status bar. Values only - the selection and the region read as ranges, the
+                rest as facts. */}
             <div className="flex shrink-0 items-center gap-3 border-t border-edge px-3 py-1 text-2xs tabular-nums text-fg-subtle">
                 {hasSelection && selection && (
                     <span className="text-fg-muted">
@@ -625,10 +612,12 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                         {")"}
                     </span>
                 )}
-                {cueHistory.present.length > 0 && (
-                    <span className="flex items-center gap-1 text-fg-muted">
-                        <Flag className="h-3 w-3" />
-                        {cueHistory.present.length}
+                {(loopPoints.inMs !== null || loopPoints.outMs !== null) && (
+                    <span className="flex items-center gap-1 text-primary">
+                        <BetweenVerticalStart className="h-3 w-3" />
+                        {loopPoints.inMs === null ? "--:--" : formatTime(loopPoints.inMs / 1000)}
+                        {" – "}
+                        {loopPoints.outMs === null ? "--:--" : formatTime(loopPoints.outMs / 1000)}
                     </span>
                 )}
                 <span className="flex-1" />

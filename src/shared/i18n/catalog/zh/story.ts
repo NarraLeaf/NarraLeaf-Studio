@@ -63,23 +63,6 @@ export const story = {
         },
         hint: {
             openScene: "双击场景可打开",
-            edit: "双击打开 · 在场景之间拖拽可新建跳转",
-        },
-        status: {
-            jumpCreated: "已新建跳转：{source} → {target}",
-            jumpRetargeted: "{source} 现在跳转到 {target}",
-            jumpDeleted: "已删除跳转：{source} → {target}",
-        },
-        reject: {
-            selfJump: "地图上不能让场景跳转到自身，请在场景编辑器里添加。",
-            duplicate: "该跳转已存在。",
-            sourceLocked: "拖箭头那一端可改跳转目标；跳转的起始场景不能在这里改。",
-            unknownScene: "无法建立这条连线。",
-        },
-        confirm: {
-            deleteJump: "删除从「{source}」到「{target}」的跳转？",
-            deleteJumpMultiple: "这条边代表 {count} 个跳转块，将全部删除。",
-            deleteJumpConditional: "这条边包含嵌套在条件或循环里的跳转，地图并未完整展示。将删除 {count} 个跳转块。",
         },
         action: {
             resetLayout: "重置布局",

@@ -71,23 +71,6 @@ export const story = {
         },
         hint: {
             openScene: "Double-click a scene to open it",
-            edit: "Double-click to open · drag between scenes to add a jump",
-        },
-        status: {
-            jumpCreated: "Added a jump: {source} → {target}",
-            jumpRetargeted: "{source} now jumps to {target}",
-            jumpDeleted: "Removed the jump: {source} → {target}",
-        },
-        reject: {
-            selfJump: "A scene cannot jump to itself from the map — add it in the scene editor.",
-            duplicate: "That jump already exists.",
-            sourceLocked: "Drag the arrow end to re-point a jump — the scene it leaves cannot be changed here.",
-            unknownScene: "That connection is not possible.",
-        },
-        confirm: {
-            deleteJump: "Delete the jump from \"{source}\" to \"{target}\"?",
-            deleteJumpMultiple: "This edge stands for {count} jump blocks. All of them will be deleted.",
-            deleteJumpConditional: "This edge includes a jump nested inside a condition or loop, which the map does not show in full. {count} jump block(s) will be deleted.",
         },
         action: {
             resetLayout: "Reset Layout",
