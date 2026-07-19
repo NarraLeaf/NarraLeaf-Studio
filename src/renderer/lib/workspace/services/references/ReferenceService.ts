@@ -56,7 +56,12 @@ export class ReferenceService extends Service<ReferenceService> {
 
     private readyPromise: Promise<void> | null = null;
     private unsubs: Array<() => void> = [];
-    private rebuildTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    /**
+     * Debounced slice rebuilds, keyed by slice. The action is held alongside its timer so
+     * {@link flushPendingRebuilds} can run it early — a guard that reads through this index cannot
+     * afford to see a 300ms-old answer.
+     */
+    private rebuildTimers = new Map<string, { timer: ReturnType<typeof setTimeout>; action: () => void }>();
     private readonly changeListeners = new Set<() => void>();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
@@ -150,7 +155,7 @@ export class ReferenceService extends Service<ReferenceService> {
             unsub();
         }
         this.unsubs = [];
-        for (const timer of this.rebuildTimers.values()) {
+        for (const { timer } of this.rebuildTimers.values()) {
             clearTimeout(timer);
         }
         this.rebuildTimers.clear();
@@ -256,15 +261,34 @@ export class ReferenceService extends Service<ReferenceService> {
     private scheduleRebuild(key: string, action: () => void): void {
         const existing = this.rebuildTimers.get(key);
         if (existing) {
-            clearTimeout(existing);
+            clearTimeout(existing.timer);
         }
-        this.rebuildTimers.set(
-            key,
-            setTimeout(() => {
+        this.rebuildTimers.set(key, {
+            action,
+            timer: setTimeout(() => {
                 this.rebuildTimers.delete(key);
                 action();
             }, REBUILD_DEBOUNCE_MS),
-        );
+        });
+    }
+
+    /**
+     * Run every debounced rebuild now instead of waiting out its timer.
+     *
+     * Staleness is harmless where the index only feeds a readout, but the delete guard decides
+     * whether an asset is safe to remove: an author who drops an image into a scene and deletes it
+     * from the browser a moment later would otherwise be told it is unused, and lose it.
+     */
+    public flushPendingRebuilds(): void {
+        if (this.rebuildTimers.size === 0) {
+            return;
+        }
+        const pending = [...this.rebuildTimers.values()];
+        this.rebuildTimers.clear();
+        for (const { timer, action } of pending) {
+            clearTimeout(timer);
+            action();
+        }
     }
 
     private rebuildStorySlice(storyId: string): void {

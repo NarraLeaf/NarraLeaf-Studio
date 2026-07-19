@@ -53,10 +53,13 @@ export function SettingColorPicker(props: {
             } ${disabled ? "pointer-events-none opacity-50" : ""}`}
             // The hue wheel reads as "pick anything" without needing a label beside it; when a
             // custom color is active the chip shows that color instead, like the presets do.
+            // Built from the status tokens rather than their hex values, so it keeps matching the
+            // palette when the light theme redefines them.
             style={{
                 background: selected
                     ? hex
-                    : "conic-gradient(#da6958, #ccaa5c, #6db094, #40a8c4, #7e70c2, #c46e9c, #da6958)",
+                    : "conic-gradient(rgb(var(--nl-danger)), rgb(var(--nl-warning)), rgb(var(--nl-success)),"
+                      + " rgb(var(--nl-primary)), rgb(var(--nl-binding)), rgb(var(--nl-danger)))",
             }}
             title={label}
         >

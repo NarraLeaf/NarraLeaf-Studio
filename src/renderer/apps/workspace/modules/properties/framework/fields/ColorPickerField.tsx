@@ -896,8 +896,9 @@ export function ColorPickerTrigger({
             disabled={disabled || readOnly}
             className={
                 isBareSwatch
-                    // No box, no padding: the caller frames this one itself.
-                    ? "nodrag nowheel block h-5 w-5 rounded-full transition focus:outline-none"
+                    // No box, no padding: the caller frames this one itself. It still needs a focus
+                    // ring of its own - the frame around it is decoration and does not react to focus.
+                    ? "nodrag nowheel block h-5 w-5 rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-fg/70"
                     : `
                 nodrag nowheel flex items-center rounded-md border border-edge-strong bg-surface-raised px-3 py-2 text-sm
                 text-fg transition focus:outline-none focus:ring-2 focus:ring-primary/50
