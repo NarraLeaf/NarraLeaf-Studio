@@ -243,7 +243,7 @@ async function readProjectIdentifier(projectPath: string): Promise<string | unde
 /**
  * Load the game localization payload: config from `.nlproj` `app.localization`
  * plus per-locale translation tables from `editor/localization/<code>.json`.
- * Broken or missing files degrade silently — localization must never block a
+ * Broken or missing files degrade silently - localization must never block a
  * Dev Mode start or a pack. Returns undefined when the project has no setup.
  * Exported for tests.
  */
@@ -308,7 +308,7 @@ export async function loadGameLocalization(projectPath: string): Promise<GameLoc
  * Load the game voice payload: config from `.nlproj` `app.voice` plus per-
  * language unit id → asset id tables from `editor/voice/<code>.json`. Only the
  * asset ids travel in the bundle; the compiler resolves them to URLs like every
- * other story asset. Broken or missing files degrade silently — voice must
+ * other story asset. Broken or missing files degrade silently - voice must
  * never block a Dev Mode start or a pack. Returns undefined when the project has
  * no voice set up. Exported for tests.
  */

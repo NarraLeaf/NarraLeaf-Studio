@@ -15,7 +15,7 @@ import {
  *
  * This is the input side of Studio's diff engine. Lore's own diff verbs
  * (`fileDiff`, `revisionDiff`) are line-oriented and useless for binary
- * assets — but `revisionDiff` is still the cheapest way to learn *which*
+ * assets - but `revisionDiff` is still the cheapest way to learn *which*
  * files changed, so it is exposed here as a filter step.
  *
  * The read path is:
@@ -69,7 +69,7 @@ export async function closeStore(globals: LoreGlobals, handle: StoreHandle): Pro
  *
  * `repository` and the address travel as hex; only `revisionHash` is declared
  * `loreHash` and therefore subject to the encoding defect handled in
- * loreClient — hence the explicit `hashArgs`.
+ * loreClient - hence the explicit `hashArgs`.
  */
 export async function blobAt(
     globals: LoreGlobals,
@@ -203,7 +203,7 @@ export async function readRevisionGraph(
 /**
  * Repository (partition) id and current branch.
  *
- * Read from the REVISION_HISTORY *header* event — the per-revision entries do
+ * Read from the REVISION_HISTORY *header* event - the per-revision entries do
  * not carry it. This is deliberately not `repositoryInfo`, which dials the
  * remote even under `offline: true` and blocks until the connection times out.
  */
@@ -223,7 +223,7 @@ export async function readRepositoryIdentity(
 /**
  * Lowest common ancestor of two revisions.
  *
- * Lore exposes no merge-base API — there is no `lore_*` entry point that
+ * Lore exposes no merge-base API - there is no `lore_*` entry point that
  * returns a common ancestor, and the merge conflict event carries only a path.
  * But `parent[2]` plus the monotonic `revisionNumber` is a complete DAG, so the
  * base is computable here.
@@ -231,8 +231,8 @@ export async function readRepositoryIdentity(
  * LIMITATION: with criss-cross history (two branches that have merged each
  * other) there can be several minimal common ancestors, and Git resolves that
  * by recursively merging them. This returns the highest-numbered candidate
- * instead. That is correct for linear and simple-branch history — which is what
- * Studio projects produce — and degrades to "a slightly worse base, so more
+ * instead. That is correct for linear and simple-branch history - which is what
+ * Studio projects produce - and degrades to "a slightly worse base, so more
  * conflicts surface for the user" rather than to a wrong merge. Revisit if real
  * projects start showing criss-cross topologies.
  */
@@ -273,7 +273,7 @@ export interface ThreeWay {
 /**
  * The three inputs a custom merge needs. `base` is undefined when the two sides
  * share no ancestor (unrelated histories) or when the file did not exist in the
- * base revision — the caller must treat that as an add/add conflict rather than
+ * base revision - the caller must treat that as an add/add conflict rather than
  * assuming an empty base.
  */
 export async function threeWay(
@@ -310,7 +310,7 @@ export async function threeWay(
  * NOT optional after a write. Lore's mutable store (which holds branch tips) is
  * flushed lazily, so a process that commits and exits promptly can lose the
  * commit outright: the revision is returned to the caller, the working tree
- * looks right, and a later process sees only the previous revision. Verified —
+ * looks right, and a later process sees only the previous revision. Verified -
  * two commits, no flush, second one gone; same sequence with a flush, both
  * present. Any future write path must flush before it reports success.
  */
@@ -318,7 +318,7 @@ export async function flushRepository(globals: LoreGlobals): Promise<void> {
     await invoke((g, a) => sdk.repositoryFlush(g, a), "repositoryFlush", globals, {});
 }
 
-/** Paths that differ between two revisions — the cheap filter before diffing. */
+/** Paths that differ between two revisions - the cheap filter before diffing. */
 export async function changedPaths(
     globals: LoreGlobals,
     from: LoreHex,

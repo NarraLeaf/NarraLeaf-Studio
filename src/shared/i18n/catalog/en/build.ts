@@ -1,4 +1,4 @@
-/** `build` — production build dialog, platform/format labels, and status toasts. */
+/** `build` - production build dialog, platform/format labels, and status toasts. */
 export const build = {
     dialog: {
         title: "Build for distribution",

@@ -22,7 +22,7 @@ export function settingMatchesQuery(descriptor: SettingDescriptor, query: string
 }
 
 /**
- * Whether the category itself matches. A category hit keeps all of its settings — searching for
+ * Whether the category itself matches. A category hit keeps all of its settings - searching for
  * "editor" should show what the Editor category holds, not just the rows repeating the word.
  */
 export function categoryMatchesQuery(category: SettingCategory, query: string): boolean {

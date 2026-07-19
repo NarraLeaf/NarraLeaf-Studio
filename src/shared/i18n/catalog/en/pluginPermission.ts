@@ -1,4 +1,4 @@
-/** `pluginPermission` — the plugin permission-consent dialog (install / trust / filesystem / API requests). */
+/** `pluginPermission` - the plugin permission-consent dialog (install / trust / filesystem / API requests). */
 export const pluginPermission = {
     title: "Plugin Permission",
     window: {

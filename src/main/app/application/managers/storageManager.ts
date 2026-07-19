@@ -114,7 +114,7 @@ export class StorageManager extends Manager {
 
     public revokeWindowFileSystemAccess(window: AppWindow): void {
         // Revocation runs from unregisterWindow, which can fire after the
-        // BrowserWindow is already destroyed — at that point webContents (and
+        // BrowserWindow is already destroyed - at that point webContents (and
         // its id) is gone. Grants are always issued while the window is alive,
         // so the cached key covers every window that has anything to revoke.
         let key = this.windowStorageKeys.get(window);

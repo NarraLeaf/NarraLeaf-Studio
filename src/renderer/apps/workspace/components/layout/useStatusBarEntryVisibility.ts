@@ -8,7 +8,7 @@ import { getInterface } from "@/lib/app/bridge";
 export const STATUS_BAR_HIDDEN_ITEMS_KEY = "ui.statusBar.hiddenItems";
 
 function readHiddenIds(value: unknown): string[] {
-    // Persisted values are untrusted — a hand-edited global.json should degrade to "nothing hidden"
+    // Persisted values are untrusted - a hand-edited global.json should degrade to "nothing hidden"
     // rather than throw inside the layout.
     return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
 }
@@ -21,7 +21,7 @@ interface StatusBarEntryVisibility {
 
 /**
  * Which status bar entries the user has switched off, stored globally (a preference about the
- * Studio chrome, not about any one project) under a single key — the same shape as
+ * Studio chrome, not about any one project) under a single key - the same shape as
  * `keybindings.overrides`, and for the same reason: entry ids contain dots and `:` separators that
  * the dotted-path settings store would otherwise split into nested objects.
  *

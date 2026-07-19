@@ -25,7 +25,7 @@ export class AppCountWorkspaceWindowsHandler extends IPCHandler<IPCEventType.app
  * Reveals a workspace-owned surface (the keybinding table, the background dialog) on behalf of the
  * Settings window, which cannot open it itself: both surfaces need the workspace's live state.
  *
- * Addressed to exactly one window — the focused workspace if there is one, else the first — and
+ * Addressed to exactly one window - the focused workspace if there is one, else the first - and
  * focused so the user lands on what they asked for. Deliberately not a broadcast: with two
  * workspaces open, every one of them would pop the same tab.
  */
@@ -52,7 +52,7 @@ export class AppRequestWorkspaceViewHandler extends IPCHandler<IPCEventType.appR
 }
 
 /**
- * Opens the Settings window — or focuses the one already open.
+ * Opens the Settings window - or focuses the one already open.
  *
  * Reuse matters because openers now address a specific setting (`props.highlight`): launching
  * unconditionally would leave the user with two Settings windows disagreeing about what is

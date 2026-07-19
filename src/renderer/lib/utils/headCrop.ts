@@ -5,12 +5,12 @@
  * Character art is drawn head-up on a transparent background, so the alpha
  * silhouette is enough to go on: measure how far each row reaches horizontally
  * and the neck stands out as a valley between the head and the shoulders. What
- * cannot be used is how much the outline flares — real art widens gradually
+ * cannot be used is how much the outline flares - real art widens gradually
  * from hair to shoulders to arms, with no step change to find.
  *
  * Every threshold is a ratio of the sprite's own silhouette, so the art can be
- * any size or framing. When there is no neck to find — a bust shot, a face
- * close-up, art on an opaque background — this reports nothing rather than
+ * any size or framing. When there is no neck to find - a bust shot, a face
+ * close-up, art on an opaque background - this reports nothing rather than
  * guessing, and the caller falls back to a top-anchored crop, which is already
  * about right for exactly those cases.
  */
@@ -29,7 +29,7 @@ export type NormalizedCrop = {
 
 /** Long-side resolution the silhouette is analysed at. */
 const ANALYSIS_MAX = 220;
-/** Below this alpha a pixel is background — high enough to shrug off soft glows and downscale bleed. */
+/** Below this alpha a pixel is background - high enough to shrug off soft glows and downscale bleed. */
 const ALPHA_THRESHOLD = 32;
 /** Rows with fewer opaque pixels than this fraction of the width are antialiasing dust. */
 const ROW_NOISE_RATIO = 0.004;

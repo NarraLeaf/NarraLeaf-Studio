@@ -87,7 +87,7 @@ class DevModeNetworkPolicyManager {
         }
         this.installedSessions.add(session);
 
-        // Layer 1 — main-process request block. Cancels any remote request that
+        // Layer 1 - main-process request block. Cancels any remote request that
         // originates from a locked-down Dev Mode webContents, in any form
         // (fetch / XHR / WebSocket / <img> / <script> / <link> / media / ...).
         session.webRequest.onBeforeRequest(
@@ -101,7 +101,7 @@ class DevModeNetworkPolicyManager {
             },
         );
 
-        // Layer 2 — CSP. Constrains the Dev Mode document to the app protocol.
+        // Layer 2 - CSP. Constrains the Dev Mode document to the app protocol.
         // Defense in depth over Layer 1, and it surfaces a clear "refused by
         // Content-Security-Policy" error in the game console.
         session.webRequest.onHeadersReceived((details, callback) => {
@@ -134,7 +134,7 @@ export const devModeNetworkPolicy = new DevModeNetworkPolicyManager();
 /**
  * Read the project's Allow HTTP flag from its `.nlproj` (secure default:
  * `false`). Intentionally mirrors `normalizeNetworkConfiguration` in the
- * renderer's project configuration — replicated here so the main process has no
+ * renderer's project configuration - replicated here so the main process has no
  * dependency on renderer modules. Any read/decode failure resolves to `false`.
  */
 export async function readProjectAllowHttp(projectPath: string): Promise<boolean> {

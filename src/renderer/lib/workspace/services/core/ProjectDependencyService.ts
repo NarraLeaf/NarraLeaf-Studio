@@ -34,7 +34,7 @@ export interface InstalledPlugin {
 export interface DependencyUsageRecord {
     pluginId: string;
     kind: DependencyKind;
-    /** The referenced id — node type, widget type, story action, or storage namespace. */
+    /** The referenced id - node type, widget type, story action, or storage namespace. */
     id: string;
     /** True when the reference breaks the document if the plugin is absent. */
     hard: boolean;
@@ -68,7 +68,7 @@ export class ProjectDependencyService
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         await depend([ctx.services.get<ProjectService>(Services.Project)]);
         // Resolve on open from the *persisted* table so suppression is known
-        // before plugins load. Scanning is deferred to save/export/manual — it
+        // before plugins load. Scanning is deferred to save/export/manual - it
         // needs loaded plugins to attribute usage, which the persisted table
         // already captured. A failure here must not block opening the project.
         try {
@@ -139,7 +139,7 @@ export class ProjectDependencyService
         // has not been opened yet in this session.
         try {
             await ctx.services.get<UIGraphService>(Services.UIGraph).load();
-        } catch { /* fall through — collectors tolerate an unloaded doc */ }
+        } catch { /* fall through - collectors tolerate an unloaded doc */ }
         try {
             await ctx.services.get<UIDocumentService>(Services.UIDocument).load();
         } catch { /* fall through */ }
@@ -237,7 +237,7 @@ export class ProjectDependencyService
      * Soft dependencies: plugins that have written project storage. Attributable
      * from the store filename on disk (see {@link parsePluginStoreOwner}), so it
      * works even when the owning plugin is not installed. Not marked
-     * authoritative — a data-only store never breaks the document, so it must not
+     * authoritative - a data-only store never breaks the document, so it must not
      * cause a hard dependency for the same plugin to be pruned.
      */
     private async collectStorageUsage(usage: DependencyUsageRecord[]): Promise<void> {

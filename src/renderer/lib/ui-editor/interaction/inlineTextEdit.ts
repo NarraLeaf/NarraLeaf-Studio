@@ -20,7 +20,7 @@ export function isInlineTextEditableElement(element: UIElement | null | undefine
  * The `textEdit` override names only a surface and an element, but a surface is rendered in more
  * places than the editor canvas: the surfaces panel previews every surface, including the one open
  * in the editor tab. Those previews used to fall back to the singleton services, so they matched the
- * override too and mounted their own textarea for the edited element — then committed their own
+ * override too and mounted their own textarea for the edited element - then committed their own
  * stale draft when the override cleared, overwriting whatever the canvas had just saved. Only the
  * editor tab passes its services on the adapter, so requiring them here keeps exactly one editor per
  * element.

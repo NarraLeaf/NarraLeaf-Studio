@@ -1,4 +1,4 @@
-/** `blueprint` — the visual blueprint / node graph editor (nodes, ports, palette, member tree, node cards). */
+/** `blueprint` - the visual blueprint / node graph editor (nodes, ports, palette, member tree, node cards). */
 export const blueprint = {
     header: {
         title: "Blueprint",

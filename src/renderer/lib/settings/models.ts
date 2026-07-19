@@ -11,7 +11,7 @@ export enum SettingScope {
 
 /**
  * Panels a `SettingValueType.Custom` entry can render. Referenced by id rather than by component
- * so this module — which the workspace imports too — stays free of React: the Settings window
+ * so this module - which the workspace imports too - stays free of React: the Settings window
  * resolves the id against its own panel registry.
  */
 export type SettingPanelId = "keybindings";
@@ -40,7 +40,7 @@ export interface SettingDescriptor<T extends SettingValueType = SettingValueType
     confirmLabel?: string;
     /** Action only: renders the button in the destructive variant. */
     danger?: boolean;
-    /** Action only: invoke on the first click — for navigation-style actions with no consequence. */
+    /** Action only: invoke on the first click - for navigation-style actions with no consequence. */
     skipConfirm?: boolean;
     /** Action only: renders the button disabled (the row description carries the reason). */
     disabled?: boolean;
@@ -77,7 +77,7 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     /** Rendered after the value, e.g. "%". */
     unit?: string;
     /**
-     * `SettingValueType.Action` only: what the button does. It owns its own effects — the settings
+     * `SettingValueType.Action` only: what the button does. It owns its own effects - the settings
      * layer stores nothing for an Action and `key` is only an identity for it.
      */
     onInvoke?: () => Promise<void>;
@@ -94,7 +94,7 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     confirmLabelKey?: TranslationKey;
     /** Action only: renders the button in the destructive variant. */
     danger?: boolean;
-    /** Action only: invoke on the first click — for navigation-style actions with no consequence. */
+    /** Action only: invoke on the first click - for navigation-style actions with no consequence. */
     skipConfirm?: boolean;
     /**
      * Action only: dynamic availability, re-evaluated on mount and whenever the Settings window

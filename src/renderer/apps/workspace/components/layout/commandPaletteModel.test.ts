@@ -208,7 +208,7 @@ describe("collectPaletteCommands", () => {
     });
 });
 
-describe("collectPaletteCommands — panels", () => {
+describe("collectPaletteCommands - panels", () => {
     it("turns a body panel into an 'open' command with the view category", () => {
         const commands = collectPaletteCommands(
             build({ panels: [panel({ id: "assets", titleKey: "x" as never })], panelCategory: "View" }),
@@ -259,7 +259,7 @@ describe("collectPaletteCommands — panels", () => {
     });
 });
 
-describe("collectPaletteCommands — keybinding catalog resolution", () => {
+describe("collectPaletteCommands - keybinding catalog resolution", () => {
     // Per-tab registration ids with a stable catalog id, which is how every editor registers.
     const storyUndo = (tabId: string) =>
         keybinding({

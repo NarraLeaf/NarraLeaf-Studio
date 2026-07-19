@@ -6,7 +6,7 @@ import path from "path";
  * The only module in Studio allowed to import `@lore-vcs/sdk`.
  *
  * Lore is pre-1.0 with no semver guarantee, and its JS SDK is code-generated
- * from `lore-capi/lore.h` — a header change is an SDK change. Everything the
+ * from `lore-capi/lore.h` - a header change is an SDK change. Everything the
  * rest of Studio touches goes through the narrow surface below so that an
  * upstream break has exactly one blast site.
  *
@@ -23,7 +23,7 @@ import path from "path";
  * With one upstream defect: the generator also emits `loreHash: [...]` entries,
  * but `convertToLoreDatatype` has **no loreHash handler**. Those fields reach
  * koffi unconverted and fail with "Unexpected String value, expected object".
- * As of Lore v0.8.5 that affects exactly four calls — `revisionTreeLoad`,
+ * As of Lore v0.8.5 that affects exactly four calls - `revisionTreeLoad`,
  * `storageMutableLoad`, `storageMutableStore`, `storageMutableCompareAndSwap`.
  *
  * The failure mode of guessing wrong is asymmetric, which is why this is
@@ -38,7 +38,7 @@ import path from "path";
  * Hence: callers always pass hex; only declared `hashArgs` are ever rewritten,
  * and only after the hex form has been observed to fail (see resolveHashCodec).
  * When upstream implements the loreHash handler, hex starts working and this
- * layer stops rewriting anything — no version sniffing required.
+ * layer stops rewriting anything - no version sniffing required.
  */
 
 /** A Lore identifier in its canonical form: lowercase hex, no prefix. */
@@ -111,7 +111,7 @@ export interface InvokeOptions {
      */
     hashArgs?: readonly string[];
     /**
-     * Lore reports an unusable path by emitting PATH_IGNORE and returning 0 —
+     * Lore reports an unusable path by emitting PATH_IGNORE and returning 0 -
      * `fileStage` on a bad path "succeeds" having staged nothing, and the error
      * only surfaces later as "Nothing staged for commit". Default is to raise.
      */
@@ -146,7 +146,7 @@ function encodeHashArgs(args: object, hashArgs: readonly string[]): object {
  * wrong and collectively fatal:
  *
  *  1. `.callback()` REPLACES the handler rather than appending. Attaching one
- *     here and another at the call site silently drops the first — the call
+ *     here and another at the call site silently drops the first - the call
  *     still returns 0 and you simply receive no data. Exactly one is attached.
  *  2. `event.data` is borrowed FFI memory freed when the callback returns.
  *     Every captured payload is cloned.
@@ -279,7 +279,7 @@ export function repoPath(repositoryRoot: string, relative: string): string {
  * Deliberately not `export const sdk = lore`: the SDK's own type references a
  * non-exported symbol, so re-exporting it verbatim breaks declaration emit
  * ("has or is using name 'STATE' ... but cannot be named"). Narrowing to
- * LoreOperation is also the honest type — every call goes through `invoke`, and
+ * LoreOperation is also the honest type - every call goes through `invoke`, and
  * nothing here should be reaching for the fluent helpers directly.
  */
 export type LoreSdk = Record<keyof typeof lore, LoreOperation>;
@@ -293,7 +293,7 @@ export function __resetHashCodecForTests(): void {
 
 /**
  * Test seam: which codec is currently latched. A suite should assert this flips
- * to "binary" on today's SDK — and, once upstream implements the loreHash
+ * to "binary" on today's SDK - and, once upstream implements the loreHash
  * handler, that it stays "hex". That assertion is the upgrade tripwire.
  */
 export function __hashCodecForTests(): "hex" | "binary" {

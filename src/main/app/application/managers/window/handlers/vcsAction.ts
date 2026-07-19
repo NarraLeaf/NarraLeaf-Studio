@@ -8,7 +8,7 @@ import { IPCHandler } from "./IPCHandler";
  * Version control IPC.
  *
  * Every handler takes `projectPath` and routes to the per-project session in
- * VcsManager — Studio is one-project-one-window, so a project-less VCS call
+ * VcsManager - Studio is one-project-one-window, so a project-less VCS call
  * would be ambiguous with two projects open.
  *
  * These are all reads. Writes (stage/commit/merge) are deliberately absent
@@ -19,7 +19,7 @@ import { IPCHandler } from "./IPCHandler";
 /**
  * Ask this before anything else. Every other handler here fails on a host with
  * no Lore native build (macOS Intel, Windows ARM64), and this is the supported
- * way to find that out — the UI branches on it instead of probing with errors.
+ * way to find that out - the UI branches on it instead of probing with errors.
  */
 export class VcsGetAvailabilityHandler extends IPCHandler<IPCEventType.vcsGetAvailability> {
     readonly name = IPCEventType.vcsGetAvailability;

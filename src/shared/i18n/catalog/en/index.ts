@@ -1,5 +1,5 @@
 /**
- * English catalog — the source of truth for every translatable string.
+ * English catalog - the source of truth for every translatable string.
  *
  * One file per top-level namespace (see this directory). Add a namespace per
  * app/surface and register it below. Leaves are strings; interpolate with

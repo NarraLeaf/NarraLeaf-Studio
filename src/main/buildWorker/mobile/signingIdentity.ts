@@ -3,7 +3,7 @@ import { buildSelfSignedCertificate } from "./x509";
 
 /**
  * The debug-level signing identity a repacked APK is signed with. This is not
- * a release identity — it is the minimal self-signed RSA key + certificate an
+ * a release identity - it is the minimal self-signed RSA key + certificate an
  * unsigned APK needs to be installable at all (Android refuses to install an
  * unsigned APK). One identity is generated once and persisted (by the manager,
  * in userData) and reused across every project so an overwrite install keeps

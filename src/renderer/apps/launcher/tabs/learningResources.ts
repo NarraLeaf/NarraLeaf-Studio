@@ -1,8 +1,8 @@
 /**
- * Learning tab content — a plain data file so entries can be added without touching the UI.
+ * Learning tab content - a plain data file so entries can be added without touching the UI.
  *
  * Titles/descriptions are authored strings (edit freely, Chinese-first like the target audience);
- * the section headers come from i18n. Every URL must be http(s) — the card opens it in the
+ * the section headers come from i18n. Every URL must be http(s) - the card opens it in the
  * system browser via `app.openExternal`, which refuses anything else.
  *
  * 内容后补：往对应分类的数组里加条目即可。仅收录确认存在的链接；

@@ -9,7 +9,7 @@ function ids(query: string): string[] {
 
 describe("searchActionCommands", () => {
     it("finds a command by its grammar token, which the palette's own fields never carry", () => {
-        // `bg` appears in no label / id / detail, yet must resolve to Background — the regression this fixes.
+        // `bg` appears in no label / id / detail, yet must resolve to Background - the regression this fixes.
         expect(ids("bg")[0]).toBe("background");
         expect(ids("show")[0]).toBe("characterEnter");
         // A short alias too: `se` is Sound's.
@@ -26,7 +26,7 @@ describe("searchActionCommands", () => {
     });
 
     it("matches fuzzily, so an abbreviation still lands", () => {
-        // `bgd` is a subsequence of "background" — no substring would find it.
+        // `bgd` is a subsequence of "background" - no substring would find it.
         expect(ids("bgd")).toContain("background");
     });
 

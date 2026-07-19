@@ -14,7 +14,7 @@ import {
 } from "../ui/actionMenuModel";
 
 /**
- * A command registered directly on the CommandService — one that does not already exist as a
+ * A command registered directly on the CommandService - one that does not already exist as a
  * toolbar action or a keybinding. Most palette entries are *derived* from those two sources; this
  * is the escape hatch for standalone commands (plugins, one-off shell actions).
  */
@@ -51,11 +51,11 @@ export interface PaletteCommandSources {
     registered: readonly CommandRegistration[];
     /** Standalone toolbar actions (registry `actions`). */
     actions: readonly ActionDefinition[];
-    /** Grouped actions / menus (registry `actionGroups`) — the same set mirrored to the native menu. */
+    /** Grouped actions / menus (registry `actionGroups`) - the same set mirrored to the native menu. */
     actionGroups: readonly ActionGroup[];
     /** All keybindings currently registered on the KeybindingService. */
     keybindings: readonly Keybinding[];
-    /** Registered sidebar/dock panels — turned into "open <panel>" navigation commands. */
+    /** Registered sidebar/dock panels - turned into "open <panel>" navigation commands. */
     panels: readonly PanelDefinition[];
     /**
      * User keybinding overrides (id → binding). Applied so the palette shows what a chord
@@ -174,7 +174,7 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
         if (action.disabled || seenIds.has(action.id)) {
             return;
         }
-        // Icon-only toolbar buttons (Dev Mode, Preview, Build…) carry a tooltip, not a label —
+        // Icon-only toolbar buttons (Dev Mode, Preview, Build…) carry a tooltip, not a label -
         // fall back to it so they are still reachable by name.
         const title =
             resolveLabel(action.labelKey, action.label, translate) ||

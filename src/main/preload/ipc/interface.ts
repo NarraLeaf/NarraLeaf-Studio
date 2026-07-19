@@ -302,7 +302,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
 
     /**
      * Version control. Read-only for now; writes wait on the resolve UI.
-     * Blobs arrive base64-encoded — decode at the call site that needs bytes.
+     * Blobs arrive base64-encoded - decode at the call site that needs bytes.
      */
     vcs: {
         /** Ask first: VCS is optional and absent on macOS Intel / Windows ARM64. */

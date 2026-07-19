@@ -60,8 +60,8 @@ export interface Translator {
 }
 
 /**
- * Build a translator for a locale. Cheap to call — catalogs are flattened once
- * and cached — so the renderer store can recreate one on every language switch.
+ * Build a translator for a locale. Cheap to call - catalogs are flattened once
+ * and cached - so the renderer store can recreate one on every language switch.
  */
 export function createTranslator(locale: Locale): Translator {
     const primary = getFlat(locale);

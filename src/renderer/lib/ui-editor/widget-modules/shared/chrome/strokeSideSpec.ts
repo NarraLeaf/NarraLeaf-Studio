@@ -1,6 +1,6 @@
 /**
  * Serialized `strokeSide` on rectangle-like chrome:
- * - "all" — all four edges
+ * - "all" - all four edges
  * - single edge: "top" | "right" | "bottom" | "left"
  * - multiple edges: comma-separated, canonical order (e.g. "bottom,left")
  */

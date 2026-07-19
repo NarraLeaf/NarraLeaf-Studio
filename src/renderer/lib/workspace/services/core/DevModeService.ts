@@ -108,7 +108,7 @@ export class DevModeService extends Service<DevModeService> {
         return this.status;
     }
 
-    /** This window's project — every Dev Mode call is scoped to it, never to "whatever is running". */
+    /** This window's project - every Dev Mode call is scoped to it, never to "whatever is running". */
     private projectPath(): string {
         return this.getContext().project.getConfig().projectPath;
     }

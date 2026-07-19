@@ -7,7 +7,7 @@ export const PALETTE_CARD_WIDTH_CLASS = "w-[min(720px,calc(100vw-32px))]";
 
 /**
  * Horizontal offset that pins a palette card under the title-bar search box, or `null` when the
- * box is not on screen (hidden by setting, or a window without one) — callers fall back to a
+ * box is not on screen (hidden by setting, or a window without one) - callers fall back to a
  * window-centered card. The box is centered in the title bar's *leftover* flex space rather than
  * in the window, so a window-centered card would visibly miss its anchor.
  *

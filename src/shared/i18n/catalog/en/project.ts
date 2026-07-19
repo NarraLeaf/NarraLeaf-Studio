@@ -1,4 +1,4 @@
-/** `project` — the Project settings sidebar: overview hub plus slide-in sub-pages (details, assets, dependencies, settings). */
+/** `project` - the Project settings sidebar: overview hub plus slide-in sub-pages (details, assets, dependencies, settings). */
 export const project = {
     nav: {
         details: {

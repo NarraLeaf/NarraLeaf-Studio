@@ -9,7 +9,7 @@ const RECENT_PROJECTS_KEY = "app.recentProjects";
  * process broadcasts a change to the history, so no surface shows a stale list.
  *
  * The subscription is the point, and it is why this lives in the shared lib rather than in one
- * app: the history is global, so any window can change it at any time — another window opening a
+ * app: the history is global, so any window can change it at any time - another window opening a
  * project, or the launcher removing one. A surface that only read it at mount would keep offering
  * projects that are gone and miss ones that were just added.
  */
@@ -49,7 +49,7 @@ export function useRecentProjects(): RecentlyOpenedProject[] {
  * Drop a project from the history.
  *
  * Sends the path and lets the main process rebuild the list, rather than writing back a filtered
- * copy of what this window last saw — with several windows open, that copy is stale the moment
+ * copy of what this window last saw - with several windows open, that copy is stale the moment
  * another one opens a project, and writing it would erase that.
  */
 export function useRemoveRecentProject(): (projectPath: string) => Promise<void> {

@@ -5,7 +5,7 @@ import { isVcsPlatformSupported } from "@shared/types/vcs";
  * The plug in "pluggable version control".
  *
  * Everything Lore-shaped lives behind this module, and nothing above it imports
- * `@lore-vcs/sdk` — directly or transitively — at module scope. That constraint
+ * `@lore-vcs/sdk` - directly or transitively - at module scope. That constraint
  * is load-bearing, not stylistic:
  *
  *   `@lore-vcs/sdk`'s entry point calls `koffi.load()` at MODULE LOAD TIME.
@@ -17,7 +17,7 @@ import { isVcsPlatformSupported } from "@shared/types/vcs";
  * So the backend is imported dynamically, once, behind a platform check, and a
  * failure is converted into a reason code the UI can act on. Studio keeps
  * shipping on every platform; version control is simply absent on the ones Epic
- * has no build for (macOS Intel, Windows ARM64 — see docs/version-control.md).
+ * has no build for (macOS Intel, Windows ARM64 - see docs/version-control.md).
  */
 
 export type VcsBackend = typeof import("./revisionReader") & {
@@ -40,7 +40,7 @@ function platformGateSatisfied(): boolean {
 
 /**
  * Load the Lore backend, or return null if this host cannot run it.
- * Never throws — inspect `getAvailability()` for the reason.
+ * Never throws - inspect `getAvailability()` for the reason.
  */
 export async function loadVcsBackend(): Promise<VcsBackend | null> {
     if (cached) return cached;

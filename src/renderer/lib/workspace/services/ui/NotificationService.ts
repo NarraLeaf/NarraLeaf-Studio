@@ -17,7 +17,7 @@ interface NotificationHistoryStore {
 
 /**
  * A history record: the serializable core of a notification, kept after the toast is dismissed.
- * Callbacks/actions are deliberately dropped — history is a log, not a live surface.
+ * Callbacks/actions are deliberately dropped - history is a log, not a live surface.
  */
 export interface NotificationHistoryEntry {
     id: string;
@@ -31,7 +31,7 @@ export interface NotificationHistoryEntry {
  * Notification Service
  * Manages VSCode-style notifications. Toasts behave exactly as before; additionally every shown
  * notification lands in a ring-buffered history that the notification-center drawer reads, and
- * that survives a restart — see {@link startPersistence}.
+ * that survives a restart - see {@link startPersistence}.
  */
 export class NotificationService {
     private static readonly HistoryLimit = 100;
@@ -58,7 +58,7 @@ export class NotificationService {
      * composes the UI services, and having it reach in to read, seed and save one of them made it
      * the only place that knew this buffer was persistent at all.
      *
-     * Unreadable history is not worth failing workspace startup over — it degrades to an empty log.
+     * Unreadable history is not worth failing workspace startup over - it degrades to an empty log.
      */
     public async startPersistence(serviceAssets: ServiceAssetsService): Promise<void> {
         this.stopPersistence();
@@ -120,7 +120,7 @@ export class NotificationService {
         };
     }
 
-    // Unread tracking is shared here so the bell badge and the notifications panel agree —
+    // Unread tracking is shared here so the bell badge and the notifications panel agree -
     // opening the panel through any path (bell, rail icon) marks everything seen.
     private lastSeenTimestamp = 0;
 

@@ -1,7 +1,7 @@
 import crypto from "crypto";
 
 /**
- * A minimal DER encoder and self-signed X.509 v3 certificate builder — just
+ * A minimal DER encoder and self-signed X.509 v3 certificate builder - just
  * enough to mint the debug identity APK Signature Scheme v2 embeds. Node's
  * crypto can generate keys and sign but cannot *build* a certificate; rather
  * than pull in node-forge (large, historically shaky, and a supply-chain
@@ -110,7 +110,7 @@ function timeDigits(date: Date): string {
 /**
  * X.509 validity Time, encoded per RFC 5280 §4.1.2.5: dates through 2049 MUST
  * be UTCTime (2-digit year), 2050 and later MUST be GeneralizedTime (4-digit
- * year). Getting this wrong is not cosmetic — strict parsers (openssl verify,
+ * year). Getting this wrong is not cosmetic - strict parsers (openssl verify,
  * some Android/re-sign toolchains) reject a GeneralizedTime used for a
  * pre-2050 date, even though lenient ones accept it.
  */

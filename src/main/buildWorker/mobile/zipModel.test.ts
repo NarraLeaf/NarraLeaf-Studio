@@ -51,7 +51,7 @@ describe("toDosDateTime", () => {
     });
 
     it("is timezone-independent for a fixed absolute instant", () => {
-        // An epoch constant must pack identically on every machine — packing
+        // An epoch constant must pack identically on every machine - packing
         // from local-time getters once baked the build host's timezone into
         // every header.
         const { dosTime, dosDate } = toDosDateTime(new Date(1577836800000)); // 2020-01-01T00:00:00Z

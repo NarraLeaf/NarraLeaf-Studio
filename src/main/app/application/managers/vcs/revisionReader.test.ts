@@ -37,7 +37,7 @@ import {
  *
  * Consequences: it loads a ~29MB shared library, writes a real repository to a
  * temp dir, and only runs on a platform Epic ships a build for (no Intel Mac,
- * no Windows ARM64 — see docs/version-control.md §7).
+ * no Windows ARM64 - see docs/version-control.md §7).
  */
 
 const REL = "assets/sprite.bin";
@@ -100,7 +100,7 @@ afterAll(async () => {
 
 describe("backend availability (happy path)", () => {
     // Lives here rather than in backend.test.ts because a failed SDK load is
-    // permanent for the process — see the note at the end of that file.
+    // permanent for the process - see the note at the end of that file.
     it("loads and caches the backend on a supported host", async () => {
         expect(isVcsPlatformSupported()).toBe(true);
 
@@ -185,7 +185,7 @@ describe("loreClient", () => {
      * The SDK's generator declares `loreHash` args but ships no converter for
      * them, so a hex hash is rejected and this layer falls back to the binary
      * form. When upstream implements the handler, hex will start working and
-     * this assertion will flip to "hex" — that is a signal, not a regression.
+     * this assertion will flip to "hex" - that is a signal, not a regression.
      * Change it to "hex" and re-check that nothing depends on the old path.
      */
     it("latches the hash codec by observation, not by hardcoding", async () => {

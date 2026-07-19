@@ -424,14 +424,14 @@ export type IPCEvents = {
  * one-project-one-window and the VCS runtime is keyed per project, so an event
  * without it would be ambiguous the moment two projects are open.
  *
- * Blobs cross as base64 rather than Buffer — structured clone would turn a
+ * Blobs cross as base64 rather than Buffer - structured clone would turn a
  * Buffer into a Uint8Array on the renderer side anyway, and base64 keeps the
  * contract explicit.
  */
 export type IPCVcsEvents = {
     /**
-     * Ask this FIRST. Version control is optional — there is no native build for
-     * macOS Intel or Windows ARM64 — and every other VCS call fails on a host
+     * Ask this FIRST. Version control is optional - there is no native build for
+     * macOS Intel or Windows ARM64 - and every other VCS call fails on a host
      * without one. Branch the UI on this, do not probe by catching errors.
      */
     [IPCEventType.vcsGetAvailability]: {
@@ -751,7 +751,7 @@ export type IPCWorkspaceEvents = {
         consumer: IPCType.Host,
         data: {
             projectPath: string;
-            /** Close the calling window once the target is open — a "switch in this window". */
+            /** Close the calling window once the target is open - a "switch in this window". */
             replaceCurrentWindow?: boolean;
         };
         response: void;
@@ -869,7 +869,7 @@ export type IPCDevModeEvents = {
         };
     };
     /**
-     * Dev Mode is per-project, so stop/reload/getStatus all name the project they mean — without
+     * Dev Mode is per-project, so stop/reload/getStatus all name the project they mean - without
      * it a workspace would drive (and report) whichever session happened to exist, which with two
      * projects open is somebody else's.
      */

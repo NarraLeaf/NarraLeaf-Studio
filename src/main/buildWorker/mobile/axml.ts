@@ -3,14 +3,14 @@
  * Buffer in → Buffer out, no fs.
  *
  * Strategy: every string reference in the node chunks is an INDEX into the
- * file's string pool, so the patcher never remaps indices — it rewrites the
+ * file's string pool, so the patcher never remaps indices - it rewrites the
  * VALUES of existing pool strings and rebuilds only the pool bytes. Node
  * chunks pass through byte-identical, with a single exception: versionCode
  * is a typed integer attribute, patched as a 4-byte in-place write. Unknown
  * chunk types are copied verbatim.
  *
  * The identity attributes are located structurally (walking the elements and
- * resolving android: attributes through the resource map), not by value —
+ * resolving android: attributes through the resource map), not by value -
  * and the placeholder package name is additionally replaced pool-wide under
  * an exact + dotted-prefix rule, because aapt2 bakes it into derived strings
  * (provider authorities are the classic case) that must follow the rename or
@@ -306,7 +306,7 @@ function findAttribute(
     return undefined;
 }
 
-/** Read the identity attributes back out — the repack self-check and tests. */
+/** Read the identity attributes back out - the repack self-check and tests. */
 export function parseBinaryManifest(axml: Buffer): BinaryManifestIdentity {
     const parsed = parseManifest(axml);
     const strings = parsed.pool.strings;
@@ -336,7 +336,7 @@ export function parseBinaryManifest(axml: Buffer): BinaryManifestIdentity {
  * template previously carried (callers log/verify against the contract).
  *
  * The label must be a literal string in the template (a resource reference
- * would live in resources.arsc, out of this patcher's reach) — the template
+ * would live in resources.arsc, out of this patcher's reach) - the template
  * CI asserts that shape; this throws if it ever regresses.
  */
 export function patchBinaryManifest(

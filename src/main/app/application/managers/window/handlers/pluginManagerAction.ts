@@ -159,7 +159,7 @@ export class PluginRuntimeListHandler extends IPCHandler<IPCEventType.pluginRunt
      * Mirror the workspace's per-project dependency suppression: a plugin whose
      * installed version is incompatible with what the project was authored
      * against must not execute in that project's Dev Mode session either.
-     * Resolution failures never block the session — suppression is best-effort.
+     * Resolution failures never block the session - suppression is best-effort.
      */
     private async filterSuppressed(
         window: AppWindow,

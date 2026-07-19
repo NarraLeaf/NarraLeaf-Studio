@@ -73,8 +73,8 @@ import {
 } from "./handlers/privilegedAction";
 
 /**
- * All default IPC handlers. Handlers are stateless — they receive the target
- * window on every handle() call — so the app instantiates this list once and
+ * All default IPC handlers. Handlers are stateless - they receive the target
+ * window on every handle() call - so the app instantiates this list once and
  * routes requests to the right window by sender.
  */
 export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {

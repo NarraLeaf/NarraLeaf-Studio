@@ -1,5 +1,5 @@
 /**
- * Blueprint System — canonical shared types entry (M1 contract freeze).
+ * Blueprint System - canonical shared types entry (M1 contract freeze).
  */
 
 export * from "./schema";

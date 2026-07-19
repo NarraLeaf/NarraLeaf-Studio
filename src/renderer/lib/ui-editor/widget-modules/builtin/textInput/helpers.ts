@@ -12,7 +12,7 @@ import { defaultButtonWidgetProps, type ButtonWidgetProps } from "../button/type
  * Element props for `nl.textInput`: the shared field contract plus the button's chrome and
  * typography prop names.
  *
- * The names are not a coincidence — the widget reuses the `kind: "button"` appearance model, and
+ * The names are not a coincidence - the widget reuses the `kind: "button"` appearance model, and
  * `CompactButtonAppearance` / `resolveButtonVisualProps` read the flat baseline through
  * `getButtonProps(element)`. Renaming any chrome prop here silently detaches the appearance panel.
  * The button's own text props (`label`, its localization pair, vertical align, wrap) are omitted:
@@ -72,7 +72,7 @@ export function getTextInputProps(element: UIElement): TextInputWidgetProps {
 /**
  * Bare prop patch for `UIDocumentService.updateElementProps`, which already merges.
  * Spreading the element's other props back in would let a stale inspector closure resurrect
- * sibling values that changed in between, so only the touched keys are returned — plus a
+ * sibling values that changed in between, so only the touched keys are returned - plus a
  * re-clamped `value` when either side of the value/max-length pair moves.
  */
 export function patchTextInputProps(

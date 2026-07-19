@@ -1,4 +1,4 @@
-/** `characters` — the Characters panel plus the character property/variant/forms editors. */
+/** `characters` - the Characters panel plus the character property/variant/forms editors. */
 export const characters = {
     errors: {
         assetLoad: "Failed to load asset",

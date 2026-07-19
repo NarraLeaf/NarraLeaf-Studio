@@ -16,7 +16,7 @@ export class GlobalSettingsService extends Service<GlobalSettingsService> {
         this.cache = result.settings;
 
         // The cache is seeded once, but the Settings window is a separate window writing to the
-        // same store — without this, a preference changed there stays stale here for the lifetime
+        // same store - without this, a preference changed there stays stale here for the lifetime
         // of the workspace, and `get` would keep serving the value from before the change.
         this.changeToken = getInterface().app.state.onGlobalStateChanged?.(change => {
             this.cache[change.key] = change.value;

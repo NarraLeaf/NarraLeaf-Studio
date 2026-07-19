@@ -137,7 +137,7 @@ export class App extends BaseApp {
 
     /**
      * How long to wait for the workspace's answer. This is a human pressing a button, not a
-     * machine round-trip, so the default IPC timeout is far too short — timing out under a live
+     * machine round-trip, so the default IPC timeout is far too short - timing out under a live
      * dialog would close the workspace out from under someone who was still reading it.
      */
     private static readonly ConfirmCloseTimeoutMs = 10 * 60 * 1000;
@@ -191,7 +191,7 @@ export class App extends BaseApp {
             try {
                 await this.ensureLauncher();
             } catch (error) {
-                // Closing now would take the app down with it — this was probably the last
+                // Closing now would take the app down with it - this was probably the last
                 // window, and the home the user asked to return to is the thing that failed.
                 // Keeping the workspace open loses nothing and leaves them somewhere to work.
                 this.logger.error("[Workspace] Keeping the window open, the launcher failed to start:", error);
@@ -283,7 +283,7 @@ export class App extends BaseApp {
 
         // Wired here rather than at the call site: openProject hands back an already-open window
         // unchanged when the project is one, and binding F12 there would stack a second toggle
-        // onto that window every time the user re-opened the same project — two toggles per press
+        // onto that window every time the user re-opened the same project - two toggles per press
         // cancelling each other out.
         if (this.isDevMode()) {
             window.onKeyUp("F12", () => {
@@ -336,7 +336,7 @@ export class App extends BaseApp {
     /**
      * Project opens still in flight, keyed by normalized path. A window only becomes findable once
      * it exists, so without this two clicks on the same project would both miss the lookup in
-     * {@link openProject} and each open a window of their own — two windows editing one project's
+     * {@link openProject} and each open a window of their own - two windows editing one project's
      * files, saving over each other.
      */
     private readonly projectOpenings = new Map<string, Promise<AppWindow<WindowAppType.Workspace>>>();
@@ -345,15 +345,15 @@ export class App extends BaseApp {
      * Open a project: authorize its files, then focus the window that already has it open, or
      * launch a fresh one.
      *
-     * Every path that opens a project goes through here — the launcher's recent list and folder
-     * picker, the project wizard, the native "Open Recent" menu, and the title-bar switcher — so
+     * Every path that opens a project goes through here - the launcher's recent list and folder
+     * picker, the project wizard, the native "Open Recent" menu, and the title-bar switcher - so
      * "one project, one window" holds however the user got there.
      *
      * A project that is already open is *focused*, never opened a second time, and focusing it
      * never retires the window the user came from: asking to go to another project is not asking
      * to close the one you are in. Only a genuine "open in this window" that actually launches
      * something new takes the opener's place, and only once the new window reports a working
-     * project — an error screen is "ready" too, and trading a working workspace for a dead end is
+     * project - an error screen is "ready" too, and trading a working workspace for a dead end is
      * exactly the thing to avoid.
      *
      * The launcher is the exception to all of it: it is a home screen rather than somewhere work

@@ -8,7 +8,7 @@ import type { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 /**
  * Fetch an asset's bytes and expose them as an object URL (revoked on unmount / asset change),
  * plus the raw bytes for consumers that decode themselves (waveforms, JSON text). Shared by the
- * simple preview editors — the image/audio editors predate it and manage their own fetch.
+ * simple preview editors - the image/audio editors predate it and manage their own fetch.
  */
 export function useAssetBlobUrl<T extends AssetType>(
     asset: Asset<T, AssetSource> | undefined,

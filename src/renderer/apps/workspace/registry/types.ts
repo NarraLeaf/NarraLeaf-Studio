@@ -30,7 +30,7 @@ export interface PanelDefinition<TPayload = any> {
      * Turns the rail icon into a button: clicking runs this instead of opening a panel body, and
      * the icon never enters the active state.
      *
-     * This is how a rail entry can lead somewhere other than the sidebar — the dashboard uses it to
+     * This is how a rail entry can lead somewhere other than the sidebar - the dashboard uses it to
      * open its editor tab. Entries that set this leave `component` undefined. Honored by the left
      * rail only; the right and bottom docks have no button affordance.
      */

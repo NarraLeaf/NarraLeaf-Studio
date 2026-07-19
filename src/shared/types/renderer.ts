@@ -142,7 +142,7 @@ export interface RendererPreloadedInterface {
         launch(props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean): Promise<RequestStatus<void>>;
         /**
          * Open a recent project by path, focusing an already-open window instead of duplicating it.
-         * With `replaceCurrentWindow`, the calling window is closed once the target opens — a
+         * With `replaceCurrentWindow`, the calling window is closed once the target opens - a
          * "switch in this window" rather than opening alongside.
          */
         openRecent(projectPath: string, replaceCurrentWindow?: boolean): Promise<RequestStatus<void>>;
@@ -175,7 +175,7 @@ export interface RendererPreloadedInterface {
         syncNativeMenu(model: NativeMenuModel): void;
         /**
          * Tell the main process whether this workspace actually loaded its project. Replace-style
-         * launches (`closeCurrentWindow`/`replaceOpener`) only retire the opener on `ok: true` —
+         * launches (`closeCurrentWindow`/`replaceOpener`) only retire the opener on `ok: true` -
          * a window showing the "not a project" screen must not have consumed the window it came from.
          */
         reportLoadResult(ok: boolean): void;
@@ -193,7 +193,7 @@ export interface RendererPreloadedInterface {
         launchSettings(props: WindowProps[WindowAppType.Settings]): Promise<RequestStatus<void>>;
         /** Settings window only: another window asked this one to reveal a setting. */
         onSettingsHighlight(handler: (highlight: string) => void): AppEventToken;
-        /** Open workspace-window count — gates settings actions that need a workspace to act in. */
+        /** Open workspace-window count - gates settings actions that need a workspace to act in. */
         countWorkspaceWindows(): Promise<RequestStatus<{ count: number }>>;
         /**
          * Ask one workspace window (the focused one, else the first) to reveal a surface that only
@@ -268,13 +268,13 @@ export interface RendererPreloadedInterface {
 
     /**
      * Version control. Read-only until the resolve UI lands.
-     * Every call is per project — Studio is one-project-one-window and the VCS
+     * Every call is per project - Studio is one-project-one-window and the VCS
      * runtime is keyed by project path.
      */
     vcs: {
         /**
-         * Ask first. Version control is optional — no native build exists for
-         * macOS Intel or Windows ARM64 — and every other call below fails on a
+         * Ask first. Version control is optional - no native build exists for
+         * macOS Intel or Windows ARM64 - and every other call below fails on a
          * host without one. Branch the UI on this; do not probe with try/catch.
          */
         getAvailability(): Promise<RequestStatus<VcsAvailability>>;

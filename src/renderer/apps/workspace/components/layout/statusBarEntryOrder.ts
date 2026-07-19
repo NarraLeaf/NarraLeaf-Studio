@@ -11,7 +11,7 @@ export interface OrderableStatusBarEntry {
  *
  * The rule is "later registrations pack toward the middle". A left group grows rightward from the
  * left edge, so registration order *is* DOM order. A right group grows leftward from the right
- * edge, so the first registration ends up furthest right — DOM order is the reverse.
+ * edge, so the first registration ends up furthest right - DOM order is the reverse.
  *
  * Hidden ids drop out entirely rather than leaving a gap; the remaining entries close up against
  * their edge, which is why hiding one never shifts the others away from the side they belong to.

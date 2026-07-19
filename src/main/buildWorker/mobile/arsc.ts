@@ -3,7 +3,7 @@
  * Buffer out, no fs.
  *
  * The package name lives in a fixed char16[128] slot inside each
- * ResTable_package header, so the rename is an in-place UTF-16LE write —
+ * ResTable_package header, so the rename is an in-place UTF-16LE write -
  * nothing moves, chunk sizes stay identical, and every other byte of the
  * table (type/key string pools, resource entries) passes through untouched.
  * That, plus the fact that the repack never adds resources, is what makes

@@ -6,7 +6,7 @@ import path from "path";
 /**
  * The app-wide cache of custom background pictures: userData/backgrounds, holding what the user
  * has picked, named by the hash of the contents. Global rather than per-project because the
- * background itself is a global setting — every window paints the same one.
+ * background itself is a global setting - every window paints the same one.
  *
  * Content-addressed for two reasons. Re-picking a picture already cached copies nothing. And
  * every *different* picture gets a different name, so `ui.backgroundImage` actually changes when
@@ -30,7 +30,7 @@ export function backgroundCacheName(bytes: Uint8Array, extension: string): strin
 /**
  * Put a picture in the cache and return the name to store in `ui.backgroundImage`.
  *
- * Bytes already cached are left alone — only their timestamp moves, which is what marks them as
+ * Bytes already cached are left alone - only their timestamp moves, which is what marks them as
  * most recently used for `pruneBackgroundCache`.
  */
 export async function cacheBackgroundImage(

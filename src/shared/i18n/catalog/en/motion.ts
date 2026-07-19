@@ -1,4 +1,4 @@
-/** `motion` — the Story Motion editor: motion assets, timeline, keyframes, easing, and stage preview. */
+/** `motion` - the Story Motion editor: motion assets, timeline, keyframes, easing, and stage preview. */
 export const motion = {
     storyMotion: "Story Motion",
     editMotion: "Edit motion",

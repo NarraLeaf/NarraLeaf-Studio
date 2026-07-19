@@ -56,7 +56,7 @@ describe("findHeadCrop", () => {
     });
 
     it("keeps wide hair in frame instead of mistaking it for shoulders", () => {
-        // Twintails make the head wider than the shoulders are — the case that
+        // Twintails make the head wider than the shoulders are - the case that
         // defeats any detector keyed on the outline suddenly flaring out.
         const crop = findHeadCrop(sprite(100, 300, [
             { from: 10, to: 46, left: 28, right: 72 },
@@ -151,7 +151,7 @@ describe("findHeadCrop", () => {
             expect(crop).not.toBeNull();
 
             const px = toPixels(crop!, width, height);
-            // The crop ends at the neck, give or take the padding — nowhere near
+            // The crop ends at the neck, give or take the padding - nowhere near
             // the torso, which is where the old flare-based detector landed.
             expect(px.bottom).toBeGreaterThanOrEqual(head[1]);
             expect(px.bottom).toBeLessThan(head[1] + 30);

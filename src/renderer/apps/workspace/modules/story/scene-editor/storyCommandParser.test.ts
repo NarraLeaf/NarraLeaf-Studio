@@ -38,7 +38,7 @@ describe("tokenizeCommandLine", () => {
     });
 });
 
-describe("parseCommandLine — classification", () => {
+describe("parseCommandLine - classification", () => {
     it("classifies empty, narration, character and command lines", () => {
         expect(parseCommandLine("")).toEqual({ kind: "empty" });
         expect(parseCommandLine("他/她走了")).toMatchObject({ kind: "narration", text: "他/她走了" });
@@ -55,14 +55,14 @@ describe("parseCommandLine — classification", () => {
     });
 });
 
-describe("parseCommandLine — command resolution", () => {
+describe("parseCommandLine - command resolution", () => {
     it("resolves the canonical token and its aliases to the same command", () => {
         expect(command("/bg").def?.commandId).toBe("background");
         expect(command("/background").def?.commandId).toBe("background");
         expect(command("/BG").def?.commandId).toBe("background");
     });
 
-    it("still resolves every token the old seam did — short tokens are additive, not a replacement", () => {
+    it("still resolves every token the old seam did - short tokens are additive, not a replacement", () => {
         // `resolveActionCommandToken` matched any ActionCommandId plus the palette aliases. The command
         // line replaced it, so nothing an author already types may stop resolving.
         for (const entry of ACTION_COMMANDS) {
@@ -97,7 +97,7 @@ describe("parseCommandLine — command resolution", () => {
     });
 });
 
-describe("parseCommandLine — lines that must become invalid rows", () => {
+describe("parseCommandLine - lines that must become invalid rows", () => {
     // Ported from `resolveActionCommandToken.test.ts`: the command line took over that seam, so these
     // are now the parser's to get right. A line that resolves to nothing must never become prose.
     it.each([
@@ -117,7 +117,7 @@ describe("parseCommandLine — lines that must become invalid rows", () => {
     });
 });
 
-describe("parseCommandLine — args", () => {
+describe("parseCommandLine - args", () => {
     it("fills positional params in declaration order", () => {
         const line = command("/set gold 100");
         expect(line.args.map(arg => [arg.param?.name, arg.value])).toEqual([["variable", "gold"], ["value", "100"]]);
@@ -146,7 +146,7 @@ describe("parseCommandLine — args", () => {
     });
 });
 
-describe("parseCommandLine — greedy text", () => {
+describe("parseCommandLine - greedy text", () => {
     it("takes the rest of the line verbatim, spaces included", () => {
         expect(getArgValue(command("/say alice 你好 世界"), "text")).toBe("你好 世界");
     });
@@ -162,7 +162,7 @@ describe("parseCommandLine — greedy text", () => {
     });
 });
 
-describe("parseCommandLine — grammar-level validation", () => {
+describe("parseCommandLine - grammar-level validation", () => {
     it("rejects a value no branch of the union accepts", () => {
         expect(codes("/wait abc")).toEqual(["badValue"]);
         expect(codes("/bgm track fade=soon")).toEqual(["badValue"]);
@@ -177,12 +177,12 @@ describe("parseCommandLine — grammar-level validation", () => {
     });
 
     it("stays silent on a value whose only checkable branch fails but whose context-dependent branch might not", () => {
-        // `forest_day` is not a color, but the asset branch is unresolvable here — flagging it would
+        // `forest_day` is not a color, but the asset branch is unresolvable here - flagging it would
         // be the parser overstepping into the resolution layer's job.
         expect(codes("/bg forest_day")).toEqual([]);
     });
 
-    it("accepts an enum alias without rewriting it — normalization is the resolver's job", () => {
+    it("accepts an enum alias without rewriting it - normalization is the resolver's job", () => {
         expect(codes("/bg forest t=fade")).toEqual([]);
         expect(getArgValue(command("/bg forest t=fade"), "t")).toBe("fade");
     });
@@ -204,7 +204,7 @@ describe("parseCommandLine — grammar-level validation", () => {
         expect(codes("/set gold 100")).toEqual([]);
     });
 
-    it("never faults an unknown speaker — a bare name is a temp speaker, not an error", () => {
+    it("never faults an unknown speaker - a bare name is a temp speaker, not an error", () => {
         // From the interaction model: a dialogue row carries `characterId` XOR `speakerName`, so a name
         // matching no character is a valid line. `#Zoe` and `/say Zoe` must agree on that.
         expect(codes("/say Zoe 你好")).toEqual([]);

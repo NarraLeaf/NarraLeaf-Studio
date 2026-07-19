@@ -41,7 +41,7 @@ type ProjectStatsEvents = {
  * dashboard cannot recompute after the fact.
  *
  * Stored per project in Electron's global config under `stats.project.<token>`, following the
- * editor-session precedent — this is personal data about how *you* worked, so it deliberately does
+ * editor-session precedent - this is personal data about how *you* worked, so it deliberately does
  * not live in the version-controlled `.nlproj`.
  *
  * Collection is best-effort by design. Every failure path here degrades to "no stats" rather than
@@ -122,7 +122,7 @@ export class ProjectStatsService extends Service<ProjectStatsService> {
     }
 
     /**
-     * Drop every accumulated statistic for this project. Static dashboard figures are unaffected —
+     * Drop every accumulated statistic for this project. Static dashboard figures are unaffected -
      * they are recomputed from the project itself and were never stored.
      */
     public async clear(): Promise<void> {
@@ -213,7 +213,7 @@ export class ProjectStatsService extends Service<ProjectStatsService> {
     /**
      * `documentChanged` fires for loads as well as edits, and only an edit moves the revision
      * (`mutateDocument` bumps it; `loadStory` does not). Filtering on it is what separates
-     * authoring from mere reading — and it also breaks a feedback loop, since the word recount
+     * authoring from mere reading - and it also breaks a feedback loop, since the word recount
      * below loads every story and would otherwise re-trigger itself forever.
      */
     private handleDocumentChanged(ctx: WorkspaceContext, storyService: StoryService): void {
@@ -293,7 +293,7 @@ export class ProjectStatsService extends Service<ProjectStatsService> {
      * Two filters make that buffer specific to one build: the `Build` source separates the
      * pipeline's lines from the Dev Mode and preview output that shares the channel, and the
      * timestamp floor drops earlier builds. The console keeps a bounded buffer, so a very long
-     * build can lose its own opening lines here — the same lines the console panel has already
+     * build can lose its own opening lines here - the same lines the console panel has already
      * dropped, so the record matches what the author could still have read.
      */
     private collectBuildLog(startedAt: number): string[] {
@@ -401,7 +401,7 @@ export class ProjectStatsService extends Service<ProjectStatsService> {
 
 /**
  * One archived log line: `[HH:MM:SS] LEVEL   message`. The console panel's own export uses the same
- * shape, minus the `[Build]` source prefix — every line in a build record has that source already.
+ * shape, minus the `[Build]` source prefix - every line in a build record has that source already.
  */
 function formatBuildLogLine(entry: ConsoleEntry): string {
     const time = new Date(entry.timestamp).toLocaleTimeString([], {

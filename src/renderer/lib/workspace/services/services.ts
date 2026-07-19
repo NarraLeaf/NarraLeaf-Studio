@@ -358,7 +358,7 @@ interface IUIDocumentService extends IService {
     clearElementBlueprintEvent(elementId: string, eventName: string): void;
     /**
      * Set UI blueprintEvent hooks to noop when they target the given blueprint layer (event graph slot).
-     * Does not remove the graph from the blueprint document — call LocalBlueprintService.removeEventGraph after.
+     * Does not remove the graph from the blueprint document - call LocalBlueprintService.removeEventGraph after.
      */
     stripBlueprintLayerBindings(surfaceId: string, blueprintId: string, layerEventId: string): void;
 }

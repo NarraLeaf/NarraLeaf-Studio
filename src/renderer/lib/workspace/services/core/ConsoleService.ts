@@ -77,7 +77,7 @@ type ConsoleServiceEvents = {
         reason: "append" | "clear";
         entry?: ConsoleEntry;
     };
-    /** The set of registered channels (tabs) changed — a channel was registered or removed. */
+    /** The set of registered channels (tabs) changed - a channel was registered or removed. */
     channelsChanged: {
         channels: readonly ConsoleChannelDefinition[];
     };
@@ -315,7 +315,7 @@ export class ConsoleService extends Service<ConsoleService> {
     /**
      * Register a channel so it shows up as a console tab. Ref-counted and idempotent by id: N
      * registrations of the same id take N disposals before a non-builtin channel (and its buffered
-     * entries) are removed. Built-in channels are permanent — registering their id is a no-op that
+     * entries) are removed. Built-in channels are permanent - registering their id is a no-op that
      * still returns a (no-op) disposer, so callers can register uniformly.
      */
     public registerChannel(definition: ConsoleChannelDefinition): () => void {
@@ -403,7 +403,7 @@ export class ConsoleService extends Service<ConsoleService> {
     /**
      * Drive (or clear) a channel's progress bar. Passing `null` removes the bar.
      * Otherwise the given fields are merged over the channel's current progress, so
-     * callers can nudge a single field — e.g. `setProgress("build", { error: true })`
+     * callers can nudge a single field - e.g. `setProgress("build", { error: true })`
      * flips the colour while keeping the current value. A brand-new bar defaults to
      * value 0, determinate, non-error.
      */

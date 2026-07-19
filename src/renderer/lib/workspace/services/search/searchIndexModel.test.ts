@@ -299,7 +299,7 @@ describe("querySearchIndex", () => {
         const reversed = querySearchIndex(entries, "morning good");
         expect(forward.find(g => g.group === "story")?.hits.map(h => h.entry.id)).toEqual(["1"]);
         expect(reversed.find(g => g.group === "story")?.hits.map(h => h.entry.id)).toEqual(["1"]);
-        // "inko" is in the title, "opening" only in the detail line — both must still match.
+        // "inko" is in the title, "opening" only in the detail line - both must still match.
         expect(querySearchIndex(entries, "inko opening").find(g => g.group === "story")?.hits).toHaveLength(1);
     });
 

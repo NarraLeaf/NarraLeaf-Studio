@@ -1,7 +1,7 @@
 /**
  * Pure derivations for the dashboard: the daily writing curve, the streak, and the small
  * formatters the sections share. Kept out of the component so the delta rules stay in one
- * readable place — see {@link ActivityPointStatus}, which is the whole reason this file exists.
+ * readable place - see {@link ActivityPointStatus}, which is the whole reason this file exists.
  */
 
 import { toActivityDayKey, type ProjectStatsV1 } from "@shared/types/stats";
@@ -12,12 +12,12 @@ export const ACTIVITY_WINDOW_DAYS = 30;
 /**
  * Why a day's delta is not simply `words - previousWords`:
  *
- * - `untracked` — the day predates collection entirely. There is no word total for it.
- * - `start` — the first tracked day. Its stored total is whatever the project already had when
+ * - `untracked` - the day predates collection entirely. There is no word total for it.
+ * - `start` - the first tracked day. Its stored total is whatever the project already had when
  *   collection began, not what was written that day, so the delta is *unknowable* rather than
  *   zero. Zero-baselining it would plot the project's entire back catalogue as one day's work,
  *   dwarfing every real bar and permanently wrecking the chart's scale.
- * - `tracked` — a real delta against the previous day's total. A day with no stored entry inside
+ * - `tracked` - a real delta against the previous day's total. A day with no stored entry inside
  *   the tracked range is genuinely different: the total carries forward, so its delta is 0.
  */
 export type ActivityPointStatus = "untracked" | "start" | "tracked";
@@ -135,7 +135,7 @@ export function summarizeActivityWindow(points: readonly ActivityPoint[]): Activ
 
 /**
  * Consecutive days of writing ending today or yesterday. Walks the full timeline rather than the
- * 30-day window so a longer streak still counts, and stops at any day whose delta is unknowable —
+ * 30-day window so a longer streak still counts, and stops at any day whose delta is unknowable -
  * an unproven day can neither extend a streak nor honestly break one.
  */
 export function computeWritingStreak(timeline: readonly ActivityPoint[]): number {
@@ -154,7 +154,7 @@ export function computeWritingStreak(timeline: readonly ActivityPoint[]): number
 
 /**
  * Time-of-day greeting. The bands follow how people actually name the hours rather than splitting
- * the day evenly — "late night" is its own thing, and nobody calls 11pm "evening".
+ * the day evenly - "late night" is its own thing, and nobody calls 11pm "evening".
  */
 export function formatGreeting(translator: Translator, now: number): string {
     const hour = new Date(now).getHours();
@@ -217,7 +217,7 @@ export function formatDayLabel(translator: Translator, date: Date): string {
     return translator.formatDate(date, { month: "short", day: "numeric" });
 }
 
-/** Tooltip text for one chart column — the only place a negative day is reported honestly. */
+/** Tooltip text for one chart column - the only place a negative day is reported honestly. */
 export function formatActivityTooltip(translator: Translator, point: ActivityPoint): string {
     const date = formatDayLabel(translator, point.date);
     if (point.status === "untracked") {

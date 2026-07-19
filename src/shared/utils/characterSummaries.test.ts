@@ -18,7 +18,7 @@ describe("mapCharacterStoreEntriesToSummaries", () => {
         expect(summary.name).toBe("Alice");
     });
 
-    // `name` is display text — the story compiler feeds it straight to the NLR nametag — and the
+    // `name` is display text - the story compiler feeds it straight to the NLR nametag - and the
     // id is a UUID, which must never reach the UI. Naming an unnamed character is the compiler's job.
     it.each([
         ["empty", ""],

@@ -12,7 +12,7 @@ const DEFAULT_LIMIT = 10;
  * which writes it through `App.setGlobalStateAndBroadcast`. That is deliberate: the history is
  * shared by every window, so a change has to reach all of them plus the native "Open Recent" menu,
  * and routing writes through the one broadcasting path is what makes that automatic. It also keeps
- * the read-modify-write in the main process, where it is atomic — a renderer that sends back a
+ * the read-modify-write in the main process, where it is atomic - a renderer that sends back a
  * whole array it read earlier would silently erase whatever happened in between.
  */
 export class RecentlyOpened {

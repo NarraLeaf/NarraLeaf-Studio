@@ -25,7 +25,7 @@ export const DESKTOP_PLATFORMS: GameBuildDesktopPlatform[] = ["windows", "macos"
 
 /**
  * Formats offered per platform. Desktop platforms get a portable ZIP, the
- * native installer, and the unpacked folder — the folder skips installer
+ * native installer, and the unpacked folder - the folder skips installer
  * generation entirely, which is the fast path for a local check. The web target
  * has no installer: an archive or the deployable site folder.
  */
@@ -38,7 +38,7 @@ export const OFFERED_FORMATS: Record<GameBuildPlatform, GameBuildFormat[]> = {
     ios: ["ipa"],
 };
 
-/** Formats a platform switches on with — the installer plus the portable archive. */
+/** Formats a platform switches on with - the installer plus the portable archive. */
 const DEFAULT_FORMATS: Record<GameBuildPlatform, GameBuildFormat[]> = {
     windows: ["zip", "nsis"],
     macos: ["zip", "dmg"],
@@ -60,14 +60,14 @@ export type BuildDialogState = {
 /**
  * Every platform key, so `BuildDialogState.formats` is genuinely total: the
  * dialog renders only DIALOG_PLATFORMS, but code trusting the Record type may
- * index any platform — seeding all keys keeps the type honest.
+ * index any platform - seeding all keys keeps the type honest.
  */
 const ALL_PLATFORMS = Object.keys(OFFERED_FORMATS) as GameBuildPlatform[];
 
 export function isDesktopPlatform(platform: GameBuildPlatform): platform is GameBuildDesktopPlatform {
     // Delegates to the shared exhaustive test: `platform !== "web"` silently
     // classified the mobile platforms as desktop (arch selects and all) the
-    // moment the union grew — a predicate body TypeScript never checks.
+    // moment the union grew - a predicate body TypeScript never checks.
     return isDesktopBuildPlatform(platform);
 }
 

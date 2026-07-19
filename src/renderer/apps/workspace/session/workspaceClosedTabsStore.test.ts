@@ -58,7 +58,7 @@ describe("workspaceClosedTabsStore", () => {
     });
 
     /*
-     * The pop-order tests above pass even when the stored indices are wrong —
+     * The pop-order tests above pass even when the stored indices are wrong -
      * order only comes back right once the recorded index is fed through the
      * insert. These drive the round trip end to end instead.
      */
@@ -131,7 +131,7 @@ describe("workspaceClosedTabsStore", () => {
         });
     });
 
-    it("is bounded — old entries fall off, newest survive", () => {
+    it("is bounded - old entries fall off, newest survive", () => {
         for (let i = 0; i < 30; i++) {
             recordClosedTabs([{ tab: surfaceTab(`s${i}`), index: i }], "group-1");
         }

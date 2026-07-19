@@ -1,4 +1,4 @@
-/** `widgetAppearance` — the compact widget appearance/style authoring editors (background, border, corners, spacing, transform, effects, typography, motion, and conditional state overrides). */
+/** `widgetAppearance` - the compact widget appearance/style authoring editors (background, border, corners, spacing, transform, effects, typography, motion, and conditional state overrides). */
 export const widgetAppearance = {
     panel: {
         invalidModel:
