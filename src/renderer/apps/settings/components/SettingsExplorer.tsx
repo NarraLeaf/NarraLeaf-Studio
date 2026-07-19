@@ -12,7 +12,7 @@ import { filterCategoryEntries } from "@/lib/settings/searchSettings";
 import { useTranslation } from "@/lib/i18n";
 import { SETTING_PANELS } from "../panels";
 import { SettingColorPicker } from "./SettingColorPicker";
-import { normalizeHexColor } from "@shared/constants/accent";
+import { ACCENT_COLOR_DEFAULT, ACCENT_SWATCHES, normalizeHexColor } from "@shared/constants/accent";
 
 /** `null` is the Action type's stand-in: it renders a button and stores nothing. */
 export type SettingValue = string | number | boolean | null;
@@ -387,8 +387,10 @@ export function SettingsExplorer<T>({
                 // Anything that is not one of the preset ids is a custom hex, which puts the
                 // selection on the picker chip instead of a swatch.
                 const isCustom = !options.includes(displayValue);
+                // Falling back to the brand anchor, not white: before global state resolves there is
+                // no selection yet, and seeding the picker with white would commit white on open.
                 const effectiveHex = (isCustom ? normalizeHexColor(displayValue) : descriptor.optionColors?.[displayValue])
-                    ?? "#ffffff";
+                    ?? ACCENT_SWATCHES[ACCENT_COLOR_DEFAULT];
                 return (
                     <div className="flex items-center gap-1.5" role="radiogroup" aria-label={descriptor.label}>
                         {options.map(option => {

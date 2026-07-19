@@ -365,7 +365,7 @@ input[type="checkbox"]:checked::after {
     top: 0px;
     width: 6px;
     height: 10px;
-    border: solid white;
+    border: solid rgb(var(--nl-on-primary));
     border-width: 0 2px 2px 0;
     transform: rotate(45deg);
 }
@@ -375,9 +375,9 @@ input[type="checkbox"]:hover:not(:disabled) {
     background: var(--nl-control-fill-hover);
 }
 
+/* Lift the accent rather than naming a second colour, so the hover follows a custom accent. */
 input[type="checkbox"]:checked:hover {
-    background: #4fb8d4;
-    border-color: #4fb8d4;
+    filter: brightness(1.12);
 }
 
 input[type="checkbox"]:disabled {
@@ -412,7 +412,8 @@ input[type="radio"]:hover:not(:disabled) {
 }
 
 input[type="radio"]:checked:hover::after {
-    background: #4fb8d4;
+    background: rgb(var(--nl-primary));
+    filter: brightness(1.12);
 }
 
 input[type="radio"]:disabled {

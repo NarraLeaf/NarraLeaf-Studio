@@ -5,6 +5,7 @@ import { WorkspaceContext } from '@/lib/workspace/services/services';
 import { AssetsService } from '@/lib/workspace/services/core/AssetsService';
 import { UIService } from '@/lib/workspace/services/core/UIService';
 import { ReferenceService } from '@/lib/workspace/services/references/ReferenceService';
+import type { AssetReference } from '@/lib/workspace/services/references/referenceModel';
 import { Services } from '@/lib/workspace/services/services';
 import { InputDialog } from '@/lib/components/dialogs/InputDialog';
 import { ClipboardState } from './useClipboard';
@@ -610,35 +611,57 @@ export function useAssetActions({
             const affectedAssets = collectAffectedAssets(targets, assets, groups);
 
             const referenceService = context?.services.get<ReferenceService>(Services.Reference) ?? null;
+            // "No references found" and "could not look for references" must not be the same answer.
+            // An empty index reports every asset as unused, so a build that failed - or a service
+            // that is missing entirely - has to stop the delete rather than wave it through.
+            let referencesByAsset = new Map<string, AssetReference[]>();
+            let referencesChecked = false;
             if (referenceService) {
-                // The index is lazy; without this an unopened project reports everything as unused.
-                await referenceService.ensureReady().catch(() => undefined);
-                const referencesByAsset = referenceService.getReferencesForAll(affectedAssets.map(asset => asset.id));
+                try {
+                    // The index is lazy; without this an unopened project reports everything as unused.
+                    await referenceService.ensureReady();
+                    // And it is debounced, so an edit made moments ago may still be sitting in a timer.
+                    referenceService.flushPendingRebuilds();
+                    referencesByAsset = referenceService.getReferencesForAll(affectedAssets.map(asset => asset.id));
+                    referencesChecked = true;
+                } catch {
+                    referencesChecked = false;
+                }
+            }
 
-                if (referencesByAsset.size > 0) {
-                    const details = affectedAssets
-                        .map(asset => ({ asset, references: referencesByAsset.get(asset.id) ?? [] }))
-                        .filter(entry => entry.references.length > 0)
-                        .map(({ asset, references }) => {
-                            const shown = references.slice(0, REFERENCE_PREVIEW_LIMIT).map(reference => {
-                                const where = reference.detail ? `${reference.label} — ${reference.detail}` : reference.label;
-                                return `  ${where}${reference.dormant ? ` (${t("properties.references.dormant")})` : ""}`;
-                            });
-                            const remaining = references.length - shown.length;
-                            if (remaining > 0) {
-                                shown.push(`  ${t("assets.delete.moreReferences", { count: remaining })}`);
-                            }
-                            return `- ${asset.name}:\n${shown.join("\n")}`;
-                        })
-                        .join("\n");
+            if (!referencesChecked) {
+                const proceedUnverified = await uiService.showConfirm(
+                    t("assets.delete.unverifiedTitle"),
+                    t("assets.delete.unverifiedMessage"),
+                );
+                if (!proceedUnverified) {
+                    return;
+                }
+            }
 
-                    const forceConfirmed = await uiService.showConfirm(
-                        t("assets.delete.inUseTitle"),
-                        `${t("assets.delete.inUseMessage")}\n\n${details}`,
-                    );
-                    if (!forceConfirmed) {
-                        return;
-                    }
+            if (referencesByAsset.size > 0) {
+                const details = affectedAssets
+                    .map(asset => ({ asset, references: referencesByAsset.get(asset.id) ?? [] }))
+                    .filter(entry => entry.references.length > 0)
+                    .map(({ asset, references }) => {
+                        const shown = references.slice(0, REFERENCE_PREVIEW_LIMIT).map(reference => {
+                            const where = reference.detail ? `${reference.label} - ${reference.detail}` : reference.label;
+                            return `  ${where}${reference.dormant ? ` (${t("properties.references.dormant")})` : ""}`;
+                        });
+                        const remaining = references.length - shown.length;
+                        if (remaining > 0) {
+                            shown.push(`  ${t("assets.delete.moreReferences", { count: remaining })}`);
+                        }
+                        return `- ${asset.name}:\n${shown.join("\n")}`;
+                    })
+                    .join("\n");
+
+                const forceConfirmed = await uiService.showConfirm(
+                    t("assets.delete.inUseTitle"),
+                    `${t("assets.delete.inUseMessage")}\n\n${details}`,
+                );
+                if (!forceConfirmed) {
+                    return;
                 }
             }
 

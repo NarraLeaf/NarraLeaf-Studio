@@ -22,7 +22,7 @@ const variantStyles: Record<ProgressVariant, string> = {
 
 /** CSS color for each variant, for contexts that can't use a Tailwind class (svg stroke, gradient). */
 const variantColor: Record<ProgressVariant, string> = {
-    default: "var(--narraleaf-accent, #40a8c4)",
+    default: "rgb(var(--nl-primary))",
     success: "rgb(var(--nl-success))",
     warning: "rgb(var(--nl-warning))",
     error: "rgb(var(--nl-danger))",
