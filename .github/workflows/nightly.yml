@@ -1,0 +1,131 @@
+name: Nightly
+
+# Builds distributable Studio installers from the nightly branch: Windows x64
+# and macOS on both architectures. Artifacts only — nothing is published to a
+# Release, and nothing is code-signed, so every build here is an unsigned
+# nightly that the OS will quarantine on first launch.
+#
+# Correctness is deliberately not re-checked here: ci.yml's `verify` job already
+# runs on every push to nightly, so duplicating the typecheck and test suite
+# would only add minutes to the packaging turnaround.
+#
+# On the triggers, and the GitHub behaviour behind each:
+#   push             — the trigger that actually fires today. Push events run
+#                      the workflow from the pushed ref, so this file works
+#                      while it lives only on the nightly branch.
+#   workflow_dispatch — declared for later. GitHub only offers manual runs for
+#                      workflows that exist on the DEFAULT branch, so this stays
+#                      inert until nightly.yml is merged to master.
+#   schedule          — deliberately absent. Scheduled runs fire only from the
+#                      default branch too, so a cron added here would read as
+#                      correct and then silently never run. Add it in the same
+#                      change that lands this file on master, not before.
+
+on:
+  push:
+    branches: [nightly]
+  workflow_dispatch:
+
+# Three packaging jobs, two of them on macOS runners that bill at ten times the
+# Linux rate. A rapid series of pushes should not leave several full matrices
+# racing each other for a result only the newest push cares about.
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+# Nothing is published, so the token never needs write access.
+permissions:
+  contents: read
+
+jobs:
+  package:
+    strategy:
+      # One broken target must not hide the results of the other two.
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            args: --win --x64
+            electron_arch: x64
+          - name: macos-x64
+            os: macos-latest
+            args: --mac --x64
+            electron_arch: x64
+          - name: macos-arm64
+            os: macos-latest
+            args: --mac --arm64
+            electron_arch: arm64
+
+    name: package (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      # npm_config_arch is load-bearing on the macos-x64 target, not decoration.
+      # prepare-preview-runner.js stages node_modules/electron/dist into
+      # resources/, and that copy becomes the Electron runtime the packaged
+      # Studio uses for Preview and for building games. Electron's installer
+      # honours npm_config_arch, so without this the x64 job — running on an
+      # arm64 macOS runner — would embed an arm64 runtime in an installer whose
+      # whole purpose is Intel Macs, where it cannot execute at all. Preview and
+      # game builds would fail on exactly the machines that need the x64 build.
+      #
+      # It affects nothing else: electron-builder downloads its own Electron for
+      # the target named by --x64/--arm64, and @narraleaf/encryption ships every
+      # platform's prebuild in the package and picks one at runtime.
+      #
+      # --no-immutable is required, not a shortcut: yarn defaults to --immutable
+      # under CI, and this repo deliberately does not commit yarn.lock, so every
+      # run legitimately writes one.
+      - name: Install dependencies
+        run: yarn install --no-immutable
+        env:
+          npm_config_arch: ${{ matrix.electron_arch }}
+
+      # Recorded so a downloaded installer can be traced back to a commit: the
+      # packaged version is whatever package.json says and does not move between
+      # nightlies. bash rather than the Windows default shell so one expression
+      # covers all three runners.
+      - name: Resolve build stamp
+        id: stamp
+        shell: bash
+        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # --publish never: electron-builder.yml sets `publish: null` and this
+      # pipeline uploads artifacts itself, so the packager must not try to reach
+      # a release. CSC_IDENTITY_AUTO_DISCOVERY=false keeps it from hunting for a
+      # signing identity the runner does not have.
+      - name: Package
+        run: yarn pack-electron ${{ matrix.args }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      # Only the installers. The unpacked app directories electron-builder
+      # leaves in build/ are hundreds of megabytes of intermediate output, and
+      # the .blockmap files next to each installer only serve a differential
+      # updater this project does not run.
+      #
+      # if-no-files-found: error because a packaging step that silently produces
+      # nothing is indistinguishable from a green build.
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: narraleaf-studio-nightly-${{ matrix.name }}-${{ steps.stamp.outputs.sha }}
+          path: |
+            build/*.exe
+            build/*.dmg
+            build/*.zip
+          if-no-files-found: error
+          # Nightlies are superseded by the next push; the 90-day default would
+          # accumulate tens of gigabytes for builds nobody returns to.
+          retention-days: 14

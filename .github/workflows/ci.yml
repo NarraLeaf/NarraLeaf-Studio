@@ -63,16 +63,21 @@ jobs:
   # before release day. Artifacts are uploaded for manual smoke-testing; nothing
   # is published from CI.
   #
-  # Restricted to master and nightly (plus manual dispatch): this is three jobs
-  # with a 60-minute ceiling, two of them on macOS runners, which bill at ten
-  # times the Linux rate. On every push and every PR that cost buys almost
-  # nothing — packaging rarely breaks from ordinary feature work, and `verify`
-  # already guards correctness on those. Run it manually if a change touches
-  # native deps or builder config.
+  # Restricted to master (plus manual dispatch): this is three jobs with a
+  # 60-minute ceiling, two of them on macOS runners, which bill at ten times the
+  # Linux rate. On every push and every PR that cost buys almost nothing —
+  # packaging rarely breaks from ordinary feature work, and `verify` already
+  # guards correctness on those. Run it manually if a change touches native deps
+  # or builder config.
+  #
+  # The nightly branch is deliberately excluded: nightly.yml packages the same
+  # three targets there, so leaving nightly in this condition would run both
+  # matrices on every nightly push and pay for four macOS runners to produce two
+  # sets of identical installers.
   build:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/nightly'))
+      (github.event_name == 'push' && github.ref == 'refs/heads/master')
     strategy:
       # One broken platform must not hide the results of the other two.
       fail-fast: false
