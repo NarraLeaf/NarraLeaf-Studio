@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
+import type { EditorGroup, EditorLayout } from "@/apps/workspace/registry/types";
+import { EDITOR_SPLIT_RATIO_EPSILON } from "@/lib/workspace/services/ui/UIStore";
 import {
     getWorkspaceEditorSessionSettingsKey,
+    parseWorkspaceEditorSession,
     restoreWorkspaceEditorSession,
-    type WorkspaceEditorSessionV1,
+    serializeEditorSession,
+    type WorkspaceEditorSessionV2,
 } from "./workspaceEditorSession";
 
 function createDocument(): UIDocument {
@@ -96,12 +100,29 @@ function createRestoreHarness(options: { blueprints?: Record<string, unknown>; s
     const store = {
         openEditorTabInGroup: vi.fn(),
         setActiveEditorTabInGroup: vi.fn(),
+        restoreEditorLayout: vi.fn(),
     };
     const uiService = {
         getStore: () => store,
         focus: { setFocus: vi.fn() },
     };
     return { context, store, uiService };
+}
+
+/** The layout `restoreEditorLayout` was handed, or null when restore bailed before installing one. */
+function restoredLayout(store: { restoreEditorLayout: { mock: { calls: unknown[][] } } }): EditorLayout | null {
+    const call = store.restoreEditorLayout.mock.calls[0];
+    return call ? (call[0] as EditorLayout) : null;
+}
+
+function restoredGroups(store: Parameters<typeof restoredLayout>[0]): EditorGroup[] {
+    const layout = restoredLayout(store);
+    if (!layout) {
+        return [];
+    }
+    const walk = (node: EditorLayout): EditorGroup[] =>
+        "tabs" in node ? [node] : [...walk(node.first), ...walk(node.second)];
+    return walk(layout);
 }
 
 describe("workspace editor session", () => {
@@ -126,25 +147,29 @@ describe("workspace editor session", () => {
 
     it("skips restored blueprint tabs when their project resources are missing", () => {
         const { context, store, uiService } = createRestoreHarness();
-        const session: WorkspaceEditorSessionV1 = {
-            version: 1,
-            groupId: "main",
-            focus: null,
-            tabs: [
-                {
-                    kind: "blueprint",
-                    title: "Missing Blueprint",
-                    payload: {
-                        blueprintId: "missing-blueprint",
-                        ownerKind: "surfaceMain",
-                        surfaceId: "surface-1",
+        const session: WorkspaceEditorSessionV2 = {
+            version: 2,
+            activeGroupId: "main",
+            layout: {
+                kind: "group",
+                id: "main",
+                focus: null,
+                tabs: [
+                    {
+                        kind: "blueprint",
+                        title: "Missing Blueprint",
+                        payload: {
+                            blueprintId: "missing-blueprint",
+                            ownerKind: "surfaceMain",
+                            surfaceId: "surface-1",
+                        },
                     },
-                },
-            ],
+                ],
+            },
         };
 
         expect(restoreWorkspaceEditorSession(context, session, uiService as any)).toBe(0);
-        expect(store.openEditorTabInGroup).not.toHaveBeenCalled();
+        expect(store.restoreEditorLayout).not.toHaveBeenCalled();
     });
 
     it("restores only tabs that can be resolved in the current project", () => {
@@ -152,48 +177,193 @@ describe("workspace editor session", () => {
             blueprints: { "blueprint-1": { id: "blueprint-1" } },
             motionExists: true,
         });
-        const session: WorkspaceEditorSessionV1 = {
-            version: 1,
-            groupId: "main",
-            focus: "blueprint-entry:blueprint-1:surface-1:~:~",
-            tabs: [
-                { kind: "surface", surfaceId: "missing-surface" },
-                {
-                    kind: "blueprint",
-                    title: "Surface Logic",
-                    payload: {
-                        blueprintId: "blueprint-1",
-                        ownerKind: "surfaceMain",
-                        surfaceId: "surface-1",
+        const session: WorkspaceEditorSessionV2 = {
+            version: 2,
+            activeGroupId: "main",
+            layout: {
+                kind: "group",
+                id: "main",
+                focus: "blueprint-entry:blueprint-1:surface-1:~:~",
+                tabs: [
+                    { kind: "surface", surfaceId: "missing-surface" },
+                    {
+                        kind: "blueprint",
+                        title: "Surface Logic",
+                        payload: {
+                            blueprintId: "blueprint-1",
+                            ownerKind: "surfaceMain",
+                            surfaceId: "surface-1",
+                        },
                     },
-                },
-                {
-                    kind: "storyScene",
-                    title: "Missing Story",
-                    payload: { storyId: "missing-story", sceneId: "scene-1" },
-                },
-                {
-                    kind: "storyMotion",
-                    title: "Story Motion",
-                    payload: { animationId: "motion-1" },
-                },
-            ],
+                    {
+                        kind: "storyScene",
+                        title: "Missing Story",
+                        payload: { storyId: "missing-story", sceneId: "scene-1" },
+                    },
+                    {
+                        kind: "storyMotion",
+                        title: "Story Motion",
+                        payload: { animationId: "motion-1" },
+                    },
+                ],
+            },
         };
 
         expect(restoreWorkspaceEditorSession(context, session, uiService as any)).toBe(2);
-        expect(store.openEditorTabInGroup).toHaveBeenCalledTimes(2);
-        expect(store.openEditorTabInGroup.mock.calls[0][0]).toMatchObject({
-            id: "blueprint-entry:blueprint-1:surface-1:~:~",
-            title: "Surface Logic",
-        });
-        expect(store.openEditorTabInGroup.mock.calls[1][0]).toMatchObject({
-            id: "story-motion:motion-1",
-            title: "Story Motion",
-            payload: { animationId: "motion-1" },
-        });
-        expect(store.setActiveEditorTabInGroup).toHaveBeenCalledWith(
+
+        const groups = restoredGroups(store);
+        expect(groups).toHaveLength(1);
+        expect(groups[0].tabs.map(tab => tab.id)).toEqual([
             "blueprint-entry:blueprint-1:surface-1:~:~",
-            "main",
+            "story-motion:motion-1",
+        ]);
+        expect(groups[0].focus).toBe("blueprint-entry:blueprint-1:surface-1:~:~");
+        expect(uiService.focus.setFocus).toHaveBeenCalledWith(
+            expect.anything(),
+            "blueprint-entry:blueprint-1:surface-1:~:~",
         );
+    });
+
+    it("restores a split tree with its ratios and per-pane focus", () => {
+        const { context, store, uiService } = createRestoreHarness({
+            blueprints: { "blueprint-1": { id: "blueprint-1" } },
+            motionExists: true,
+        });
+        const blueprintTab = {
+            kind: "blueprint" as const,
+            title: "Surface Logic",
+            payload: { blueprintId: "blueprint-1", ownerKind: "surfaceMain" as const, surfaceId: "surface-1" },
+        };
+        const session: WorkspaceEditorSessionV2 = {
+            version: 2,
+            activeGroupId: "group-1",
+            layout: {
+                kind: "split",
+                id: "split-1",
+                direction: "vertical",
+                ratio: 0.3,
+                first: { kind: "group", id: "main", focus: null, tabs: [blueprintTab] },
+                second: {
+                    kind: "group",
+                    id: "group-1",
+                    focus: "story-motion:motion-1",
+                    tabs: [{ kind: "storyMotion", title: "Story Motion", payload: { animationId: "motion-1" } }],
+                },
+            } as WorkspaceEditorSessionV2["layout"],
+        };
+
+        expect(restoreWorkspaceEditorSession(context, session, uiService as any)).toBe(2);
+
+        const layout = restoredLayout(store);
+        if (!layout || "tabs" in layout) {
+            throw new Error("Expected a split layout");
+        }
+        expect(layout.direction).toBe("vertical");
+        expect(layout.ratio).toBe(0.3);
+        expect(restoredGroups(store).map(g => g.id)).toEqual(["main", "group-1"]);
+        // The pane the user left focused, not simply the first one.
+        expect(uiService.focus.setFocus).toHaveBeenCalledWith(expect.anything(), "story-motion:motion-1");
+    });
+
+    it("collapses a restored pane whose tabs all failed to resolve", () => {
+        const { context, store, uiService } = createRestoreHarness({ motionExists: true });
+        const session: WorkspaceEditorSessionV2 = {
+            version: 2,
+            activeGroupId: "main",
+            layout: {
+                kind: "split",
+                id: "split-1",
+                direction: "horizontal",
+                ratio: 0.5,
+                first: { kind: "group", id: "main", focus: null, tabs: [{ kind: "surface", surfaceId: "gone" }] },
+                second: {
+                    kind: "group",
+                    id: "group-1",
+                    focus: null,
+                    tabs: [{ kind: "storyMotion", title: "Story Motion", payload: { animationId: "motion-1" } }],
+                },
+            },
+        };
+
+        expect(restoreWorkspaceEditorSession(context, session, uiService as any)).toBe(1);
+
+        const layout = restoredLayout(store);
+        if (!layout || !("tabs" in layout)) {
+            throw new Error("Expected the empty pane to collapse to a single group");
+        }
+        expect(layout.id).toBe("group-1");
+    });
+});
+
+describe("workspace editor session serialization", () => {
+    const tab = (id: string) => ({
+        id,
+        title: id,
+        component: (() => null) as never,
+        payload: { animationId: id.replace("story-motion:", "") },
+    });
+
+    it("round-trips a split layout through serialize and parse", () => {
+        const layout: EditorLayout = {
+            id: "split-1",
+            direction: "horizontal",
+            ratio: 0.35,
+            first: { id: "main", tabs: [tab("story-motion:a")], focus: "story-motion:a" },
+            second: { id: "group-1", tabs: [tab("story-motion:b")], focus: "story-motion:b" },
+        };
+
+        const parsed = parseWorkspaceEditorSession(JSON.parse(JSON.stringify(serializeEditorSession(layout, "group-1"))));
+
+        expect(parsed).not.toBeNull();
+        expect(parsed!.activeGroupId).toBe("group-1");
+        expect(parsed!.layout).toMatchObject({
+            kind: "split",
+            direction: "horizontal",
+            ratio: 0.35,
+            first: { kind: "group", id: "main", focus: "story-motion:a" },
+            second: { kind: "group", id: "group-1", focus: "story-motion:b" },
+        });
+    });
+
+    it("upgrades a stored v1 session into a single-group v2", () => {
+        const parsed = parseWorkspaceEditorSession({
+            version: 1,
+            groupId: "main",
+            focus: null,
+            tabs: [{ kind: "dashboard" }],
+        });
+
+        expect(parsed).toEqual({
+            version: 2,
+            activeGroupId: "main",
+            layout: { kind: "group", id: "main", focus: null, tabs: [{ kind: "dashboard" }] },
+        });
+    });
+
+    it("rejects a malformed split rather than restoring half a tree", () => {
+        expect(
+            parseWorkspaceEditorSession({
+                version: 2,
+                activeGroupId: null,
+                layout: { kind: "split", id: "s", direction: "sideways", ratio: 0.5, first: {}, second: {} },
+            }),
+        ).toBeNull();
+    });
+
+    it("clamps a stored ratio that would collapse a pane", () => {
+        const parsed = parseWorkspaceEditorSession({
+            version: 2,
+            activeGroupId: null,
+            layout: {
+                kind: "split",
+                id: "s",
+                direction: "horizontal",
+                ratio: 0.0001,
+                first: { kind: "group", id: "a", focus: null, tabs: [{ kind: "dashboard" }] },
+                second: { kind: "group", id: "b", focus: null, tabs: [{ kind: "welcome" }] },
+            },
+        });
+
+        expect(parsed!.layout).toMatchObject({ ratio: EDITOR_SPLIT_RATIO_EPSILON });
     });
 });

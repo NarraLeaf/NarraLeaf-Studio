@@ -87,7 +87,11 @@ function MyDropZone({ groupId }: { groupId: string }) {
 }
 ```
 
-Reference implementation: `components/layout/MainEditorEmptyDropZone.tsx`, `components/layout/useEditorGroupAssetDrop.ts`.
+Reference implementation: `components/layout/MainEditorEmptyDropZone.tsx`.
+
+Editor groups do not use `useAssetDropTarget` — they accept editor tab drags too, so they share only
+its payload resolver (`useAssetDragResolver`) and handle the events themselves in
+`components/layout/useEditorGroupDrop.ts`. See that file for the five-way drop zone model.
 
 ### 2. Restrict drops with `canDrop` (e.g. images only)
 

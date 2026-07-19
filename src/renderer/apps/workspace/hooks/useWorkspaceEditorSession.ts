@@ -6,11 +6,14 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import {
     WORKSPACE_EDITOR_SESSION_SETTINGS_KEY,
+    countSessionTabs,
     getWorkspaceEditorSessionSettingsKey,
     parseWorkspaceEditorSession,
     restoreWorkspaceEditorSession,
     serializeEditorSession,
 } from "../session/workspaceEditorSession";
+import { collectEditorGroups } from "../components/layout/editorCommandsModel";
+import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { openDashboardTab } from "../modules/dashboard/openDashboardTab";
 import {
     DASHBOARD_OPEN_DEFAULT_KEY,
@@ -64,13 +67,13 @@ export function useWorkspaceEditorSession() {
                         session = parseWorkspaceEditorSession(legacyRaw);
                         shouldMigrateLegacySession = Boolean(session);
                     }
-                    if (session?.tabs.length) {
+                    if (session && countSessionTabs(session.layout) > 0) {
                         const restoredCount = restoreWorkspaceEditorSession(context, session, uiService);
                         if (shouldMigrateLegacySession && restoredCount > 0) {
-                            const restoredSession = serializeEditorSession(uiService.getStore().getEditorLayout());
-                            if (restoredSession) {
-                                await settingsService.set(sessionSettingsKey, restoredSession);
-                            }
+                            await settingsService.set(
+                                sessionSettingsKey,
+                                serializeEditorSession(uiService.getStore().getEditorLayout()),
+                            );
                         }
                     }
 
@@ -117,11 +120,18 @@ export function useWorkspaceEditorSession() {
             }
             try {
                 const layout = uiService.getStore().getEditorLayout();
-                const session = serializeEditorSession(layout);
-                if (session === null) {
-                    return;
-                }
-                await settingsService.set(sessionSettingsKey, session);
+                // Which pane the caret is in is part of the layout the user arranged, so it is
+                // restored alongside the splits rather than always landing in the first group.
+                const focus = uiService.focus.getFocus();
+                const activeGroup =
+                    focus.area === FocusArea.EditorTabs
+                        ? collectEditorGroups(layout).find(group => group.id === focus.targetId)
+                        : focus.area === FocusArea.Editor && focus.targetId
+                          ? collectEditorGroups(layout).find(group =>
+                                group.tabs.some(tab => tab.id === focus.targetId),
+                            )
+                          : undefined;
+                await settingsService.set(sessionSettingsKey, serializeEditorSession(layout, activeGroup?.id ?? null));
             } catch (error) {
                 console.error("[WorkspaceEditorSession] Failed to save:", error);
             }
