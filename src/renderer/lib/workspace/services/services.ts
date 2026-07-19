@@ -133,6 +133,8 @@ enum Services {
     Command = "command",
     /** Global project search index (story text, variable names, UI text keys, blueprint node titles) */
     Search = "search",
+    /** Asset reverse-lookup index: which stories, blueprints, widgets and takes use a given asset */
+    Reference = "reference",
     // Logger = "logger",
     // Editor = "editor",
     Story = "story",

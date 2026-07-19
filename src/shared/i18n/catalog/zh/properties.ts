@@ -126,6 +126,24 @@ export const properties = {
         noRecent: "还没有最近使用的颜色",
         custom: "自定义",
     },
+    references: {
+        label: "引用位置",
+        building: "正在扫描项目…",
+        none: "没有任何地方引用它",
+        count: {
+            one: "{count} 处引用",
+            other: "{count} 处引用",
+        },
+        dormant: "未生效",
+        dormantHint: "已保存在控件上，但当前不会显示——填充方式被设为纯色。删除该素材会让它变空。",
+        kind: {
+            story: "剧情",
+            blueprint: "蓝图",
+            uiElement: "界面",
+            character: "角色",
+            voice: "配音",
+        },
+    },
     tags: {
         label: "标签",
         addPlaceholder: "添加标签…",

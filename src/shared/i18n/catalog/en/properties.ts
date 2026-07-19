@@ -125,6 +125,24 @@ export const properties = {
         noRecent: "No recent colors yet",
         custom: "Custom",
     },
+    references: {
+        label: "References",
+        building: "Scanning the project…",
+        none: "Not referenced anywhere",
+        count: {
+            one: "{count} reference",
+            other: "{count} references",
+        },
+        dormant: "inactive",
+        dormantHint: "Stored on the widget but not currently rendered — the fill is set to a colour. Deleting this asset would empty it.",
+        kind: {
+            story: "Story",
+            blueprint: "Blueprint",
+            uiElement: "Interface",
+            character: "Character",
+            voice: "Voice",
+        },
+    },
     tags: {
         label: "Tags",
         addPlaceholder: "Add tag…",
