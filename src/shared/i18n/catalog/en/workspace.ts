@@ -1,5 +1,5 @@
 /**
- * `workspace` — the workspace window shell plus the game-localization panel.
+ * `workspace` - the workspace window shell plus the game-localization panel.
  * The `localization` subtree is already translated; `shell` covers the window
  * chrome (toolbar, tabs, panels, common workspace dialogs).
  */
@@ -148,6 +148,7 @@ export const workspace = {
         openLauncher: "Open launcher",
         panelRenderError: "This panel hit a rendering error",
         mainEditorRegion: "Main editor",
+        resizeSplit: "Resize split",
         noActiveEditor: "No active editor",
         closePanel: "Close panel",
         closeTab: "Close {name}",
@@ -251,7 +252,7 @@ export const workspace = {
             shortcuts: "Keyboard shortcuts",
             words: "{count} words",
             openDashboard: "Open the project dashboard",
-            // Names for the registered entries, shown only in the bar's right-click toggle menu —
+            // Names for the registered entries, shown only in the bar's right-click toggle menu -
             // the cells themselves are icon-first and label their own state.
             entries: {
                 devMode: "Dev Mode status",

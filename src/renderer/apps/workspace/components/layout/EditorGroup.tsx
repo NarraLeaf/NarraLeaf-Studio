@@ -10,7 +10,14 @@ import type { FocusContext } from "@/lib/workspace/services/ui/types";
 import { useKeybinding, contextual, whenEditorTabsFocused, useMaxActiveEditors } from "../../hooks";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { hasClosedTabs, reopenLastClosedTab } from "../../session/workspaceClosedTabsStore";
-import { useEditorGroupAssetDrop } from "./useEditorGroupAssetDrop";
+import { useEditorGroupDrop } from "./useEditorGroupDrop";
+import { EditorGroupDropOverlay } from "./EditorGroupDropOverlay";
+import {
+    EDITOR_TAB_DRAG_MIME,
+    beginEditorTabDrag,
+    encodeEditorTabDragPayload,
+    endEditorTabDrag,
+} from "@/apps/workspace/dnd/editorTabDragContract";
 import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
 import { useTranslation } from "@/lib/i18n";
 
@@ -32,8 +39,11 @@ export function EditorGroup({ group }: EditorGroupProps) {
     // workspace shows exactly one "globally active" tab.
     const [isEditorGroupActive, setIsEditorGroupActive] = useState(false);
     const [selectedTabIds, setSelectedTabIds] = useState<Set<string>>(() => new Set());
+    // The tab currently being dragged out of this strip, ghosted so its old slot reads as vacated
+    // while the caret shows where it would land.
+    const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
     const rangeAnchorTabIdRef = useRef<string | null>(null);
-    const { dropTargetProps, overlayClassName } = useEditorGroupAssetDrop(group.id);
+    const { dropTargetProps, stripRef, zone: dropZone, insertion } = useEditorGroupDrop(group);
 
     const activeTab = group.tabs.find((tab) => tab.id === group.focus);
 
@@ -344,11 +354,12 @@ export function EditorGroup({ group }: EditorGroupProps) {
     return (
         <div
             {...dropTargetProps}
-            className={`h-full flex flex-col border border-transparent border-b-edge transition-colors ${overlayClassName}`}
+            className="relative h-full flex flex-col border border-transparent border-b-edge transition-colors"
         >
             {/* Tab Bar */}
             {group.tabs.length > 0 && (
                 <div
+                    ref={stripRef}
                     className="relative bg-surface-sunken border-b border-edge overflow-x-auto outline-none"
                     tabIndex={0}
                     onMouseDown={(e) => {
@@ -361,7 +372,14 @@ export function EditorGroup({ group }: EditorGroupProps) {
                         e.currentTarget.scrollLeft += e.deltaY;
                     }}
                 >
-                    <div className="flex items-stretch">
+                    <div className="relative flex items-stretch">
+                        {insertion && (
+                            <span
+                                className="pointer-events-none absolute top-0 bottom-0 z-[2] w-0.5 -translate-x-1/2 bg-primary"
+                                style={{ left: insertion.offset }}
+                                aria-hidden
+                            />
+                        )}
                         {group.tabs.map((tab) => {
                             const isActive = tab.id === group.focus;
                             const isSelected = selectedTabIds.has(tab.id);
@@ -374,9 +392,27 @@ export function EditorGroup({ group }: EditorGroupProps) {
                             return (
                                 <div
                                     key={tab.id}
+                                    data-editor-tab-id={tab.id}
+                                    draggable
+                                    onDragStart={(e) => {
+                                        e.stopPropagation();
+                                        e.dataTransfer.effectAllowed = "move";
+                                        e.dataTransfer.setData(
+                                            EDITOR_TAB_DRAG_MIME,
+                                            encodeEditorTabDragPayload(tab.id, group.id),
+                                        );
+                                        e.dataTransfer.setData("text/plain", String(tab.title));
+                                        beginEditorTabDrag({ tabId: tab.id, groupId: group.id });
+                                        setDraggingTabId(tab.id);
+                                    }}
+                                    onDragEnd={() => {
+                                        endEditorTabDrag();
+                                        setDraggingTabId(null);
+                                    }}
                                     className={`
                                         group relative flex items-center gap-2 px-3 h-9 border-r border-edge cursor-default
                                         transition-colors
+                                        ${draggingTabId === tab.id ? "opacity-40" : ""}
                                         ${
                                             isGloballyActive
                                                 ? "bg-primary/[0.15] text-fg"
@@ -474,6 +510,8 @@ export function EditorGroup({ group }: EditorGroupProps) {
                     </div>
                 )}
             </div>
+
+            <EditorGroupDropOverlay zone={dropZone} />
         </div>
     );
 }
