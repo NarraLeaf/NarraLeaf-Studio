@@ -37,13 +37,31 @@ export type StoryCommandCursor =
  *
  * `paramName` still *shows* its candidates: listing them is how an author discovers what else the
  * command takes. Showing and selecting are different things.
+ *
+ * `candidates` refines "must-pick" with what the slot is actually offering, which the cursor alone
+ * cannot know. Two positions look like value slots but have to let Enter submit:
+ *
+ *  - **Nothing typed yet.** `/var gold ` sits in an optional default whose only suggestions are
+ *    `true`/`false`. Highlighting one means Enter declares a boolean the author never asked for, and
+ *    leaves no key that means "I am done". An empty query is not a half-finished pick; it is a slot
+ *    being skipped, and skipping optional params is the common case.
+ *  - **The top candidate is the author's own text echoed back** (`free`). `/say Zoe` offers "Zoe" as
+ *    a temp speaker; taking it and submitting the line build the same block, so Enter should submit.
+ *    A *real* match still wins - `/say Ali` puts Alice first, not a free echo, so Enter picks Alice.
+ *
+ * Tab is unaffected: it takes the first candidate whether or not it was highlighted, so completing
+ * `/var gold tr` to `true` still costs one key.
  */
-export function defaultHighlights(cursor: StoryCommandCursor): boolean {
+export function defaultHighlights(cursor: StoryCommandCursor, candidates: readonly { free?: true }[] = []): boolean {
     switch (cursor.kind) {
-        case "commandName":
-        case "characterName":
         case "positional":
         case "paramValue":
+            if (cursor.query.trim() === "" || candidates.length === 0) {
+                return false;
+            }
+            return !candidates[0].free;
+        case "commandName":
+        case "characterName":
             return true;
         case "paramName":
         case "greedy":
