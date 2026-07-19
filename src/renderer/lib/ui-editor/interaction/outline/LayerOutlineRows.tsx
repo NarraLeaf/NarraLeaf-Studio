@@ -97,7 +97,7 @@ export function OutlineRow({
           ? "bg-primary/[0.10] text-fg ring-1 ring-primary/25"
           : "text-fg-muted hover:bg-fill-subtle";
     const rowDropPreviewClass = isDropParentPreview
-        ? "shadow-[inset_2px_0_0_rgba(64,168,196,0.55)]"
+        ? "shadow-[inset_2px_0_0_rgb(var(--nl-primary)/0.55)]"
         : "";
 
     return (
@@ -304,7 +304,7 @@ export function OutlineGapDropZone({
                     aria-hidden
                     className={`pointer-events-none absolute left-0 right-0 top-1/2 -translate-y-1/2 rounded-full transition-[background-color,box-shadow,opacity,height] duration-100 ${
                         isActiveDropLine
-                            ? "bg-primary/85 opacity-100 shadow-[0_0_0_1px_rgba(64,168,196,0.22)]"
+                            ? "bg-primary/85 opacity-100 shadow-[0_0_0_1px_rgb(var(--nl-primary)/0.22)]"
                             : "bg-primary/40 opacity-30"
                     }`}
                     style={{ height: isActiveDropLine ? 2 : 1 }}

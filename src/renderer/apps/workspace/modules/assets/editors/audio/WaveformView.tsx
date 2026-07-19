@@ -42,9 +42,19 @@ const GRAB_TOLERANCE_PX = 5;
 /** Below this a lane is too short to read, so the channels fold into one envelope. */
 const MIN_LANE_HEIGHT = 36;
 
-function readCssColor(element: HTMLElement, token: string, fallback: string): string {
+/**
+ * Resolve a design-system color token for the canvas, which cannot use CSS.
+ *
+ * The channel tokens (`--nl-fg-muted`, `--nl-primary`, …) hold space-separated RGB channels, not
+ * a color, so they are wrapped here. `--nl-edge` and friends are already whole colors and are
+ * read with `whole: true`.
+ */
+function readCssColor(element: HTMLElement, token: string, fallback: string, whole = false): string {
     const value = getComputedStyle(element).getPropertyValue(token).trim();
-    return value.length > 0 ? value : fallback;
+    if (value.length === 0) {
+        return fallback;
+    }
+    return whole ? value : `rgb(${value})`;
 }
 
 /** Choose a tick spacing whose labels stay readable at the current zoom. */
@@ -156,12 +166,12 @@ export function WaveformView({
         context.clearRect(0, 0, width, height);
 
         const styleHost = canvas.parentElement ?? canvas;
-        const waveColor = readCssColor(styleHost, "--color-fg-muted", "#8a8a8a");
-        const subtleColor = readCssColor(styleHost, "--color-fg-subtle", "#6a6a6a");
-        const primaryColor = readCssColor(styleHost, "--color-primary", "#40a8c4");
-        const edgeColor = readCssColor(styleHost, "--color-edge", "#3a3a3a");
-        const fgColor = readCssColor(styleHost, "--color-fg", "#f0f0f0");
-        const sunkenColor = readCssColor(styleHost, "--color-surface-sunken", "#1a1a1a");
+        const waveColor = readCssColor(styleHost, "--nl-fg-muted", "#8a8a8a");
+        const subtleColor = readCssColor(styleHost, "--nl-fg-subtle", "#6a6a6a");
+        const primaryColor = readCssColor(styleHost, "--nl-primary", "#40a8c4");
+        const edgeColor = readCssColor(styleHost, "--nl-edge", "#3a3a3a", true);
+        const fgColor = readCssColor(styleHost, "--nl-fg", "#f0f0f0");
+        const sunkenColor = readCssColor(styleHost, "--nl-surface-sunken", "#1a1a1a");
 
         const waveHeight = height - WAVE_TOP;
         const visibleSamples = Math.max(1, view.end - view.start);

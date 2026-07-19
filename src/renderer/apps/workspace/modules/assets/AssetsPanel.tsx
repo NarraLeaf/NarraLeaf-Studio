@@ -651,7 +651,7 @@ function ViewModeToggle({ mode, onChange }: { mode: AssetViewMode; onChange: (mo
                     title={label}
                     aria-pressed={mode === id}
                     onClick={() => onChange(id)}
-                    className={`p-1 rounded ${mode === id ? "bg-primary/80 text-white" : "text-fg-muted hover:bg-fill"}`}
+                    className={`p-1 rounded ${mode === id ? "bg-primary/80 text-on-primary" : "text-fg-muted hover:bg-fill"}`}
                 >
                     <Icon className="w-4 h-4" />
                 </button>

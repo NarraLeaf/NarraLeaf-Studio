@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
-import { resolvePreviewTargetBlockId } from "./storyScenePreviewTarget";
+import { resolvePlaybackStartBlockId, resolvePreviewTargetBlockId } from "./storyScenePreviewTarget";
 
 function makeScene(blocks: Record<string, StoryBlock>, rootBlockIds: string[]): StoryScene {
     return {
@@ -59,6 +59,32 @@ describe("resolvePreviewTargetBlockId", () => {
             a: say("a"),
         }, ["code", "a"]);
         expect(resolvePreviewTargetBlockId(scene, "code")).toBeNull();
+    });
+
+    it("keeps option and branch rows as playback start points, unlike the snapshot target", () => {
+        const scene = makeScene({
+            choice: block("choice", "nodeAction", { action: "choice" }, null, ["option"]),
+            option: block("option", "nodeAction", { action: "choiceOption", text: { textId: "t", value: "Go", role: "choiceText" } }, "choice"),
+            branch: block("branch", "control", { control: "conditionBranch", branch: "if" }, "condition"),
+            condition: block("condition", "control", { control: "condition" }, null, ["branch"]),
+            a: say("a"),
+        }, ["choice", "condition", "a"]);
+
+        // Starting playback on an option means "take this branch" — collapsing it to the menu would
+        // discard exactly the choice the author made.
+        expect(resolvePlaybackStartBlockId(scene, "option")).toBe("option");
+        expect(resolvePlaybackStartBlockId(scene, "branch")).toBe("branch");
+        expect(resolvePlaybackStartBlockId(scene, "a")).toBe("a");
+        expect(resolvePlaybackStartBlockId(scene, null)).toBeNull();
+        expect(resolvePlaybackStartBlockId(scene, "missing")).toBeNull();
+    });
+
+    it("falls back past code and note rows when starting playback", () => {
+        const scene = makeScene({
+            a: say("a"),
+            note: block("note", "note", { text: { textId: "n", value: "Remember", role: "note" } }),
+        }, ["a", "note"]);
+        expect(resolvePlaybackStartBlockId(scene, "note")).toBe("a");
     });
 
     it("resolves a code row inside a choice option to the option's parent choice", () => {

@@ -12,6 +12,16 @@ export const assets = {
     noTags: "No tags",
     preview: "Preview",
     unknownError: "Unknown error",
+    delete: {
+        inUseTitle: "These assets are still in use",
+        inUseMessage: "Deleting them will leave the following places without a source:",
+        moreReferences: "…and {count} more",
+        confirmTitle: {
+            one: "Delete {count} item?",
+            other: "Delete {count} items?",
+        },
+        confirmMessage: "Everything inside a selected group is deleted too. This cannot be undone.",
+    },
     emptyType: "No {label} yet",
     /** Asset category labels, keyed by the `AssetType` enum value. */
     types: {

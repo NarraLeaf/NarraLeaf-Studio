@@ -1,3 +1,4 @@
+import { ACCENT_COLOR_DEFAULT } from "@shared/constants/accent";
 import { ZOOM_PERCENT_DEFAULT } from "@shared/constants/zoom";
 import { PersistentState } from "@shared/utils/persistentState";
 import { RecentlyOpenedProject } from "./appStateTypes";
@@ -11,8 +12,19 @@ export interface GlobalStateType extends Record<string, any> {
     "ui.themeMode": "auto" | "light" | "dark" | string;
     /** Studio UI zoom as a whole percentage; see @shared/constants/zoom. */
     "ui.zoomPercent": number;
+    /**
+     * Accent preset id from @shared/constants/accent — not a free color. Applied by the renderer
+     * (lib/appearance) by overriding the `--nl-primary` channels, which every `*-primary` utility
+     * resolves through. Studio windows only; a shipped game keeps the brand anchor.
+     */
     "ui.accentColor": string;
     "ui.compactMode": boolean;
+    /**
+     * Calm the Studio interface: no CSS transitions or animations (styles.css) and no
+     * framer-motion transform/layout animations (the MotionConfig in lib/renderApp). Independent
+     * of the OS-level `prefers-reduced-motion`, which is honored on its own — this is for wanting
+     * it here without wanting it everywhere. Game content is exempt in both layers.
+     */
     "ui.reduceMotion": boolean;
     /** The slim strip along the bottom of the workspace; the dock reclaims its row when off. */
     "ui.statusBar.visible": boolean;
@@ -96,7 +108,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "app.autoCheckUpdates": true,
     "ui.themeMode": "auto",
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,
-    "ui.accentColor": "blue",
+    "ui.accentColor": ACCENT_COLOR_DEFAULT,
     "ui.compactMode": false,
     "ui.reduceMotion": false,
     "ui.statusBar.visible": true,

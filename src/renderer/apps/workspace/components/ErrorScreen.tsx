@@ -41,7 +41,7 @@ export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
                     {onRetry && (
                         <button
                             onClick={onRetry}
-                            className="w-full h-10 flex items-center justify-center gap-2 bg-primary hover:bg-primary/80 text-white rounded-md transition-colors cursor-default"
+                            className="w-full h-10 flex items-center justify-center gap-2 bg-primary hover:bg-primary/80 text-on-primary rounded-md transition-colors cursor-default"
                         >
                             <RefreshCw className="w-4 h-4" />
                             <span>{t("workspace.shell.retry")}</span>

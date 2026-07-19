@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
-import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Music, Plus, Route, UserRoundPlus, Variable, Video } from "lucide-react";
+import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Music, Play, Plus, Route, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
@@ -105,6 +105,8 @@ export function StoryBlockRow(props: {
     onAddInside: (parentId: StoryBlockId) => void;
     /** Append an if / else-if / else branch to a condition container. */
     onAddBranch: (conditionId: StoryBlockId, branch: "if" | "elseIf" | "else") => void;
+    /** Run the live preview forward from this row (on an option row: enter that branch). */
+    onPlayFromRow: (blockId: StoryBlockId) => void;
 }) {
     const { t } = useTranslation();
     const { row, scene, document, characters, selected, active, collapsed, editing, textInputRef, inspectorOpen } = props;
@@ -244,14 +246,17 @@ export function StoryBlockRow(props: {
                             onSetDialogueCharacter={props.onSetDialogueCharacter}
                         />
                     ) : null}
-                    {containerInfo ? (
-                        <ContainerHeaderAdd info={containerInfo} onAdd={() => props.onAddInside(block.id)} />
-                    ) : (
-                        <div className="ml-auto flex shrink-0 items-center gap-1">
-                            <StoryVoiceIndicator block={block} />
-                            <RowActions onInsertAfter={props.onInsertAfter} onDelete={props.onDeleteRow} active={active} />
-                        </div>
-                    )}
+                    <div className="ml-auto flex shrink-0 items-center gap-1">
+                        {containerInfo ? (
+                            <ContainerHeaderAdd info={containerInfo} onAdd={() => props.onAddInside(block.id)} />
+                        ) : (
+                            <>
+                                <StoryVoiceIndicator block={block} />
+                                <RowActions onInsertAfter={props.onInsertAfter} onDelete={props.onDeleteRow} active={active} />
+                            </>
+                        )}
+                        <RowPlayAction block={block} active={active} onPlay={() => props.onPlayFromRow(block.id)} />
+                    </div>
                 </div>
                 {containerInfo ? (
                     <ContainerFooter
@@ -528,6 +533,45 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
                 {t("story.rows.delete")}
             </button>
         </div>
+    );
+}
+
+/**
+ * "Play from here": hands this row to the live preview as a continuous playback start point.
+ *
+ * On a menu option or condition branch it is a *branch entry* — playback takes that road and keeps
+ * going past the container, which is the one thing the state preview can't show you by selecting a
+ * row. Those rows say so in words; ordinary rows keep the cluster quiet with an icon.
+ */
+function RowPlayAction(props: { block: StoryBlock; active: boolean; onPlay: () => void }) {
+    const { t } = useTranslation();
+    const { block } = props;
+    // Rows with no runtime behaviour have no meaningful "play from here" — starting there would
+    // silently begin somewhere else.
+    if (block.kind === "note" || block.kind === "code" || block.kind === "invalid") {
+        return null;
+    }
+    const branchEntry = (block.kind === "nodeAction" && block.payload.action === "choiceOption")
+        || (block.kind === "control" && block.payload.control === "conditionBranch");
+    const label = branchEntry ? t("story.rows.playBranch") : t("story.rows.playFromRow");
+    return (
+        <button
+            type="button"
+            tabIndex={-1}
+            title={label}
+            aria-label={label}
+            className={[
+                "flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-2xs text-fg-muted transition-opacity hover:bg-fill hover:text-primary group-hover:pointer-events-auto group-hover:opacity-100",
+                props.active ? "opacity-100" : "pointer-events-none opacity-0",
+            ].join(" ")}
+            onClick={event => {
+                event.stopPropagation();
+                props.onPlay();
+            }}
+        >
+            <Play className="h-3 w-3" />
+            {branchEntry ? <span>{label}</span> : null}
+        </button>
     );
 }
 

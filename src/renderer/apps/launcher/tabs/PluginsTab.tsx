@@ -316,7 +316,7 @@ function IconTextButton({ title, disabled, onClick, children }: {
             title={title}
             disabled={disabled}
             onClick={onClick}
-            className="no-drag flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="no-drag flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-on-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
             {children}
         </button>

@@ -12,6 +12,16 @@ export const assets = {
     noTags: "无标签",
     preview: "预览",
     unknownError: "未知错误",
+    delete: {
+        inUseTitle: "这些素材仍在被使用",
+        inUseMessage: "删除后，以下位置将失去素材来源：",
+        moreReferences: "…另有 {count} 处",
+        confirmTitle: {
+            one: "删除 {count} 项？",
+            other: "删除 {count} 项？",
+        },
+        confirmMessage: "所选分组内的全部内容也会一并删除，且无法撤销。",
+    },
     emptyType: "还没有 {label}",
     types: {
         image: "图片",
