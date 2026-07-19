@@ -5,31 +5,20 @@ import type { EditorTabComponentProps } from "@/lib/workspace/services/ui/types"
 import { Services } from "@/lib/workspace/services/services";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
-import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import { Button } from "@/lib/components/elements";
-import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
 import { SceneFlowCanvas } from "./SceneFlowCanvas";
-import {
-    buildSceneFlowGraph,
-    type SceneFlowConnectionRejection,
-    type SceneFlowEdgeModel,
-} from "./sceneFlowModel";
-import {
-    createJumpBlock,
-    deleteJumpBlocks,
-    edgeDeletionNeedsConfirm,
-    retargetJumpBlocks,
-    type SceneFlowJumpOpsDeps,
-} from "./sceneFlowJumpOps";
+import { buildSceneFlowGraph } from "./sceneFlowModel";
 import type { SceneFlowTabPayload, SceneFlowViewport } from "./sceneFlowTabId";
 
 /**
  * Read-only map of a story's scenes and the jumps between them. Double-clicking a scene opens its
- * editor, so this is a navigation surface as much as a diagnostic one.
+ * editor, so this is a navigation surface as much as a diagnostic one - nothing here writes to the
+ * story. Layout and viewport are the only things the author can move, and both live on the tab
+ * payload rather than in the document.
  */
 export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFlowTabPayload | undefined>) {
     const { t, tn } = useTranslation();
@@ -120,85 +109,6 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
         persist({ positions: {} });
     }, [persist]);
 
-    // Transient one-liner under the header: what the last edit did, or why one was refused.
-    const [status, setStatus] = useState<{ text: string; tone: "info" | "warning" } | null>(null);
-    const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const showStatus = useCallback((text: string, tone: "info" | "warning" = "info") => {
-        setStatus({ text, tone });
-        if (statusTimerRef.current) {
-            clearTimeout(statusTimerRef.current);
-        }
-        statusTimerRef.current = setTimeout(() => setStatus(null), 4000);
-    }, []);
-    useEffect(() => () => {
-        if (statusTimerRef.current) {
-            clearTimeout(statusTimerRef.current);
-        }
-    }, []);
-
-    const jumpOps = useMemo<SceneFlowJumpOpsDeps | null>(() => {
-        if (!context || !storyService || !storyId) {
-            return null;
-        }
-        const uuidService = context.services.get<UuidService>(Services.Uuid);
-        return { storyService, storyId, generateId: () => uuidService.generate() };
-    }, [context, storyId, storyService]);
-
-    const sceneName = useCallback(
-        (sceneId: StorySceneId) => document?.scenes[sceneId]?.name ?? sceneId,
-        [document],
-    );
-
-    const handleCreateJump = useCallback((source: StorySceneId, target: StorySceneId) => {
-        if (!jumpOps) {
-            return;
-        }
-        createJumpBlock(jumpOps, source, target);
-        showStatus(t("story.flow.status.jumpCreated", { source: sceneName(source), target: sceneName(target) }));
-    }, [jumpOps, sceneName, showStatus, t]);
-
-    const handleRetargetJump = useCallback((edge: SceneFlowEdgeModel, next: StorySceneId) => {
-        if (!jumpOps || !document) {
-            return;
-        }
-        retargetJumpBlocks(jumpOps, document, edge, next);
-        showStatus(t("story.flow.status.jumpRetargeted", { source: sceneName(edge.source), target: sceneName(next) }));
-    }, [document, jumpOps, sceneName, showStatus, t]);
-
-    const handleConfirmDeleteJump = useCallback(async (edge: SceneFlowEdgeModel) => {
-        if (!context) {
-            return false;
-        }
-        if (!edgeDeletionNeedsConfirm(edge)) {
-            return true;
-        }
-        const uiService = context.services.get<UIService>(Services.UI);
-        return uiService.showConfirm(
-            t("story.flow.confirm.deleteJump", { source: sceneName(edge.source), target: sceneName(edge.target) }),
-            edge.jumps.some(jump => jump.conditional)
-                ? t("story.flow.confirm.deleteJumpConditional", { count: String(edge.jumps.length) })
-                : t("story.flow.confirm.deleteJumpMultiple", { count: String(edge.jumps.length) }),
-        );
-    }, [context, sceneName, t]);
-
-    const handleDeleteJump = useCallback((edge: SceneFlowEdgeModel) => {
-        if (!jumpOps) {
-            return;
-        }
-        deleteJumpBlocks(jumpOps, edge);
-        showStatus(t("story.flow.status.jumpDeleted", { source: sceneName(edge.source), target: sceneName(edge.target) }));
-    }, [jumpOps, sceneName, showStatus, t]);
-
-    const handleConnectionRejected = useCallback((reason: SceneFlowConnectionRejection) => {
-        const messages: Record<SceneFlowConnectionRejection, string> = {
-            selfJump: t("story.flow.reject.selfJump"),
-            duplicate: t("story.flow.reject.duplicate"),
-            sourceLocked: t("story.flow.reject.sourceLocked"),
-            unknownScene: t("story.flow.reject.unknownScene"),
-        };
-        showStatus(messages[reason], "warning");
-    }, [showStatus, t]);
-
     const handleOpenScene = useCallback((sceneId: StorySceneId) => {
         if (!document) {
             return;
@@ -241,13 +151,7 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
                     </span>
                 )}
                 <div className="ml-auto flex shrink-0 items-center gap-2">
-                    {status ? (
-                        <span className={cn("text-2xs", status.tone === "warning" ? "text-warning" : "text-fg-muted")}>
-                            {status.text}
-                        </span>
-                    ) : (
-                        <span className="text-2xs text-fg-subtle">{t("story.flow.hint.edit")}</span>
-                    )}
+                    <span className="text-2xs text-fg-subtle">{t("story.flow.hint.openScene")}</span>
                     <Button
                         type="button"
                         size="sm"
@@ -272,11 +176,6 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
                         onOpenScene={handleOpenScene}
                         onMoveScene={handleMoveScene}
                         onViewportChange={handleViewportChange}
-                        onCreateJump={handleCreateJump}
-                        onRetargetJump={handleRetargetJump}
-                        onDeleteJump={handleDeleteJump}
-                        onConfirmDeleteJump={handleConfirmDeleteJump}
-                        onConnectionRejected={handleConnectionRejected}
                     />
                 )}
             </div>
