@@ -11,6 +11,7 @@ import {
     buildReferenceIndex,
     extractBlueprintAssetReferences,
     extractCharacterAssetReferences,
+    extractStoryAnimationAssetReferences,
     extractStoryAssetReferences,
     extractUIDocumentAssetReferences,
     extractVoiceAssetReferences,
@@ -28,8 +29,9 @@ const REBUILD_DEBOUNCE_MS = 300;
  * A main-process index would answer "is this asset safe to delete" from whatever the debounced
  * savers last flushed — which is exactly when the answer is most likely to be stale and destructive.
  *
- * The index is five slices, each rebuilt from its own change event:
+ * The index is six slices, each rebuilt from its own change event:
  *  - story (per story): `StoryService.onDocumentChanged` / `onLibraryChanged`
+ *  - story animation (per animation): `StoryService.onAnimationsChanged`
  *  - blueprint: `UIGraphService.onGraphsChanged` (the blueprint document lives inside the graph doc)
  *  - ui: `UIDocumentService.onDocumentChanged`
  *  - voice (per locale): `VoiceService.onDocumentChanged`
@@ -41,6 +43,7 @@ const REBUILD_DEBOUNCE_MS = 300;
  */
 export class ReferenceService extends Service<ReferenceService> {
     private storyReferences = new Map<string, AssetReference[]>();
+    private storyAnimationReferences = new Map<string, AssetReference[]>();
     private voiceReferences = new Map<string, AssetReference[]>();
     private blueprintReferences: AssetReference[] = [];
     private uiReferences: AssetReference[] = [];
@@ -61,7 +64,7 @@ export class ReferenceService extends Service<ReferenceService> {
      * {@link flushPendingRebuilds} can run it early — a guard that reads through this index cannot
      * afford to see a 300ms-old answer.
      */
-    private rebuildTimers = new Map<string, { timer: ReturnType<typeof setTimeout>; action: () => void }>();
+    private rebuildTimers = new Map<string, { timer: ReturnType<typeof setTimeout>; action: () => void | Promise<void> }>();
     private readonly changeListeners = new Set<() => void>();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
@@ -133,6 +136,9 @@ export class ReferenceService extends Service<ReferenceService> {
             for (const slice of this.storyReferences.values()) {
                 all.push(...slice);
             }
+            for (const slice of this.storyAnimationReferences.values()) {
+                all.push(...slice);
+            }
             for (const slice of this.voiceReferences.values()) {
                 all.push(...slice);
             }
@@ -160,6 +166,7 @@ export class ReferenceService extends Service<ReferenceService> {
         }
         this.rebuildTimers.clear();
         this.storyReferences.clear();
+        this.storyAnimationReferences.clear();
         this.voiceReferences.clear();
         this.blueprintReferences = [];
         this.uiReferences = [];
@@ -190,6 +197,8 @@ export class ReferenceService extends Service<ReferenceService> {
                 }
             }),
         );
+
+        await this.resyncStoryAnimations();
 
         // Voice documents are lazy per locale — an unopened language would otherwise contribute no
         // references, and its takes would look deletable.
@@ -229,7 +238,13 @@ export class ReferenceService extends Service<ReferenceService> {
             storyService.onLibraryChanged(() => {
                 // Adds, deletes and renames all land here; renames change the story name baked into
                 // every reference's detail line, so resync the whole slice set.
-                this.scheduleRebuild("story-library", () => void this.resyncStoryLibrary());
+                this.scheduleRebuild("story-library", () => this.resyncStoryLibrary());
+            }),
+            storyService.onAnimationsChanged(() => {
+                this.scheduleRebuild("story-animations", async () => {
+                    await this.resyncStoryAnimations();
+                    this.emitChanged();
+                });
             }),
             graphService.onGraphsChanged(() => {
                 this.scheduleRebuild("blueprint", () => {
@@ -258,7 +273,7 @@ export class ReferenceService extends Service<ReferenceService> {
         );
     }
 
-    private scheduleRebuild(key: string, action: () => void): void {
+    private scheduleRebuild(key: string, action: () => void | Promise<void>): void {
         const existing = this.rebuildTimers.get(key);
         if (existing) {
             clearTimeout(existing.timer);
@@ -278,17 +293,20 @@ export class ReferenceService extends Service<ReferenceService> {
      * Staleness is harmless where the index only feeds a readout, but the delete guard decides
      * whether an asset is safe to remove: an author who drops an image into a scene and deletes it
      * from the browser a moment later would otherwise be told it is unused, and lose it.
+     *
+     * Awaited, because two slices (story library, story animations) reload documents from disk to
+     * rebuild. Kicking those off and returning would flush the timer without flushing the staleness.
      */
-    public flushPendingRebuilds(): void {
+    public async flushPendingRebuilds(): Promise<void> {
         if (this.rebuildTimers.size === 0) {
             return;
         }
         const pending = [...this.rebuildTimers.values()];
         this.rebuildTimers.clear();
-        for (const { timer, action } of pending) {
+        await Promise.all(pending.map(({ timer, action }) => {
             clearTimeout(timer);
-            action();
-        }
+            return action();
+        }));
     }
 
     private rebuildStorySlice(storyId: string): void {
@@ -323,6 +341,33 @@ export class ReferenceService extends Service<ReferenceService> {
             }
         }
         this.emitChanged();
+    }
+
+    /**
+     * Animation documents are lazy like stories: the index lists them, the bodies load on demand.
+     * A reverse lookup has to open all of them, or an animation the author has not visited this
+     * session contributes nothing and its preview images look deletable.
+     */
+    private async resyncStoryAnimations(): Promise<void> {
+        const storyService = this.getContext().services.get<StoryService>(Services.Story);
+        const entries = storyService.listAnimationAssets();
+        const liveIds = new Set(entries.map(entry => entry.id));
+
+        for (const animationId of [...this.storyAnimationReferences.keys()]) {
+            if (!liveIds.has(animationId)) {
+                this.storyAnimationReferences.delete(animationId);
+            }
+        }
+        await Promise.all(
+            entries.map(async entry => {
+                try {
+                    const animation = await storyService.loadAnimationAsset(entry.id);
+                    this.storyAnimationReferences.set(entry.id, extractStoryAnimationAssetReferences(animation));
+                } catch (error) {
+                    console.warn(`[ReferenceService] Failed to scan animation ${entry.id}:`, error);
+                }
+            }),
+        );
     }
 
     private rebuildBlueprintSlice(): void {

@@ -621,7 +621,7 @@ export function useAssetActions({
                     // The index is lazy; without this an unopened project reports everything as unused.
                     await referenceService.ensureReady();
                     // And it is debounced, so an edit made moments ago may still be sitting in a timer.
-                    referenceService.flushPendingRebuilds();
+                    await referenceService.flushPendingRebuilds();
                     referencesByAsset = referenceService.getReferencesForAll(affectedAssets.map(asset => asset.id));
                     referencesChecked = true;
                 } catch {
