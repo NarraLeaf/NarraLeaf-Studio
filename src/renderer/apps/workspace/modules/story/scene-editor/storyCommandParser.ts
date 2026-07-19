@@ -159,6 +159,7 @@ function acceptsType(type: StoryCommandParamType, value: string): boolean {
         case "displayable":
         case "stageObject":
         case "literal":
+        case "constant":
         case "text":
         // An expression's validity depends on which variables exist, so the parser - which by
         // construction has no project state - has nothing to check. Resolution parses it for real.
