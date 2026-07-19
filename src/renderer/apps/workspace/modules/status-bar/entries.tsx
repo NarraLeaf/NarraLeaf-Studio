@@ -289,7 +289,7 @@ export function NotificationsEntry() {
             <span className="relative flex items-center">
                 <Bell className="h-3 w-3" />
                 {unread > 0 && (
-                    <span className="absolute -right-1.5 -top-1.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] leading-none text-white">
+                    <span className="absolute -right-1.5 -top-1.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] leading-none text-on-primary">
                         {unread > 9 ? "9+" : unread}
                     </span>
                 )}
