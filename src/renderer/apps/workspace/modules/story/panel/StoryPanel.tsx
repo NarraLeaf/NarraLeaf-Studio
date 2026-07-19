@@ -13,6 +13,7 @@ import { useWorkspace } from "../../../context";
 import { useRegistry } from "../../../registry";
 import type { PanelComponentProps } from "../../types";
 import { createStorySceneEditorTab } from "../scene-editor/openStorySceneEditorTab";
+import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
 
 interface StoryPanelState {
@@ -283,6 +284,13 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         refreshLibrary();
     }, [refreshLibrary, storyService]);
 
+    const handleOpenSceneFlow = useCallback((entry: StoryLibraryEntry) => {
+        if (!context) {
+            return;
+        }
+        openSceneFlowTab(context, entry.id, entry.name);
+    }, [context]);
+
     const buildStoryContextMenu = useCallback((entry: StoryLibraryEntry): ContextMenuDef => {
         const isDefault = entry.id === defaultStoryId;
         return [
@@ -291,6 +299,11 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 label: t("story.panel.setDefault"),
                 disabled: isDefault,
                 onClick: () => handleSetDefaultStory(entry),
+            },
+            {
+                id: "open-scene-flow",
+                label: t("story.flow.action.openFlow"),
+                onClick: () => handleOpenSceneFlow(entry),
             },
             {
                 id: "rename-story",
@@ -308,7 +321,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 },
             },
         ];
-    }, [defaultStoryId, handleDeleteStory, handleRenameStory, handleSetDefaultStory, t]);
+    }, [defaultStoryId, handleDeleteStory, handleOpenSceneFlow, handleRenameStory, handleSetDefaultStory, t]);
 
     const handleOpenStoryMenu = useCallback((event: React.MouseEvent, entry: StoryLibraryEntry) => {
         event.stopPropagation();

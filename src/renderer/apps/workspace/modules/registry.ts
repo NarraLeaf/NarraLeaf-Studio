@@ -19,6 +19,7 @@ import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./ty
 import { uiEditorSurfacesModule } from "./ui-editor";
 import { projectPanelModule } from "./project";
 import { storyPanelModule } from "./story";
+import { storyFlowPanelModule } from "./story-flow";
 import { storyMotionPanelModule } from "./story-motion";
 import { localizationPanelModule } from "./localization";
 import { voicePanelModule } from "./voice";
@@ -34,6 +35,7 @@ export const builtInPanels: PanelModule[] = [
     dashboardPanelModule,
     projectPanelModule,
     storyPanelModule,
+    storyFlowPanelModule,
     searchPanelModule,
     uiEditorSurfacesModule,
     charactersModule,
@@ -84,6 +86,7 @@ export { globalActions, globalActionGroups } from "./actions";
 export { uiEditorSurfacesModule } from "./ui-editor";
 export { projectPanelModule } from "./project";
 export { storyPanelModule } from "./story";
+export { storyFlowPanelModule } from "./story-flow";
 export { storyMotionPanelModule } from "./story-motion";
 export { localizationPanelModule } from "./localization";
 export { voicePanelModule } from "./voice";

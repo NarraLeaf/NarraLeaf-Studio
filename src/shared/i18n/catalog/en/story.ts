@@ -30,6 +30,74 @@ export const story = {
         deleteSceneConfirm: "Delete scene \"{name}\"?",
         deleteSceneDetail: "This removes the scene and its blocks from the story document. This action cannot be undone.",
     },
+    flow: {
+        tabTitle: "Scene Flow",
+        tabTitleNamed: "Scene Flow — {name}",
+        node: {
+            blocks: {
+                one: "{count} block",
+                other: "{count} blocks",
+            },
+        },
+        badge: {
+            entry: "Entry scene",
+            unreachable: "Never reached from the entry scene",
+            selfJump: {
+                one: "{count} jump back into this scene",
+                other: "{count} jumps back into this scene",
+            },
+            dangling: {
+                one: "{count} jump with no valid target",
+                other: "{count} jumps with no valid target",
+            },
+        },
+        summary: {
+            scenes: {
+                one: "{count} scene",
+                other: "{count} scenes",
+            },
+            jumps: {
+                one: "{count} jump",
+                other: "{count} jumps",
+            },
+            dangling: {
+                one: "{count} broken jump",
+                other: "{count} broken jumps",
+            },
+            unreachable: {
+                one: "{count} unreachable",
+                other: "{count} unreachable",
+            },
+        },
+        hint: {
+            openScene: "Double-click a scene to open it",
+            edit: "Double-click to open · drag between scenes to add a jump",
+        },
+        status: {
+            jumpCreated: "Added a jump: {source} → {target}",
+            jumpRetargeted: "{source} now jumps to {target}",
+            jumpDeleted: "Removed the jump: {source} → {target}",
+        },
+        reject: {
+            selfJump: "A scene cannot jump to itself from the map — add it in the scene editor.",
+            duplicate: "That jump already exists.",
+            sourceLocked: "Drag the arrow end to re-point a jump — the scene it leaves cannot be changed here.",
+            unknownScene: "That connection is not possible.",
+        },
+        confirm: {
+            deleteJump: "Delete the jump from \"{source}\" to \"{target}\"?",
+            deleteJumpMultiple: "This edge stands for {count} jump blocks. All of them will be deleted.",
+            deleteJumpConditional: "This edge includes a jump nested inside a condition or loop, which the map does not show in full. {count} jump block(s) will be deleted.",
+        },
+        action: {
+            resetLayout: "Reset Layout",
+            openFlow: "Open Scene Flow",
+        },
+        empty: {
+            noStory: "No story to map.",
+            noScenes: "This story has no scenes yet.",
+        },
+    },
     stage: {
         notOnStage: "Not on stage",
         builtin: "Built-in",
