@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, FileText, MoreVertical, Plus, RefreshCw, Star } from "lucide-react";
+import { BookOpen, FileText, MoreVertical, Plus, RefreshCw, Star, Waypoints } from "lucide-react";
 import type { StoryDocument, StoryId, StoryLibraryEntry, StoryScene } from "@shared/types/story";
 import { useTranslation } from "@/lib/i18n";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -542,14 +542,24 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                             }
                             className="!border-b-0"
                             actions={
-                                <button
-                                    type="button"
-                                    className="p-1 hover:text-primary"
-                                    title={t("story.panel.newChapter")}
-                                    onClick={handleCreateChapter}
-                                >
-                                    <Plus className="h-3 w-3" />
-                                </button>
+                                <>
+                                    <button
+                                        type="button"
+                                        className="p-1 hover:text-primary"
+                                        title={t("story.flow.action.openFlow")}
+                                        onClick={() => handleOpenSceneFlow(selectedEntry)}
+                                    >
+                                        <Waypoints className="h-3 w-3" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="p-1 hover:text-primary"
+                                        title={t("story.panel.newChapter")}
+                                        onClick={handleCreateChapter}
+                                    >
+                                        <Plus className="h-3 w-3" />
+                                    </button>
+                                </>
                             }
                         >
                             {loadingDocument ? (

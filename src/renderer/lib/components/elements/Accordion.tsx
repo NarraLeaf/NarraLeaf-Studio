@@ -355,13 +355,21 @@ export function AccordionItem({
                         )}
                         style={{ paddingLeft: `${12 + indentation}px` }}
                     >
-                        {/* Expand/collapse icon */}
+                        {/*
+                          * Expand/collapse icon.
+                          *
+                          * Rotated through the standalone `rotate` property instead of a `rotate-90`
+                          * utility: narraleaf-react injects its own Tailwind v4 stylesheet into this
+                          * document, and its `.transform` rule (`var(--tw-rotate-x,) ...`) lands after
+                          * ours and wins, so every v3 transform utility resolves to `none`. `rotate`
+                          * is a separate property and is unaffected by that collision.
+                          */}
                         <ChevronRight
                             className={cn(
                                 "w-4 h-4 flex-shrink-0 text-fg-muted",
-                                !disableAnimation && "transition-transform duration-200",
-                                isOpen && "transform rotate-90",
+                                !disableAnimation && "transition-[rotate] duration-200",
                             )}
+                            style={{ rotate: isOpen ? "90deg" : "0deg" }}
                         />
 
                         {/* Custom icon (optional) */}
