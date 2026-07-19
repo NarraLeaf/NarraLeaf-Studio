@@ -92,15 +92,6 @@ jobs:
         env:
           npm_config_arch: ${{ matrix.electron_arch }}
 
-      # Recorded so a downloaded installer can be traced back to a commit: the
-      # packaged version is whatever package.json says and does not move between
-      # nightlies. bash rather than the Windows default shell so one expression
-      # covers all three runners.
-      - name: Resolve build stamp
-        id: stamp
-        shell: bash
-        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-
       # --publish never: electron-builder.yml sets `publish: null` and this
       # pipeline uploads artifacts itself, so the packager must not try to reach
       # a release. CSC_IDENTITY_AUTO_DISCOVERY=false keeps it from hunting for a
@@ -120,7 +111,7 @@ jobs:
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
-          name: narraleaf-studio-nightly-${{ matrix.name }}-${{ steps.stamp.outputs.sha }}
+          name: narraleaf-studio-nightly-${{ matrix.name }}
           path: |
             build/*.exe
             build/*.dmg
