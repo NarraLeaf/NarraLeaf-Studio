@@ -131,7 +131,14 @@ export interface SelectFieldDefinition<TData = any> extends BaseFieldDefinition<
 
 export type ColorMode = "hex" | "rgb" | "hsl";
 
-export type ColorDisplayMode = "icon" | "icon-hex";
+/**
+ * How a `ColorPickerTrigger` presents itself.
+ *
+ * `swatch` is the bare circle with no button chrome around it, for rows that already supply their
+ * own framing — the accent-color setting sits it in a line of preset swatches, where the bordered
+ * box the other two modes draw would not match.
+ */
+export type ColorDisplayMode = "icon" | "icon-hex" | "swatch";
 
 export interface ColorValue {
     hex: string;

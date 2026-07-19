@@ -12,7 +12,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 }
 
 const variantStyles: Record<ButtonVariant, string> = {
-    primary: "bg-primary text-white hover:brightness-110",
+    primary: "bg-primary text-on-primary hover:brightness-110",
     secondary: "bg-fill text-fg-muted hover:bg-fill-strong hover:text-fg",
     ghost: "text-fg-muted hover:bg-fill hover:text-fg",
     danger: "bg-danger text-white hover:brightness-110",

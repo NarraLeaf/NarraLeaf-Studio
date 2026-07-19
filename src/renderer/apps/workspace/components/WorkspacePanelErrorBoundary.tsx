@@ -28,7 +28,7 @@ function createPanelErrorFallback(
                 <button
                     type="button"
                     onClick={onRetry}
-                    className="inline-flex h-9 cursor-default items-center gap-2 rounded-md bg-primary px-3 text-sm text-white transition-colors hover:bg-primary/80"
+                    className="inline-flex h-9 cursor-default items-center gap-2 rounded-md bg-primary px-3 text-sm text-on-primary transition-colors hover:bg-primary/80"
                 >
                     <RefreshCw className="h-4 w-4" aria-hidden />
                     {t("workspace.shell.retry")}
