@@ -36,6 +36,19 @@ describe("computePeaks", () => {
         expect(Array.from(computePeaks(clip, { start: 0, end: 2 }, 1))).toEqual([-0.75, 0.25]);
     });
 
+    it("measures one channel at a time when the view draws a lane per channel", () => {
+        const clip: AudioClip = {
+            sampleRate: 8000,
+            channels: [Float32Array.from([0.25, 0.25]), Float32Array.from([-0.75, -0.75])],
+        };
+        expect(Array.from(computePeaks(clip, { start: 0, end: 2 }, 1, 0))).toEqual([0, 0.25]);
+        expect(Array.from(computePeaks(clip, { start: 0, end: 2 }, 1, 1))).toEqual([-0.75, 0]);
+    });
+
+    it("returns zeros for a channel that does not exist rather than throwing", () => {
+        expect(Array.from(computePeaks(clipOf([1, -1]), { start: 0, end: 2 }, 1, 5))).toEqual([0, 0]);
+    });
+
     it("returns zeros for an empty clip instead of dividing by zero", () => {
         expect(Array.from(computePeaks(clipOf([]), { start: 0, end: 0 }, 2))).toEqual([0, 0, 0, 0]);
     });
