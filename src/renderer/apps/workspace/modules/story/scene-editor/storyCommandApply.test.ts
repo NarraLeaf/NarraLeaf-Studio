@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock } from "@shared/types/story";
 import { createBlockForCommand, type ActionCommandId } from "./storyActionCommands";
-import { applyCommandArgs } from "./storyCommandApply";
+import { applyCommandArgs, declarationFromArgs } from "./storyCommandApply";
 import { parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "./storyCommandResolution";
 
@@ -239,9 +239,47 @@ describe("variable declarations", () => {
         }
     });
 
-    it("refuses a default that reads another variable", () => {
-        // A declaration is evaluated before any variable exists, so there is nothing to read.
-        expect(issuesOf("/local hp gold + 1")).toEqual(["declarationDefaultNotConstant"]);
+    it("reads a bare word in the default slot as a string, not as a variable", () => {
+        // `/local greeting hello` declares a default of "hello". The slot is a constant — a declaration
+        // runs before any variable exists — so there is nothing here that could be a reference, and
+        // treating it as one turned this ordinary line into an "undeclared variable" error.
+        expect(issuesOf("/local greeting hello")).toEqual([]);
+        expect(issuesOf("/local greeting \"hello world\"")).toEqual([]);
+    });
+
+    /** The whole line → the variable it declares. Resolution alone cannot show this; the bug lived here. */
+    function declared(source: string) {
+        const line = parseCommandLine(source);
+        if (line.kind !== "command" || !line.def) {
+            throw new Error(`not a command: ${source}`);
+        }
+        return declarationFromArgs(resolveCommandLine(line, CONTEXT).args);
+    }
+
+    it("carries the default through to the declaration, and takes its type from it", () => {
+        // The regression this pins: `/local gold 100` once declared a *boolean* named gold with no
+        // default, because the commit path still read the default slot as an expression after it had
+        // become a constant. Resolution reported no issues, so only an end-to-end check caught it —
+        // hence this test asserts the declaration, not the absence of errors.
+        expect(declared("/local gold 100")).toEqual({ name: "gold", valueType: "number", defaultValue: 100, description: undefined });
+        expect(declared("/var greeting hello")).toEqual({ name: "greeting", valueType: "string", defaultValue: "hello", description: undefined });
+        expect(declared("/persis seen true")).toEqual({ name: "seen", valueType: "boolean", defaultValue: true, description: undefined });
+    });
+
+    it("falls back to a boolean flag when no default says otherwise", () => {
+        expect(declared("/local met")).toEqual({ name: "met", valueType: "boolean", defaultValue: undefined, description: undefined });
+    });
+
+    it("lets an explicit type= override what the default would imply", () => {
+        expect(declared("/local score 0 type=json")).toMatchObject({ valueType: "json", defaultValue: 0 });
+    });
+
+    it("carries a description", () => {
+        expect(declared("/local gold 100 desc=\"pocket money\"")).toMatchObject({ description: "pocket money" });
+    });
+
+    it("declares nothing without a name", () => {
+        expect(declared("/local")).toBe(null);
     });
 
     it("refuses a name already declared in the same scope", () => {

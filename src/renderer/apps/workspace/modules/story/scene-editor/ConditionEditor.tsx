@@ -1,12 +1,21 @@
 /**
- * Shared editor for a story control-flow condition (`StoryConditionRef`). Two tiers, mirroring the
- * inline value interpolation model (`InterpolationPopover`):
+ * Shared editor for a story control-flow condition (`StoryConditionRef`). Three tiers, in order of
+ * how much they let the author say:
+ *  - "Expression": type a boolean expression against declared variables (`gold >= 100 && !met`). The
+ *    general case, and the same thing `/if` writes from the command line — so a condition typed as a
+ *    command and one built here are the same object, and each can edit the other's work.
  *  - "Variable": pick a declared scene/saved/persistent variable, an operator, and (when comparing) a
- *    value. Scope is inferred from the chosen variable — the author never picks a scope first.
+ *    value. Strictly less expressive than an expression, kept because dropdowns are discoverable in a
+ *    way a syntax is not. Scope is inferred from the chosen variable — the author never picks a scope.
  *  - "Graph": bind a Story Action Blueprint (owner `storyAction`, mode `condition`) whose boolean
  *    Return Value is evaluated each time the branch is tested. The graph is created lazily on open and
- *    removed again when the author switches back to a variable, so its lifecycle matches variable
- *    evaluation. Internal ids are never shown to the author.
+ *    removed again when the author switches away, so its lifecycle matches variable evaluation.
+ *    Internal ids are never shown to the author.
+ *
+ * The tiers only ever change on an explicit switch. That is not a nicety: before expressions had a
+ * tier here, an `expression` condition fell through to "Variable", rendered as a *blank* variable
+ * condition, and the first edit overwrote it — so opening the inspector on `/if gold >= 100` silently
+ * destroyed it. Any future fourth kind must add a case to {@link conditionKindOf} for the same reason.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -18,6 +27,10 @@ import type {
     StoryVariableRef,
     StoryVariableValueType,
 } from "@shared/types/story";
+import { formatStoryLiteral } from "@shared/types/story";
+import type { TranslationKey } from "@shared/i18n";
+import type { StoryExpressionScope } from "@shared/utils/storyExpressionParser";
+import { createStoryExpressionScope, parseStoryExpression } from "@shared/utils/storyExpressionParser";
 import { Input, Select, Switch, type SelectOption } from "@/lib/components/elements";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useTranslation } from "@/lib/i18n";
@@ -27,7 +40,7 @@ import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
 import { collectStoryVariableOptions, type PersistentVariableOption, type StoryVariableOption } from "./storyInterpolation";
 
-type ConditionKind = "variable" | "blueprint";
+type ConditionKind = "expression" | "variable" | "blueprint";
 
 type VariableCondition = Extract<StoryConditionRef, { kind: "variable" }>;
 
@@ -36,6 +49,34 @@ const DEFAULT_VARIABLE_CONDITION: VariableCondition = {
     target: { scope: "scene", variableId: "" },
     operator: "isTrue",
 };
+
+/** An empty expression condition — `invalid` until the author types something that parses. */
+const EMPTY_EXPRESSION_CONDITION: StoryConditionRef = {
+    kind: "expression",
+    expression: { source: "", ast: { kind: "invalid", source: "" } },
+};
+
+/**
+ * Which tier a stored condition belongs to.
+ *
+ * Total over `StoryConditionRef["kind"]` on purpose. The previous form of this was a ternary that
+ * treated everything not `blueprint` as `variable`, which is how an expression condition ended up
+ * being rendered — and then overwritten — as a blank variable condition.
+ */
+export function conditionKindOf(value: StoryConditionRef | undefined): ConditionKind {
+    switch (value?.kind) {
+        case "blueprint":
+            return "blueprint";
+        case "expression":
+            return "expression";
+        case "variable":
+            return "variable";
+        default:
+            // A brand-new condition. Expressions are the general tier and what `/if` produces, so a
+            // condition created here starts in the same place a condition created by typing does.
+            return "expression";
+    }
+}
 
 /** Read persistent variables (shared blueprint store) and keep them live. */
 function usePersistentVariables(): PersistentVariableOption[] {
@@ -93,6 +134,9 @@ export function ConditionEditor(props: {
     const { context, isInitialized } = useWorkspace();
     const openBlueprint = useOpenBlueprintTarget();
     const kindOptions: SelectOption[] = useMemo(() => [
+        // Expression leads: it is the general tier, the one `/if` writes, and the only one that can
+        // express "gold >= 100 && !met" at all.
+        { value: "expression", label: t("story.condition.kindExpression") },
         { value: "variable", label: t("story.interpolation.kindVariable") },
         { value: "blueprint", label: t("story.condition.kindGraph") },
     ], [t]);
@@ -114,9 +158,16 @@ export function ConditionEditor(props: {
     );
     const allVariables = useMemo(() => flattenVariables(variableOptions), [variableOptions]);
 
-    const kind: ConditionKind = props.value?.kind === "blueprint" ? "blueprint" : "variable";
+    const kind = conditionKindOf(props.value);
     const variableValue: VariableCondition = props.value?.kind === "variable" ? props.value : DEFAULT_VARIABLE_CONDITION;
     const blueprintId = props.value?.kind === "blueprint" ? props.value.blueprintId : "";
+    const expressionSource = props.value?.kind === "expression" ? props.value.expression.source : "";
+
+    /** The scope an expression's identifiers resolve through — the same three scopes, same precedence. */
+    const expressionScope = useMemo(
+        () => createStoryExpressionScope(allVariables.map(option => ({ name: option.name, ref: makeVariableRef(option.scope, option.id) }))),
+        [allVariables],
+    );
 
     const currentValueType: StoryVariableValueType =
         allVariables.find(option => variableRefKey(variableValue.target) === option.key)?.valueType ?? "string";
@@ -135,7 +186,23 @@ export function ConditionEditor(props: {
         if (blueprintId) {
             blueprintService?.removeStoryActionBlueprint(blueprintId);
         }
+        if (nextKind === "expression") {
+            // Switching from the variable picker carries the comparison across rather than blanking
+            // the field: the author asked for "the same test, as text", not for a fresh start.
+            props.onChange(
+                kind === "variable"
+                    ? expressionFromVariableCondition(variableValue, allVariables, expressionScope)
+                    : EMPTY_EXPRESSION_CONDITION,
+            );
+            return;
+        }
         props.onChange(DEFAULT_VARIABLE_CONDITION);
+    };
+
+    const setExpressionSource = (source: string) => {
+        // Re-parsed on every keystroke. Cheap (the language is tiny), and it means the stored tree is
+        // never out of step with the text beside it — the invariant the compiler leans on.
+        props.onChange({ kind: "expression", expression: parseStoryExpression(source, expressionScope).expression });
     };
 
     const setVariableByKey = (key: string) => {
@@ -168,14 +235,21 @@ export function ConditionEditor(props: {
             <Select
                 options={kindOptions}
                 value={kind}
-                onChange={value => setKind(value === "blueprint" ? "blueprint" : "variable")}
+                onChange={value => setKind(value as ConditionKind)}
                 size="sm"
                 fullWidth
                 portalMenu
                 menuZIndex={props.menuZIndex}
                 menuDataAttributes={props.menuDataAttributes}
             />
-            {kind === "variable" ? (
+            {kind === "expression" ? (
+                <ConditionExpressionField
+                    source={expressionSource}
+                    scope={expressionScope}
+                    variableNames={allVariables.map(option => option.name)}
+                    onChange={setExpressionSource}
+                />
+            ) : kind === "variable" ? (
                 <>
                     <Select
                         options={variableSelectOptions}
@@ -218,6 +292,79 @@ export function ConditionEditor(props: {
             )}
         </div>
     );
+}
+
+/**
+ * The expression tier: a text field that re-parses as you type, plus the first thing that went wrong.
+ *
+ * Errors are shown but never block editing — a half-typed `gold >` is an ordinary intermediate state,
+ * not a mistake, so it earns a quiet note rather than a red field. What it does not do is let a
+ * non-boolean through silently: a condition that is not a comparison is almost always unfinished, the
+ * same rule `/if` applies, so it says so.
+ */
+function ConditionExpressionField(props: {
+    source: string;
+    scope: StoryExpressionScope;
+    variableNames: readonly string[];
+    onChange: (source: string) => void;
+}) {
+    const { t } = useTranslation();
+    const parsed = useMemo(() => parseStoryExpression(props.source, props.scope), [props.scope, props.source]);
+    const problem = props.source.trim() === ""
+        ? null
+        : parsed.issues[0]
+            ? t(`storyExpr.issue.${parsed.issues[0].code}` as TranslationKey)
+            : null;
+
+    return (
+        <div className="flex flex-col gap-1">
+            <Input
+                value={props.source}
+                onChange={event => props.onChange(event.target.value)}
+                placeholder={t("story.condition.expressionPlaceholder")}
+                size="sm"
+                fullWidth
+                className="font-mono"
+            />
+            {problem ? (
+                <p className="text-2xs text-warning">{problem}</p>
+            ) : (
+                /* With no error there is still something worth saying: which names are in scope. That
+                   is the one thing a text field cannot show and a dropdown gets for free. */
+                <p className="truncate text-2xs text-fg-subtle">
+                    {props.variableNames.length
+                        ? t("story.condition.expressionVariables", { names: props.variableNames.slice(0, 6).join(", ") })
+                        : t("story.interpolation.noVariables")}
+                </p>
+            )}
+        </div>
+    );
+}
+
+/**
+ * Rewrite a variable-picker condition as the expression text that means the same thing, so switching
+ * tiers keeps the author's work instead of blanking the field.
+ *
+ * Falls back to an empty expression when the picker was never filled in — there is no honest text for
+ * "no variable chosen", and inventing one would put a broken expression in front of the author.
+ */
+function expressionFromVariableCondition(
+    condition: VariableCondition,
+    variables: readonly { key: string; name: string }[],
+    scope: StoryExpressionScope,
+): StoryConditionRef {
+    const name = variables.find(option => option.key === variableRefKey(condition.target))?.name;
+    if (!name) {
+        return EMPTY_EXPRESSION_CONDITION;
+    }
+    const literal = formatStoryLiteral(condition.value ?? null);
+    const source =
+        condition.operator === "isTrue" ? name
+            : condition.operator === "isFalse" ? `!${name}`
+                : condition.operator === "equals" ? `${name} == ${literal}`
+                    : condition.operator === "notEquals" ? `${name} != ${literal}`
+                        : `${name} != null`;
+    return { kind: "expression", expression: parseStoryExpression(source, scope).expression };
 }
 
 /** Value input whose control matches the compared variable's declared type. */

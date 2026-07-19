@@ -14,8 +14,14 @@ const distWindows = path.join(distRoot, 'windows');
  * marks a live `yarn dev` session, so `yarn stop` looks here too — keep the two
  * in sync via this constant rather than re-typing the number.
  * The renderer side connects in src/main/app/application/baseApp.ts.
+ *
+ * Overridable via NLS_DEV_RELOAD_PORT so a second checkout (a git worktree on a
+ * branch, say) can run its own dev session without killing the first: the port is
+ * the session lock, so two trees sharing 5588 means whichever starts second exits
+ * with "port already in use". Unset, the default keeps `yarn dev`/`yarn stop`
+ * pairing up exactly as before.
  */
-const DEV_RELOAD_PORT = 5588;
+const DEV_RELOAD_PORT = Number(process.env.NLS_DEV_RELOAD_PORT) || 5588;
 
 function isDev(argv = process.argv) {
     return argv.includes('--dev');

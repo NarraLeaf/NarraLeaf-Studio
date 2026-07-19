@@ -6,6 +6,8 @@ import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useTranslation } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
+import { getCommandGhost } from "./storyCommandGhost";
 import { isMacPlatform } from "@/lib/app/platform";
 import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -844,6 +846,39 @@ function candidateIcon(cursor: StoryCommandCursor, candidate: StoryCommandCandid
     }
 }
 
+/**
+ * The grey `<Var Name>` that trails the caret on a command line.
+ *
+ * Rendered as a mirror of the typed text — the text itself repeated but invisible, then the hint —
+ * rather than by measuring the caret's pixel offset. Measuring would need a canvas metrics pass that
+ * re-runs on every keystroke and still drifts on font fallback (a CJK variable name is the case that
+ * breaks it); repeating the text lets the browser do the layout with the same font, in the same box,
+ * and the hint lands exactly where the next character would.
+ *
+ * Consequently the mirror must match the textarea's own metrics exactly: same `textStyle`, same zero
+ * padding, `whitespace-pre` so runs of spaces measure as typed, and `pointer-events-none` so a click
+ * anywhere still lands in the field beneath.
+ */
+function CommandGhostHint(props: { value: string; caret: number; textStyle: CSSProperties }) {
+    const { t } = useTranslation();
+    const ghost = useMemo(() => getCommandGhost(props.value, props.caret), [props.caret, props.value]);
+    if (!ghost) {
+        return null;
+    }
+    return (
+        <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 select-none overflow-hidden whitespace-pre"
+            style={props.textStyle}
+        >
+            {/* Invisible, not `opacity-0` on the whole span: only the copy of the typed text should be
+                hidden, and it still has to occupy its exact width to push the hint into place. */}
+            <span className="invisible">{props.value}</span>
+            <span className="italic text-fg-subtle">{`<${t(`story.paramHint.${ghost.hintKey}` as TranslationKey)}>`}</span>
+        </span>
+    );
+}
+
 export function InsertRow(props: {
     mode: Extract<EditorMode, { kind: "insert" }>;
     /** Nesting depth of where the new block will land, so the slot lines up under its future siblings. */
@@ -980,12 +1015,17 @@ export function InsertRow(props: {
                 <div style={{ paddingLeft: (props.depth ?? 0) * RAIL_STEP }}>
                 <div className="flex min-h-[27px] items-center gap-2">
                 <span className="h-6 w-6 shrink-0" aria-hidden />
+                {/* The ghost hint sits in a wrapper around the textarea rather than the row's own
+                    anchor, so it is positioned against the field's box and inherits its exact metrics.
+                    `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
+                <div className="relative flex min-w-0 flex-1">
+                <CommandGhostHint value={props.mode.value} caret={caret} textStyle={textStyle} />
                 <textarea
                     ref={props.inputRef}
                     // Same in-place surface as an editing row (see TextEditBox): the new line reads as a
                     // line being typed, not a widget dropped into the list — which is what lets narration's
                     // Enter fall into this slot without the text visibly jumping.
-                    className="min-h-[20px] min-w-0 flex-1 resize-none bg-transparent px-0 py-0 text-fg outline-none placeholder:italic placeholder:text-fg-subtle"
+                    className="relative min-h-[20px] w-full resize-none bg-transparent px-0 py-0 text-fg outline-none placeholder:italic placeholder:text-fg-subtle"
                     style={textStyle}
                     rows={1}
                     value={props.mode.value}
@@ -1094,6 +1134,7 @@ export function InsertRow(props: {
                         }
                     }}
                 />
+                </div>
                 </div>
                 </div>
                 {actionMenuOpen ? (
