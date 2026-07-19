@@ -14,9 +14,20 @@ module.exports = {
     theme: {
         extend: {
             colors: {
-                // Brand anchor — fixed. Do not change; secondary colors derive
-                // from this by hue-shift at low saturation. See docs/design-system.md.
-                primary: '#40a8c4',
+                // The accent. Channels live in styles.css `:root`, where they
+                // default to the brand anchor #40a8c4 — the value a shipped game
+                // always gets. Studio windows override the variable from the
+                // `ui.accentColor` setting, so every `*-primary` utility in the
+                // product follows it. Presets only, all hue-shifts of the anchor
+                // at low saturation: see @shared/constants/accent and
+                // docs/design-system.md. Secondary semantic colors below derive
+                // from the anchor and do NOT follow the accent.
+                primary: 'rgb(var(--nl-primary) / <alpha-value>)',
+
+                // Ink to put ON the accent. Use `text-on-primary`, never `text-white`, on a
+                // solid `bg-primary`: a user-chosen light accent flips this to dark ink so the
+                // label stays readable. See `accentForeground` in @shared/constants/accent.
+                'on-primary': 'rgb(var(--nl-on-primary) / <alpha-value>)',
 
                 // Dark surface ladder (5 depths). Channel values live in
                 // styles.css :root so raw CSS / inline styles can reference the

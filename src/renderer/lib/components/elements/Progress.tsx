@@ -75,7 +75,9 @@ export function ProgressIndeterminate({
     return (
         <div className={cn("w-full bg-fill rounded-full overflow-hidden", sizeStyles[size], className)}>
             <div
-                className="h-full rounded-full animate-[progress-indeterminate_2s_ease-in-out_infinite]"
+                // `nl-motion-keep`: the sweep is what says "still working". Under the reduced-motion
+                // preference (styles.css) a stopped bar would read as a hang instead.
+                className="nl-motion-keep h-full rounded-full animate-[progress-indeterminate_2s_ease-in-out_infinite]"
                 style={{
                     background: `linear-gradient(90deg, transparent 0%, ${variantColor[variant]} 50%, transparent 100%)`,
                     width: "100%",

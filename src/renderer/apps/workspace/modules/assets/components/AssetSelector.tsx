@@ -709,7 +709,7 @@ export function AssetSelector({
                             <button
                                 onClick={handleConfirm}
                                 disabled={selection.size === 0}
-                                className="px-3 py-1.5 text-sm rounded-md bg-primary text-white hover:bg-primary/90 disabled:opacity-60"
+                                className="px-3 py-1.5 text-sm rounded-md bg-primary text-on-primary hover:bg-primary/90 disabled:opacity-60"
                             >
                                 {t("assets.selector.choose")}
                             </button>

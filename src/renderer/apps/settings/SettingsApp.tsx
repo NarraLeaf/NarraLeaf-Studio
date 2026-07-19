@@ -150,6 +150,9 @@ export function SettingsApp() {
                     Object.entries(setting.optionLabelKeys).map(([option, key]) => [option, t(key)]),
                 )
                 : setting.optionLabels,
+            optionColors: setting.optionColors,
+            allowCustomColor: setting.allowCustomColor,
+            onPreview: setting.onPreview,
             min: setting.min,
             max: setting.max,
             step: setting.step,

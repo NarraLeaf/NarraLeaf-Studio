@@ -139,7 +139,7 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
                                                 className={`
                                                     px-2 py-1 text-xs rounded transition-colors
                                                     ${isActive
-                                                        ? 'bg-primary text-white'
+                                                        ? 'bg-primary text-on-primary'
                                                         : 'bg-fill text-fg-muted hover:bg-fill-strong'
                                                     }
                                                 `}
