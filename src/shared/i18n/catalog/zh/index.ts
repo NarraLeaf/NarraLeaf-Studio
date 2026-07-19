@@ -11,6 +11,7 @@ import { settings } from "./settings";
 import { launcher } from "./launcher";
 import { workspace } from "./workspace";
 import { story } from "./story";
+import { storyExpr } from "./storyExpr";
 import { storyInspector } from "./storyInspector";
 import { assets } from "./assets";
 import { blueprint } from "./blueprint";
@@ -43,6 +44,7 @@ export const zh = {
     launcher,
     workspace,
     story,
+    storyExpr,
     storyInspector,
     assets,
     blueprint,
