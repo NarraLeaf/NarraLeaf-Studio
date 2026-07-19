@@ -1,4 +1,4 @@
-import type { StoryDisplayableTargetKind } from "@shared/types/story";
+import type { StoryDisplayableTargetKind, StoryVariableScope } from "@shared/types/story";
 import { ACTION_COMMANDS, type ActionCommandId } from "./storyActionCommands";
 
 /**
@@ -6,8 +6,8 @@ import { ACTION_COMMANDS, type ActionCommandId } from "./storyActionCommands";
  *
  * A command line is `/<token> [positional…] [key=value…]`. The grammar declares, per command, what
  * may appear and of what type; it does NOT know how to write a `StoryBlock` (that is `applyArgs`,
- * which stays hand-written per command — the payload union is too heterogeneous to derive) and it
- * does NOT resolve names to ids (that needs project context — see "resolution" below).
+ * which stays hand-written per command - the payload union is too heterogeneous to derive) and it
+ * does NOT resolve names to ids (that needs project context - see "resolution" below).
  *
  * Split of responsibilities:
  *  - grammar (this file): what params exist, in what order, of what type. Pure data.
@@ -32,34 +32,34 @@ export type StoryCommandParamType =
     | { kind: "asset"; assetType: "image" | "audio" | "video" }
     /**
      * A character. `allowTemp` is the difference between a *speaker* and a *portrait*:
-     *  - `/say Zoe …` — a dialogue row may carry a bare `speakerName`, so a name matching no character
+     *  - `/say Zoe …` - a dialogue row may carry a bare `speakerName`, so a name matching no character
      *    is a temp speaker: a valid line (see {@link allowsFreeValue}). → `allowTemp: true`.
-     *  - `/show Zoe` — a character action needs a real character to have a portrait to show. A name
+     *  - `/show Zoe` - a character action needs a real character to have a portrait to show. A name
      *    matching nothing has no image and cannot resolve. → no `allowTemp`.
      * Free-typing is therefore a property of the *param*, not of the type.
      */
     | { kind: "character"; allowTemp?: true }
     /**
      * A form/appearance name of an already-resolved character. Candidates depend on another param's
-     * resolved value, named by `dependsOn` — the grammar cannot list them because they are per-character.
+     * resolved value, named by `dependsOn` - the grammar cannot list them because they are per-character.
      */
     | { kind: "characterForm"; dependsOn: string }
     | { kind: "scene" }
     | { kind: "variable" }
     | { kind: "displayable"; targetKind?: StoryDisplayableTargetKind }
     /**
-     * A named stage object already put on stage by an earlier block — the image `/imgshow` reveals,
+     * A named stage object already put on stage by an earlier block - the image `/imgshow` reveals,
      * the text `/settext` rewrites, the sound `/stop` stops.
      *
      * This is what makes a reference feel like `/bg`'s asset picker rather than a blind name field:
-     * the candidates are the object names *in scope*, read from `listSceneDisplayableTargets` — the
+     * the candidates are the object names *in scope*, read from `listSceneDisplayableTargets` - the
      * same collector the inspector's target picker uses, so the two can never disagree. It differs
      * from `displayable` (which the four transform/effect ops need) in what the payload stores: these
      * commands address the object by its plain `objectName` string, not a resolved `DisplayableTargetRef`,
-     * so no scene-graph *binding* is required — only the list of names.
+     * so no scene-graph *binding* is required - only the list of names.
      *
      * A free-typed name stays valid ({@link allowsFreeValue}): the object may be created dynamically or
-     * live in another scene, and — as with speakers — offering the typed name back keeps the list from
+     * live in another scene, and - as with speakers - offering the typed name back keeps the list from
      * ever being empty, which is what lets Tab and Enter mean one thing.
      */
     | { kind: "stageObject"; objectKind: "image" | "text" | "layer" | "video" | "audio" }
@@ -71,28 +71,45 @@ export type StoryCommandParamType =
     | { kind: "color" }
     /**
      * Any JSON-ish scalar (`true` / `12` / `hello`). Used where the *expected* type is only knowable
-     * after another param resolves — `/set gold 100` can only be type-checked once `gold` resolves to
+     * after another param resolves - `/set gold 100` can only be type-checked once `gold` resolves to
      * a variable with a declared `valueType`. The parser accepts any scalar; resolution rejects.
      */
     | { kind: "literal" }
     /**
-     * A scalar whose *candidates* follow the variable named by `dependsOn`: once it resolves, a boolean
-     * variable offers `true`/`false` rather than a blank field. Parses and stores exactly like
-     * {@link literal} (the type check still happens once both resolve); the only thing `dependsOn` buys
-     * is a candidate list, so `/set met ` stops being the one position that gives the author no help.
-     */
-    | { kind: "variableValue"; dependsOn: string }
-    /**
      * Free text with no candidates. Two shapes use it: a `greedy` line of prose (`/say`'s text), and a
      * single-token *name the author invents* for a stage object (`/image hero …`). The latter cannot
-     * offer candidates yet — the names of already-created objects live in the scene graph, which is the
-     * displayable-candidate work P0 deferred — so an object name is free-typed exactly like `set`'s
+     * offer candidates yet - the names of already-created objects live in the scene graph, which is the
+     * displayable-candidate work P0 deferred - so an object name is free-typed exactly like `set`'s
      * `literal` value, which has no candidate source either and has shipped since P0.
      */
-    | { kind: "text" };
+    | { kind: "text" }
+    /**
+     * A computed value: the `gold + 1` in `/set gold gold + 1`, the `score > 90` in `/if score > 90`.
+     *
+     * Always `greedy` in practice, because an expression contains spaces and `=` and would otherwise
+     * be shredded into args - `/set gold gold + 1` must reach the resolver as one string, exactly as
+     * `/say`'s prose does. That is also why an expression param can carry no `key=value` modifiers
+     * after it, and why anything optional on such a command must be declared before it.
+     *
+     * The parse happens in resolution, not here: binding an identifier to a variable needs project
+     * state, which the parser must not have. So the grammar declares only *that* this slot is an
+     * expression, and what it may be assigned to.
+     */
+    | {
+          kind: "expression";
+          /**
+           * The param naming the variable this expression is assigned to, when the command is an
+           * assignment. Buys two things: the compound-assignment sugar (`/set gold += 1` desugars to
+           * `gold + 1`, which needs to know what "gold" is), and the type check of the result against
+           * that variable's declared `valueType`.
+           */
+          assignTo?: string;
+          /** Reject a non-boolean result. Set on conditions, where `/if gold` almost always means a mistyped comparison. */
+          expects?: "boolean";
+      };
 
 export type StoryCommandParam = {
-    /** The `key` in `key=value`. Positional params still need one — it keys `applyArgs` and the hint. */
+    /** The `key` in `key=value`. Positional params still need one - it keys `applyArgs` and the hint. */
     name: string;
     aliases?: readonly string[];
     /** An array is a union: the value is valid if any branch accepts it. */
@@ -112,7 +129,7 @@ export type StoryCommandParam = {
 export type StoryCommandDef = {
     /** The canonical keyword. English, never translated. */
     token: string;
-    /** The palette command this line builds. Not 1:1 with `token` in general — `/wait` covers both `waitDuration` and `waitClick` via its `mode` payload field. */
+    /** The palette command this line builds. Not 1:1 with `token` in general - `/wait` covers both `waitDuration` and `waitClick` via its `mode` payload field. */
     commandId: ActionCommandId;
     aliases?: readonly string[];
     params: readonly StoryCommandParam[];
@@ -140,7 +157,7 @@ const PLACEMENTS: readonly StoryCommandEnumOption[] = [
     { value: "right" },
 ];
 
-/** A character that must have a portrait — show / hide / move. A bare name cannot resolve here. */
+/** A character that must have a portrait - show / hide / move. A bare name cannot resolve here. */
 const CHARACTER: StoryCommandParam = { name: "character", type: { kind: "character" }, positional: true };
 /** The speaker of a dialogue row, where a bare name is a temp speaker rather than an error. */
 const SPEAKER: StoryCommandParam = { name: "character", type: { kind: "character", allowTemp: true }, positional: true };
@@ -149,7 +166,7 @@ const TRANSITION: StoryCommandParam = { name: "t", aliases: ["transition"], type
 const PLACEMENT: StoryCommandParam = { name: "at", aliases: ["pos"], type: { kind: "enum", options: PLACEMENTS } };
 
 /**
- * A brand-new object name the author *invents* on a `create` — free text, no candidates, because it
+ * A brand-new object name the author *invents* on a `create` - free text, no candidates, because it
  * does not exist yet. Kept positional only where the name *is* the object's identity and there is
  * nothing to derive it from (a `/layer`). Image / video / text lead with their asset or content and
  * take the name as {@link NAME_OPTION} instead, so the common line never asks for a name at all.
@@ -161,22 +178,66 @@ const OBJECT_CONTENT: StoryCommandParam = { name: "content", type: { kind: "text
 /**
  * The optional handle for a created object. Named, not positional, so the asset/content leads the line
  * like `/bg` does. Left off, the resolver auto-derives the name from the asset filename (or a deduped
- * default), so `/image forest.png` lands an image called `forest` without the author naming it — see
+ * default), so `/image forest.png` lands an image called `forest` without the author naming it - see
  * the auto-name pass in `storyCommandResolution`.
  */
 const NAME_OPTION: StoryCommandParam = { name: "name", type: { kind: "text" } };
 
-/** A reference to an object already on stage — the picker the `show`/`hide`/`set` commands lead with. */
+/** A reference to an object already on stage - the picker the `show`/`hide`/`set` commands lead with. */
 const imageRef = (positional: boolean): StoryCommandParam => ({ name: "name", type: { kind: "stageObject", objectKind: "image" }, ...(positional ? { positional: true } : {}) });
 const textRef = (positional: boolean): StoryCommandParam => ({ name: "name", type: { kind: "stageObject", objectKind: "text" }, ...(positional ? { positional: true } : {}) });
 const videoRef = (positional: boolean): StoryCommandParam => ({ name: "name", type: { kind: "stageObject", objectKind: "video" }, ...(positional ? { positional: true } : {}) });
 const audioRef = (positional: boolean): StoryCommandParam => ({ name: "name", type: { kind: "stageObject", objectKind: "audio" }, ...(positional ? { positional: true } : {}) });
 
+/** The declarable value types, in the order the author is most likely to want them. */
+const VARIABLE_VALUE_TYPES: readonly StoryCommandEnumOption[] = [
+    { value: "boolean", aliases: ["bool", "flag"] },
+    { value: "number", aliases: ["num", "int"] },
+    { value: "string", aliases: ["str", "text"] },
+    { value: "json", aliases: ["object", "list"] },
+];
+
+/**
+ * The params every `/local` `/var` `/persis` line takes - identical across all three, because the
+ * only thing that differs between them is the scope, and the scope is the command name.
+ *
+ * `default` is an expression rather than a literal so it parses through one path with everything
+ * else, but resolution requires it to fold to a constant: a declaration is evaluated once, before any
+ * variable exists to read, so an expression naming one has nothing to name.
+ *
+ * Deliberately **not** greedy, unlike the expression on `/set`. A greedy param claims the rest of the
+ * line, which would swallow the `type=` in `/local hp 100 type=number` - and that ordering is the one
+ * an author will write. A default is a constant, so it fits in one token; a string default with
+ * spaces quotes like any other value.
+ */
+function declarationParams(): readonly StoryCommandParam[] {
+    return [
+        { name: "name", type: { kind: "text" }, positional: true },
+        { name: "default", aliases: ["value"], type: { kind: "expression" }, positional: true },
+        { name: "type", aliases: ["as"], type: { kind: "enum", options: VARIABLE_VALUE_TYPES } },
+        { name: "desc", aliases: ["note"], type: { kind: "text" } },
+    ];
+}
+
+/**
+ * The commands that declare a variable instead of inserting a row, and the scope each declares into.
+ *
+ * These are the only members of the command set with no block to build: committing one mutates the
+ * document's variable declarations and leaves the scene exactly as it was. The commit path branches
+ * on this map rather than on a list of ids, so adding a fourth scope (there is no fourth scope) would
+ * be one entry.
+ */
+export const STORY_DECLARATION_COMMANDS: Readonly<Record<string, StoryVariableScope>> = {
+    declareSceneVariable: "scene",
+    declareSavedVariable: "saved",
+    declarePersistentVariable: "persistent",
+};
+
 /** The character form/appearance, whose candidates only exist once the `character` positional resolves. */
 const FORM: StoryCommandParam = { name: "form", type: { kind: "characterForm", dependsOn: "character" }, positional: true };
 
 /**
- * The reveal animation of a `show`/`hide` — a `StoryTransformRef` preset the object animates *in* or
+ * The reveal animation of a `show`/`hide` - a `StoryTransformRef` preset the object animates *in* or
  * *out* with. The author picks it as `t=`, so it reads like `/bg`'s `t=` even though the payload folds
  * it into `transform.preset`, not a `StoryTransitionRef` (images/texts have no separate transition).
  */
@@ -226,7 +287,7 @@ export const STORY_COMMANDS: readonly StoryCommandDef[] = [
         params: [
             CHARACTER,
             // Positional, like `/expr`: `/show Alice smile at=left` reads as one thought. `form=smile`
-            // still works — a positional param stays addressable by name.
+            // still works - a positional param stays addressable by name.
             FORM,
             PLACEMENT,
             TRANSITION,
@@ -292,11 +353,70 @@ export const STORY_COMMANDS: readonly StoryCommandDef[] = [
         commandId: "setVariable",
         params: [
             { name: "variable", type: { kind: "variable" }, positional: true },
-            // `variableValue`, not a bare `literal`: once `variable` resolves, a boolean gets true/false
-            // candidates instead of a blank field. It still parses/stores as a literal.
-            { name: "value", type: { kind: "variableValue", dependsOn: "variable" }, positional: true },
+            /**
+             * The right-hand side is a full expression, greedy so it survives spaces and `=`.
+             *
+             * This slot used to be a bare literal, which is why adding one to a number required a
+             * blueprint. A literal is still a literal - `/set met true` parses to a literal tree and
+             * stores in `payload.value` exactly as before - so nothing about the common line changed;
+             * it is only that the slot's *ceiling* is now `clamp(hp - dmg, 0, maxHp)`.
+             */
+            { name: "value", type: { kind: "expression", assignTo: "variable" }, positional: true, greedy: true },
         ],
     },
+
+    // ── Variable declaration: one command per scope ───────────────────────────────────────────────
+    //
+    // The three variable scopes are a closed set, so the scope is encoded in the *command name* rather
+    // than in a `scope=` modifier every line would have to carry. The params are identical across all
+    // three - one handler, one grammar shape, three tokens - and the name an author reaches for says
+    // the lifetime out loud: `/local` dies with the scene, `/var` rides the save file, `/persis` is
+    // the game-level flag that outlives both.
+    //
+    // These are the only commands that declare rather than act: they write a variable definition and
+    // insert no row. See `STORY_DECLARATION_COMMANDS`.
+    { token: "local", commandId: "declareSceneVariable", aliases: ["scenevar"], params: declarationParams() },
+    { token: "var", commandId: "declareSavedVariable", aliases: ["savedvar"], params: declarationParams() },
+    { token: "persis", commandId: "declarePersistentVariable", aliases: ["persistent", "global"], params: declarationParams() },
+
+    // ── Assignment sugar ──────────────────────────────────────────────────────────────────────────
+    //
+    // Each lowers to the same `setVariable` block an equivalent `/set` would build, so there is one
+    // payload shape and one compiler path. They exist because `/inc gold` is what an author reaches
+    // for and `/set gold gold + 1` is what they would otherwise have to spell - and the projection
+    // renders the block back in sugar form, so the round trip does not undo the shorthand.
+    {
+        token: "inc",
+        commandId: "incrementVariable",
+        aliases: ["add"],
+        params: [
+            { name: "variable", type: { kind: "variable" }, positional: true },
+            { name: "by", type: { kind: "expression" }, positional: true, greedy: true },
+        ],
+    },
+    {
+        token: "dec",
+        commandId: "decrementVariable",
+        aliases: ["sub"],
+        params: [
+            { name: "variable", type: { kind: "variable" }, positional: true },
+            { name: "by", type: { kind: "expression" }, positional: true, greedy: true },
+        ],
+    },
+    { token: "toggle", commandId: "toggleVariable", aliases: ["flip"], params: [{ name: "variable", type: { kind: "variable" }, positional: true }] },
+    { token: "reset", commandId: "resetVariable", params: [{ name: "variable", type: { kind: "variable" }, positional: true }] },
+
+    // ── Conditions ────────────────────────────────────────────────────────────────────────────────
+    //
+    // `expects: "boolean"` is the one place the grammar is stricter than the language: `/if gold` is
+    // legal as an expression (a non-zero number is truthy) but is nearly always a comparison the
+    // author started and did not finish, so it faults rather than quietly branching on truthiness.
+    //
+    // Only `/if` exists. `/elif` and `/else` would have to attach as siblings *inside* the condition
+    // the caret happens to be in, and the insert slot carries no such enclosing-container context -
+    // that is a change to how a slot resolves its parent, not a grammar entry. Extra branches are
+    // added from the branch UI, which already does this correctly.
+    { token: "if", commandId: "conditionIf", params: [{ name: "test", type: { kind: "expression", expects: "boolean" }, positional: true, greedy: true }] },
 
     // ── P1: the rest of the palette that fits the P0 param types ──────────────────────────────────
     //
@@ -311,14 +431,14 @@ export const STORY_COMMANDS: readonly StoryCommandDef[] = [
     { token: "repeat", commandId: "repeat", aliases: ["loop"], params: [{ name: "times", type: { kind: "number", min: 1, integer: true }, positional: true }] },
     { token: "nvl", commandId: "nvl", params: [{ name: "t", aliases: ["transition"], type: { kind: "enum", options: NVL_TRANSITIONS } }, DURATION] },
 
-    // Image — create leads with the asset (like `/bg`) and auto-names from it; the rest lead with the
+    // Image - create leads with the asset (like `/bg`) and auto-names from it; the rest lead with the
     // picker of images on stage. `name=` overrides the auto-derived name when the author wants a handle.
     { token: "image", commandId: "imageCreate", aliases: ["img"], params: [IMAGE_ASSET, PLACEMENT, DURATION, NAME_OPTION] },
     { token: "imgsrc", commandId: "imageSetSource", aliases: ["setimg"], params: [imageRef(true), IMAGE_ASSET] },
     { token: "imgshow", commandId: "imageShow", params: [imageRef(true), REVEAL, DURATION] },
     { token: "imghide", commandId: "imageHide", params: [imageRef(true), REVEAL, DURATION] },
 
-    // Text — create leads with the greedy content (the words are the point); set/show/hide/font pick an
+    // Text - create leads with the greedy content (the words are the point); set/show/hide/font pick an
     // existing overlay. A `name=` handle is optional and, being greedy-shadowed, must precede the content.
     { token: "text", commandId: "textCreate", aliases: ["txt"], params: [OBJECT_CONTENT, NAME_OPTION] },
     { token: "settext", commandId: "textSet", aliases: ["txtset"], params: [textRef(true), OBJECT_CONTENT] },
@@ -328,17 +448,17 @@ export const STORY_COMMANDS: readonly StoryCommandDef[] = [
 
     { token: "layer", commandId: "layerCreate", params: [OBJECT_NAME, { name: "z", aliases: ["zindex"], type: { kind: "number", integer: true }, positional: true }] },
 
-    // Video — create leads with the asset and auto-names from it; show/hide/play pick the video on stage.
+    // Video - create leads with the asset and auto-names from it; show/hide/play pick the video on stage.
     { token: "video", commandId: "videoCreate", aliases: ["vid"], params: [VIDEO_ASSET, { name: "muted", type: { kind: "boolean" } }, NAME_OPTION] },
     { token: "vidshow", commandId: "videoShow", params: [videoRef(true)] },
     { token: "vidhide", commandId: "videoHide", params: [videoRef(true)] },
     { token: "vidplay", commandId: "videoPlay", aliases: ["playvideo"], params: [videoRef(true)] },
 
-    // Screen effects — pure scalars, no object reference.
+    // Screen effects - pure scalars, no object reference.
     { token: "blink", commandId: "screenBlink", params: [DURATION, { name: "hold", type: { kind: "number", min: 0 } }, { name: "color", type: { kind: "color" } }] },
     { token: "vignette", commandId: "screenVignette", aliases: ["vig"], params: [DURATION, { name: "hold", type: { kind: "number", min: 0 } }, { name: "color", type: { kind: "color" } }, { name: "opacity", type: { kind: "number", min: 0, max: 1 } }] },
 
-    // Sound control — lead with the picker of playing handles (default "sound") + the one value each op changes.
+    // Sound control - lead with the picker of playing handles (default "sound") + the one value each op changes.
     { token: "stop", commandId: "stopSound", params: [audioRef(true)] },
     { token: "pausesound", commandId: "pauseSound", aliases: ["pause"], params: [audioRef(true)] },
     { token: "resume", commandId: "resumeSound", params: [audioRef(true)] },
@@ -354,7 +474,7 @@ const GRAMMAR_COMMAND_IDS = new Set<ActionCommandId>(STORY_COMMANDS.map(def => d
  *
  * They exist here so the command line is never *less* capable than the seam it replaces: typing
  * `/imageCreate` or `//` resolved before and must still resolve. With no params they take no args and
- * commit exactly as picking them from the menu does — see `commitCommandFromInsert`, which routes a
+ * commit exactly as picking them from the menu does - see `commitCommandFromInsert`, which routes a
  * paramless command down the old path so its inspector-first behaviour survives until P1 gives it a
  * grammar.
  *
@@ -380,7 +500,7 @@ export function listCommandDefs(): readonly StoryCommandDef[] {
 /**
  * Resolve a typed token to its command: canonical token, then alias, then the raw `ActionCommandId`.
  *
- * The id fallback is what keeps `/characterEnter` working now that its short token is `/show` — the
+ * The id fallback is what keeps `/characterEnter` working now that its short token is `/show` - the
  * old seam matched ids, and nothing the author already types may stop resolving.
  */
 export function getCommandDef(token: string): StoryCommandDef | null {
@@ -425,7 +545,7 @@ export function matchEnumOption(type: Extract<StoryCommandParamType, { kind: "en
 
 /** Whether a param's candidates can only be listed once another param has resolved. */
 export function dependsOnParam(type: StoryCommandParamType): string | null {
-    if (type.kind === "characterForm" || type.kind === "variableValue") {
+    if (type.kind === "characterForm") {
         return type.dependsOn;
     }
     return null;
@@ -436,13 +556,13 @@ export function dependsOnParam(type: StoryCommandParamType): string | null {
  *
  * The speaker case comes straight from the interaction model: a dialogue row points at a real
  * `characterId` **or** carries a bare `speakerName`, so a name matching no character is a temp
- * speaker — a valid line, not an error. The speaker picker always offers the typed name back as a
+ * speaker - a valid line, not an error. The speaker picker always offers the typed name back as a
  * candidate for exactly this reason: it deletes "nothing matched" as a state, which is what lets Tab
  * and Enter mean one thing. `{ kind: "character", allowTemp: true }` inherits that.
  *
  * It is opt-in per param, not blanket for the type: `/show Zoe` has no portrait to show and must
  * still fail. Everything that must resolve (asset / scene / variable / displayable, and a plain
- * `character`) has no such fallback — an unresolvable value there is an error, and it is the
+ * `character`) has no such fallback - an unresolvable value there is an error, and it is the
  * resolution layer's to report, since the parser has no project context.
  */
 export function allowsFreeValue(type: StoryCommandParamType): boolean {
@@ -450,11 +570,8 @@ export function allowsFreeValue(type: StoryCommandParamType): boolean {
         case "character":
             return type.allowTemp === true;
         case "literal":
-        // A dependent value stores like a literal; its declared-type check is the resolver's, not a
-        // parse-time "unresolvable" error, so it must not fault when nothing matches.
-        case "variableValue":
         case "text":
-        // A stage object name may point at something made dynamically or in another scene — an unknown
+        // A stage object name may point at something made dynamically or in another scene - an unknown
         // name is a valid reference, not an error (see the type's note).
         case "stageObject":
             return true;
@@ -463,6 +580,9 @@ export function allowsFreeValue(type: StoryCommandParamType): boolean {
         case "variable":
         case "displayable":
         case "characterForm":
+        // An expression that does not parse is an error worth reporting against, never a free value
+        // silently kept as text - the whole point is that it must resolve to a tree that compiles.
+        case "expression":
             return false;
         // Closed value sets the parser already checks; "free value" does not apply.
         case "enum":

@@ -1,3 +1,4 @@
+import { STORY_EXPR_FUNCTIONS } from "@shared/types/story";
 import { listCommandDefs, matchEnumOption, paramTypes, type StoryCommandParam, type StoryCommandParamType } from "./storyCommandGrammar";
 import type { StoryCommandCursor } from "./storyCommandCursor";
 import type { StoryCommandContext, StoryCommandNamedRef, StoryCommandValue } from "./storyCommandResolution";
@@ -6,7 +7,7 @@ import type { StoryCommandContext, StoryCommandNamedRef, StoryCommandValue } fro
  * What to offer at the caret.
  *
  * Reads the same {@link StoryCommandContext} the resolver reads, so the list can never offer a name
- * that then fails to resolve, nor hide one that would have — the drift the plan's §3.3 is about.
+ * that then fails to resolve, nor hide one that would have - the drift the plan's §3.3 is about.
  *
  * Pure, and free of display strings: a command candidate carries its `commandId` so the caller can
  * translate it through the existing `story.actionCommand.<id>.label` catalog. The grammar holds no
@@ -16,14 +17,14 @@ import type { StoryCommandContext, StoryCommandNamedRef, StoryCommandValue } fro
 export type StoryCommandCandidate = {
     /** The text a completion inserts. */
     value: string;
-    /** What to show. Empty for command candidates — the caller translates from `commandId`. */
+    /** What to show. Empty for command candidates - the caller translates from `commandId`. */
     label: string;
     detail?: string;
     /** Set on command candidates only. */
     commandId?: string;
     /**
      * A name backing nothing, offered back to the author anyway. Only ever set where the grammar says
-     * a free value is legal, and it is what makes the speaker list never empty — which is what removes
+     * a free value is legal, and it is what makes the speaker list never empty - which is what removes
      * "nothing matched" as a state Tab and Enter would each need a rule for.
      */
     free?: true;
@@ -38,7 +39,7 @@ function containsFold(haystack: string, needle: string): boolean {
 }
 
 function refCandidates(entries: readonly StoryCommandNamedRef[], query: string): StoryCommandCandidate[] {
-    // Prefix matches first — an author typing `fo` means forest, not "the one with fo in the middle".
+    // Prefix matches first - an author typing `fo` means forest, not "the one with fo in the middle".
     const prefix = entries.filter(entry => startsWithFold(entry.name, query));
     const rest = query ? entries.filter(entry => !startsWithFold(entry.name, query) && containsFold(entry.name, query)) : [];
     return [...prefix, ...rest].map(entry => ({ value: entry.name, label: entry.name }));
@@ -64,7 +65,7 @@ function candidatesForType(
             }
             // The speaker picker's order, which this must match: real characters, then names already
             // used in this story, then the name being typed. The last one is why the list is never
-            // empty — a bare name is a temp speaker, a valid line rather than a fallback.
+            // empty - a bare name is a temp speaker, a valid line rather than a fallback.
             const seen = new Set(found.map(candidate => candidate.value.trim().toLowerCase()));
             const candidates = [...found];
             for (const name of context.tempSpeakers) {
@@ -107,17 +108,8 @@ function candidatesForType(
             return !query || startsWithFold(type.value, query) ? [{ value: type.value, label: type.value }] : [];
         case "boolean":
             return ["true", "false"].filter(value => !query || value.startsWith(query.toLowerCase())).map(value => ({ value, label: value }));
-        case "variableValue": {
-            // The candidates follow the resolved variable: a boolean offers true/false, so `/set met `
-            // stops being a blank field. Other value types stay free — there is nothing to enumerate.
-            const owner = resolved[type.dependsOn];
-            if (owner?.kind !== "variable" || owner.valueType !== "boolean") {
-                return [];
-            }
-            return ["true", "false"].filter(value => !query || value.startsWith(query.toLowerCase())).map(value => ({ value, label: value }));
-        }
         case "stageObject": {
-            // The names on stage of this kind — sourced from the same collector the inspector's target
+            // The names on stage of this kind - sourced from the same collector the inspector's target
             // picker reads, so the two never disagree about what exists.
             const found = refCandidates((context.stageObjects[type.objectKind] ?? []).map(name => ({ id: name, name })), query);
             // Offer the typed name back, as the speaker picker does: an object may be created dynamically
@@ -128,6 +120,30 @@ function candidatesForType(
                 found.push({ value: typed, label: typed, free: true });
             }
             return found;
+        }
+        case "expression": {
+            // Inside an expression the query is the identifier fragment under the caret (the cursor
+            // layer extracts it), so the offer is every variable in scope plus the function whitelist.
+            // Without this, `/set gold ` would be the one slot in the whole command line where the
+            // author has to remember a name instead of picking it.
+            //
+            // `true`/`false` lead when the assignment target is a boolean. That is the behaviour the
+            // old dependent-literal slot had, and it is worth keeping: the overwhelmingly common thing
+            // to do with a flag is set it to a constant, so that has to be the first thing offered
+            // rather than something the author scrolls past a list of variable names to reach.
+            const target = type.assignTo ? resolved[type.assignTo] : undefined;
+            const booleans = target?.kind === "variable" && target.valueType === "boolean"
+                ? ["true", "false"].filter(value => !query || value.startsWith(query.toLowerCase())).map(value => ({ value, label: value }))
+                : [];
+            return [
+                ...booleans,
+                ...context.variables
+                    .filter(entry => !query || containsFold(entry.name, query))
+                    .map(entry => ({ value: entry.name, label: entry.name, detail: entry.valueType })),
+                ...STORY_EXPR_FUNCTIONS
+                    .filter(fn => query !== "" && startsWithFold(fn, query))
+                    .map(fn => ({ value: `${fn}(`, label: fn, detail: "fn" })),
+            ];
         }
         // Nothing to enumerate: a number, a colour, free text or an unconstrained literal is whatever
         // the author types.
@@ -169,14 +185,13 @@ export function hasCandidateSource(param: StoryCommandParam): boolean {
             case "keyword":
             case "boolean":
             case "stageObject":
+            // An expression always has the variable list to offer, so an empty result really does mean
+            // "nothing matched what you typed" - worth saying, unlike a half-typed number.
+            case "expression":
                 return true;
             case "number":
             case "color":
             case "literal":
-            // A dependent value only has candidates for *some* variables (booleans). Reporting "yes"
-            // here would flash a misleading "no matches" while typing a number into a number variable;
-            // the boolean candidates still open on their own via a non-empty list.
-            case "variableValue":
             case "text":
             case "displayable":
                 return false;
@@ -187,7 +202,7 @@ export function hasCandidateSource(param: StoryCommandParam): boolean {
 /**
  * Candidates for the caret's position.
  *
- * `resolved` carries the args resolved so far, which a dependent param needs — `form=` can only list
+ * `resolved` carries the args resolved so far, which a dependent param needs - `form=` can only list
  * the forms of the character this line already named.
  */
 export function getCommandCandidates(
@@ -205,6 +220,7 @@ export function getCommandCandidates(
                 .map(def => ({ value: def.token, label: "", commandId: def.commandId }));
         case "positional":
         case "paramValue":
+        case "expression":
             return candidatesForParam(cursor.param, cursor.query, context, resolved);
         case "paramName":
             return cursor.params

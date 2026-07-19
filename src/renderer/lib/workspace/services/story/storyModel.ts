@@ -37,6 +37,8 @@ import {
     StoryVariableValueType,
 } from "@shared/types/story";
 import { assertValidStoryEntityId, assertValidStoryId, isValidStoryEntityId, isValidStoryId } from "@shared/utils/storyId";
+import type { StoryExpressionScope } from "@shared/utils/storyExpressionParser";
+import { createStoryExpressionScope, parseStoryExpression } from "@shared/utils/storyExpressionParser";
 
 export type StoryIdFactory = () => string;
 
@@ -306,8 +308,11 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     if (version < 3) {
         migrated = migrateStoryDocumentV2toV3(migrated);
     }
+    if (version < 5) {
+        migrated = migrateStoryDocumentV4toV5(migrated);
+    }
     // v4 (the `invalid` block kind and dialogue's `speakerName`) is purely additive: a v3 document is
-    // already a valid v4 one, so there is no step for it — only the stamp.
+    // already a valid v4 one, so there is no step for it - only the stamp.
     //
     // The stamp is unconditional, and has to be. Each migrator above ends by writing
     // STORY_DOCUMENT_SCHEMA_VERSION rather than the version it actually produces, so the ladder only
@@ -348,6 +353,61 @@ function migrateStoryDocumentV1toV2(document: StoryDocument): StoryDocument {
     delete migrated.studioGlobals;
     delete migrated.gamePersistents;
     return migrated;
+}
+
+// ---------------------------------------------------------------------------
+// Schema migration (v4 → v5): parsed expression conditions.
+//   `{ kind: "expression", source }` held raw text that nothing could evaluate - the compiler
+//   returned a constant false and the inspector showed a "not supported" banner. v5 parses that
+//   source into a StoryExpression against the document's own declared variables, so conditions an
+//   author wrote years ago start working. Source that no longer parses (or names a variable that
+//   has since been deleted) becomes an `invalid` tree: it still evaluates false, exactly as before,
+//   but now says so in the row rather than looking like a condition that simply never matched.
+// ---------------------------------------------------------------------------
+
+type LegacyExpressionConditionFields = { source?: string };
+
+function migrateStoryDocumentV4toV5(document: StoryDocument): StoryDocument {
+    const scenes: Record<StorySceneId, StoryScene> = {};
+    for (const [sceneId, scene] of Object.entries(document.scenes)) {
+        const scope = createStoryExpressionScope(listStoryVariableEntries(document, scene));
+        const blocks: Record<StoryBlockId, StoryBlock> = {};
+        for (const [blockId, block] of Object.entries(scene.blocks)) {
+            blocks[blockId] = migrateBlockExpressionCondition(block, scope);
+        }
+        scenes[sceneId] = { ...scene, blocks };
+    }
+    return { ...document, schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION, scenes };
+}
+
+function migrateBlockExpressionCondition(block: StoryBlock, scope: StoryExpressionScope): StoryBlock {
+    if (block.kind !== "control" || block.payload.control !== "conditionBranch") {
+        return block;
+    }
+    const condition = block.payload.condition as (StoryConditionRef & LegacyExpressionConditionFields) | undefined;
+    if (condition?.kind !== "expression" || typeof condition.source !== "string") {
+        return block;
+    }
+    const { expression } = parseStoryExpression(condition.source, scope);
+    return { ...block, payload: { ...block.payload, condition: { kind: "expression", expression } } };
+}
+
+/**
+ * Every variable an expression in this scene may name, as the scope chain sees them. Persistent
+ * variables are declared in the blueprint document, which migration has no handle on - a v4
+ * expression naming one becomes `invalid` rather than silently binding to the wrong scope.
+ */
+function listStoryVariableEntries(document: StoryDocument, scene: StoryScene): { name: string; ref: StoryVariableRef }[] {
+    return [
+        ...Object.values(scene.sceneVariables ?? {}).map(def => ({
+            name: def.name,
+            ref: { scope: "scene", variableId: def.id } as StoryVariableRef,
+        })),
+        ...Object.values(document.savedVariables ?? {}).map(def => ({
+            name: def.name,
+            ref: { scope: "saved", variableId: def.id } as StoryVariableRef,
+        })),
+    ];
 }
 
 // ---------------------------------------------------------------------------
@@ -1186,7 +1246,7 @@ export type InvalidStoryBlockRef = {
  * Find every unresolved command line in a story.
  *
  * Preview compiles around these (a half-typed command is a normal thing to have on screen while
- * writing), which is exactly why the build has to be the thing that refuses them — otherwise an
+ * writing), which is exactly why the build has to be the thing that refuses them - otherwise an
  * unfinished line ships, and the whole point of making it a distinct block kind is lost.
  */
 export function collectInvalidBlocks(document: StoryDocument): InvalidStoryBlockRef[] {
@@ -1221,7 +1281,7 @@ export type TempSpeakerRef = {
  * so deleting the last line that names one retires it. That is what lets the speaker picker offer
  * previously-used names back without keeping a registry that drifts from the document.
  *
- * `characterId` losing its character does NOT make a line a temp speaker — resolving that is the
+ * `characterId` losing its character does NOT make a line a temp speaker - resolving that is the
  * caller's job, since only it knows which characters exist.
  */
 export function collectTempSpeakers(document: StoryDocument): TempSpeakerRef[] {
