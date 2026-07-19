@@ -26,6 +26,13 @@ export type StoryCandidateItem = {
     iconClassName?: string;
     /** Right-aligned tag, e.g. a temp speaker's "name only". */
     tag?: string;
+    /**
+     * This entry is the author's own text offered back, matching nothing (a temp speaker, an object
+     * created in another scene). Carried through from the candidate rather than collapsed into `tag`
+     * because it also decides the highlight: taking a free echo and submitting the line produce the
+     * same block, so Enter should submit. See `defaultHighlights`.
+     */
+    free?: true;
 };
 
 /**
