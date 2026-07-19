@@ -22,7 +22,27 @@ const { rootDir, isDev } = require('./utils');
         format: 'cjs',
         bundle: true,
         // @narraleaf/encryption is kept external (required from node_modules, not bundled).
-        external: ['electron', 'esbuild', '@narraleaf/encryption'],
+        // @lore-vcs/sdk and koffi likewise: koffi resolves its own .node addon and the
+        // platform lorelib shared library by path at runtime, which bundling breaks.
+        external: ['electron', 'esbuild', '@narraleaf/encryption', '@lore-vcs/sdk', 'koffi'],
+        sourcemap: isDev(),
+        minify: !isDev(),
+        target: ['node18'],
+        tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
+    });
+
+    console.log('[build-main] Bundling game build worker…');
+    await esbuild.build({
+        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'buildWorker.ts')],
+        outfile: path.join(outDir, 'buildWorker.js'),
+        platform: 'node',
+        format: 'cjs',
+        bundle: true,
+        // electron-builder stays a real node_modules require: its module tree
+        // reads template/resource files relative to itself at runtime. 7zip-bin
+        // (already in electron-builder's closure) resolves its bundled 7za.exe
+        // relative to its own __dirname, so it must not be inlined either.
+        external: ['electron', 'electron-builder', '7zip-bin'],
         sourcemap: isDev(),
         minify: !isDev(),
         target: ['node18'],

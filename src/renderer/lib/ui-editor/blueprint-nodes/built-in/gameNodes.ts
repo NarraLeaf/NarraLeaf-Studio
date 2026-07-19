@@ -7,7 +7,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
     BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
+    BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ,
     BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
+    BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ,
     BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
@@ -82,6 +84,7 @@ const saveScreenshotIn: BlueprintNodePinDef = {
     valueType: "boolean",
     label: "Capture",
     optional: true,
+    allowInlineLiteral: true,
 };
 const sentenceCpsIn: BlueprintNodePinDef = {
     id: "cps",
@@ -587,6 +590,45 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
                     isNvlMode: requireHostApi(ctx).game.isNvlMode(),
                 },
             };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ,
+        displayName: "Is Text Read",
+        category: "Game",
+        keywords: ["game", "text", "read", "seen", "unread", "dialog", "dialogue", "skip", "history", "nlr"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "isRead",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Is Read",
+            },
+        ],
+        execute(ctx) {
+            return {
+                outputValues: {
+                    isRead: requireHostApi(ctx).game.isCurrentTextRead(),
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ,
+        displayName: "Clear Text Read",
+        category: "Game",
+        keywords: ["game", "text", "read", "seen", "clear", "reset", "wipe", "history", "dialog", "nlr"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext],
+        async execute(ctx) {
+            await requireHostApi(ctx).game.clearTextRead();
+            return { nextPort: "next" };
         },
     },
     {

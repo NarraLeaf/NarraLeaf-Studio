@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, MouseEvent } from "react";
 import type { DraggableAttributes } from "@dnd-kit/core";
 import { useAssetDropTarget } from "@/apps/workspace/dnd/useAssetDropTarget";
 import { useWorkspace } from "@/apps/workspace/context";
@@ -24,6 +24,8 @@ interface SidebarPanelDropIconProps {
     onPanelClick: () => void;
     /** Show sidebar, select panel, and move workspace focus (for drag-drop). */
     onActivateForDrop: () => void;
+    /** Right-click on this icon (opens the rail's visibility context menu). */
+    onContextMenu?: (event: MouseEvent) => void;
     /** Optional sortable bindings from the enclosing rail (enables drag-to-reorder). */
     sortable?: SidebarPanelSortable;
 }
@@ -38,6 +40,7 @@ export function SidebarPanelDropIcon({
     sidebarVisible,
     onPanelClick,
     onActivateForDrop,
+    onContextMenu,
     sortable,
 }: SidebarPanelDropIconProps) {
     const { context } = useWorkspace();
@@ -53,25 +56,30 @@ export function SidebarPanelDropIcon({
         },
     });
 
+    // A rail action has no panel body, so there is nowhere to drop an asset *into*: accepting one
+    // would activate the sidebar onto an empty panel. It reads as a plain button instead.
+    const acceptsAssetDrop = !panel.railAction;
+
     return (
         <button
             type="button"
             ref={sortable?.setNodeRef}
             style={sortable?.style}
-            {...dropTargetProps}
+            {...(acceptsAssetDrop ? dropTargetProps : {})}
             {...sortable?.attributes}
             {...sortable?.listeners}
             className={`
                 w-10 h-10 rounded-md flex items-center justify-center transition-colors cursor-default
                 ${
                     active && sidebarVisible
-                        ? "bg-fill-strong text-white"
-                        : "text-fg-muted hover:bg-fill hover:text-white"
+                        ? "bg-fill-strong text-fg"
+                        : "text-fg-muted hover:bg-fill hover:text-fg"
                 }
                 ${sortable?.isDragging ? "opacity-50 ring-2 ring-primary/60" : ""}
-                ${overlayClassName}
+                ${acceptsAssetDrop ? overlayClassName : ""}
             `}
             onClick={onPanelClick}
+            onContextMenu={onContextMenu}
             title={panel.title}
             aria-label={panel.title}
         >

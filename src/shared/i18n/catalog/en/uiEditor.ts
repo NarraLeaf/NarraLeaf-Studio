@@ -1,4 +1,4 @@
-/** `uiEditor` — the workspace UI editor: surfaces panel, surface editor canvas, component library, and snap settings. */
+/** `uiEditor` - the workspace UI editor: surfaces panel, surface editor canvas, component library, and snap settings. */
 export const uiEditor = {
     surfaceKind: {
         page: "Page",

@@ -9,8 +9,10 @@ import type {
     StoryLiteralValue,
     StoryScene,
     StoryTransformRef,
+    StoryVariableRef,
 } from "@shared/types/story";
-import { resolveDisplayableTargetRef } from "@shared/types/story";
+import { isStoryExpressionEvaluable, resolveDisplayableTargetRef } from "@shared/types/story";
+import { evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
 import {
     getCharacterStageObjectName,
     mergeTransformProps,
@@ -21,7 +23,7 @@ import {
 
 /**
  * Studio-side stage-state computation: walk a scene's blocks in execution order up to (but not
- * including) the target block and accumulate the settled visual state of the stage — background,
+ * including) the target block and accumulate the settled visual state of the stage - background,
  * every displayable's final transform props and visibility, variables, and NVL mode. The preview
  * then renders this snapshot directly (pre-posed elements + the target action), so no runtime
  * fast-forwarding is ever needed.
@@ -51,7 +53,7 @@ export type StageSnapshotEffects = {
 
 export type StageSnapshotDisplayable = {
     kind: "image" | "text" | "layer";
-    /** Normalized object name — the compiler's element-registry key. */
+    /** Normalized object name - the compiler's element-registry key. */
     objectName: string;
     /** Block that created this displayable, when known (stable identity for editor lookups). */
     sourceBlockId?: string;
@@ -248,7 +250,7 @@ class SnapshotWalker {
             }
         }
         // A choice before the target: playback would take exactly one branch, but which one is
-        // unknowable statically — assume none and continue after the menu.
+        // unknowable statically - assume none and continue after the menu.
         this.diagnostic(block.id, "Preview assumes no branch of this earlier choice was taken.");
     }
 
@@ -281,8 +283,14 @@ class SnapshotWalker {
             return false;
         }
         if (condition.kind === "expression") {
-            this.diagnostic(blockId, "Expression condition evaluates false in the preview.");
-            return false;
+            if (!isStoryExpressionEvaluable(condition.expression.ast)) {
+                this.diagnostic(blockId, `Condition \`${condition.expression.source}\` did not resolve; it evaluates false in the preview.`);
+                return false;
+            }
+            // Unlike the blueprint branch below, this one really evaluates: the preview owns a variable
+            // store, and the expression evaluator is the same pure function the compiler emits - so the
+            // branch the author sees previewed is the branch the game will take from the same state.
+            return isTruthy(evaluateStoryExpression(condition.expression.ast, ref => this.readVariable(ref, blockId)));
         }
         if (condition.kind === "blueprint") {
             // The preview follows the Studio-computed path when available; a blueprint condition that
@@ -575,7 +583,7 @@ class SnapshotWalker {
         const kind = resolved.kind === "character" || !resolved.kind ? "image" : resolved.kind;
         const record = this.displayables.get(this.key(kind === "text" ? "text" : kind === "layer" ? "layer" : "image", resolved.name));
         if (!record) {
-            this.diagnostic(blockId, `Displayable target not found: ${resolved.name || "(empty)"}`);
+            this.diagnostic(blockId, `Displayable target not found: ${resolved.label || resolved.name || "(empty)"}`);
             return null;
         }
         return { record };
@@ -583,13 +591,17 @@ class SnapshotWalker {
 
     private applySetVariable(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "setVariable" }>): void {
         const target = payload.target;
+        const value = this.resolveAssignedValue(block, payload);
+        if (value === undefined) {
+            return;
+        }
         if (target.scope === "scene") {
             const def = this.scene.sceneVariables?.[target.variableId];
             if (!def) {
                 return;
             }
-            this.variables.scene.set(def.storageKey, payload.value);
-            this.assignedScene[def.storageKey] = payload.value;
+            this.variables.scene.set(def.storageKey, value);
+            this.assignedScene[def.storageKey] = value;
             return;
         }
         if (target.scope === "saved") {
@@ -597,11 +609,48 @@ class SnapshotWalker {
             if (!def) {
                 return;
             }
-            this.variables.saved.set(def.storageKey, payload.value);
-            this.assignedSaved[def.storageKey] = payload.value;
+            this.variables.saved.set(def.storageKey, value);
+            this.assignedSaved[def.storageKey] = value;
             return;
         }
         this.diagnostic(block.id, "Persistent-variable assignments are not applied in the preview.");
+    }
+
+    /**
+     * The value a `setVariable` row settles on: its literal, or its expression evaluated against the
+     * variables this walk has accumulated so far. `undefined` means "do not assign".
+     *
+     * The preview runs the same evaluator as the compiler, so `/set gold gold + 1` moves the counter
+     * here exactly as it will in the game. What differs is the starting state - this walk seeds from
+     * declared defaults and has no host persistence - which is why a persistent read is reported
+     * rather than silently folded in as `null`.
+     */
+    private resolveAssignedValue(
+        block: StoryBlock,
+        payload: Extract<StoryActionPayload, { action: "setVariable" }>,
+    ): StoryLiteralValue | undefined {
+        if (!payload.expression) {
+            return payload.value;
+        }
+        if (!isStoryExpressionEvaluable(payload.expression.ast)) {
+            this.diagnostic(block.id, `Expression \`${payload.expression.source}\` did not resolve; the assignment was skipped in the preview.`);
+            return undefined;
+        }
+        return evaluateStoryExpression(payload.expression.ast, ref => this.readVariable(ref, block.id));
+    }
+
+    /** Read a variable out of the preview's own store. Persistent variables have no preview backing. */
+    private readVariable(ref: StoryVariableRef, blockId: string): StoryLiteralValue | undefined {
+        if (ref.scope === "persistent") {
+            this.diagnostic(blockId, "Persistent variables read as empty in the preview.");
+            return undefined;
+        }
+        if (ref.scope === "scene") {
+            const def = this.scene.sceneVariables?.[ref.variableId];
+            return def ? this.variables.scene.get(def.storageKey) : undefined;
+        }
+        const def = this.document.savedVariables?.[ref.variableId];
+        return def ? this.variables.saved.get(def.storageKey) : undefined;
     }
 
     private finalProps(transform: StoryTransformRef | undefined, visibility: VisibilityTransformMode, blockId: string): Record<string, unknown> {

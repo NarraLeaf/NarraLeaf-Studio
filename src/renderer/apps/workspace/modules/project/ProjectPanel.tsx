@@ -14,10 +14,25 @@ import { ProjectSettingsSection } from "./sections/ProjectSettingsSection";
 import { ProjectDependenciesSection } from "./sections/ProjectDependenciesSection";
 import type { ProjectSectionProps } from "./sections/types";
 
-export function ProjectPanel({ panelId }: PanelComponentProps) {
+/** Deep-link payload: open the panel already showing a sub-page. */
+export type ProjectPanelPayload = {
+    section?: ProjectSectionId;
+};
+
+export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPanelPayload | undefined>) {
     const { context, isInitialized } = useWorkspace();
     const [config, setConfig] = useState<ProjectConfig | null>(null);
     const [activeSection, setActiveSection] = useState<ProjectSectionId | null>(null);
+
+    // Depends on the payload OBJECT, not payload.section: the panel is
+    // keep-alive, so a user who opens `assets`, backs out to the overview, then
+    // asks for `assets` again would see an unchanged section value and no
+    // re-open. updatePayload hands us a fresh object each request, which does.
+    useEffect(() => {
+        if (payload?.section) {
+            setActiveSection(payload.section);
+        }
+    }, [payload]);
 
     const projectService = useMemo(() => {
         if (!context || !isInitialized) return null;
@@ -72,7 +87,7 @@ export function ProjectPanel({ panelId }: PanelComponentProps) {
 
     return (
         <div
-            className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[#101114]"
+            className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface"
             data-panel-id={panelId}
         >
             <ProjectPanelHome config={config} onOpen={setActiveSection} />
@@ -81,7 +96,7 @@ export function ProjectPanel({ panelId }: PanelComponentProps) {
                 {activeItem && sectionProps ? (
                     <motion.div
                         key={activeItem.id}
-                        className="absolute inset-0 z-10 bg-[#101114] shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
+                        className="absolute inset-0 z-10 bg-surface shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
                         initial={{ x: "100%" }}
                         animate={{ x: 0 }}
                         exit={{ x: "100%" }}

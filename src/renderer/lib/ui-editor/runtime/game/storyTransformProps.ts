@@ -235,7 +235,7 @@ export function injectVisibilityDefault(sequences: { props: Record<string, unkno
 }
 
 /**
- * The settled final props of a transform ref — what the stage looks like after the transform
+ * The settled final props of a transform ref - what the stage looks like after the transform
  * completes. For animation refs this merges every sequence's props in order (later wins,
  * positions merged per-axis, matching NLR's TransformState merge); for preset refs it is the
  * inline props. Visibility folds in the trailing opacity exactly like the live compile path.
@@ -289,18 +289,9 @@ export function mergeTransformProps(
     return merged;
 }
 
-export function normalizeObjectName(value: string | undefined): string {
-    const normalized = value?.trim();
-    return normalized || "object";
-}
-
-export function getCharacterStageObjectName(payload: Extract<StoryActionPayload, { action: "character" }>): string {
-    const explicitName = payload.objectName?.trim();
-    if (explicitName && explicitName !== "character") {
-        return normalizeObjectName(explicitName);
-    }
-    return normalizeObjectName(payload.characterId || explicitName || "character");
-}
+// Stage naming lives in @shared so the compiler and every target reference resolve through one rule;
+// re-exported here under the runtime's existing names.
+export { normalizeStageObjectName as normalizeObjectName, characterStageObjectName as getCharacterStageObjectName } from "@shared/types/story";
 
 export function cleanObject(input: Record<string, unknown>): Record<string, unknown> {
     return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));

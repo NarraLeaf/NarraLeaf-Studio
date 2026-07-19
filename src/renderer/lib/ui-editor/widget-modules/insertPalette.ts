@@ -30,6 +30,7 @@ export const DEFAULT_INSERT_PALETTE_CONFIG = [
     { type: "nl.nvl.texts", surfaceKinds: ["stageSurface"], stageSlots: ["nvl"] },
     { type: "nl.image" },
     { type: "nl.button" },
+    { type: "nl.textInput" },
     { type: "nl.slider", placement: "overflow" },
     { type: "nl.list", placement: "overflow" },
     { type: "nl.frame", placement: "overflow", surfaceKinds: ["appSurface"] },

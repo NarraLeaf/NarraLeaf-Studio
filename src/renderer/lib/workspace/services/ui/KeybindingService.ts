@@ -1,10 +1,12 @@
+import { isMacPlatform } from "@/lib/app/platform";
 import { Keybinding, FocusContext } from "./types";
 import { FocusManager } from "./FocusManager";
 import { UIStore } from "./UIStore";
 import { isEditableKeyboardTarget } from "./keyboardEditable";
+import { getKeybindingCatalogEntry } from "./keybindingCatalog";
 
 /**
- * Parse a keybinding string (e.g., "ctrl+s") into modifier keys and key
+ * Parse a keybinding string (e.g., "mod+s") into modifier keys and key
  */
 interface ParsedKeybinding {
     ctrl: boolean;
@@ -14,7 +16,16 @@ interface ParsedKeybinding {
     key: string;
 }
 
-function parseKeybinding(binding: string): ParsedKeybinding {
+/**
+ * Exported for tests (the platform flag is injected there); production code goes
+ * through the service, which resolves the flag itself.
+ *
+ * `mod` is the primary shortcut modifier - ⌘ on macOS, Ctrl elsewhere. Use it for
+ * every cross-platform shortcut instead of registering ctrl/meta twins. Literal
+ * `ctrl` stays available for the few bindings that genuinely mean the Control key
+ * on macOS too (e.g. ctrl+tab tab-switching, where ⌘+Tab belongs to the OS).
+ */
+export function parseKeybinding(binding: string, isMac: boolean): ParsedKeybinding {
     const parts = binding.toLowerCase().split("+");
     const result: ParsedKeybinding = {
         ctrl: false,
@@ -26,6 +37,13 @@ function parseKeybinding(binding: string): ParsedKeybinding {
 
     for (const part of parts) {
         switch (part) {
+            case "mod":
+                if (isMac) {
+                    result.meta = true;
+                } else {
+                    result.ctrl = true;
+                }
+                break;
             case "ctrl":
             case "control":
                 result.ctrl = true;
@@ -50,6 +68,65 @@ function parseKeybinding(binding: string): ParsedKeybinding {
     return result;
 }
 
+const MAC_MODIFIER_SYMBOLS: Record<string, string> = {
+    mod: "⌘",
+    cmd: "⌘",
+    meta: "⌘",
+    super: "⌘",
+    ctrl: "⌃",
+    control: "⌃",
+    alt: "⌥",
+    option: "⌥",
+    shift: "⇧",
+};
+
+const MODIFIER_LABELS: Record<string, string> = {
+    mod: "Ctrl",
+    cmd: "Win",
+    meta: "Win",
+    super: "Win",
+    ctrl: "Ctrl",
+    control: "Ctrl",
+    alt: "Alt",
+    option: "Alt",
+    shift: "Shift",
+};
+
+/** Key tokens whose name reads better than the raw string once capitalized. */
+const KEY_LABELS: Record<string, string> = {
+    " ": "Space",
+    space: "Space",
+    escape: "Esc",
+    arrowup: "↑",
+    arrowdown: "↓",
+    arrowleft: "←",
+    arrowright: "→",
+    "=": "+",
+};
+
+/**
+ * Render a binding for humans: "mod+c" → "⌘C" on macOS, "Ctrl+C" elsewhere.
+ *
+ * The same string a binding is registered with is the one shown in menus, so a
+ * `mod` binding must not be displayed verbatim - and hardcoding "ctrl" in the
+ * label is how it silently drifts from what the key actually does on macOS.
+ *
+ * Exported for tests (the platform flag is injected there).
+ */
+export function formatKeybinding(binding: string, isMac: boolean): string {
+    const parts = binding.toLowerCase().split("+");
+    const rendered = parts.map(part => {
+        const modifier = isMac ? MAC_MODIFIER_SYMBOLS[part] : MODIFIER_LABELS[part];
+        if (modifier) {
+            return modifier;
+        }
+        const key = KEY_LABELS[part] ?? part;
+        return key.length === 1 ? key.toUpperCase() : key.charAt(0).toUpperCase() + key.slice(1);
+    });
+    // macOS convention runs the symbols together (⇧⌘P); elsewhere they are joined.
+    return isMac ? rendered.join("") : rendered.join("+");
+}
+
 /**
  * Normalize browser key for comparison with parsed binding keys (lowercase tokens).
  */
@@ -58,9 +135,68 @@ function normalizeKeyboardEventKey(event: KeyboardEvent): string {
 }
 
 /**
- * Check if keyboard event matches parsed keybinding
+ * Global-state key holding the user's keybinding overrides as one `Record<id, binding>` map.
+ * A single key (not one per id) because ids may contain dots, which the dotted-path settings
+ * store would silently split into nested objects.
  */
-function matchesKeybinding(event: KeyboardEvent, parsed: ParsedKeybinding): boolean {
+export const KEYBINDING_OVERRIDES_SETTINGS_KEY = "keybindings.overrides";
+
+/** Coerce persisted overrides (untrusted JSON) into id → non-empty binding string. */
+export function sanitizeKeybindingOverrides(raw: unknown): Record<string, string> {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return {};
+    }
+    const result: Record<string, string> = {};
+    for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof value === "string" && value.trim()) {
+            result[id] = value.trim();
+        }
+    }
+    return result;
+}
+
+/**
+ * Build a binding string from a keydown captured by the settings recorder, or null when the
+ * event is not a complete chord (a bare modifier, or a bare key with no modifier where one is
+ * required is still allowed - F-keys and the like bind fine alone).
+ *
+ * The primary modifier records as `mod` (⌘ on macOS, Ctrl elsewhere) so a recorded binding stays
+ * portable, matching how built-in bindings are declared. macOS's real Control key records as the
+ * literal `ctrl`.
+ */
+export function keybindingFromKeyboardEvent(
+    event: Pick<KeyboardEvent, "key" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey">,
+    isMac: boolean,
+): string | null {
+    const key = event.key === " " ? "space" : event.key.toLowerCase();
+    if (key === "control" || key === "alt" || key === "shift" || key === "meta") {
+        return null;
+    }
+
+    const parts: string[] = [];
+    if (isMac ? event.metaKey : event.ctrlKey) {
+        parts.push("mod");
+    }
+    if (isMac && event.ctrlKey) {
+        parts.push("ctrl");
+    }
+    if (!isMac && event.metaKey) {
+        parts.push("meta");
+    }
+    if (event.altKey) {
+        parts.push("alt");
+    }
+    if (event.shiftKey) {
+        parts.push("shift");
+    }
+    parts.push(key);
+    return parts.join("+");
+}
+
+/**
+ * Check if keyboard event matches parsed keybinding. Exported for tests.
+ */
+export function matchesKeybinding(event: KeyboardEvent, parsed: ParsedKeybinding): boolean {
     const evKey = normalizeKeyboardEventKey(event);
     return (
         event.ctrlKey === parsed.ctrl &&
@@ -80,11 +216,73 @@ export class KeybindingService {
     private focusManager: FocusManager;
     private uiStore: UIStore;
     private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
+    /**
+     * User rebinds, id → binding string. Applied at match time (and by every display surface via
+     * {@link getEffectiveKey}), so a registered binding never has to know it was overridden.
+     * Seeded from global state (`keybindings.overrides`) by UIService; persistence is the
+     * caller's job - this layer is intentionally storage-free.
+     */
+    private overrides = new Map<string, string>();
+    private overrideListeners = new Set<() => void>();
 
     constructor(focusManager: FocusManager, uiStore: UIStore) {
         this.keybindings = new Map();
         this.focusManager = focusManager;
         this.uiStore = uiStore;
+    }
+
+    // === Overrides ===
+
+    /** Replace the whole override map (startup seed / cross-window sync). */
+    public setOverrides(overrides: Record<string, string>): void {
+        this.overrides = new Map(Object.entries(overrides));
+        this.emitOverridesChanged();
+    }
+
+    /** Set (or clear, with null) one override. Does not persist - the caller does. */
+    public setOverride(id: string, key: string | null): void {
+        if (key && key.trim()) {
+            this.overrides.set(id, key.trim());
+        } else {
+            this.overrides.delete(id);
+        }
+        this.emitOverridesChanged();
+    }
+
+    public getOverride(id: string): string | undefined {
+        return this.overrides.get(id);
+    }
+
+    /** Snapshot of the current overrides (for persistence / display). */
+    public getOverridesSnapshot(): Record<string, string> {
+        return Object.fromEntries(this.overrides);
+    }
+
+    /**
+     * The binding that actually fires: the user's override, else the catalog default, else the
+     * inline registration key. Overrides and catalog defaults resolve by the *catalog* id, so a
+     * rebind recorded once applies to every per-tab registration of the same command.
+     */
+    public getEffectiveKey(binding: Pick<Keybinding, "id" | "key" | "catalogId">): string {
+        const catalogId = binding.catalogId ?? binding.id;
+        return (
+            this.overrides.get(catalogId) ??
+            getKeybindingCatalogEntry(catalogId)?.key ??
+            binding.key
+        );
+    }
+
+    public onOverridesChanged(listener: () => void): () => void {
+        this.overrideListeners.add(listener);
+        return () => {
+            this.overrideListeners.delete(listener);
+        };
+    }
+
+    private emitOverridesChanged(): void {
+        for (const listener of this.overrideListeners) {
+            listener();
+        }
     }
 
     /**
@@ -164,8 +362,9 @@ export class KeybindingService {
         const inEditableField = isEditableKeyboardTarget(event.target);
 
         // Find matching keybindings
+        const isMac = isMacPlatform();
         for (const keybinding of this.keybindings.values()) {
-            const parsed = parseKeybinding(keybinding.key);
+            const parsed = parseKeybinding(this.getEffectiveKey(keybinding), isMac);
 
             if (matchesKeybinding(event, parsed)) {
                 if (inEditableField && !keybinding.allowInEditable) {
@@ -198,6 +397,8 @@ export class KeybindingService {
      */
     public clear(): void {
         this.keybindings.clear();
+        this.overrides.clear();
+        this.overrideListeners.clear();
     }
 }
 

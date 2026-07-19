@@ -1,0 +1,20 @@
+{
+  "manifestVersion": 2,
+  "id": "narraleaf.quick-save",
+  "name": "Quick Save",
+  "version": "1.0.0",
+  "description": "Quick Save and Quick Read blueprint nodes backed by one reserved save slot.",
+  "publisher": "NarraLeaf Studio",
+  "entries": {
+    "studio": "main.js",
+    "runtime": "runtime.js"
+  },
+  "contributes": {
+    "blueprintNodes": [
+      "narraleaf.quick-save.save",
+      "narraleaf.quick-save.load",
+      "narraleaf.quick-save.has"
+    ]
+  },
+  "permissions": []
+}

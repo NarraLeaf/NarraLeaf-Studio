@@ -1,4 +1,4 @@
-/** `project` — the Project settings sidebar: overview hub plus slide-in sub-pages (details, assets, dependencies, settings). */
+/** `project` - the Project settings sidebar: overview hub plus slide-in sub-pages (details, assets, dependencies, settings). */
 export const project = {
     nav: {
         details: {
@@ -48,16 +48,25 @@ export const project = {
     settings: {
         allowHttpTitle: "Allow HTTP",
         allowHttpDescription: "When off, the game is confined to the app protocol and all HTTP/HTTPS requests are blocked.",
+        allowHttpWebHint: "Not applicable to the Web export: a web game is served over HTTP(S) by nature, so this setting only affects desktop builds.",
         encryptAssetsTitle: "Encrypt assets",
         encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed builds. Makes unpacking difficult; does not affect Dev Mode.",
+        encryptAssetsWebHint: "Not applicable to the Web export: Web builds always ship without asset protection.",
+        orientationTitle: "Mobile orientation",
+        orientationDescription: "The orientation mobile builds lock the game to when it starts.",
+        orientation: {
+            landscape: "Landscape",
+            portrait: "Portrait",
+            auto: "Follow device",
+        },
     },
     dependencies: {
         rescan: "Rescan",
         scanning: "Scanning project…",
-        empty: "No plugin dependencies — this project uses only built-in Studio features.",
+        empty: "No plugin dependencies. This project uses only built-in Studio features.",
         banner: {
             blocked: "One or more plugins are disabled for this project because their installed version is incompatible. Update or reinstall them to restore full functionality.",
-            warnings: "Some dependencies need attention — a plugin is outdated or a soft dependency is unavailable.",
+            warnings: "Some dependencies need attention. A plugin is outdated or a soft dependency is unavailable.",
         },
         status: {
             ready: "Ready",

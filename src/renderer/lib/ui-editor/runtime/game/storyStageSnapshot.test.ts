@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { StoryAnimationAsset, StoryBlock, StoryDocument } from "@shared/types/story";
+import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { computeStoryStageSnapshot } from "./storyStageSnapshot";
 
 function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[] = Object.keys(blocks)): StoryDocument {
     return {
-        schemaVersion: 3,
+        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
         id: "story-1",
         name: "Story",
         chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1"] }],
@@ -238,5 +239,56 @@ describe("computeStoryStageSnapshot", () => {
         expect(result.diagnostics).toEqual([
             { level: "warning", blockId: "missing", message: "Preview target block not found; previewing the scene start instead." },
         ]);
+    });
+
+    /**
+     * A character enter block carries no `objectName` until the author types one, so the portrait is
+     * keyed on `characterId`. A displayable op that resolved the same block to the word "Character"
+     * looked up an object that was never registered and silently did nothing.
+     */
+    it("applies a displayable effect to a character portrait that has no explicit stage name", () => {
+        const document = baseDocument({
+            enter: block("enter", "action", {
+                action: "character",
+                operation: "enter",
+                characterId: "char-alice",
+                assetId: "asset-alice",
+                transform: { preset: "center" },
+            }),
+            darken: block("darken", "action", {
+                action: "displayable",
+                operation: "darken",
+                target: { name: "Character", kind: "character", sourceBlockId: "enter" },
+                darkness: 0.6,
+            }),
+            target: say("target"),
+        }, ["enter", "darken", "target"]);
+
+        const result = snapshot(document, "target");
+
+        expect(result.diagnostics).toEqual([]);
+        expect(result.displayables).toHaveLength(1);
+        expect(result.displayables[0].objectName).toBe("char-alice");
+        expect(result.displayables[0].effects.darkness).toBe(0.6);
+    });
+
+    it("applies a displayable effect to an image whose stage name was cleared", () => {
+        // Same divergence, non-character: an empty `objectName` keys on the compiler's "object"
+        // fallback, not the display word "Image".
+        const document = baseDocument({
+            create: block("create", "action", { action: "image", operation: "create", objectName: "", assetId: "asset-x", transform: { preset: "center" } }),
+            filter: block("filter", "action", {
+                action: "displayable",
+                operation: "filter",
+                target: { name: "Image", kind: "image", sourceBlockId: "create" },
+                filter: "blur(4px)",
+            }),
+            target: say("target"),
+        }, ["create", "filter", "target"]);
+
+        const result = snapshot(document, "target");
+
+        expect(result.diagnostics).toEqual([]);
+        expect(result.displayables[0].effects.filter).toEqual({ filter: "blur(4px)" });
     });
 });

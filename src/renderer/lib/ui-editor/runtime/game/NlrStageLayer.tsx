@@ -1,4 +1,5 @@
 import { useCallback, useRef, type ReactNode } from "react";
+import { MotionConfig } from "motion/react";
 import {
     DevTools,
     GameProviders,
@@ -120,6 +121,16 @@ export function NlrStageLayer(props: {
     session: NlrStageSession | null;
     interactive: boolean;
     /**
+     * Whether the stage has been revealed by the host. The layer mounts as soon as a session
+     * exists (the Player must mount to preload and fire the ready callbacks), which is earlier
+     * than the host reveals it — so while not visible the layer keeps its layout via
+     * `visibility: hidden` (NOT `display: none`: the Player needs real measurements to mount)
+     * but paints nothing. Without this, the opaque black backdrop flashes over the first frame
+     * before the surface system starts. Defaults to true for hosts that manage buffer
+     * visibility themselves (e.g. the story preview's double-buffered stage).
+     */
+    visible?: boolean;
+    /**
      * Whether the On-Stage Game UI (Player children) should render. Gated on the game stage being
      * visible so on-stage elements never show during the pre-game boot preload or between app
      * page transitions before a story is entered.
@@ -147,7 +158,7 @@ export function NlrStageLayer(props: {
      */
     onError: (error: Error, sessionId: string) => void;
 }) {
-    const { session, interactive, renderOnStage, onFirstSceneReady, onEnvironmentReady, onLiveGameReady, onError } = props;
+    const { session, interactive, visible = true, renderOnStage, onFirstSceneReady, onEnvironmentReady, onLiveGameReady, onError } = props;
     const startedSessionRef = useRef<string | null>(null);
     const stageRootRef = useRef<HTMLDivElement>(null);
 
@@ -202,28 +213,40 @@ export function NlrStageLayer(props: {
     return (
         <div
             ref={stageRootRef}
-            className="absolute inset-0 z-0 overflow-hidden bg-black"
-            style={{ pointerEvents: interactive ? "auto" : "none" }}
+            // The opaque black backdrop only applies while revealed: a hidden stage that still
+            // claims a black background would flash over layers that mount before the reveal.
+            //
+            // `nl-motion-keep` exempts the stage from the reduced-motion blanket in styles.css:
+            // this is the author's game playing, not Studio chrome, and a transition you are
+            // prevented from seeing is one you cannot tune. The MotionConfig below does the same
+            // for the framer-motion half — NLR animates through the same instance we do.
+            className={`nl-motion-keep absolute inset-0 z-0 overflow-hidden${visible ? " bg-black" : ""}`}
+            style={{
+                pointerEvents: interactive ? "auto" : "none",
+                visibility: visible ? "visible" : "hidden",
+            }}
         >
-            {/* Key the providers by session id: NLR's GameProvider captures the `game` instance
-                once via useState and never reacts to a changed prop, so a new Game (e.g. the
-                story preview recompiling per row) needs the whole provider subtree to remount. */}
-            <GameProviders key={session.id} game={session.game}>
-                <Player
-                    key={session.id}
-                    story={session.compiled.story}
-                    width="100%"
-                    height="100%"
-                    className="block h-full w-full overflow-hidden"
-                    active={true}
-                    onReady={handleReady}
-                    onPreloadComplete={handlePreloadComplete}
-                    onFirstSceneReady={handleFirstSceneReady}
-                    onError={(error) => onError(error, session.id)}
-                >
-                    {renderOnStage ? session.onStageNode ?? null : null}
-                </Player>
-            </GameProviders>
+            <MotionConfig reducedMotion="never">
+                {/* Key the providers by session id: NLR's GameProvider captures the `game` instance
+                    once via useState and never reacts to a changed prop, so a new Game (e.g. the
+                    story preview recompiling per row) needs the whole provider subtree to remount. */}
+                <GameProviders key={session.id} game={session.game}>
+                    <Player
+                        key={session.id}
+                        story={session.compiled.story}
+                        width="100%"
+                        height="100%"
+                        className="block h-full w-full overflow-hidden"
+                        active={true}
+                        onReady={handleReady}
+                        onPreloadComplete={handlePreloadComplete}
+                        onFirstSceneReady={handleFirstSceneReady}
+                        onError={(error) => onError(error, session.id)}
+                    >
+                        {renderOnStage ? session.onStageNode ?? null : null}
+                    </Player>
+                </GameProviders>
+            </MotionConfig>
         </div>
     );
 }

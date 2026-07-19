@@ -1,4 +1,4 @@
-/** `widgets` — property inspectors and renderers for the built-in game-UI widgets. */
+/** `widgets` - property inspectors and renderers for the built-in game-UI widgets. */
 export const widgets = {
     tabs: {
         properties: "Properties",
@@ -52,6 +52,16 @@ export const widgets = {
         title: "Localization",
         textKey: "Text key",
         none: "None",
+        createKey: "Create new key…",
+        createKeyTitle: "New localization key",
+        keyName: "Key name",
+        keyNamePlaceholder: "menu.start…",
+        keyNameHint: "Letters, digits, and dots/underscores/hyphens between them.",
+        sourceText: "Source text",
+        sourceTextPlaceholder: "Text shown when no translation applies",
+        invalidKeyName: "Key names may contain letters, digits, and dots/underscores/hyphens between them.",
+        keyExists: "A key named \"{name}\" already exists.",
+        keyServiceUnavailable: "Localization is unavailable in this context.",
     },
     list: {
         title: "List",
@@ -108,6 +118,24 @@ export const widgets = {
         track: "Track",
         handle: "Handle",
         repairParts: "Repair parts",
+    },
+    textInput: {
+        title: "Text Input",
+        value: "Value",
+        valueHint: "Starting text. What the player types lives in the running game, not in this document.",
+        placeholder: "Placeholder",
+        placeholderKey: "Placeholder key",
+        placeholderKeyHint: "The placeholder is shown to the player: attach a key to translate it.",
+        sectionBehavior: "Behavior",
+        inputMode: "Input mode",
+        inputModeText: "Text",
+        inputModePassword: "Password",
+        inputModeNumber: "Number",
+        maxLength: "Max length",
+        maxLengthHint: "0 means unlimited.",
+        readOnly: "Read only",
+        disabled: "Disabled",
+        color: "Color",
     },
     button: {
         title: "Button",
@@ -192,6 +220,7 @@ export const widgets = {
     },
     blueprintValue: {
         sliderTitle: "Slider Value",
+        textInputValueTitle: "Text Input Value",
         pagePropsTitle: "Page Props Value",
         buttonTextTitle: "Button Text Value",
         textTitle: "Text Value",
@@ -221,6 +250,7 @@ export const widgets = {
         root: { name: "Root" },
         slider: { name: "Slider", track: "Slider Track", handle: "Slider Handle" },
         text: { name: "Text", text: "Text" },
+        textInput: { name: "Text Input" },
         appearanceVariant: "Default",
     },
     unsupportedType: "Unsupported type: {type}",

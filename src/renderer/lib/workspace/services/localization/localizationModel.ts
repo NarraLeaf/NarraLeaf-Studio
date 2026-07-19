@@ -24,7 +24,7 @@ import {
 
 /**
  * One translatable story line, in narrative order. `unitId` is the segment's
- * stable `textId` — the authoring layer never needs manual keys.
+ * stable `textId` - the authoring layer never needs manual keys.
  */
 export type StoryTranslationRow = {
     unitId: string;
@@ -224,7 +224,7 @@ export type CharacterTranslationRow = {
 
 /**
  * Character display names as translation rows, sorted by name for a stable
- * reading order. Characters without a name are skipped — there is nothing
+ * reading order. Characters without a name are skipped - there is nothing
  * to translate and the nametag never renders for them.
  */
 export function extractCharacterTranslationRows(

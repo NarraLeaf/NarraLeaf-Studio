@@ -1,13 +1,24 @@
+import fsSync from "fs";
 import fs from "fs/promises";
 import path from "path";
+import { Readable } from "stream";
 import { nativeImage } from "electron";
-import { app, BrowserWindow, ipcMain, protocol, session } from "electron/main";
+import { app, BrowserWindow, ipcMain, Menu, protocol, session } from "electron/main";
 import { WebSocketServer } from "ws";
 import {
+    GAME_RUNTIME_CLOSE_DECISION_CHANNEL,
+    GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL,
+    GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL,
     GAME_RUNTIME_PROTOCOL,
     type GameRuntimePackV1,
 } from "@shared/types/gameRuntime";
 import { getMimeType } from "@shared/utils/fs";
+import { buildGameRuntimeAssetVersionArg } from "@shared/utils/gameRuntimeAssetUrl";
+import {
+    resolveGameRuntimeEntrySurface,
+    resolveGameRuntimeInitialBackgroundColor,
+} from "@shared/utils/gameRuntimeEntrySurface";
+import { resolveSingleByteRange } from "@shared/utils/httpRange";
 import { createRuntimeResources, type RuntimeResources } from "./runtimeResources";
 import {
     PLUGIN_REACT_MODULE_SOURCES,
@@ -21,14 +32,33 @@ import {
 } from "./runtimeStorage";
 
 const appDir = __dirname;
-const userDataDir = path.resolve(appDir, "..", "userData");
 
 /**
- * Build-time placeholder. The compiler substitutes the real value when asset
- * protection is on and leaves it untouched (and unused) otherwise. Must match
- * RUNTIME_KEY_PLACEHOLDER in @narraleaf/encryption.
+ * Early mode marker from the loose app manifest, readable synchronously before
+ * app-ready so path setup and the debugger guard run before Chromium does any
+ * work. The pack's own `mode` (which may live in the consolidated store) stays
+ * authoritative for everything decided after the pack is open; a stripped or
+ * tampered manifest only ever downgrades to the stricter checks below.
  */
-const PACK_KEY = "__NLS_ENC_KEY_PLACEHOLDER__";
+function readShellMode(): "preview" | "production" {
+    try {
+        const manifest = JSON.parse(fsSync.readFileSync(path.join(appDir, "package.json"), "utf-8")) as {
+            narraleaf?: { mode?: unknown };
+        };
+        return manifest.narraleaf?.mode === "production" ? "production" : "preview";
+    } catch {
+        return "preview";
+    }
+}
+
+const shellMode = readShellMode();
+
+// Preview keeps saves next to the compiled app; a shipped game has no sibling
+// userData dir and uses the OS per-user location derived from the app name.
+const previewUserDataDir = path.resolve(appDir, "..", "userData");
+const useSiblingUserData = shellMode !== "production" && fsSync.existsSync(previewUserDataDir);
+const userDataDir = useSiblingUserData ? previewUserDataDir : app.getPath("userData");
+
 
 /** Node inspector / Chromium remote-debugging switches refused in production. */
 const DEBUG_SWITCHES = [
@@ -44,6 +74,25 @@ let packPromise: Promise<GameRuntimePackV1> | null = null;
 let mainWindow: BrowserWindow | null = null;
 let controlServer: WebSocketServer | null = null;
 let resources: RuntimeResources | null = null;
+let saveStore: RuntimeSaveStore | null = null;
+let persistenceStore: RuntimePersistenceStore | null = null;
+let runtimeStorageFlushedForQuit = false;
+/**
+ * Set once the app has started quitting (Quit Application node, window-all-closed, preview
+ * shutdown). The window-close guard stands aside while this is true, so a programmatic quit never
+ * fires the blueprint `On Window Close Requested` event - that is reserved for the user closing the
+ * window.
+ */
+let isQuitting = false;
+/** Pending window-close decisions, keyed by requestId, resolved by the renderer's reply. */
+const pendingCloseDecisions = new Map<number, (allow: boolean) => void>();
+let closeDecisionSeq = 0;
+/**
+ * Upper bound on how long the close is held open while the renderer's blueprints decide. A
+ * synchronous decision returns in milliseconds; the timeout only bounds a hung/crashed renderer,
+ * after which the window closes (the default is to close unless a blueprint cancels it).
+ */
+const CLOSE_DECISION_TIMEOUT_MS = 60 * 1000;
 
 /**
  * The active resource backend. Established once at startup; every packaged read
@@ -73,14 +122,31 @@ protocol.registerSchemesAsPrivileged([
             secure: true,
             supportFetchAPI: true,
             corsEnabled: true,
+            // Media elements need streamed responses for playback and seeking;
+            // without this the whole payload buffers before <video> starts.
+            stream: true,
         },
     },
 ]);
 
-app.setPath("userData", userDataDir);
+if (useSiblingUserData) {
+    app.setPath("userData", userDataDir);
+}
+
+// Earliest possible refusal to run a production game under an attached
+// debugger/CDP: before app-ready, before any window or session exists. The
+// post-pack-read check below stays as the authoritative (tamper-resistant on
+// asar-integrity platforms) second gate.
+const startupBlocked = shellMode === "production" && hasDebuggingSwitch();
+if (startupBlocked) {
+    app.quit();
+}
 
 void app.whenReady().then(async () => {
-    resources = await createRuntimeResources(appDir, PACK_KEY);
+    if (startupBlocked) {
+        return;
+    }
+    resources = await createRuntimeResources(appDir);
     const pack = await readPack();
     if (pack.mode === "production" && hasDebuggingSwitch()) {
         // Refuse to run a production game under an attached debugger/CDP.
@@ -89,6 +155,7 @@ void app.whenReady().then(async () => {
     }
     const allowHttp = pack.network?.allowHttp === true;
     applyRuntimeAppIdentity(pack);
+    applyRuntimeMenu(pack);
     registerRuntimeProtocol(allowHttp);
     registerRuntimeIpc();
     startPreviewControlServer(pack);
@@ -103,7 +170,23 @@ app.on("window-all-closed", () => {
     app.quit();
 });
 
-app.on("before-quit", () => {
+app.on("before-quit", event => {
+    // From here on every window close is part of the quit, not a user close, so the close guard
+    // must stand aside (it also lets the quit-and-flush dance below re-close without re-prompting).
+    isQuitting = true;
+    // Save/persistence writes are debounced; hold the quit open until every
+    // queued write has reached disk, then quit again.
+    if (!runtimeStorageFlushedForQuit && (saveStore?.hasPendingWrites() || persistenceStore?.hasPendingWrites())) {
+        event.preventDefault();
+        void Promise.allSettled([
+            saveStore?.flush(),
+            persistenceStore?.flush(),
+        ]).then(() => {
+            runtimeStorageFlushedForQuit = true;
+            app.quit();
+        });
+        return;
+    }
     controlServer?.close();
     controlServer = null;
     void resources?.dispose();
@@ -134,20 +217,78 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         minHeight: 320,
         center: true,
         frame: true,
+        // Stay hidden until the renderer's first paint so launch never flashes
+        // an empty window; the background matches the entry surface for the
+        // brief gap between first paint and the surface rendering its content.
+        show: false,
         ...(icon ? { icon } : {}),
-        backgroundColor: "#000000",
+        backgroundColor: resolveGameRuntimeInitialBackgroundColor(pack),
         webPreferences: {
             preload: path.join(appDir, "preload.js"),
             contextIsolation: true,
             devTools: devToolsEnabled,
+            // The preload derives versioned asset URLs from this marker; a
+            // process argument is the only synchronous channel it can read
+            // before the document loads.
+            additionalArguments: [buildGameRuntimeAssetVersionArg(resolveAssetVersion(pack))],
         },
     });
     win.setTitle(pack.project.name);
+    // Show on first paint. The timer is a safety net: a renderer that never
+    // reaches ready-to-show should still surface a window rather than leave
+    // the process running invisibly.
+    const fallbackShow = setTimeout(() => {
+        if (!win.isDestroyed() && !win.isVisible()) {
+            win.show();
+        }
+    }, 3000);
+    win.once("ready-to-show", () => {
+        clearTimeout(fallbackShow);
+        if (!win.isDestroyed()) {
+            win.show();
+        }
+    });
+    // Give the game's blueprints a chance to intercept a user-initiated close (native close box, OS
+    // shortcut) via the `On Window Close Requested` head: hold the close, ask the renderer, and
+    // re-issue it once nothing cancelled it. Every app.quit() path sets isQuitting first and so
+    // bypasses this, meaning the Quit Application node never fires the blueprint close event.
+    let closeApproved = false;
+    let closeDecisionPending = false;
+    win.on("close", event => {
+        if (isQuitting || closeApproved || win.isDestroyed()) {
+            return;
+        }
+        event.preventDefault();
+        if (closeDecisionPending) {
+            return;
+        }
+        closeDecisionPending = true;
+        void requestRendererCloseDecision(win).then(allow => {
+            closeDecisionPending = false;
+            if (win.isDestroyed()) {
+                return;
+            }
+            if (allow) {
+                closeApproved = true;
+                win.close();
+            }
+        });
+    });
     win.on("closed", () => {
         if (mainWindow === win) {
             mainWindow = null;
         }
     });
+    // Push fullscreen transitions to the renderer so the `On Fullscreen Changed`
+    // blueprint head also fires for fullscreen toggled outside the game (macOS
+    // green button, OS shortcuts), not just via the Set Fullscreen node.
+    const emitFullscreen = (isFullscreen: boolean) => () => {
+        if (!win.isDestroyed()) {
+            win.webContents.send(GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL, isFullscreen);
+        }
+    };
+    win.on("enter-full-screen", emitFullscreen(true));
+    win.on("leave-full-screen", emitFullscreen(false));
     if (devToolsEnabled) {
         win.webContents.on("before-input-event", (_event, input) => {
             if (input.type === "keyUp" && input.key === "F12") {
@@ -160,6 +301,55 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         });
     }
     return win;
+}
+
+/**
+ * Ask the renderer whether a user-initiated close may proceed, resolving to the blueprint's
+ * decision. Each request carries a unique id the renderer echoes back; a hung/crashed renderer
+ * falls back to closing so the window can never get trapped open.
+ */
+function requestRendererCloseDecision(win: BrowserWindow): Promise<boolean> {
+    if (win.isDestroyed()) {
+        return Promise.resolve(true);
+    }
+    const requestId = ++closeDecisionSeq;
+    return new Promise<boolean>(resolve => {
+        let settled = false;
+        const finish = (allow: boolean) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            pendingCloseDecisions.delete(requestId);
+            clearTimeout(timer);
+            resolve(allow);
+        };
+        const timer = setTimeout(() => finish(true), CLOSE_DECISION_TIMEOUT_MS);
+        pendingCloseDecisions.set(requestId, finish);
+        win.webContents.send(GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL, { requestId });
+    });
+}
+
+/**
+ * Production ships without Electron's default menu: it carries Reload and
+ * DevTools items (and their accelerators) that have no place in a shipped
+ * game. macOS keeps a minimal menu so quit/copy/paste stay reachable; other
+ * platforms drop the menu bar entirely. Preview keeps the default menu as a
+ * developer affordance.
+ */
+function applyRuntimeMenu(pack: GameRuntimePackV1): void {
+    if (pack.mode !== "production") {
+        return;
+    }
+    if (process.platform === "darwin") {
+        Menu.setApplicationMenu(Menu.buildFromTemplate([
+            { role: "appMenu" },
+            { role: "editMenu" },
+            { role: "windowMenu" },
+        ]));
+    } else {
+        Menu.setApplicationMenu(null);
+    }
 }
 
 function applyRuntimeAppIdentity(pack: GameRuntimePackV1): void {
@@ -190,16 +380,25 @@ function createProjectIcon(pack: GameRuntimePackV1): Electron.NativeImage | unde
 }
 
 function resolveInitialWindowSize(pack: GameRuntimePackV1): { width: number; height: number } {
-    const surfaceId = pack.entry.kind === "surface" ? pack.entry.surfaceId : null;
-    const surface = surfaceId
-        ? pack.bundle.ui.uidoc.surfaces.find(item => item.id === surfaceId)
-        : pack.bundle.ui.uidoc.surfaces.find(item => item.kind === "appSurface");
+    const surface = resolveGameRuntimeEntrySurface(pack);
     const width = surface?.designSize.width;
     const height = surface?.designSize.height;
     if (Number.isFinite(width) && Number.isFinite(height) && width! > 0 && height! > 0) {
         return { width: Math.round(width!), height: Math.round(height!) };
     }
     return { width: 1280, height: 720 };
+}
+
+
+/**
+ * Version tag baked into every asset URL by the preload. The per-compile
+ * bundle id changes whenever the Studio produces a new pack, which is exactly
+ * the lifetime of "this asset id maps to these bytes": asset ids themselves
+ * are stable across recompiles, so they cannot key the HTTP cache alone.
+ */
+function resolveAssetVersion(pack: GameRuntimePackV1): string {
+    const bundleId = String(pack.bundle?.bundleId ?? "").trim();
+    return bundleId || pack.generatedAt || String(Date.now());
 }
 
 function registerRuntimeProtocol(allowHttp: boolean): void {
@@ -232,18 +431,20 @@ function registerRuntimeProtocol(allowHttp: boolean): void {
                         status: 200,
                         headers: {
                             "Content-Type": "text/javascript",
-                            "Cache-Control": "no-store",
+                            // Fixed per runtime build and served from memory; a
+                            // modest lifetime skips re-fetches within a session
+                            // without pinning sources across Studio upgrades.
+                            "Cache-Control": "public, max-age=3600",
                         },
                     });
                 }
                 return new Response("Not found", { status: 404 });
             }
             if (url.hostname === "asset") {
+                // The query string only versions the URL for HTTP cache keying
+                // (see the preload's assetUrl); assets resolve by pathname alone.
                 const assetId = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
-                const pack = await readPack();
-                const item = pack.assets.items[assetId];
-                const bytes = await runtimeResources().readAsset(pack, assetId);
-                return serveBytes(bytes, item?.mimeType ?? getMimeType(assetId));
+                return await serveAsset(request, assetId);
             }
             return new Response("Not found", { status: 404 });
         } catch (error) {
@@ -253,18 +454,133 @@ function registerRuntimeProtocol(allowHttp: boolean): void {
     });
 }
 
+/**
+ * Asset responses are effectively immutable: every asset URL carries a
+ * per-pack version query, so a newer pack always requests different URLs and
+ * long-lived cache entries can never go stale. Caching matters here - the
+ * game engine drops and re-fetches images on every scene change, and without
+ * it each of those requests round-trips into this process.
+ *
+ * Verified on Electron 38: custom-protocol responses never enter Chromium's
+ * HTTP cache - no disk-cache entries are written and fetch() re-requests the
+ * same URL every time. This header is honored only by the renderer's
+ * in-memory resource cache (notably decoded images), which is the desired
+ * shape: repeat <img> loads are served inside the renderer without a
+ * round-trip here, while asset bytes never persist to the user's disk.
+ */
+const ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
+/** Loose assets above this size stream from disk instead of buffering fully. */
+const ASSET_STREAM_THRESHOLD_BYTES = 8 * 1024 * 1024;
+
+async function serveAsset(request: Request, assetId: string): Promise<Response> {
+    const pack = await readPack();
+    const contentType = pack.assets.items[assetId]?.mimeType ?? getMimeType(assetId);
+    const rangeHeader = request.headers.get("range");
+    const filePath = runtimeResources().getAssetFilePath(pack, assetId);
+    if (filePath) {
+        const { size } = await fs.stat(filePath);
+        const range = resolveSingleByteRange(rangeHeader, size);
+        if (range.kind === "unsatisfiable") {
+            return rangeNotSatisfiable(size);
+        }
+        if (range.kind === "partial") {
+            return streamAssetFile(filePath, contentType, range, size, 206);
+        }
+        if (size > ASSET_STREAM_THRESHOLD_BYTES) {
+            return streamAssetFile(filePath, contentType, { start: 0, end: size - 1 }, size, 200);
+        }
+        return assetResponse(await fs.readFile(filePath), contentType);
+    }
+    const data = await runtimeResources().readAsset(pack, assetId);
+    const range = resolveSingleByteRange(rangeHeader, data.byteLength);
+    if (range.kind === "unsatisfiable") {
+        return rangeNotSatisfiable(data.byteLength);
+    }
+    if (range.kind === "partial") {
+        // subarray shares the underlying memory, so range requests against a
+        // cached buffer cost no copy.
+        return new Response(asBodyBytes(data.subarray(range.start, range.end + 1)), {
+            status: 206,
+            headers: partialAssetHeaders(contentType, range, data.byteLength),
+        });
+    }
+    return assetResponse(data, contentType);
+}
+
+function assetHeaders(contentType: string): Record<string, string> {
+    return {
+        "Content-Type": contentType,
+        "Cache-Control": ASSET_CACHE_CONTROL,
+        "Accept-Ranges": "bytes",
+    };
+}
+
+function partialAssetHeaders(
+    contentType: string,
+    range: { start: number; end: number },
+    totalSize: number,
+): Record<string, string> {
+    return {
+        ...assetHeaders(contentType),
+        "Content-Range": `bytes ${range.start}-${range.end}/${totalSize}`,
+        "Content-Length": String(range.end - range.start + 1),
+    };
+}
+
+function assetResponse(data: Buffer, contentType: string): Response {
+    return new Response(asBodyBytes(data), {
+        status: 200,
+        headers: assetHeaders(contentType),
+    });
+}
+
+function rangeNotSatisfiable(totalSize: number): Response {
+    return new Response(null, {
+        status: 416,
+        headers: {
+            "Content-Range": `bytes */${totalSize}`,
+            "Accept-Ranges": "bytes",
+        },
+    });
+}
+
+function streamAssetFile(
+    filePath: string,
+    contentType: string,
+    range: { start: number; end: number },
+    totalSize: number,
+    status: 200 | 206,
+): Response {
+    const stream = fsSync.createReadStream(filePath, { start: range.start, end: range.end });
+    const headers = status === 206
+        ? partialAssetHeaders(contentType, range, totalSize)
+        : { ...assetHeaders(contentType), "Content-Length": String(totalSize) };
+    return new Response(Readable.toWeb(stream) as unknown as ReadableStream, { status, headers });
+}
+
 async function serveFile(filePath: string, contentType = getMimeType(filePath)): Promise<Response> {
     return serveBytes(await fs.readFile(filePath), contentType);
 }
 
+/** Runtime code and the pack stay no-store: preview recompiles must always be fresh. */
 function serveBytes(data: Buffer, contentType: string): Response {
-    return new Response(new Uint8Array(data), {
+    return new Response(asBodyBytes(data), {
         status: 200,
         headers: {
             "Content-Type": contentType,
             "Cache-Control": "no-store",
         },
     });
+}
+
+/**
+ * Hand Buffer bytes to a Response without the copy `new Uint8Array(data)`
+ * would make: a Buffer already satisfies the runtime BufferSource contract,
+ * the cast only bridges lib.dom's stricter ArrayBuffer-backed view type.
+ */
+function asBodyBytes(data: Buffer): Uint8Array<ArrayBuffer> {
+    return data as Uint8Array<ArrayBuffer>;
 }
 
 function isIndexDocument(pathname: string): boolean {
@@ -285,12 +601,29 @@ async function serveIndexDocument(filePath: string, allowHttp: boolean): Promise
 }
 
 function registerRuntimeIpc(): void {
+    // Module-level refs so the before-quit handler can flush pending writes.
     const saves = new RuntimeSaveStore(userDataDir);
     const persistence = new RuntimePersistenceStore(userDataDir);
+    saveStore = saves;
+    persistenceStore = persistence;
 
     ipcMain.handle("runtime:read-pack", () => readPack());
     ipcMain.handle("runtime:close", () => {
+        // The Quit Application node's graceful terminate. Mark the quit before it reaches the
+        // window so the close guard stands aside and the blueprint close event does not fire again.
+        isQuitting = true;
         app.quit();
+    });
+    ipcMain.on(GAME_RUNTIME_CLOSE_DECISION_CHANNEL, (_event, payload: { requestId?: number; allow?: boolean }) => {
+        const requestId = payload?.requestId;
+        if (typeof requestId !== "number") {
+            return;
+        }
+        pendingCloseDecisions.get(requestId)?.(payload?.allow !== false);
+    });
+    ipcMain.handle("runtime:fullscreen:get", () => mainWindow?.isFullScreen() === true);
+    ipcMain.handle("runtime:fullscreen:set", (_event, fullscreen: boolean) => {
+        mainWindow?.setFullScreen(fullscreen === true);
     });
     ipcMain.on("runtime:log", (_event, data: { level?: string; message?: string }) => {
         const level = data?.level === "error" ? "error" : data?.level === "warning" ? "warn" : "log";

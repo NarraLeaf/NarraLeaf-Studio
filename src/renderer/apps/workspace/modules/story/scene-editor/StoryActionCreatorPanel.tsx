@@ -9,13 +9,13 @@ import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsSe
 import {
     ACTION_COMMAND_CATEGORIES,
     ACTION_COMMANDS,
-    actionCommandMatchesQuery,
     getActionCommandCategory,
     localizeActionCommand,
     translateActionCommandCategoryLabel,
     type ActionCommandCategory,
     type PaletteActionCommand,
 } from "./storyActionCommands";
+import { searchActionCommands } from "./storyCommandSearch";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import {
     dispatchStoryActionCreateRequest,
@@ -81,15 +81,18 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
     ].map(command => localizeActionCommand(command, t)), [pluginCommands, t]);
 
     const filteredCommands = useMemo(() => {
-        return allCommands.filter(command => {
+        const inCategory = allCommands.filter(command => {
             if (activeCategoryId === STARRED_CATEGORY_ID && !starredIds.has(command.id)) {
                 return false;
             }
             if (activeCategoryId !== STARRED_CATEGORY_ID && activeCategoryId !== "all" && command.category !== activeCategoryId) {
                 return false;
             }
-            return actionCommandMatchesQuery(command, query);
+            return true;
         });
+        // Same fuzzy, token-aware matcher the inline `/` creator uses — so `/bg`, a fuzzy abbreviation,
+        // or a translated label find the same commands in the sidebar as they do inline.
+        return searchActionCommands(inCategory, query);
     }, [activeCategoryId, allCommands, query, starredIds]);
 
     const createAction = useCallback((commandId: string) => {
@@ -100,7 +103,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
     }, [payload?.tabId]);
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-[#101318]">
+        <div className="flex h-full min-h-0 flex-col bg-surface">
             <div className="border-b border-edge bg-surface px-3 py-3">
                 <SearchBox
                     value={query}
@@ -128,7 +131,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                                 className={[
                                     "flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors",
                                     active
-                                        ? "border-primary/45 bg-primary/15 text-white"
+                                        ? "border-primary/45 bg-primary/15 text-fg"
                                         : "border-edge bg-fill-subtle text-fg-muted hover:bg-fill hover:text-fg",
                                 ].join(" ")}
                                 onClick={() => setActiveCategoryId(category.id)}
@@ -192,7 +195,7 @@ function ActionCreatorRow(props: {
                 type="button"
                 className={[
                     "mr-1 grid h-7 w-7 shrink-0 place-items-center rounded text-fg-subtle transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50",
-                    props.starred ? "opacity-100 text-[#c8b06e]" : "opacity-0 hover:text-[#c8b06e] group-hover:opacity-100",
+                    props.starred ? "opacity-100 text-warning" : "opacity-0 hover:text-warning group-hover:opacity-100",
                 ].join(" ")}
                 title={props.starred ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")}
                 onClick={() => props.onToggleStarred(props.command.id)}

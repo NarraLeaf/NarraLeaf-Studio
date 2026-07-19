@@ -43,4 +43,41 @@ describe("DebugBridge", () => {
         expect(snapshot[0]).toMatchObject({ message: "message-5" });
         expect(snapshot.at(-1)).toMatchObject({ message: `message-${MAX_DEBUG_EVENT_BUFFER_LENGTH + 4}` });
     });
+
+    it("drops verbose tracing events by default without notifying observers", () => {
+        const debug = new DebugBridge();
+        const observed: string[] = [];
+        debug.subscribeEvents(event => observed.push(event.type));
+
+        debug.emit({ type: "node.enter", executionId: "e1", nodeId: "n1" });
+        debug.emit({ type: "node.exit", executionId: "e1", nodeId: "n1" });
+        debug.emit({ type: "state.read", scope: "surface", key: "k" });
+        debug.emit({ type: "function.call", functionId: "game.writeSave" });
+        debug.emit({ type: "execution.started", executionId: "e1", blueprintId: "bp" });
+
+        expect(debug.snapshot()).toEqual([]);
+        expect(observed).toEqual([]);
+    });
+
+    it("keeps errors and devtools logs while verbose capture is off", () => {
+        const debug = new DebugBridge();
+
+        debug.emit({ type: "node.enter", executionId: "e1", nodeId: "n1" });
+        debug.emit({ type: "devtools.log", level: "warn", message: "capture failed" });
+        debug.emit({ type: "execution.error", executionId: "e1", message: "boom" });
+
+        expect(debug.snapshot().map(event => event.type)).toEqual(["devtools.log", "execution.error"]);
+    });
+
+    it("captures verbose events once enabled, and stops again when disabled", () => {
+        const debug = new DebugBridge();
+        expect(debug.isVerboseCaptureEnabled()).toBe(false);
+
+        debug.setVerboseCaptureEnabled(true);
+        debug.emit({ type: "node.enter", executionId: "e1", nodeId: "n1" });
+        debug.setVerboseCaptureEnabled(false);
+        debug.emit({ type: "node.exit", executionId: "e1", nodeId: "n1" });
+
+        expect(debug.snapshot().map(event => event.type)).toEqual(["node.enter"]);
+    });
 });

@@ -16,6 +16,13 @@ interface BottomPanelProps {
 }
 
 /**
+ * Vertical space the dock cell spends on chrome above/around the panel body:
+ * the 4px `ResizableHandle` (`h-1`) stacked above it plus the cell's 1px top border.
+ * Kept in sync with the cell markup in WorkspaceLayout's bottom region.
+ */
+const BOTTOM_PANEL_CHROME_OFFSET = 5;
+
+/**
  * Bottom panel container
  * Displays the selected panel content with payload support
  * Manages focus state and visual focus indicator
@@ -59,11 +66,15 @@ export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
     };
 
     return (
-        <div 
+        <div
             className={`bg-surface flex flex-col border transition-colors ${
-                isFocused ? 'border-primary' : 'border-transparent border-t-white/10'
+                isFocused ? 'border-primary' : 'border-transparent border-t-edge'
             }`}
-            style={{ height: `${height - 1}px` }}
+            // The dock cell (`height` px) also holds the 4px ResizableHandle above this
+            // panel, plus its own 1px top border. Subtract both so the panel fits inside
+            // the cell instead of overflowing — otherwise its bottom edge (and anything
+            // pinned there, e.g. the console progress bar) is clipped by the viewport.
+            style={{ height: `${height - BOTTOM_PANEL_CHROME_OFFSET}px` }}
             onClick={handleClick}
             tabIndex={0}
         >
@@ -71,11 +82,11 @@ export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
             <div className="h-10 flex items-center justify-between px-4 bg-surface-sunken border-b border-edge">
                 <div className="flex items-center gap-2">
                     <span className="text-fg-muted">{panel.icon}</span>
-                    <h2 className="text-sm font-medium text-white">{panel.title}</h2>
+                    <h2 className="text-sm font-medium text-fg">{panel.titleKey ? t(panel.titleKey) : panel.title}</h2>
                 </div>
                 <button
                     onClick={onClose}
-                    className="w-6 h-6 rounded flex items-center justify-center text-fg-muted hover:bg-fill hover:text-white transition-colors cursor-default"
+                    className="w-6 h-6 rounded flex items-center justify-center text-fg-muted hover:bg-fill hover:text-fg transition-colors cursor-default"
                     aria-label={t("workspace.shell.closePanel")}
                     title={t("workspace.shell.closePanel")}
                 >

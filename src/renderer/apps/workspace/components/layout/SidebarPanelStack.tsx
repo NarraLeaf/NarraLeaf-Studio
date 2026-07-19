@@ -29,6 +29,10 @@ export function SidebarPanelStack({ positionPanels, activePanelId }: SidebarPane
                 }
                 const isActive = panel.id === activePanelId;
                 const PanelComponent = panel.component;
+                if (!PanelComponent) {
+                    // A rail action: it occupies a rail slot but has no body to stack.
+                    return null;
+                }
                 return (
                     <div
                         key={panel.id}

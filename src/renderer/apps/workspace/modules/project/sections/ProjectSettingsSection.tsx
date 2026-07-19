@@ -1,9 +1,13 @@
-import { useCallback, useState } from "react";
-import { Switch } from "@/lib/components/elements";
+import { useCallback, useMemo, useState } from "react";
+import { HintPopover, Select, Switch, type SelectOption } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import {
+    MOBILE_ORIENTATIONS,
+    normalizeMobileConfiguration,
     normalizeNetworkConfiguration,
     normalizeSecurityConfiguration,
+    type MobileConfiguration,
+    type MobileOrientation,
     type NetworkConfiguration,
     type SecurityConfiguration,
 } from "@/lib/workspace/project/configuration";
@@ -13,8 +17,10 @@ export function ProjectSettingsSection({ projectService, uiService, config, onCo
     const { t } = useTranslation();
     const [network, setNetwork] = useState<NetworkConfiguration>(() => normalizeNetworkConfiguration(config.app?.network));
     const [security, setSecurity] = useState<SecurityConfiguration>(() => normalizeSecurityConfiguration(config.app?.security));
+    const [mobile, setMobile] = useState<MobileConfiguration>(() => normalizeMobileConfiguration(config.app?.mobile));
     const [savingHttp, setSavingHttp] = useState(false);
     const [savingEncrypt, setSavingEncrypt] = useState(false);
+    const [savingOrientation, setSavingOrientation] = useState(false);
 
     const setAllowHttp = useCallback(async (next: boolean) => {
         if (savingHttp) {
@@ -54,11 +60,39 @@ export function ProjectSettingsSection({ projectService, uiService, config, onCo
         }
     }, [security, onConfigChange, projectService, savingEncrypt, uiService]);
 
+    const setOrientation = useCallback(async (next: MobileOrientation) => {
+        if (savingOrientation) {
+            return;
+        }
+        const previous = mobile;
+        setSavingOrientation(true);
+        setMobile(current => ({ ...current, orientation: next }));
+        try {
+            const updated = await projectService.updateMobileConfiguration({ orientation: next });
+            setMobile(normalizeMobileConfiguration(updated.app?.mobile));
+            onConfigChange(updated);
+        } catch (error) {
+            setMobile(previous);
+            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
+        } finally {
+            setSavingOrientation(false);
+        }
+    }, [mobile, onConfigChange, projectService, savingOrientation, uiService]);
+
+    const orientationOptions: SelectOption[] = useMemo(
+        () => MOBILE_ORIENTATIONS.map(orientation => ({
+            value: orientation,
+            label: t(`project.settings.orientation.${orientation}`),
+        })),
+        [t],
+    );
+
     return (
         <div className="grid gap-3">
             <SettingRow
                 title={t("project.settings.allowHttpTitle")}
                 description={t("project.settings.allowHttpDescription")}
+                hint={t("project.settings.allowHttpWebHint")}
                 checked={network.allowHttp}
                 loading={savingHttp}
                 onChange={value => void setAllowHttp(value)}
@@ -66,33 +100,74 @@ export function ProjectSettingsSection({ projectService, uiService, config, onCo
             <SettingRow
                 title={t("project.settings.encryptAssetsTitle")}
                 description={t("project.settings.encryptAssetsDescription")}
+                hint={t("project.settings.encryptAssetsWebHint")}
                 checked={security.encryptAssets}
                 loading={savingEncrypt}
                 onChange={value => void setEncryptAssets(value)}
             />
+            <SettingShell
+                title={t("project.settings.orientationTitle")}
+                description={t("project.settings.orientationDescription")}
+            >
+                <Select
+                    options={orientationOptions}
+                    value={mobile.orientation}
+                    disabled={savingOrientation}
+                    onChange={value => void setOrientation(value as MobileOrientation)}
+                    size="sm"
+                    portalMenu
+                    className="w-32 shrink-0"
+                    aria-label={t("project.settings.orientationTitle")}
+                />
+            </SettingShell>
         </div>
+    );
+}
+
+/** The row frame every setting shares: title, description, and its control. */
+function SettingShell({
+    title,
+    description,
+    hint,
+    children,
+}: {
+    title: string;
+    description: string;
+    /** Optional caveat shown behind a small info icon next to the title. */
+    hint?: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <section className="flex items-start justify-between gap-3 rounded-md border border-edge bg-fill-subtle p-3">
+            <div className="min-w-0">
+                <div className="flex items-center gap-1.5 text-sm font-medium text-fg">
+                    <span>{title}</span>
+                    {hint && <HintPopover text={hint} />}
+                </div>
+                <div className="mt-1 text-2xs leading-relaxed text-fg-subtle">{description}</div>
+            </div>
+            {children}
+        </section>
     );
 }
 
 function SettingRow({
     title,
     description,
+    hint,
     checked,
     loading,
     onChange,
 }: {
     title: string;
     description: string;
+    hint?: string;
     checked: boolean;
     loading: boolean;
     onChange: (value: boolean) => void;
 }) {
     return (
-        <section className="flex items-start justify-between gap-3 rounded-md border border-edge bg-white/[0.025] p-3">
-            <div className="min-w-0">
-                <div className="text-sm font-medium text-fg">{title}</div>
-                <div className="mt-1 text-2xs leading-relaxed text-fg-subtle">{description}</div>
-            </div>
+        <SettingShell title={title} description={description} hint={hint}>
             <Switch
                 size="sm"
                 checked={checked}
@@ -100,6 +175,7 @@ function SettingRow({
                 onCheckedChange={onChange}
                 aria-label={title}
             />
-        </section>
+        </SettingShell>
     );
 }
+

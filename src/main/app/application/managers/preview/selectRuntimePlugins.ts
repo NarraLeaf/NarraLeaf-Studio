@@ -6,7 +6,7 @@
  * manifest) is the authority on what the project actually uses. Packing rule:
  * hard dependencies ship; enabled-but-unused plugins do not. Validation rule:
  * every blueprint node / widget type the project uses must have a shipping
- * plugin that declares it in manifest contributes — otherwise the pack build
+ * plugin that declares it in manifest contributes - otherwise the pack build
  * fails instead of the node/widget silently failing on a player's machine.
  */
 
@@ -114,7 +114,7 @@ export function selectRuntimePluginsForPack(input: {
         }
 
         // Hard dependency without recorded node/widget usage. Ship its runtime
-        // entry when present — harmless and forward-compatible.
+        // entry when present - harmless and forward-compatible.
         if (source) {
             selected.push(source);
         }

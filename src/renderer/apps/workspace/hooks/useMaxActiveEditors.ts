@@ -3,7 +3,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { clampMaxActiveEditors, MAX_ACTIVE_EDITORS_DEFAULT } from "@/lib/settings/editorLayoutOptions";
 
 /**
- * Reads the `editor.maxActiveEditors` preference — how many editor tabs an {@link EditorGroup}
+ * Reads the `editor.maxActiveEditors` preference - how many editor tabs an {@link EditorGroup}
  * keeps mounted (kept alive) at once so their scroll position and focus survive a tab switch.
  *
  * Re-reads when the window regains focus so a change made in the separate Settings window applies

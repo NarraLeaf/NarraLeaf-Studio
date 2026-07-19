@@ -93,7 +93,7 @@ function PropertyEditorInner<TData>({
                                 type="button"
                                 className={`px-2 py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
                                     activeTabId === tab.id
-                                        ? "text-white"
+                                        ? "text-fg"
                                         : "text-fg-muted hover:text-fg"
                                 }`}
                                 onClick={() => setActiveTabId(tab.id)}

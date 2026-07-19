@@ -26,6 +26,8 @@ export interface UseKeybindingOptions {
      * Defaults to false (workspace shortcuts defer to typing).
      */
     allowInEditable?: boolean;
+    /** Stable catalog id for overrides/settings when `id` is per-instance (see Keybinding). */
+    catalogId?: string;
     /** Dependencies array - keybinding will be re-registered when these change */
     deps?: React.DependencyList;
 }
@@ -75,6 +77,7 @@ export function useKeybinding(options: UseKeybindingOptions): void {
         when,
         enabled = true,
         allowInEditable,
+        catalogId,
         deps = [],
     } = options;
 
@@ -112,6 +115,7 @@ export function useKeybinding(options: UseKeybindingOptions): void {
             handler: stableHandler,
             when: stableWhen,
             allowInEditable,
+            catalogId,
         };
 
         const dispose = uiService.keybindings.register(keybinding);
@@ -120,7 +124,7 @@ export function useKeybinding(options: UseKeybindingOptions): void {
             dispose();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [context, id, key, description, enabled, allowInEditable, stableHandler, stableWhen, ...deps]);
+    }, [context, id, key, description, enabled, allowInEditable, catalogId, stableHandler, stableWhen, ...deps]);
 }
 
 /**
@@ -151,6 +155,12 @@ export interface UseKeybindingsOptions {
     when?: KeybindingCondition;
     /** Prefix added to all keybinding IDs */
     idPrefix?: string;
+    /**
+     * Prefix composing each definition's stable catalog id (`catalogPrefix + def.id`), e.g.
+     * `"story."` turns def `duplicate` into catalog id `story.duplicate`. Unlike `idPrefix`
+     * (typically per-tab), this must be constant so overrides apply across instances.
+     */
+    catalogPrefix?: string;
     /** Dependencies array - keybindings will be re-registered when these change */
     deps?: React.DependencyList;
 }
@@ -188,6 +198,7 @@ export function useKeybindings(options: UseKeybindingsOptions): void {
         enabled = true,
         when: commonWhen,
         idPrefix,
+        catalogPrefix,
         deps = [],
     } = options;
 
@@ -245,6 +256,7 @@ export function useKeybindings(options: UseKeybindingsOptions): void {
                 description: kb.description,
                 handler,
                 when: commonWhen || kb.when ? when : undefined,
+                catalogId: catalogPrefix ? `${catalogPrefix}${kb.id}` : undefined,
             };
 
             const dispose = uiService.keybindings.register(keybinding);
@@ -255,7 +267,7 @@ export function useKeybindings(options: UseKeybindingsOptions): void {
             disposers.forEach((dispose) => dispose());
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [context, enabled, keybindingSignature, idPrefix, ...deps]);
+    }, [context, enabled, keybindingSignature, idPrefix, catalogPrefix, ...deps]);
 }
 
 /**

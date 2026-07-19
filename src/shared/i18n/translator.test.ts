@@ -36,7 +36,7 @@ describe("createTranslator", () => {
 
     it("returns the key itself for an unknown key", () => {
         const { t } = createTranslator("en");
-        // @ts-expect-error — unknown keys are a type error; runtime is defensive.
+        // @ts-expect-error - unknown keys are a type error; runtime is defensive.
         expect(t("does.not.exist")).toBe("does.not.exist");
     });
 

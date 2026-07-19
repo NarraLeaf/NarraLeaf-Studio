@@ -1,4 +1,4 @@
-/** `devMode` — the Dev Mode window/overlay: run surface, session status, and the live-debug tools. */
+/** `devMode` - the Dev Mode window/overlay: run surface, session status, and the live-debug tools. */
 export const devMode = {
     title: "Dev Mode",
     dismiss: "Dismiss",

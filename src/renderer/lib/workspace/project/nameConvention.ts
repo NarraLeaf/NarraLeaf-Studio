@@ -55,6 +55,11 @@ export const ProjectNameConvention = {
     EditorLocalization: ["editor", "localization/"],
     EditorLocalizationDocument: (locale: string) => ["editor", "localization", `${locale}.json`],
     EditorLocalizationKeys: ["editor", "localization", "keys.json"],
+    // Game voice library (one document per voice language). Locale codes are
+    // validated against the same conservative alphabet as localization before
+    // touching disk (see isValidLocaleCode in @shared/types/voice).
+    EditorVoice: ["editor", "voice/"],
+    EditorVoiceDocument: (locale: string) => ["editor", "voice", `${locale}.json`],
 } as const;
 
 /**

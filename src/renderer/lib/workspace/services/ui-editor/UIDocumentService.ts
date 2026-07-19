@@ -4055,7 +4055,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
         this.seedListItemTextValueBinding(template.nametagId, "nametag", translate("defaultDoc.nvl.nametag"), translate("defaultDoc.speaker"));
 
-        // Advancement graph hosted on the Panel (nl.container) — collection widgets like the NVL
+        // Advancement graph hosted on the Panel (nl.container) - collection widgets like the NVL
         // List do not expose a Mouse Click head.
         const panelBlueprintId = localBp.ensureWidgetMain(
             surfaceId,

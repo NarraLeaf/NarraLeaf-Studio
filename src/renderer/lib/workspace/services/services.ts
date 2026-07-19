@@ -1,12 +1,17 @@
 import { FsRequestResult } from "@shared/types/os";
 import { FileDetails, FileStat } from "@shared/utils/fs";
 import { Porject, ProjectConfig, ProjectIconConfig, ProjectIconPlatform, ProjectMetadata } from "../project/project";
-import type { NetworkConfiguration, SecurityConfiguration } from "../project/configuration";
+import type { MobileConfiguration, NetworkConfiguration, SecurityConfiguration } from "../project/configuration";
 import type {
     LocalizationConfiguration,
     LocalizationDocument,
     LocalizationLocaleEntry,
 } from "@shared/types/localization";
+import type {
+    VoiceConfiguration,
+    VoiceDocument,
+    VoiceLocaleEntry,
+} from "@shared/types/voice";
 import type { ProjectDependencyResolution, ProjectDependencyTable } from "@shared/types/pluginDependencies";
 import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import { ServiceRegistry } from "./serviceRegistry";
@@ -54,12 +59,15 @@ import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../ui-editor/
 import type { SelectionState } from "./ui/UIStore";
 import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
+import type { GameBuildRequest, GameBuildStateSnapshot, GameBuildStatus } from "@shared/types/gameBuild";
 import type {
     ConsoleAppendInput,
     ConsoleChannelDefinition,
     ConsoleChannelId,
     ConsoleEntry,
     ConsoleLogLevel,
+    ConsoleProgress,
+    ConsoleProgressInput,
 } from "./core/ConsoleService";
 import type {
     StoryAnimationAsset,
@@ -114,13 +122,19 @@ enum Services {
     UIBlueprintLifecycle = "uiBlueprintLifecycle",
     DevMode = "devMode",
     Preview = "preview",
+    Build = "build",
     Console = "console",
     /** Ref-counted FontFace + blob URLs for UI editor widgets */
     UIEditorFontFace = "uiEditorFontFace",
     /** Blueprint node definitions (built-ins + plugin extensions); editor + runtime registry */
     BlueprintNodeCatalog = "blueprintNodeCatalog",
     // Storage = "storage",
-    // Command = "command",
+    /** Command palette registry + aggregator (actions, menus, keybindings) */
+    Command = "command",
+    /** Global project search index (story text, variable names, UI text keys, blueprint node titles) */
+    Search = "search",
+    /** Asset reverse-lookup index: which stories, blueprints, widgets and takes use a given asset */
+    Reference = "reference",
     // Logger = "logger",
     // Editor = "editor",
     Story = "story",
@@ -128,6 +142,8 @@ enum Services {
     Assets = "assets",
     /** Per-project plugin dependency table: scan, persist, and resolve compatibility */
     ProjectDependency = "projectDependency",
+    /** Accumulated authoring activity (writing curve, active time, build history) */
+    ProjectStats = "projectStats",
     // Texture = "texture",
     // Audio = "audio",
     // Video = "video",
@@ -136,6 +152,7 @@ enum Services {
     // Build = "build",
     // Debug = "debug",
     Localization = "localization",
+    Voice = "voice",
     // VersionControl = "versionControl",
     // Plugin = "plugin",
 }
@@ -150,6 +167,7 @@ interface IProjectService extends IService {
     updateNetworkConfiguration(patch: Partial<NetworkConfiguration>): Promise<ProjectConfig>;
     getSecurityConfiguration(): SecurityConfiguration;
     updateSecurityConfiguration(patch: Partial<SecurityConfiguration>): Promise<ProjectConfig>;
+    updateMobileConfiguration(patch: Partial<MobileConfiguration>): Promise<ProjectConfig>;
     importProjectIcon(platform: ProjectIconPlatform): Promise<{
         platform: ProjectIconPlatform;
         sourcePath: string;
@@ -214,6 +232,11 @@ interface IStorageService extends IService {
     set<T extends Record<string, any>>(namespace: string, name: string, value: T): Promise<FsRequestResult<void>>;
 }
 
+/**
+ * Command palette registry + aggregator. The concrete {@link CommandService} exposes
+ * `register`/`unregister`/`getRegistered` (mirroring the keybinding service) and `collect`, which
+ * converges toolbar actions, menu groups, and described keybindings into one runnable list.
+ */
 interface ICommandService extends IService { }
 
 interface ILoggerService extends IService { }
@@ -337,7 +360,7 @@ interface IUIDocumentService extends IService {
     clearElementBlueprintEvent(elementId: string, eventName: string): void;
     /**
      * Set UI blueprintEvent hooks to noop when they target the given blueprint layer (event graph slot).
-     * Does not remove the graph from the blueprint document — call LocalBlueprintService.removeEventGraph after.
+     * Does not remove the graph from the blueprint document - call LocalBlueprintService.removeEventGraph after.
      */
     stripBlueprintLayerBindings(surfaceId: string, blueprintId: string, layerEventId: string): void;
 }
@@ -645,6 +668,12 @@ interface IConsoleService extends IService {
     onChannelsChanged(handler: (event: {
         channels: readonly ConsoleChannelDefinition[];
     }) => void): () => void;
+    getProgress(channel: ConsoleChannelId): ConsoleProgress | null;
+    setProgress(channel: ConsoleChannelId, input: ConsoleProgressInput | null): void;
+    onProgressChanged(handler: (event: {
+        channel: ConsoleChannelId;
+        progress: ConsoleProgress | null;
+    }) => void): () => void;
 }
 
 // Editor Services
@@ -810,7 +839,15 @@ interface IPreviewService extends IService {
     onStatusChanged(handler: (status: PreviewStatus) => void): () => void;
 }
 
-interface IBuildService extends IService { }
+interface IBuildService extends IService {
+    getState(): GameBuildStateSnapshot;
+    getStatus(): GameBuildStatus;
+    isBuilding(): boolean;
+    refreshState(): Promise<GameBuildStateSnapshot>;
+    start(request: GameBuildRequest): Promise<GameBuildStateSnapshot>;
+    cancel(): Promise<GameBuildStateSnapshot>;
+    onStateChanged(handler: (state: GameBuildStateSnapshot) => void): () => void;
+}
 
 interface IDebugService extends IService { }
 
@@ -830,6 +867,22 @@ interface ILocalizationService extends IService {
     loadDocument(locale: string): Promise<LocalizationDocument>;
     getDocumentIfLoaded(locale: string): LocalizationDocument | undefined;
     onDocumentChanged(handler: (event: { locale: string; document: LocalizationDocument }) => void): () => void;
+    flushPendingChanges(): Promise<void>;
+}
+
+/**
+ * Game voice-over service: per-locale voice libraries linking story lines to
+ * imported audio assets. Voice languages are independent of localization
+ * locales (dub language ≠ subtitle language).
+ */
+interface IVoiceService extends IService {
+    getConfiguration(): VoiceConfiguration;
+    onConfigChanged(handler: (config: VoiceConfiguration) => void): () => void;
+    addLocale(entry: VoiceLocaleEntry): Promise<VoiceConfiguration>;
+    removeLocale(code: string): Promise<VoiceConfiguration>;
+    loadDocument(locale: string): Promise<VoiceDocument>;
+    getDocumentIfLoaded(locale: string): VoiceDocument | undefined;
+    onDocumentChanged(handler: (event: { locale: string; document: VoiceDocument }) => void): () => void;
     flushPendingChanges(): Promise<void>;
 }
 
@@ -856,7 +909,7 @@ export {
     ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
     ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
-    IProjectDependencyService,
+    IProjectDependencyService, IVoiceService,
     Services, WorkspaceContext
 };
 

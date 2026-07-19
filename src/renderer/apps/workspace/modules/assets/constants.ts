@@ -20,12 +20,5 @@ export const ASSET_TYPE_ICONS: Record<AssetType, ComponentType<any>> = {
     [AssetType.Other]: File,
 };
 
-export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
-    [AssetType.Image]: "Images",
-    [AssetType.Audio]: "Audio",
-    [AssetType.Video]: "Videos",
-    [AssetType.JSON]: "JSON Files",
-    [AssetType.Blueprint]: "Blueprints",
-    [AssetType.Font]: "Fonts",
-    [AssetType.Other]: "Other",
-};
+// Asset category labels are localized at render: `t(`assets.types.${type}`)`.
+// The `AssetType` enum values double as the catalog key segment.

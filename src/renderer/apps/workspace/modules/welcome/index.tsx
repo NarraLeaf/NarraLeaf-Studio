@@ -11,6 +11,7 @@ export const welcomeModule: EditorModule = {
     metadata: {
         id: "narraleaf-studio:welcome",
         // Resolved lazily on read (module registration runs after i18n init).
+        titleKey: "placeholders.moduleTitles.welcome",
         get title() {
             return translate("placeholders.moduleTitles.welcome");
         },

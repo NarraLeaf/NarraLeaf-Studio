@@ -15,6 +15,8 @@ import {
     type PluginApp,
     type PluginCleanup,
 } from "@/plugin";
+import { isActionMenuAction, isActionMenuSeparator } from "@/apps/workspace/components/ui/actionMenuModel";
+import type { ActionGroup, ActionMenuItem } from "@/apps/workspace/registry/types";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -65,7 +67,7 @@ async function loadWorkspacePluginsNow(ctx: WorkspaceContext): Promise<Workspace
 
     // Skip plugins this project's dependency resolution flagged as incompatible
     // (e.g. a built-in plugin whose major version changed across a Studio update).
-    // Suppressing them here — before import()/setup() — keeps their nodes, widgets,
+    // Suppressing them here - before import()/setup() - keeps their nodes, widgets,
     // and actions from registering and corrupting the open project.
     const suppressed = new Set(
         ctx.services.get<ProjectDependencyService>(Services.ProjectDependency).getSuppressedPluginIds(),
@@ -211,6 +213,38 @@ function assertDeclaredWidget(descriptor: WorkspacePluginDescriptor, type: strin
     }
 }
 
+/**
+ * Keep a plugin's group in a menu of its own.
+ *
+ * A group declares where it lands on the macOS menu bar, and two of those slots are load-bearing
+ * for Studio itself: `edit` lets a group's items stand in for the system Copy/Cut/Paste (and so
+ * inherit their Cmd shortcuts), and `window` sits among the standard window commands. Those
+ * belong to the surfaces Studio ships. A plugin still gets a full top-level menu - it just
+ * cannot quietly become the thing Cmd+V does.
+ *
+ * `menuRole` is dropped for the same reason: it only means anything in the `edit` slot.
+ */
+function confineToOwnMenu(group: ActionGroup): ActionGroup {
+    return {
+        ...group,
+        menuSlot: group.menuSlot === "none" ? "none" : "top-level",
+        actions: group.actions?.map(action =>
+            isActionMenuSeparator(action) ? action : { ...action, menuRole: undefined },
+        ),
+        items: group.items?.map(stripMenuRole),
+    };
+}
+
+function stripMenuRole(item: ActionMenuItem): ActionMenuItem {
+    if (isActionMenuSeparator(item)) {
+        return item;
+    }
+    if (isActionMenuAction(item)) {
+        return { ...item, menuRole: undefined };
+    }
+    return { ...item, items: item.items.map(stripMenuRole) };
+}
+
 export function createPluginApp(
     ctx: WorkspaceContext,
     descriptor: WorkspacePluginDescriptor,
@@ -311,7 +345,7 @@ export function createPluginApp(
                     },
                     unregister: id => ui.getStore().unregisterAction(id),
                     registerGroup: group => {
-                        ui.getStore().registerActionGroup(group);
+                        ui.getStore().registerActionGroup(confineToOwnMenu(group));
                         track(() => ui.getStore().unregisterActionGroup(group.id));
                     },
                     unregisterGroup: id => ui.getStore().unregisterActionGroup(id),

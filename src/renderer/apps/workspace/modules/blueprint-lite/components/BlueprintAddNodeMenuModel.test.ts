@@ -87,7 +87,7 @@ describe("BlueprintAddNodeMenuModel", () => {
             entry({
                 type: "blueprint.frame.emit",
                 displayName: "Emit Page Event",
-                category: "Page",
+                category: "App",
                 keywords: ["page"],
                 isPure: false,
                 inputs: 1,
@@ -108,7 +108,7 @@ describe("BlueprintAddNodeMenuModel", () => {
             "all",
             "Events",
             "Flow",
-            "Page",
+            "App",
             "Variables",
             "Data",
             "Math",
@@ -171,6 +171,33 @@ describe("BlueprintAddNodeMenuModel", () => {
             "nl.data.string",
         ]);
         expect(filterBlueprintAddNodeEntries(entries, "Math", "literal")).toEqual([]);
+    });
+
+    it("matches localized node titles and categories supplied by the localizer", () => {
+        const localizer = {
+            title: (displayName: string) =>
+                displayName === "String Literal" ? "字符串字面量" : displayName,
+            category: (category: string) => (category === "Math" ? "数学" : category),
+        };
+
+        expect(
+            filterBlueprintAddNodeEntries(entries, "all", "字符串", localizer).map(item => item.type),
+        ).toEqual(["nl.data.string"]);
+        expect(
+            filterBlueprintAddNodeEntries(entries, "all", "数学", localizer).map(item => item.type),
+        ).toEqual(["nl.math.add"]);
+    });
+
+    it("still matches the original English text when a localizer is provided", () => {
+        const localizer = {
+            title: (displayName: string) =>
+                displayName === "String Literal" ? "字符串字面量" : displayName,
+            category: (category: string) => category,
+        };
+
+        expect(
+            filterBlueprintAddNodeEntries(entries, "all", "literal", localizer).map(item => item.type),
+        ).toEqual(["nl.data.string"]);
     });
 
     it("searches unambiguous element-derived entries by target label", () => {

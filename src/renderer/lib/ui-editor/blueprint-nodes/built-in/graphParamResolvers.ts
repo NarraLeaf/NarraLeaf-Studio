@@ -98,6 +98,7 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
+    BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
@@ -203,6 +204,8 @@ import {
     BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE,
     BLUEPRINT_NODE_TYPE_SLIDER_GET_RANGE,
     BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE,
+    BLUEPRINT_NODE_TYPE_TEXT_INPUT_GET_VALUE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_GET_VALUE,
     BLUEPRINT_NODE_TYPE_TEXT_GET_ALL_PROPERTIES,
     BLUEPRINT_NODE_TYPE_TEXT_GET_EFFECTS,
     BLUEPRINT_NODE_TYPE_TEXT_GET_FONT,
@@ -1756,6 +1759,54 @@ function resolveTextNodeOutput(type: string, portId: string, runtime?: DataPinRe
     return undefined;
 }
 
+function resolveTextInputNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
+    type: string,
+    portId: string,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    if (type !== BLUEPRINT_NODE_TYPE_TEXT_INPUT_GET_VALUE && type !== BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_GET_VALUE) {
+        return undefined;
+    }
+    const isElementTarget = type === BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_GET_VALUE;
+    const ref = isElementTarget
+        ? sameSurfaceElementRef(
+            normalizeBlueprintElementRefValue(
+                resolveInput(graph, nodeId, "textInput", params, blueprintLocals, depth, runtime),
+            ),
+            runtime,
+        )
+        : undefined;
+    if (isElementTarget && ref?.elementType !== "nl.textInput") {
+        return undefined;
+    }
+    const elementId = isElementTarget ? ref?.elementId : runtime?.executionOwner?.elementId;
+    const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
+    if (!elementId || !api) {
+        return undefined;
+    }
+    let props: ReturnType<typeof api.widget.getTextInputProperties>;
+    try {
+        props = api.widget.getTextInputProperties(elementId);
+    } catch {
+        return undefined;
+    }
+    if (ref) {
+        trackElementDependency(runtime, ref, "props.value");
+    }
+    if (portId === "value") {
+        return props.value;
+    }
+    if (portId === "length") {
+        return props.length;
+    }
+    return undefined;
+}
+
 function resolveSliderNodeOutput(
     graph: DataPinGraph,
     nodeId: string,
@@ -2281,7 +2332,8 @@ function resolveSelfOutput(
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS ||
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA ||
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW ||
-            selfNode.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET) &&
+            selfNode.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN) &&
         (portId === "index" ||
             portId === "item" ||
             portId === "value" ||
@@ -2289,6 +2341,7 @@ function resolveSelfOutput(
             portId === "metadata" ||
             portId === "preview" ||
             portId === "entries" ||
+            portId === "isFullscreen" ||
             portId === "count")
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
@@ -2394,6 +2447,19 @@ function resolveSelfOutput(
     );
     if (sliderOutput !== undefined) {
         return sliderOutput;
+    }
+    const textInputOutput = resolveTextInputNodeOutput(
+        graph,
+        nodeId,
+        selfNode.type,
+        portId,
+        selfNode.params ?? {},
+        blueprintLocals,
+        depth,
+        runtime,
+    );
+    if (textInputOutput !== undefined) {
+        return textInputOutput;
     }
     const listOutput = resolveListNodeOutput(
         graph,

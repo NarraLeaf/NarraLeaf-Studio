@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, FileText, MoreVertical, Plus, RefreshCw, Star } from "lucide-react";
+import { BookOpen, FileText, MoreVertical, Plus, RefreshCw, Star, Waypoints } from "lucide-react";
 import type { StoryDocument, StoryId, StoryLibraryEntry, StoryScene } from "@shared/types/story";
 import { useTranslation } from "@/lib/i18n";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -13,6 +13,7 @@ import { useWorkspace } from "../../../context";
 import { useRegistry } from "../../../registry";
 import type { PanelComponentProps } from "../../types";
 import { createStorySceneEditorTab } from "../scene-editor/openStorySceneEditorTab";
+import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
 
 interface StoryPanelState {
@@ -283,6 +284,13 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         refreshLibrary();
     }, [refreshLibrary, storyService]);
 
+    const handleOpenSceneFlow = useCallback((entry: StoryLibraryEntry) => {
+        if (!context) {
+            return;
+        }
+        openSceneFlowTab(context, entry.id, entry.name);
+    }, [context]);
+
     const buildStoryContextMenu = useCallback((entry: StoryLibraryEntry): ContextMenuDef => {
         const isDefault = entry.id === defaultStoryId;
         return [
@@ -291,6 +299,11 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 label: t("story.panel.setDefault"),
                 disabled: isDefault,
                 onClick: () => handleSetDefaultStory(entry),
+            },
+            {
+                id: "open-scene-flow",
+                label: t("story.flow.action.openFlow"),
+                onClick: () => handleOpenSceneFlow(entry),
             },
             {
                 id: "rename-story",
@@ -308,7 +321,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 },
             },
         ];
-    }, [defaultStoryId, handleDeleteStory, handleRenameStory, handleSetDefaultStory, t]);
+    }, [defaultStoryId, handleDeleteStory, handleOpenSceneFlow, handleRenameStory, handleSetDefaultStory, t]);
 
     const handleOpenStoryMenu = useCallback((event: React.MouseEvent, entry: StoryLibraryEntry) => {
         event.stopPropagation();
@@ -491,7 +504,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                     return (
                                         <div
                                             key={entry.id}
-                                            className={`group/story flex cursor-default items-center gap-2 px-3 py-1.5 hover:bg-gray-600/30 ${
+                                            className={`group/story flex cursor-default items-center gap-2 px-3 py-1.5 hover:bg-fill ${
                                                 selected ? "border-l-2 border-primary bg-primary/20" : ""
                                             }`}
                                             onClick={() => setSelectedStoryId(entry.id)}
@@ -505,7 +518,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                             <span className="min-w-0 flex-1 truncate text-sm text-fg">{entry.name}</span>
                                             <button
                                                 type="button"
-                                                className="rounded p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-white group-hover/story:opacity-100"
+                                                className="rounded p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover/story:opacity-100"
                                                 title={t("story.panel.storyActions")}
                                                 onClick={event => handleOpenStoryMenu(event, entry)}
                                             >
@@ -529,14 +542,24 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                             }
                             className="!border-b-0"
                             actions={
-                                <button
-                                    type="button"
-                                    className="p-1 hover:text-primary"
-                                    title={t("story.panel.newChapter")}
-                                    onClick={handleCreateChapter}
-                                >
-                                    <Plus className="h-3 w-3" />
-                                </button>
+                                <>
+                                    <button
+                                        type="button"
+                                        className="p-1 hover:text-primary"
+                                        title={t("story.flow.action.openFlow")}
+                                        onClick={() => handleOpenSceneFlow(selectedEntry)}
+                                    >
+                                        <Waypoints className="h-3 w-3" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="p-1 hover:text-primary"
+                                        title={t("story.panel.newChapter")}
+                                        onClick={handleCreateChapter}
+                                    >
+                                        <Plus className="h-3 w-3" />
+                                    </button>
+                                </>
                             }
                         >
                             {loadingDocument ? (
@@ -586,7 +609,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                     return (
                                                         <div
                                                             key={scene.id}
-                                                            className="group/scene flex cursor-default items-center gap-2 px-3 py-1.5 hover:bg-gray-600/30"
+                                                            className="group/scene flex cursor-default items-center gap-2 px-3 py-1.5 hover:bg-fill"
                                                             style={{ paddingLeft: "44px" }}
                                                             onClick={() => handleOpenScene(scene.id, scene.name)}
                                                             onContextMenu={event => handleOpenSceneMenu(event, scene)}
@@ -604,7 +627,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                             </div>
                                                             <button
                                                                 type="button"
-                                                                className="rounded p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-white group-hover/scene:opacity-100"
+                                                                className="rounded p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover/scene:opacity-100"
                                                                 title={t("story.panel.sceneActions")}
                                                                 onClick={event => handleOpenSceneMenu(event, scene)}
                                                             >

@@ -42,7 +42,7 @@ import {
     withInferredBlueprintVariableValueTypeParam,
     type BlueprintVariableTypeOption,
 } from "./graphVariableTypeInference";
-import { isBlueprintElementBindingOutputPin, isBlueprintLiteralNodeType } from "./graphEditing";
+import { isBlueprintFanOutOutputPin } from "./graphEditing";
 import {
     isValidBlueprintExecConnection,
     resolveBlueprintNodeEditorCatalogEntryForNode,
@@ -497,7 +497,7 @@ export function validateBlueprintGraphIr(
     }
 
     if (ctx.graphKind === "event") {
-        // Fn heads are valid entry points too — a graph containing only fn declarations is fine.
+        // Fn heads are valid entry points too - a graph containing only fn declarations is fine.
         // Story Action "On Call" is a valid head as well (it is deliberately kept out of the event
         // dispatch head set, so it must be recognized explicitly here).
         const headNodes = Object.entries(nodes).filter(
@@ -658,11 +658,7 @@ export function validateBlueprintGraphIr(
             }
         }
         const fromNodeType = nodes[edge.from.nodeId]?.type ?? "";
-        if (
-            nodeIds.has(edge.from.nodeId) &&
-            !isBlueprintLiteralNodeType(fromNodeType) &&
-            !isBlueprintElementBindingOutputPin(fromNodeType, edge.from.port)
-        ) {
+        if (nodeIds.has(edge.from.nodeId) && !isBlueprintFanOutOutputPin(fromNodeType, edge.from.port)) {
             reportDuplicatePinConnection(out, seenPins, {
                 key: `out\0${edge.from.nodeId}\0${edge.from.port}`,
                 nodeId: edge.from.nodeId,
@@ -754,7 +750,7 @@ export function validateBlueprintGraphIr(
 /**
  * Story condition blueprints (`storyAction` owner, `condition` mode) must feed a boolean into their
  * Return Value node. Any concretely-typed non-boolean source is a type error; an unwired Return Value
- * is a warning (nothing to evaluate). `any`/unknown source types are left alone — they coerce fine.
+ * is a warning (nothing to evaluate). `any`/unknown source types are left alone - they coerce fine.
  */
 function validateStoryConditionReturnType(
     ir: BlueprintGraphIr,

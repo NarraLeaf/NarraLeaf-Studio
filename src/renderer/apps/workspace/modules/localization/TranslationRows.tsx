@@ -53,7 +53,7 @@ function StateIndicator({ state }: { state: LocalizationUnitState }) {
     const { t } = useTranslation();
     const label = t(stateLabelKey(state));
     const title = state === "stale"
-        ? `${label} — ${t("workspace.localization.table.staleHint")}`
+        ? `${label}: ${t("workspace.localization.table.staleHint")}`
         : label;
     return (
         <span className="absolute inset-y-0 left-0 flex w-2 justify-center py-3" title={title}>

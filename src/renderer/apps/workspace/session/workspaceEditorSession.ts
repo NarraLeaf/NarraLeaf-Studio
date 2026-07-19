@@ -25,9 +25,13 @@ import { CharacterService } from "@/lib/workspace/services/core/CharacterService
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
+import { EDITOR_SPLIT_RATIO_EPSILON } from "@/lib/workspace/services/ui/UIStore";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
+import { stableProjectKeyToken } from "@shared/utils/stableKeyHash";
+import { createDashboardTab } from "@/apps/workspace/modules/dashboard/openDashboardTab";
+import { DASHBOARD_TAB_ID } from "@/apps/workspace/modules/dashboard/dashboardTabId";
 
 /** Legacy global settings key; stored in Electron userData/state/global.json. */
 export const WORKSPACE_EDITOR_SESSION_SETTINGS_KEY = "ui.editor.session";
@@ -50,6 +54,7 @@ const BLUEPRINT_ENTRY_OWNER_KINDS = new Set([
 
 export type SerializedTab =
     | { kind: "welcome" }
+    | { kind: "dashboard" }
     | { kind: "surface"; surfaceId: string }
     | { kind: "blueprint"; title: string; payload: BlueprintEntryTabPayload }
     | { kind: "character"; characterId: string }
@@ -58,6 +63,7 @@ export type SerializedTab =
     | { kind: "storyScene"; title: string; payload: StorySceneEditorTabPayload }
     | { kind: "storyMotion"; title: string; payload: StoryMotionEditorPayload };
 
+/** Legacy single-group session. Still read (and upgraded) so existing installs keep their tabs. */
 export type WorkspaceEditorSessionV1 = {
     version: 1;
     groupId: string;
@@ -65,33 +71,39 @@ export type WorkspaceEditorSessionV1 = {
     tabs: SerializedTab[];
 };
 
+/**
+ * A node of the persisted split tree. Mirrors EditorLayout, but tabs are stored in their
+ * serializable form and `focus` is a tab *id* - ids are derived from the resource the tab points
+ * at, so they survive a restart while indices would not survive a tab failing to deserialize.
+ */
+export type SerializedEditorNode =
+    | { kind: "group"; id: string; focus: string | null; tabs: SerializedTab[] }
+    | {
+          kind: "split";
+          id: string;
+          direction: "horizontal" | "vertical";
+          ratio: number;
+          first: SerializedEditorNode;
+          second: SerializedEditorNode;
+      };
+
+export type WorkspaceEditorSessionV2 = {
+    version: 2;
+    layout: SerializedEditorNode;
+    /** Group that owned editor focus, so the caret lands back in the pane the user left it in. */
+    activeGroupId: string | null;
+};
+
+/** What callers work with: parsing always normalises a stored v1 up to this shape. */
+export type WorkspaceEditorSession = WorkspaceEditorSessionV2;
+
 export type WorkspaceEditorSessionProjectRef = {
     projectPath: string;
     projectIdentifier?: string | null;
 };
 
-function normalizeProjectPathForSessionKey(projectPath: string): string {
-    const normalized = projectPath.trim().replace(/\\/g, "/");
-    if (normalized.length <= 1) {
-        return normalized;
-    }
-    return normalized.replace(/\/+$/g, "");
-}
-
-function stableHashForSettingsKey(value: string): string {
-    let hash = 0xcbf29ce484222325n;
-    const prime = 0x100000001b3n;
-    for (let i = 0; i < value.length; i += 1) {
-        hash ^= BigInt(value.charCodeAt(i));
-        hash = BigInt.asUintN(64, hash * prime);
-    }
-    return hash.toString(36);
-}
-
 export function getWorkspaceEditorSessionSettingsKey(projectRef: WorkspaceEditorSessionProjectRef): string {
-    const projectPath = normalizeProjectPathForSessionKey(projectRef.projectPath);
-    const projectIdentifier = projectRef.projectIdentifier?.trim() ?? "";
-    return `${WORKSPACE_EDITOR_SESSION_SETTINGS_KEY_PREFIX}.${stableHashForSettingsKey(`${projectIdentifier}\0${projectPath}`)}`;
+    return `${WORKSPACE_EDITOR_SESSION_SETTINGS_KEY_PREFIX}.${stableProjectKeyToken(projectRef)}`;
 }
 
 function isBlueprintEntryPayload(value: unknown): value is BlueprintEntryTabPayload {
@@ -178,6 +190,9 @@ export function trySerializeTab(tab: EditorTabDefinition): SerializedTab | null 
     if (tab.id === WELCOME_TAB_ID) {
         return { kind: "welcome" };
     }
+    if (tab.id === DASHBOARD_TAB_ID) {
+        return { kind: "dashboard" };
+    }
     if (tab.id.startsWith(SURFACE_TAB_PREFIX)) {
         const surfaceId = tab.id.slice(SURFACE_TAB_PREFIX.length);
         if (!surfaceId) {
@@ -218,15 +233,7 @@ export function trySerializeTab(tab: EditorTabDefinition): SerializedTab | null 
     return null;
 }
 
-/**
- * Build a persistable session from the current editor layout.
- * Returns null if the root layout is not a single editor group (e.g. split root — not supported for v1).
- */
-export function serializeEditorSession(layout: EditorLayout): WorkspaceEditorSessionV1 | null {
-    if (!("tabs" in layout)) {
-        return null;
-    }
-    const group = layout as EditorGroup;
+function serializeGroup(group: EditorGroup): SerializedEditorNode {
     const tabs: SerializedTab[] = [];
     const keptTabIds: string[] = [];
     for (const tab of group.tabs) {
@@ -240,12 +247,35 @@ export function serializeEditorSession(layout: EditorLayout): WorkspaceEditorSes
     if (focus !== null && !keptTabIds.includes(focus)) {
         focus = keptTabIds.length > 0 ? keptTabIds[keptTabIds.length - 1] : null;
     }
+    return { kind: "group", id: group.id, focus, tabs };
+}
+
+function serializeNode(layout: EditorLayout): SerializedEditorNode {
+    if ("tabs" in layout) {
+        return serializeGroup(layout);
+    }
     return {
-        version: 1,
-        groupId: group.id,
-        focus,
-        tabs,
+        kind: "split",
+        id: layout.id,
+        direction: layout.direction,
+        ratio: layout.ratio,
+        first: serializeNode(layout.first),
+        second: serializeNode(layout.second),
     };
+}
+
+/**
+ * Build a persistable session from the current editor layout, splits and ratios included.
+ *
+ * An empty layout serializes to an empty session rather than to nothing: closing every tab is a
+ * state the user chose, and it has to overwrite the stored session or the tabs come back on the
+ * next launch.
+ */
+export function serializeEditorSession(
+    layout: EditorLayout,
+    activeGroupId: string | null = null,
+): WorkspaceEditorSessionV2 {
+    return { version: 2, layout: serializeNode(layout), activeGroupId };
 }
 
 function isSerializedTab(value: unknown): value is SerializedTab {
@@ -254,7 +284,7 @@ function isSerializedTab(value: unknown): value is SerializedTab {
     }
     const o = value as Record<string, unknown>;
     const kind = o.kind;
-    if (kind === "welcome") {
+    if (kind === "welcome" || kind === "dashboard") {
         return true;
     }
     if (kind === "surface" && typeof o.surfaceId === "string" && o.surfaceId.length > 0) {
@@ -291,38 +321,114 @@ function isSerializedTab(value: unknown): value is SerializedTab {
     return false;
 }
 
+function parseSerializedNode(raw: unknown, depth: number = 0): SerializedEditorNode | null {
+    // Depth cap: the tree comes off disk, and a hand-edited or corrupted file must not be able to
+    // blow the stack before the shape checks below get a chance to reject it.
+    if (!raw || typeof raw !== "object" || depth > 32) {
+        return null;
+    }
+    const o = raw as Record<string, unknown>;
+
+    if (o.kind === "group") {
+        if (typeof o.id !== "string" || !o.id) {
+            return null;
+        }
+        if (o.focus !== null && typeof o.focus !== "string") {
+            return null;
+        }
+        if (!Array.isArray(o.tabs)) {
+            return null;
+        }
+        const tabs: SerializedTab[] = [];
+        for (const item of o.tabs) {
+            if (isSerializedTab(item)) {
+                tabs.push(item);
+            }
+        }
+        return { kind: "group", id: o.id, focus: o.focus === null ? null : (o.focus as string), tabs };
+    }
+
+    if (o.kind === "split") {
+        if (typeof o.id !== "string" || !o.id) {
+            return null;
+        }
+        if (o.direction !== "horizontal" && o.direction !== "vertical") {
+            return null;
+        }
+        if (typeof o.ratio !== "number" || !Number.isFinite(o.ratio)) {
+            return null;
+        }
+        const first = parseSerializedNode(o.first, depth + 1);
+        const second = parseSerializedNode(o.second, depth + 1);
+        if (!first || !second) {
+            return null;
+        }
+        return {
+            kind: "split",
+            id: o.id,
+            direction: o.direction,
+            ratio: Math.min(1 - EDITOR_SPLIT_RATIO_EPSILON, Math.max(EDITOR_SPLIT_RATIO_EPSILON, o.ratio)),
+            first,
+            second,
+        };
+    }
+
+    return null;
+}
+
 /**
- * Parse and validate stored JSON. Returns null if invalid or unsupported version.
+ * Parse and validate stored JSON, upgrading a v1 session to the v2 shape so callers only ever see
+ * one form. Returns null if invalid or an unsupported version.
  */
-export function parseWorkspaceEditorSession(raw: unknown): WorkspaceEditorSessionV1 | null {
+export function parseWorkspaceEditorSession(raw: unknown): WorkspaceEditorSessionV2 | null {
     if (!raw || typeof raw !== "object") {
         return null;
     }
     const o = raw as Record<string, unknown>;
-    if (o.version !== 1) {
-        return null;
-    }
-    if (typeof o.groupId !== "string" || !o.groupId) {
-        return null;
-    }
-    if (o.focus !== null && typeof o.focus !== "string") {
-        return null;
-    }
-    if (!Array.isArray(o.tabs)) {
-        return null;
-    }
-    const tabs: SerializedTab[] = [];
-    for (const item of o.tabs) {
-        if (isSerializedTab(item)) {
-            tabs.push(item);
+
+    if (o.version === 1) {
+        if (typeof o.groupId !== "string" || !o.groupId) {
+            return null;
         }
+        if (o.focus !== null && typeof o.focus !== "string") {
+            return null;
+        }
+        if (!Array.isArray(o.tabs)) {
+            return null;
+        }
+        const tabs: SerializedTab[] = [];
+        for (const item of o.tabs) {
+            if (isSerializedTab(item)) {
+                tabs.push(item);
+            }
+        }
+        return {
+            version: 2,
+            layout: { kind: "group", id: o.groupId, focus: o.focus === null ? null : o.focus, tabs },
+            activeGroupId: o.groupId,
+        };
     }
-    return {
-        version: 1,
-        groupId: o.groupId,
-        focus: o.focus === null ? null : o.focus,
-        tabs,
-    };
+
+    if (o.version === 2) {
+        const layout = parseSerializedNode(o.layout);
+        if (!layout) {
+            return null;
+        }
+        return {
+            version: 2,
+            layout,
+            activeGroupId: typeof o.activeGroupId === "string" ? o.activeGroupId : null,
+        };
+    }
+
+    return null;
+}
+
+/** Every serializable tab in the tree, for callers that only care about the count. */
+export function countSessionTabs(node: SerializedEditorNode): number {
+    return node.kind === "group"
+        ? node.tabs.length
+        : countSessionTabs(node.first) + countSessionTabs(node.second);
 }
 
 function surfaceIcon(): ReactNode {
@@ -345,7 +451,12 @@ function storyIcon(): ReactNode {
     return createElement(FileText, { className: "w-4 h-4" });
 }
 
-function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab): EditorTabDefinition | null {
+/**
+ * Rebuild a live tab definition from its serialized form. Null when the tab's
+ * resource no longer exists (deleted scene/asset/…) - callers drop the entry.
+ * Exported for the closed-tab reopen path, which shares this rebuild logic.
+ */
+export function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab): EditorTabDefinition | null {
     if (entry.kind === "welcome") {
         return {
             id: welcomeModule.metadata.id,
@@ -354,6 +465,9 @@ function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab): Editor
             component: welcomeModule.component as EditorTabDefinition["component"],
             closable: welcomeModule.metadata.closable,
         };
+    }
+    if (entry.kind === "dashboard") {
+        return createDashboardTab();
     }
     if (entry.kind === "surface") {
         const documentService = ctx.services.get<UIDocumentService>(Services.UIDocument);
@@ -487,33 +601,67 @@ function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab): Editor
 }
 
 /**
- * Restore editor tabs from a validated session. Skips tabs that cannot be deserialized (missing resources).
+ * Rebuild a live layout subtree, dropping tabs whose resource is gone (deleted scene/asset/…).
+ * Returns null for a subtree that ends up with no tabs at all, so its pane collapses rather than
+ * restoring as an empty split.
+ */
+function buildLayoutNode(ctx: WorkspaceContext, node: SerializedEditorNode): EditorLayout | null {
+    if (node.kind === "group") {
+        const tabs: EditorTabDefinition[] = [];
+        for (const entry of node.tabs) {
+            const def = buildTabDefinition(ctx, entry);
+            if (def) {
+                tabs.push(def);
+            }
+        }
+        if (tabs.length === 0) {
+            return null;
+        }
+        const focus = node.focus && tabs.some(tab => tab.id === node.focus) ? node.focus : tabs[tabs.length - 1].id;
+        return { id: node.id, tabs, focus };
+    }
+
+    const first = buildLayoutNode(ctx, node.first);
+    const second = buildLayoutNode(ctx, node.second);
+    if (!first) {
+        return second;
+    }
+    if (!second) {
+        return first;
+    }
+    return { id: node.id, direction: node.direction, ratio: node.ratio, first, second };
+}
+
+/** Depth-first list of the groups in a rebuilt layout. */
+function collectLayoutGroups(layout: EditorLayout): EditorGroup[] {
+    if ("tabs" in layout) {
+        return [layout];
+    }
+    return [...collectLayoutGroups(layout.first), ...collectLayoutGroups(layout.second)];
+}
+
+/**
+ * Restore the editor layout - splits, ratios and per-pane focus - from a validated session.
+ * Skips tabs that cannot be deserialized (missing resources). Returns how many tabs were restored.
  */
 export function restoreWorkspaceEditorSession(
     ctx: WorkspaceContext,
-    session: WorkspaceEditorSessionV1,
+    session: WorkspaceEditorSessionV2,
     uiService: UIService,
 ): number {
     const store = uiService.getStore();
-    const groupId = session.groupId;
-    const openedIds: string[] = [];
-
-    for (const entry of session.tabs) {
-        const def = buildTabDefinition(ctx, entry);
-        if (!def) {
-            continue;
-        }
-        store.openEditorTabInGroup(def, groupId, false);
-        openedIds.push(def.id);
+    const layout = buildLayoutNode(ctx, session.layout);
+    if (!layout) {
+        return 0;
     }
 
-    const focus = session.focus;
-    const resolvedFocus =
-        focus && openedIds.includes(focus) ? focus : openedIds.length > 0 ? openedIds[openedIds.length - 1] : null;
+    store.restoreEditorLayout(layout);
 
-    if (resolvedFocus) {
-        store.setActiveEditorTabInGroup(resolvedFocus, groupId);
-        uiService.focus.setFocus(FocusArea.Editor, resolvedFocus);
+    const groups = collectLayoutGroups(layout);
+    const activeGroup = groups.find(group => group.id === session.activeGroupId) ?? groups[0];
+    if (activeGroup?.focus) {
+        uiService.focus.setFocus(FocusArea.Editor, activeGroup.focus);
     }
-    return openedIds.length;
+
+    return groups.reduce((total, group) => total + group.tabs.length, 0);
 }

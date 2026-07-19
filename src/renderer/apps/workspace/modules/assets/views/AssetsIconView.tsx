@@ -5,7 +5,7 @@ import { FolderPlus, Link, Upload, ChevronLeft } from "lucide-react";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
-import { ASSET_TYPE_ICONS, ASSET_TYPE_LABELS } from "../constants";
+import { ASSET_TYPE_ICONS } from "../constants";
 import { useWorkspace } from "../../../context";
 import { useTranslation } from "@/lib/i18n";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
@@ -207,7 +207,7 @@ export function AssetsIconView({
                                 <div className="flex items-center gap-2">
                                     <TypeIcon className="w-5 h-5 text-fg" />
                                     <div>
-                                        <p className="text-sm font-medium">{ASSET_TYPE_LABELS[type]}</p>
+                                        <p className="text-sm font-medium">{t(`assets.types.${type}`)}</p>
                                         <p className="text-xs text-fg-subtle">{tn("assets.iconView.assetCount", typeAssets.length)}</p>
                                     </div>
                                 </div>
@@ -286,7 +286,7 @@ export function AssetsIconView({
                                 </div>
                             ) : (
                                 <div className="mt-4 text-center text-xs text-fg-subtle">
-                                    {t("assets.emptyType", { label: ASSET_TYPE_LABELS[type].toLowerCase() })}
+                                    {t("assets.emptyType", { label: t(`assets.types.${type}`).toLowerCase() })}
                                 </div>
                             )}
                         </section>
@@ -329,7 +329,7 @@ function GroupIconTile({
     return (
         <div
             draggable
-            className={`nl-asset-drag-source border rounded-lg p-3 bg-fill-subtle flex flex-col gap-2 cursor-pointer hover:border-edge-strong ${
+            className={`nl-drag-source border rounded-lg p-3 bg-fill-subtle flex flex-col gap-2 cursor-pointer hover:border-edge-strong ${
                 isSelected ? "border-primary/80 bg-primary/10" : "border-transparent"
             } ${isDragging ? "opacity-50" : ""} ${isCut ? "opacity-40" : ""} ${isDragOverLocal ? "ring-1 ring-primary/50 bg-primary/10" : ""}`}
             onClick={(e) => {
@@ -409,7 +409,7 @@ function AssetIconTile({
     return (
         <div
             draggable
-            className={`nl-asset-drag-source border rounded-lg p-3 bg-fill-subtle flex items-start gap-3 cursor-pointer hover:border-edge-strong ${
+            className={`nl-drag-source border rounded-lg p-3 bg-fill-subtle flex items-start gap-3 cursor-pointer hover:border-edge-strong ${
                 isSelected ? "border-primary/80 bg-primary/10" : "border-transparent"
             } ${isDragging ? "opacity-50" : ""} ${
                 clipboard?.type === "cut" && clipboard.assets.some((a) => a.id === asset.id) ? "opacity-40" : ""
@@ -423,7 +423,7 @@ function AssetIconTile({
             onDragStart={(e) => handleDragStart?.(e, type, asset, false)}
             onDragEnd={() => handleDragEnd?.()}
         >
-            <div className="w-16 h-16 shrink-0 rounded-lg bg-gray-900/30 overflow-hidden flex items-center justify-center">
+            <div className="w-16 h-16 shrink-0 rounded-lg bg-surface-sunken overflow-hidden flex items-center justify-center">
                 {thumbnailUrl ? (
                     <img src={thumbnailUrl} alt={asset.name} draggable={false} className="w-full h-full object-cover" />
                 ) : (

@@ -42,7 +42,7 @@ const twMerge = extendTailwindMerge({
 /**
  * Merge class names with clsx (conditional/array support) and then
  * tailwind-merge (conflict resolution). The single canonical way to combine
- * Tailwind classes in Studio — prefer this over string concatenation so that
+ * Tailwind classes in Studio - prefer this over string concatenation so that
  * a caller-supplied `className` can reliably override a component's base
  * utilities.
  */

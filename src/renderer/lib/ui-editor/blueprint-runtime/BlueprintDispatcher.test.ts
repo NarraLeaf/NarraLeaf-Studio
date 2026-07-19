@@ -15,6 +15,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
@@ -36,6 +37,7 @@ import {
 import {
     countBlueprintBroadcastListeners,
     dispatchBlueprintBroadcastEvent,
+    dispatchWidgetsBlueprintEvent,
     dispatchBlueprintElementClickEvent,
     dispatchGlobalBlueprintEvent,
     dispatchSurfaceBlueprintEvent,
@@ -52,6 +54,13 @@ import {
 import { DebugBridge } from "./DebugBridge";
 import { BlueprintExecutionManager } from "./BlueprintExecutionManager";
 import { createExplicitBlueprintVariableRef } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
+
+/** Node-level tracing is verbose, which the bridge drops by default; assert it only with capture on. */
+function createTracingDebugBridge(): DebugBridge {
+    const debug = new DebugBridge();
+    debug.setVerboseCaptureEnabled(true);
+    return debug;
+}
 
 describe("BlueprintDispatcher", () => {
     it("dispatches top-level container init into a Log node", async () => {
@@ -142,7 +151,7 @@ describe("BlueprintDispatcher", () => {
                 },
             },
         };
-        const debug = new DebugBridge();
+        const debug = createTracingDebugBridge();
         const hostAdapter: UIHostAdapter = { host: "player" };
         const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
@@ -257,7 +266,7 @@ describe("BlueprintDispatcher", () => {
                 },
             },
         };
-        const debug = new DebugBridge();
+        const debug = createTracingDebugBridge();
         const hostAdapter: UIHostAdapter = { host: "player" };
 
         await dispatchBlueprintUiEvent({
@@ -438,7 +447,7 @@ describe("BlueprintDispatcher", () => {
                 },
             },
         };
-        const debug = new DebugBridge();
+        const debug = createTracingDebugBridge();
         const hostAdapter: UIHostAdapter = { host: "player" };
 
         await dispatchBlueprintUiEvent({
@@ -549,7 +558,7 @@ describe("BlueprintDispatcher", () => {
                 },
             },
         };
-        const debug = new DebugBridge();
+        const debug = createTracingDebugBridge();
         const hostAdapter: UIHostAdapter = { host: "player" };
 
         await dispatchBlueprintElementClickEvent({
@@ -1156,7 +1165,7 @@ describe("BlueprintDispatcher", () => {
                 },
             },
         };
-        const debug = new DebugBridge();
+        const debug = createTracingDebugBridge();
         const hostAdapter: UIHostAdapter = { host: "player" };
 
         await dispatchSurfaceBlueprintEvent({
@@ -1247,7 +1256,7 @@ describe("BlueprintDispatcher", () => {
                     },
                 },
             };
-            const debug = new DebugBridge();
+            const debug = createTracingDebugBridge();
             const executionManager = new BlueprintExecutionManager();
             executionManager.openScope(runtimeScopeId);
             const hostAdapter: UIHostAdapter = { host: "player" };
@@ -2463,5 +2472,161 @@ describe("invokeBlueprintFnCall", () => {
                 debug: new DebugBridge(),
             }),
         ).rejects.toThrow();
+    });
+});
+
+describe("ambient window event dispatch", () => {
+    const listenerBlueprintId = "bp-fs-listener";
+
+    /** A widget blueprint whose On Fullscreen Changed head stores the `isFullscreen` pin. */
+    function fullscreenWidgetDocuments(): { blueprintDocument: BlueprintDocument; document: UIDocument } {
+        const blueprintDocument: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
+            blueprints: {
+                [listenerBlueprintId]: {
+                    id: listenerBlueprintId,
+                    name: "Listener Logic",
+                    owner: { kind: "widgetMain", surfaceId: "surface", elementId: "listener" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: {
+                        variables: {
+                            state: { id: "state", name: "state", valueType: "boolean", defaultValue: null },
+                        },
+                        fields: {},
+                        functions: {},
+                    },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                fs: {
+                                    id: "fs",
+                                    graph: {
+                                        nodes: {
+                                            head: {
+                                                id: "head",
+                                                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
+                                                params: {},
+                                            },
+                                            setState: {
+                                                id: "setState",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                params: { variableId: "state" },
+                                            },
+                                        },
+                                        edges: [
+                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setState", port: "in" } },
+                                            {
+                                                from: { nodeId: "head", port: "isFullscreen" },
+                                                to: { nodeId: "setState", port: "value" },
+                                            },
+                                        ],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {
+                "widgetMain:surface:listener": {
+                    activeBlueprintId: listenerBlueprintId,
+                    privateBlueprintIds: [listenerBlueprintId],
+                    initializedFrontend: "visual",
+                },
+            },
+        };
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                {
+                    id: "surface",
+                    name: "Surface",
+                    host: "player",
+                    kind: "stageSurface",
+                    designSize: { width: 320, height: 180 },
+                    rootElementId: "root",
+                    mount: { kind: "slot", slotId: "onStage" },
+                },
+            ],
+            elements: {
+                root: {
+                    id: "root",
+                    type: "nl.root",
+                    parentId: null,
+                    childrenIds: ["listener"],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+                listener: {
+                    id: "listener",
+                    type: "nl.button",
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 100, height: 32 },
+                },
+            },
+        };
+        return { blueprintDocument, document };
+    }
+
+    async function dispatchFullscreen(isFullscreen: boolean): Promise<unknown> {
+        releaseBlueprintWidgetLocals("surface", "listener", listenerBlueprintId);
+        const { blueprintDocument, document } = fullscreenWidgetDocuments();
+        await dispatchWidgetsBlueprintEvent({
+            document,
+            blueprintDocument,
+            surfaceId: "surface",
+            eventName: "windowFullscreenChanged",
+            eventPayload: { isFullscreen },
+            hostAdapter: { host: "player" },
+            debug: new DebugBridge(),
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
+        const locals = acquireBlueprintWidgetLocals(
+            "surface",
+            "listener",
+            listenerBlueprintId,
+            blueprintDocument.blueprints[listenerBlueprintId]!,
+        );
+        const state = locals.state;
+        releaseBlueprintWidgetLocals("surface", "listener", listenerBlueprintId);
+        return state;
+    }
+
+    it("fans windowFullscreenChanged out to a listening widget blueprint", async () => {
+        // The head's isFullscreen pin is fed from the payload key of the same name.
+        expect(await dispatchFullscreen(true)).toBe(true);
+        expect(await dispatchFullscreen(false)).toBe(false);
+    });
+
+    it("ignores widget blueprints that do not listen for the event", async () => {
+        releaseBlueprintWidgetLocals("surface", "listener", listenerBlueprintId);
+        const { blueprintDocument, document } = fullscreenWidgetDocuments();
+        await dispatchWidgetsBlueprintEvent({
+            document,
+            blueprintDocument,
+            surfaceId: "surface",
+            eventName: "someOtherEvent",
+            eventPayload: { isFullscreen: true },
+            hostAdapter: { host: "player" },
+            debug: new DebugBridge(),
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
+        const locals = acquireBlueprintWidgetLocals(
+            "surface",
+            "listener",
+            listenerBlueprintId,
+            blueprintDocument.blueprints[listenerBlueprintId]!,
+        );
+        expect(locals.state).toBeNull();
+        releaseBlueprintWidgetLocals("surface", "listener", listenerBlueprintId);
     });
 });

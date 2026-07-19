@@ -84,7 +84,7 @@ export function SearchResultsPopup({
     const popup = (
         <div
             className={`
-                fixed z-50 bg-surface-sunken border border-edge-strong rounded-md shadow-xl
+                fixed z-50 bg-surface-overlay border border-edge-strong rounded-md shadow-xl
                 max-w-sm w-full max-h-80 overflow-y-auto
                 ${className}
             `}

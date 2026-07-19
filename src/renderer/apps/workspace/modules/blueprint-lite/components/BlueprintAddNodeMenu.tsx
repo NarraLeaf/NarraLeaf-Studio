@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintPaletteContext } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
+    AppWindow,
     Box,
     Bug,
     Database,
@@ -72,6 +73,8 @@ function getCategoryVisual(categoryId: string): CategoryVisual {
             return { icon: Box, color: "#b9c47a" };
         case "Navigation":
             return { icon: MapIcon, color: "#7ec7c1" };
+        case "App":
+            return { icon: AppWindow, color: "#8fb8c7" };
         case "Backlog":
             return { icon: HistoryIcon, color: "#c7a98f" };
         case "Variables":
@@ -151,8 +154,11 @@ export function BlueprintAddNodeMenu({
     }, [anchor.x, anchor.y]);
 
     const filteredEntries = useMemo(
-        () => filterBlueprintAddNodeEntries(entries, activeCategoryId, query),
-        [activeCategoryId, entries, query],
+        () => filterBlueprintAddNodeEntries(entries, activeCategoryId, query, {
+            title: displayName => resolveBlueprintNodeTitle(displayName, t),
+            category: category => resolveBlueprintCategoryLabel(category, t),
+        }),
+        [activeCategoryId, entries, query, t],
     );
     const itemCount = filteredEntries.length;
     const listMaxHeight = Math.max(120, Math.min(MENU_MAX_H - MENU_CHROME_H, layout.maxHeight - MENU_CHROME_H));
@@ -297,7 +303,7 @@ export function BlueprintAddNodeMenu({
             />
             <div
                 role="presentation"
-                className="fixed z-[101] flex max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-md border border-edge bg-[#101318] shadow-xl"
+                className="fixed z-[101] flex max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-md border border-edge bg-surface shadow-xl"
                 style={{ left: layout.left, top: layout.top, width: MENU_W, maxHeight: layout.maxHeight }}
                 onContextMenu={e => e.preventDefault()}
             >
@@ -339,7 +345,7 @@ export function BlueprintAddNodeMenu({
                                     className={[
                                         "flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors",
                                         active
-                                            ? "border-primary/45 bg-primary/15 text-white"
+                                            ? "border-primary/45 bg-primary/15 text-fg"
                                             : "border-edge bg-fill-subtle text-fg-muted hover:bg-fill hover:text-fg",
                                     ].join(" ")}
                                     onClick={() => setActiveCategoryId(category.id)}

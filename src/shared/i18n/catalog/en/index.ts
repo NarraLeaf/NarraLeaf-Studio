@@ -1,5 +1,5 @@
 /**
- * English catalog — the source of truth for every translatable string.
+ * English catalog - the source of truth for every translatable string.
  *
  * One file per top-level namespace (see this directory). Add a namespace per
  * app/surface and register it below. Leaves are strings; interpolate with
@@ -15,6 +15,7 @@ import { settings } from "./settings";
 import { launcher } from "./launcher";
 import { workspace } from "./workspace";
 import { story } from "./story";
+import { storyExpr } from "./storyExpr";
 import { storyInspector } from "./storyInspector";
 import { assets } from "./assets";
 import { blueprint } from "./blueprint";
@@ -36,6 +37,8 @@ import { devMode } from "./devMode";
 import { pluginPermission } from "./pluginPermission";
 import { dialogs } from "./dialogs";
 import { defaultDoc } from "./defaultDoc";
+import { build } from "./build";
+import { dashboard } from "./dashboard";
 
 export const en = {
     common,
@@ -44,6 +47,7 @@ export const en = {
     launcher,
     workspace,
     story,
+    storyExpr,
     storyInspector,
     assets,
     blueprint,
@@ -65,4 +69,6 @@ export const en = {
     pluginPermission,
     dialogs,
     defaultDoc,
+    build,
+    dashboard,
 } as const;

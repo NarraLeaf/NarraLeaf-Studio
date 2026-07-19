@@ -1,4 +1,4 @@
-/** `dialogs` — reusable UI primitives: window controls, modals, selects, and input dialogs. */
+/** `dialogs` - reusable UI primitives: window controls, modals, selects, and input dialogs. */
 export const dialogs = {
     window: {
         minimize: "Minimize",

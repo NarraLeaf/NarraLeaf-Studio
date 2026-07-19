@@ -1,7 +1,9 @@
 import { EditorTabComponentProps, FocusContext, PanelComponentProps } from "@/lib/workspace/services/ui/types";
+import type { WorkspaceContext } from "@/lib/workspace/services/services";
 import { Workspace } from "@/lib/workspace/workspace";
 import { ComponentType, ReactNode } from "react";
 import { TranslationKey } from "@shared/i18n";
+import { EditMenuRole, NativeMenuSlot } from "@shared/types/menu";
 
 /**
  * Position where a panel can be displayed
@@ -18,9 +20,21 @@ export enum PanelPosition {
 export interface PanelDefinition<TPayload = any> {
     id: string;
     title: string;
+    /** i18n key for the title; resolved reactively at render so it follows a live language switch. */
+    titleKey?: TranslationKey;
     icon: ReactNode;
     position: PanelPosition;
-    component: ComponentType<PanelComponentProps<TPayload>>;
+    /** Omitted only by rail actions, which have no panel body to render. */
+    component?: ComponentType<PanelComponentProps<TPayload>>;
+    /**
+     * Turns the rail icon into a button: clicking runs this instead of opening a panel body, and
+     * the icon never enters the active state.
+     *
+     * This is how a rail entry can lead somewhere other than the sidebar - the dashboard uses it to
+     * open its editor tab. Entries that set this leave `component` undefined. Honored by the left
+     * rail only; the right and bottom docks have no button affordance.
+     */
+    railAction?: (workspace: WorkspaceContext) => void;
     defaultVisible?: boolean;
     order?: number; // For sorting panels
     badge?: string | number;
@@ -71,6 +85,12 @@ export interface ActionGroup {
      */
     items?: ActionMenuItem[];
     order?: number;
+    /**
+     * Where this group lands on the macOS menu bar (default `top-level`). The group declares its
+     * own placement so the main process never has to recognise it by id. Ignored elsewhere: on
+     * other platforms the group is only ever an in-app dropdown.
+     */
+    menuSlot?: NativeMenuSlot;
 }
 
 /**
@@ -90,6 +110,22 @@ export interface ActionDefinition {
     order?: number;
     disabled?: boolean;
     visible?: boolean;
+    /**
+     * Marks the action as a toggle and carries its current state. Renders as a checkmark in the
+     * in-app dropdown and as a native checkbox item on the macOS menu bar.
+     */
+    checked?: boolean;
+    /**
+     * Declares that this action is the focused surface's version of a standard Edit-menu
+     * command. The macOS Edit menu then routes that command (Copy/Cut/Paste/Delete) here instead
+     * of listing the action a second time below the built-in items.
+     *
+     * This is also how the action becomes reachable by Cmd+C/X/V on macOS, where those keys are
+     * Edit-menu key equivalents and never reach `shortcut`'s `ctrl+*` binding. Use it only for
+     * the four standard commands; any other Cmd shortcut needs an explicit `meta+…` keybinding
+     * (see BlueprintEntryTab), since the native menu has nowhere to hang it.
+     */
+    menuRole?: EditMenuRole;
     when?: (context: FocusContext) => boolean;
     badge?: string | number; // Badge text/count
     group?: string; // Group ID this action belongs to

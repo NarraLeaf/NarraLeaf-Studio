@@ -129,7 +129,7 @@ export function pasteBlueprintGraphClipboardPayload(input: {
     /**
      * Blueprint that receives the paste. When a Call Fn node is pasted TOGETHER with its
      * Fn head, the call is re-pointed at the pasted head (which got a fresh node id).
-     * A lone Call Fn keeps its fnRef untouched — validation reports fn.call_target_not_found
+     * A lone Call Fn keeps its fnRef untouched - validation reports fn.call_target_not_found
      * when the target is not visible from the destination (e.g. another surface).
      */
     targetBlueprintId?: string;

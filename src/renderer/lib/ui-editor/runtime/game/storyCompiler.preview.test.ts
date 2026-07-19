@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { DevTools } from "narraleaf-react";
 import type { StoryBlock, StoryDocument } from "@shared/types/story";
+import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { compileStagePreviewToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 
 function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[] = Object.keys(blocks)): StoryDocument {
     return {
-        schemaVersion: 3,
+        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
         id: "story-1",
         name: "Story",
         chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1", "scene-2"] }],
@@ -41,6 +42,7 @@ async function compilePreview(
     targetBlockId: string | null,
     resolveAssetUrl?: (assetId: string) => string,
     gate?: { onStagePosed: () => void; revealGate: Promise<void> },
+    continuous?: boolean,
 ) {
     const snapshot = computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId });
     return compileStagePreviewToNlr({
@@ -53,8 +55,12 @@ async function compilePreview(
         revealGate: gate?.revealGate,
         onBeforeTarget: () => {},
         onAfterTarget: () => {},
+        continuous,
     });
 }
+
+const compilePlayback = (document: StoryDocument, targetBlockId: string | null) =>
+    compilePreview(document, targetBlockId, undefined, undefined, true);
 
 /** Per-statement action-type arrays of the compiled preview scene. */
 function sceneStatementTypes(scene: unknown): string[][] {
@@ -191,6 +197,86 @@ describe("compileStagePreviewToNlr", () => {
         expect(compiled.diagnostics).toEqual(expect.arrayContaining([
             { level: "warning", blockId: "jump", message: "Preview ignores scene jumps." },
         ]));
+    });
+
+    describe("continuous playback", () => {
+        it("compiles the rest of the scene, not just the start row", async () => {
+            const document = baseDocument({
+                before: say("before", "Already happened."),
+                target: say("target", "Start here."),
+                after: say("after", "And keep going."),
+            }, ["before", "target", "after"]);
+
+            const held = await compilePreview(document, "target");
+            expect(held.actionIdBindings.map(binding => binding.blockId)).not.toContain("after");
+
+            const played = await compilePlayback(document, "target");
+            const boundBlockIds = played.actionIdBindings.map(binding => binding.blockId);
+            expect(boundBlockIds).toContain("target");
+            expect(boundBlockIds).toContain("after");
+            // The prefix is still snapshot state, never replayed.
+            expect(boundBlockIds).not.toContain("before");
+            expect(played.playbackStop).toEqual({ reason: "sceneEnd" });
+        });
+
+        it("entering a menu option plays that branch and resumes after the menu", async () => {
+            const document = baseDocument({
+                choice: block("choice", "nodeAction", { action: "choice", prompt: { textId: "t", value: "Pick", role: "choicePrompt" } }, null, ["optA", "optB"]),
+                optA: block("optA", "nodeAction", { action: "choiceOption", text: { textId: "ta", value: "A", role: "choiceText" } }, "choice", ["a-say"]),
+                "a-say": say("a-say", "Took A.", "optA"),
+                optB: block("optB", "nodeAction", { action: "choiceOption", text: { textId: "tb", value: "B", role: "choiceText" } }, "choice", ["b-say"]),
+                "b-say": say("b-say", "Took B.", "optB"),
+                after: say("after", "Back on the main road."),
+            }, ["choice", "after"]);
+
+            const compiled = await compilePlayback(document, "optA");
+            const boundBlockIds = compiled.actionIdBindings.map(binding => binding.blockId);
+            expect(boundBlockIds).toEqual(["a-say", "after"]);
+            // No menu is rendered: the choice was made by starting here.
+            const statements = ((compiled.scene as { actions?: unknown[] }).actions ?? []) as unknown[];
+            expect(statements.some(statement => Array.isArray((statement as { choices?: unknown })?.choices))).toBe(false);
+        });
+
+        it("holds before a scene jump and reports where playback ended", async () => {
+            const document = baseDocument({
+                target: say("target", "Last line."),
+                jump: block("jump", "jump", { targetSceneId: "scene-2" }),
+            }, ["target", "jump"]);
+
+            const compiled = await compilePlayback(document, "target");
+            expect(compiled.playbackStop).toEqual({ reason: "jump", blockId: "jump", targetSceneId: "scene-2" });
+            expect(compiled.diagnostics).toEqual(expect.arrayContaining([
+                expect.objectContaining({ level: "warning", blockId: "jump", message: expect.stringContaining("Scene 2") }),
+            ]));
+        });
+
+        it("reports a jump nested inside a container instead of erroring on it", async () => {
+            // The walk only sees blocks it emits directly, so this jump is reached by the compiler's
+            // own recursion. It used to resolve against the single-scene `allScenes` and report the
+            // author's own scene as missing.
+            const document = baseDocument({
+                target: say("target", "Last line."),
+                group: block("group", "control", { control: "group" }, null, ["nested"]),
+                nested: block("nested", "jump", { targetSceneId: "scene-2" }, "group"),
+                after: say("after", "Never reached in the real game."),
+            }, ["target", "group", "after"]);
+
+            const compiled = await compilePlayback(document, "target");
+            expect(compiled.playbackStop).toEqual({ reason: "jump", blockId: "nested", targetSceneId: "scene-2" });
+            expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
+        });
+
+        it("does not re-enter the previewed scene when a nested jump points back at it", async () => {
+            const document = baseDocument({
+                target: say("target", "Last line."),
+                group: block("group", "control", { control: "group" }, null, ["nested"]),
+                nested: block("nested", "jump", { targetSceneId: "scene-1" }, "group"),
+            }, ["target", "group"]);
+
+            const compiled = await compilePlayback(document, "target");
+            expect(compiled.playbackStop).toEqual({ reason: "jump", blockId: "nested", targetSceneId: "scene-1" });
+            expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
+        });
     });
 
     it("seeds scene variables so the target's interpolations read accumulated values", async () => {

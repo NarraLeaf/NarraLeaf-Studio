@@ -25,7 +25,8 @@ export class JSONService extends AssetServiceBase {
         const size = new Blob([content]).size;
 
         try {
-            const data = JSON.parse(content);
+            // Same BOM tolerance as the import validator, so a file that passed import also reads.
+            const data = JSON.parse(content.charCodeAt(0) === 0xfeff ? content.slice(1) : content);
 
             return {
                 success: true,

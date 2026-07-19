@@ -14,7 +14,7 @@ export function BlueprintFlowZoomControls() {
 
     return (
         <div
-            className="absolute bottom-3 left-3 z-[5] flex flex-col gap-0.5 rounded-lg border border-edge bg-surface-sunken p-0.5 shadow-lg"
+            className="absolute bottom-3 left-3 z-[5] flex flex-col gap-0.5 rounded-lg border border-edge bg-surface-overlay p-0.5 shadow-lg"
             onPointerDown={e => e.stopPropagation()}
         >
             <Button

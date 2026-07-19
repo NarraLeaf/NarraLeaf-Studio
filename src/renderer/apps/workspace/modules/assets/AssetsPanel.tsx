@@ -390,13 +390,17 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
             id: groupId,
             label: t("common.edit"),
             order: 20,
+            // These are this panel's versions of the standard editing commands, so on macOS they
+            // belong under the system Edit menu rather than in a second menu also called Edit.
+            menuSlot: "edit",
             actions: [
                 {
                     id: `${groupId}-copy`,
                     label: t("common.copy"),
                     icon: <Copy className="w-4 h-4" />,
                     tooltip: t("assets.actions.copyTooltip"),
-                    shortcut: "ctrl+c",
+                    shortcut: "mod+c",
+                    menuRole: "copy",
                     onClick: (_workspace) => handleCopyRef.current(),
                     disabled: !hasSelection || actionLoading,
                     when,
@@ -407,7 +411,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     label: t("common.cut"),
                     icon: <Scissors className="w-4 h-4" />,
                     tooltip: t("assets.actions.cutTooltip"),
-                    shortcut: "ctrl+x",
+                    shortcut: "mod+x",
+                    menuRole: "cut",
                     onClick: (_workspace) => handleCutRef.current(),
                     disabled: !hasSelection || actionLoading,
                     when,
@@ -418,7 +423,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     label: t("common.paste"),
                     icon: <Clipboard className="w-4 h-4" />,
                     tooltip: t("assets.actions.pasteTooltip"),
-                    shortcut: "ctrl+v",
+                    shortcut: "mod+v",
+                    menuRole: "paste",
                     onClick: (_workspace) => handlePasteRef.current(),
                     disabled: !hasClipboardContent || actionLoading,
                     when,
@@ -430,6 +436,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     icon: <Trash className="w-4 h-4" />,
                     tooltip: t("assets.actions.deleteTooltip"),
                     shortcut: "delete",
+                    menuRole: "delete",
                     onClick: (_workspace) => handleDeleteRef.current(),
                     disabled: !hasSelection || actionLoading,
                     when,
@@ -454,7 +461,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     }
 
     if (error) {
-        return <div className="p-4 text-red-400 flex items-start gap-2"><AlertCircle className="w-4 h-4" /> <div><p>{t("assets.loadError")}</p><p className="text-xs">{error}</p></div></div>;
+        return <div className="p-4 text-danger flex items-start gap-2"><AlertCircle className="w-4 h-4" /> <div><p>{t("assets.loadError")}</p><p className="text-xs">{error}</p></div></div>;
     }
 
     const contextValue = {
@@ -644,7 +651,7 @@ function ViewModeToggle({ mode, onChange }: { mode: AssetViewMode; onChange: (mo
                     title={label}
                     aria-pressed={mode === id}
                     onClick={() => onChange(id)}
-                    className={`p-1 rounded ${mode === id ? "bg-primary/80 text-white" : "text-fg-muted hover:bg-fill"}`}
+                    className={`p-1 rounded ${mode === id ? "bg-primary/80 text-on-primary" : "text-fg-muted hover:bg-fill"}`}
                 >
                     <Icon className="w-4 h-4" />
                 </button>
