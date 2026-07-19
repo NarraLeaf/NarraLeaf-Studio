@@ -181,7 +181,7 @@ export const assets = {
         typePlaceholder: "Type to preview your own text…",
     },
     jsonPreview: {
-        invalid: "This file is not valid JSON — showing raw content.",
-        truncated: "File is too large to pretty-print — showing the beginning only.",
+        invalid: "This file is not valid JSON, showing raw content.",
+        truncated: "File is too large to pretty-print, showing the beginning only.",
     },
 } as const;

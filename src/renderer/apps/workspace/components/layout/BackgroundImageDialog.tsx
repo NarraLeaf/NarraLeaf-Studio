@@ -9,6 +9,7 @@ import { Slider } from "@/lib/components/elements/Slider";
 import { useTranslation } from "@/lib/i18n";
 import {
     BACKGROUND_ANCHORS,
+    BACKGROUND_BLUR_MAX,
     BACKGROUND_FILLS,
     BACKGROUND_KEYS,
     DEFAULT_BACKGROUND,
@@ -170,6 +171,21 @@ export function BackgroundImageDialog() {
                         onValueChange={value => write("opacity", value)}
                     />
                     <span className="w-12 shrink-0 text-right tabular-nums text-fg-muted">{current.opacity}%</span>
+                </label>
+
+                <label className="flex items-center gap-3">
+                    <span className="w-24 shrink-0 text-fg-muted">{t("workspace.shell.background.blur")}</span>
+                    <Slider
+                        className="min-w-0 flex-1"
+                        value={current.blur}
+                        min={0}
+                        max={BACKGROUND_BLUR_MAX}
+                        step={1}
+                        onValueChange={value => write("blur", value)}
+                    />
+                    <span className="w-12 shrink-0 text-right tabular-nums text-fg-muted">
+                        {current.blur === 0 ? t("workspace.shell.background.blurOff") : `${current.blur}px`}
+                    </span>
                 </label>
 
                 <div className="flex items-start gap-3">

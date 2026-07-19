@@ -72,7 +72,7 @@ export function NotificationsPanel() {
                                 <div className="flex items-start gap-2">
                                     <span className={`mt-0.5 shrink-0 ${meta.className}`}>{meta.icon}</span>
                                     <div className="min-w-0 flex-1">
-                                        <div className="text-sm text-fg-muted">{entry.message}</div>
+                                        <div className="nl-selectable-text text-sm text-fg-muted">{entry.message}</div>
                                         {entry.detail && (
                                             <div className="mt-0.5 text-xs leading-5 text-fg-subtle">
                                                 {entry.detail}

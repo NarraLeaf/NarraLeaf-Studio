@@ -336,11 +336,15 @@ export function DevModeContent(props: DevModeContentProps) {
     }), [requireProjectRef]);
 
     const quitApplication = useCallback(async (): Promise<void> => {
-        const result = await getInterface().devMode.stop();
+        if (!projectPath) {
+            throw new Error("Quit failed: no project");
+        }
+        // Names its own project: another project's Dev Mode session may be running alongside.
+        const result = await getInterface().devMode.stop(projectPath);
         if (!result.success) {
             throw new Error(result.error ?? "Quit failed");
         }
-    }, []);
+    }, [projectPath]);
 
     const getFullscreen = useCallback(async (): Promise<boolean> => {
         const result = await getInterface().devMode.getFullscreen();
