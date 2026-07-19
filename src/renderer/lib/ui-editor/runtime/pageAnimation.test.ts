@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getPageAnimationDurationMs, resolvePageAnimationMotion, shouldBlockPageAnimationExit } from "./pageAnimation";
+import {
+    getPageAnimationDurationMs,
+    resolvePageAnimationMotion,
+    scalePageMotionDistances,
+    shouldBlockPageAnimationExit,
+} from "./pageAnimation";
 
 function transitionDuration(target: { transition?: unknown }): number | undefined {
     const transition = target.transition;
@@ -167,5 +172,31 @@ describe("page animation runtime resolver", () => {
             exitBlocking: true,
         }, "enter", true)).toBe(0);
         expect(motion.exitBlocking).toBe(false);
+    });
+
+    it("scales numeric travel distances into backing px for out-of-tree layers", () => {
+        const motion = resolvePageAnimationMotion({
+            settings: {
+                enter: "slide",
+                exit: "slide",
+                enterDirection: "right",
+                exitDirection: "left",
+                enterAngleDegrees: 0,
+                exitAngleDegrees: 180,
+                enterDurationSeconds: 0.3,
+                exitDurationSeconds: 0.3,
+                exitBlocking: false,
+            },
+        });
+
+        // Distances are authored in design px (48); a layer rendered outside the
+        // design→backing transform multiplies by the render scale.
+        const scaledInitial = scalePageMotionDistances(motion.initial, 0.5);
+        expect(scaledInitial).toMatchObject({ opacity: 0, x: 24, y: 0 });
+        const scaledExit = scalePageMotionDistances(motion.exit, 2);
+        expect(scaledExit).toMatchObject({ x: -96, y: 0 });
+        // Non-positional channels are untouched, and scale 1 is the identity.
+        expect(scaledInitial.scale).toBe(motion.initial.scale);
+        expect(scalePageMotionDistances(motion.initial, 1)).toBe(motion.initial);
     });
 });

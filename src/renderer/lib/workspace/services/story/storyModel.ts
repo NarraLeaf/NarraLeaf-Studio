@@ -37,6 +37,8 @@ import {
     StoryVariableValueType,
 } from "@shared/types/story";
 import { assertValidStoryEntityId, assertValidStoryId, isValidStoryEntityId, isValidStoryId } from "@shared/utils/storyId";
+import type { StoryExpressionScope } from "@shared/utils/storyExpressionParser";
+import { createStoryExpressionScope, parseStoryExpression } from "@shared/utils/storyExpressionParser";
 
 export type StoryIdFactory = () => string;
 
@@ -306,7 +308,19 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     if (version < 3) {
         migrated = migrateStoryDocumentV2toV3(migrated);
     }
-    return migrated;
+    if (version < 5) {
+        migrated = migrateStoryDocumentV4toV5(migrated);
+    }
+    // v4 (the `invalid` block kind and dialogue's `speakerName`) is purely additive: a v3 document is
+    // already a valid v4 one, so there is no step for it - only the stamp.
+    //
+    // The stamp is unconditional, and has to be. Each migrator above ends by writing
+    // STORY_DOCUMENT_SCHEMA_VERSION rather than the version it actually produces, so the ladder only
+    // *looks* like it walks version by version: bumping the constant without adding a step left v3
+    // documents falling through untouched and then failing assertSupportedStoryDocument, while the
+    // v2 tests kept passing because V2toV3 stamps whatever the constant currently says. Landing the
+    // stamp here means the next additive bump cannot reopen that hole.
+    return { ...migrated, schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION };
 }
 
 function migrateStoryDocumentV1toV2(document: StoryDocument): StoryDocument {
@@ -339,6 +353,61 @@ function migrateStoryDocumentV1toV2(document: StoryDocument): StoryDocument {
     delete migrated.studioGlobals;
     delete migrated.gamePersistents;
     return migrated;
+}
+
+// ---------------------------------------------------------------------------
+// Schema migration (v4 → v5): parsed expression conditions.
+//   `{ kind: "expression", source }` held raw text that nothing could evaluate - the compiler
+//   returned a constant false and the inspector showed a "not supported" banner. v5 parses that
+//   source into a StoryExpression against the document's own declared variables, so conditions an
+//   author wrote years ago start working. Source that no longer parses (or names a variable that
+//   has since been deleted) becomes an `invalid` tree: it still evaluates false, exactly as before,
+//   but now says so in the row rather than looking like a condition that simply never matched.
+// ---------------------------------------------------------------------------
+
+type LegacyExpressionConditionFields = { source?: string };
+
+function migrateStoryDocumentV4toV5(document: StoryDocument): StoryDocument {
+    const scenes: Record<StorySceneId, StoryScene> = {};
+    for (const [sceneId, scene] of Object.entries(document.scenes)) {
+        const scope = createStoryExpressionScope(listStoryVariableEntries(document, scene));
+        const blocks: Record<StoryBlockId, StoryBlock> = {};
+        for (const [blockId, block] of Object.entries(scene.blocks)) {
+            blocks[blockId] = migrateBlockExpressionCondition(block, scope);
+        }
+        scenes[sceneId] = { ...scene, blocks };
+    }
+    return { ...document, schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION, scenes };
+}
+
+function migrateBlockExpressionCondition(block: StoryBlock, scope: StoryExpressionScope): StoryBlock {
+    if (block.kind !== "control" || block.payload.control !== "conditionBranch") {
+        return block;
+    }
+    const condition = block.payload.condition as (StoryConditionRef & LegacyExpressionConditionFields) | undefined;
+    if (condition?.kind !== "expression" || typeof condition.source !== "string") {
+        return block;
+    }
+    const { expression } = parseStoryExpression(condition.source, scope);
+    return { ...block, payload: { ...block.payload, condition: { kind: "expression", expression } } };
+}
+
+/**
+ * Every variable an expression in this scene may name, as the scope chain sees them. Persistent
+ * variables are declared in the blueprint document, which migration has no handle on - a v4
+ * expression naming one becomes `invalid` rather than silently binding to the wrong scope.
+ */
+function listStoryVariableEntries(document: StoryDocument, scene: StoryScene): { name: string; ref: StoryVariableRef }[] {
+    return [
+        ...Object.values(scene.sceneVariables ?? {}).map(def => ({
+            name: def.name,
+            ref: { scope: "scene", variableId: def.id } as StoryVariableRef,
+        })),
+        ...Object.values(document.savedVariables ?? {}).map(def => ({
+            name: def.name,
+            ref: { scope: "saved", variableId: def.id } as StoryVariableRef,
+        })),
+    ];
 }
 
 // ---------------------------------------------------------------------------
@@ -1160,4 +1229,108 @@ function isNodeTextPayload(payload: StoryBlock["payload"]): payload is StoryNode
 
 function isStoryTextSegment(value: unknown): value is StoryTextSegment {
     return Boolean(value && typeof value === "object" && "textId" in value && "value" in value);
+}
+
+/** An unresolved command line, located well enough for the console to send the author to it. */
+export type InvalidStoryBlockRef = {
+    storyId: StoryId;
+    storyName: string;
+    sceneId: StorySceneId;
+    sceneName: string;
+    blockId: StoryBlockId;
+    /** The line as the author typed it. */
+    source: string;
+};
+
+/**
+ * Find every unresolved command line in a story.
+ *
+ * Preview compiles around these (a half-typed command is a normal thing to have on screen while
+ * writing), which is exactly why the build has to be the thing that refuses them - otherwise an
+ * unfinished line ships, and the whole point of making it a distinct block kind is lost.
+ */
+export function collectInvalidBlocks(document: StoryDocument): InvalidStoryBlockRef[] {
+    const found: InvalidStoryBlockRef[] = [];
+    for (const scene of Object.values(document.scenes)) {
+        for (const block of Object.values(scene.blocks)) {
+            if (block.kind === "invalid") {
+                found.push({
+                    storyId: document.id,
+                    storyName: document.name,
+                    sceneId: scene.id,
+                    sceneName: scene.name,
+                    blockId: block.id,
+                    source: block.payload.source,
+                });
+            }
+        }
+    }
+    return found;
+}
+
+/** A speaker the author typed that no Studio character backs, and every line currently using it. */
+export type TempSpeakerRef = {
+    name: string;
+    blockIds: StoryBlockId[];
+};
+
+/**
+ * Every temp speaker alive in a story, in first-appearance order.
+ *
+ * "Alive" is derived, not stored: a temp speaker exists exactly as long as some line still uses it,
+ * so deleting the last line that names one retires it. That is what lets the speaker picker offer
+ * previously-used names back without keeping a registry that drifts from the document.
+ *
+ * `characterId` losing its character does NOT make a line a temp speaker - resolving that is the
+ * caller's job, since only it knows which characters exist.
+ */
+export function collectTempSpeakers(document: StoryDocument): TempSpeakerRef[] {
+    const byName = new Map<string, TempSpeakerRef>();
+    for (const scene of Object.values(document.scenes)) {
+        for (const block of Object.values(scene.blocks)) {
+            if (block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+                continue;
+            }
+            const name = block.payload.speakerName?.trim();
+            if (!name || block.payload.characterId?.trim()) {
+                continue;
+            }
+            const existing = byName.get(name);
+            if (existing) {
+                existing.blockIds.push(block.id);
+            } else {
+                byName.set(name, { name, blockIds: [block.id] });
+            }
+        }
+    }
+    return [...byName.values()];
+}
+
+/**
+ * Bind every line spoken by a temp speaker to a real character, in place.
+ *
+ * `speakerName` is dropped rather than kept as a fallback: once the line has a character, the name
+ * is the character's to own, and a stale copy here would silently win back if the character were
+ * ever deleted. Returns the number of lines rebound.
+ */
+export function promoteTempSpeaker(document: StoryDocument, name: string, characterId: string): number {
+    const target = name.trim();
+    if (!target || !characterId.trim()) {
+        return 0;
+    }
+    let rebound = 0;
+    for (const scene of Object.values(document.scenes)) {
+        for (const block of Object.values(scene.blocks)) {
+            if (block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+                continue;
+            }
+            if (block.payload.speakerName?.trim() !== target || block.payload.characterId?.trim()) {
+                continue;
+            }
+            const { speakerName: _dropped, ...rest } = block.payload;
+            block.payload = { ...rest, characterId };
+            rebound += 1;
+        }
+    }
+    return rebound;
 }

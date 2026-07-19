@@ -15,7 +15,7 @@ import {
 import type { AppearanceModel, AppearanceRowValue, TextAppearancePropertyKey } from "@shared/types/ui-editor/appearance";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
-import { listLocalizationKeyOptions } from "@/lib/ui-editor/widget-modules/shared/localizationKeyOptions";
+import { createLocalizationKeyField } from "@/lib/ui-editor/widget-modules/shared/LocalizationKeyField";
 import type {
   CustomFieldProps,
   IconButtonSelection,
@@ -124,6 +124,14 @@ function TextAppearanceField(props: CustomFieldProps<UIInspectorData>) {
   );
 }
 
+const TextLocalizationKeyField = createLocalizationKeyField({
+  getKey: element => getTextProps(element).localizationKey ?? "",
+  setKey: (data, value) => {
+    const live = data.documentService.getDocument().elements[data.element.id] ?? data.element;
+    data.documentService.updateElementProps(live.id, { localizationKey: value });
+  },
+});
+
 const TextBlueprintValueField = createBlueprintValueField({
   propPath: "text",
   valueType: "string",
@@ -138,7 +146,7 @@ const TextBlueprintValueField = createBlueprintValueField({
     const textProps = getTextProps(liveElement);
     return (
       <textarea
-        className="min-h-[88px] w-full resize-y rounded-md border border-edge bg-[#0b0d10] px-2 py-1.5 text-xs text-fg outline-none focus:border-cyan-400/70 focus:ring-1 focus:ring-cyan-400/40"
+        className="min-h-[88px] w-full resize-y rounded-md border border-edge bg-surface-sunken px-2 py-1.5 text-xs text-fg outline-none focus:border-primary/70 focus:ring-1 focus:ring-primary/40"
         value={textProps.text}
         rows={4}
         onChange={event => {
@@ -204,11 +212,9 @@ export function createTextInspector(ctx: InspectorContext) {
               }),
               defineField<D, any>({
                 id: "text.localizationKey",
-                type: "select",
+                type: "custom",
                 label: t("widgets.localization.textKey"),
-                options: () => listLocalizationKeyOptions(),
-                getValue: (d: D) => getTextProps(d.element).localizationKey ?? "",
-                setValue: (_d: D, value: string | number) => patchProps({ localizationKey: String(value).trim() || undefined }),
+                component: TextLocalizationKeyField,
               }),
             ],
           }),
@@ -303,8 +309,8 @@ export function createTextInspector(ctx: InspectorContext) {
                           className={[
                             "flex h-9 min-h-[34px] w-9 items-center justify-center rounded-md border border-edge transition",
                             isItalic
-                              ? "bg-fill text-white"
-                              : "bg-surface-raised text-fg-muted hover:bg-fill hover:text-white",
+                              ? "bg-fill text-fg"
+                              : "bg-surface-raised text-fg-muted hover:bg-fill hover:text-fg",
                           ].join(" ")}
                           aria-label={isItalic ? t("widgets.typography.disableItalic") : t("widgets.typography.enableItalic")}
                           aria-pressed={isItalic}

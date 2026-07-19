@@ -46,11 +46,11 @@ function NotificationItem({ notification, onClose }: { notification: Notificatio
             case NotificationType.Info:
                 return "bg-primary/10 border-primary/30 text-primary";
             case NotificationType.Success:
-                return "bg-green-500/10 border-green-500/30 text-green-400";
+                return "bg-success/10 border-success/30 text-success";
             case NotificationType.Warning:
-                return "bg-yellow-500/10 border-yellow-500/30 text-yellow-400";
+                return "bg-warning/10 border-warning/30 text-warning";
             case NotificationType.Error:
-                return "bg-red-500/10 border-red-500/30 text-red-400";
+                return "bg-danger/10 border-danger/30 text-danger";
         }
     };
 
@@ -66,7 +66,7 @@ function NotificationItem({ notification, onClose }: { notification: Notificatio
             <div className="flex-shrink-0 mt-0.5">{getIcon()}</div>
             
             <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white">{notification.message}</p>
+                <p className="nl-selectable-text text-sm font-medium text-fg">{notification.message}</p>
                 {notification.detail && (
                     <p className="mt-1 text-xs text-fg-muted">{notification.detail}</p>
                 )}
@@ -83,7 +83,7 @@ function NotificationItem({ notification, onClose }: { notification: Notificatio
                                 className={`
                                     px-3 py-1 text-xs rounded transition-colors
                                     ${action.primary
-                                        ? "bg-fill-strong hover:bg-white/30 text-white font-medium"
+                                        ? "bg-fill-strong hover:bg-fg/30 text-fg font-medium"
                                         : "bg-fill-subtle hover:bg-fill text-fg-muted"
                                     }
                                 `}

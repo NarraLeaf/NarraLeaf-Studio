@@ -537,7 +537,13 @@ export function ListRenderer(props: WidgetRendererProps) {
                 return;
             }
             const trackStart = horizontalScrollbar ? trackRect.left : trackRect.top;
-            const position = clientPosition - trackStart - thumbLength / 2;
+            // trackRect is measured in screen px while the thumb metrics are in
+            // design px; the stage renders through transform: scale(), so the
+            // pointer offset must be folded back into design px or the ratio
+            // skews by the render scale.
+            const trackScreenLength = horizontalScrollbar ? trackRect.width : trackRect.height;
+            const screenToDesign = trackScreenLength > 0 ? (thumbLength + thumbTravel) / trackScreenLength : 1;
+            const position = (clientPosition - trackStart) * screenToDesign - thumbLength / 2;
             const ratio = Math.max(0, Math.min(1, position / Math.max(1, thumbTravel)));
             const nextOffset = ratio * scrollRange;
             if (horizontalScrollbar) {
@@ -550,7 +556,7 @@ export function ListRenderer(props: WidgetRendererProps) {
     );
 
     const startThumbDrag = useCallback(
-        (event: PointerEvent<Element>, thumbTravel: number) => {
+        (event: PointerEvent<Element>, thumbTravel: number, trackRect: DOMRect | null, trackDesignLength: number) => {
             event.preventDefault();
             event.stopPropagation();
             const viewport = viewportRef.current;
@@ -559,10 +565,16 @@ export function ListRenderer(props: WidgetRendererProps) {
             }
             const startPointer = horizontalScrollbar ? event.clientX : event.clientY;
             const startOffset = horizontalScrollbar ? viewport.scrollLeft : viewport.scrollTop;
+            // Pointer deltas arrive in screen px while thumbTravel is design px;
+            // fold them back through the rendered track length so dragging stays
+            // 1:1 under a scaled stage (captured once per drag — resizing while
+            // dragging is not worth re-measuring every move).
+            const trackScreenLength = trackRect ? (horizontalScrollbar ? trackRect.width : trackRect.height) : 0;
+            const screenToDesign = trackScreenLength > 0 ? trackDesignLength / trackScreenLength : 1;
             const onMove = (moveEvent: globalThis.PointerEvent) => {
                 moveEvent.preventDefault();
                 const pointer = horizontalScrollbar ? moveEvent.clientX : moveEvent.clientY;
-                const delta = pointer - startPointer;
+                const delta = (pointer - startPointer) * screenToDesign;
                 const ratioDelta = delta / Math.max(1, thumbTravel);
                 const nextOffset = startOffset + ratioDelta * scrollRange;
                 if (horizontalScrollbar) {
@@ -589,9 +601,14 @@ export function ListRenderer(props: WidgetRendererProps) {
             if (!track) {
                 return;
             }
-            startThumbDrag(event, fallbackThumbTravel);
+            startThumbDrag(
+                event,
+                fallbackThumbTravel,
+                track.getBoundingClientRect(),
+                fallbackThumbLength + fallbackThumbTravel,
+            );
         },
-        [fallbackThumbTravel, startThumbDrag],
+        [fallbackThumbLength, fallbackThumbTravel, startThumbDrag],
     );
 
     const handleAuthoredScrollbarPointerDown = useCallback(
@@ -612,7 +629,7 @@ export function ListRenderer(props: WidgetRendererProps) {
             }
             const trackRect = trackNode.getBoundingClientRect();
             if (targetId === scrollbarThumbElement.id) {
-                startThumbDrag(event, authoredThumbTravel);
+                startThumbDrag(event, authoredThumbTravel, trackRect, authoredThumbLength + authoredThumbTravel);
                 return;
             }
 

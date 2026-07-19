@@ -25,7 +25,7 @@ function SectionFieldInner<TData>({ field, data, onSaving }: SectionFieldProps<T
         <div className={`border border-edge rounded-md overflow-visible ${field.className || ""}`}>
             <div
                 className={`flex items-center gap-2 px-3 py-2 bg-surface-raised ${
-                    field.collapsible ? "cursor-pointer hover:bg-[#252629]" : ""
+                    field.collapsible ? "cursor-pointer hover:bg-surface-overlay" : ""
                 }`}
                 onClick={toggleCollapse}
             >

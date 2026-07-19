@@ -297,7 +297,7 @@ export function ContainerAppearanceValueEditor({
         case "strokeSide": {
             const v = String(value ?? "all");
             if (!isValidStrokeSideSpec(v)) {
-                return <span className="text-xs text-amber-200/90">{v}</span>;
+                return <span className="text-xs text-warning">{v}</span>;
             }
             const parsed = parseStrokeSideSpec(v);
             const isMultiSide = parsed.kind === "edges" && parsed.edges.size > 1;

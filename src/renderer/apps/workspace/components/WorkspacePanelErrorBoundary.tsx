@@ -20,15 +20,15 @@ function createPanelErrorFallback(
         const { t } = useTranslation();
         return (
             <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-3 bg-surface p-4 text-center">
-                <AlertCircle className="h-8 w-8 shrink-0 text-red-400" aria-hidden />
+                <AlertCircle className="h-8 w-8 shrink-0 text-danger" aria-hidden />
                 <div>
-                    <p className="text-sm font-medium text-white">{t("workspace.shell.panelRenderError")}</p>
+                    <p className="text-sm font-medium text-fg">{t("workspace.shell.panelRenderError")}</p>
                     <p className="mt-1 text-xs text-fg-subtle">{regionLabel}</p>
                 </div>
                 <button
                     type="button"
                     onClick={onRetry}
-                    className="inline-flex h-9 cursor-default items-center gap-2 rounded-md bg-primary px-3 text-sm text-white transition-colors hover:bg-primary/80"
+                    className="inline-flex h-9 cursor-default items-center gap-2 rounded-md bg-primary px-3 text-sm text-on-primary transition-colors hover:bg-primary/80"
                 >
                     <RefreshCw className="h-4 w-4" aria-hidden />
                     {t("workspace.shell.retry")}

@@ -124,20 +124,23 @@ describe("custom image transitions", () => {
         });
     });
 
-    it("Slide: uses the independent `translate` property, no offset at rest", () => {
+    it("Slide: uses the independent `translate` property in self-relative %, no offset at rest", () => {
         const task = prepared(new Slide(400, "left")).createTask() as any;
         expect(task.resolve).toHaveLength(2);
         // Must not touch `transform` (that would clobber NLR's base positioning).
         expect(call(task.resolve[0], 0).style.transform).toBeUndefined();
-        // Outgoing is at rest at t=0 (offset 0 → no jump) and a full viewport left at t=1.
-        expect(call(task.resolve[0], 0).style.translate).toBe("0vw 0px");
-        expect(call(task.resolve[0], 1).style.translate).toBe("-100vw 0px");
-        // Incoming starts a full viewport to the right and ends at rest.
-        expect(call(task.resolve[1], 0).style.translate).toBe("100vw 0px");
-        expect(call(task.resolve[1], 1).style.translate).toBe("0vw 0px");
-        // Vertical direction uses vh on the Y axis.
+        // Percentages are relative to the layer (= the letterboxed stage box), NOT the viewport:
+        // vw/vh travel misses the stage whenever the window aspect differs from the design aspect.
+        expect(call(task.resolve[0], 0).style.translate).not.toContain("vw");
+        // Outgoing is at rest at t=0 (offset 0 → no jump) and a full stage width left at t=1.
+        expect(call(task.resolve[0], 0).style.translate).toBe("0% 0px");
+        expect(call(task.resolve[0], 1).style.translate).toBe("-100% 0px");
+        // Incoming starts a full stage width to the right and ends at rest.
+        expect(call(task.resolve[1], 0).style.translate).toBe("100% 0px");
+        expect(call(task.resolve[1], 1).style.translate).toBe("0% 0px");
+        // Vertical direction moves along the Y axis.
         expect(call(prepared(new Slide(400, "bottom")).createTask().resolve[1] as ResolverEntry, 0).style.translate)
-            .toBe("0px -100vh");
+            .toBe("0px -100%");
     });
 
     it("copy() returns an equivalent independent instance", () => {

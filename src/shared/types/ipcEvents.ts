@@ -2,10 +2,11 @@ import { FileDetails, FileStat } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
-import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults } from "./window";
+import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
+import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
@@ -25,34 +26,46 @@ import type {
     PrivilegedPermissionRevokePluginPayload,
     PrivilegedPermissionRequestPayload,
 } from "./privileged";
-
-export const WorkspaceMenuAction = {
-    NewWorkspace: "narraleaf-studio:file-new",
-    OpenWorkspace: "narraleaf-studio:file-open",
-    ExportProject: "narraleaf-studio:file-export-project",
-    CloseWorkspace: "narraleaf-studio:file-close-workspace",
-    OpenWelcome: "narraleaf-studio:open-welcome",
-} as const;
-
-export type WorkspaceMenuAction = typeof WorkspaceMenuAction[keyof typeof WorkspaceMenuAction];
+import type {
+    EditMenuRole,
+    MenuActionId,
+    NativeMenuModel,
+} from "./menu";
+import type {
+    RevisionId,
+    VcsAvailability,
+    VcsBlobRequest,
+    VcsHistoryEntry,
+    VcsRepositoryInfo,
+    VcsThreeWayResult,
+} from "./vcs";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
     appTerminate = "app.terminate",
     appWindowControl = "app.window.setControl",
+    appWindowEditCommand = "app.window.editCommand",
     appWindowClose = "app.window.close",
     appWindowCloseWith = "app.window.closeWith",
     appWindowGetControl = "app.window.getControl",
     appWindowControlAbility = "app.window.getControlAbility",
+    appWindowGetFullscreen = "app.window.getFullscreen",
+    appWindowFullscreenChanged = "app.window.fullscreenChanged",
     appWindowProps = "app.window.props",
     appInfo = "app.info",
     appWindowReady = "app.window.ready",
     appLaunchSettings = "app.settings.launchWindow",
+    appCountWorkspaceWindows = "app.countWorkspaceWindows",
+    appRequestWorkspaceView = "app.requestWorkspaceView",
+    appOpenExternal = "app.openExternal",
+    appPickBackgroundImage = "app.pickBackgroundImage",
+    appReadBackgroundImage = "app.readBackgroundImage",
     appGlobalStateGet = "app.globalState.get",
     appGlobalStateSet = "app.globalState.set",
     appGlobalStateGetAll = "app.globalState.getAll",
     appGlobalStateChanged = "app.globalState.changed",
     appAddRecentProject = "app.addRecentProject",
+    appRemoveRecentProject = "app.removeRecentProject",
     appSystemPath = "app.systemPath",
 
     fsStat = "fs.stat",
@@ -87,10 +100,13 @@ export enum IPCEventType {
     projectWizardGetDefaultDirectory = "projectWizard.getDefaultDirectory",
     
     workspaceLaunch = "workspace.launch",
+    workspaceOpenRecent = "workspace.openRecent",
     workspaceSelectFolder = "workspace.selectFolder",
     workspaceClose = "workspace.close",
     workspaceExportProjectPackage = "workspace.projectPackage.export",
     workspaceImportProjectPackage = "workspace.projectPackage.import",
+    workspaceExportConsoleLogs = "workspace.console.exportLogs",
+    workspaceConfirmClose = "workspace.confirmClose",
     workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
     workspaceBlueprintNavigateFromPreview = "workspace.blueprint.navigateFromPreview",
@@ -113,10 +129,20 @@ export enum IPCEventType {
     devModeSaveListIds = "devMode.save.listIds",
     devModeSaveReadPreview = "devMode.save.readPreview",
     devModeSaveDelete = "devMode.save.delete",
+    devModeFullscreenGet = "devMode.fullscreen.get",
+    devModeFullscreenSet = "devMode.fullscreen.set",
+    devModeFullscreenChanged = "devMode.fullscreen.changed",
+    devModeWindowCloseRequested = "devMode.window.closeRequested",
 
     previewLaunch = "preview.launch",
     previewStop = "preview.stop",
     previewGetStatus = "preview.getStatus",
+
+    gameBuildStart = "gameBuild.start",
+    gameBuildCancel = "gameBuild.cancel",
+    gameBuildGetStatus = "gameBuild.getStatus",
+    gameBuildSelectOutputDir = "gameBuild.selectOutputDir",
+    gameBuildPreflight = "gameBuild.preflight",
 
     blueprintPersistenceGetAll = "blueprintPersistence.getAll",
     blueprintPersistenceGetValue = "blueprintPersistence.getValue",
@@ -141,6 +167,19 @@ export enum IPCEventType {
     privilegedBashExecute = "privileged.bash.execute",
 
     menuAction = "app.menu.action",
+    workspaceMenuSync = "workspace.menu.sync",
+    workspaceReportLoadResult = "workspace.reportLoadResult",
+    workspaceOpenView = "workspace.openView",
+    settingsHighlight = "settings.highlight",
+
+    vcsGetAvailability = "vcs.getAvailability",
+    vcsGetInfo = "vcs.getInfo",
+    vcsIsRepository = "vcs.isRepository",
+    vcsGetHistory = "vcs.getHistory",
+    vcsReadBlob = "vcs.readBlob",
+    vcsGetChangedPaths = "vcs.getChangedPaths",
+    vcsGetThreeWay = "vcs.getThreeWay",
+    vcsGetMergeBase = "vcs.getMergeBase",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -182,6 +221,19 @@ export type IPCEvents = {
         },
         response: void;
     };
+    /**
+     * Run a built-in webContents editing command (copy/cut/paste/delete) on the sending window.
+     * Used by the renderer when a native Edit-menu command routed to a surface action should
+     * fall back to normal text editing because the user is in a text field.
+     */
+    [IPCEventType.appWindowEditCommand]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            command: EditMenuRole,
+        },
+        response: never;
+    };
     [IPCEventType.appWindowClose]: {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
@@ -210,6 +262,20 @@ export type IPCEvents = {
         data: {},
         response: WindowControlAbility;
     };
+    [IPCEventType.appWindowGetFullscreen]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            isFullscreen: boolean,
+        };
+    };
+    [IPCEventType.appWindowFullscreenChanged]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: { isFullscreen: boolean },
+        response: never;
+    };
     [IPCEventType.appWindowProps]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -235,6 +301,52 @@ export type IPCEvents = {
             props: WindowProps[WindowAppType.Settings];
         },
         response: void;
+    };
+    [IPCEventType.appCountWorkspaceWindows]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: {
+            count: number;
+        };
+    };
+    [IPCEventType.appRequestWorkspaceView]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            view: WorkspaceViewRequest;
+        },
+        response: {
+            /** False when no workspace window was open to receive it. */
+            delivered: boolean;
+        };
+    };
+    [IPCEventType.appOpenExternal]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            url: string;
+        },
+        response: void;
+    };
+    [IPCEventType.appPickBackgroundImage]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: {
+            /** Stored filename inside userData/backgrounds, or null when the dialog was cancelled. */
+            file: string | null;
+        };
+    };
+    [IPCEventType.appReadBackgroundImage]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            file: string;
+        },
+        response: {
+            data: Uint8Array | null;
+        };
     };
     [IPCEventType.appGlobalStateGet]: {
         type: IPCMessageType.request,
@@ -283,6 +395,18 @@ export type IPCEvents = {
         },
         response: void;
     };
+    /**
+     * Remove one entry. Takes the path rather than the resulting list: the main process owns the
+     * read-modify-write, so a stale renderer snapshot cannot erase another window's changes.
+     */
+    [IPCEventType.appRemoveRecentProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: void;
+    };
     [IPCEventType.appSystemPath]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -293,7 +417,72 @@ export type IPCEvents = {
             path: string;
         };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCPrivilegedEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameBuildEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCPrivilegedEvents & IPCVcsEvents;
+
+/**
+ * Version control. Every event carries `projectPath`: Studio is
+ * one-project-one-window and the VCS runtime is keyed per project, so an event
+ * without it would be ambiguous the moment two projects are open.
+ *
+ * Blobs cross as base64 rather than Buffer - structured clone would turn a
+ * Buffer into a Uint8Array on the renderer side anyway, and base64 keeps the
+ * contract explicit.
+ */
+export type IPCVcsEvents = {
+    /**
+     * Ask this FIRST. Version control is optional - there is no native build for
+     * macOS Intel or Windows ARM64 - and every other VCS call fails on a host
+     * without one. Branch the UI on this, do not probe by catching errors.
+     */
+    [IPCEventType.vcsGetAvailability]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: VcsAvailability;
+    };
+    [IPCEventType.vcsIsRepository]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: { isRepository: boolean };
+    };
+    [IPCEventType.vcsGetInfo]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsRepositoryInfo;
+    };
+    [IPCEventType.vcsGetHistory]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; limit?: number },
+        response: { entries: VcsHistoryEntry[] };
+    };
+    [IPCEventType.vcsReadBlob]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: VcsBlobRequest,
+        response: { contentBase64: string };
+    };
+    [IPCEventType.vcsGetChangedPaths]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; from: RevisionId; to: RevisionId },
+        response: { paths: string[] };
+    };
+    [IPCEventType.vcsGetThreeWay]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; mine: RevisionId; theirs: RevisionId; path: string },
+        response: VcsThreeWayResult;
+    };
+    [IPCEventType.vcsGetMergeBase]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; a: RevisionId; b: RevisionId },
+        response: { base?: RevisionId };
+    };
+};
 
 export type IPCFsEvents = {
     [IPCEventType.fsStat]: {
@@ -557,6 +746,16 @@ export type IPCWorkspaceEvents = {
         },
         response: void;
     };
+    [IPCEventType.workspaceOpenRecent]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            /** Close the calling window once the target is open - a "switch in this window". */
+            replaceCurrentWindow?: boolean;
+        };
+        response: void;
+    };
     [IPCEventType.workspaceSelectFolder]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -596,6 +795,29 @@ export type IPCWorkspaceEvents = {
             fileCount?: number;
             byteLength?: number;
         };
+    };
+    [IPCEventType.workspaceExportConsoleLogs]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            defaultFileName: string;
+            content: string;
+        },
+        response: {
+            canceled: boolean;
+            filePath?: string;
+            byteLength?: number;
+        };
+    };
+    /**
+     * Asks the workspace to confirm closing, using its own in-app dialog rather than a native
+     * message box. Driven from the main process, which owns the window's close guard.
+     */
+    [IPCEventType.workspaceConfirmClose]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Client,
+        data: {};
+        response: RequestStatus<{ confirmed: boolean }>;
     };
     [IPCEventType.workspaceResolveAssetUrl]: {
         type: IPCMessageType.request,
@@ -646,10 +868,17 @@ export type IPCDevModeEvents = {
             status: DevModeStatus;
         };
     };
+    /**
+     * Dev Mode is per-project, so stop/reload/getStatus all name the project they mean - without
+     * it a workspace would drive (and report) whichever session happened to exist, which with two
+     * projects open is somebody else's.
+     */
     [IPCEventType.devModeStop]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: {},
+        data: {
+            projectPath: string;
+        },
         response: {
             status: DevModeStatus;
         };
@@ -657,7 +886,9 @@ export type IPCDevModeEvents = {
     [IPCEventType.devModeReload]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: {},
+        data: {
+            projectPath: string;
+        },
         response: {
             status: DevModeStatus;
         };
@@ -665,7 +896,9 @@ export type IPCDevModeEvents = {
     [IPCEventType.devModeGetStatus]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: {},
+        data: {
+            projectPath: string;
+        },
         response: {
             status: DevModeStatus;
         };
@@ -678,6 +911,41 @@ export type IPCDevModeEvents = {
             bundle: DevModeBundle;
         },
         response: never;
+    };
+    [IPCEventType.devModeFullscreenGet]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            isFullscreen: boolean;
+        };
+    };
+    [IPCEventType.devModeFullscreenSet]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            fullscreen: boolean;
+        },
+        response: void;
+    };
+    [IPCEventType.devModeFullscreenChanged]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            isFullscreen: boolean;
+        },
+        response: never;
+    };
+    /**
+     * Asks the Dev Mode renderer whether the window may close, giving its blueprints a chance to
+     * intercept the close (On Window Close Requested). Driven from the main process, which owns the
+     * window's close guard; `allow: false` cancels the close.
+     */
+    [IPCEventType.devModeWindowCloseRequested]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Client,
+        data: {};
+        response: RequestStatus<{ allow: boolean }>;
     };
     [IPCEventType.devModeControlReload]: {
         type: IPCMessageType.message,
@@ -817,6 +1085,62 @@ export type IPCPreviewEvents = {
         };
         response: {
             status: PreviewStatus;
+        };
+    };
+};
+
+export type IPCGameBuildEvents = {
+    [IPCEventType.gameBuildStart]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            entry: GameRuntimeLaunchEntry;
+            request: GameBuildRequest;
+        };
+        response: {
+            state: GameBuildStateSnapshot;
+        };
+    };
+    [IPCEventType.gameBuildCancel]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        };
+        response: {
+            state: GameBuildStateSnapshot;
+        };
+    };
+    [IPCEventType.gameBuildGetStatus]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        };
+        response: {
+            state: GameBuildStateSnapshot;
+        };
+    };
+    [IPCEventType.gameBuildSelectOutputDir]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            defaultPath?: string;
+        };
+        response: {
+            path: string | null;
+        };
+    };
+    [IPCEventType.gameBuildPreflight]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            request: GameBuildRequest;
+        };
+        response: {
+            findings: BuildPreflightFinding[];
         };
     };
 };
@@ -987,7 +1311,44 @@ export type IPCMenuEvents = {
     [IPCEventType.menuAction]: {
         type: IPCMessageType.message,
         consumer: IPCType.Client,
-        data: { action: WorkspaceMenuAction },
+        data: { action: MenuActionId },
+        response: never;
+    };
+    /**
+     * The renderer pushing its current, focus-filtered menu model up so the native menu bar can
+     * mirror it. Sent on every registry/focus change; the main process rebuilds the menu when
+     * the sending window is the focused one.
+     */
+    [IPCEventType.workspaceMenuSync]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: { model: NativeMenuModel },
+        response: never;
+    };
+    [IPCEventType.workspaceReportLoadResult]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: { ok: boolean },
+        response: never;
+    };
+    /**
+     * Main asking one workspace window to reveal a surface, on behalf of the Settings window.
+     * Addressed to a single window: broadcasting would pop the same tab open in every workspace.
+     */
+    [IPCEventType.workspaceOpenView]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: { view: WorkspaceViewRequest },
+        response: never;
+    };
+    /**
+     * Main telling the already-open Settings window which setting to reveal. Sent instead of
+     * launching a second window when one is open, so "open settings at X" is idempotent.
+     */
+    [IPCEventType.settingsHighlight]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: { highlight: string },
         response: never;
     };
 };

@@ -430,7 +430,7 @@ export function listCallableBlueprintFnOptions(input: {
     return listCallableBlueprintFns(input.blueprintDocument, input.caller)
         .map(decl => ({
             value: decl.fnRef,
-            label: `${decl.name} — ${fnScopeLabel(decl.owner, input.uiDocument)}`,
+            label: `${decl.name} (${fnScopeLabel(decl.owner, input.uiDocument)})`,
         }))
         .sort((a, b) => a.label.localeCompare(b.label));
 }

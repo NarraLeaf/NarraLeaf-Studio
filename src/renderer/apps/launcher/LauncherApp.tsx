@@ -3,9 +3,12 @@ import { NavigationLayout, Sidebar, LauncherTabKey } from "./components";
 import { ProjectsTab } from "./tabs/ProjectsTab";
 import { PluginsTab } from "./tabs/PluginsTab";
 import { LearningTab } from "./tabs/LearningTab";
+import { useLauncherMenuActions } from "./useLauncherMenuActions";
 
 export function LauncherApp() {
     const [active, setActive] = useState<LauncherTabKey>("projects");
+
+    useLauncherMenuActions();
 
     const content = useMemo(() => {
         switch (active) {

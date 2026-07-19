@@ -38,6 +38,9 @@ NarraLeaf Studio is open source, with one exception: an optional asset-protectio
 ```bash
 yarn dev
 yarn dev --cdp --cdp-port=9222
+yarn stop
 ```
 
 `--cdp` enables the Electron Chrome DevTools Protocol endpoint during development. `--cdp-port` is optional and defaults to `9222`; the main process ignores CDP flags outside development mode.
+
+`yarn stop` ends the session `yarn dev` started — the dev server on port `5588` and the Electron app it spawned. Only this checkout's processes are stopped; anything else holding those ports is reported instead of killed (`--force` overrides, `--dry-run` previews). Reach for it when `yarn dev` reports that another session owns the port, which it refuses to start alongside.

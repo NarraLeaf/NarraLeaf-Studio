@@ -54,6 +54,15 @@ export type ActionCommandId =
     | "soundRate"
     | "muteSound"
     | "setVariable"
+    | "incrementVariable"
+    | "decrementVariable"
+    | "toggleVariable"
+    | "resetVariable"
+    // Declaration-only: these build no block. See `STORY_DECLARATION_COMMANDS`.
+    | "declareSceneVariable"
+    | "declareSavedVariable"
+    | "declarePersistentVariable"
+    | "conditionIf"
     | "executeScript"
     | "imageCreate"
     | "imageSetSource"
@@ -148,7 +157,7 @@ export function pluginActionToPaletteCommand(registration: {
 /**
  * Display label for a palette command in the active locale. Built-in commands map by their stable
  * id to `story.actionCommand.<id>.label`; plugin commands (author-supplied ids) keep their
- * registered label. Resolve at render time — never snapshot at import.
+ * registered label. Resolve at render time - never snapshot at import.
  */
 export function translateActionCommandLabel(command: PaletteActionCommand, t: ActionCommandTranslate): string {
     return isActionCommandId(command.id)
@@ -209,11 +218,19 @@ export const ACTION_COMMANDS: ActionCommand[] = [
     { id: "condition", category: "control", label: "Condition (if…)", detail: "Run actions only when a condition is met", icon: Settings2, nlrCapability: "Condition.If" },
     { id: "repeat", category: "control", label: "Repeat", detail: "Run the enclosed actions a number of times", icon: Settings2, nlrCapability: "Control.repeat" },
     { id: "parallel", category: "control", label: "Run at the same time", detail: "Run all enclosed actions together", icon: Settings2, nlrCapability: "Control.all" },
-    { id: "race", category: "control", label: "Race — first to finish", detail: "Run all, continue when the first finishes", icon: Settings2, nlrCapability: "Control.any" },
+    { id: "race", category: "control", label: "Race, first to finish", detail: "Run all, continue when the first finishes", icon: Settings2, nlrCapability: "Control.any" },
     { id: "sequence", category: "control", label: "In order", detail: "Run the enclosed actions one after another", icon: Settings2, nlrCapability: "Control.do" },
     { id: "waitDuration", category: "control", label: "Wait duration", detail: "Pause for a number of milliseconds", icon: Clock, nlrCapability: "Control.sleep" },
     { id: "waitClick", category: "control", label: "Wait for click", detail: "Pause until the player clicks", icon: Clock, nlrCapability: "Control.waitForClick" },
     { id: "setVariable", category: "data", label: "Set variable", detail: "Scene local or Story persistent value", icon: Variable, nlrCapability: "Persistent.set" },
+    { id: "incrementVariable", category: "data", label: "Increase variable", detail: "Add to a number variable", icon: Variable, nlrCapability: "Persistent.set" },
+    { id: "decrementVariable", category: "data", label: "Decrease variable", detail: "Subtract from a number variable", icon: Variable, nlrCapability: "Persistent.set" },
+    { id: "toggleVariable", category: "data", label: "Toggle variable", detail: "Flip a true/false variable", icon: Variable, nlrCapability: "Persistent.set" },
+    { id: "resetVariable", category: "data", label: "Reset variable", detail: "Restore a variable to its declared default", icon: Variable, nlrCapability: "Persistent.set" },
+    { id: "declareSceneVariable", category: "data", label: "Declare scene variable", detail: "Lives for this scene only", icon: Variable },
+    { id: "declareSavedVariable", category: "data", label: "Declare saved variable", detail: "Rides the save file", icon: Variable },
+    { id: "declarePersistentVariable", category: "data", label: "Declare global variable", detail: "Outlives saves - game-level flags", icon: Variable },
+    { id: "conditionIf", category: "control", label: "If (expression)", detail: "Branch on an expression", icon: Settings2, nlrCapability: "Condition.If" },
     { id: "executeScript", category: "data", label: "Execute Script", detail: "Run a Story Action Blueprint", icon: Puzzle, nlrCapability: "Script.execute" },
     { id: "imageCreate", category: "image", label: "Image", detail: "Create or update a named stage image", icon: Image, nlrCapability: "Image" },
     { id: "imageSetSource", category: "image", label: "Image source", detail: "Change a named image source", icon: Image, nlrCapability: "Image.char" },
@@ -248,31 +265,10 @@ export const ACTION_COMMANDS: ActionCommand[] = [
     { id: "note", category: "utils", label: "Note", detail: "Studio-only note", icon: StickyNote, aliases: ["//"] },
 ];
 
-/**
- * Shared match used by both the inline "/" creator and the sidebar action palette.
- *
- * A query that begins with "/" means the author is typing a slash alias (e.g. "//" for Note). In the
- * inline creator the leading "/" is consumed as the action trigger, so the alias arrives here as "/";
- * in the sidebar search box it arrives as "//". Either way we match aliases exclusively so the alias
- * lands directly on its command instead of every action whose label/detail happens to contain "/".
- */
-export function actionCommandMatchesQuery(command: PaletteActionCommand, rawQuery: string): boolean {
-    const query = rawQuery.trim().toLowerCase();
-    if (!query) {
-        return true;
-    }
-    if (query.startsWith("/")) {
-        return (command.aliases ?? []).some(alias => {
-            const normalized = alias.toLowerCase();
-            return normalized.startsWith(query) || query.startsWith(normalized);
-        });
-    }
-    return command.label.toLowerCase().includes(query) ||
-        command.id.toLowerCase().includes(query) ||
-        command.detail.toLowerCase().includes(query) ||
-        Boolean(command.nlrCapability?.toLowerCase().includes(query)) ||
-        (command.aliases ?? []).some(alias => alias.toLowerCase().includes(query));
-}
+// Command-name matching for both the inline "/" creator and the sidebar palette now lives in
+// `storyCommandSearch.ts` (`searchActionCommands`), which bridges the grammar's short tokens (`/bg`,
+// `/show`) that a palette command's own fields never carry, and ranks fuzzy hits. Keeping it there,
+// not here, avoids storyActionCommands depending on the grammar and keeps the two menus single-source.
 
 export function getActionCommandCategory(categoryId: ActionCommandCategoryId): ActionCommandCategory {
     return ACTION_COMMAND_CATEGORIES.find(category => category.id === categoryId) ?? ACTION_COMMAND_CATEGORIES[0];
@@ -328,8 +324,24 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
             return { ...base, kind: "action", payload: { action: "audio", operation: "setRate", objectName: "sound", rate: 1 } };
         case "muteSound":
             return { ...base, kind: "action", payload: { action: "audio", operation: "muteSound", objectName: "sound", muted: true } };
+        // The four assignment sugars build the same block `/set` does - they differ only in the
+        // expression `applyCommandArgs` writes onto it, so they must not diverge here.
         case "setVariable":
+        case "incrementVariable":
+        case "decrementVariable":
+        case "toggleVariable":
+        case "resetVariable":
             return { ...base, kind: "action", payload: { action: "setVariable", target: { scope: "scene", variableId: "" }, value: initialText || true } };
+        case "conditionIf":
+            return { ...base, kind: "control", payload: { control: "condition" } };
+        // Declaration commands never reach here: the commit path intercepts them before it asks for a
+        // block (see `STORY_DECLARATION_COMMANDS`). Throwing keeps that the only route - a declaration
+        // that reached block creation would otherwise land a stray row the author never asked for,
+        // which is far harder to notice than a crash in development.
+        case "declareSceneVariable":
+        case "declareSavedVariable":
+        case "declarePersistentVariable":
+            throw new Error(`${commandId} declares a variable and builds no block; the commit path must intercept it.`);
         case "executeScript":
             return { ...base, kind: "action", payload: { action: "blueprint", blueprintId: "" } };
         case "imageCreate":
@@ -393,5 +405,35 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
 }
 
 export function isInspectorFirstCommand(commandId: ActionCommandId): boolean {
-    return !["narration", "dialogue", "note", "choiceOption"].includes(commandId);
+    // `condition` / `conditionBranch` are card-less (see `hasInspector`): creating one must not open a
+    // placeholder inspector - its logic is authored inline on the branch header.
+    return !["narration", "dialogue", "note", "choiceOption", "condition", "conditionBranch"].includes(commandId);
+}
+
+/**
+ * Resolve a typed `/…` line to a command, without going through the menu.
+ *
+ * This is what runs when the author dismissed the candidates and pressed Enter anyway: the line has
+ * to stand on its own or become an invalid row. Only the first token is considered - arguments are
+ * the command system's job, and this is the seam its parser replaces.
+ */
+export function resolveActionCommandToken(line: string): ActionCommandId | null {
+    const token = line.trim().split(/\s+/)[0] ?? "";
+    if (!token.startsWith("/")) {
+        return null;
+    }
+    const needle = token.toLowerCase();
+    const bare = needle.slice(1);
+    if (!bare) {
+        return null;
+    }
+    for (const command of ACTION_COMMANDS) {
+        if (command.id.toLowerCase() === bare) {
+            return command.id;
+        }
+        if (command.aliases?.some(alias => alias.toLowerCase() === needle)) {
+            return command.id;
+        }
+    }
+    return null;
 }

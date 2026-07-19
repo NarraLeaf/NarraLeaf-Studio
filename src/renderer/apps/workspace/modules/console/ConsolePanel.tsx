@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ListFilter, Terminal, Trash2 } from "lucide-react";
+import { Download, ListFilter, Terminal, Trash2 } from "lucide-react";
 import type { TranslationKey } from "@shared/i18n";
+import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/lib/components/elements";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
+import { UIService } from "@/lib/workspace/services/core/UIService";
 import {
     ConsoleService,
     type ConsoleChannelDefinition,
@@ -11,6 +13,7 @@ import {
     type ConsoleEntry,
     type ConsoleLineSegment,
     type ConsoleLogLevel,
+    type ConsoleProgress,
 } from "@/lib/workspace/services/core/ConsoleService";
 import { Services } from "@/lib/workspace/services/services";
 import { useWorkspace } from "../../context";
@@ -26,10 +29,10 @@ const DEFAULT_VISIBLE_LEVELS = new Set<ConsoleLogLevel>(["error", "warning", "su
 
 /** Per-level text colour. Labels are translated via `console.level.<level>`. */
 const LEVEL_TEXT_CLASS: Record<ConsoleLogLevel, string> = {
-    error: "text-rose-300/75",
-    warning: "text-amber-300/75",
-    success: "text-emerald-300/75",
-    info: "text-cyan-300/75",
+    error: "text-danger/75",
+    warning: "text-warning/75",
+    success: "text-success/75",
+    info: "text-primary/75",
     verbose: "text-fg-subtle/80",
 };
 
@@ -89,6 +92,42 @@ function entryText(entry: ConsoleEntry): string {
     return entry.segments.map(segment => segment.text).join("");
 }
 
+/** `YYYY-MM-DD HH:MM:SS`, used inside the exported log body. */
+function formatExportTimestamp(timestamp: number): string {
+    const date = new Date(timestamp);
+    const pad = (value: number) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+/**
+ * Serialize a channel's buffered entries to plain text for export. Every entry is included
+ * regardless of the panel's level filter; cleared entries are already gone from the buffer.
+ */
+function buildExportContent(entries: ConsoleEntry[], label: string): string {
+    const header = [
+        `NarraLeaf Studio ${label} console log`,
+        `Exported: ${formatExportTimestamp(Date.now())}`,
+        `Entries: ${entries.length}`,
+        "",
+    ];
+    const lines = entries.map(entry => {
+        const time = formatExportTimestamp(entry.timestamp);
+        const level = entry.level.toUpperCase().padEnd(7);
+        const source = entry.source ? `[${entry.source}] ` : "";
+        return `[${time}] ${level} ${source}${entryText(entry)}`;
+    });
+    return [...header, ...lines].join("\n") + "\n";
+}
+
+/** Suggested `console-<channel>-<timestamp>.log` filename for the export dialog. */
+function buildExportFileName(channelId: ConsoleChannelId): string {
+    const date = new Date();
+    const pad = (value: number) => String(value).padStart(2, "0");
+    const stamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+    const safeChannel = channelId.replace(/[^a-zA-Z0-9._-]+/g, "-");
+    return `console-${safeChannel}-${stamp}.log`;
+}
+
 /**
  * Console panel component.
  * Shows structured build/package and blueprint output from ConsoleService.
@@ -104,6 +143,10 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
         () => context?.services.get<PanelStateService>(Services.PanelState) ?? null,
         [context],
     );
+    const uiService = useMemo(
+        () => context?.services.get<UIService>(Services.UI) ?? null,
+        [context],
+    );
 
     const [channels, setChannels] = useState<readonly ConsoleChannelDefinition[]>(() => consoleService?.getChannels() ?? []);
     const [activeChannel, setActiveChannel] = useState<ConsoleChannelId>("build");
@@ -112,6 +155,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
     const [entriesByChannel, setEntriesByChannel] = useState<Record<ConsoleChannelId, ConsoleEntry[]>>(() =>
         readServiceEntries(consoleService),
     );
+    const [progressByChannel, setProgressByChannel] = useState<Record<ConsoleChannelId, ConsoleProgress | null>>({});
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const filterMenuRef = useRef<HTMLDivElement | null>(null);
     const panelStateLoadedRef = useRef(false);
@@ -149,12 +193,27 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
             setChannels(consoleService.getChannels());
             setEntriesByChannel(readServiceEntries(consoleService));
         };
+        const syncProgress = () => {
+            const next: Record<ConsoleChannelId, ConsoleProgress | null> = {};
+            for (const channel of consoleService.getChannels()) {
+                next[channel.id] = consoleService.getProgress(channel.id);
+            }
+            setProgressByChannel(next);
+        };
         sync();
+        syncProgress();
         const offEntries = consoleService.onEntriesChanged(sync);
-        const offChannels = consoleService.onChannelsChanged(sync);
+        const offChannels = consoleService.onChannelsChanged(() => {
+            sync();
+            syncProgress();
+        });
+        const offProgress = consoleService.onProgressChanged(({ channel, progress }) => {
+            setProgressByChannel(prev => ({ ...prev, [channel]: progress }));
+        });
         return () => {
             offEntries();
             offChannels();
+            offProgress();
         };
     }, [consoleService]);
 
@@ -215,6 +274,35 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
         consoleService?.clear(activeChannel);
     };
 
+    // Export every buffered entry of the active channel, ignoring the level filter. Cleared entries
+    // are already absent from the buffer, so they are naturally excluded.
+    const handleExport = () => {
+        const entries = channelEntries;
+        const label = activeChannelDef ? channelLabel(t, activeChannelDef) : t("console.outputFallback");
+        if (entries.length === 0) {
+            uiService?.showNotification(t("console.exportEmpty", { label }), "info");
+            return;
+        }
+        void (async () => {
+            const content = buildExportContent(entries, label);
+            const defaultFileName = buildExportFileName(activeChannel);
+            uiService?.showNotification(t("console.exportChoosingFolder", { label }), "info");
+
+            const result = await getInterface().workspace.exportConsoleLogs(defaultFileName, content);
+            if (!result.success) {
+                uiService?.showNotification(t("console.exportFailed", { error: result.error ?? "" }), "error");
+                return;
+            }
+            if (result.data.canceled) {
+                return;
+            }
+            uiService?.showNotification(
+                t("console.exportSuccess", { label, path: result.data.filePath ?? "" }),
+                "success",
+            );
+        })();
+    };
+
     return (
         <div className="flex h-full min-h-0 flex-col bg-surface text-fg-muted">
             <div className="flex h-9 shrink-0 items-center justify-between border-b border-edge bg-surface-sunken">
@@ -231,8 +319,8 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                                 title={channelDescription(t, channel)}
                                 className={`relative flex min-w-28 cursor-default items-center justify-center gap-2 px-4 text-xs transition-colors ${
                                     active
-                                        ? "bg-[#12151c] text-white"
-                                        : "text-fg-muted hover:bg-[#11141b] hover:text-fg"
+                                        ? "bg-surface text-fg"
+                                        : "text-fg-muted hover:bg-fill-subtle hover:text-fg"
                                 }`}
                                 onClick={() => setActiveChannel(channel.id)}
                             >
@@ -255,10 +343,19 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                 </div>
 
                 <div className="flex h-full shrink-0 items-center gap-2 px-2">
+                    <button
+                        type="button"
+                        className="flex h-7 w-7 cursor-default items-center justify-center rounded border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                        title={t("console.export")}
+                        aria-label={t("console.export")}
+                        onClick={handleExport}
+                    >
+                        <Download className="h-3.5 w-3.5" />
+                    </button>
                     <div ref={filterMenuRef} className="relative">
                         <button
                             type="button"
-                            className="flex h-7 w-7 cursor-default items-center justify-center rounded border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-white"
+                            className="flex h-7 w-7 cursor-default items-center justify-center rounded border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                             title={t("console.filterLevels")}
                             aria-label={t("console.filterLevels")}
                             aria-haspopup="menu"
@@ -270,7 +367,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                         {filterMenuOpen ? (
                             <div
                                 role="menu"
-                                className="absolute right-0 top-full z-20 mt-1 w-36 rounded border border-edge bg-[#11141b] p-1 shadow-xl"
+                                className="absolute right-0 top-full z-20 mt-1 w-36 rounded border border-edge bg-surface-overlay p-1 shadow-xl"
                             >
                                 {LOG_LEVELS.map(level => (
                                     <label
@@ -315,6 +412,48 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                     <ConsoleEntryGrid entries={visibleEntries} />
                 )}
             </div>
+
+            <ConsoleProgressBar progress={progressByChannel[activeChannel] ?? null} />
+        </div>
+    );
+}
+
+/**
+ * Thin progress bar pinned to the bottom of the console panel. Renders nothing when
+ * the active channel has no running progress. Determinate progress fills left→right;
+ * indeterminate work animates two sweeping bars (the familiar "busy" pattern). Both
+ * switch to the warning colour once `error` is set.
+ */
+function ConsoleProgressBar({ progress }: { progress: ConsoleProgress | null }) {
+    if (!progress) {
+        return null;
+    }
+    const barColor = progress.error ? "bg-warning" : "bg-primary";
+    const pct = Math.round(progress.value * 100);
+    return (
+        <div
+            className="relative h-0.5 w-full shrink-0 overflow-hidden bg-fill-subtle"
+            role="progressbar"
+            aria-label={progress.label}
+            aria-valuemin={progress.indeterminate ? undefined : 0}
+            aria-valuemax={progress.indeterminate ? undefined : 100}
+            aria-valuenow={progress.indeterminate ? undefined : pct}
+            title={progress.label}
+        >
+            {progress.indeterminate ? (
+                // `nl-motion-keep`: the sweep is the only thing saying the build is alive — the
+                // pipeline gives us nothing to fill a real bar with. Under the reduced-motion
+                // preference (styles.css) a stopped bar would read as a hang instead.
+                <>
+                    <div className={`nl-motion-keep absolute inset-y-0 animate-progress-indeterminate-1 rounded-full ${barColor}`} />
+                    <div className={`nl-motion-keep absolute inset-y-0 animate-progress-indeterminate-2 rounded-full ${barColor}`} />
+                </>
+            ) : (
+                <div
+                    className={`absolute inset-y-0 left-0 rounded-full transition-[width,background-color] duration-300 ease-out ${barColor}`}
+                    style={{ width: `${pct}%` }}
+                />
+            )}
         </div>
     );
 }
@@ -343,7 +482,7 @@ function ConsoleEntryGrid({ entries }: { entries: ConsoleEntry[] }) {
             {entries.map((entry, index) => (
                 <time
                     key={`${entry.id}:time`}
-                    className="select-text border-r border-white/[0.04] px-3 py-0.5 text-fg-subtle hover:bg-white/[0.035]"
+                    className="select-text border-r border-edge-subtle px-3 py-0.5 text-fg-subtle hover:bg-fill-subtle"
                     style={{ gridColumn: 1, gridRow: index + 1 }}
                 >
                     {formatTimestamp(entry.timestamp)}
@@ -353,7 +492,7 @@ function ConsoleEntryGrid({ entries }: { entries: ConsoleEntry[] }) {
             {entries.map((entry, index) => (
                 <span
                     key={`${entry.id}:level`}
-                    className={`select-text border-r border-white/[0.04] px-3 py-0.5 hover:bg-white/[0.035] ${LEVEL_TEXT_CLASS[entry.level]}`}
+                    className={`select-text border-r border-edge-subtle px-3 py-0.5 hover:bg-fill-subtle ${LEVEL_TEXT_CLASS[entry.level]}`}
                     style={{ gridColumn: 2, gridRow: index + 1 }}
                 >
                     {t(`console.level.${entry.level}`)}
@@ -363,7 +502,7 @@ function ConsoleEntryGrid({ entries }: { entries: ConsoleEntry[] }) {
             {entries.map((entry, index) => (
                 <div
                     key={`${entry.id}:message`}
-                    className="select-text whitespace-pre-wrap break-words px-3 py-0.5 text-fg-muted hover:bg-white/[0.035]"
+                    className="select-text whitespace-pre-wrap break-words px-3 py-0.5 text-fg-muted hover:bg-fill-subtle"
                     style={{ gridColumn: 3, gridRow: index + 1 }}
                 >
                     {entry.source ? <span className="text-fg-subtle">[{entry.source}] </span> : null}

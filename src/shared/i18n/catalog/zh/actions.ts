@@ -9,10 +9,6 @@ export const actions = {
     },
     build: {
         tooltip: "构建项目",
-        source: "构建",
-        requested: "已请求构建 {name}。",
-        notWiredTitle: "项目构建流程尚未接入工具栏。",
-        notWiredDetail: " 构建运行器接通后，打包输出将在此处实时显示。",
     },
     file: {
         label: "文件",
@@ -40,11 +36,11 @@ export const actions = {
         },
     },
     export: {
-        chooseFolder: "请选择导出项目包的存放文件夹。",
-        failed: "导出项目失败。",
+        chooseFolder: "请选择导出项目包的存放文件夹",
+        failed: "导出项目失败",
         success: {
-            one: "已导出包含 {count} 个文件的项目包。",
-            other: "已导出包含 {count} 个文件的项目包。",
+            one: "已导出包含 {count} 个文件的项目包",
+            other: "已导出包含 {count} 个文件的项目包",
         },
     },
 } satisfies LocaleNamespace<"actions">;

@@ -17,6 +17,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -42,12 +43,15 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_VALUE_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_SUBMIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED,
 } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_VALUE_TYPE_ELEMENT } from "@shared/types/blueprint/valueTypes";
 import { BUILTIN_WIDGET_LOGIC_APIS } from "@shared/types/ui-editor/widgetLogic";
@@ -163,6 +167,21 @@ const PIN_PREVIOUS_VALUE: BlueprintNodePinDef = {
     valueType: "float",
     label: "Previous Value",
 };
+// The slider's value pins above are floats; a text field needs its own string-typed pair.
+const PIN_TEXT_VALUE: BlueprintNodePinDef = {
+    id: "value",
+    kind: "output",
+    semantic: "data",
+    valueType: "string",
+    label: "Value",
+};
+const PIN_PREVIOUS_TEXT_VALUE: BlueprintNodePinDef = {
+    id: "previousValue",
+    kind: "output",
+    semantic: "data",
+    valueType: "string",
+    label: "Previous Value",
+};
 const PIN_ELEMENT: BlueprintNodePinDef = {
     id: "element",
     kind: "output",
@@ -185,6 +204,14 @@ const PIN_PREFERENCE_PREVIOUS_VALUE: BlueprintNodePinDef = {
     semantic: "data",
     valueType: "json",
     label: "Previous Value",
+};
+
+const PIN_IS_FULLSCREEN: BlueprintNodePinDef = {
+    id: "isFullscreen",
+    kind: "output",
+    semantic: "data",
+    valueType: "boolean",
+    label: "Is Fullscreen",
 };
 
 // Inspector dropdown for `On Preference Changed`. Values mirror the NarraLeaf
@@ -610,6 +637,18 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         keywords: ["slider", "drag", "end", "value"],
         pins: [THEN_PIN, PIN_VALUE],
     }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_VALUE_CHANGED,
+        displayName: "Value Changed",
+        keywords: ["text", "input", "value", "change", "type"],
+        pins: [THEN_PIN, PIN_TEXT_VALUE, PIN_PREVIOUS_TEXT_VALUE],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_SUBMIT,
+        displayName: "Submit",
+        keywords: ["text", "input", "submit", "enter", "confirm"],
+        pins: [THEN_PIN, PIN_TEXT_VALUE],
+    }),
     broadcastEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST,
         displayName: "On Any Broadcast",
@@ -662,4 +701,35 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         keywords: ["game", "preference", "setting", "changed", "any", "audio", "nlr"],
         pins: [THEN_PIN, PIN_KEY, PIN_PREFERENCE_VALUE, PIN_PREFERENCE_PREVIOUS_VALUE],
     }),
+    {
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
+        displayName: "On Fullscreen Changed",
+        category: "Events",
+        keywords: ["fullscreen", "full", "screen", "window", "app", "changed", "display", "maximize"],
+        graphKinds: ["event"],
+        isPure: false,
+        role: "eventHead",
+        // Ambient window event: widgets listen too (a settings control tracking the
+        // window), so the palette offers it wherever the widget logic API lists the slot.
+        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain"] },
+        pins: [THEN_PIN, PIN_IS_FULLSCREEN],
+        execute: eventHeadExecute,
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED,
+        displayName: "On Window Close Requested",
+        category: "Events",
+        keywords: ["window", "close", "quit", "exit", "requested", "intercept", "prevent", "app"],
+        graphKinds: ["event"],
+        isPure: false,
+        role: "eventHead",
+        // The main process holds the close open while this dispatch runs; a synchronous Stop Event
+        // Bubble node cancels the close, otherwise the window proceeds to close. In Dev Mode this
+        // covers the Dev Mode window; in preview/production it covers the game window. Scoped to the
+        // global and surface owners only: the cancellation travels on the dispatch's shared event
+        // control, which the widget dispatch path does not thread (like the keyboard event heads).
+        scope: { ownerKinds: ["globalMain", "surfaceMain"] },
+        pins: [THEN_PIN],
+        execute: eventHeadExecute,
+    },
 ];

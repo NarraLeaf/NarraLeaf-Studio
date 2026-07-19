@@ -4,7 +4,9 @@ import { WorkspaceLayout } from "./components/layout";
 import { WorkspaceProvider, useWorkspace } from "./context";
 import { useModuleLoader } from "./hooks/useModuleLoader";
 import { useWorkspaceEditorSession } from "./hooks/useWorkspaceEditorSession";
+import { useFileMenu } from "./hooks/useFileMenu";
 import { useMenuActionHandler } from "./hooks/useMenuActionHandler";
+import { useNativeMenuSync } from "./hooks/useNativeMenuSync";
 import { useWorkspacePlugins } from "./hooks/useWorkspacePlugins";
 import { RegistryProvider } from "./registry";
 import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
@@ -20,7 +22,9 @@ function WorkspaceContent() {
     useModuleLoader();
     useWorkspacePlugins();
     useWorkspaceEditorSession();
+    useFileMenu();
     useMenuActionHandler();
+    useNativeMenuSync();
 
     return (
         <>

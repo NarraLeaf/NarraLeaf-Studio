@@ -1,16 +1,19 @@
 import { RendererInterfaceKey } from "@shared/types/constants";
 import { Namespace } from "@shared/types/ipc";
-import { IPCEventType, RequestStatus, WorkspaceMenuAction } from "@shared/types/ipcEvents";
+import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
+import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
 import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
-import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults } from "@shared/types/window";
+import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
+import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "@shared/types/gameBuild";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
+import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsRepositoryInfo, VcsThreeWayResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -124,6 +127,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         ready: () => ipcClient.send(IPCEventType.appWindowReady, {}),
         close: () => ipcClient.send(IPCEventType.appWindowClose, {}),
         closeWith: <T extends WindowAppType = WindowAppType>(result: WindowCloseResults[T]) => ipcClient.send(IPCEventType.appWindowCloseWith, { result }),
+        editCommand: (command: EditMenuRole) => ipcClient.send(IPCEventType.appWindowEditCommand, { command }),
         control: {
             minimize: () => ipcClient.invoke(IPCEventType.appWindowControl, { control: "minimize" }),
             maximize: () => ipcClient.invoke(IPCEventType.appWindowControl, { control: "maximize" }),
@@ -131,6 +135,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             close: () => ipcClient.invoke(IPCEventType.appWindowControl, { control: "close" }),
             status: () => ipcClient.invoke(IPCEventType.appWindowGetControl, {}),
             ability: () => ipcClient.invoke(IPCEventType.appWindowControlAbility, {}) as Promise<RequestStatus<WindowControlAbility>>,
+            getFullscreen: () => ipcClient.invoke(IPCEventType.appWindowGetFullscreen, {}),
+            onFullscreenChanged: (handler: (payload: { isFullscreen: boolean }) => void) =>
+                ipcClient.onMessage(IPCEventType.appWindowFullscreenChanged, handler),
         },
     },
     fs: {
@@ -170,23 +177,42 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         getDefaultProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardGetDefaultDirectory, {}),
         launch: (props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean) =>
             ipcClient.invoke(IPCEventType.workspaceLaunch, { props, closeCurrentWindow }),
+        openRecent: (projectPath: string, replaceCurrentWindow?: boolean) =>
+            ipcClient.invoke(IPCEventType.workspaceOpenRecent, { projectPath, replaceCurrentWindow }),
         close: () => ipcClient.invoke(IPCEventType.workspaceClose, {}),
         exportProjectPackage: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.workspaceExportProjectPackage, { projectPath }),
         importProjectPackage: () =>
             ipcClient.invoke(IPCEventType.workspaceImportProjectPackage, {}),
+        exportConsoleLogs: (defaultFileName: string, content: string) =>
+            ipcClient.invoke(IPCEventType.workspaceExportConsoleLogs, { defaultFileName, content }),
+        onConfirmClose: (handler: () => Promise<RequestStatus<{ confirmed: boolean }>>) =>
+            ipcClient.onRequest(IPCEventType.workspaceConfirmClose, handler),
         onResolveAssetUrl: (handler: (payload: { assetId: string; assetType?: string }) => Promise<RequestStatus<{ url: string }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceResolveAssetUrl, handler),
         onResolveImageAssetUrl: (handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceResolveImageAssetUrl, handler),
         onBlueprintNavigateFromPreview: (handler: (payload: PreviewStudioBlueprintOpenPayload) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceBlueprintNavigateFromPreview, handler),
-        onMenuAction: (handler: (action: WorkspaceMenuAction) => void) =>
+        onMenuAction: (handler: (action: MenuActionId) => void) =>
             ipcClient.onMessage(IPCEventType.menuAction, (data) => handler(data.action)),
+        syncNativeMenu: (model: NativeMenuModel) =>
+            ipcClient.send(IPCEventType.workspaceMenuSync, { model }),
+        reportLoadResult: (ok: boolean) =>
+            ipcClient.send(IPCEventType.workspaceReportLoadResult, { ok }),
+        onOpenViewRequest: (handler: (view: WorkspaceViewRequest) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceOpenView, (data) => handler(data.view)),
     },
 
     app: {
         launchSettings: (props: WindowProps[WindowAppType.Settings]) => ipcClient.invoke(IPCEventType.appLaunchSettings, { props }),
+        onSettingsHighlight: (handler: (highlight: string) => void) =>
+            ipcClient.onMessage(IPCEventType.settingsHighlight, (data) => handler(data.highlight)),
+        countWorkspaceWindows: () => ipcClient.invoke(IPCEventType.appCountWorkspaceWindows, {}),
+        requestWorkspaceView: (view: WorkspaceViewRequest) => ipcClient.invoke(IPCEventType.appRequestWorkspaceView, { view }),
+        openExternal: (url: string) => ipcClient.invoke(IPCEventType.appOpenExternal, { url }),
+        pickBackgroundImage: () => ipcClient.invoke(IPCEventType.appPickBackgroundImage, {}),
+        readBackgroundImage: (file: string) => ipcClient.invoke(IPCEventType.appReadBackgroundImage, { file }),
         launchProjectWizard: () => ipcClient.invoke(IPCEventType.projectWizardLaunch, {}) as Promise<RequestStatus<{created: boolean; projectPath: string} | null>>,    
         state: {
             getGlobalState: <K extends GlobalStateKeys>(key: K) => ipcClient.invoke(IPCEventType.appGlobalStateGet, { key }) as Promise<RequestStatus<{value: GlobalStateValue<K>}>>,
@@ -198,6 +224,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         },
         addRecentProject: (name: string, path: string) =>
             ipcClient.invoke(IPCEventType.appAddRecentProject, { name, path }) as Promise<RequestStatus<void>>,
+        removeRecentProject: (path: string) =>
+            ipcClient.invoke(IPCEventType.appRemoveRecentProject, { path }) as Promise<RequestStatus<void>>,
         getSystemPath: (name: "desktop") =>
             ipcClient.invoke(IPCEventType.appSystemPath, { name }) as Promise<RequestStatus<{ path: string }>>,
     },
@@ -205,12 +233,20 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     devMode: {
         launch: (projectPath: string, entry: DevModeEntry) =>
             ipcClient.invoke(IPCEventType.devModeLaunch, { projectPath, entry }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
-        stop: () =>
-            ipcClient.invoke(IPCEventType.devModeStop, {}) as Promise<RequestStatus<{ status: DevModeStatus }>>,
-        reload: () =>
-            ipcClient.invoke(IPCEventType.devModeReload, {}) as Promise<RequestStatus<{ status: DevModeStatus }>>,
-        getStatus: () =>
-            ipcClient.invoke(IPCEventType.devModeGetStatus, {}) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        stop: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.devModeStop, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        reload: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.devModeReload, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        getStatus: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.devModeGetStatus, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        getFullscreen: () =>
+            ipcClient.invoke(IPCEventType.devModeFullscreenGet, {}) as Promise<RequestStatus<{ isFullscreen: boolean }>>,
+        setFullscreen: (fullscreen: boolean) =>
+            ipcClient.invoke(IPCEventType.devModeFullscreenSet, { fullscreen }) as Promise<RequestStatus<void>>,
+        onFullscreenChanged: (handler: (payload: { isFullscreen: boolean }) => void) =>
+            ipcClient.onMessage(IPCEventType.devModeFullscreenChanged, handler),
+        onCloseRequested: (handler: () => Promise<RequestStatus<{ allow: boolean }>>) =>
+            ipcClient.onRequest(IPCEventType.devModeWindowCloseRequested, handler),
         onPayloadUpdate: (handler: (payload: { bundle: DevModeBundle }) => void) =>
             ipcClient.onMessage(IPCEventType.devModePayloadUpdate, handler),
         onControlReload: (handler: (payload: { revision: number }) => void) =>
@@ -262,6 +298,43 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.previewStop, { projectPath }) as Promise<RequestStatus<{ status: PreviewStatus }>>,
         getStatus: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.previewGetStatus, { projectPath }) as Promise<RequestStatus<{ status: PreviewStatus }>>,
+    },
+
+    /**
+     * Version control. Read-only for now; writes wait on the resolve UI.
+     * Blobs arrive base64-encoded - decode at the call site that needs bytes.
+     */
+    vcs: {
+        /** Ask first: VCS is optional and absent on macOS Intel / Windows ARM64. */
+        getAvailability: () =>
+            ipcClient.invoke(IPCEventType.vcsGetAvailability, {}) as Promise<RequestStatus<VcsAvailability>>,
+        isRepository: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsIsRepository, { projectPath }) as Promise<RequestStatus<{ isRepository: boolean }>>,
+        getInfo: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetInfo, { projectPath }) as Promise<RequestStatus<VcsRepositoryInfo>>,
+        getHistory: (projectPath: string, limit?: number) =>
+            ipcClient.invoke(IPCEventType.vcsGetHistory, { projectPath, limit }) as Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>,
+        readBlob: (projectPath: string, revision: RevisionId, path: string) =>
+            ipcClient.invoke(IPCEventType.vcsReadBlob, { projectPath, revision, path }) as Promise<RequestStatus<{ contentBase64: string }>>,
+        getChangedPaths: (projectPath: string, from: RevisionId, to: RevisionId) =>
+            ipcClient.invoke(IPCEventType.vcsGetChangedPaths, { projectPath, from, to }) as Promise<RequestStatus<{ paths: string[] }>>,
+        getThreeWay: (projectPath: string, mine: RevisionId, theirs: RevisionId, path: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetThreeWay, { projectPath, mine, theirs, path }) as Promise<RequestStatus<VcsThreeWayResult>>,
+        getMergeBase: (projectPath: string, a: RevisionId, b: RevisionId) =>
+            ipcClient.invoke(IPCEventType.vcsGetMergeBase, { projectPath, a, b }) as Promise<RequestStatus<{ base?: RevisionId }>>,
+    },
+
+    gameBuild: {
+        start: (projectPath: string, entry: GameRuntimeLaunchEntry, request: GameBuildRequest) =>
+            ipcClient.invoke(IPCEventType.gameBuildStart, { projectPath, entry, request }) as Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>,
+        cancel: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.gameBuildCancel, { projectPath }) as Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>,
+        getStatus: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.gameBuildGetStatus, { projectPath }) as Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>,
+        selectOutputDir: (defaultPath?: string) =>
+            ipcClient.invoke(IPCEventType.gameBuildSelectOutputDir, { defaultPath }) as Promise<RequestStatus<{ path: string | null }>>,
+        preflight: (projectPath: string, request: GameBuildRequest) =>
+            ipcClient.invoke(IPCEventType.gameBuildPreflight, { projectPath, request }) as Promise<RequestStatus<{ findings: BuildPreflightFinding[] }>>,
     },
 
     blueprintPersistence: {

@@ -2,7 +2,7 @@
  * Synchronous behavior-graph interpreter.
  *
  * `executeGraph` (async) wraps every node in `Promise.resolve(...)`, so even an all-synchronous graph
- * only settles on a microtask — unusable where a value must be produced in the same tick (e.g. a
+ * only settles on a microtask - unusable where a value must be produced in the same tick (e.g. a
  * NarraLeaf-React dynamic `Word`, which is `(ctx) => value`). This is a faithful, synchronous fork of
  * that loop for the restricted case of an async-free graph: if any node's `execute` returns a thenable,
  * we throw `AsyncNodeInSyncGraphError` instead of silently dropping the result. Keep this in step with

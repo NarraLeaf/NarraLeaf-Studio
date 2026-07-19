@@ -179,7 +179,7 @@ export type PluginServices = {
             /**
              * Register a scene-editor palette action (shown under the Plugin
              * category) that creates story blocks. The blocks it returns are
-             * standard story blocks — the document does not depend on the
+             * standard story blocks - the document does not depend on the
              * plugin after creation. Action ids must be prefixed with the
              * plugin id.
              */

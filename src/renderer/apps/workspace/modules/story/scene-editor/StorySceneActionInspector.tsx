@@ -17,7 +17,8 @@ import type {
     StoryVariableScope,
     StoryVariableValueType,
 } from "@shared/types/story";
-import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
+import { isStoryExpressionEvaluable, layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
+import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import { useTranslation } from "@/lib/i18n";
 import type { Translator } from "@shared/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -382,7 +383,7 @@ export function ActionInspector(props: {
 
     return (
         <div
-            className="mt-2 max-w-3xl animate-scale-in rounded-xl border border-edge bg-[#16191e] p-3 shadow-lg"
+            className="mt-2 max-w-3xl animate-scale-in rounded-xl border border-edge bg-surface-raised p-3 shadow-lg"
             onClick={event => event.stopPropagation()}
             onMouseDown={event => event.stopPropagation()}
             onKeyDown={event => {
@@ -477,8 +478,8 @@ function InspectorFields(props: {
                                 onChange={checked => props.onUpdatePayload({ ...payload, pauseAfter: checked ? true : undefined })}
                             />
                             {pauseEnabled ? (
-                                <NumberField
-                                    label={t("storyInspector.dialogue.pauseMs")}
+                                <SecondsField
+                                    label={t("storyInspector.dialogue.pauseSeconds")}
                                     value={pauseMs}
                                     onChange={ms => props.onUpdatePayload({ ...payload, pauseAfter: ms === undefined ? true : ms })}
                                 />
@@ -692,7 +693,7 @@ function ActionPayloadFields(props: {
                         assetId={payload.assetId}
                         onChange={assetId => props.onChange({ ...payload, assetId })}
                     />
-                    <NumberField label={t("storyInspector.audio.fadeMs")} value={payload.fadeMs} onChange={fadeMs => props.onChange({ ...payload, fadeMs })} />
+                    <SecondsField label={t("storyInspector.audio.fade")} value={payload.fadeMs} onChange={fadeMs => props.onChange({ ...payload, fadeMs })} />
                     <NumberField label={t("storyInspector.audio.volume")} value={payload.volume} onChange={volume => props.onChange({ ...payload, volume })} />
                     <NumberField label={t("storyInspector.audio.rate")} value={payload.rate} onChange={rate => props.onChange({ ...payload, rate })} />
                     <CheckboxField label={t("storyInspector.audio.loop")} checked={Boolean(payload.loop)} onChange={loop => props.onChange({ ...payload, loop })} />
@@ -716,7 +717,7 @@ function ActionPayloadFields(props: {
                     value={payload.mode}
                     onChange={mode => props.onChange({ ...payload, mode: mode as "duration" | "click" })}
                 />
-                <NumberField label={t("storyInspector.field.durationMs")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
+                <SecondsField label={t("storyInspector.field.duration")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
             </div>
         );
     }
@@ -787,7 +788,7 @@ function ActionPayloadFields(props: {
                     <TransformPresetEditor
                         value={payload.transform}
                         motionTargetKind={resolvedTarget.kind ?? "image"}
-                        motionLabel={`${resolvedTarget.name || t("storyInspector.motionTarget.displayable")} ${payload.operation}`}
+                        motionLabel={`${resolvedTarget.label || t("storyInspector.motionTarget.displayable")} ${payload.operation}`}
                         storyId={props.document.id}
                         sceneId={props.sceneId}
                         blockId={props.block.id}
@@ -933,8 +934,8 @@ function ActionPayloadFields(props: {
                     value={payload.effect}
                     onChange={effect => props.onChange({ ...payload, effect: effect as Extract<StoryActionPayload, { action: "screenEffect" }>["effect"] })}
                 />
-                <NumberField label={t("storyInspector.field.durationMs")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
-                <NumberField label={t("storyInspector.field.holdMs")} value={payload.holdMs} onChange={holdMs => props.onChange({ ...payload, holdMs })} />
+                <SecondsField label={t("storyInspector.field.duration")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
+                <SecondsField label={t("storyInspector.field.hold")} value={payload.holdMs} onChange={holdMs => props.onChange({ ...payload, holdMs })} />
                 <ColorTextField label={t("storyInspector.field.color")} value={payload.color ?? "#000000"} onChange={color => props.onChange({ ...payload, color })} />
                 <NumberField label={t("storyInspector.field.opacity")} value={payload.opacity} onChange={opacity => props.onChange({ ...payload, opacity })} />
                 <SelectField
@@ -1126,7 +1127,7 @@ function AssetField(props: {
                 </button>
                 <button
                     type="button"
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
                     disabled={!props.assetId}
                     title={t("storyInspector.asset.clear")}
                     onClick={() => props.onChange(undefined)}
@@ -1162,7 +1163,7 @@ function DisplayableEffectEditor(props: {
     return (
         <Section title={t("storyInspector.section.effect")}>
             <FieldGrid cols={3}>
-                <NumberField label={t("storyInspector.field.durationMs")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
+                <SecondsField label={t("storyInspector.field.duration")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
                 <SelectField
                     label={t("storyInspector.field.easing")}
                     options={easingOptions(t)}
@@ -1258,8 +1259,8 @@ function TransformPresetEditor(props: {
                             value={value.preset ?? "none"}
                             onChange={preset => props.onChange({ ...value, mode: "preset", preset: preset as StoryTransformPreset })}
                         />
-                        <NumberField
-                            label={t("storyInspector.field.durationMs")}
+                        <SecondsField
+                            label={t("storyInspector.field.duration")}
                             value={value.durationMs}
                             onChange={durationMs => props.onChange({ ...value, durationMs })}
                         />
@@ -1324,7 +1325,7 @@ function TransitionEditor(props: {
                 />
                 {kind === "none" ? null : (
                     <>
-                        <NumberField label={t("storyInspector.field.durationMs")} value={value.durationMs} onChange={durationMs => setBase({ durationMs })} />
+                        <SecondsField label={t("storyInspector.field.duration")} value={value.durationMs} onChange={durationMs => setBase({ durationMs })} />
                         <SelectField
                             label={t("storyInspector.field.easing")}
                             options={easingOptions(t)}
@@ -1589,7 +1590,7 @@ function BackgroundActionEditor(props: {
 
     return (
         <div className="grid grid-cols-1 gap-3">
-            <div className="inline-flex w-fit overflow-hidden rounded-md border border-edge bg-[#101216]">
+            <div className="inline-flex w-fit overflow-hidden rounded-md border border-edge bg-surface">
                 <button
                     type="button"
                     className={[
@@ -1636,7 +1637,7 @@ function BackgroundActionEditor(props: {
                             </div>
                         )}
                         {loading ? (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-fg">
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-white">
                                 {t("common.loading")}
                             </div>
                         ) : null}
@@ -1663,7 +1664,7 @@ function BackgroundActionEditor(props: {
                             </button>
                             <button
                                 type="button"
-                                className="grid h-8 w-8 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                                className="grid h-8 w-8 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
                                 onClick={clearImage}
                                 disabled={!props.payload.assetId}
                                 title={t("storyInspector.background.clearImage")}
@@ -1672,7 +1673,7 @@ function BackgroundActionEditor(props: {
                             </button>
                         </div>
                         {props.payload.assetId && error ? (
-                            <div className="text-2xs leading-snug text-amber-400/90">
+                            <div className="text-2xs leading-snug text-warning/90">
                                 {t("storyInspector.background.assetError", { error })}
                             </div>
                         ) : null}
@@ -1764,15 +1765,18 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
                         value={branchPayload.condition}
                         onChange={condition => props.onChange({ ...branchPayload, condition })}
                     />
-                    {branchPayload.condition?.kind === "expression" ? (
-                        <div className="rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
-                            {t("storyInspector.condition.legacyExpression")}
+                    {/* An expression condition used to warrant a "not supported" banner. It now compiles
+                        and previews like any other, so the only thing worth surfacing is the opposite
+                        case: an expression that stopped resolving (its variable was renamed or deleted). */}
+                    {branchPayload.condition?.kind === "expression" && !isStoryExpressionEvaluable(branchPayload.condition.expression.ast) ? (
+                        <div className="rounded-md border border-warning/20 bg-warning/10 px-2 py-1.5 text-xs text-warning">
+                            {t("storyInspector.condition.brokenExpression")}
                         </div>
                     ) : null}
                     {branchPayload.condition ? (
                         <button
                             type="button"
-                            className="h-8 w-fit rounded-md border border-edge px-2 text-xs text-fg-muted hover:border-red-400/40 hover:text-red-300"
+                            className="h-8 w-fit rounded-md border border-edge px-2 text-xs text-fg-muted hover:border-danger/40 hover:text-danger"
                             onClick={() => props.onChange({ ...branchPayload, condition: undefined })}
                         >
                             {t("storyInspector.condition.clear")}
@@ -1894,6 +1898,25 @@ function NumberField(props: { label: string; value: number | undefined; onChange
     );
 }
 
+/**
+ * Edits a millisecond-backed timing field in seconds. `value` and `onChange` both speak the
+ * stored milliseconds; only the text the author reads and types is seconds.
+ */
+function SecondsField(props: { label: string; value: number | undefined; onChange: (ms: number | undefined) => void }) {
+    return (
+        <div>
+            <label className={FIELD_LABEL_CLASS}>{props.label}</label>
+            <NumericDraftEnhancedInput
+                committedDisplay={formatStorySecondsValue(props.value)}
+                onFiniteNumber={seconds => props.onChange(storySecondsToMs(seconds))}
+                onEmpty={() => props.onChange(undefined)}
+                type="text"
+                inputMode="decimal"
+            />
+        </div>
+    );
+}
+
 function LabeledTextarea(props: { label: string; value: string; onChange: (value: string) => void; className?: string }) {
     return (
         <div>
@@ -1954,7 +1977,7 @@ function FieldGrid(props: { cols?: 2 | 3 | 4; className?: string; children: Reac
 /** Compact inline segmented toggle (e.g. Preset / Motion). */
 function SegToggle<T extends string>(props: { value: T; options: { value: T; label: string }[]; onChange: (value: T) => void }) {
     return (
-        <div className="inline-flex overflow-hidden rounded-md border border-edge bg-[#101216]">
+        <div className="inline-flex overflow-hidden rounded-md border border-edge bg-surface">
             {props.options.map((option, index) => (
                 <button
                     key={option.value}

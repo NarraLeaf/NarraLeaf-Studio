@@ -427,7 +427,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
                         <div className="flex items-center gap-2">
                             {thumbnailId && (
                                 <button
-                                    className="text-xs text-red-400 hover:text-red-300"
+                                    className="text-xs text-danger hover:text-danger/80"
                                     onClick={handleClearThumbnail}
                                 >
                                     {t("common.clear")}
@@ -454,7 +454,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
                             </div>
                         )}
                     </div>
-                    {thumbnailError && <div className="text-xs text-red-400">{thumbnailError}</div>}
+                    {thumbnailError && <div className="text-xs text-danger">{thumbnailError}</div>}
                 </div>
             </div>
 

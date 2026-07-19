@@ -72,6 +72,8 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
@@ -104,7 +106,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
     BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
+    BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ,
     BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
+    BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ,
     BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
@@ -209,6 +213,8 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
+    BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
+    BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
     BLUEPRINT_NODE_TYPE_SAVED_GET,
@@ -284,6 +290,8 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getPageProps: () => ({}),
                     closeLayer: async () => undefined,
                     quitApplication: async () => undefined,
+                    getFullscreen: async () => false,
+                    setFullscreen: async () => undefined,
                 },
                 widget: {} as any,
                 state: {
@@ -326,6 +334,8 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getNotifications: () => [],
                     getChoiceCount: () => 0,
                     isNvlMode: () => false,
+                    isCurrentTextRead: () => false,
+                    clearTextRead: async () => undefined,
                     choose: async () => undefined,
                     next: async () => undefined,
                     skip: async () => undefined,
@@ -358,6 +368,7 @@ function createPageNavigationHostAdapter(
     openedPageProps: unknown[] = [],
     pageProps: Record<string, unknown> = {},
     quitApplicationCalls: boolean[] = [],
+    fullscreen: { current: boolean; setCalls: boolean[] } = { current: false, setCalls: [] },
 ): UIHostAdapter {
     return {
         host: "player",
@@ -377,6 +388,11 @@ function createPageNavigationHostAdapter(
                     closeLayer: async () => undefined,
                     quitApplication: async () => {
                         quitApplicationCalls.push(true);
+                    },
+                    getFullscreen: async () => fullscreen.current,
+                    setFullscreen: async (next: boolean) => {
+                        fullscreen.setCalls.push(next);
+                        fullscreen.current = next;
                     },
                 },
                 widget: {
@@ -437,6 +453,8 @@ function createPageNavigationHostAdapter(
                     getNotifications: () => [],
                     getChoiceCount: () => 0,
                     isNvlMode: () => false,
+                    isCurrentTextRead: () => false,
+                    clearTextRead: async () => undefined,
                     choose: async () => undefined,
                     next: async () => undefined,
                     skip: async () => undefined,
@@ -470,6 +488,8 @@ function createGameSaveHostAdapter(options: {
     notifications?: Array<{ id: string; message: string }>;
     choiceCount?: number;
     nvlMode?: boolean;
+    textRead?: boolean;
+    clearTextReadCalls?: boolean[];
     chosenIndexes?: number[];
     isInGame?: boolean;
     isGameOverlay?: boolean;
@@ -497,6 +517,8 @@ function createGameSaveHostAdapter(options: {
                     getPageProps: () => ({}),
                     closeLayer: async () => undefined,
                     quitApplication: async () => undefined,
+                    getFullscreen: async () => false,
+                    setFullscreen: async () => undefined,
                 },
                 widget: {} as any,
                 state: {
@@ -545,6 +567,10 @@ function createGameSaveHostAdapter(options: {
                     getNotifications: () => options.notifications ?? [],
                     getChoiceCount: () => options.choiceCount ?? 0,
                     isNvlMode: () => options.nvlMode ?? false,
+                    isCurrentTextRead: () => options.textRead ?? false,
+                    clearTextRead: async () => {
+                        options.clearTextReadCalls?.push(true);
+                    },
                     choose: async (index: number) => {
                         options.chosenIndexes?.push(index);
                     },
@@ -1368,6 +1394,73 @@ describe("built-in blueprint nodes", () => {
         ]);
     });
 
+    it("reads and writes the App window fullscreen state", async () => {
+        const readFullscreenInto = async (
+            fullscreen: { current: boolean; setCalls: boolean[] },
+        ): Promise<Record<string, unknown>> => {
+            const locals: Record<string, unknown> = {};
+            await executeGraph({
+                graph: {
+                    id: "getFullscreen",
+                    entries: { main: { start: { nodeId: "get", port: "in" } } },
+                    nodes: {
+                        get: { id: "get", type: BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN, params: {} },
+                        store: {
+                            id: "store",
+                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                            params: { variableId: "state" },
+                        },
+                    },
+                    edges: [
+                        { from: { nodeId: "get", port: "next" }, to: { nodeId: "store", port: "in" } },
+                        { from: { nodeId: "get", port: "isFullscreen" }, to: { nodeId: "store", port: "value" } },
+                    ],
+                },
+                entry: { start: { nodeId: "get", port: "in" } },
+                hostAdapter: createPageNavigationHostAdapter([], {}, [], [], [], {}, [], fullscreen),
+                blueprintLocals: locals,
+            });
+            return locals;
+        };
+
+        // Get Fullscreen is latent, so its data pin only resolves via the output passthrough.
+        expect(await readFullscreenInto({ current: true, setCalls: [] })).toMatchObject({ state: true });
+        expect(await readFullscreenInto({ current: false, setCalls: [] })).toMatchObject({ state: false });
+
+        const runSetFullscreen = async (
+            mode: unknown,
+            initial: boolean,
+        ): Promise<boolean[]> => {
+            const fullscreen = { current: initial, setCalls: [] as boolean[] };
+            await executeGraph({
+                graph: {
+                    id: "setFullscreen",
+                    entries: { main: { start: { nodeId: "set", port: "in" } } },
+                    nodes: {
+                        set: {
+                            id: "set",
+                            type: BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN,
+                            params: mode === undefined ? {} : { mode },
+                        },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "set", port: "in" } },
+                hostAdapter: createPageNavigationHostAdapter([], {}, [], [], [], {}, [], fullscreen),
+            });
+            return fullscreen.setCalls;
+        };
+
+        expect(await runSetFullscreen("enter", false)).toEqual([true]);
+        expect(await runSetFullscreen("enter", true)).toEqual([true]);
+        expect(await runSetFullscreen("exit", true)).toEqual([false]);
+        expect(await runSetFullscreen("toggle", false)).toEqual([true]);
+        expect(await runSetFullscreen("toggle", true)).toEqual([false]);
+        // An unset or unknown dropdown value falls back to toggle.
+        expect(await runSetFullscreen(undefined, false)).toEqual([true]);
+        expect(await runSetFullscreen("bogus", true)).toEqual([false]);
+    });
+
     it("executes Start Game as a terminal host API node", async () => {
         registerCoreBlueprintNodes();
 
@@ -1762,6 +1855,34 @@ describe("built-in blueprint nodes", () => {
         })).rejects.toThrow(/Skip Interval/);
     });
 
+    it("captures a save screenshot set through the Capture pin's on-card literal", async () => {
+        registerCoreBlueprintNodes();
+
+        // The pin is boolean and unwired here: without an inline literal there is no way to turn
+        // Capture on from the node card, which read as the pin being ignored.
+        const saveWrite = blueprintNodeRegistry.get(BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE)!;
+        expect(saveWrite.pins.find(pin => pin.id === "screenshot")?.allowInlineLiteral).toBe(true);
+
+        const writtenScreenshots: boolean[] = [];
+        await executeGraph({
+            graph: {
+                id: "writeSaveInlineCapture",
+                entries: { main: { start: { nodeId: "write", port: "in" } } },
+                nodes: {
+                    write: {
+                        id: "write",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
+                        params: { id: "slot-a", screenshot: true },
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "write", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ writtenScreenshots }),
+        });
+        expect(writtenScreenshots).toEqual([true]);
+    });
+
     it("executes game save nodes through host APIs", async () => {
         registerCoreBlueprintNodes();
 
@@ -2071,7 +2192,7 @@ describe("built-in blueprint nodes", () => {
 
         expect(eventHeadBlueprintNodes.every(def => def.category === "Events")).toBe(true);
         expect(broadcastBlueprintNodes.every(def => def.category === "Events")).toBe(true);
-        expect(frameBlueprintNodes.every(def => def.category === "Page")).toBe(true);
+        expect(frameBlueprintNodes.every(def => def.category === "App")).toBe(true);
         expect(gameBlueprintNodes.every(def => def.category === "Game")).toBe(true);
         // Backlog / dialogue-history nodes live under the shared "Game" category.
         expect(backlogBlueprintNodes.every(def => def.category === "Game")).toBe(true);
@@ -4518,6 +4639,18 @@ describe("built-in blueprint nodes", () => {
             gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE)?.pins.map(pin => pin.id),
         ).toEqual(["isNvlMode"]);
         expect(
+            gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ)?.pins.map(pin => pin.id),
+        ).toEqual(["isRead"]);
+        expect(
+            gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ)?.isPure,
+        ).toBe(true);
+        expect(
+            gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ)?.pins.map(pin => pin.id),
+        ).toEqual(["in", "next"]);
+        expect(
+            gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ)?.isPure,
+        ).toBe(false);
+        expect(
             gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_CHOOSE)?.pins.map(pin => pin.id),
         ).toEqual(["in", "next", "index"]);
 
@@ -4532,6 +4665,8 @@ describe("built-in blueprint nodes", () => {
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_CHOOSE)).toBe(false);
 
         for (const widgetElementType of ["nl.notification.list", "nl.choice.list", "nl.nvl.list"]) {
@@ -4566,6 +4701,25 @@ describe("built-in blueprint nodes", () => {
             hostAdapter: createGameSaveHostAdapter({ chosenIndexes }),
         });
         expect(chosenIndexes).toEqual([2]);
+
+        const clearTextReadCalls: boolean[] = [];
+        await executeGraph({
+            graph: {
+                id: "clear-text-read",
+                entries: { main: { start: { nodeId: "clear", port: "in" } } },
+                nodes: {
+                    clear: {
+                        id: "clear",
+                        type: BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ,
+                        params: {},
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "clear", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ clearTextReadCalls }),
+        });
+        expect(clearTextReadCalls).toEqual([true]);
 
         await expect(executeGraph({
             graph: {
@@ -4699,6 +4853,8 @@ describe("built-in blueprint nodes", () => {
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT)).toBe(false);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY)).toBe(false);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT)).toBe(false);
@@ -4723,6 +4879,11 @@ describe("built-in blueprint nodes", () => {
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP)).toBe(true);
+        // Ambient window event: offered on widgets too, like broadcasts.
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED)).toBe(true);
+        // Window close request cancellation rides the dispatch's shared event control, which the
+        // widget dispatch path does not thread, so the head is global/surface only (not on widgets).
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED)).toBe(false);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL)).toBe(false);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)).toBe(false);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END)).toBe(false);

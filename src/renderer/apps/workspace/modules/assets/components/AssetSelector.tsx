@@ -37,16 +37,6 @@ const ASSET_TYPE_ICONS = {
     [AssetType.Other]: File,
 };
 
-const ASSET_TYPE_LABELS = {
-    [AssetType.Image]: "Images",
-    [AssetType.Audio]: "Audio",
-    [AssetType.Video]: "Videos",
-    [AssetType.JSON]: "JSON Files",
-    [AssetType.Blueprint]: "Blueprints",
-    [AssetType.Font]: "Fonts",
-    [AssetType.Other]: "Other",
-};
-
 const ASSET_SELECTOR_STATE_ID = "narraleaf-studio:asset-selector";
 const WINDOW_TITLEBAR_HEIGHT = 40;
 
@@ -598,7 +588,7 @@ export function AssetSelector({
     }
 
     const Icon = ASSET_TYPE_ICONS[assetType];
-    const headerLabel = title ?? t("assets.selector.selectType", { type: ASSET_TYPE_LABELS[assetType] });
+    const headerLabel = title ?? t("assets.selector.selectType", { type: t(`assets.types.${assetType}`) });
 
     const panel = (
         <div
@@ -612,7 +602,7 @@ export function AssetSelector({
             <div
                 ref={panelRef}
                 style={anchorRef?.current ? { position: "fixed", top: anchorStyle.top, left: anchorStyle.left, width: anchorStyle.width } : { width: anchorStyle.width }}
-                className={`${anchorRef?.current ? "" : "mt-12 mx-auto"} bg-surface-sunken border border-edge-strong rounded-lg shadow-2xl text-fg max-h-[560px] flex flex-col ${className}`}
+                className={`${anchorRef?.current ? "" : "mt-12 mx-auto"} bg-surface-overlay border border-edge-strong rounded-lg shadow-2xl text-fg max-h-[560px] flex flex-col ${className}`}
                 onMouseDown={(e) => e.stopPropagation()}
             >
                 <div className="flex items-center justify-between px-4 py-3 border-b border-edge">
@@ -660,11 +650,11 @@ export function AssetSelector({
                         <span>{t("assets.loading")}</span>
                     </div>
                 ) : error ? (
-                    <div className="flex items-start gap-2 px-4 py-6 text-red-400">
+                    <div className="flex items-start gap-2 px-4 py-6 text-danger">
                         <AlertCircle className="w-4 h-4 mt-0.5" />
                         <div className="text-sm">
                             <div>{t("assets.loadError")}</div>
-                            <div className="text-xs text-red-300/80">{error}</div>
+                            <div className="text-xs text-danger/80">{error}</div>
                         </div>
                     </div>
                 ) : displayedAssets.length === 0 && !hasVisibleVirtualAssets ? (
@@ -697,13 +687,13 @@ export function AssetSelector({
                 )}
 
                 {multiple && (
-                    <div className="px-4 py-3 border-t border-edge flex items-center justify-between bg-black/20">
+                    <div className="px-4 py-3 border-t border-edge flex items-center justify-between bg-fill-subtle">
                         <div className="text-xs text-fg-muted">
                             {t("assets.selector.selectedCount", { count: selection.size })}
                             {selection.size > 0 && (
                                 <button
                                     onClick={() => setSelection(new Set())}
-                                    className="ml-2 text-red-400 hover:text-red-300"
+                                    className="ml-2 text-danger hover:text-danger/80"
                                 >
                                     {t("common.clear")}
                                 </button>
@@ -719,7 +709,7 @@ export function AssetSelector({
                             <button
                                 onClick={handleConfirm}
                                 disabled={selection.size === 0}
-                                className="px-3 py-1.5 text-sm rounded-md bg-primary text-white hover:bg-primary/90 disabled:opacity-60"
+                                className="px-3 py-1.5 text-sm rounded-md bg-primary text-on-primary hover:bg-primary/90 disabled:opacity-60"
                             >
                                 {t("assets.selector.choose")}
                             </button>

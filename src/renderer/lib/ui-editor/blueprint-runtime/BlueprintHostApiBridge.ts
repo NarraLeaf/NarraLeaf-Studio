@@ -11,12 +11,15 @@ import {
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
     BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY,
     BLUEPRINT_GAME_NVL_MODE_STATE_KEY,
+    BLUEPRINT_GAME_TEXT_READ_STATE_KEY,
+    BLUEPRINT_TEXT_READ_PERSISTENCE_KEY,
 } from "@shared/types/blueprint/hostApi";
 import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/localization";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { normalizeElementEffectValues, type ElementEffectValues } from "@shared/types/ui-editor/effects";
 import type {
+    UIDisplayableBaseTransform,
     UIDisplayableMotionOverride,
     UIDisplayableMotionTarget,
     UIDisplayableMotionTransition,
@@ -44,6 +47,8 @@ import type {
 } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 import type { UISliderRuntimeValue, UISliderWidgetProps } from "@shared/types/ui-editor/slider";
 import { resolveSliderRuntimeValue } from "@shared/types/ui-editor/slider";
+import type { UITextInputRuntimeValue, UITextInputWidgetProps } from "@shared/types/ui-editor/textInput";
+import { normalizeTextInputProps, resolveTextInputRuntimeValue } from "@shared/types/ui-editor/textInput";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import {
     isButtonCursorValue,
@@ -102,6 +107,15 @@ export type BlueprintTextPropertiesPatch = Partial<BlueprintTextProperties>;
 export type BlueprintSliderProperties = UISliderRuntimeValue;
 
 export type BlueprintSliderPropertiesPatch = Partial<Pick<UISliderWidgetProps, "value" | "min" | "max" | "step">>;
+
+export type BlueprintTextInputProperties = UITextInputRuntimeValue;
+
+/**
+ * Only `value` - the runtime value carries nothing else, so patching `placeholder`/`readOnly`/
+ * `disabled` here would be silently dropped. Those stay authored props, and an author who needs
+ * them to react at runtime binds them to a graph (the Literal/Bound chip) instead.
+ */
+export type BlueprintTextInputPropertiesPatch = Partial<Pick<UITextInputWidgetProps, "value">>;
 
 export type BlueprintListProperties = {
     items: unknown[];
@@ -195,6 +209,8 @@ export type BlueprintHostApiRuntime = {
         getPageProps: () => Record<string, unknown>;
         closeLayer: () => Promise<void>;
         quitApplication: () => Promise<void>;
+        getFullscreen: () => Promise<boolean>;
+        setFullscreen: (fullscreen: boolean) => Promise<void>;
     };
     widget: {
         setVisible: (elementId: string, visible: boolean) => Promise<void>;
@@ -212,6 +228,8 @@ export type BlueprintHostApiRuntime = {
         setImageProperties: (elementId: string, patch: Partial<BlueprintImageProperties>) => Promise<void>;
         getSliderProperties: (elementId: string) => BlueprintSliderProperties;
         setSliderProperties: (elementId: string, patch: BlueprintSliderPropertiesPatch) => Promise<void>;
+        getTextInputProperties: (elementId: string) => BlueprintTextInputProperties;
+        setTextInputProperties: (elementId: string, patch: BlueprintTextInputPropertiesPatch) => Promise<void>;
         getListProperties: (elementId: string) => BlueprintListProperties;
         setListItems: (elementId: string, items: readonly unknown[]) => Promise<void>;
         setListSelectedIndex: (elementId: string, index: number) => Promise<void>;
@@ -263,6 +281,10 @@ export type BlueprintHostApiRuntime = {
         getNotifications: () => BlueprintGameNotification[];
         getChoiceCount: () => number;
         isNvlMode: () => boolean;
+        /** True while a dialog line is on screen and its message is marked read. */
+        isCurrentTextRead: () => boolean;
+        /** Wipe the persisted text-read record (all stories). */
+        clearTextRead: () => Promise<void>;
         choose: (index: number) => Promise<void>;
         next: () => Promise<void>;
         skip: () => Promise<void>;
@@ -311,6 +333,8 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onGetNotifications?: () => BlueprintGameNotification[];
     onGetChoiceCount?: () => number;
     onIsNvlMode?: () => boolean;
+    onIsCurrentTextRead?: () => boolean;
+    onClearTextRead?: () => Promise<void> | void;
     onSelectChoice?: (index: number) => Promise<void> | void;
     onNext?: () => Promise<void> | void;
     onSkip?: () => Promise<void> | void;
@@ -324,6 +348,9 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
     onCloseLayer: () => void | Promise<void>;
     onQuitApplication?: () => void | Promise<void>;
+    /** Hosts without a real application window (story preview) leave these unset. */
+    onGetFullscreen?: () => boolean | Promise<boolean>;
+    onSetFullscreen?: (fullscreen: boolean) => void | Promise<void>;
     onWidgetPatch: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
     onElementFlush?: (elementId: string, payload: BlueprintElementFlushPayload) => Promise<void> | void;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -533,6 +560,14 @@ function assertSliderElement(document: UIDocument, elementId: string) {
     return el;
 }
 
+function assertTextInputElement(document: UIDocument, elementId: string) {
+    const el = requireDocumentElement(document, elementId, "textInput");
+    if (el.type !== "nl.textInput") {
+        throw new Error(`textInput: element is not a Text Input widget: ${el.type}`);
+    }
+    return el;
+}
+
 function assertListElement(document: UIDocument, elementId: string) {
     const el = requireDocumentElement(document, elementId, "list");
     if (!isListLikeWidgetType(el.type)) {
@@ -651,6 +686,23 @@ function readListProperties(
     };
 }
 
+function readAuthoredTextInputProperties(document: UIDocument, elementId: string): UITextInputWidgetProps {
+    const el = assertTextInputElement(document, elementId);
+    return normalizeTextInputProps(el.props);
+}
+
+function readTextInputProperties(
+    document: UIDocument,
+    widgetRuntimeStore: WidgetRuntimeStateStore,
+    runtimeScopeId: string | undefined,
+    activeSurfaceId: string,
+    elementId: string,
+): BlueprintTextInputProperties {
+    const authored = readAuthoredTextInputProperties(document, elementId);
+    const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+    return widgetRuntimeStore.getTextInputProperties(scopedKey) ?? resolveTextInputRuntimeValue(authored);
+}
+
 function readSliderProperties(
     document: UIDocument,
     widgetRuntimeStore: WidgetRuntimeStateStore,
@@ -756,9 +808,13 @@ function readEffectiveDisplayableProperties(
     const merged = readDisplayableProperties(document, elementId, runtimePatches);
     const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
     const motion = widgetRuntimeStore.getDisplayableMotion(scopedKey);
+    const baseTransform = widgetRuntimeStore.getDisplayableBaseTransform(scopedKey);
+    // An in-flight motion that animates x/y still reports its target offset (legacy behavior);
+    // otherwise the persistent base transform is the effective offset. Persistent offsets no
+    // longer live in the motion slot, so reads survive the motion being replaced.
     merged.offset = {
-        x: finalDisplayableMotionValue(motion?.target.x) ?? 0,
-        y: finalDisplayableMotionValue(motion?.target.y) ?? 0,
+        x: finalDisplayableMotionValue(motion?.target.x) ?? baseTransform.offsetX,
+        y: finalDisplayableMotionValue(motion?.target.y) ?? baseTransform.offsetY,
     };
     if (!hasRuntimeOpacityPatch(patch)) {
         const appearanceOpacity = readAppearanceOpacity(document, widgetRuntimeStore, scopedKey, elementId);
@@ -1319,6 +1375,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onGetNotifications,
         onGetChoiceCount,
         onIsNvlMode,
+        onIsCurrentTextRead,
+        onClearTextRead,
         onSelectChoice,
         onNext,
         onSkip,
@@ -1332,6 +1390,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onOpenSurface,
         onCloseLayer,
         onQuitApplication,
+        onGetFullscreen,
+        onSetFullscreen,
         onWidgetPatch,
         onElementFlush,
         widgetRuntimeStore,
@@ -1520,6 +1580,30 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("quitApplication: application runtime is not available");
                     }
                     await onQuitApplication();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getFullscreen: async () => {
+                const cap = "navigation.getFullscreen";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onGetFullscreen) {
+                        throw new Error("getFullscreen: application window is not available");
+                    }
+                    return (await onGetFullscreen()) === true;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setFullscreen: async (fullscreen: boolean) => {
+                const cap = "navigation.setFullscreen";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onSetFullscreen) {
+                        throw new Error("setFullscreen: application window is not available");
+                    }
+                    await onSetFullscreen(fullscreen === true);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -1829,6 +1913,45 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
+            getTextInputProperties: (elementId: string) => {
+                const cap = "widget.getTextInputProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return readTextInputProperties(
+                        document,
+                        widgetRuntimeStore,
+                        runtimeScopeId,
+                        activeSurfaceId,
+                        elementId,
+                    );
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setTextInputProperties: async (elementId: string, patch: BlueprintTextInputPropertiesPatch) => {
+                const cap = "widget.setTextInputProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const before = readTextInputProperties(
+                        document,
+                        widgetRuntimeStore,
+                        runtimeScopeId,
+                        activeSurfaceId,
+                        elementId,
+                    );
+                    const authored = readAuthoredTextInputProperties(document, elementId);
+                    const after = widgetRuntimeStore.setTextInputProperties(
+                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                        authored,
+                        patch,
+                    );
+                    if (before.value !== after.value) {
+                        scheduleElementFlush(elementId);
+                    }
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
             getListProperties: (elementId: string) => {
                 const cap = "widget.getListProperties";
                 emitHostCall(emit, cap, "call");
@@ -1964,13 +2087,14 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     const layoutPatch = createDisplayableLayoutPatch(elementId, patch);
                     const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
                     if (offsetX !== undefined || offsetY !== undefined) {
-                        widgetRuntimeStore.setDisplayableMotion(scopedKey, {
-                            target: {
-                                x: offsetX ?? current.offset.x,
-                                y: offsetY ?? current.offset.y,
-                            },
-                            transition: { type: "tween", durationMs: 0, delayMs: 0, easing: "linear" },
-                            resetOnComplete: false,
+                        // Offsets are persistent state, so they go to the base transform, NOT the
+                        // one-shot motion slot: a later motion (variant opacity transition, shake)
+                        // replacing the slot used to evict the offset and reset the widget to its
+                        // un-offset origin. A motion currently animating x/y keeps visual control
+                        // until it clears; the pose then converges on this base.
+                        widgetRuntimeStore.setDisplayableBaseTransform(scopedKey, {
+                            ...(offsetX !== undefined ? { offsetX } : {}),
+                            ...(offsetY !== undefined ? { offsetY } : {}),
                         });
                     }
                     const previousPatch = runtimePatches.get(elementId) ?? {};
@@ -2022,17 +2146,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.animateDisplayable";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const current = readEffectiveDisplayableProperties(
-                        document,
-                        widgetRuntimeStore,
-                        runtimePatches,
-                        runtimeScopeId,
-                        activeSurfaceId,
-                        elementId,
-                    );
-                    const heldOpacity = request.resetOnComplete
-                        ? undefined
-                        : finalDisplayableMotionValue(request.target.opacity);
                     const waitMs = displayableMotionWaitMs(request.transition) * (request.resetOnComplete ? 2 : 1);
                     const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
                     const motion = widgetRuntimeStore.setDisplayableMotion(
@@ -2046,27 +2159,15 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         }
                     }
                     const waitReason = await waitForDisplayableAnimation(motion.id, waitMs);
-                    if (waitReason === "completed" && heldOpacity !== undefined) {
-                        const currentMotion = widgetRuntimeStore.getDisplayableMotion(scopedKey);
-                        if (currentMotion?.id === motion.id) {
-                            const opacity = normalizeDisplayableOpacity(heldOpacity);
-                            const previousPatch = runtimePatches.get(elementId) ?? {};
-                            const nextPatch: DevModeWidgetRuntimePatch = {
-                                ...previousPatch,
-                                layout: {
-                                    ...(previousPatch.layout ?? {}),
-                                    opacity,
-                                },
-                            };
-                            runtimePatches.set(elementId, nextPatch);
-                            emitWidgetPatch(elementId, nextPatch);
-                            if (current.opacity !== opacity) {
-                                scheduleElementFlush(elementId);
-                            }
-                        }
-                    }
-                    const commitLayoutOnComplete = request.resetOnComplete ? undefined : request.commitLayoutOnComplete;
-                    if (waitReason === "completed" && commitLayoutOnComplete) {
+                    // Hold-mode motions ("after: hold") commit their final pose into persistent
+                    // state on natural completion and release the one-shot motion slot in the
+                    // same update: absolute x/y (commitLayoutOnComplete), rotation, and opacity
+                    // fold into the layout patch; held x/y offsets and scale fold into the base
+                    // transform. Committing and clearing together lets EditorNodeWrapper wipe
+                    // the leftover DOM transform in the same React commit as the layout change
+                    // (no double offset, no flash-back), and the committed pose survives the
+                    // next motion replacing the slot.
+                    if (waitReason === "completed" && !request.resetOnComplete) {
                         const currentMotion = widgetRuntimeStore.getDisplayableMotion(scopedKey);
                         if (currentMotion?.id === motion.id) {
                             const beforeCommit = readEffectiveDisplayableProperties(
@@ -2077,23 +2178,56 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                                 activeSurfaceId,
                                 elementId,
                             );
-                            const layoutPatch = createDisplayableLayoutPatch(elementId, commitLayoutOnComplete);
-                            const previousPatch = runtimePatches.get(elementId) ?? {};
-                            const nextPatch: DevModeWidgetRuntimePatch = {
-                                ...previousPatch,
-                                layout: {
-                                    ...(previousPatch.layout ?? {}),
-                                    ...layoutPatch,
-                                },
+                            const finalX = finalDisplayableMotionValue(request.target.x);
+                            const finalY = finalDisplayableMotionValue(request.target.y);
+                            const finalScale = finalDisplayableMotionValue(request.target.scale);
+                            const finalRotate = finalDisplayableMotionValue(request.target.rotate);
+                            const heldOpacity = finalDisplayableMotionValue(request.target.opacity);
+                            const layoutCommit: BlueprintDisplayablePropertiesPatch = {
+                                ...(request.commitLayoutOnComplete ?? {}),
                             };
-                            if (Object.keys(nextPatch.layout ?? {}).length === 0) {
-                                delete nextPatch.layout;
+                            if (finalRotate !== undefined) {
+                                layoutCommit.rotation = finalRotate;
                             }
-                            runtimePatches.set(elementId, nextPatch);
+                            if (heldOpacity !== undefined) {
+                                layoutCommit.opacity = normalizeDisplayableOpacity(heldOpacity);
+                            }
+                            const basePatch: Partial<UIDisplayableBaseTransform> = {};
+                            // An absolute x/y layout commit consumes the whole translate delta;
+                            // the base offset on that axis must return to zero or the layout move
+                            // would double-apply it. Otherwise the held offset becomes the new base.
+                            if (layoutCommit.x !== undefined) {
+                                basePatch.offsetX = 0;
+                            } else if (finalX !== undefined) {
+                                basePatch.offsetX = finalX;
+                            }
+                            if (layoutCommit.y !== undefined) {
+                                basePatch.offsetY = 0;
+                            } else if (finalY !== undefined) {
+                                basePatch.offsetY = finalY;
+                            }
+                            if (finalScale !== undefined) {
+                                basePatch.scale = finalScale;
+                            }
+                            const layoutPatch = createDisplayableLayoutPatch(elementId, layoutCommit);
+                            let nextPatch: DevModeWidgetRuntimePatch = runtimePatches.get(elementId) ?? {};
+                            if (Object.keys(layoutPatch).length > 0) {
+                                nextPatch = {
+                                    ...nextPatch,
+                                    layout: {
+                                        ...(nextPatch.layout ?? {}),
+                                        ...layoutPatch,
+                                    },
+                                };
+                                runtimePatches.set(elementId, nextPatch);
+                            }
+                            const baseChanged = Object.keys(basePatch).length > 0
+                                ? widgetRuntimeStore.setDisplayableBaseTransform(scopedKey, basePatch, { silent: true })
+                                : false;
                             const motionCleared = widgetRuntimeStore.clearDisplayableMotion(scopedKey, {
                                 silent: true,
                             });
-                            emitWidgetPatch(elementId, nextPatch, { widgetStateChanged: motionCleared });
+                            emitWidgetPatch(elementId, nextPatch, { widgetStateChanged: motionCleared || baseChanged });
                             const afterCommit = readEffectiveDisplayableProperties(
                                 document,
                                 widgetRuntimeStore,
@@ -2106,7 +2240,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                                 beforeCommit.position.x !== afterCommit.position.x ||
                                 beforeCommit.position.y !== afterCommit.position.y ||
                                 beforeCommit.offset.x !== afterCommit.offset.x ||
-                                beforeCommit.offset.y !== afterCommit.offset.y
+                                beforeCommit.offset.y !== afterCommit.offset.y ||
+                                beforeCommit.rotation !== afterCommit.rotation ||
+                                beforeCommit.opacity !== afterCommit.opacity
                             ) {
                                 scheduleElementFlush(elementId);
                             }
@@ -2121,6 +2257,12 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.stopDisplayableAnimation";
                 emitHostCall(emit, cap, "call");
                 try {
+                    // "Stop Animation" cancels: the motion is discarded without committing any
+                    // layout/base state, and the widget snaps back to its base pose (authored
+                    // layout + persistent offsets) via EditorNodeWrapper's cleared-motion reset.
+                    // Freezing the mid-flight pose is not an option here: this store never sees
+                    // DOM-sampled values, and getDisplayableProperties already reports base
+                    // values after a stop, so the DOM must match what blueprints read.
                     const cleared = widgetRuntimeStore.clearDisplayableMotionById(animationId);
                     if (cleared) {
                         scheduleElementFlush(elementIdFromScopedWidgetRuntimeKey(cleared.elementId));
@@ -2462,6 +2604,34 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         ? onIsNvlMode()
                         : scope.globalGet(BLUEPRINT_GAME_NVL_MODE_STATE_KEY);
                     return value === true;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isCurrentTextRead: () => {
+                const cap = "game.isCurrentTextRead";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const value = onIsCurrentTextRead
+                        ? onIsCurrentTextRead()
+                        : scope.globalGet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY);
+                    return value === true;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            clearTextRead: async () => {
+                const cap = "game.clearTextRead";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (onClearTextRead) {
+                        await onClearTextRead();
+                        return;
+                    }
+                    // No tracker installed (e.g. story preview): wipe the record
+                    // directly and drop the mirrored flag.
+                    await scope.persistenceSetAsync(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
+                    scope.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, false);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

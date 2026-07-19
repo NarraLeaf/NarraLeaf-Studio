@@ -24,8 +24,8 @@ export const storyInspector = {
         scope: "作用域",
         variable: "变量",
         mode: "模式",
-        durationMs: "时长（毫秒）",
-        holdMs: "保持（毫秒）",
+        duration: "时长（秒）",
+        hold: "保持（秒）",
         easing: "缓动",
         color: "颜色",
         opacity: "不透明度",
@@ -156,7 +156,7 @@ export const storyInspector = {
         clip: "应用 CSS 裁剪（clip-path）",
         clearClip: "移除当前裁剪路径",
         filter: "应用 CSS 滤镜（例如 blur(4px) grayscale(1)）",
-        clearFilter: "移除当前滤镜。",
+        clearFilter: "移除当前滤镜",
         darken: "淡入淡出一个暗色叠加层，数值范围为 0~1（仅适用于图片/角色类目标）",
         circleReveal: "通过动画遮罩实现圆形展开",
         circleClose: "通过动画遮罩实现圆形收拢",
@@ -202,7 +202,7 @@ export const storyInspector = {
     },
     dialogue: {
         pauseAfter: "本行后暂停",
-        pauseMs: "暂停毫秒（可选）",
+        pauseSeconds: "暂停秒数（可选）",
     },
     choice: {
         prompt: "提示语",
@@ -226,7 +226,7 @@ export const storyInspector = {
         soundName: "音效名称",
         bgmAsset: "背景音乐资源",
         soundAsset: "音效资源",
-        fadeMs: "淡入淡出（毫秒）",
+        fade: "淡入淡出（秒）",
         volume: "音量",
         rate: "倍速",
         loop: "循环",
@@ -310,7 +310,7 @@ export const storyInspector = {
         elseHint: "当之前的分支均不匹配时，运行 Else 分支",
     },
     condition: {
-        legacyExpression: "旧版表达式条件会保留在文档中，但不属于 NLR 动作界面的一部分",
+        brokenExpression: "该表达式已无法解析--它引用的变量可能被重命名或删除了。修复前该分支恒为假",
         clear: "清除条件",
     },
     code: {

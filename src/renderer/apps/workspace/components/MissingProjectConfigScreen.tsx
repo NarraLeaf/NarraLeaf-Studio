@@ -21,7 +21,7 @@ export function MissingProjectConfigScreen({ projectPath }: MissingProjectConfig
                     <div className="mx-auto mb-5 grid h-11 w-11 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted">
                         <FolderX className="h-5 w-5" />
                     </div>
-                    <h1 className="text-base font-semibold text-white">{t("workspace.shell.notAProjectTitle")}</h1>
+                    <h1 className="text-base font-semibold text-fg">{t("workspace.shell.notAProjectTitle")}</h1>
                     <p className="mt-2 text-sm leading-6 text-fg-muted">
                         {t("workspace.shell.notAProjectDetail")}
                     </p>

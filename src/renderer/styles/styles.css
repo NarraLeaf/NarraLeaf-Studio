@@ -3,12 +3,44 @@
 @tailwind utilities;
 
 :root {
-    --narraleaf-accent: theme("colors.primary");
-    --narraleaf-accent-strong: var(--narraleaf-accent, #40a8c4);
-    --narraleaf-accent-weak: rgba(64, 168, 196, 0.65);
-    --narraleaf-accent-weak: color-mix(in srgb, var(--narraleaf-accent) 60%, transparent);
-    --narraleaf-accent-tint: rgba(64, 168, 196, 0.18);
-    --narraleaf-accent-tint: color-mix(in srgb, var(--narraleaf-accent) 18%, transparent);
+    /*
+     * The accent, as RGB channels. `primary` in tailwind.config.js reads this,
+     * so every `bg-primary`/`text-primary`/… in the product resolves through it
+     * and one assignment recolors the interface.
+     *
+     * The value here is the brand anchor and the only one a shipped GAME ever
+     * sees — this stylesheet is bundled into the game runtime, which never runs
+     * the code that overrides it. Studio windows rewrite it inline on the root
+     * element from the `ui.accentColor` setting (src/renderer/lib/appearance),
+     * which is also why this is a plain channel triple rather than a `theme()`
+     * lookup: an inline style can override a variable, not a baked-in hex.
+     */
+    --nl-primary: 64 168 196;      /* #40a8c4 — see @shared/constants/accent */
+
+    /*
+     * Ink that sits ON the accent — Tailwind's `on-primary`. Always use it instead of
+     * `text-white` on a solid `bg-primary`: the accent is user-chosen and may be light, in which
+     * case the appearance bootstrap flips this to dark ink (`accentForeground`). White here is
+     * correct for the brand anchor and for every preset, and is what a shipped game gets.
+     */
+    --nl-on-primary: 255 255 255;
+
+    --narraleaf-accent: rgb(var(--nl-primary));
+    --narraleaf-accent-strong: rgb(var(--nl-primary));
+    --narraleaf-accent-weak: rgb(var(--nl-primary) / 0.6);
+    --narraleaf-accent-tint: rgb(var(--nl-primary) / 0.18);
+
+    /*
+     * Motion switch: 1 = animate, 0 = do not. Published so anything that drives
+     * its own timing can scale by it — `calc(200ms * var(--nl-motion))` — and
+     * flipped by both the `ui.reduceMotion` setting (the `.nl-reduce-motion`
+     * class the appearance bootstrap puts on the root) and the OS-level
+     * `prefers-reduced-motion`. The blanket rule that stops CSS transitions and
+     * animations outright lives further down; framer-motion animates from JS
+     * and cannot be reached by CSS at all, so it is handled separately by the
+     * MotionConfig in lib/renderApp.
+     */
+    --nl-motion: 1;
 
     /*
      * Design-system color tokens (space-separated RGB channels).
@@ -16,7 +48,31 @@
      * `surface`/`fg`/`binding`/… utilities via rgb(var(--x) / <alpha-value>),
      * and raw CSS / inline styles can reference them with rgb(var(--x)).
      * See docs/design-system.md.
+     *
+     * `:root` holds the DARK values (the default theme); the
+     * `prefers-color-scheme: light` block below overrides every themed token.
+     * Electron resolves that media query from nativeTheme.themeSource, which
+     * the main process drives from the `ui.themeMode` setting — so the whole
+     * theme switch is CSS, with no JS mirror and no flash on first paint.
+     *
+     * Do NOT rebuild this in JS off a matchMedia("change") listener: Electron
+     * updates the media query's VALUE when themeSource changes but never
+     * dispatches the change event, so such a mirror silently stops updating.
+     *
+     * The light override is scoped to `.nl-studio`, set per-app by renderHtml
+     * (project/build/utils.js) on the window shell. This stylesheet is also
+     * bundled into the GAME runtime — which shares widget code with the editor —
+     * and a shipped game must look identical on every player's machine instead
+     * of following their OS theme. Game shells therefore omit the class and
+     * always get the dark `:root` values.
+     *
+     * The Dev Mode window omits it for the same reason: it renders GameApp
+     * in-document, so anything it showed under the light tokens would be a
+     * preview of something that never ships that way. Its own debug chrome
+     * staying dark is the price, and matches the game it sits on top of.
      */
+    color-scheme: dark;
+
     --nl-surface-canvas: 5 6 10;      /* #05060a */
     --nl-surface-sunken: 11 13 18;    /* #0b0d12 */
     --nl-surface: 15 17 21;           /* #0f1115 */
@@ -30,8 +86,140 @@
     --nl-success: 109 176 148;        /* #6db094 */
     --nl-warning: 204 170 92;         /* #ccaa5c */
 
+    /*
+     * Hairline borders (`edge-*`) and translucent fills (`fill-*`) are
+     * white overlays on dark, ink overlays on light — full color values
+     * (not channels) because the alpha is part of the token.
+     */
+    --nl-edge: rgb(255 255 255 / 0.1);
+    --nl-edge-subtle: rgb(255 255 255 / 0.05);
+    --nl-edge-strong: rgb(255 255 255 / 0.2);
+    --nl-fill: rgb(255 255 255 / 0.1);
+    --nl-fill-subtle: rgb(255 255 255 / 0.05);
+    --nl-fill-strong: rgb(255 255 255 / 0.2);
+
+    /* Chrome details that can't borrow a Tailwind utility. */
+    --nl-scrollbar-thumb: rgb(255 255 255 / 0.15);
+    --nl-scrollbar-thumb-hover: rgb(255 255 255 / 0.2);
+    --nl-control-border: rgb(255 255 255 / 0.3);
+    --nl-control-border-hover: rgb(255 255 255 / 0.5);
+    --nl-control-fill: rgb(255 255 255 / 0.05);
+    --nl-control-fill-hover: rgb(255 255 255 / 0.1);
+
     --nl-window-titlebar-height: 40px;
     --nl-window-content-height: calc(100vh - var(--nl-window-titlebar-height));
+}
+
+/*
+ * Light theme — Studio chrome only (see the `.nl-studio` note above; the game
+ * runtime shares this stylesheet and must stay dark).
+ *
+ * Same ladder roles, inverted lightness: the further back a surface sits, the
+ * darker it is. Accents keep their hue family (low saturation, per
+ * docs/design-system.md) but drop lightness so they hold contrast on light
+ * surfaces; `primary` is absent because it is not a theme value — it is the
+ * user's accent (see `--nl-primary` above), and every preset is picked to sit
+ * at a lightness that works on both ladders.
+ */
+@media (prefers-color-scheme: light) {
+    :root.nl-studio {
+        color-scheme: light;
+
+        --nl-surface-canvas: 215 219 226; /* #d7dbe2 */
+        --nl-surface-sunken: 227 230 236; /* #e3e6ec */
+        --nl-surface: 238 240 244;        /* #eef0f4 */
+        --nl-surface-raised: 248 249 251; /* #f8f9fb */
+        --nl-surface-overlay: 255 255 255;/* #ffffff */
+        --nl-fg: 27 33 41;                /* #1b2129 */
+        --nl-fg-muted: 90 100 114;        /* #5a6472 */
+        --nl-fg-subtle: 112 122 135;      /* #707a87 */
+        /*
+         * Same hue and saturation as their dark counterparts, lightness dialed
+         * down until each clears 4.5:1 as TEXT on its own /10 tint (the
+         * status-banner pattern these are used in — see PropertiesPanel).
+         */
+        --nl-binding: 103 90 168;         /* #675aa8 — 4.8:1 already */
+        --nl-danger: 172 73 57;           /* #ac4939 */
+        --nl-success: 59 114 91;          /* #3b725b */
+        --nl-warning: 127 103 46;         /* #7f672e */
+
+        --nl-edge: rgb(15 23 42 / 0.13);
+        --nl-edge-subtle: rgb(15 23 42 / 0.07);
+        --nl-edge-strong: rgb(15 23 42 / 0.22);
+        --nl-fill: rgb(15 23 42 / 0.08);
+        --nl-fill-subtle: rgb(15 23 42 / 0.04);
+        --nl-fill-strong: rgb(15 23 42 / 0.14);
+
+        --nl-scrollbar-thumb: rgb(15 23 42 / 0.25);
+        --nl-scrollbar-thumb-hover: rgb(15 23 42 / 0.35);
+        --nl-control-border: rgb(15 23 42 / 0.35);
+        --nl-control-border-hover: rgb(15 23 42 / 0.55);
+        --nl-control-fill: rgb(15 23 42 / 0.04);
+        --nl-control-fill-hover: rgb(15 23 42 / 0.08);
+    }
+}
+
+/*
+ * Reduced motion, from two independent sources: the `ui.reduceMotion` setting
+ * (the class) and the operating system's own accessibility preference (the
+ * media query). Either one alone is enough — the setting exists because Studio
+ * is where you sit for hours, and someone may want it calm here without asking
+ * for it system-wide.
+ *
+ * The blanket below is repeated once per source because a CSS rule cannot be
+ * gated on the value of a custom property; the variable can carry the state,
+ * but only a selector or an at-rule can decide whether declarations apply.
+ *
+ * What it does NOT reach, and why:
+ *
+ *  - `.nl-studio` — the same guard the light theme uses. A shipped game must
+ *    animate the way its author built it on every player's machine, and this
+ *    stylesheet is bundled into the game runtime. Dev Mode omits the class too,
+ *    so the game it hosts keeps its motion.
+ *  - `.nl-motion-keep` — motion that is information rather than decoration:
+ *    game content embedded in a Studio window (the story preview's stage) and
+ *    the indeterminate progress bars. Freezing the preview would not calm the
+ *    interface, it would misrepresent the work — an author cannot tune a
+ *    transition they are prevented from seeing. Freezing a busy indicator is
+ *    worse than pointless: a bar that has stopped sweeping reads as a hang.
+ *  - `.animate-spin` — spinners, for that same reason. Matched by Tailwind's
+ *    own class because they are scattered across dozens of components and
+ *    tagging each one would rot; this is the one place that has to know.
+ *
+ * `0.01ms` rather than `0`: a zero duration makes some browsers skip
+ * `transitionend`/`animationend` entirely, and code that waits on those events
+ * to clean up would hang.
+ */
+:root.nl-studio.nl-reduce-motion :not(.nl-motion-keep, .nl-motion-keep *, .animate-spin),
+:root.nl-studio.nl-reduce-motion :not(.nl-motion-keep, .nl-motion-keep *, .animate-spin)::before,
+:root.nl-studio.nl-reduce-motion :not(.nl-motion-keep, .nl-motion-keep *, .animate-spin)::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0.01ms !important;
+    scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --nl-motion: 0;
+    }
+
+    :root.nl-studio :not(.nl-motion-keep, .nl-motion-keep *, .animate-spin),
+    :root.nl-studio :not(.nl-motion-keep, .nl-motion-keep *, .animate-spin)::before,
+    :root.nl-studio :not(.nl-motion-keep, .nl-motion-keep *, .animate-spin)::after {
+        animation-duration: 0.01ms !important;
+        animation-delay: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        transition-delay: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+:root.nl-reduce-motion {
+    --nl-motion: 0;
 }
 
 *, *::before, *::after {
@@ -61,13 +249,13 @@
 }
 
 ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.151);
+    background: var(--nl-scrollbar-thumb);
     border-radius: 4px;
     transition: background 150ms ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.205);
+    background: var(--nl-scrollbar-thumb-hover);
 }
 
 ::-webkit-scrollbar-corner {
@@ -90,6 +278,51 @@ select:focus {
     box-shadow: none !important;
 }
 
+/*
+ * Range slider (see lib/components/elements/Slider.tsx). Scoped to `.nl-slider`
+ * rather than `input[type="range"]` so it never reaches a range input inside the
+ * game preview. The track/thumb pseudo-elements are out of Tailwind's reach.
+ */
+.nl-slider {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 100%;
+    height: 16px;
+    background: transparent;
+    cursor: default;
+}
+
+.nl-slider::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--nl-fill-strong);
+}
+
+.nl-slider::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    /* Centre the thumb on the 4px track. */
+    margin-top: -5px;
+    border-radius: 50%;
+    background: rgb(var(--nl-primary));
+    border: none;
+    transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.nl-slider:hover:not(:disabled)::-webkit-slider-thumb {
+    transform: scale(1.15);
+}
+
+.nl-slider:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 3px rgb(var(--nl-primary) / 0.35);
+}
+
+.nl-slider:disabled::-webkit-slider-thumb {
+    background: rgb(var(--nl-fg-subtle));
+}
+
 /* Custom radio button styles */
 input[type="radio"] {
     appearance: none;
@@ -97,9 +330,9 @@ input[type="radio"] {
     -moz-appearance: none;
     width: 16px;
     height: 16px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
+    border: 2px solid var(--nl-control-border);
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--nl-control-fill);
     cursor: default;
     position: relative;
     transition: all 150ms ease;
@@ -112,17 +345,17 @@ input[type="checkbox"] {
     -moz-appearance: none;
     width: 16px;
     height: 16px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
+    border: 2px solid var(--nl-control-border);
     border-radius: 3px;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--nl-control-fill);
     cursor: default;
     position: relative;
     transition: all 150ms ease;
 }
 
 input[type="checkbox"]:checked {
-    background: #40a8c4;
-    border-color: #40a8c4;
+    background: rgb(var(--nl-primary));
+    border-color: rgb(var(--nl-primary));
 }
 
 input[type="checkbox"]:checked::after {
@@ -132,19 +365,19 @@ input[type="checkbox"]:checked::after {
     top: 0px;
     width: 6px;
     height: 10px;
-    border: solid white;
+    border: solid rgb(var(--nl-on-primary));
     border-width: 0 2px 2px 0;
     transform: rotate(45deg);
 }
 
 input[type="checkbox"]:hover:not(:disabled) {
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--nl-control-border-hover);
+    background: var(--nl-control-fill-hover);
 }
 
+/* Lift the accent rather than naming a second colour, so the hover follows a custom accent. */
 input[type="checkbox"]:checked:hover {
-    background: #4fb8d4;
-    border-color: #4fb8d4;
+    filter: brightness(1.12);
 }
 
 input[type="checkbox"]:disabled {
@@ -154,12 +387,12 @@ input[type="checkbox"]:disabled {
 
 input[type="checkbox"]:focus {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(64, 168, 196, 0.3);
+    box-shadow: 0 0 0 2px rgb(var(--nl-primary) / 0.3);
 }
 
 input[type="radio"]:checked {
-    border-color: #40a8c4;
-    background: rgba(255, 255, 255, 0.05);
+    border-color: rgb(var(--nl-primary));
+    background: var(--nl-control-fill);
 }
 
 input[type="radio"]:checked::after {
@@ -170,16 +403,17 @@ input[type="radio"]:checked::after {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #40a8c4;
+    background: rgb(var(--nl-primary));
 }
 
 input[type="radio"]:hover:not(:disabled) {
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--nl-control-border-hover);
+    background: var(--nl-control-fill-hover);
 }
 
 input[type="radio"]:checked:hover::after {
-    background: #4fb8d4;
+    background: rgb(var(--nl-primary));
+    filter: brightness(1.12);
 }
 
 input[type="radio"]:disabled {
@@ -189,7 +423,7 @@ input[type="radio"]:disabled {
 
 input[type="radio"]:focus {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(64, 168, 196, 0.3);
+    box-shadow: 0 0 0 2px rgb(var(--nl-primary) / 0.3);
 }
 
 @layer utilities {
@@ -200,6 +434,21 @@ input[type="radio"]:focus {
     .nl-selectable-text * {
         user-select: text;
         -webkit-user-select: text;
+    }
+
+    /**
+     * Suspend selection inside a subtree that opted into `.nl-selectable-text`.
+     *
+     * An ancestor cannot do this by inheritance: `user-select: text` on the descendant is an
+     * explicit value, so it beats an inherited `none` from above. Suspending therefore needs a rule
+     * that outranks `.nl-selectable-text` on the same elements, which is what the extra class here
+     * buys. The story rows use it to stop painting a text selection once a drag that began on a
+     * row's text turns into a row-range selection.
+     */
+    .nl-text-select-suspended .nl-selectable-text,
+    .nl-text-select-suspended .nl-selectable-text * {
+        user-select: none;
+        -webkit-user-select: none;
     }
 
     .nl-window-content-layer {
@@ -213,9 +462,12 @@ input[type="radio"]:focus {
     /**
      * Global `*` sets -webkit-user-drag: none (prevents accidental image/window drags).
      * Opt HTML5 drag sources back in for Chromium/Electron (required for draggable="true" to work).
+     *
+     * Every `draggable` element in the app needs this class. Without it the attribute is silently
+     * inert: no dragstart fires at all, so the source looks wired up and simply never drags.
      */
-    .nl-asset-drag-source,
-    .nl-asset-drag-source * {
+    .nl-drag-source,
+    .nl-drag-source * {
         -webkit-user-drag: element;
     }
 
@@ -227,31 +479,31 @@ input[type="radio"]:focus {
         z-index: 2147483647;
         padding: 8px 14px;
         border-radius: 8px;
-        background: rgba(30, 32, 38, 0.96);
-        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgb(var(--nl-surface-overlay) / 0.96);
+        border: 1px solid var(--nl-edge);
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
         font-size: 13px;
         font-weight: 500;
-        color: rgba(255, 255, 255, 0.92);
+        color: rgb(var(--nl-fg) / 0.92);
         white-space: nowrap;
         pointer-events: none;
     }
 
     /* Template selection states */
     .template-selected {
-        box-shadow: 0 4px 12px -2px rgba(64, 168, 196, 0.15), 0 0 0 1px #40a8c4 !important;
-        border-color: #40a8c4 !important;
+        box-shadow: 0 4px 12px -2px rgb(var(--nl-primary) / 0.15), 0 0 0 1px rgb(var(--nl-primary)) !important;
+        border-color: rgb(var(--nl-primary)) !important;
         border-style: solid !important;
     }
 
     .template-hover {
-        @apply hover:border-white/30 hover:shadow-md hover:ring-1 hover:ring-white/20;
+        @apply hover:border-edge-strong hover:shadow-md hover:ring-1 hover:ring-edge-strong;
     }
 
     /* Template focus state - thick border and shadow */
     .template-focused {
-        box-shadow: 0 10px 25px -5px rgba(64, 168, 196, 0.2), 0 0 0 2px #40a8c4 !important;
-        border-color: #40a8c4 !important;
+        box-shadow: 0 10px 25px -5px rgb(var(--nl-primary) / 0.2), 0 0 0 2px rgb(var(--nl-primary)) !important;
+        border-color: rgb(var(--nl-primary)) !important;
         border-style: solid !important;
     }
 }

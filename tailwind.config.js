@@ -4,12 +4,30 @@ module.exports = {
         './src/renderer/**/*.{ts,tsx,js,jsx,html}',
         './project/assets/**/*.ejs',
     ],
+    // Dark is the default and light is the prefers-color-scheme override (see
+    // styles.css), which Electron resolves from the `ui.themeMode` setting via
+    // nativeTheme. Theme-aware components use the semantic color tokens below,
+    // never a `dark:` variant — the variant is unscoped, so in the game runtime
+    // (which shares this stylesheet and must stay dark) it would follow the
+    // player's OS instead.
+    darkMode: 'media',
     theme: {
         extend: {
             colors: {
-                // Brand anchor — fixed. Do not change; secondary colors derive
-                // from this by hue-shift at low saturation. See docs/design-system.md.
-                primary: '#40a8c4',
+                // The accent. Channels live in styles.css `:root`, where they
+                // default to the brand anchor #40a8c4 — the value a shipped game
+                // always gets. Studio windows override the variable from the
+                // `ui.accentColor` setting, so every `*-primary` utility in the
+                // product follows it. Presets only, all hue-shifts of the anchor
+                // at low saturation: see @shared/constants/accent and
+                // docs/design-system.md. Secondary semantic colors below derive
+                // from the anchor and do NOT follow the accent.
+                primary: 'rgb(var(--nl-primary) / <alpha-value>)',
+
+                // Ink to put ON the accent. Use `text-on-primary`, never `text-white`, on a
+                // solid `bg-primary`: a user-chosen light accent flips this to dark ink so the
+                // label stays readable. See `accentForeground` in @shared/constants/accent.
+                'on-primary': 'rgb(var(--nl-on-primary) / <alpha-value>)',
 
                 // Dark surface ladder (5 depths). Channel values live in
                 // styles.css :root so raw CSS / inline styles can reference the
@@ -29,20 +47,23 @@ module.exports = {
                     subtle: 'rgb(var(--nl-fg-subtle) / <alpha-value>)',
                 },
 
-                // Hairline borders (fixed white alphas).
+                // Hairline borders. Full color values (alpha baked in) that
+                // flip between white overlays (dark) and ink overlays (light);
+                // see styles.css. No `/alpha` modifier support — the alpha is
+                // part of the token.
                 edge: {
-                    DEFAULT: 'rgb(255 255 255 / 0.1)',
-                    subtle: 'rgb(255 255 255 / 0.05)',
-                    strong: 'rgb(255 255 255 / 0.2)',
+                    DEFAULT: 'var(--nl-edge)',
+                    subtle: 'var(--nl-edge-subtle)',
+                    strong: 'var(--nl-edge-strong)',
                 },
 
-                // Translucent white FILLS (button secondary, hover backgrounds,
+                // Translucent FILLS (button secondary, hover backgrounds,
                 // subtle surfaces). Same values as `edge` but a distinct role so
                 // background usage never borrows a border token.
                 fill: {
-                    DEFAULT: 'rgb(255 255 255 / 0.1)',
-                    subtle: 'rgb(255 255 255 / 0.05)',
-                    strong: 'rgb(255 255 255 / 0.2)',
+                    DEFAULT: 'var(--nl-fill)',
+                    subtle: 'var(--nl-fill-subtle)',
+                    strong: 'var(--nl-fill-strong)',
                 },
 
                 // Semantic accents — low-saturation, hue-shifted from the anchor.
@@ -71,11 +92,26 @@ module.exports = {
                     '0%': { transform: 'scale(0.95)', opacity: '0' },
                     '100%': { transform: 'scale(1)', opacity: '1' },
                 },
+                // Two-bar indeterminate progress (the familiar Material pattern): each
+                // bar grows/shrinks as it sweeps via animated left/right, and the two
+                // are offset in time so the track is never empty. Reads clearly as "busy".
+                'progress-indeterminate-1': {
+                    '0%': { left: '-35%', right: '100%' },
+                    '60%': { left: '100%', right: '-90%' },
+                    '100%': { left: '100%', right: '-90%' },
+                },
+                'progress-indeterminate-2': {
+                    '0%': { left: '-200%', right: '100%' },
+                    '60%': { left: '107%', right: '-8%' },
+                    '100%': { left: '107%', right: '-8%' },
+                },
             },
             animation: {
                 'slide-in-right': 'slide-in-right 0.3s ease-out',
                 'fade-in': 'fade-in 0.2s ease-out',
                 'scale-in': 'scale-in 0.2s ease-out',
+                'progress-indeterminate-1': 'progress-indeterminate-1 2.1s cubic-bezier(0.65,0.815,0.735,0.395) infinite',
+                'progress-indeterminate-2': 'progress-indeterminate-2 2.1s cubic-bezier(0.165,0.84,0.44,1) 1.15s infinite',
             },
         }
     },

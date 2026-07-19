@@ -15,7 +15,7 @@ export type LocaleCode = string;
  * through the shared host persistence snapshot (same channel as persistent variables),
  * so story text can resolve per-render without recompiling.
  * Must satisfy the host persistence key charset (letters/digits with `.`/`_`/`-`
- * separators — see ensureValidKey in shared/utils/persistentState); colons are rejected.
+ * separators - see ensureValidKey in shared/utils/persistentState); colons are rejected.
  */
 export const LOCALE_STORAGE_KEY = "nls.locale";
 
@@ -53,7 +53,7 @@ export const DEFAULT_LOCALIZATION_CONFIGURATION: LocalizationConfiguration = {
 
 /**
  * Coerce an unknown (persisted / partially-migrated) value into a complete
- * LocalizationConfiguration. Malformed entries are dropped, never thrown —
+ * LocalizationConfiguration. Malformed entries are dropped, never thrown -
  * a corrupt config must not block project load (mirrors network config).
  */
 export function normalizeLocalizationConfiguration(value: unknown): LocalizationConfiguration {
@@ -100,7 +100,7 @@ export type LocalizationUnitStatus = "untranslated" | "machine" | "translated" |
 /**
  * One translation unit inside a per-locale document. Keyed externally by unit id
  * (Phase 1: the story `textId`; later phases add `ui:` and named keys).
- * "stale" is intentionally NOT a stored status — it is derived at read time by
+ * "stale" is intentionally NOT a stored status - it is derived at read time by
  * comparing `sourceHash` against the current source text, so editing the source
  * never has to touch translation files.
  */
@@ -131,7 +131,7 @@ export function createEmptyLocalizationDocument(locale: LocaleCode): Localizatio
 
 /**
  * Coerce an unknown parsed JSON value into a LocalizationDocument, dropping
- * malformed units. Never throws — a broken translation file degrades to empty.
+ * malformed units. Never throws - a broken translation file degrades to empty.
  */
 export function normalizeLocalizationDocument(value: unknown, locale: LocaleCode): LocalizationDocument {
     const document = createEmptyLocalizationDocument(locale);

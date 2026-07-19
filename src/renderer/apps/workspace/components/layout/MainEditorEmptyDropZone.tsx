@@ -6,6 +6,8 @@ import {
 } from "@/apps/workspace/modules/assets/dnd/openDraggedAssetsInEditor";
 import { useTranslation } from "@/lib/i18n";
 
+const LOGO_MASK = "url(/img/narraleaf-studio/logo-icon-white.png)";
+
 interface MainEditorEmptyDropZoneProps {
     groupId: string;
 }
@@ -35,15 +37,31 @@ export function MainEditorEmptyDropZone({ groupId }: MainEditorEmptyDropZoneProp
         >
             <div className="text-center text-fg-subtle relative z-10 pointer-events-none">
                 <div className="relative mb-8">
-                    <img
-                        src="/img/narraleaf-studio/logo-icon-white.png"
-                        className="w-64 h-64 mx-auto opacity-5"
-                        alt={t("workspace.shell.logoAlt")}
+                    {/*
+                      * The logo art is a fixed white silhouette, which is invisible against the
+                      * light theme's surface. Drawing it as a mask over `bg-fg` instead lets the
+                      * watermark take the theme's foreground colour — the same way the wordmark
+                      * below follows `text-fg`.
+                      */}
+                    <div
+                        role="img"
+                        aria-label={t("workspace.shell.logoAlt")}
+                        className="w-64 h-64 mx-auto bg-fg opacity-5"
+                        style={{
+                            maskImage: LOGO_MASK,
+                            WebkitMaskImage: LOGO_MASK,
+                            maskSize: "contain",
+                            WebkitMaskSize: "contain",
+                            maskRepeat: "no-repeat",
+                            WebkitMaskRepeat: "no-repeat",
+                            maskPosition: "center",
+                            WebkitMaskPosition: "center",
+                        }}
                     />
                 </div>
 
                 <div className="space-y-4">
-                    <h1 className="text-4xl font-light text-white/5">NarraLeaf Studio</h1>
+                    <h1 className="text-4xl font-light text-fg/5">NarraLeaf Studio</h1>
                 </div>
             </div>
         </div>

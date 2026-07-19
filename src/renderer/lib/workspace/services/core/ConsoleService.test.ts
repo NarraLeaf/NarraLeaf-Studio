@@ -238,4 +238,62 @@ describe("ConsoleService", () => {
         expect(entry.segments[0].text).toBe("hello from runtime");
         expect(service.getEntries("build")).toHaveLength(0);
     });
+
+    it("sets, merges and clears a channel progress bar", () => {
+        const service = new ConsoleService();
+        const changed = vi.fn();
+        service.onProgressChanged(changed);
+
+        expect(service.getProgress("build")).toBeNull();
+
+        service.setProgress("build", { value: 0.3, label: "packaging" });
+        expect(service.getProgress("build")).toEqual({
+            value: 0.3,
+            indeterminate: false,
+            error: false,
+            label: "packaging",
+        });
+        expect(changed).toHaveBeenLastCalledWith({
+            channel: "build",
+            progress: { value: 0.3, indeterminate: false, error: false, label: "packaging" },
+        });
+
+        // Partial update keeps previously set fields (value, label).
+        service.setProgress("build", { error: true });
+        expect(service.getProgress("build")).toEqual({
+            value: 0.3,
+            indeterminate: false,
+            error: true,
+            label: "packaging",
+        });
+
+        service.setProgress("build", null);
+        expect(service.getProgress("build")).toBeNull();
+        expect(changed).toHaveBeenLastCalledWith({ channel: "build", progress: null });
+    });
+
+    it("clamps the progress value into [0, 1]", () => {
+        const service = new ConsoleService();
+        service.setProgress("build", { value: 5 });
+        expect(service.getProgress("build")?.value).toBe(1);
+        service.setProgress("build", { value: -2 });
+        expect(service.getProgress("build")?.value).toBe(0);
+    });
+
+    it("flips a running progress bar to error when an error entry is logged", () => {
+        const service = new ConsoleService();
+        service.setProgress("build", { value: 0.5 });
+
+        service.append("build", { level: "info", message: "still fine" });
+        expect(service.getProgress("build")?.error).toBe(false);
+
+        service.append("build", { level: "error", message: "boom" });
+        expect(service.getProgress("build")?.error).toBe(true);
+    });
+
+    it("does not create a progress bar for an error entry on an idle channel", () => {
+        const service = new ConsoleService();
+        service.append("build", { level: "error", message: "boom" });
+        expect(service.getProgress("build")).toBeNull();
+    });
 });

@@ -19,12 +19,18 @@ import { LocalBlueprintService } from "./ui-editor/LocalBlueprintService";
 import { UIBlueprintLifecycleCoordinator } from "./ui-editor/UIBlueprintLifecycleCoordinator";
 import { DevModeService } from "./core/DevModeService";
 import { PreviewService } from "./core/PreviewService";
+import { BuildService } from "./core/BuildService";
 import { ConsoleService } from "./core/ConsoleService";
 import { UIEditorFontFaceService } from "./ui-editor/UIEditorFontFaceService";
 import { BlueprintNodeCatalogService } from "./ui-editor/BlueprintNodeCatalogService";
 import { StoryService } from "./story/StoryService";
 import { ProjectDependencyService } from "./core/ProjectDependencyService";
 import { LocalizationService } from "./localization/LocalizationService";
+import { VoiceService } from "./voice/VoiceService";
+import { ProjectStatsService } from "./stats/ProjectStatsService";
+import { CommandService } from "./ui/CommandService";
+import { SearchService } from "./search/SearchService";
+import { ReferenceService } from "./references/ReferenceService";
 
 export class ServiceRegistry {
     private services: Record<Services, Service> = {
@@ -48,11 +54,17 @@ export class ServiceRegistry {
         [Services.UIBlueprintLifecycle]: UIBlueprintLifecycleCoordinator.getInstance(),
         [Services.DevMode]: DevModeService.getInstance(),
         [Services.Preview]: PreviewService.getInstance(),
+        [Services.Build]: BuildService.getInstance(),
         [Services.Console]: ConsoleService.getInstance(),
         [Services.UIEditorFontFace]: UIEditorFontFaceService.getInstance(),
         [Services.BlueprintNodeCatalog]: BlueprintNodeCatalogService.getInstance(),
         [Services.ProjectDependency]: ProjectDependencyService.getInstance(),
         [Services.Localization]: LocalizationService.getInstance(),
+        [Services.Voice]: VoiceService.getInstance(),
+        [Services.ProjectStats]: ProjectStatsService.getInstance(),
+        [Services.Command]: CommandService.getInstance(),
+        [Services.Search]: SearchService.getInstance(),
+        [Services.Reference]: ReferenceService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {

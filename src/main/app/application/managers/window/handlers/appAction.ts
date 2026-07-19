@@ -4,7 +4,10 @@ import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { Platform } from "@shared/types/os";
 import { WindowControlAbility } from "@shared/types/window";
-import { app as electronApp } from "electron";
+import { app as electronApp, dialog, shell } from "electron";
+import { promises as fs } from "fs";
+import path from "path";
+import { backgroundCacheDirectory, cacheBackgroundImage, pruneBackgroundCache } from "../../storage/backgroundCache";
 
 export class AppPlatformInfoHandler extends IPCHandler<IPCEventType.getPlatform> {
     readonly name = IPCEventType.getPlatform;
@@ -75,6 +78,35 @@ export class AppWindowControlHandler extends IPCHandler<IPCEventType.appWindowCo
     }
 }
 
+export class AppWindowEditCommandHandler extends IPCHandler<IPCEventType.appWindowEditCommand> {
+    readonly name = IPCEventType.appWindowEditCommand;
+    readonly type = IPCMessageType.message;
+
+    public handle(window: AppWindow, data: IPCEvents[IPCEventType.appWindowEditCommand]["data"]) {
+        const webContents = window.getWebContents();
+        switch (data.command) {
+            case "copy":
+                webContents.copy();
+                break;
+            case "cut":
+                webContents.cut();
+                break;
+            case "paste":
+                webContents.paste();
+                break;
+            case "delete":
+                webContents.delete();
+                break;
+            default:
+                // A message channel has no reply to fail with, so say so in the log rather than
+                // dropping it silently.
+                window.app.logger.warn(`[Window] Ignoring unknown edit command: ${String(data.command)}`);
+                break;
+        }
+        return this.success(void 0 as never);
+    }
+}
+
 export class AppWindowCloseHandler extends IPCHandler<IPCEventType.appWindowClose> {
     readonly name = IPCEventType.appWindowClose;
     readonly type = IPCMessageType.message;
@@ -101,6 +133,15 @@ export class AppWindowGetControlHandler extends IPCHandler<IPCEventType.appWindo
 
     public handle(window: AppWindow) {
         return this.success({ status: window.getControl() });
+    }
+}
+
+export class AppWindowGetFullscreenHandler extends IPCHandler<IPCEventType.appWindowGetFullscreen> {
+    readonly name = IPCEventType.appWindowGetFullscreen;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow) {
+        return this.success({ isFullscreen: window.isFullScreen() });
     }
 }
 
@@ -131,27 +172,10 @@ export class AppGlobalStateSetHandler extends IPCHandler<IPCEventType.appGlobalS
     readonly type = IPCMessageType.request;
 
     public handle(window: AppWindow, data: IPCEvents[IPCEventType.appGlobalStateSet]["data"]) {
-        const app = window.app;
-        app.globalState.set(data.key, data.value);
-
-        // Fan the change out to every open window so live views (e.g. the i18n
-        // locale) stay in sync without a reload.
-        for (const win of app.windowManager.getWindows()) {
-            if (win.isClosed()) {
-                continue;
-            }
-            try {
-                win.sendIpcEvent(IPCEventType.appGlobalStateChanged, { key: data.key, value: data.value });
-            } catch (error) {
-                app.logger.debug(`Failed to broadcast global state change to a window: ${String(error)}`);
-            }
-        }
-
-        // The language also drives the native application menu, which is owned by
-        // the main process and must be rebuilt here.
-        if (data.key === "app.language") {
-            app.menuManager.updateMenu();
-        }
+        // Persists, fans the change out to every open window so live views (e.g. the
+        // i18n locale) stay in sync without a reload, and runs the per-key
+        // main-process side effects.
+        window.app.setGlobalStateAndBroadcast(data.key, data.value);
 
         return this.success(void 0);
     }
@@ -166,18 +190,109 @@ export class AppGlobalStateGetAllHandler extends IPCHandler<IPCEventType.appGlob
     }
 }
 
+/**
+ * Add a project to the history.
+ *
+ * The next list is computed here in the main process rather than sent up by the renderer: with
+ * several windows open, a renderer writing back an array it read earlier would erase every change
+ * made in between. Broadcasting (and the native "Open Recent" rebuild it triggers) comes free with
+ * setGlobalStateAndBroadcast, so every other window's list updates too.
+ */
 export class AppAddRecentProjectHandler extends IPCHandler<IPCEventType.appAddRecentProject> {
     readonly name = IPCEventType.appAddRecentProject;
     readonly type = IPCMessageType.request;
 
     public handle(window: AppWindow, data: IPCEvents[IPCEventType.appAddRecentProject]["data"]) {
-        window.app.globalState.recentlyOpened.addProject({
+        const next = window.app.globalState.recentlyOpened.withProject({
             name: data.name,
             path: data.path,
             icon: undefined,
             openedAt: Date.now(),
             securityScopedBookmark: window.app.storageManager.getSecurityScopedBookmarkForPath(data.path),
         });
+        window.app.setGlobalStateAndBroadcast("app.recentProjects", next);
+        return this.success(void 0);
+    }
+}
+
+/** Remove one project from the history. Atomic for the same reason as its Add counterpart. */
+export class AppRemoveRecentProjectHandler extends IPCHandler<IPCEventType.appRemoveRecentProject> {
+    readonly name = IPCEventType.appRemoveRecentProject;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow, data: IPCEvents[IPCEventType.appRemoveRecentProject]["data"]) {
+        const next = window.app.globalState.recentlyOpened.without(data.path);
+        window.app.setGlobalStateAndBroadcast("app.recentProjects", next);
+        return this.success(void 0);
+    }
+}
+
+/**
+ * Picks a background image via the native dialog and caches it under userData/backgrounds. Only
+ * the cache file name travels back - renderers never hand us arbitrary paths to copy from later.
+ */
+export class AppPickBackgroundImageHandler extends IPCHandler<IPCEventType.appPickBackgroundImage> {
+    readonly name = IPCEventType.appPickBackgroundImage;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<{ file: string | null }>> {
+        const result = await dialog.showOpenDialog(window.win, {
+            title: "Choose Background Image",
+            properties: ["openFile"],
+            filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+        });
+        const source = result.filePaths[0];
+        if (result.canceled || !source) {
+            return this.success({ file: null });
+        }
+        const directory = backgroundCacheDirectory(electronApp.getPath("userData"));
+        const fileName = await cacheBackgroundImage(
+            directory,
+            await fs.readFile(source),
+            path.extname(source).toLowerCase() || ".png",
+        );
+        // A cache that failed to shrink is not worth failing the pick over.
+        await pruneBackgroundCache(directory, fileName).catch(error => {
+            window.app.logger.warn(`[Background] Failed to prune the background cache: ${String(error)}`);
+        });
+        return this.success({ file: fileName });
+    }
+}
+
+/**
+ * Reads a cached background image (basename-only lookup inside userData/backgrounds - path
+ * separators are rejected so this can never be steered at arbitrary files).
+ */
+export class AppReadBackgroundImageHandler extends IPCHandler<IPCEventType.appReadBackgroundImage> {
+    readonly name = IPCEventType.appReadBackgroundImage;
+    readonly type = IPCMessageType.request;
+
+    public async handle(_window: AppWindow, { file }: IPCEvents[IPCEventType.appReadBackgroundImage]["data"]): Promise<RequestStatus<{ data: Uint8Array | null }>> {
+        if (!file || file !== path.basename(file)) {
+            return this.failed(new Error("Invalid background image name"));
+        }
+        try {
+            const data = await fs.readFile(path.join(backgroundCacheDirectory(electronApp.getPath("userData")), file));
+            return this.success({ data: new Uint8Array(data) });
+        } catch {
+            return this.success({ data: null });
+        }
+    }
+}
+
+/**
+ * Opens a URL in the system browser. Restricted to http(s): a renderer must never be able to
+ * hand arbitrary schemes (file:, app protocols) to the OS.
+ */
+export class AppOpenExternalHandler extends IPCHandler<IPCEventType.appOpenExternal> {
+    readonly name = IPCEventType.appOpenExternal;
+    readonly type = IPCMessageType.request;
+
+    public async handle(_window: AppWindow, { url }: IPCEvents[IPCEventType.appOpenExternal]["data"]): Promise<RequestStatus<void>> {
+        if (!/^https?:\/\//i.test(url)) {
+            return this.failed(new Error(`Refusing to open non-http(s) URL: ${url}`));
+        }
+        await shell.openExternal(url);
         return this.success(void 0);
     }
 }

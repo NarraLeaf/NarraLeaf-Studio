@@ -264,7 +264,7 @@ export interface UIWidgetModule {
 
     /**
      * Optional hook to register additional blueprint nodes (via `defineBlueprintNode`) when the module loads.
-     * Keep side effects idempotent — the host may call this once per session.
+     * Keep side effects idempotent - the host may call this once per session.
      */
     registerBlueprintNodes?(): void;
 }

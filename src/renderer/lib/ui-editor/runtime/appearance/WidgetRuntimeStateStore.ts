@@ -4,6 +4,11 @@ import {
     type UISliderRuntimeValue,
     type UISliderWidgetProps,
 } from "@shared/types/ui-editor/slider";
+import {
+    resolveTextInputRuntimeValue,
+    type UITextInputRuntimeValue,
+    type UITextInputWidgetProps,
+} from "@shared/types/ui-editor/textInput";
 
 export type UIListRuntimeScrollRequest =
     | { version: number; kind: "index"; index: number }
@@ -53,6 +58,30 @@ export type UIDisplayableMotionOverride = {
     resetOnComplete?: boolean;
 };
 
+/**
+ * Persistent transform pose layered between the authored layout and the one-shot motion slot.
+ * Displayable offsets (and held scale commits) live here instead of inside a motion so that a
+ * later motion (variant opacity transition, shake, ...) replacing the single motion slot cannot
+ * evict them; motions reset back to this pose, never to the raw origin.
+ */
+export type UIDisplayableBaseTransform = {
+    /** Persistent translate offset in px relative to the authored layout position. */
+    offsetX: number;
+    offsetY: number;
+    /** Persistent scale multiplier committed by held scale animations; 1 = authored size. */
+    scale: number;
+};
+
+export const DEFAULT_DISPLAYABLE_BASE_TRANSFORM: UIDisplayableBaseTransform = Object.freeze({
+    offsetX: 0,
+    offsetY: 0,
+    scale: 1,
+});
+
+function isDefaultDisplayableBaseTransform(value: UIDisplayableBaseTransform): boolean {
+    return value.offsetX === 0 && value.offsetY === 0 && value.scale === 1;
+}
+
 export type WidgetRuntimeSnapshot = {
     /** Most recently entered hovered widget, kept for compact debug display and backwards compatibility. */
     hoverTargetId: string | null;
@@ -64,11 +93,14 @@ export type WidgetRuntimeSnapshot = {
     variantOverrides: ReadonlyMap<string, string>;
     /** Copy for external readers; treat as immutable after getSnapshot. */
     sliderProperties: ReadonlyMap<string, UISliderRuntimeValue>;
+    /** Copy for external readers; treat as immutable after getSnapshot. */
+    textInputProperties: ReadonlyMap<string, UITextInputRuntimeValue>;
     /** Runtime List content overrides keyed by runtime-scope element key. */
     listItems: ReadonlyMap<string, readonly unknown[]>;
     listSelectedIndexes: ReadonlyMap<string, number>;
     listScrollRequests: ReadonlyMap<string, UIListRuntimeScrollRequest>;
     displayableMotions: ReadonlyMap<string, UIDisplayableMotionOverride>;
+    displayableBaseTransforms: ReadonlyMap<string, UIDisplayableBaseTransform>;
 };
 
 /** Stable snapshot when no provider is mounted (e.g. Dev Mode without store). */
@@ -79,10 +111,12 @@ export const STATIC_WIDGET_RUNTIME_SNAPSHOT: WidgetRuntimeSnapshot = Object.free
     focusedId: null,
     variantOverrides: new Map<string, string>(),
     sliderProperties: new Map<string, UISliderRuntimeValue>(),
+    textInputProperties: new Map<string, UITextInputRuntimeValue>(),
     listItems: new Map<string, readonly unknown[]>(),
     listSelectedIndexes: new Map<string, number>(),
     listScrollRequests: new Map<string, UIListRuntimeScrollRequest>(),
     displayableMotions: new Map<string, UIDisplayableMotionOverride>(),
+    displayableBaseTransforms: new Map<string, UIDisplayableBaseTransform>(),
 });
 
 /**
@@ -95,10 +129,12 @@ export class WidgetRuntimeStateStore {
     private focusedId: string | null = null;
     private readonly variantOverrides = new Map<string, string>();
     private readonly sliderProperties = new Map<string, UISliderRuntimeValue>();
+    private readonly textInputProperties = new Map<string, UITextInputRuntimeValue>();
     private readonly listItems = new Map<string, unknown[]>();
     private readonly listSelectedIndexes = new Map<string, number>();
     private readonly listScrollRequests = new Map<string, UIListRuntimeScrollRequest>();
     private readonly displayableMotions = new Map<string, UIDisplayableMotionOverride>();
+    private readonly displayableBaseTransforms = new Map<string, UIDisplayableBaseTransform>();
     private readonly listeners = new Set<() => void>();
     private readonly runtimePatchListeners = new Set<() => void>();
     private snapshot: WidgetRuntimeSnapshot;
@@ -129,10 +165,12 @@ export class WidgetRuntimeStateStore {
             focusedId: this.focusedId,
             variantOverrides: new Map(this.variantOverrides),
             sliderProperties: new Map(this.sliderProperties),
+            textInputProperties: new Map(this.textInputProperties),
             listItems: new Map(this.listItems),
             listSelectedIndexes: new Map(this.listSelectedIndexes),
             listScrollRequests: new Map(this.listScrollRequests),
             displayableMotions: new Map(this.displayableMotions),
+            displayableBaseTransforms: new Map(this.displayableBaseTransforms),
         };
     }
 
@@ -273,6 +311,29 @@ export class WidgetRuntimeStateStore {
         return next;
     }
 
+    getTextInputProperties(elementId: string): UITextInputRuntimeValue | undefined {
+        return this.textInputProperties.get(elementId);
+    }
+
+    setTextInputProperties(
+        elementId: string,
+        currentProps: Partial<UITextInputWidgetProps>,
+        patch: Partial<UITextInputWidgetProps>,
+    ): UITextInputRuntimeValue {
+        const current = this.textInputProperties.get(elementId) ?? resolveTextInputRuntimeValue(currentProps);
+        const next = resolveTextInputRuntimeValue({
+            ...currentProps,
+            ...current,
+            ...patch,
+        });
+        if (current.value === next.value) {
+            return current;
+        }
+        this.textInputProperties.set(elementId, next);
+        this.emit();
+        return next;
+    }
+
     getListItems(elementId: string): unknown[] | undefined {
         const items = this.listItems.get(elementId);
         return items ? cloneJson(items) : undefined;
@@ -313,6 +374,50 @@ export class WidgetRuntimeStateStore {
         this.emit();
     }
 
+    /**
+     * Returns the persistent base transform pose for an element (stable reference; the shared
+     * default object is returned while the element sits at the authored pose).
+     */
+    getDisplayableBaseTransform(elementId: string): UIDisplayableBaseTransform {
+        return this.displayableBaseTransforms.get(elementId) ?? DEFAULT_DISPLAYABLE_BASE_TRANSFORM;
+    }
+
+    /**
+     * Merges a partial pose into the persistent base transform. Callers batching a base commit
+     * with other store mutations (e.g. clearing a completed motion) pass `silent` and notify once
+     * through notifyRuntimePatchesChanged so subscribers see a single consistent update.
+     */
+    setDisplayableBaseTransform(
+        elementId: string,
+        patch: Partial<UIDisplayableBaseTransform>,
+        options?: { silent?: boolean },
+    ): boolean {
+        const current = this.getDisplayableBaseTransform(elementId);
+        const next: UIDisplayableBaseTransform = {
+            offsetX: patch.offsetX ?? current.offsetX,
+            offsetY: patch.offsetY ?? current.offsetY,
+            scale: patch.scale ?? current.scale,
+        };
+        if (next.offsetX === current.offsetX && next.offsetY === current.offsetY && next.scale === current.scale) {
+            return false;
+        }
+        if (isDefaultDisplayableBaseTransform(next)) {
+            this.displayableBaseTransforms.delete(elementId);
+        } else {
+            this.displayableBaseTransforms.set(elementId, Object.freeze(next));
+        }
+        if (!options?.silent) {
+            this.emit();
+            this.emitRuntimePatches();
+        }
+        return true;
+    }
+
+    /**
+     * One-shot motion slot: each element holds at most ONE motion and a new motion replaces the
+     * previous one. Persistent pose state must therefore live in the base transform (see
+     * setDisplayableBaseTransform), never in this slot, or a replacement would silently drop it.
+     */
     setDisplayableMotion(
         elementId: string,
         motion: Omit<UIDisplayableMotionOverride, "id"> & { id?: string },

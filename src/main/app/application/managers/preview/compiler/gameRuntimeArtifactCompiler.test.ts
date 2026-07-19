@@ -3,11 +3,10 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { derivePackEncryptionKey } from "@narraleaf/encryption";
+import { derivePackEncryptionKey, runtimeSupportPath } from "@narraleaf/encryption";
 import {
     openSealedBundle,
     RUNTIME_BUNDLE_FILENAME,
-    RUNTIME_KEY_PLACEHOLDER,
     RUNTIME_SUPPORT_FILENAME,
 } from "@narraleaf/encryption/runtime";
 import { GAME_RUNTIME_PACK_SCHEMA_VERSION } from "@shared/types/gameRuntime";
@@ -16,7 +15,7 @@ import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph"
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY } from "@shared/types/blueprint/graph";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
-import { compileGameRuntimePreviewArtifact } from "./gameRuntimeArtifactCompiler";
+import { compileGameRuntimeArtifact, type GameRuntimeArtifactCompileInput } from "./gameRuntimeArtifactCompiler";
 
 const ASSET_ID = "00000000-0000-4000-8000-000000000123";
 const REMOTE_ASSET_ID = "00000000-0000-4000-8000-000000000456";
@@ -35,7 +34,27 @@ describe("game runtime artifact compiler", () => {
     });
 
     afterEach(async () => {
-        await fs.rm(tempDir, { recursive: true, force: true });
+        // The protected-store test process.dlopen()s the packed nlcrypto.node; on
+        // Windows a loaded native module cannot be unlinked until the process
+        // exits, so a plain rm throws EPERM on that one file. Retry briefly, then
+        // leave the locked binary for the OS temp sweep rather than failing the
+        // suite on a cleanup artifact.
+        for (let attempt = 0; ; attempt++) {
+            try {
+                await fs.rm(tempDir, { recursive: true, force: true });
+                return;
+            } catch (error) {
+                const code = (error as { code?: string }).code;
+                if ((code === "EPERM" || code === "EBUSY") && attempt < 5) {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    continue;
+                }
+                if (code === "EPERM" || code === "EBUSY") {
+                    return; // give up on the locked native module only
+                }
+                throw error;
+            }
+        }
     });
 
     it("writes a real preview app with pack.json and flat copied assets", async () => {
@@ -46,21 +65,11 @@ describe("game runtime artifact compiler", () => {
         await writeAsset(projectPath, ASSET_ID, "local image bytes");
         await writeProjectIcon(projectPath, "configured icon bytes");
 
-        const result = await compileGameRuntimePreviewArtifact({
-            projectPath,
-            runtimeDistDir,
-            runtimeVersion: "0.0.1-test",
-            entry: {
-                kind: "surface",
-                surfaceId: "surface-main",
-            },
-            controlPort: 47321,
-            controlToken: "token",
-        });
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47321));
 
-        expect(result.previewRoot).toBe(path.join(projectPath, ".nlstudio", "preview"));
-        expect(result.appDir).toBe(path.join(result.previewRoot, "app"));
-        expect(result.userDataDir).toBe(path.join(result.previewRoot, "userData"));
+        expect(result.outputRoot).toBe(path.join(projectPath, ".nlstudio", "preview"));
+        expect(result.appDir).toBe(path.join(result.outputRoot, "app"));
+        expect(result.userDataDir).toBe(path.join(result.outputRoot, "userData"));
         expect(result.copiedAssetCount).toBe(1);
         await expect(fs.readFile(path.join(result.appDir, "main.js"), "utf-8")).resolves.toBe("// main");
         await expect(fs.readFile(path.join(result.appDir, "preload.js"), "utf-8")).resolves.toBe("// preload");
@@ -143,16 +152,8 @@ describe("game runtime artifact compiler", () => {
             contributes: { blueprintNodes: ["acme.sample-plugin.node"], widgets: [] },
             permissions: [],
         };
-        const result = await compileGameRuntimePreviewArtifact({
-            projectPath,
-            runtimeDistDir,
-            runtimeVersion: "0.0.1-test",
-            entry: {
-                kind: "surface",
-                surfaceId: "surface-main",
-            },
-            controlPort: 47324,
-            controlToken: "token",
+        const result = await compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47324),
             runtimePlugins: [{
                 manifest,
                 entry: "runtime.js",
@@ -178,17 +179,7 @@ describe("game runtime artifact compiler", () => {
         await writeAsset(projectPath, ASSET_ID, "local image bytes");
         await writeProjectIcon(projectPath, "configured icon bytes");
 
-        const result = await compileGameRuntimePreviewArtifact({
-            projectPath,
-            runtimeDistDir,
-            runtimeVersion: "0.0.1-test",
-            entry: {
-                kind: "surface",
-                surfaceId: "surface-main",
-            },
-            controlPort: 47325,
-            controlToken: "token",
-        });
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47325));
 
         expect(result.pack.plugins).toEqual([]);
     });
@@ -208,17 +199,8 @@ describe("game runtime artifact compiler", () => {
             },
         });
 
-        await expect(compileGameRuntimePreviewArtifact({
-            projectPath,
-            runtimeDistDir,
-            runtimeVersion: "0.0.1-test",
-            entry: {
-                kind: "surface",
-                surfaceId: "surface-main",
-            },
-            controlPort: 47322,
-            controlToken: "token",
-        })).rejects.toThrow(/remote cache "remote-hero\.jpg"/);
+        await expect(compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47322)))
+            .rejects.toThrow(/remote cache "remote-hero\.jpg"/);
     });
 
     it("preserves authored Animate opacity percent params in the preview pack", async () => {
@@ -282,17 +264,7 @@ describe("game runtime artifact compiler", () => {
         });
         await writeProjectIcon(projectPath, "configured icon bytes");
 
-        const result = await compileGameRuntimePreviewArtifact({
-            projectPath,
-            runtimeDistDir,
-            runtimeVersion: "0.0.1-test",
-            entry: {
-                kind: "surface",
-                surfaceId: "surface-main",
-            },
-            controlPort: 47323,
-            controlToken: "token",
-        });
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47323));
 
         const blueprint = result.pack.bundle.ui.localBlueprints.blueprints["surface-main-blueprint"];
         const nodeParams = blueprint?.program.kind === "graph"
@@ -312,8 +284,9 @@ describe("game runtime artifact compiler", () => {
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
         const pluginInstallDir = path.join(tempDir, "plugins", "acme.sample-plugin");
         await createRuntimeDist(runtimeDistDir);
-        // Protection injects the pack key into main.js at its placeholder.
-        await fs.writeFile(path.join(runtimeDistDir, "main.js"), `const K = "${RUNTIME_KEY_PLACEHOLDER}";`, "utf-8");
+        // Protection carries no key material in main.js; the runtime bundle here
+        // is just a marker to prove the compiler never injects anything into it.
+        await fs.writeFile(path.join(runtimeDistDir, "main.js"), "// runtime main\n", "utf-8");
         await createMinimalProject(projectPath);
         await writeAsset(projectPath, ASSET_ID, "local image bytes");
         await writeProjectIcon(projectPath, "configured icon bytes");
@@ -331,13 +304,8 @@ describe("game runtime artifact compiler", () => {
             permissions: [],
         };
 
-        const result = await compileGameRuntimePreviewArtifact({
-            projectPath,
-            runtimeDistDir,
-            runtimeVersion: "0.0.1-test",
-            entry: { kind: "surface", surfaceId: "surface-main" },
-            controlPort: 47330,
-            controlToken: "token",
+        const result = await compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47330),
             encryptionKey: packKey,
             runtimePlugins: [{
                 manifest,
@@ -360,16 +328,16 @@ describe("game runtime artifact compiler", () => {
         expect(result.pack.assets.items[ASSET_ID].relativePath).toBe(`assets/${ASSET_ID}`);
         expect(result.pack.assets.items[ASSET_ID].mimeType).toBe("image/png");
 
-        // main.js received the real key in place of the placeholder.
+        // main.js carries NO key material: the compiler injects nothing into it,
+        // so it is byte-for-byte what the runtime build produced.
         const mainJs = await fs.readFile(path.join(result.appDir, "main.js"), "utf-8");
-        expect(mainJs).toContain(packKey);
-        expect(mainJs).not.toContain(RUNTIME_KEY_PLACEHOLDER);
+        expect(mainJs).toBe("// runtime main\n");
 
-        // The store round-trips through the runtime reader.
+        // The shipped binary was patched with this build's per-title secret, so it
+        // opens the store with NO key passed at all.
         const reader = await openSealedBundle(
             path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
             path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
-            packKey,
         );
         try {
             const pack = JSON.parse((await reader.read("pack")).toString("utf-8"));
@@ -379,8 +347,135 @@ describe("game runtime artifact compiler", () => {
         } finally {
             await reader.close();
         }
+
+        // The per-title secret is load-bearing and lives ONLY in the shipped
+        // binary: the pristine, unpatched codec cannot open the store.
+        await expect(openSealedBundle(
+            runtimeSupportPath(),
+            path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+        )).rejects.toThrow();
+    });
+
+    it("writes a production app without a control channel or sibling userData", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const outputRoot = path.join(projectPath, ".nlstudio", "build", "staging");
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: {
+                kind: "surface",
+                surfaceId: "surface-main",
+            },
+            outputRoot,
+            mode: "production",
+        });
+
+        expect(result.outputRoot).toBe(outputRoot);
+        expect(result.appDir).toBe(path.join(outputRoot, "app"));
+        expect(result.userDataDir).toBeNull();
+        await expect(fs.access(path.join(outputRoot, "userData"))).rejects.toThrow();
+        // Sourcemaps are preview-only; shipped games must not carry them.
+        await expect(fs.access(path.join(result.appDir, "renderer.css.map"))).rejects.toThrow();
+
+        const packOnDisk = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(packOnDisk.mode).toBe("production");
+        expect(packOnDisk.preview).toBeUndefined();
+
+        const manifest = JSON.parse(await fs.readFile(path.join(result.appDir, "package.json"), "utf-8"));
+        expect(manifest).toMatchObject({
+            name: "fixture.project",
+            productName: "Fixture Project",
+            version: "1.2.3",
+            author: "NarraLeaf",
+            main: "main.js",
+            narraleaf: { mode: "production" },
+        });
+    });
+
+    it("marks preview app manifests with the preview mode", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47326));
+
+        const manifest = JSON.parse(await fs.readFile(path.join(result.appDir, "package.json"), "utf-8"));
+        expect(manifest).toMatchObject({
+            name: "narraleaf-preview-runtime",
+            narraleaf: { mode: "preview" },
+        });
+    });
+
+    it("rejects a runtime dist without a build manifest", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await fs.rm(path.join(runtimeDistDir, "build-manifest.json"));
+        await createMinimalProject(projectPath);
+
+        await expect(compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47328)))
+            .rejects.toThrow(/missing build-manifest\.json.*yarn build:runtime/s);
+    });
+
+    it("rejects a runtime dist whose build manifest is not production", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await fs.writeFile(
+            path.join(runtimeDistDir, "build-manifest.json"),
+            JSON.stringify({ mode: "development" }),
+            "utf-8",
+        );
+        await createMinimalProject(projectPath);
+
+        await expect(compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47329)))
+            .rejects.toThrow(/not a production build.*"development".*yarn build:runtime/s);
+    });
+
+    it("rejects mode/control-channel mismatches", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+
+        const base = previewCompileInput(projectPath, runtimeDistDir, 47327);
+        await expect(compileGameRuntimeArtifact({ ...base, mode: "production" }))
+            .rejects.toThrow(/must not carry a preview control channel/);
+        await expect(compileGameRuntimeArtifact({ ...base, preview: undefined }))
+            .rejects.toThrow(/requires a preview control channel/);
     });
 });
+
+function previewCompileInput(
+    projectPath: string,
+    runtimeDistDir: string,
+    controlPort: number,
+): GameRuntimeArtifactCompileInput {
+    return {
+        projectPath,
+        runtimeDistDir,
+        runtimeVersion: "0.0.1-test",
+        entry: {
+            kind: "surface",
+            surfaceId: "surface-main",
+        },
+        outputRoot: path.join(projectPath, ".nlstudio", "preview"),
+        preview: {
+            controlPort,
+            controlToken: "token",
+        },
+    };
+}
 
 async function createRuntimeDist(runtimeDistDir: string): Promise<void> {
     await fs.mkdir(runtimeDistDir, { recursive: true });
@@ -391,6 +486,13 @@ async function createRuntimeDist(runtimeDistDir: string): Promise<void> {
     await fs.writeFile(path.join(runtimeDistDir, "renderer.css"), "/* renderer css */", "utf-8");
     await fs.writeFile(path.join(runtimeDistDir, "renderer.css.map"), "{}", "utf-8");
     await fs.writeFile(path.join(runtimeDistDir, "index.html"), "<!doctype html>", "utf-8");
+    // Written by build-runtime.js; the compiler refuses dists that lack it or
+    // that report any mode other than "production".
+    await fs.writeFile(
+        path.join(runtimeDistDir, "build-manifest.json"),
+        JSON.stringify({ mode: "production", sourcemap: true, builtAt: "2026-01-01T00:00:00.000Z" }),
+        "utf-8",
+    );
 }
 
 async function createMinimalProject(

@@ -15,7 +15,11 @@ import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "../../modules/ac
 import { useTranslation } from "@/lib/i18n";
 
 interface ActionBarProps {
-    hiddenGroupIds?: string[];
+    /**
+     * Drop every dropdown menu, keeping only the standalone icon buttons. Used on macOS, where
+     * the menus live on the system menu bar instead (see `useNativeMenuSync`).
+     */
+    hideAllGroups?: boolean;
 }
 
 /**
@@ -23,7 +27,7 @@ interface ActionBarProps {
  * Displays dynamically registered actions in the top-left area
  * Filters actions based on focus context and when conditions
  */
-export function ActionBar({ hiddenGroupIds = [] }: ActionBarProps) {
+export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
     const { t } = useTranslation();
     const { actions, actionGroups } = useRegistry();
     const { workspace, context } = useWorkspace();
@@ -69,13 +73,9 @@ export function ActionBar({ hiddenGroupIds = [] }: ActionBarProps) {
 
     // Filter visible actions that are not part of any group
     const standaloneActions = actions.filter((action) => !action.group && isActionVisible(action, focusContext));
-    const hiddenGroupIdSet = new Set(hiddenGroupIds);
-    const visibleActionGroups = actionGroups.filter((group) => {
-        if (hiddenGroupIdSet.has(group.id)) {
-            return false;
-        }
-        return getVisibleActionMenuItems(getActionGroupItems(group), focusContext).length > 0;
-    });
+    const visibleActionGroups = hideAllGroups
+        ? []
+        : actionGroups.filter((group) => getVisibleActionMenuItems(getActionGroupItems(group), focusContext).length > 0);
 
     if (standaloneActions.length === 0 && visibleActionGroups.length === 0) {
         return <div className="flex items-center gap-1" />;
@@ -108,8 +108,8 @@ export function ActionBar({ hiddenGroupIds = [] }: ActionBarProps) {
                 const stateClasses = action.disabled
                     ? "text-fg-subtle cursor-not-allowed"
                     : isRuntimeActionActive
-                        ? "bg-red-600 text-white hover:bg-red-700 hover:text-white"
-                        : "text-fg-muted hover:bg-fill hover:text-white";
+                        ? "bg-danger text-white hover:bg-danger/80 hover:text-white"
+                        : "text-fg-muted hover:bg-fill hover:text-fg";
                 const resolvedLabel = action.labelKey ? t(action.labelKey) : action.label;
                 const resolvedTooltip = action.tooltipKey ? t(action.tooltipKey) : action.tooltip;
                 const title = isRuntimeActionActive
@@ -134,7 +134,7 @@ export function ActionBar({ hiddenGroupIds = [] }: ActionBarProps) {
                         {action.icon && <span className="w-4 h-4">{action.icon}</span>}
                         {resolvedLabel && <span>{String(resolvedLabel)}</span>}
                         {action.badge && (
-                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                            <span className="absolute -top-1 -right-1 bg-danger text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
                                 {action.badge}
                             </span>
                         )}

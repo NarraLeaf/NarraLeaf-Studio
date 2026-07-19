@@ -27,7 +27,7 @@ export const properties = {
     diagnostics: {
         title: "静态检查",
         selectOnCanvas: "→ 在画布中选中",
-        help: "图形结构与绑定问题：从蓝图区域打开蓝图编辑器标签页。实时执行、节点进入/退出以及宿主 API 跟踪仅在开发模式中显示。",
+        help: "图形结构与绑定问题：从蓝图区域打开蓝图编辑器标签页；实时执行、节点进入/退出以及宿主 API 跟踪仅在开发模式中显示",
     },
     layout: {
         title: "布局",
@@ -125,6 +125,24 @@ export const properties = {
         recent: "最近使用",
         noRecent: "还没有最近使用的颜色",
         custom: "自定义",
+    },
+    references: {
+        label: "引用位置",
+        building: "正在扫描项目…",
+        none: "没有任何地方引用它",
+        count: {
+            one: "{count} 处引用",
+            other: "{count} 处引用",
+        },
+        dormant: "未生效",
+        dormantHint: "已保存在控件上，但当前不会显示——填充方式被设为纯色。删除该素材会让它变空。",
+        kind: {
+            story: "剧情",
+            blueprint: "蓝图",
+            uiElement: "界面",
+            character: "角色",
+            voice: "配音",
+        },
     },
     tags: {
         label: "标签",

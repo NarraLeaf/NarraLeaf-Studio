@@ -173,7 +173,7 @@ export function StoryScenePreviewFloat(props: {
 
     return (
         <div
-            className="absolute z-30 flex flex-col overflow-hidden rounded-lg border border-edge bg-surface-sunken shadow-2xl"
+            className="absolute z-30 flex flex-col overflow-hidden rounded-lg border border-edge bg-surface-overlay shadow-2xl"
             style={{ left: rendered.x, top: rendered.y, width: rendered.width, height: rendered.height }}
         >
             <StoryScenePreviewPane

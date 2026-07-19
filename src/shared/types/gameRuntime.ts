@@ -7,6 +7,16 @@ import type { UISurfaceId } from "./ui-editor/document";
 export const GAME_RUNTIME_PACK_SCHEMA_VERSION = 2 as const;
 export const GAME_RUNTIME_BRIDGE_KEY = "__NLS_GAME_RUNTIME__" as const;
 export const GAME_RUNTIME_PROTOCOL = "nlgame" as const;
+/** Main -> renderer push when the window enters or leaves fullscreen. */
+export const GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL = "runtime:fullscreen:changed" as const;
+/**
+ * Main -> renderer request when the user asks to close the window, carrying a `requestId`. The
+ * renderer runs its blueprints and replies on {@link GAME_RUNTIME_CLOSE_DECISION_CHANNEL} with the
+ * same requestId and whether the close may proceed. Lets `On Window Close Requested` intercept.
+ */
+export const GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL = "runtime:close:requested" as const;
+/** Renderer -> main reply to a {@link GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL} request. */
+export const GAME_RUNTIME_CLOSE_DECISION_CHANNEL = "runtime:close:decision" as const;
 
 export type GameRuntimeLaunchEntry =
     | {
@@ -85,7 +95,7 @@ export type GameRuntimePackV1 = {
     plugins: GameRuntimePackPluginEntry[];
     /**
      * Network policy for the packaged/previewed game. Absent on packs produced
-     * before this field existed — the runtime treats a missing value as the
+     * before this field existed - the runtime treats a missing value as the
      * secure default ({@link GameRuntimeNetworkConfig} all disabled).
      */
     network?: GameRuntimeNetworkConfig;
@@ -124,8 +134,25 @@ export type GameRuntimePersistenceBridge = {
 export type GameRuntimePreloadBridge = {
     readPack(): Promise<GameRuntimePackV1>;
     assetUrl(assetId: string): string;
+    /**
+     * Resolve a pack plugin runtime entry (`GameRuntimePackPluginEntry.
+     * entryRelativePath`) to a loadable URL. Each shell maps it onto its own
+     * transport (custom protocol on desktop, a relative URL on the web), so
+     * the renderer never hardcodes a scheme.
+     */
+    pluginEntryUrl(entryRelativePath: string): string;
     log(level: "info" | "warning" | "error", message: string): void;
     close(): Promise<void>;
+    getFullscreen(): Promise<boolean>;
+    setFullscreen(fullscreen: boolean): Promise<void>;
+    /** Subscribe to window fullscreen transitions. Returns an unsubscribe function. */
+    onFullscreenChanged(listener: (isFullscreen: boolean) => void): () => void;
+    /**
+     * Register the handler that decides whether a user-initiated window close may proceed. The main
+     * process holds the close open until the handler resolves: `true` closes the window, `false`
+     * cancels it. Only one handler is active; registering replaces it. Returns an unsubscribe fn.
+     */
+    onCloseRequested(listener: () => boolean | Promise<boolean>): () => void;
     save: GameRuntimeSaveBridge;
     persistence: GameRuntimePersistenceBridge;
 };

@@ -153,7 +153,7 @@ function BlueprintVariableRow({
     }, [blueprintId, draftName, localBp, v.id, v.name]);
 
     return (
-        <div className="group rounded border border-edge bg-[#0d0f12] px-2 py-1.5 space-y-1.5">
+        <div className="group rounded border border-edge bg-surface-sunken px-2 py-1.5 space-y-1.5">
             <div className="flex items-center justify-between gap-1">
                 <div className="flex min-w-0 items-center gap-1.5">
                     <span className={`text-2xs ${accentClass}`}>{scopeLabel}</span>
@@ -167,7 +167,7 @@ function BlueprintVariableRow({
                     type="button"
                     title={t("blueprint.memberTree.deleteVariableLabel", { name: v.name })}
                     aria-label={t("blueprint.memberTree.deleteVariableLabel", { name: v.name })}
-                    className="-m-0.5 rounded p-1 text-red-400/90 opacity-0 transition-opacity hover:bg-red-500/15 hover:text-red-300 group-hover:opacity-100"
+                    className="-m-0.5 rounded p-1 text-danger/90 opacity-0 transition-opacity hover:bg-danger/15 hover:text-danger group-hover:opacity-100"
                     onClick={() => {
                         if (!uiService) {
                             return;
@@ -247,7 +247,7 @@ function BlueprintPersistentVariableRow({
     }, [draftName, historyBlueprintId, localBp, v.id, v.name]);
 
     return (
-        <div className="group rounded border border-edge bg-[#0d0f12] px-2 py-1.5 space-y-1.5">
+        <div className="group rounded border border-edge bg-surface-sunken px-2 py-1.5 space-y-1.5">
             <div className="flex items-center justify-between gap-1">
                 <label htmlFor={`persistent-variable-name-${v.id}`} className="text-2xs font-medium text-fg-subtle">
                     {t("common.name")}
@@ -256,7 +256,7 @@ function BlueprintPersistentVariableRow({
                     type="button"
                     title={t("blueprint.memberTree.deletePersistentVariableLabel", { name: v.name })}
                     aria-label={t("blueprint.memberTree.deletePersistentVariableLabel", { name: v.name })}
-                    className="-m-0.5 rounded p-1 text-red-400/90 opacity-0 transition-opacity hover:bg-red-500/15 hover:text-red-300 group-hover:opacity-100"
+                    className="-m-0.5 rounded p-1 text-danger/90 opacity-0 transition-opacity hover:bg-danger/15 hover:text-danger group-hover:opacity-100"
                     onClick={() => {
                         if (!uiService) {
                             return;
@@ -348,7 +348,7 @@ function buildVariableGroups(
                   blueprintId: input.pageBlueprintId,
                   blueprint: input.pageBlueprint,
                   defaultOpen: false,
-                  accentClass: "text-sky-200/80",
+                  accentClass: "text-primary/80",
                   emptyText: t("blueprint.memberTree.pageEmpty"),
               }
             : null,
@@ -363,7 +363,7 @@ function buildVariableGroups(
                   blueprintId: input.globalBlueprintId,
                   blueprint: input.globalBlueprint,
                   defaultOpen: false,
-                  accentClass: "text-violet-200/80",
+                  accentClass: "text-binding/80",
                   emptyText: t("blueprint.memberTree.globalEmpty"),
               }
             : null,
@@ -705,7 +705,7 @@ export function BlueprintMemberTree({
                     <span>{t("blueprint.memberTree.layers")}</span>
                     <button
                         type="button"
-                        className="inline-flex items-center gap-1 text-cyan-400/90 hover:text-cyan-300"
+                        className="inline-flex items-center gap-1 text-primary hover:text-primary/80"
                         onClick={() => void onAddLayer()}
                     >
                         <Plus className="h-3 w-3" />
@@ -724,7 +724,7 @@ export function BlueprintMemberTree({
                                         type="button"
                                         className={`w-full rounded px-2 py-1 text-left font-mono text-2xs ${
                                             layerActive(id)
-                                                ? "bg-cyan-500/15 text-cyan-100"
+                                                ? "bg-primary/15 text-fg"
                                                 : "text-fg-muted hover:bg-fill-subtle"
                                         }`}
                                         onClick={() => onSelectLayer(id)}
@@ -735,9 +735,9 @@ export function BlueprintMemberTree({
                                     >
                                         {events[id]?.name ?? t("blueprint.memberTree.unnamedEvent")}
                                         {errors > 0 ? (
-                                            <span className="ml-1 text-red-400">{t("blueprint.memberTree.errorBadge", { count: errors })}</span>
+                                            <span className="ml-1 text-danger">{t("blueprint.memberTree.errorBadge", { count: errors })}</span>
                                         ) : warnings > 0 ? (
-                                            <span className="ml-1 text-amber-400">{t("blueprint.memberTree.warningBadge", { count: warnings })}</span>
+                                            <span className="ml-1 text-warning">{t("blueprint.memberTree.warningBadge", { count: warnings })}</span>
                                         ) : null}
                                     </button>
                                 </li>
@@ -760,7 +760,7 @@ export function BlueprintMemberTree({
                             action={
                                 <button
                                     type="button"
-                                    className="inline-flex items-center gap-1 text-cyan-400/90 hover:text-cyan-300"
+                                    className="inline-flex items-center gap-1 text-primary hover:text-primary/80"
                                     onClick={() => void handleCreateVariable(group)}
                                 >
                                     <Plus className="h-3 w-3" />
@@ -795,7 +795,7 @@ export function BlueprintMemberTree({
                     action={
                         <button
                             type="button"
-                            className="inline-flex items-center gap-1 text-cyan-400/90 hover:text-cyan-300"
+                            className="inline-flex items-center gap-1 text-primary hover:text-primary/80"
                             onClick={() => void handleCreatePersistentVariable()}
                         >
                             <Plus className="h-3 w-3" />

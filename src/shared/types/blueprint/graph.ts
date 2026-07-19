@@ -1,5 +1,5 @@
 /**
- * Blueprint graph taxonomy — kinds, node type constants, and rules for editors / validators.
+ * Blueprint graph taxonomy - kinds, node type constants, and rules for editors / validators.
  * Comments in English per project convention.
  */
 
@@ -59,6 +59,9 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END = "blueprint.event.head.s
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START = "blueprint.event.head.sliderDragStart" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED = "blueprint.event.head.sliderValueChanged" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END = "blueprint.event.head.sliderDragEnd" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_VALUE_CHANGED = "blueprint.event.head.textInputValueChanged" as const;
+/** Fires when the player commits the field (Enter), not on every keystroke. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_SUBMIT = "blueprint.event.head.textInputSubmit" as const;
 /** Entry for global `appBoot` lifecycle event (application start). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT = "blueprint.event.head.appBoot" as const;
 /** Entry for global NarraLeaf game runtime readiness. */
@@ -71,9 +74,18 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT = "blueprint.event.h
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED = "blueprint.event.head.preferenceChanged" as const;
 /** Entry for any NarraLeaf game preference change on the active live game. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED = "blueprint.event.head.anyPreferenceChanged" as const;
+/** Entry for application window fullscreen transitions (entered or left fullscreen). */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED = "blueprint.event.head.fullscreenChanged" as const;
+/**
+ * Entry for an application window close request (the user asked to close the window: native close
+ * box, OS shortcut, etc.). The blueprint may cancel the close by synchronously running a Stop Event
+ * Bubble node during dispatch; otherwise the window proceeds to close. In Dev Mode this intercepts
+ * the Dev Mode window; in preview/production it intercepts the game window.
+ */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED = "blueprint.event.head.windowCloseRequested" as const;
 /**
  * Entry for a Story Action Blueprint's single "On Call" event. Deliberately kept OUT of
- * EVENT_DISPATCH_HEAD_TYPES — story-action graphs run via the story compiler's Script wrapper,
+ * EVENT_DISPATCH_HEAD_TYPES - story-action graphs run via the story compiler's Script wrapper,
  * never through the UI dispatch paths.
  */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL = "blueprint.event.head.onCall" as const;
@@ -114,12 +126,16 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_VALUE_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_SUBMIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED,
 ]);
 
 /**
@@ -681,7 +697,7 @@ export const BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT = "blueprint.broad
 /**
  * Fn nodes: surface-scoped callable functions declared by a head node in event graphs.
  * The fn identity is the head node id; callers reference it via an encoded fnRef param.
- * Deliberately NOT part of EVENT_DISPATCH_HEAD_TYPES — fn bodies only run via explicit invocation.
+ * Deliberately NOT part of EVENT_DISPATCH_HEAD_TYPES - fn bodies only run via explicit invocation.
  */
 export const BLUEPRINT_NODE_TYPE_FN_HEAD = "blueprint.fn.head" as const;
 export const BLUEPRINT_NODE_TYPE_FN_CALL = "blueprint.fn.call" as const;
@@ -759,6 +775,10 @@ export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING = "blueprint.page.isSur
 export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING = "blueprint.page.isSurfaceEntering" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING = "blueprint.page.isSurfaceTransitioning" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_QUIT = "blueprint.page.quit" as const;
+// App window nodes. The older node types in this group keep their `blueprint.page.*`
+// ids from when the category was named "Page"; only the palette label changed.
+export const BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN = "blueprint.app.getFullscreen" as const;
+export const BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN = "blueprint.app.setFullscreen" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_START_STORY = "blueprint.game.startStory" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME = "blueprint.game.isInGame" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY = "blueprint.game.isGameOverlay" as const;
@@ -776,6 +796,10 @@ export const BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG = "blueprint.game.getNametag" 
 export const BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS = "blueprint.game.getNotifications" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT = "blueprint.game.getChoiceCount" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE = "blueprint.game.isNvlMode" as const;
+/** True while a dialog line is on screen and its message is read (seen before, or display finished). */
+export const BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ = "blueprint.game.isTextRead" as const;
+/** Wipe the persisted text-read record (all stories); works with or without a running game. */
+export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ = "blueprint.game.clearTextRead" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_CHOOSE = "blueprint.game.choose" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_NEXT = "blueprint.game.next" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SKIP = "blueprint.game.skip" as const;
@@ -901,6 +925,13 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_NORMALIZED_VALUE = "blueprin
 export const BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_RANGE = "blueprint.element.slider.getRange" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_SET_VALUE = "blueprint.element.slider.setValue" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_SET_RANGE = "blueprint.element.slider.setRange" as const;
+
+export const BLUEPRINT_NODE_TYPE_TEXT_INPUT_GET_VALUE = "blueprint.textInput.getValue" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_INPUT_SET_VALUE = "blueprint.textInput.setValue" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_INPUT_CLEAR = "blueprint.textInput.clear" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_GET_VALUE = "blueprint.element.textInput.getValue" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_SET_VALUE = "blueprint.element.textInput.setValue" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_CLEAR = "blueprint.element.textInput.clear" as const;
 
 export const BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS = "blueprint.list.setItems" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS = "blueprint.list.getItems" as const;

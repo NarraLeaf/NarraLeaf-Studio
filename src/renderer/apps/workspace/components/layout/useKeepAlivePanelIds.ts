@@ -3,7 +3,7 @@ import type { PanelDefinition } from "../../registry/types";
 
 /**
  * Tracks which sidebar panels stay mounted (kept alive) so switching the visible panel in a rail
- * does not unmount — and lose the state/scroll of — the previously shown one.
+ * does not unmount - and lose the state/scroll of - the previously shown one.
  *
  * Keeps every panel that has been shown at least once this session and is still registered; the
  * active panel is always kept. Panels never opened are not mounted, so the set stays bounded to what

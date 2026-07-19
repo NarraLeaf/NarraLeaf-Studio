@@ -50,7 +50,7 @@ export function WizardHeader({ steps, currentStep }: WizardHeaderProps) {
                                             w-4 h-4 rounded-full border-2
                                             ${index === currentStepIndex
                                                 ? "border-primary bg-primary/20"
-                                                : "border-gray-500"
+                                                : "border-fg-subtle"
                                             }
                                         `}>
                                             {index === currentStepIndex && (
@@ -69,7 +69,7 @@ export function WizardHeader({ steps, currentStep }: WizardHeaderProps) {
                                         w-8 h-px transition-colors duration-150
                                         ${index < currentStepIndex
                                             ? "bg-primary"
-                                            : "bg-gray-600"
+                                            : "bg-fg-subtle"
                                         }
                                     `} />
                                 </div>

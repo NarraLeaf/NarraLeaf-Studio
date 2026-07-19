@@ -11,6 +11,9 @@ import { welcomeModule } from "./welcome";
 import { globalActions, globalActionGroups } from "./actions";
 import { imagePreviewModule } from "./assets/editors/imagePreviewModule";
 import { audioPreviewModule } from "./assets/editors/audioPreviewModule";
+import { videoPreviewModule } from "./assets/editors/videoPreviewModule";
+import { fontPreviewModule } from "./assets/editors/fontPreviewModule";
+import { jsonPreviewModule } from "./assets/editors/jsonPreviewModule";
 import { charactersModule } from "./characters";
 import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./types";
 import { uiEditorSurfacesModule } from "./ui-editor";
@@ -18,21 +21,29 @@ import { projectPanelModule } from "./project";
 import { storyPanelModule } from "./story";
 import { storyMotionPanelModule } from "./story-motion";
 import { localizationPanelModule } from "./localization";
+import { voicePanelModule } from "./voice";
+import { dashboardPanelModule } from "./dashboard";
+import { searchPanelModule } from "./search";
+import { notificationsPanelModule } from "./notifications";
 
 /**
  * Built-in panel modules
  * All panels that should be registered on workspace startup
  */
 export const builtInPanels: PanelModule[] = [
+    dashboardPanelModule,
     projectPanelModule,
     storyPanelModule,
+    searchPanelModule,
     uiEditorSurfacesModule,
     charactersModule,
     assetsModule,
     localizationPanelModule,
+    voicePanelModule,
     storyMotionPanelModule,
     assetsBottomModule,
     propertiesModule,
+    notificationsPanelModule,
     consoleModule,
 ];
 
@@ -44,6 +55,9 @@ export const builtInEditors: EditorModule[] = [
     welcomeModule,
     imagePreviewModule,
     audioPreviewModule,
+    videoPreviewModule,
+    fontPreviewModule,
+    jsonPreviewModule,
 ];
 
 /**
@@ -72,3 +86,6 @@ export { projectPanelModule } from "./project";
 export { storyPanelModule } from "./story";
 export { storyMotionPanelModule } from "./story-motion";
 export { localizationPanelModule } from "./localization";
+export { voicePanelModule } from "./voice";
+export { dashboardPanelModule } from "./dashboard";
+export { builtInStatusBarEntries } from "./status-bar";

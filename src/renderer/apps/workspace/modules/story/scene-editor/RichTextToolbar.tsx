@@ -13,8 +13,27 @@ import type { ActiveMarks, RichTextInputHandle } from "./RichTextInput";
 /** Fallback quick colors shown until the author has built up a recent-colors history. */
 const DEFAULT_SWATCHES = ["#ffffff", "#f87171", "#fb923c", "#facc15", "#4ade80", "#38bdf8", "#a78bfa"];
 const SWATCH_COUNT = 7;
-const BTN = "grid h-6 w-6 place-items-center rounded text-fg-muted hover:bg-fill hover:text-white";
+const BTN = "grid h-6 w-6 place-items-center rounded text-fg-muted hover:bg-fill hover:text-fg";
 const BTN_ACTIVE = "grid h-6 w-6 place-items-center rounded bg-primary/25 text-primary";
+/** Rendered heights of the two strips, and the breathing room between strip and row. */
+const TOOLBAR_HEIGHT = 24;
+const TOOLBAR_HEIGHT_EXPANDED = 30;
+const TOOLBAR_GAP = 4;
+
+/**
+ * The rect of the nearest ancestor that actually scrolls — the pane the toolbar has to stay inside.
+ * The toolbar is a `fixed` portal, so nothing clips it for free: without this it happily floats over
+ * the tab strip, or stays pinned in place after its row has scrolled away.
+ */
+function scrollClipRect(el: HTMLElement): DOMRect | null {
+    for (let node = el.parentElement; node; node = node.parentElement) {
+        const overflowY = globalThis.window.getComputedStyle(node).overflowY;
+        if (overflowY === "auto" || overflowY === "scroll") {
+            return node.getBoundingClientRect();
+        }
+    }
+    return null;
+}
 
 /** Case-insensitive normalized hex key so colors from mixed sources compare reliably. */
 function colorKey(color: string): string {
@@ -78,7 +97,21 @@ export function RichTextToolbar(props: {
                 return;
             }
             const rect = anchor.getBoundingClientRect();
-            setPos({ top: Math.max(4, rect.top - (expanded ? 34 : 28)), left: rect.left });
+            const clip = scrollClipRect(anchor);
+            // The row has been scrolled out of its pane. A chip still floating over whatever now
+            // occupies that spot reads as part of it, so there is nothing useful to show.
+            if (clip && (rect.bottom <= clip.top || rect.top >= clip.bottom)) {
+                setPos(null);
+                return;
+            }
+            const height = expanded ? TOOLBAR_HEIGHT_EXPANDED : TOOLBAR_HEIGHT;
+            const ceiling = clip ? clip.top : 0;
+            const floor = (clip ? clip.bottom : globalThis.window.innerHeight) - height;
+            const above = rect.top - height - TOOLBAR_GAP;
+            // Sit above the row; drop below it when the pane has no room above (the top row, or a
+            // scrolled-to-edge one) rather than escaping the pane and covering the tab strip.
+            const top = above >= ceiling ? above : rect.bottom + TOOLBAR_GAP;
+            setPos({ top: Math.min(Math.max(top, ceiling), Math.max(ceiling, floor)), left: rect.left });
         };
         update();
         // Re-measure across the next frames: entering edit mode focuses the row, which can scroll
@@ -150,7 +183,7 @@ export function RichTextToolbar(props: {
     const strip = expanded ? (
         <div
             data-rt-toolbar
-            className="flex items-center gap-0.5 rounded-md border border-edge bg-[#16191e] px-1 py-0.5 shadow-lg"
+            className="flex items-center gap-0.5 rounded-md border border-edge bg-surface-raised px-1 py-0.5 shadow-lg"
             onMouseDown={keepFocus}
         >
             <button type="button" className={BTN} onClick={() => setExpanded(false)} title={t("story.richText.collapse")}>
@@ -171,7 +204,7 @@ export function RichTextToolbar(props: {
                         key={color}
                         type="button"
                         className={`h-4 w-4 rounded-full border transition-transform hover:scale-110 ${
-                            isActive ? "scale-110 border-white ring-2 ring-white/80 ring-offset-1 ring-offset-[#16191e]" : "border-edge-strong"
+                            isActive ? "scale-110 border-fg ring-2 ring-fg/80 ring-offset-1 ring-offset-surface-raised" : "border-edge-strong"
                         }`}
                         style={{ backgroundColor: color }}
                         onClick={() => applyColor(color)}
@@ -179,7 +212,7 @@ export function RichTextToolbar(props: {
                     />
                 );
             })}
-            <button ref={paletteBtnRef} type="button" className={`${BTN} relative ${palette ? "bg-fill text-white" : ""}`} onClick={() => (palette ? closePalette() : openPalette())} title={t("story.richText.moreColors")}>
+            <button ref={paletteBtnRef} type="button" className={`${BTN} relative ${palette ? "bg-fill text-fg" : ""}`} onClick={() => (palette ? closePalette() : openPalette())} title={t("story.richText.moreColors")}>
                 <Palette className="h-3.5 w-3.5" />
                 {active.color ? (
                     <span
@@ -205,7 +238,7 @@ export function RichTextToolbar(props: {
         <button
             type="button"
             data-rt-toolbar
-            className="inline-flex h-6 items-center gap-1 rounded-md border border-edge bg-[#16191e] px-1.5 text-2xs text-fg-muted shadow transition-colors hover:text-fg"
+            className="inline-flex h-6 items-center gap-1 rounded-md border border-edge bg-surface-raised px-1.5 text-2xs text-fg-muted shadow transition-colors hover:text-fg"
             onMouseDown={keepFocus}
             onClick={() => setExpanded(true)}
             title={t("story.richText.tools")}
@@ -223,7 +256,7 @@ export function RichTextToolbar(props: {
             {palette ? (
                 <div
                     ref={palettePanelRef}
-                    className="fixed z-[70] w-52 rounded-lg border border-edge bg-[#16191e] p-2 shadow-2xl"
+                    className="fixed z-[70] w-52 rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl"
                     style={{ top: palette.top, left: palette.left }}
                     onMouseDown={event => event.stopPropagation()}
                 >

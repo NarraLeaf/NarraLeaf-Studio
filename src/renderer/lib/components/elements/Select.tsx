@@ -256,7 +256,7 @@ export function Select({
                         option.disabled
                             ? "text-fg-subtle cursor-not-allowed"
                             : "text-fg hover:bg-fill cursor-default",
-                        option.value === value && "bg-fill text-white",
+                        option.value === value && "bg-fill text-fg",
                     )}
                     onClick={() => handleOptionClick(option)}
                     disabled={option.disabled}
@@ -478,7 +478,7 @@ export function Combobox({
                                 option.disabled
                                     ? "text-fg-subtle cursor-not-allowed"
                                     : "text-fg hover:bg-fill cursor-default",
-                                option.value === value && "bg-fill text-white",
+                                option.value === value && "bg-fill text-fg",
                             )}
                             onClick={() => handleOptionClick(option)}
                             disabled={option.disabled}

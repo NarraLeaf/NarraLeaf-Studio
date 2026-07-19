@@ -4,13 +4,19 @@ import { ProjectDependencyTable, normalizeProjectDependencyTable } from "@shared
 import { basename, extname, join } from "@shared/utils/path";
 import { ProjectConfig, ProjectIconConfig, ProjectIconPlatform, ProjectMetadata, Resolution } from "../../project/project";
 import {
+    BuildConfiguration,
     LocalizationConfiguration,
+    MobileConfiguration,
     NetworkConfiguration,
     ProjectAppConfiguration,
     SecurityConfiguration,
+    VoiceConfiguration,
+    normalizeBuildConfiguration,
     normalizeLocalizationConfiguration,
+    normalizeMobileConfiguration,
     normalizeNetworkConfiguration,
     normalizeSecurityConfiguration,
+    normalizeVoiceConfiguration,
 } from "../../project/configuration";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
@@ -22,6 +28,11 @@ export const PROJECT_ICON_PICKER_EXTENSIONS: Record<ProjectIconPlatform, string[
     macos: ["icns", "png", "jpg", "jpeg", "webp"],
     windows: ["ico", "png", "jpg", "jpeg", "webp"],
     linux: ["png", "svg", "jpg", "jpeg", "webp"],
+    // PNG only: the repack reads the source's pixels to scale it into the
+    // shell's launcher slots, and the native icon containers (.icns/.ico) and
+    // SVG are not readable that way.
+    android: ["png"],
+    ios: ["png"],
 };
 
 const ICON_MEDIA_TYPES: Record<string, string> = {
@@ -83,7 +94,7 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         }
 
         // Normalize (or drop) a possibly-malformed dependency table up front so a
-        // corrupt table can never propagate — a broken table must not block load.
+        // corrupt table can never propagate - a broken table must not block load.
         const normalizedDependencies = normalizeProjectDependencyTable(projectConfig.dependencies);
         if (normalizedDependencies) {
             projectConfig.dependencies = normalizedDependencies;
@@ -205,6 +216,55 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
     }
 
     /**
+     * Update the mobile shell settings. Read by the mobile repack, which writes
+     * them into the shell config the packaged game reads at startup.
+     */
+    public async updateMobileConfiguration(patch: Partial<MobileConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const mobile: MobileConfiguration = {
+                ...normalizeMobileConfiguration(config.app?.mobile),
+                ...patch,
+            };
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                mobile,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read the remembered production-build selection, or null when the project
+     * has never been built (the build dialog then uses a host-appropriate
+     * default).
+     */
+    public getBuildConfiguration(): BuildConfiguration | null {
+        return normalizeBuildConfiguration(this.getProjectConfig().app?.build);
+    }
+
+    /**
+     * Persist the production-build dialog selection so the next build reopens
+     * with the same platforms/formats/output dir.
+     */
+    public async updateBuildConfiguration(build: BuildConfiguration): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                build,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
      * Read the effective game localization setup, normalized with safe defaults
      * for projects that predate (or never configured) `app.localization`.
      */
@@ -230,6 +290,41 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 localization: next,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+        return applied;
+    }
+
+    /**
+     * Read the effective game voice-over setup, normalized with safe defaults
+     * for projects that predate (or never configured) `app.voice`.
+     */
+    public getVoiceConfiguration(): VoiceConfiguration {
+        return normalizeVoiceConfiguration(this.getProjectConfig().app?.voice);
+    }
+
+    /**
+     * Replace the game voice-over setup via an updater over the current
+     * normalized value. Used by the Voice panel (voice-language management) and
+     * consumed by the Dev Mode / packaging bundle assembler.
+     */
+    public async updateVoiceConfiguration(
+        updater: (current: VoiceConfiguration) => VoiceConfiguration,
+    ): Promise<VoiceConfiguration> {
+        let applied: VoiceConfiguration = normalizeVoiceConfiguration(undefined);
+        await this.updateProjectConfig(config => {
+            const next = normalizeVoiceConfiguration(
+                updater(normalizeVoiceConfiguration(config.app?.voice)),
+            );
+            applied = next;
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                voice: next,
             };
             return {
                 ...config,
@@ -369,7 +464,7 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
             config.metadata = {};
         }
         // Tolerate the machine-managed dependency table: normalize it if present,
-        // drop it if malformed. Never throw — dependencies must not gate a save.
+        // drop it if malformed. Never throw - dependencies must not gate a save.
         const normalizedDependencies = normalizeProjectDependencyTable(config.dependencies);
         if (normalizedDependencies && normalizedDependencies.plugins.length > 0) {
             config.dependencies = normalizedDependencies;

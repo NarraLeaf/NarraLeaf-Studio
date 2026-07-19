@@ -8,7 +8,8 @@ import type { ActionDefinition, ActionGroup } from "../registry/types";
 import { UIService } from "@/lib/workspace/services/ui";
 import { Services } from "@/lib/workspace/services/services";
 import type { FocusContext } from "@/lib/workspace/services/ui";
-import { WorkspaceMenuAction } from "@shared/types/ipcEvents";
+import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
+import { EditMenuRole, MenuActionId } from "@shared/types/menu";
 
 /**
  * Listens for macOS native menu actions and dispatches
@@ -32,10 +33,18 @@ export function useMenuActionHandler(): void {
     }, [context]);
 
     const dispatchMenuAction = useCallback(
-        (actionId: WorkspaceMenuAction) => {
+        (actionId: MenuActionId) => {
             const action = findRegisteredAction(actionId, actions, actionGroups, focusContext);
             if (!action) {
                 console.warn(`[MenuAction] Unregistered menu action: ${actionId}`);
+                return;
+            }
+            // An action standing in for an Edit-menu command also owns that command's Cmd
+            // shortcut, so it fires for plain text editing too. Route by what the user is
+            // actually doing: caret in a text field (or a live text selection for copy/cut)
+            // means text editing, not the surface action.
+            if (action.menuRole && shouldUseNativeEditCommand(action.menuRole)) {
+                getInterface().window.editCommand(action.menuRole);
                 return;
             }
             if (action.disabled) {
@@ -64,8 +73,40 @@ export function useMenuActionHandler(): void {
     }, [dispatchMenuAction]);
 }
 
+/**
+ * True when the standard text-editing behaviour is what the user means right now.
+ *
+ * Uses the same notion of "typing here" as the KeybindingService, so a keystroke cannot be
+ * text editing for one path and a surface action for the other.
+ */
+function shouldUseNativeEditCommand(role: EditMenuRole): boolean {
+    if (isEditableKeyboardTarget(document.activeElement)) {
+        return true;
+    }
+    // Copying a text selection is meaningful outside a text field too - but only a selection the
+    // focused surface actually holds. A leftover selection elsewhere in the workspace must not
+    // hijack the surface's own copy.
+    if (role === "copy" || role === "cut") {
+        return hasSelectionInsideActiveElement();
+    }
+    // paste/delete only make sense as text commands inside an editable.
+    return false;
+}
+
+function hasSelectionInsideActiveElement(): boolean {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+        return false;
+    }
+    const active = document.activeElement;
+    if (!active) {
+        return false;
+    }
+    return active.contains(selection.getRangeAt(0).commonAncestorContainer);
+}
+
 function findRegisteredAction(
-    actionId: WorkspaceMenuAction,
+    actionId: MenuActionId,
     actions: ActionDefinition[],
     actionGroups: ActionGroup[],
     focusContext: FocusContext | null,

@@ -2,8 +2,11 @@ import { ComponentType, ReactNode } from "react";
 import { ActionSeparator } from "@/apps/workspace/registry/types";
 import { PanelPosition } from "../registry/types";
 import { FocusContext } from "@/lib/workspace/services/ui";
+import { StatusBarAlignment } from "@/lib/workspace/services/ui/types";
+import type { WorkspaceContext } from "@/lib/workspace/services/services";
 import { Workspace } from "@/lib/workspace/workspace";
 import { TranslationKey } from "@shared/i18n";
+import { NativeMenuSlot } from "@shared/types/menu";
 
 /**
  * Base module metadata
@@ -14,6 +17,12 @@ export interface ModuleMetadata {
     id: string;
     /** Display title */
     title: string;
+    /**
+     * i18n key for the title. Preferred over `title` at render, and resolved reactively so the
+     * heading follows a live language switch - unlike `title`, which is captured as a plain string
+     * when the panel is registered and would otherwise freeze in whatever locale was then active.
+     */
+    titleKey?: TranslationKey;
     /** Icon component or element */
     icon?: ReactNode;
     /** Sort order (lower values appear first) */
@@ -68,6 +77,8 @@ export interface ModuleActionGroup {
     actions: (ModuleAction | ActionSeparator)[];
     /** Sort order */
     order?: number;
+    /** Where the group lands on the macOS menu bar; see `ActionGroup.menuSlot`. */
+    menuSlot?: NativeMenuSlot;
 }
 
 /**
@@ -114,8 +125,13 @@ export interface PanelModule<TPayload = any> {
         /** Payload data passed to panel component */
         payload?: TPayload;
     };
-    /** Panel component */
-    component: ComponentType<PanelComponentProps<TPayload>>;
+    /** Panel component; omitted only by rail actions, which have no panel body. */
+    component?: ComponentType<PanelComponentProps<TPayload>>;
+    /**
+     * Turns the rail icon into a button - clicking runs this instead of opening a panel body.
+     * See `PanelDefinition.railAction`. Mutually exclusive with `component`.
+     */
+    railAction?: (workspace: WorkspaceContext) => void;
     /** Actions that should be registered when this panel is active/focused */
     actions?: ModuleAction[];
     /** Action groups that should be registered when this panel is active/focused */
@@ -126,6 +142,27 @@ export interface PanelModule<TPayload = any> {
     onLoad?: () => void | Promise<void>;
     /** Optional cleanup function called when module unloads */
     onUnload?: () => void | Promise<void>;
+}
+
+/**
+ * Status bar entry definition
+ *
+ * One cell in the bottom status bar. Unlike panels and editors these carry no payload and take no
+ * props - an entry owns its own subscriptions and renders `null` whenever it has nothing to report,
+ * which is how the bar stays empty on an idle workspace.
+ *
+ * Placement comes from the order entries are registered in (see `builtInStatusBarEntries`), not
+ * from a sort key: users may hide an entry but never move it.
+ */
+export interface StatusBarEntryModule {
+    /** Unique identifier, namespaced like every other module id. Also the persisted hide key. */
+    id: string;
+    /** i18n key for the label in the status bar's right-click toggle menu. */
+    labelKey: TranslationKey;
+    /** Which end of the bar the entry belongs to. */
+    alignment: StatusBarAlignment;
+    /** Renders the cell; returns null when the entry currently has nothing to say. */
+    component: ComponentType;
 }
 
 /**

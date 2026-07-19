@@ -8,37 +8,50 @@ import { RightSidebar } from "./RightSidebar";
 import { BottomPanel } from "./BottomPanel";
 import { MainEditorArea } from "./MainEditorArea";
 import { ActionBar } from "./ActionBar";
+import { ProjectSwitcher } from "./ProjectSwitcher";
 import { ControlBar } from "./ControlBar";
 import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
 import { ResizableHandle } from "../ui/ResizableHandle";
+import { EditorClosedTabsKeybinding } from "./EditorClosedTabsKeybinding";
 import { WorkspaceEditorQuickSwitch } from "./WorkspaceEditorQuickSwitch";
+import { CommandPalette } from "./CommandPalette";
+import { EditorCommands } from "./EditorCommands";
+import { KeybindingCheatSheet } from "./KeybindingCheatSheet";
+import { TitleBarSearchBox } from "./TitleBarSearchBox";
+import { StatusBar, STATUS_BAR_HEIGHT } from "./StatusBar";
+import { QuickOpenPicker } from "./QuickOpenPicker";
+import { WorkspaceBackground } from "./WorkspaceBackground";
+import { BackgroundImageDialog } from "./BackgroundImageDialog";
 import { useRegistry } from "../../registry";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
+import { CommandService } from "@/lib/workspace/services/ui/CommandService";
+import { getInterface } from "@/lib/app/bridge";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { isMacPlatform } from "@/lib/app/platform";
+import { useTranslation } from "@/lib/i18n";
+import { WorkspaceMenuAction } from "@shared/types/menu";
+import {
+    DOCK_REGIONS,
+    EDITOR_FLOOR,
+    applyResize,
+    resolveDock,
+    type DockEnv,
+} from "./dockLayoutModel";
 
 interface WorkspaceLayoutProps {
     title: string;
     iconSrc: string;
 }
 
-const MACOS_NATIVE_MENU_GROUP_IDS = ["narraleaf-studio:file", "narraleaf-studio:help"];
 
-// Default sizes (in pixels)
-const DEFAULT_LEFT_SIDEBAR_WIDTH = 320;
-const DEFAULT_RIGHT_SIDEBAR_WIDTH = 320;
-const DEFAULT_BOTTOM_PANEL_HEIGHT = 256;
-
-// Min/Max constraints (in pixels)
-const MIN_SIDEBAR_WIDTH = 300;
-const MAX_SIDEBAR_WIDTH = 800;
-const MIN_BOTTOM_PANEL_HEIGHT = 150;
-const MAX_BOTTOM_PANEL_HEIGHT = 600;
+// Region sizing lives in ./dockLayoutModel (constraint table + solver). The persisted values
+// below are the user's *intended* sizes; the *effective* rendered sizes are derived each render
+// via resolveDock(), so nothing is mutated on window resize.
 
 // Settings keys for persistence
 const SETTINGS_KEYS = {
@@ -64,6 +77,9 @@ const ORDER_SETTINGS_KEY_BY_POSITION: Record<PanelPosition, string> = {
 
 const REMOVED_PANEL_IDS = new Set(["narraleaf-studio:running-tasks"]);
 
+/** The dock toggles this layout publishes; a private id, since the group declares its own slot. */
+const PANEL_TOGGLES_GROUP_ID = "narraleaf-studio:window-panels";
+
 function normalizeStoredPanelId(panelId: string | null | undefined): string | null | undefined {
     if (panelId && REMOVED_PANEL_IDS.has(panelId)) {
         return null;
@@ -81,8 +97,9 @@ function normalizeStoredPanelId(panelId: string | null | undefined): string | nu
  * - Main editor area with tabs and split support
  */
 export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
-    const { getPanelsByPosition } = useRegistry();
+    const { getPanelsByPosition, registerActionGroup, unregisterActionGroup } = useRegistry();
     const { context } = useWorkspace();
+    const { t } = useTranslation();
 
     // Sidebar visibility states
     const [leftSidebarVisible, setLeftSidebarVisible] = useState(false);
@@ -97,18 +114,53 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     // User-defined panel ordering per dock area (mirror of UIStore, persisted here)
     const [panelOrders, setPanelOrders] = useState<Partial<Record<PanelPosition, string[]>>>({});
 
-    // Sidebar sizes
-    const [leftSidebarWidth, setLeftSidebarWidth] = useState(DEFAULT_LEFT_SIDEBAR_WIDTH);
-    const [rightSidebarWidth, setRightSidebarWidth] = useState(DEFAULT_RIGHT_SIDEBAR_WIDTH);
-    const [bottomPanelHeight, setBottomPanelHeight] = useState(DEFAULT_BOTTOM_PANEL_HEIGHT);
+    // Intended region sizes (the user's last drag target). Effective rendered sizes are derived
+    // from these via resolveDock() below — these are never mutated on window resize.
+    const [leftSidebarWidth, setLeftSidebarWidth] = useState(DOCK_REGIONS.left.default);
+    const [rightSidebarWidth, setRightSidebarWidth] = useState(DOCK_REGIONS.right.default);
+    const [bottomPanelHeight, setBottomPanelHeight] = useState(DOCK_REGIONS.bottom.default);
 
-    // Use refs to track current sizes synchronously (avoid async state update issues during fast dragging)
-    const leftSidebarWidthRef = useRef(DEFAULT_LEFT_SIDEBAR_WIDTH);
-    const rightSidebarWidthRef = useRef(DEFAULT_RIGHT_SIDEBAR_WIDTH);
-    const bottomPanelHeightRef = useRef(DEFAULT_BOTTOM_PANEL_HEIGHT);
+    // Status bar visibility (global setting); its height is only carved out of the dock layout
+    // while it is actually shown.
+    const [statusBarVisible, setStatusBarVisible] = useState(true);
+    // The title-bar search box is optional too; hiding it moves the palette's input into its own card.
+    const [titleBarSearchVisible, setTitleBarSearchVisible] = useState(true);
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        setStatusBarVisible(settings.getSync("ui.statusBar.visible") !== false);
+        setTitleBarSearchVisible(settings.getSync("ui.titleBarSearch.visible") !== false);
+        const token = getInterface().app.state.onGlobalStateChanged?.(change => {
+            if (change.key === "ui.statusBar.visible") {
+                setStatusBarVisible(change.value !== false);
+            }
+            if (change.key === "ui.titleBarSearch.visible") {
+                setTitleBarSearchVisible(change.value !== false);
+            }
+        });
+        return () => token?.cancel();
+    }, [context]);
+    const statusBarHeight = statusBarVisible ? STATUS_BAR_HEIGHT : 0;
+
+    // Live viewport dimensions; drives the derived effective sizes so the layout reflows with the
+    // window. Height excludes the status bar — the dock solver lays out into what is left above it.
+    const [viewport, setViewport] = useState(() => ({
+        width: typeof window !== "undefined" ? window.innerWidth : 1280,
+        height: (typeof window !== "undefined" ? window.innerHeight : 800) - STATUS_BAR_HEIGHT,
+    }));
+
+    // Refs mirror the intended sizes for synchronous reads during fast dragging.
+    const leftSidebarWidthRef = useRef(DOCK_REGIONS.left.default);
+    const rightSidebarWidthRef = useRef(DOCK_REGIONS.right.default);
+    const bottomPanelHeightRef = useRef(DOCK_REGIONS.bottom.default);
     const activeLeftPanelIdRef = useRef<string | null>(null);
     const activeRightPanelIdRef = useRef<string | null>(null);
     const activeBottomPanelIdRef = useRef<string | null>(null);
+    // Visibility mirrors, read by the resize handlers when computing cross-axis drag bounds.
+    const leftSidebarVisibleRef = useRef(false);
+    const rightSidebarVisibleRef = useRef(false);
 
     // Settings service
     const settingsService = context?.services.get<GlobalSettingsService>(Services.GlobalSettings);
@@ -174,6 +226,14 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     useEffect(() => {
         activeBottomPanelIdRef.current = activeBottomPanelId;
     }, [activeBottomPanelId]);
+
+    useEffect(() => {
+        leftSidebarVisibleRef.current = leftSidebarVisible;
+    }, [leftSidebarVisible]);
+
+    useEffect(() => {
+        rightSidebarVisibleRef.current = rightSidebarVisible;
+    }, [rightSidebarVisible]);
 
     // Load saved state on mount
     useEffect(() => {
@@ -248,51 +308,19 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         };
     }, []);
 
-    // Handle window resize to ensure panels don't exceed available space
+    // Track the live viewport so the derived effective sizes reflow with the window. Unlike the
+    // old clamp-on-resize logic, this never mutates the intended sizes — a panel clamped down on a
+    // small window grows back toward its intent when space returns.
     useEffect(() => {
         const handleWindowResize = () => {
-            const windowWidth = window.innerWidth;
-            const windowHeight = window.innerHeight;
-
-            // Reserve some space for minimum editor area (at least 400px)
-            const minEditorWidth = 400;
-            const titleBarHeight = 40; // Approximate title bar height
-
-            // Calculate available space for sidebars
-            const availableWidth = Math.max(0, windowWidth - minEditorWidth);
-            const maxSidebarWidth = Math.floor(availableWidth / 2); // Split equally between left and right
-
-            // Calculate available height for bottom panel
-            const availableHeight = Math.max(0, windowHeight - titleBarHeight - 100); // Reserve space for content
-            const maxPanelHeight = Math.min(MAX_BOTTOM_PANEL_HEIGHT, availableHeight);
-
-            // Adjust sidebar widths if they exceed available space
-            if (leftSidebarVisible && leftSidebarWidthRef.current > maxSidebarWidth) {
-                leftSidebarWidthRef.current = maxSidebarWidth;
-                setLeftSidebarWidth(maxSidebarWidth);
-            }
-            if (rightSidebarVisible && rightSidebarWidthRef.current > maxSidebarWidth) {
-                rightSidebarWidthRef.current = maxSidebarWidth;
-                setRightSidebarWidth(maxSidebarWidth);
-            }
-
-            // Adjust bottom panel height if it exceeds available space
-            if (bottomPanelVisible && bottomPanelHeightRef.current > maxPanelHeight) {
-                bottomPanelHeightRef.current = maxPanelHeight;
-                setBottomPanelHeight(maxPanelHeight);
-            }
+            setViewport({ width: window.innerWidth, height: window.innerHeight - statusBarHeight });
         };
-
-        // Initial check
         handleWindowResize();
-
-        // Listen for window resize
-        window.addEventListener('resize', handleWindowResize);
-
+        window.addEventListener("resize", handleWindowResize);
         return () => {
-            window.removeEventListener('resize', handleWindowResize);
+            window.removeEventListener("resize", handleWindowResize);
         };
-    }, [leftSidebarVisible, leftSidebarWidth, rightSidebarVisible, rightSidebarWidth, bottomPanelVisible, bottomPanelHeight]);
+    }, [statusBarHeight]);
 
     // Save state when it changes (but only after initial load)
     useEffect(() => {
@@ -306,63 +334,76 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         debouncedSaveSettings,
     ]);
 
-    // Resize handlers
-    // Use refs for synchronous updates to avoid issues with fast mouse movements
+    // Live environment for the sizing solver, rebuilt from the current viewport + visibility.
+    const dockEnv: DockEnv = {
+        windowWidth: viewport.width,
+        windowHeight: viewport.height,
+        leftVisible: leftSidebarVisible,
+        rightVisible: rightSidebarVisible,
+    };
+
+    // Effective (rendered) sizes derived from the intended sizes. Sidebars are protected from
+    // eating the editor floor (clamp); the bottom panel may cover it (clip).
+    const effective = resolveDock(
+        { left: leftSidebarWidth, right: rightSidebarWidth, bottom: bottomPanelHeight },
+        dockEnv,
+    );
+
+    // Resize handlers. Refs give synchronous reads during fast drags; applyResize enforces the
+    // region constraints and returns the position correction ResizableHandle expects.
+    const currentEnv = useCallback(
+        (): DockEnv => ({
+            windowWidth: window.innerWidth,
+            windowHeight: window.innerHeight,
+            leftVisible: leftSidebarVisibleRef.current,
+            rightVisible: rightSidebarVisibleRef.current,
+        }),
+        []
+    );
+
     const handleLeftSidebarResize = useCallback((delta: number) => {
-        // Calculate dynamic max width based on current window size
-        const minEditorWidth = 400;
-        const availableWidth = Math.max(0, window.innerWidth - minEditorWidth);
-        const dynamicMaxWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.floor(availableWidth / 2));
-
-        const currentWidth = leftSidebarWidthRef.current;
-        const newWidth = Math.min(dynamicMaxWidth, Math.max(MIN_SIDEBAR_WIDTH, currentWidth + delta));
-        const actualDelta = newWidth - currentWidth;
-
-        // Update ref immediately (synchronous)
-        leftSidebarWidthRef.current = newWidth;
-        // Update state (asynchronous, for rendering)
-        setLeftSidebarWidth(newWidth);
-
-        // Result = actualDelta - delta, so startPosRef only advances by actualDelta
-        return actualDelta - delta;
-    }, []);
+        const { next, correction } = applyResize(
+            "left", leftSidebarWidthRef.current, delta, currentEnv(), rightSidebarWidthRef.current
+        );
+        leftSidebarWidthRef.current = next;
+        setLeftSidebarWidth(next);
+        return correction;
+    }, [currentEnv]);
 
     const handleRightSidebarResize = useCallback((delta: number) => {
-        const minEditorWidth = 400;
-        const availableWidth = Math.max(0, window.innerWidth - minEditorWidth);
-        const dynamicMaxWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.floor(availableWidth / 2));
-
-        const currentWidth = rightSidebarWidthRef.current;
-        const newWidth = Math.min(dynamicMaxWidth, Math.max(MIN_SIDEBAR_WIDTH, currentWidth - delta));
-        const actualDelta = newWidth - currentWidth;
-
-        rightSidebarWidthRef.current = newWidth;
-        setRightSidebarWidth(newWidth);
-
-        return -actualDelta - delta;
-    }, []);
+        const { next, correction } = applyResize(
+            "right", rightSidebarWidthRef.current, delta, currentEnv(), leftSidebarWidthRef.current
+        );
+        rightSidebarWidthRef.current = next;
+        setRightSidebarWidth(next);
+        return correction;
+    }, [currentEnv]);
 
     const handleBottomPanelResize = useCallback((delta: number) => {
-        const minEditorHeight = 200;
-        const availableHeight = Math.max(0, window.innerHeight - minEditorHeight);
-        const dynamicMaxHeight = Math.min(MAX_BOTTOM_PANEL_HEIGHT, Math.floor(availableHeight / 2));
+        const { next, correction } = applyResize(
+            "bottom", bottomPanelHeightRef.current, delta, currentEnv(), 0
+        );
+        bottomPanelHeightRef.current = next;
+        setBottomPanelHeight(next);
+        return correction;
+    }, [currentEnv]);
 
-        const currentHeight = bottomPanelHeightRef.current;
-        const newHeight = Math.min(dynamicMaxHeight, Math.max(MIN_BOTTOM_PANEL_HEIGHT, currentHeight - delta));
-        const actualDelta = newHeight - currentHeight;
-
-        bottomPanelHeightRef.current = newHeight;
-        setBottomPanelHeight(newHeight);
-        
-        return -actualDelta - delta;
-    }, []);
+    // The first panel that would actually show in a dock's rail: not hidden, and not a (bodyless)
+    // rail action — so opening a sidebar with no active panel never lands on a hidden or empty one.
+    const firstVisiblePanelId = (position: PanelPosition): string | null => {
+        const visibility = context?.services.get<UIService>(Services.UI).getStore().getPanelVisibility() ?? {};
+        const first = getPanelsByPosition(position).find(
+            panel => !panel.railAction && visibility[panel.id] !== false,
+        );
+        return first?.id ?? null;
+    };
 
     // Enhanced toggle functions that auto-select first panel if none is active
     const toggleLeftSidebar = () => {
         if (!leftSidebarVisible && !activeLeftPanelId) {
-            const leftPanels = getPanelsByPosition(PanelPosition.Left);
-            if (leftPanels.length > 0) {
-                setActiveLeftPanelId(leftPanels[0].id);
+            const firstId = firstVisiblePanelId(PanelPosition.Left);
+            if (firstId) {
+                setActiveLeftPanelId(firstId);
             }
         }
         setLeftSidebarVisible(!leftSidebarVisible);
@@ -370,9 +411,9 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
     const toggleRightSidebar = () => {
         if (!rightSidebarVisible && !activeRightPanelId) {
-            const rightPanels = getPanelsByPosition(PanelPosition.Right);
-            if (rightPanels.length > 0) {
-                setActiveRightPanelId(rightPanels[0].id);
+            const firstId = firstVisiblePanelId(PanelPosition.Right);
+            if (firstId) {
+                setActiveRightPanelId(firstId);
             }
         }
         setRightSidebarVisible(!rightSidebarVisible);
@@ -380,13 +421,78 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
     const toggleBottomPanel = () => {
         if (!bottomPanelVisible && !activeBottomPanelId) {
-            const bottomPanels = getPanelsByPosition(PanelPosition.Bottom);
-            if (bottomPanels.length > 0) {
-                setActiveBottomPanelId(bottomPanels[0].id);
+            const firstId = firstVisiblePanelId(PanelPosition.Bottom);
+            if (firstId) {
+                setActiveBottomPanelId(firstId);
             }
         }
         setBottomPanelVisible(!bottomPanelVisible);
     };
+
+    // The toggles close over render-scoped state, so the menu calls them through refs rather
+    // than re-registering the group on every render.
+    const panelTogglesRef = useRef({ toggleLeftSidebar, toggleBottomPanel, toggleRightSidebar });
+    panelTogglesRef.current = { toggleLeftSidebar, toggleBottomPanel, toggleRightSidebar };
+
+    // One command table for the dock toggles, consumed by every surface: the CommandService (so
+    // the palette reaches them on every platform) and — on macOS only — the Window menu group,
+    // generated from the same definitions. ControlBar buttons stay the pointer-first entry point.
+    useEffect(() => {
+        const toggleDefs = [
+            {
+                id: WorkspaceMenuAction.ToggleLeftSidebar,
+                labelKey: "menu.window.leftSidebar" as const,
+                checked: leftSidebarVisible,
+                run: () => panelTogglesRef.current.toggleLeftSidebar(),
+            },
+            {
+                id: WorkspaceMenuAction.ToggleBottomPanel,
+                labelKey: "menu.window.bottomPanel" as const,
+                checked: bottomPanelVisible,
+                run: () => panelTogglesRef.current.toggleBottomPanel(),
+            },
+            {
+                id: WorkspaceMenuAction.ToggleRightSidebar,
+                labelKey: "menu.window.rightSidebar" as const,
+                checked: rightSidebarVisible,
+                run: () => panelTogglesRef.current.toggleRightSidebar(),
+            },
+        ];
+
+        const commandService = context?.services.get<CommandService>(Services.Command);
+        const disposeCommands = commandService?.registerMany(
+            toggleDefs.map(def => ({
+                id: def.id,
+                titleKey: def.labelKey,
+                categoryKey: "workspace.shell.commandPalette.categoryView" as const,
+                run: () => def.run(),
+            })),
+        );
+
+        // The in-app dropdown would only duplicate the ControlBar buttons, so the group goes to
+        // the native menu bar alone — which exists on macOS only.
+        if (isMacPlatform()) {
+            registerActionGroup({
+                id: PANEL_TOGGLES_GROUP_ID,
+                label: t("menu.window.title"),
+                menuSlot: "window",
+                items: toggleDefs.map((def, order) => ({
+                    id: def.id,
+                    label: t(def.labelKey),
+                    checked: def.checked,
+                    onClick: def.run,
+                    order,
+                })),
+            });
+        }
+
+        return () => {
+            disposeCommands?.();
+            if (isMacPlatform()) {
+                unregisterActionGroup(PANEL_TOGGLES_GROUP_ID);
+            }
+        };
+    }, [t, context, leftSidebarVisible, bottomPanelVisible, rightSidebarVisible, registerActionGroup, unregisterActionGroup]);
 
     const activateLeftPanelForDrop = useCallback(
         (panelId: string) => {
@@ -435,15 +541,12 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             return store.getPanels().filter(panel => panel.position === position);
         };
 
-        const previousPanelId = (panels: PanelDefinition[], panelId: string) => {
-            const currentIndex = panels.findIndex(panel => panel.id === panelId);
-            if (currentIndex > 0) {
-                return panels[currentIndex - 1].id;
-            }
-            return panels.find(panel => panel.id !== panelId)?.id ?? null;
-        };
-
         const showPanel = (panel: PanelDefinition) => {
+            // A rail action has no body — restoring its visibility just brings the rail icon back;
+            // it must not become the active panel or open the sidebar onto nothing.
+            if (panel.railAction) {
+                return;
+            }
             if (panel.position === PanelPosition.Left) {
                 setActiveLeftPanelId(panel.id);
                 setLeftSidebarVisible(true);
@@ -457,8 +560,16 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         };
 
         const hidePanel = (panel: PanelDefinition) => {
+            // Pick a replacement among the panels that are still visible (rail actions excluded —
+            // they have no body). Prefer the nearest one before the hidden panel, else the one after.
+            const visibility = store.getPanelVisibility();
             const panels = panelsByPosition(panel.position);
-            const fallbackId = previousPanelId(panels, panel.id);
+            const isReplacement = (candidate: PanelDefinition) =>
+                candidate.id !== panel.id && !candidate.railAction && visibility[candidate.id] !== false;
+            const targetIndex = panels.findIndex(entry => entry.id === panel.id);
+            const before = panels.slice(0, Math.max(targetIndex, 0)).filter(isReplacement).at(-1);
+            const after = panels.slice(targetIndex + 1).find(isReplacement);
+            const fallbackId = (before ?? after)?.id ?? null;
             if (panel.position === PanelPosition.Left && activeLeftPanelIdRef.current === panel.id) {
                 setActiveLeftPanelId(fallbackId);
                 setLeftSidebarVisible(Boolean(fallbackId));
@@ -512,7 +623,6 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     }, [context]);
 
     const isMac = isMacPlatform();
-    const hiddenActionGroupIds = isMac ? MACOS_NATIVE_MENU_GROUP_IDS : undefined;
 
     return (
         <div className="h-screen w-screen flex flex-col bg-surface text-fg">
@@ -520,7 +630,13 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             <TitleBar
                 title=""
                 iconSrc={iconSrc}
-                actionBar={<ActionBar hiddenGroupIds={hiddenActionGroupIds} />}
+                center={titleBarSearchVisible ? <TitleBarSearchBox /> : undefined}
+                actionBar={
+                    <div className="flex items-center gap-0.5">
+                        <ProjectSwitcher />
+                        <ActionBar hideAllGroups={isMac} />
+                    </div>
+                }
                 controlBar={
                     <ControlBar
                         leftSidebarVisible={leftSidebarVisible}
@@ -547,10 +663,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 <div 
                     className={leftSidebarVisible && activeLeftPanelId ? "flex" : "hidden"}
                 >
-                    <LeftSidebar 
-                        panelId={activeLeftPanelId || ""} 
+                    <LeftSidebar
+                        panelId={activeLeftPanelId || ""}
                         onClose={() => setLeftSidebarVisible(false)}
-                        width={leftSidebarWidth}
+                        width={effective.left}
                     />
                     <ResizableHandle
                         direction="horizontal"
@@ -559,31 +675,36 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     />
                 </div>
 
-                {/* Center Area */}
-                <div className="flex-1 flex flex-col overflow-hidden">
-                    {/* Main Editor and Bottom Panel */}
-                    <div className="flex-1 flex flex-col overflow-hidden">
-                        {/* Main Editor Area */}
-                        <div className="flex-1 overflow-hidden">
+                {/* Center Area (min-w-0/min-h-0 so it can shrink below content in the flex chain) */}
+                <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+                    {/* Main Editor Area — its layout box may shrink to any size (even 0 when the
+                        bottom panel covers it), but the editor CONTENT is floored at EDITOR_FLOOR
+                        and cropped by overflow-hidden, so it is never rendered at a deformed size. */}
+                    <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
+                        <div
+                            className="w-full h-full overflow-hidden"
+                            style={{ minWidth: EDITOR_FLOOR.width, minHeight: EDITOR_FLOOR.height }}
+                        >
                             <MainEditorArea />
                         </div>
+                    </div>
 
-                        {/* Bottom Panel - Always rendered, controlled by CSS visibility */}
-                        <div 
-                            className={bottomPanelVisible && activeBottomPanelId ? "border-t border-edge" : "hidden"}
-                            style={{ height: bottomPanelVisible && activeBottomPanelId ? `${bottomPanelHeight}px` : 0 }}
-                        >
-                            <ResizableHandle
-                                direction="vertical"
-                                onResize={handleBottomPanelResize}
-                                className="h-1 border-t border-edge hover:bg-primary/20"
-                            />
-                            <BottomPanel
-                                panelId={activeBottomPanelId || ""}
-                                onClose={() => setBottomPanelVisible(false)}
-                                height={bottomPanelHeight}
-                            />
-                        </div>
+                    {/* Bottom Panel - Always rendered, controlled by CSS visibility. shrink-0 keeps
+                        its height so the editor above yields space instead of the panel collapsing. */}
+                    <div
+                        className={bottomPanelVisible && activeBottomPanelId ? "shrink-0 border-t border-edge" : "hidden"}
+                        style={{ height: bottomPanelVisible && activeBottomPanelId ? `${effective.bottom}px` : 0 }}
+                    >
+                        <ResizableHandle
+                            direction="vertical"
+                            onResize={handleBottomPanelResize}
+                            className="h-1 border-t border-edge hover:bg-primary/20"
+                        />
+                        <BottomPanel
+                            panelId={activeBottomPanelId || ""}
+                            onClose={() => setBottomPanelVisible(false)}
+                            height={effective.bottom}
+                        />
                     </div>
                 </div>
 
@@ -596,10 +717,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                         onResize={handleRightSidebarResize}
                         className="w-1 border-l border-edge hover:bg-primary/20"
                     />
-                    <RightSidebar 
-                        panelId={activeRightPanelId || ""} 
+                    <RightSidebar
+                        panelId={activeRightPanelId || ""}
                         onClose={() => setRightSidebarVisible(false)}
-                        width={rightSidebarWidth}
+                        width={effective.right}
                     />
                 </div>
 
@@ -612,8 +733,11 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 />
             </div>
 
-            {/* Bottom Panel Selector (overlays left selector at bottom) */}
-            <div className="absolute left-0 bottom-0">
+            {/* Status Bar */}
+            {statusBarVisible && <StatusBar />}
+
+            {/* Bottom Panel Selector (overlays left selector, just above the status bar) */}
+            <div className="absolute left-0" style={{ bottom: statusBarHeight }}>
                 <BottomPanelSelector
                     visible={bottomPanelVisible}
                     activeId={activeBottomPanelId}
@@ -624,7 +748,14 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             </div>
 
             {/* UI Overlays */}
+            <WorkspaceBackground />
+            <BackgroundImageDialog />
             <WorkspaceEditorQuickSwitch />
+            <CommandPalette />
+            <QuickOpenPicker />
+            <EditorCommands />
+            <KeybindingCheatSheet />
+            <EditorClosedTabsKeybinding />
             <NotificationContainer />
             <DialogContainer />
         </div>

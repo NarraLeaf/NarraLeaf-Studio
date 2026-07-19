@@ -11,6 +11,7 @@ import { settings } from "./settings";
 import { launcher } from "./launcher";
 import { workspace } from "./workspace";
 import { story } from "./story";
+import { storyExpr } from "./storyExpr";
 import { storyInspector } from "./storyInspector";
 import { assets } from "./assets";
 import { blueprint } from "./blueprint";
@@ -32,6 +33,8 @@ import { devMode } from "./devMode";
 import { pluginPermission } from "./pluginPermission";
 import { dialogs } from "./dialogs";
 import { defaultDoc } from "./defaultDoc";
+import { build } from "./build";
+import { dashboard } from "./dashboard";
 import type { LocaleMessages } from "../types";
 
 export const zh = {
@@ -41,6 +44,7 @@ export const zh = {
     launcher,
     workspace,
     story,
+    storyExpr,
     storyInspector,
     assets,
     blueprint,
@@ -62,4 +66,6 @@ export const zh = {
     pluginPermission,
     dialogs,
     defaultDoc,
+    build,
+    dashboard,
 } satisfies LocaleMessages;

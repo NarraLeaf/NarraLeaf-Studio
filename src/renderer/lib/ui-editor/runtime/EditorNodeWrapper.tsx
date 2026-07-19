@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, FocusEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
-import { motion, useAnimationControls, type TargetAndTransition } from "motion/react";
+import { motion, useAnimationControls, type MotionStyle, type TargetAndTransition } from "motion/react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import {
@@ -8,6 +8,7 @@ import {
     useWidgetRuntimeElementKey,
     useWidgetRuntimeStateStore,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import { DEFAULT_DISPLAYABLE_BASE_TRANSFORM } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import {
     buildDisplayableMotionAnimateTarget,
     buildDisplayableMotionInitialTarget,
@@ -18,6 +19,7 @@ import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/B
 import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import { getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
 import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
+import { isTextEntryTarget } from "./app/isTextEntryTarget";
 import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
 import {
     type AppearanceResolveContext,
@@ -93,6 +95,8 @@ function displayableOpacityKeysForElement(
         : ["transformOpacity"];
 }
 
+const NOOP_SUBSCRIBE = () => () => {};
+
 export function isElementHoveredByPointer(element: Element | null): boolean {
     if (!element) {
         return false;
@@ -127,6 +131,19 @@ export function EditorNodeWrapper({
     );
     const runtimeElementState = useWidgetRuntimeElementState(element.id, interactionDisabled);
     const displayableMotion = runtimeElementState.displayableMotion;
+    // Persistent pose (Displayable offsets / held scale) layered under the one-shot motion slot.
+    // Subscribed separately because the per-element state signature does not track it.
+    const displayableBaseTransform = useSyncExternalStore(
+        widgetRuntimeStore ? widgetRuntimeStore.subscribe : NOOP_SUBSCRIBE,
+        () =>
+            widgetRuntimeStore
+                ? widgetRuntimeStore.getDisplayableBaseTransform(runtimeElementKey)
+                : DEFAULT_DISPLAYABLE_BASE_TRANSFORM,
+        () =>
+            widgetRuntimeStore
+                ? widgetRuntimeStore.getDisplayableBaseTransform(runtimeElementKey)
+                : DEFAULT_DISPLAYABLE_BASE_TRANSFORM,
+    );
     const animationControls = useAnimationControls();
     const [resetMotionId, setResetMotionId] = useState<string | null>(null);
     const blueprintRuntime = hostAdapter?.blueprintRuntime;
@@ -160,6 +177,19 @@ export function EditorNodeWrapper({
     const baseRotation = layout.rotation ?? 0;
     const isResetPhase = Boolean(displayableMotion?.resetOnComplete && resetMotionId === displayableMotion.id);
     const motionControlsOpacity = displayableMotion?.target.opacity !== undefined;
+    // The rest pose every motion starts from and returns to: authored rotation + persistent
+    // base transform. Motions replace individual channels while active; anything they leave
+    // untouched (and everything after they clear) resolves back to this pose.
+    const basePose = useMemo(
+        () => ({
+            x: displayableBaseTransform.offsetX,
+            y: displayableBaseTransform.offsetY,
+            scale: displayableBaseTransform.scale,
+            rotate: baseRotation,
+            opacity: effectiveOpacity,
+        }),
+        [baseRotation, displayableBaseTransform, effectiveOpacity],
+    );
 
     useEffect(() => {
         if (resetMotionId !== null && (!displayableMotion || resetMotionId !== displayableMotion.id)) {
@@ -259,13 +289,23 @@ export function EditorNodeWrapper({
             return undefined;
         }
 
+        // These listeners are on `window`, so every widget hears every key regardless of focus.
+        // That is the established semantic, but it must not extend to text entry: a keystroke meant
+        // for a text field would otherwise also reach every other widget's keyDown on the surface.
+        // The field's own Submit/Value Changed events are dispatched by its renderer, not here.
         const onKeyDown = (event: KeyboardEvent) => {
+            if (isTextEntryTarget(event.target)) {
+                return;
+            }
             const eventControl = getOrCreateDomEventPropagationControl(event);
             if (canDispatchKeyDown) {
                 dispatchMountedWidgetEvent("keyDown", keyboardEventPayload(event), eventControl);
             }
         };
         const onKeyUp = (event: KeyboardEvent) => {
+            if (isTextEntryTarget(event.target)) {
+                return;
+            }
             const eventControl = getOrCreateDomEventPropagationControl(event);
             if (canDispatchKeyUp) {
                 dispatchMountedWidgetEvent("keyUp", keyboardEventPayload(event), eventControl);
@@ -423,7 +463,7 @@ export function EditorNodeWrapper({
     );
 
     const containerStyle = useMemo<CSSProperties>(() => {
-        const { x, y, width, height, rotation } = layout;
+        const { x, y, width, height } = layout;
         const normalizedWidth = Math.abs(width);
         const normalizedHeight = Math.abs(height);
         const offsetX = Math.min(0, width);
@@ -453,39 +493,42 @@ export function EditorNodeWrapper({
         if (wrapperCursor) {
             style.cursor = wrapperCursor;
         }
-        if (rotation && !displayableMotion) {
-            const transforms = [];
-            if (rotation) {
-                transforms.push(`rotate(${rotation}deg)`);
-            }
-            style.transform = transforms.join(" ");
-            style.transformOrigin = "center center";
-        }
         return style;
-    }, [displayableMotion, effectiveOpacity, layout, isRoot, layoutMode, motionControlsOpacity, styleOverrides, wrapperCursor]);
+    }, [effectiveOpacity, layout, isRoot, layoutMode, motionControlsOpacity, styleOverrides, wrapperCursor]);
+
+    // Once an element carries a pose (authored rotation, persistent offsets/scale, or any motion)
+    // its transform must be owned by motion-managed style values: a raw `style.transform` string
+    // is discarded the moment motion renders its own transform, which silently dropped static
+    // rotation after the first animation. The latch keeps the channel stable for the element's
+    // lifetime so motion values are never torn down mid-flight.
+    const motionPoseLatchRef = useRef(false);
+    const hasMotionPose =
+        motionPoseLatchRef.current ||
+        Boolean(displayableMotion) ||
+        displayableBaseTransform !== DEFAULT_DISPLAYABLE_BASE_TRANSFORM ||
+        baseRotation !== 0;
+    motionPoseLatchRef.current = hasMotionPose;
+    const motionStyle: MotionStyle = hasMotionPose
+        ? {
+              ...containerStyle,
+              x: basePose.x,
+              y: basePose.y,
+              scale: basePose.scale,
+              rotate: basePose.rotate,
+          }
+        : containerStyle;
 
     const motionAnimate = useMemo(() => {
         if (!displayableMotion) {
             return undefined;
         }
         if (isResetPhase) {
-            return {
-                x: 0,
-                y: 0,
-                scale: 1,
-                rotate: baseRotation,
-                opacity: effectiveOpacity,
-            };
+            // One-shot effects hand control back to the persistent pose, not to the raw origin:
+            // resetting to {0,0} used to wipe Displayable offsets held in the base transform.
+            return { ...basePose };
         }
-        const target = displayableMotion.target;
-        return buildDisplayableMotionAnimateTarget(target, {
-            x: 0,
-            y: 0,
-            scale: 1,
-            rotate: baseRotation,
-            opacity: effectiveOpacity,
-        });
-    }, [baseRotation, displayableMotion, effectiveOpacity, isResetPhase]);
+        return buildDisplayableMotionAnimateTarget(displayableMotion.target, basePose);
+    }, [basePose, displayableMotion, isResetPhase]);
 
     const motionInitial = useMemo(() => {
         if (!displayableMotion) {
@@ -494,14 +537,8 @@ export function EditorNodeWrapper({
         if (isResetPhase) {
             return false;
         }
-        return buildDisplayableMotionInitialTarget(displayableMotion.target, {
-            x: 0,
-            y: 0,
-            scale: 1,
-            rotate: baseRotation,
-            opacity: effectiveOpacity,
-        });
-    }, [baseRotation, displayableMotion, effectiveOpacity, isResetPhase]);
+        return buildDisplayableMotionInitialTarget(displayableMotion.target, basePose);
+    }, [basePose, displayableMotion, isResetPhase]);
 
     const motionTransition = useMemo(
         () => (displayableMotion ? toDisplayableMotionTransition(displayableMotion.transition) : undefined),
@@ -517,6 +554,9 @@ export function EditorNodeWrapper({
         transition: motionTransition,
     });
     const motionRunKey = displayableMotion ? `${displayableMotion.id}:${isResetPhase ? "reset" : "run"}` : null;
+    const basePoseRef = useRef(basePose);
+    const lastMotionRunKeyRef = useRef<string | null>(null);
+    const hasStartedMotionRef = useRef(false);
 
     useLayoutEffect(() => {
         motionRunConfigRef.current = {
@@ -524,14 +564,42 @@ export function EditorNodeWrapper({
             initial: motionInitial,
             transition: motionTransition,
         };
-    }, [motionAnimate, motionInitial, motionTransition]);
+        basePoseRef.current = basePose;
+    }, [basePose, motionAnimate, motionInitial, motionTransition]);
+
+    useLayoutEffect(
+        () => () => {
+            // StrictMode's simulated unmount kills any in-flight controls animation; forget the
+            // last run key so the second mount's effect restarts the motion instead of skipping
+            // it via the mid-flight guard below.
+            lastMotionRunKeyRef.current = null;
+        },
+        [],
+    );
 
     useLayoutEffect(() => {
         const { animate, initial, transition } = motionRunConfigRef.current;
         if (!motionRunKey || !animate) {
+            lastMotionRunKeyRef.current = null;
             animationControls.stop();
+            // A completed/stopped/replaced motion leaves its last frame on the motion values.
+            // Snap back to the persistent base pose in the same commit so a layout commit
+            // (hold animations fold their delta into left/top) is never painted while the
+            // transform still carries that delta (double offset) and later motions start from
+            // a clean baseline instead of the stale frame. Skipped until a motion has run:
+            // before that the base pose flows in via motion style values.
+            if (hasStartedMotionRef.current) {
+                animationControls.set({ ...basePoseRef.current } as TargetAndTransition);
+            }
             return;
         }
+        if (lastMotionRunKeyRef.current === motionRunKey) {
+            // Same motion still in flight: a base-pose/opacity change must not restart it.
+            // The pose converges when the motion clears (the branch above re-runs then).
+            return;
+        }
+        lastMotionRunKeyRef.current = motionRunKey;
+        hasStartedMotionRef.current = true;
         if (initial && !isResetPhase) {
             animationControls.set(initial as TargetAndTransition);
         }
@@ -539,7 +607,7 @@ export function EditorNodeWrapper({
             ...animate,
             ...(transition ? { transition } : {}),
         } as TargetAndTransition);
-    }, [animationControls, isResetPhase, motionRunKey]);
+    }, [animationControls, basePose, isResetPhase, motionRunKey]);
 
     const onAnimationComplete = useCallback(() => {
         if (!displayableMotion?.resetOnComplete) {
@@ -558,9 +626,11 @@ export function EditorNodeWrapper({
             ref={containerRef}
             data-ui-element-id={interactive ? element.id : undefined}
             className={`${interactive ? "ui-editor-node" : "ui-editor-node-preview"} ${isRoot ? "ui-editor-node-root" : ""}`}
-            style={containerStyle}
+            style={motionStyle}
             initial={false}
-            animate={displayableMotion ? animationControls : undefined}
+            // Bind the controls unconditionally: the reset-to-base set() above must still reach
+            // the element after its motion has been cleared from the store.
+            animate={animationControls}
             onAnimationComplete={onAnimationComplete}
             onPointerEnter={interactive && (widgetRuntimeStore || blueprintRuntime) ? onPointerEnter : undefined}
             onPointerLeave={interactive && (widgetRuntimeStore || blueprintRuntime) ? onPointerLeave : undefined}

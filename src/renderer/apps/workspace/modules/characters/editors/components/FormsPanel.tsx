@@ -1,7 +1,8 @@
 import { CharacterForm } from "@/lib/workspace/services/character/types";
 import { useTranslation } from "@/lib/i18n";
-import { ChevronLeft, ChevronRight, Image as ImageIcon, MoreVertical, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, MoreVertical, Plus } from "lucide-react";
 import React from "react";
+import { HeadThumbnail } from "./HeadThumbnail";
 
 type FormsPanelProps = {
     forms: CharacterForm[];
@@ -34,7 +35,7 @@ export function FormsPanel({
                 <div className="flex items-center gap-1">
                     {!collapsed && (
                         <button
-                            className="p-1 rounded-md text-fg hover:text-white hover:bg-fill transition-colors"
+                            className="p-1 rounded-md text-fg hover:bg-fill transition-colors"
                             onClick={onAddForm}
                             title={t("characters.formsPanel.addForm")}
                             aria-label={t("characters.formsPanel.addForm")}
@@ -43,7 +44,7 @@ export function FormsPanel({
                         </button>
                     )}
                     <button
-                        className="p-1 rounded-md text-fg hover:text-white hover:bg-fill transition-colors"
+                        className="p-1 rounded-md text-fg hover:bg-fill transition-colors"
                         onClick={onToggleCollapse}
                         title={collapsed ? t("characters.formsPanel.expand") : t("characters.formsPanel.collapse")}
                         aria-label={collapsed ? t("characters.formsPanel.expand") : t("characters.formsPanel.collapse")}
@@ -61,20 +62,18 @@ export function FormsPanel({
                             <div
                                 key={form.name}
                                 className={`w-full px-3 py-2 rounded-md border transition-colors cursor-pointer flex items-center justify-between ${isActive
-                                    ? "border-primary/60 bg-primary/10 text-white"
+                                    ? "border-primary/60 bg-primary/10 text-fg"
                                     : "border-edge hover:border-edge-strong text-fg"
                                     }`}
                                 onClick={() => onSelectForm(form.name)}
                                 onContextMenu={(e) => onOpenMenu(e, form)}
                             >
                                 <div className="flex items-center gap-3 min-w-0">
-                                    <div className="w-10 h-10 rounded-md bg-fill flex items-center justify-center overflow-hidden border border-edge">
-                                        {thumb ? (
-                                            <img src={thumb} alt={form.name} className="w-full h-full object-cover" />
-                                        ) : (
-                                            <ImageIcon className="w-5 h-5 text-fg-subtle" />
-                                        )}
-                                    </div>
+                                    <HeadThumbnail
+                                        url={thumb}
+                                        alt={form.name}
+                                        className="w-10 h-10 rounded-md bg-fill border border-edge"
+                                    />
                                     <div className="flex flex-col min-w-0">
                                         <span className="text-sm truncate">{form.name}</span>
                                         <span className="text-2xs text-fg-muted truncate">{tn("characters.formsPanel.groupCount", form.groups.length)}</span>

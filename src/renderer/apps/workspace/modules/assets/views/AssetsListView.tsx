@@ -4,7 +4,7 @@ import { Upload, Link, FolderPlus, RefreshCw } from "lucide-react";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
-import { ASSET_TYPE_ICONS, ASSET_TYPE_LABELS } from "../constants";
+import { ASSET_TYPE_ICONS } from "../constants";
 import { useTranslation } from "@/lib/i18n";
 
 interface AssetsListViewProps {
@@ -49,10 +49,10 @@ export function AssetsListView({
                         key={type}
                         id={type}
                         icon={<TypeIcon className="w-4 h-4" />}
-                        title={`${ASSET_TYPE_LABELS[type]} (${typeAssets.length})`}
+                        title={`${t(`assets.types.${type}`)} (${typeAssets.length})`}
                         actions={
                             actionLoading ? (
-                                <RefreshCw className="w-3 h-3 animate-spin text-white" />
+                                <RefreshCw className="w-3 h-3 animate-spin text-fg" />
                             ) : (
                                 <>
                                     <button
@@ -106,7 +106,7 @@ export function AssetsListView({
                             onContextMenu={(e) => e.preventDefault()}
                         >
                             {typeAssets.length === 0 && typeGroups.length === 0 ? (
-                                <div className="p-4 text-center text-xs text-fg-subtle">{t("assets.emptyType", { label: ASSET_TYPE_LABELS[type].toLowerCase() })}</div>
+                                <div className="p-4 text-center text-xs text-fg-subtle">{t("assets.emptyType", { label: t(`assets.types.${type}`).toLowerCase() })}</div>
                             ) : (
                                 <div className="py-1">
                                     {typeGroups.filter(g => !g.parentGroupId).map(group => <GroupItem key={group.id} group={group} type={type} level={0} />)}
@@ -194,7 +194,7 @@ function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType;
         >
             <div
                 draggable
-                className={`nl-asset-drag-source flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-gray-600/30 ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`group:${group.id}`) ? 'bg-gray-600/10' : ''} ${isDragging ? 'opacity-50' : ''} ${isCut ? 'opacity-40' : ''}`}
+                className={`nl-drag-source flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-fill ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`group:${group.id}`) ? 'bg-fill-subtle' : ''} ${isDragging ? 'opacity-50' : ''} ${isCut ? 'opacity-40' : ''}`}
                 style={{ paddingLeft: `${20 + level * 12}px` }}
                 onClick={(e) => {
                     handleItemSelect(group.id, true, e);
@@ -229,7 +229,7 @@ function AssetItem({ asset, type, level }: { asset: Asset; type: AssetType; leve
     return (
         <div
             draggable
-            className={`nl-asset-drag-source flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-gray-600/30 ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`asset:${asset.id}`) ? 'bg-gray-600/10' : ''} ${clipboard?.type === 'cut' && clipboard.assets.some(a => a.id === asset.id) ? 'opacity-40' : ''} ${isDragging ? 'opacity-50' : ''}`}
+            className={`nl-drag-source flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-fill ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`asset:${asset.id}`) ? 'bg-fill-subtle' : ''} ${clipboard?.type === 'cut' && clipboard.assets.some(a => a.id === asset.id) ? 'opacity-40' : ''} ${isDragging ? 'opacity-50' : ''}`}
             style={{ paddingLeft: `${20 + level * 12}px` }}
             onClick={(e) => {
                 handleItemSelect(asset.id, false, e);

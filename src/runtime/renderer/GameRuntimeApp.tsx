@@ -192,7 +192,10 @@ function useRuntimePlugins(pack: GameRuntimePackV1 | null, rendererRegistry: Ele
                 publisher: entry.manifest.publisher,
             },
             manifest: entry.manifest,
-            entryUrl: `nlgame://runtime/${entry.entryRelativePath}`,
+            // Without a bridge nothing can load anyway; the desktop scheme is
+            // only a placeholder so the descriptor stays well-formed.
+            entryUrl: bridge?.pluginEntryUrl(entry.entryRelativePath)
+                ?? `nlgame://runtime/${entry.entryRelativePath}`,
         }));
         void loadRuntimePlugins(descriptors, { log, elementRenderers: rendererRegistry }).finally(() => {
             if (!disposed) {
@@ -290,6 +293,22 @@ export function GameRuntimeApp() {
         await bridge?.close();
     }, [bridge]);
 
+    const getFullscreen = useCallback(async (): Promise<boolean> => {
+        return (await bridge?.getFullscreen()) === true;
+    }, [bridge]);
+
+    const setFullscreen = useCallback(async (fullscreen: boolean): Promise<void> => {
+        await bridge?.setFullscreen(fullscreen);
+    }, [bridge]);
+
+    const subscribeFullscreenChanged = useCallback((listener: (isFullscreen: boolean) => void): (() => void) => {
+        return bridge?.onFullscreenChanged(listener) ?? (() => undefined);
+    }, [bridge]);
+
+    const subscribeCloseRequested = useCallback((listener: () => boolean | Promise<boolean>): (() => void) => {
+        return bridge?.onCloseRequested(listener) ?? (() => undefined);
+    }, [bridge]);
+
     const host = useMemo<GameAppHost | null>(() => {
         if (!pack) {
             return null;
@@ -310,9 +329,14 @@ export function GameRuntimeApp() {
             resolveStoryAssetUrl,
             saveStore,
             quitApplication,
+            getFullscreen,
+            setFullscreen,
+            subscribeFullscreenChanged,
+            subscribeCloseRequested,
         };
     }, [
         entrySurfaceId,
+        getFullscreen,
         log,
         onDebugEvent,
         pack,
@@ -320,6 +344,9 @@ export function GameRuntimeApp() {
         quitApplication,
         resolveStoryAssetUrl,
         runtimeReady,
+        setFullscreen,
+        subscribeFullscreenChanged,
+        subscribeCloseRequested,
         saveStore,
     ]);
 

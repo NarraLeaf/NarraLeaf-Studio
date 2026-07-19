@@ -20,7 +20,7 @@ export function ProjectSubPage({
 }) {
     const { t } = useTranslation();
     return (
-        <div className="flex h-full min-h-0 flex-col bg-[#101114] text-fg">
+        <div className="flex h-full min-h-0 flex-col bg-surface text-fg">
             <div className="flex items-center gap-2 border-b border-edge p-2">
                 <button
                     type="button"

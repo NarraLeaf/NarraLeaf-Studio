@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import {
+    getBlueprintDebugEventLogLevel,
+    type BlueprintDebugEvent,
+    type BlueprintDebugEventLogLevel,
+} from "@shared/types/blueprint/debug";
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { UIDocument } from "@shared/types/ui-editor/document";
@@ -12,7 +16,7 @@ import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance
 import { listBlueprintsForDevTools } from "./blueprintDebugPanelModel";
 
 type DebugTabId = "blueprints" | "output" | "scope";
-export type BlueprintOutputLogLevel = "error" | "warning" | "log" | "verbose";
+export type BlueprintOutputLogLevel = BlueprintDebugEventLogLevel;
 
 const OUTPUT_LOG_LEVELS: BlueprintOutputLogLevel[] = ["error", "warning", "log", "verbose"];
 const DEFAULT_OUTPUT_LOG_LEVELS = new Set<BlueprintOutputLogLevel>(["error", "warning", "log"]);
@@ -64,6 +68,14 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
             setEvents(debug.snapshot());
         });
     }, [debug]);
+
+    // Verbose tracing is dropped at the bridge unless something asks for it, so the filter
+    // checkbox has to drive capture rather than just hide rows. Only events emitted while it is
+    // on are recorded.
+    useEffect(() => {
+        debug.setVerboseCaptureEnabled(outputLogLevels.has("verbose"));
+        return () => debug.setVerboseCaptureEnabled(false);
+    }, [debug, outputLogLevels]);
 
     useEffect(() => {
         const store = scopeBridge.getSurfaceStore(activeSurfaceId);
@@ -179,7 +191,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         [projectPath, t],
     );
 
-    const rootClass = ["flex h-full min-h-0 shrink-0 flex-col border-l border-edge bg-[#0d0f11] text-2xs text-fg-muted", className]
+    const rootClass = ["flex h-full min-h-0 shrink-0 flex-col border-l border-edge bg-surface-sunken text-2xs text-fg-muted", className]
         .filter(Boolean)
         .join(" ");
 
@@ -202,7 +214,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                             role="tab"
                             aria-selected={active}
                             className={`relative h-9 flex-1 cursor-default px-2 text-xs transition-colors ${
-                                active ? "bg-[#12151c] text-white" : "text-fg-muted hover:bg-surface hover:text-white"
+                                active ? "bg-surface text-fg" : "text-fg-muted hover:bg-surface hover:text-fg"
                             }`}
                             onClick={() => setTab(id)}
                         >
@@ -221,7 +233,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden font-mono leading-snug">
                 {tab === "blueprints" ? (
                     <div className="min-h-0 flex-1 overflow-auto p-2">
-                        {studioHint ? <p className="mb-2 text-2xs text-amber-400/90">{studioHint}</p> : null}
+                        {studioHint ? <p className="mb-2 text-2xs text-warning/90">{studioHint}</p> : null}
                         {blueprintsList.length === 0 ? (
                             <p className="text-2xs text-fg-subtle">{t("devMode.blueprints.empty")}</p>
                         ) : (
@@ -292,7 +304,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                                 {logLevelMenuOpen ? (
                                     <div
                                         role="menu"
-                                        className="absolute left-0 top-full z-20 mt-1 w-32 rounded border border-edge bg-[#11141b] p-1 shadow-xl"
+                                        className="absolute left-0 top-full z-20 mt-1 w-32 rounded border border-edge bg-surface-overlay p-1 shadow-xl"
                                     >
                                         {OUTPUT_LOG_LEVELS.map(level => (
                                             <label
@@ -511,23 +523,6 @@ function formatExecutionCancelled(ev: Extract<BlueprintDebugEvent, { type: "exec
     return parts.join(" · ");
 }
 
-export function getBlueprintDebugEventLogLevel(ev: BlueprintDebugEvent): BlueprintOutputLogLevel {
-    if (ev.type === "execution.error") {
-        return "error";
-    }
-    if (ev.type === "devtools.log") {
-        const level = ev.level.trim().toLowerCase();
-        if (level === "error") {
-            return "error";
-        }
-        if (level === "warn" || level === "warning") {
-            return "warning";
-        }
-        return "log";
-    }
-    return "verbose";
-}
-
 export function filterBlueprintDebugEventsByLogLevel(
     events: readonly BlueprintDebugEvent[],
     levels: ReadonlySet<BlueprintOutputLogLevel>,
@@ -538,11 +533,11 @@ export function filterBlueprintDebugEventsByLogLevel(
 function outputLogLevelClassName(level: BlueprintOutputLogLevel): string {
     switch (level) {
         case "error":
-            return "text-rose-300/90";
+            return "text-danger/90";
         case "warning":
-            return "text-amber-300/90";
+            return "text-warning/90";
         case "log":
-            return "text-cyan-400/90";
+            return "text-primary/90";
         case "verbose":
             return "text-fg-subtle";
         default:

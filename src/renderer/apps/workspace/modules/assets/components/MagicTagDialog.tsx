@@ -139,7 +139,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                                         }}
                                         className={`px-3 py-1.5 rounded text-sm transition-colors ${
                                             selectedDelimiters.includes(delim.char)
-                                                ? 'bg-primary text-white'
+                                                ? 'bg-primary text-on-primary'
                                                 : 'bg-fill text-fg-muted hover:bg-fill-strong'
                                         }`}
                                     >
@@ -261,7 +261,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                         className={`
                             px-4 py-2 text-sm rounded transition-colors
                             ${applying
-                                ? "bg-gray-700 text-fg-subtle cursor-not-allowed"
+                                ? "bg-fill text-fg-subtle cursor-not-allowed"
                                 : "bg-fill-subtle hover:bg-fill text-fg-muted"
                             }
                         `}
@@ -274,8 +274,8 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                         className={`
                             px-4 py-2 text-sm rounded transition-colors
                             ${applying || Object.keys(categoryMapping).length === 0
-                                ? "bg-gray-700 text-fg-subtle cursor-not-allowed"
-                                : "bg-primary hover:bg-primary/80 text-white font-medium"
+                                ? "bg-fill text-fg-subtle cursor-not-allowed"
+                                : "bg-primary hover:bg-primary/80 text-on-primary font-medium"
                             }
                         `}
                     >

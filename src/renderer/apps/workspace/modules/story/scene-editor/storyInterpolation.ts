@@ -30,7 +30,7 @@ export function rememberInterpolationKind(kind: StoryInterpolationRef["kind"]): 
     lastInterpolationKind = kind;
 }
 
-/** Default (empty) interpolation ref for a kind — used when inserting a fresh inline value. */
+/** Default (empty) interpolation ref for a kind - used when inserting a fresh inline value. */
 export function defaultInterpolationForKind(kind: StoryInterpolationRef["kind"]): StoryInterpolationRef {
     return kind === "blueprint"
         ? { kind: "blueprint", blueprintId: "" }

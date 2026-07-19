@@ -18,7 +18,6 @@ import {
     createSealedBundle,
     runtimeSupportPath,
     RUNTIME_BUNDLE_FILENAME,
-    RUNTIME_KEY_PLACEHOLDER,
     RUNTIME_SUPPORT_FILENAME,
     type SealedBundleWriter,
 } from "@narraleaf/encryption";
@@ -30,6 +29,8 @@ import {
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { getMimeType } from "@shared/utils/fs";
+import { sanitizeProjectFileName } from "@shared/utils/nlproj";
+import { WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
 
 const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "other"] as const;
 // "native.js" is a support module the packaged main.js requires from its own
@@ -37,7 +38,15 @@ const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "ot
 // and must ship next to main.js in every pack, so it is validated and copied
 // like any other required runtime file.
 const REQUIRED_RUNTIME_FILES = ["main.js", "native.js", "preload.js", "renderer.js", "renderer.css", "index.html"] as const;
+// The web shell replaces the Electron trio with the browser bridge bundle; the
+// renderer pair is shared verbatim. Its index.html is generated per pack (see
+// webShell.ts), not copied from the runtime dist.
+const WEB_REQUIRED_RUNTIME_FILES = ["renderer.js", "renderer.css", "web.js"] as const;
 const OPTIONAL_RUNTIME_FILES = ["main.js.map", "preload.js.map", "renderer.js.map", "renderer.css.map"] as const;
+// Build marker written by project/build/build-runtime.js. It attests that the
+// dist was produced by the runtime build script in production mode; it is
+// validated before packing and never copied into the app dir.
+const RUNTIME_BUILD_MANIFEST_FILENAME = "build-manifest.json";
 
 export type GameRuntimePluginSource = {
     manifest: NormalizedPluginManifestV2;
@@ -52,8 +61,21 @@ export type GameRuntimeArtifactCompileInput = {
     entry: GameRuntimeLaunchEntry;
     runtimeDistDir: string;
     runtimeVersion: string;
-    controlPort: number;
-    controlToken: string;
+    /**
+     * Directory the compiled app dir is written under (appDir = outputRoot/app).
+     * Preview also keeps its persistent userData dir here; production staging
+     * roots hold only the app dir.
+     */
+    outputRoot: string;
+    /**
+     * Studio-side control channel embedded in the pack so the workspace can
+     * drive the running preview. Required in preview mode; must be absent for
+     * production packs (a shipped game exposes no control server).
+     */
+    preview?: {
+        controlPort: number;
+        controlToken: string;
+    };
     /** Runtime entries of enabled plugins to ship inside the pack. */
     runtimePlugins?: GameRuntimePluginSource[];
     /**
@@ -61,6 +83,14 @@ export type GameRuntimeArtifactCompileInput = {
      * "production" hardens the runtime. Defaults to "preview".
      */
     mode?: "preview" | "production";
+    /**
+     * Target shell. "electron" (default) emits the desktop runtime app dir;
+     * "web" emits a static site: the shared renderer bundle plus the browser
+     * bridge (web.js), a generated relative-URL index.html and the plugin-api
+     * modules as real files. Web compiles are production-only and never
+     * protected (a static site cannot carry the protection layer).
+     */
+    shell?: "electron" | "web";
     /**
      * Opaque pack key for asset protection. When set, packaged output is
      * protected via @narraleaf/encryption; when absent, output is written
@@ -70,9 +100,10 @@ export type GameRuntimeArtifactCompileInput = {
 };
 
 export type GameRuntimeArtifactCompileResult = {
-    previewRoot: string;
+    outputRoot: string;
     appDir: string;
-    userDataDir: string;
+    /** Preview-only saves/persistence dir; production packs use the OS userData path. */
+    userDataDir: string | null;
     packPath: string;
     pack: GameRuntimePackV1;
     copiedAssetCount: number;
@@ -105,25 +136,42 @@ type ProjectIconConfigRecord = {
     updatedAt?: unknown;
 };
 
-export async function compileGameRuntimePreviewArtifact(
+export async function compileGameRuntimeArtifact(
     input: GameRuntimeArtifactCompileInput,
 ): Promise<GameRuntimeArtifactCompileResult> {
-    const previewRoot = path.join(input.projectPath, ".nlstudio", "preview");
-    const appDir = path.join(previewRoot, "app");
-    const userDataDir = path.join(previewRoot, "userData");
+    const mode = input.mode ?? "preview";
+    const shell = input.shell ?? "electron";
+    if (mode === "preview" && !input.preview) {
+        throw new Error("Preview artifact compile requires a preview control channel");
+    }
+    if (mode === "production" && input.preview) {
+        throw new Error("Production artifact compile must not carry a preview control channel");
+    }
+    if (shell === "web" && mode !== "production") {
+        throw new Error("Web artifact compile is production-only");
+    }
+    if (shell === "web" && input.encryptionKey) {
+        throw new Error("Web artifact compile does not support asset protection");
+    }
+    const outputRoot = input.outputRoot;
+    const appDir = path.join(outputRoot, "app");
+    const userDataDir = mode === "preview" ? path.join(outputRoot, "userData") : null;
     const assetsDir = path.join(appDir, "assets");
 
-    await assertRuntimeDistReady(input.runtimeDistDir);
+    await assertRuntimeDistReady(input.runtimeDistDir, shell);
     await fs.rm(appDir, { recursive: true, force: true });
     if (!input.encryptionKey) {
         // Loose items live under assets/; the sealed store needs no such dir.
         await fs.mkdir(assetsDir, { recursive: true });
     }
-    await fs.mkdir(userDataDir, { recursive: true });
-    await copyRuntimeFiles(input.runtimeDistDir, appDir);
+    if (userDataDir) {
+        await fs.mkdir(userDataDir, { recursive: true });
+    }
+    await copyRuntimeFiles(input.runtimeDistDir, appDir, mode, shell);
     if (input.encryptionKey) {
-        // Protection on: prepare the packed runtime and ship its support binary.
-        await embedPackKey(appDir, input.encryptionKey);
+        // Protection on: ship the support binary. createSealedBundle binds this
+        // pack's protection material into it when it opens the store (below), so
+        // no key material is handled here or written into any JS.
         await fs.copyFile(runtimeSupportPath(), path.join(appDir, RUNTIME_SUPPORT_FILENAME));
     }
 
@@ -146,7 +194,13 @@ export async function compileGameRuntimePreviewArtifact(
     // Everything below either writes loose files or streams into the store; on
     // any failure the store handle is released so a failed compile leaks nothing.
     const target: PackTarget = input.encryptionKey
-        ? { kind: "sealed", writer: await createSealedBundle(path.join(appDir, RUNTIME_BUNDLE_FILENAME), input.encryptionKey) }
+        ? {
+            kind: "sealed",
+            writer: await createSealedBundle(
+                path.join(appDir, RUNTIME_BUNDLE_FILENAME),
+                path.join(appDir, RUNTIME_SUPPORT_FILENAME),
+            ),
+        }
         : { kind: "loose" };
 
     try {
@@ -155,7 +209,16 @@ export async function compileGameRuntimePreviewArtifact(
             assetsDir,
             target,
         });
-        const projectIcon = await copyProjectIcon({
+        // The desktop icon set feeds the window/dock; a web site instead gets
+        // a favicon (best-effort - only a configured PNG qualifies).
+        const projectIcon = shell === "web"
+            ? undefined
+            : await copyProjectIcon({
+                projectPath: input.projectPath,
+                appDir,
+                projectConfig,
+            });
+        const hasFavicon = shell === "web" && await copyWebFavicon({
             projectPath: input.projectPath,
             appDir,
             projectConfig,
@@ -169,7 +232,7 @@ export async function compileGameRuntimePreviewArtifact(
         const pack: GameRuntimePackV1 = {
             schemaVersion: GAME_RUNTIME_PACK_SCHEMA_VERSION,
             generatedAt: new Date().toISOString(),
-            mode: input.mode ?? "preview",
+            mode,
             runtimeVersion: input.runtimeVersion,
             project: {
                 name: projectConfig?.name?.trim() || path.basename(input.projectPath) || "NarraLeaf Game",
@@ -184,15 +247,17 @@ export async function compileGameRuntimePreviewArtifact(
                 items: assetManifest,
             },
             plugins: packPlugins,
-            network: {
-                // Secure default: HTTP is only permitted when the project explicitly
-                // opts in via app.network.allowHttp. Mirrors normalizeNetworkConfiguration.
-                allowHttp: (projectConfig?.app as { network?: { allowHttp?: unknown } } | undefined)?.network?.allowHttp === true,
-            },
-            preview: {
-                controlPort: input.controlPort,
-                controlToken: input.controlToken,
-            },
+            // The network policy is a desktop-shell mechanism (CSP + webRequest);
+            // a web export is served over HTTP(S) by nature, so its pack carries
+            // no policy at all.
+            ...(shell === "web" ? {} : {
+                network: {
+                    // Secure default: HTTP is only permitted when the project explicitly
+                    // opts in via app.network.allowHttp. Mirrors normalizeNetworkConfiguration.
+                    allowHttp: (projectConfig?.app as { network?: { allowHttp?: unknown } } | undefined)?.network?.allowHttp === true,
+                },
+            }),
+            ...(input.preview ? { preview: input.preview } : {}),
         };
 
         const packJson = Buffer.from(JSON.stringify(pack), "utf-8");
@@ -205,19 +270,18 @@ export async function compileGameRuntimePreviewArtifact(
             packPath = path.join(appDir, "pack.json");
             await fs.writeFile(packPath, packJson);
         }
-        await fs.writeFile(
-            path.join(appDir, "package.json"),
-            JSON.stringify({
-                name: "narraleaf-preview-runtime",
-                version: input.runtimeVersion,
-                private: true,
-                main: "main.js",
-            }, null, 2),
-            "utf-8",
-        );
+        if (shell === "web") {
+            await writeWebShellFiles({ appDir, pack, hasFavicon });
+        } else {
+            await fs.writeFile(
+                path.join(appDir, "package.json"),
+                JSON.stringify(buildAppManifest(mode, input.runtimeVersion, pack, projectConfig), null, 2),
+                "utf-8",
+            );
+        }
 
         return {
-            previewRoot,
+            outputRoot,
             appDir,
             userDataDir,
             packPath,
@@ -234,9 +298,45 @@ export async function compileGameRuntimePreviewArtifact(
     }
 }
 
-async function assertRuntimeDistReady(runtimeDistDir: string): Promise<void> {
+/**
+ * The loose app manifest Electron reads before any pack (possibly sealed) is
+ * open. Production identity fields drive the shell's app name - and with it
+ * the default OS userData location - plus the packager's product metadata.
+ * `narraleaf.mode` is the early mode marker the runtime consults before
+ * app-ready; the pack's own `mode` stays authoritative.
+ */
+function buildAppManifest(
+    mode: "preview" | "production",
+    runtimeVersion: string,
+    pack: GameRuntimePackV1,
+    projectConfig: ProjectConfigData | null,
+): Record<string, unknown> {
+    const base = {
+        private: true,
+        main: "main.js",
+        narraleaf: { mode },
+    };
+    if (mode === "preview") {
+        return {
+            name: "narraleaf-preview-runtime",
+            version: runtimeVersion,
+            ...base,
+        };
+    }
+    const identifier = readString(projectConfig?.identifier);
+    return {
+        name: sanitizeProjectFileName(identifier ?? pack.project.name),
+        productName: pack.project.name,
+        version: pack.project.version ?? "0.0.0",
+        description: readString(projectConfig?.metadata?.description),
+        author: readString(projectConfig?.metadata?.author) ?? "NarraLeaf",
+        ...base,
+    };
+}
+
+async function assertRuntimeDistReady(runtimeDistDir: string, shell: "electron" | "web"): Promise<void> {
     const missing: string[] = [];
-    for (const fileName of REQUIRED_RUNTIME_FILES) {
+    for (const fileName of shell === "web" ? WEB_REQUIRED_RUNTIME_FILES : REQUIRED_RUNTIME_FILES) {
         try {
             await fs.access(path.join(runtimeDistDir, fileName));
         } catch {
@@ -248,14 +348,48 @@ async function assertRuntimeDistReady(runtimeDistDir: string): Promise<void> {
             `Runtime build output is missing ${missing.join(", ")}. Run "yarn build:runtime" first.`,
         );
     }
+    // Existence is not enough: a dist left behind by an older build script (or a
+    // tampered one) could carry development React and ship it inside every pack.
+    // build-runtime.js writes this marker on every successful build; anything
+    // else is a stale or foreign dist and must be rebuilt, not packed.
+    let manifest: { mode?: unknown };
+    try {
+        manifest = await readJson<{ mode?: unknown }>(path.join(runtimeDistDir, RUNTIME_BUILD_MANIFEST_FILENAME));
+    } catch (error) {
+        if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+            throw new Error(
+                `Runtime build output is missing ${RUNTIME_BUILD_MANIFEST_FILENAME}, so it cannot be ` +
+                `verified as a production build. Run "yarn build:runtime" to rebuild it.`,
+            );
+        }
+        throw error;
+    }
+    if (manifest.mode !== "production") {
+        throw new Error(
+            `Runtime build output at ${runtimeDistDir} is not a production build ` +
+            `(${RUNTIME_BUILD_MANIFEST_FILENAME} reports mode ${JSON.stringify(manifest.mode)}). ` +
+            `Run "yarn build:runtime" to rebuild it.`,
+        );
+    }
 }
 
-async function copyRuntimeFiles(runtimeDistDir: string, appDir: string): Promise<void> {
+async function copyRuntimeFiles(
+    runtimeDistDir: string,
+    appDir: string,
+    mode: "preview" | "production",
+    shell: "electron" | "web",
+): Promise<void> {
     await fs.mkdir(appDir, { recursive: true });
-    for (const fileName of REQUIRED_RUNTIME_FILES) {
+    for (const fileName of shell === "web" ? WEB_REQUIRED_RUNTIME_FILES : REQUIRED_RUNTIME_FILES) {
         await fs.copyFile(path.join(runtimeDistDir, fileName), path.join(appDir, fileName));
     }
     for (const fileName of OPTIONAL_RUNTIME_FILES) {
+        // Sourcemaps are a preview-session debugging aid; shipped games leave
+        // them out to keep installers smaller and bundle internals unmapped.
+        // (Web compiles are production-only, so this loop is a no-op there.)
+        if (mode === "production" && fileName.endsWith(".map")) {
+            continue;
+        }
         await copyOptionalFile(path.join(runtimeDistDir, fileName), path.join(appDir, fileName));
     }
 }
@@ -269,23 +403,6 @@ async function copyOptionalFile(sourcePath: string, targetPath: string): Promise
         }
         throw error;
     }
-}
-
-/**
- * Apply the pack key to the packed main.js through @narraleaf/encryption's
- * marker. Fails loudly if the marker is absent, meaning the runtime was built
- * without support.
- */
-async function embedPackKey(appDir: string, encryptionKey: string): Promise<void> {
-    const mainJsPath = path.join(appDir, "main.js");
-    const source = await fs.readFile(mainJsPath, "utf-8");
-    if (!source.includes(RUNTIME_KEY_PLACEHOLDER)) {
-        throw new Error(
-            "Runtime main.js is missing a required marker. Rebuild the runtime (\"yarn build:runtime\").",
-        );
-    }
-    const injected = source.split(RUNTIME_KEY_PLACEHOLDER).join(encryptionKey);
-    await fs.writeFile(mainJsPath, injected, "utf-8");
 }
 
 async function copyProjectAssets(input: {
@@ -401,6 +518,34 @@ async function copyProjectIcon(input: {
         sourceName: readString(icon.sourceName),
         mediaType: readString(icon.mediaType) ?? getMimeType(targetPath),
     };
+}
+
+/**
+ * Best-effort favicon for the web export: the first configured project icon
+ * that is a PNG (browsers cannot read .icns/.ico-from-icns reliably, and the
+ * conversion tooling lives in electron-builder, which the web path never
+ * touches). Missing or non-PNG icons simply mean no favicon.
+ */
+async function copyWebFavicon(input: {
+    projectPath: string;
+    appDir: string;
+    projectConfig: ProjectConfigData | null;
+}): Promise<boolean> {
+    const platforms: GameRuntimeProjectIconPlatform[] = ["windows", "linux", "macos"];
+    for (const platform of platforms) {
+        const icon = getProjectIconConfig(input.projectConfig, platform);
+        if (!icon || !icon.path.toLowerCase().endsWith(".png")) {
+            continue;
+        }
+        try {
+            const sourcePath = resolveProjectRelativePath(input.projectPath, icon.path);
+            await fs.copyFile(sourcePath, path.join(input.appDir, WEB_FAVICON_FILENAME));
+            return true;
+        } catch {
+            continue;
+        }
+    }
+    return false;
 }
 
 function getProjectIconConfig(

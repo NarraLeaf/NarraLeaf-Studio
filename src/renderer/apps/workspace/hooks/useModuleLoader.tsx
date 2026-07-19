@@ -41,9 +41,11 @@ export function useModuleLoader() {
             store.registerPanel({
                 id: panelModule.metadata.id,
                 title: panelModule.metadata.title,
+                titleKey: panelModule.metadata.titleKey,
                 icon: panelModule.metadata.icon!,
                 position: panelModule.metadata.position,
                 component: panelModule.component as any,
+                railAction: panelModule.railAction,
                 defaultVisible: panelModule.metadata.defaultVisible,
                 order: panelModule.metadata.order,
                 payload: panelModule.metadata.payload,
@@ -79,6 +81,7 @@ export function useModuleLoader() {
                         icon: group.icon,
                         actions: group.actions,
                         order: group.order,
+                        menuSlot: group.menuSlot,
                     });
                 });
             }
@@ -116,6 +119,7 @@ export function useModuleLoader() {
                 icon: group.icon,
                 actions: group.actions,
                 order: group.order,
+                menuSlot: group.menuSlot,
             });
         });
 

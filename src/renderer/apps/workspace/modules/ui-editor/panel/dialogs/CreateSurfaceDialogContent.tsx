@@ -88,7 +88,7 @@ export function CreateSurfaceDialogContent({
                                 }}
                                 className={`w-full rounded-md border px-3 py-3 text-left text-sm transition-colors ${
                                     isActive
-                                        ? "border-primary bg-primary/10 text-white"
+                                        ? "border-primary bg-primary/10 text-fg"
                                         : "border-edge text-fg-muted hover:border-edge-strong hover:bg-fill-subtle"
                                 } ${disabled ? "cursor-not-allowed opacity-45 hover:border-edge hover:bg-transparent" : ""}`}
                             >

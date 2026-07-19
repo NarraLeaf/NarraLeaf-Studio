@@ -1,4 +1,5 @@
 import { useWindowControls } from "@/lib/app/hooks/useWindowControls";
+import { useWindowFullscreen } from "@/lib/app/hooks/useWindowFullscreen";
 import { useTranslation } from "@/lib/i18n";
 import { ErrorBoundary } from "@/lib/app/errorHandling/ErrorBoundary";
 import { isMacPlatform } from "@/lib/app/platform";
@@ -7,7 +8,17 @@ import { ReactNode } from "react";
 import { WindowControlPolicy, type WindowControlAbility } from "@shared/types/window";
 import { cn } from "../../utils/cn";
 
-const MACOS_TRAFFIC_LIGHT_SAFE_AREA = 90;
+/**
+ * Room to leave for the macOS traffic lights.
+ *
+ * macOS draws them at a fixed physical size that `ui.zoomPercent` does not touch,
+ * so this cannot be a plain CSS length: at 50% a flat 90px would reserve only 45
+ * real pixels and the action bar would sit on top of the buttons. Dividing the
+ * buttons' own width by `--nl-zoom` (published by lib/zoom) keeps their share of
+ * the bar constant in real pixels, while the trailing gap stays part of the UI and
+ * scales with everything else. Resolves to exactly 90px at 100%.
+ */
+const MACOS_TRAFFIC_LIGHT_SAFE_AREA = "calc(66px / var(--nl-zoom, 1) + 24px)";
 const TITLEBAR_EDGE_GAP = 5;
 
 export interface TitleBarProps {
@@ -15,6 +26,8 @@ export interface TitleBarProps {
     iconSrc: string;
     className?: string;
     actionBar?: ReactNode;
+    /** Interactive content for the centered slot; takes the place of `title` when provided. */
+    center?: ReactNode;
     controlBar?: ReactNode;
     initialControlAbility?: WindowControlAbility;
     windowControlPolicy?: WindowControlPolicy;
@@ -29,18 +42,23 @@ export function TitleBar({
     iconSrc,
     className = "",
     actionBar,
+    center,
     controlBar,
     initialControlAbility,
     windowControlPolicy = WindowControlPolicy.Standard,
 }: TitleBarProps) {
     const { t } = useTranslation();
     const isMac = isMacPlatform();
+    const isFullscreen = useWindowFullscreen();
     const usesInlineMacControls = isMac && windowControlPolicy === WindowControlPolicy.Standard;
     const hasWindowControls = windowControlPolicy !== WindowControlPolicy.None;
     const shouldRenderCustomControls = hasWindowControls && !isMac;
-    const leftInset = usesInlineMacControls ? MACOS_TRAFFIC_LIGHT_SAFE_AREA : 0;
+    // macOS hides the traffic lights in fullscreen, so the space reserved for them becomes dead —
+    // stop reserving it and let the content sit flush against the window edge.
+    const reserveMacTrafficLights = usesInlineMacControls && !isFullscreen;
+    const leftInset = reserveMacTrafficLights ? MACOS_TRAFFIC_LIGHT_SAFE_AREA : 0;
     const rightInset = usesInlineMacControls
-        ? (controlBar || iconSrc ? TITLEBAR_EDGE_GAP : MACOS_TRAFFIC_LIGHT_SAFE_AREA)
+        ? (controlBar || iconSrc ? TITLEBAR_EDGE_GAP : (reserveMacTrafficLights ? MACOS_TRAFFIC_LIGHT_SAFE_AREA : 0))
         : 0;
     const leftSafeAreaStyle = leftInset ? { paddingLeft: leftInset } : undefined;
     const rightSafeAreaStyle = rightInset ? { paddingRight: rightInset } : undefined;
@@ -68,17 +86,28 @@ export function TitleBar({
                 )}
             </div>
 
-            {/* Center - Title (if exists) or spacer */}
-            <div
-                className="pointer-events-none absolute inset-y-0 left-0 right-0 flex min-w-0 items-center justify-center px-2"
-                style={titleSafeAreaStyle}
-            >
-                {title && (
-                    <span className="text-sm text-fg-muted truncate">
-                        {title}
-                    </span>
-                )}
-            </div>
+            {/* Center. An interactive slot participates in the flex row (flex-1 = it gets exactly
+                the space the side clusters leave, so a w-full child can stretch without ever
+                overlapping them); the plain title keeps the absolute overlay so it stays visually
+                centered regardless of asymmetric sides. */}
+            {center ? (
+                <div className="flex h-full min-w-0 flex-1 items-center justify-center px-3">
+                    <ErrorBoundary fallback={() => null}>
+                        <>{center}</>
+                    </ErrorBoundary>
+                </div>
+            ) : (
+                <div
+                    className="pointer-events-none absolute inset-y-0 left-0 right-0 flex min-w-0 items-center justify-center px-2"
+                    style={titleSafeAreaStyle}
+                >
+                    {title && (
+                        <span className="text-sm text-fg-muted truncate">
+                            {title}
+                        </span>
+                    )}
+                </div>
+            )}
 
             {/* Right side - Control Bar and Window Controls */}
             <div className="no-drag ml-auto flex h-full shrink-0 items-center" style={rightSafeAreaStyle}>

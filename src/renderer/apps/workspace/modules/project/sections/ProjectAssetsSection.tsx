@@ -8,6 +8,8 @@ import {
     Loader2,
     Monitor,
     RefreshCw,
+    Smartphone,
+    Tablet,
     Upload,
 } from "lucide-react";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
@@ -35,12 +37,18 @@ const PLATFORM_OPTIONS: PlatformOption[] = [
     { id: "macos", label: "macOS", detail: ".icns, .png", icon: Laptop },
     { id: "windows", label: "Windows", detail: ".ico, .png", icon: Monitor },
     { id: "linux", label: "Linux", detail: ".png, .svg", icon: HardDrive },
+    // The repack scales one PNG into every launcher density / @2x variant, so a
+    // single square source is all the author provides.
+    { id: "android", label: "Android", detail: ".png", icon: Smartphone },
+    { id: "ios", label: "iOS", detail: ".png", icon: Tablet },
 ];
 
 const EMPTY_ICON_STATE: Record<ProjectIconPlatform, IconState> = {
     macos: { icon: null, preview: null, status: "idle", error: null },
     windows: { icon: null, preview: null, status: "idle", error: null },
     linux: { icon: null, preview: null, status: "idle", error: null },
+    android: { icon: null, preview: null, status: "idle", error: null },
+    ios: { icon: null, preview: null, status: "idle", error: null },
 };
 
 const ICON_BUTTON_CLASS = controlButtonClass();
@@ -52,6 +60,8 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
         macos: null,
         windows: null,
         linux: null,
+        android: null,
+        ios: null,
     });
 
     const applyPreview = useCallback((platform: ProjectIconPlatform, preview: ProjectIconPreview | null) => {
@@ -229,7 +239,7 @@ function ProjectIconCard({
         : null;
 
     return (
-        <section className="rounded-md border border-edge bg-white/[0.025] p-3">
+        <section className="rounded-md border border-edge bg-fill-subtle p-3">
             <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
                     <PlatformIcon className="h-4 w-4 shrink-0 text-fg-muted" />
@@ -251,7 +261,7 @@ function ProjectIconCard({
             </div>
 
             <div className="mt-3 flex min-w-0 gap-3">
-                <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-md border border-edge bg-[#17181c]">
+                <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-md border border-edge bg-surface-raised">
                     {state.preview ? (
                         <img src={state.preview.url} alt={t("project.assets.iconAlt", { platform: option.label })} className="max-h-full max-w-full object-contain" />
                     ) : busy ? (
@@ -263,7 +273,7 @@ function ProjectIconCard({
                 <div className="min-w-0 flex-1 self-center">
                     <div className="flex min-w-0 items-center gap-1.5">
                         {state.status === "error" ? (
-                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-400" />
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-danger" />
                         ) : state.icon ? (
                             <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-primary" />
                         ) : (
@@ -294,6 +304,8 @@ function cloneIconStates(states: Record<ProjectIconPlatform, IconState>): Record
         macos: { ...states.macos },
         windows: { ...states.windows },
         linux: { ...states.linux },
+        android: { ...states.android },
+        ios: { ...states.ios },
     };
 }
 

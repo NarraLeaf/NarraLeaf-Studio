@@ -50,7 +50,7 @@ describe("richText", () => {
     });
 
     it("splits overlapping marks into a combined middle run (mixed words)", () => {
-        // "Hello world" — bold over [0,8), then color over [4,11).
+        // "Hello world" - bold over [0,8), then color over [4,11).
         let runs: StoryRichRun[] = [{ text: "Hello world" }];
         runs = applyMarkToRange(runs, 0, 8, marks => ({ ...marks, bold: true }));
         runs = applyMarkToRange(runs, 4, 11, marks => ({ ...marks, color: "#f00" }));

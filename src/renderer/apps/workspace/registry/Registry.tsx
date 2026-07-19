@@ -17,6 +17,7 @@ import {
     useUIService,
 } from "../hooks/useUIService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
+import { recordClosedTabs } from "@/apps/workspace/session/workspaceClosedTabsStore";
 
 /**
  * Registry context provides convenient access to UI state and operations
@@ -133,7 +134,17 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
     const closeEditorTab = useCallback((tabId: string, groupId?: string) => {
         const currentFocus = uiService.focus.getFocus();
         const store = uiService.getStore();
-        
+
+        // Remember the tab for "reopen closed tab" — must happen while the
+        // definition and its position are still in the layout.
+        const closingGroup = findGroup(store.getEditorLayout(), groupId);
+        if (closingGroup) {
+            const index = closingGroup.tabs.findIndex((tab) => tab.id === tabId);
+            if (index >= 0) {
+                recordClosedTabs([{ tab: closingGroup.tabs[index], index }], closingGroup.id);
+            }
+        }
+
         // Close the tab
         const focusTarget = store.closeEditorTabInGroup(tabId, groupId);
         
@@ -170,6 +181,14 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
             const resolvedGroupId = groupBefore?.id ?? (layoutBefore as EditorGroup).id;
 
             const idSet = new Set(tabIds);
+            if (groupBefore) {
+                recordClosedTabs(
+                    groupBefore.tabs
+                        .map((tab, index) => ({ tab, index }))
+                        .filter(({ tab }) => idSet.has(tab.id)),
+                    groupBefore.id,
+                );
+            }
             const focusTarget = store.closeEditorTabsInGroup(tabIds, groupId);
 
             const layout = store.getEditorLayout();

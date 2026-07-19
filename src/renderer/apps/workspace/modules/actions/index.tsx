@@ -9,6 +9,7 @@ import {
     Archive,
 } from "lucide-react";
 import { ModuleAction, ModuleActionGroup } from "../types";
+import { cn } from "@/lib/utils/cn";
 import { Workspace } from "@/lib/workspace/workspace";
 import { UIService } from "@/lib/workspace/services/ui";
 import { Services } from "@/lib/workspace/services/services";
@@ -19,12 +20,14 @@ import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
-import { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
+import { BuildService } from "@/lib/workspace/services/core/BuildService";
 import type { DevModeStatus } from "@shared/types/devMode";
 import type { PreviewStatus } from "@shared/types/gameRuntime";
+import type { GameBuildStatus } from "@shared/types/gameBuild";
 import { useWorkspace } from "../../context";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "./runtimeActionStatus";
+import { openBuildDialog } from "./BuildDialog";
 import { translate, translateN } from "@/lib/i18n";
 
 /**
@@ -83,17 +86,12 @@ function DevModeActionIcon() {
         };
     }, [context]);
 
-    const iconColor = useMemo(() => {
-        if (status === "error") {
-            return "#f87171";
-        }
-        if (isDevModeRuntimeActive(status)) {
-            return "#ffffff";
-        }
-        return "rgba(255,255,255,0.6)";
-    }, [status]);
+    // Anything but the error tint inherits the button's own text color: idle it is
+    // `text-fg-muted` (and gains the hover brighten), running it is the white of the
+    // danger-filled stop button. Pinning a color here would defeat both.
+    const iconClass = useMemo(() => (status === "error" ? "text-danger" : ""), [status]);
 
-    return <Play className="w-4 h-4" color={iconColor} />;
+    return <Play className={cn("w-4 h-4", iconClass)} />;
 }
 
 export const previewAction: ModuleAction = {
@@ -132,54 +130,70 @@ function PreviewActionIcon() {
         };
     }, [context]);
 
-    const iconColor = useMemo(() => {
-        if (status === "error") {
-            return "#f87171";
-        }
-        if (isPreviewRuntimeActive(status)) {
-            return "#ffffff";
-        }
-        return "rgba(255,255,255,0.6)";
-    }, [status]);
+    // See DevModeActionIcon: every state but "error" inherits the button's text color.
+    const iconClass = useMemo(() => (status === "error" ? "text-danger" : ""), [status]);
 
-    return <Hammer className="w-4 h-4" color={iconColor} />;
+    return <Hammer className={cn("w-4 h-4", iconClass)} />;
 }
 
 /**
  * Build project action
- * Builds the current project for distribution
+ * Opens the production build dialog for the current project.
  */
 export const buildAction: ModuleAction = {
     id: "narraleaf-studio:build",
-    icon: <Package className="w-4 h-4" />,
+    icon: <BuildActionIcon />,
     tooltip: "Build project",
     tooltipKey: "actions.build.tooltip",
     onClick: (workspace: Workspace) => {
-        const services = workspace.getContext().services;
-        const consoleService = services.get<ConsoleService>(Services.Console);
-        const uiService = services.get<UIService>(Services.UI);
-        const projectPath = workspace.getContext().project.getConfig().projectPath;
-        const projectName = projectPath.split(/[\\/]/).filter(Boolean).at(-1) ?? "project";
-
-        uiService.panels.show("narraleaf-studio:console");
-        consoleService.append("build", {
-            level: "info",
-            source: translate("actions.build.source"),
-            segments: [
-                { text: translate("actions.build.requested", { name: projectName }), color: "#8b949e" },
-            ],
-        });
-        consoleService.append("build", {
-            level: "warning",
-            source: translate("actions.build.source"),
-            segments: [
-                { text: translate("actions.build.notWiredTitle"), bold: true },
-                { text: translate("actions.build.notWiredDetail"), italic: true },
-            ],
-        });
+        void openBuildDialog(workspace);
     },
     order: 4,
 };
+
+function BuildActionIcon() {
+    const { context } = useWorkspace();
+    const [status, setStatus] = useState<GameBuildStatus>("idle");
+
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const buildService = context.services.get<BuildService>(Services.Build);
+        const uiService = context.services.get<UIService>(Services.UI);
+        let previous = buildService.getStatus();
+        setStatus(previous);
+        const unsub = buildService.onStateChanged(state => {
+            setStatus(state.status);
+            if (state.status !== previous) {
+                if (state.status === "done") {
+                    uiService.showNotification(translate("build.toast.done"), "success");
+                } else if (state.status === "error") {
+                    uiService.showNotification(state.error ?? translate("build.toast.failed"), "error");
+                }
+            }
+            previous = state.status;
+        });
+        return () => {
+            unsub();
+        };
+    }, [context]);
+
+    // Unlike Dev Mode and Preview, a running build does not turn its button into a
+    // stop control, so the busy state brightens the icon itself against the plain
+    // button background.
+    const iconClass = useMemo(() => {
+        if (status === "error") {
+            return "text-danger";
+        }
+        if (status === "preparing" || status === "compiling" || status === "packaging") {
+            return "text-fg";
+        }
+        return "";
+    }, [status]);
+
+    return <Package className={cn("w-4 h-4", iconClass)} />;
+}
 
 /**
  * File action group
@@ -190,6 +204,9 @@ export const fileActionGroup: ModuleActionGroup = {
     label: "File",
     labelKey: "actions.file.label",
     order: 10,
+    // The macOS File menu is built natively so it can carry Cmd+N/Cmd+O; mirroring this group
+    // would leave the menu bar with two File menus.
+    menuSlot: "none",
     actions: [
         {
             id: "narraleaf-studio:file-new",
@@ -202,10 +219,8 @@ export const fileActionGroup: ModuleActionGroup = {
                 void (async () => {
                     const result = await getInterface().app.launchProjectWizard({});
                     if (result.success && result.data?.created) {
-                        await getInterface().workspace.launch(
-                            { projectPath: result.data.projectPath },
-                            true
-                        );
+                        // Opens alongside: File ▸ New is not a request to close this project.
+                        await getInterface().workspace.launch({ projectPath: result.data.projectPath });
                     }
                 })();
             },
@@ -222,10 +237,8 @@ export const fileActionGroup: ModuleActionGroup = {
                 void (async () => {
                     const result = await getInterface().selectFolder();
                     if (!result.success || !result.data?.path) return;
-                    await getInterface().workspace.launch(
-                        { projectPath: result.data.path },
-                        true
-                    );
+                    // Focuses the project's window if it already has one, else opens alongside.
+                    await getInterface().workspace.launch({ projectPath: result.data.path });
                 })();
             },
             order: 1,
@@ -292,6 +305,8 @@ export const helpActionGroup: ModuleActionGroup = {
     label: "Help",
     labelKey: "actions.help.label",
     order: 30,
+    // Built natively as the standard macOS Help menu (see fileActionGroup).
+    menuSlot: "none",
     actions: [
         {
             id: "narraleaf-studio:open-welcome",
@@ -324,5 +339,9 @@ export const globalActions: ModuleAction[] = [devModeAction, previewAction, buil
 /**
  * All global action groups
  * Array of all action groups that should be registered globally
+ *
+ * `fileActionGroup` is deliberately absent: it is registered by `useFileMenu`, which owns it so
+ * the "Open Recent" submenu can track the project history live without two writers racing for the
+ * same id. Its definition above stays the single source of the File group's New/Open/Export/Close.
  */
-export const globalActionGroups: ModuleActionGroup[] = [fileActionGroup, helpActionGroup];
+export const globalActionGroups: ModuleActionGroup[] = [helpActionGroup];

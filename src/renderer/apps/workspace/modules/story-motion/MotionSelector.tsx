@@ -9,6 +9,7 @@ import type {
     StoryDocument,
     StoryTransformRef,
 } from "@shared/types/story";
+import { formatStorySecondsLabel } from "@shared/utils/storyTime";
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
@@ -55,13 +56,13 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 export function motionSummary(asset: StoryAnimationAsset, t: UseTranslation["t"]): string {
-    const durationMs = getStoryMotionDurationMs(asset.timeline);
+    const duration = formatStorySecondsLabel(getStoryMotionDurationMs(asset.timeline));
     const tracks = asset.timeline?.tracks ?? [];
     const labels = tracks
         .slice(0, 3)
         .map(track => t(`motion.propertyLabel.${track.property}`))
         .join(", ");
-    return `${durationMs}ms${labels ? ` / ${labels}${tracks.length > 3 ? "..." : ""}` : ""}`;
+    return `${duration}${labels ? ` / ${labels}${tracks.length > 3 ? "..." : ""}` : ""}`;
 }
 
 /**
@@ -237,7 +238,7 @@ export function MotionSelector(props: {
             <div
                 ref={panelRef}
                 style={{ position: "fixed", top: anchorStyle.top, left: anchorStyle.left, width: anchorStyle.width }}
-                className="flex max-h-[420px] flex-col overflow-hidden rounded-lg border border-edge-strong bg-surface-sunken shadow-2xl"
+                className="flex max-h-[420px] flex-col overflow-hidden rounded-lg border border-edge-strong bg-surface-overlay shadow-2xl"
                 onMouseDown={event => event.stopPropagation()}
             >
                 <div className="flex items-center gap-2 border-b border-edge p-2">
@@ -417,15 +418,15 @@ function MotionHoverPreview(props: {
                             />
                         </div>
                     </div>
-                    <div className="absolute left-2 top-2 truncate rounded bg-black/55 px-1.5 py-0.5 text-2xs font-medium text-fg">
+                    <div className="absolute left-2 top-2 truncate rounded bg-black/55 px-1.5 py-0.5 text-2xs font-medium text-white">
                         {asset.name}
                     </div>
-                    <div className="absolute right-2 bottom-2 rounded bg-black/55 px-1.5 py-0.5 text-2xs text-fg-muted">
+                    <div className="absolute right-2 bottom-2 rounded bg-black/55 px-1.5 py-0.5 text-2xs text-white/70">
                         {motionSummary(asset, t)}
                     </div>
                 </div>
             ) : (
-                <div className="grid h-full w-full place-items-center text-xs text-fg-subtle">{t("motion.selector.loadingPreview")}</div>
+                <div className="grid h-full w-full place-items-center text-xs text-white/70">{t("motion.selector.loadingPreview")}</div>
             )}
         </div>
     );

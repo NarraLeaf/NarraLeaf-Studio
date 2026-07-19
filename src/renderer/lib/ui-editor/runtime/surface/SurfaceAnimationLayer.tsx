@@ -10,9 +10,10 @@ import {
     type RefObject,
 } from "react";
 import { motion, useIsPresent } from "motion/react";
-import type {
-    PageAnimationMotion,
-    PageAnimationNavigationDirection,
+import {
+    scalePageMotionDistances,
+    type PageAnimationMotion,
+    type PageAnimationNavigationDirection,
 } from "@/lib/ui-editor/runtime/pageAnimation";
 
 export const SURFACE_PREPAINT_TIMEOUT_MS = 900;
@@ -23,6 +24,13 @@ type SurfaceAnimationLayerProps = {
     prepaintKey: string;
     direction: PageAnimationNavigationDirection;
     pageMotion: PageAnimationMotion;
+    /**
+     * Render scale applied to the page-animation travel distances (see
+     * {@link scalePageMotionDistances}). Layers rendered OUTSIDE the design→backing scale
+     * transform (the top-level surface stack) pass the host's render scale; layers inside the
+     * scaled tree (nested surface frames) keep the default 1 so distances stay in design px.
+     */
+    scale?: number;
     className?: string;
     style?: CSSProperties;
     contentClassName?: string;
@@ -137,6 +145,7 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
         prepaintKey,
         direction,
         pageMotion,
+        scale = 1,
         className,
         style,
         contentClassName,
@@ -157,6 +166,16 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
     const enterCompleteReportedRef = useRef<string | null>(null);
     const isPresent = useIsPresent();
     const prepaintReady = useSurfacePrepaint(prepaintKey, contentRef);
+    // Snapshot of `prepaintReady` taken while the layer was still present. Exit visibility uses
+    // this instead of live state: a layer removed before its prepaint ever completed has never
+    // been shown, and forcing it visible for the exit would flash never-painted content (still
+    // posed at its enter-initial target) for the duration of the exit animation.
+    const prepaintReadyWhilePresentRef = useRef(false);
+    useLayoutEffect(() => {
+        if (isPresent) {
+            prepaintReadyWhilePresentRef.current = prepaintReady;
+        }
+    }, [isPresent, prepaintReady]);
 
     const reportEnterComplete = useCallback(() => {
         if (enterCompleteReportedRef.current === prepaintKey) {
@@ -204,28 +223,29 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
 
     const variants = useMemo(() => {
         const prepaintTarget = {
-            ...pageMotion.initial,
+            ...scalePageMotionDistances(pageMotion.initial, scale),
             transition: { type: "tween", duration: 0 },
         };
         const exitForDirection = (navDirection: PageAnimationNavigationDirection) => ({
-            ...(resolveExit?.(navDirection) ?? pageMotion.exit),
+            ...scalePageMotionDistances(resolveExit?.(navDirection) ?? pageMotion.exit, scale),
             pointerEvents: "none",
         });
         return {
             prepaint: prepaintTarget,
-            animate: pageMotion.animate,
+            animate: scalePageMotionDistances(pageMotion.animate, scale),
             exit: exitForDirection,
         };
-    }, [pageMotion.animate, pageMotion.exit, pageMotion.initial, resolveExit]);
+    }, [pageMotion.animate, pageMotion.exit, pageMotion.initial, resolveExit, scale]);
 
     const mergedStyle: CSSProperties = {
         ...style,
         zIndex: isPresent ? presentZIndex : exitZIndex,
         pointerEvents: isPresent && prepaintReady && interactive ? style?.pointerEvents : "none",
     };
+    const contentVisible = isPresent ? prepaintReady : prepaintReadyWhilePresentRef.current;
     const mergedContentStyle: CSSProperties = {
         ...contentStyle,
-        opacity: prepaintReady || !isPresent ? contentStyle?.opacity ?? 1 : 0,
+        opacity: contentVisible ? contentStyle?.opacity ?? 1 : 0,
     };
 
     return (

@@ -1,4 +1,4 @@
-/** `story` — the story panel (library/outline) plus the scene editor: prose/dialogue
+/** `story` - the story panel (library/outline) plus the scene editor: prose/dialogue
  *  rows, rich-text toolbar, character/layer/target pickers, pause & interpolation
  *  popovers, and the live preview pane. */
 export const story = {
@@ -30,13 +30,64 @@ export const story = {
         deleteSceneConfirm: "Delete scene \"{name}\"?",
         deleteSceneDetail: "This removes the scene and its blocks from the story document. This action cannot be undone.",
     },
+    flow: {
+        tabTitle: "Scene Flow",
+        tabTitleNamed: "Scene Flow — {name}",
+        node: {
+            blocks: {
+                one: "{count} block",
+                other: "{count} blocks",
+            },
+        },
+        badge: {
+            entry: "Entry scene",
+            unreachable: "Never reached from the entry scene",
+            selfJump: {
+                one: "{count} jump back into this scene",
+                other: "{count} jumps back into this scene",
+            },
+            dangling: {
+                one: "{count} jump with no valid target",
+                other: "{count} jumps with no valid target",
+            },
+        },
+        summary: {
+            scenes: {
+                one: "{count} scene",
+                other: "{count} scenes",
+            },
+            jumps: {
+                one: "{count} jump",
+                other: "{count} jumps",
+            },
+            dangling: {
+                one: "{count} broken jump",
+                other: "{count} broken jumps",
+            },
+            unreachable: {
+                one: "{count} unreachable",
+                other: "{count} unreachable",
+            },
+        },
+        hint: {
+            openScene: "Double-click a scene to open it",
+        },
+        action: {
+            resetLayout: "Reset Layout",
+            openFlow: "Open Scene Flow",
+        },
+        empty: {
+            noStory: "No story to map.",
+            noScenes: "This story has no scenes yet.",
+        },
+    },
     stage: {
         notOnStage: "Not on stage",
         builtin: "Built-in",
     },
     targetField: {
         label: "Target",
-        notOnStageTitle: "Not created earlier in this scene — pick an existing displayable",
+        notOnStageTitle: "Not created earlier in this scene, pick an existing displayable",
         placeholder: "Select displayable…",
         search: "Search stage displayables",
         noMatch: "No match.",
@@ -50,7 +101,7 @@ export const story = {
     layerField: {
         label: "Layer",
         defaultName: "Displayable layer",
-        notOnStageTitle: "No layer with this name is declared earlier in this scene — pick an existing layer",
+        notOnStageTitle: "No layer with this name is declared earlier in this scene, pick an existing layer",
         hint: "Layer",
         createNew: "Create new layer",
     },
@@ -65,7 +116,7 @@ export const story = {
         title: "Pause",
         clickToProceed: "Click to proceed",
         waitFor: "Wait for",
-        ms: "ms",
+        seconds: "s",
         clickHint: "Waits until the player clicks to continue.",
         remove: "Remove pause",
     },
@@ -82,13 +133,13 @@ export const story = {
         bold: "Bold",
         italic: "Italic",
         textColor: "Text color {color}",
-        moreColors: "More colors — project palette",
+        moreColors: "More colors from the project palette",
         insertPause: "Insert pause (waits for a click)",
         insertValue: "Insert inline value",
         insertValueHint: "Insert inline value (variable or blueprint)",
         tools: "Rich text tools",
-        pauseClick: "Pause — waits for a click",
-        pauseMs: "Pause — {ms}ms",
+        pauseClick: "Pause (waits for a click)",
+        pauseSeconds: "Pause {seconds}s",
         insertedValue: "Inserted value: {name}",
         valueFallback: "value",
     },
@@ -104,6 +155,56 @@ export const story = {
         none: "No background",
         unassigned: "unassigned",
     },
+    /**
+     * Names for the inline ghost hint on the command line — the grey `<Var Name>` trailing the caret.
+     * Keyed by `StoryCommandParam.hint` (falling back to the param's `name`), so a slot is named once
+     * and every command that shares it reads the same. Written as a noun phrase, title case, no
+     * brackets: the renderer supplies the angle brackets.
+     */
+    paramHint: {
+        // Variables and logic
+        variableName: "Var Name",
+        variable: "Variable",
+        defaultValue: "Default Value",
+        valueType: "Type",
+        description: "Description",
+        expressionValue: "Value or Expression",
+        condition: "Condition",
+        amount: "Amount",
+        times: "Times",
+        // Stage and media
+        character: "Character",
+        speaker: "Speaker",
+        form: "Expression",
+        imageAsset: "Image",
+        imageOrColor: "Image or Color",
+        videoAsset: "Video",
+        audioAsset: "Audio",
+        objectName: "Name",
+        content: "Content",
+        lineText: "Text",
+        scene: "Scene",
+        // Modifiers
+        duration: "Seconds",
+        transition: "Transition",
+        reveal: "Reveal",
+        placement: "Position",
+        waitFor: "Seconds or click",
+        // Slots whose payload key already reads as its own name, so they carry no explicit `hint`
+        // and fall back to it. Listed here so the coverage test can see them.
+        fade: "Fade Seconds",
+        loop: "Loop",
+        vol: "Volume",
+        volume: "Volume",
+        rate: "Speed",
+        muted: "Muted",
+        color: "Color",
+        hold: "Hold Seconds",
+        opacity: "Opacity",
+        size: "Font Size",
+        z: "Z-Index",
+    },
+
     rows: {
         placeholderDialogue: "Dialogue…",
         placeholderNarration: "Narration…",
@@ -113,13 +214,23 @@ export const story = {
         placeholderText: "Text…",
         dragRow: "Drag row",
         insert: "Insert",
+        delete: "Delete",
+        insertTitle: "Insert a blank row after this one ({keys})",
+        deleteTitle: "Delete this row ({keys})",
+        playFromRow: "Play from this row",
+        playBranch: "Play this branch",
         insertPlaceholder: "Type narration, / for actions, # for characters…",
         noCategoryActionFound: "No {category} action found.",
         actionTypes: "Action types",
         noCharacterFound: "No character found.",
-        doubleClickDialogue: "Double-click to enter dialogue",
+        noCandidates: "No matches.",
         setBackground: "Set background",
         transform: "Transform",
+        invalidHint: "won't build",
+        tempSpeaker: "name only",
+        createCharacter: "Create character “{name}”",
+        voiceOutdated: "Voice outdated, open voice table",
+        voiceManage: "Open voice table",
     },
     sceneEditor: {
         defaultSceneName: "Untitled Scene",
@@ -150,6 +261,14 @@ export const story = {
         pip: "Picture-in-picture",
         selectRow: "Select a story row to preview its stage state.",
         failed: "Preview failed",
+        playFromHere: "Play from here",
+        restart: "Restart",
+        stop: "Stop playback",
+        mute: "Mute",
+        unmute: "Unmute",
+        playing: "Playing",
+        ended: "Reached the end of the scene",
+        endedAtJump: "Stopped at a scene jump",
     },
     blueprintCard: {
         openAria: "Open story action blueprint",
@@ -158,6 +277,9 @@ export const story = {
     condition: {
         title: "Condition",
         kindGraph: "Graph",
+        kindExpression: "Expression",
+        expressionPlaceholder: "gold >= 100 && !met",
+        expressionVariables: "In scope: {names}",
         opIsOn: "is on",
         opIsOff: "is off",
         opEquals: "equals",
@@ -219,11 +341,19 @@ export const story = {
         condition: { label: "Condition (if…)", detail: "Run actions only when a condition is met" },
         repeat: { label: "Repeat", detail: "Run the enclosed actions a number of times" },
         parallel: { label: "Run at the same time", detail: "Run all enclosed actions together" },
-        race: { label: "Race — first to finish", detail: "Run all, continue when the first finishes" },
+        race: { label: "Race, first to finish", detail: "Run all, continue when the first finishes" },
         sequence: { label: "In order", detail: "Run the enclosed actions one after another" },
-        waitDuration: { label: "Wait duration", detail: "Pause for a number of milliseconds" },
+        waitDuration: { label: "Wait duration", detail: "Pause for a number of seconds" },
         waitClick: { label: "Wait for click", detail: "Pause until the player clicks" },
-        setVariable: { label: "Set variable", detail: "Scene local or Story persistent value" },
+        setVariable: { label: "Set variable", detail: "Assign a value or an expression" },
+        incrementVariable: { label: "Increase variable", detail: "Add to a number variable" },
+        decrementVariable: { label: "Decrease variable", detail: "Subtract from a number variable" },
+        toggleVariable: { label: "Toggle variable", detail: "Flip a true/false variable" },
+        resetVariable: { label: "Reset variable", detail: "Restore a variable to its declared default" },
+        declareSceneVariable: { label: "Declare scene variable", detail: "Lives for this scene only" },
+        declareSavedVariable: { label: "Declare saved variable", detail: "Rides the save file" },
+        declarePersistentVariable: { label: "Declare global variable", detail: "Outlives saves - game-level flags" },
+        conditionIf: { label: "If (expression)", detail: "Branch on an expression, e.g. gold >= 100" },
         executeScript: { label: "Execute Script", detail: "Run a Story Action Blueprint" },
         imageCreate: { label: "Image", detail: "Create or update a named stage image" },
         imageSetSource: { label: "Image source", detail: "Change a named image source" },
@@ -264,7 +394,7 @@ export const story = {
         else: "Otherwise",
         repeat: "Repeat",
         parallel: "Run at the same time",
-        race: "Race — first to finish",
+        race: "Race, first to finish",
         sequence: "In order",
         nvl: "NVL",
         menu: "Menu",
@@ -293,6 +423,7 @@ export const story = {
         jump: "Jump",
         code: "Code",
         note: "Note",
+        invalid: "Invalid",
     },
     emptyPlaceholder: {
         narration: "Double-click to enter narration",
@@ -315,7 +446,7 @@ export const story = {
         setBackground: "Set background {value}",
         unassigned: "unassigned",
         characterFallback: "character",
-        waitDuration: "Wait {ms}ms",
+        waitDuration: "Wait {seconds}s",
         waitClick: "Wait for click",
         unnamed: "unnamed",
         targetFallback: "target",
@@ -331,6 +462,7 @@ export const story = {
         jump: "Jump {scene}",
         code: "{language} code",
         note: "Note",
+        invalid: "Invalid command",
         sceneUnassigned: "unassigned",
         sceneUnknown: "unknown scene",
         variableFallback: "variable",
@@ -343,6 +475,7 @@ export const story = {
         undo: "Undo story scene edit",
         redo: "Redo story scene edit",
         editRow: "Edit the active row (or open its inspector)",
+        closeInspector: "Close the property editor",
         insertRow: "Insert a new story row below the active row",
         indent: "Indent selected story rows",
         outdent: "Outdent selected story rows",

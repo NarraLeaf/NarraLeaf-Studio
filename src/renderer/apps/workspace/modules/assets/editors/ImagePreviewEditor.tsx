@@ -34,11 +34,11 @@ function ErrorState({ error }: { error: string }) {
     const { t } = useTranslation();
     return (
         <div className="h-full flex items-center justify-center bg-surface p-4">
-            <div className="flex items-start gap-2 text-red-400 bg-red-500/10 rounded-md p-4 max-w-md">
+            <div className="flex items-start gap-2 text-danger bg-danger/10 rounded-md p-4 max-w-md">
                 <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
                 <div>
                     <p className="font-medium">{t("assets.image.loadError")}</p>
-                    <p className="text-sm mt-1 text-red-300">{error}</p>
+                    <p className="text-sm mt-1 text-danger/80">{error}</p>
                 </div>
             </div>
         </div>
@@ -72,7 +72,7 @@ function PreviewToolbar({
             <div className="flex items-center gap-2">
                 <button
                     onClick={controls.zoomOut}
-                    className="p-1 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors cursor-default"
+                    className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default"
                     title={t("assets.image.zoomOut")}
                 >
                     <ZoomOut className="w-4 h-4" />
@@ -82,14 +82,14 @@ function PreviewToolbar({
                 </span>
                 <button
                     onClick={controls.zoomIn}
-                    className="p-1 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors cursor-default"
+                    className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default"
                     title={t("assets.image.zoomIn")}
                 >
                     <ZoomIn className="w-4 h-4" />
                 </button>
                 <button
                     onClick={controls.resetView}
-                    className="p-1 rounded hover:bg-fill text-fg-muted hover:text-white transition-colors cursor-default ml-2"
+                    className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default ml-2"
                     title={t("assets.image.resetView")}
                 >
                     <RefreshCw className="w-4 h-4" />
@@ -136,7 +136,7 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
             id: `${namespace}:${groupId}-zoom-in`,
             icon: <ZoomIn className="w-4 h-4" />,
             label: t("assets.image.zoomIn"),
-            shortcut: "ctrl+=",
+            shortcut: "mod+=",
             onClick: handleZoomIn,
             order: 1,
             when: focusWhen,
@@ -146,7 +146,7 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
             id: `${namespace}:${groupId}-zoom-out`,
             icon: <ZoomOut className="w-4 h-4" />,
             label: t("assets.image.zoomOut"),
-            shortcut: "ctrl+-",
+            shortcut: "mod+-",
             onClick: handleZoomOut,
             order: 2,
             when: focusWhen,
@@ -156,7 +156,7 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
             id: `${namespace}:${groupId}-reset-view`,
             icon: <RefreshCw className="w-4 h-4" />,
             label: t("assets.image.resetView"),
-            shortcut: "ctrl+0",
+            shortcut: "mod+0",
             onClick: handleResetView,
             order: 3,
             when: focusWhen,

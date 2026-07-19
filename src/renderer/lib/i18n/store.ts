@@ -15,7 +15,7 @@ import {
  * locale change re-renders the whole tree with no context plumbing.
  *
  * The store is the single writer of `<html lang/dir>` and never talks to the
- * bridge itself — persistence and cross-window broadcast are wired in
+ * bridge itself - persistence and cross-window broadcast are wired in
  * `bootstrap.ts` / `useTranslation.ts`, keeping this module trivially testable.
  */
 let currentLocale: Locale = DEFAULT_LOCALE;
@@ -59,13 +59,13 @@ export const i18nStore = {
 applyDocumentLocale(currentLocale);
 
 /**
- * Imperative translation for non-React code — service notifications, event
+ * Imperative translation for non-React code - service notifications, event
  * handler closures, and `.ts` helpers that cannot call the `useTranslation`
  * hook. Reads the window's current locale at call time, so fire-and-forget
  * text (toasts, dialogs, thrown messages that surface to the user) is localized.
  *
  * For text that stays mounted and must re-localize on a live language switch,
- * use the `useTranslation` hook instead — an imperative call is a snapshot.
+ * use the `useTranslation` hook instead - an imperative call is a snapshot.
  */
 export function translate(key: TranslationKey, params?: InterpolationParams): string {
     return translator.t(key, params);

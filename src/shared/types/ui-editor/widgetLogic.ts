@@ -231,6 +231,21 @@ const BROADCAST_EVENTS: readonly WidgetLogicEventDef[] = [
     },
 ];
 
+/**
+ * Ambient application-window events. Like broadcasts these are not widget
+ * interactions, but any widget may listen to them - a settings-page control can
+ * track the window without owning the Page or Global blueprint.
+ */
+const WINDOW_EVENTS: readonly WidgetLogicEventDef[] = [
+    {
+        id: "windowFullscreenChanged",
+        displayName: "Fullscreen changed",
+        description: "Fires when the application window enters or leaves fullscreen.",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.fullscreenChanged"],
+    },
+];
+
 const FRAME_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
     FLUSH_EVENT,
@@ -244,6 +259,7 @@ const FRAME_EVENTS: readonly WidgetLogicEventDef[] = [
     },
     ...KEYBOARD_EVENTS,
     ...BROADCAST_EVENTS,
+    ...WINDOW_EVENTS,
 ];
 
 const SLIDER_EVENTS: readonly WidgetLogicEventDef[] = [
@@ -271,6 +287,41 @@ const SLIDER_EVENTS: readonly WidgetLogicEventDef[] = [
     },
     ...KEYBOARD_EVENTS,
     ...BROADCAST_EVENTS,
+    ...WINDOW_EVENTS,
+];
+
+const TEXT_INPUT_EVENTS: readonly WidgetLogicEventDef[] = [
+    INIT_EVENT,
+    FLUSH_EVENT,
+    ...SURFACE_LIFECYCLE_EVENTS,
+    UNMOUNT_EVENT,
+    {
+        id: "valueChanged",
+        displayName: "Value changed",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.textInputValueChanged"],
+    },
+    {
+        id: "submit",
+        displayName: "Submit",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.textInputSubmit"],
+    },
+    {
+        id: "focus",
+        displayName: "Focus",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.focus"],
+    },
+    {
+        id: "blur",
+        displayName: "Blur",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.blur"],
+    },
+    ...KEYBOARD_EVENTS,
+    ...BROADCAST_EVENTS,
+    ...WINDOW_EVENTS,
 ];
 
 const DISPLAYABLE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
@@ -281,6 +332,7 @@ const DISPLAYABLE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     ...LIST_ITEM_CONTEXT_EVENTS,
     ...DISPLAYABLE_EVENTS,
     ...BROADCAST_EVENTS,
+    ...WINDOW_EVENTS,
 ];
 
 const COLLECTION_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
@@ -292,6 +344,7 @@ const COLLECTION_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     ...LIST_ITEM_EVENTS,
     ...KEYBOARD_EVENTS,
     ...BROADCAST_EVENTS,
+    ...WINDOW_EVENTS,
 ];
 
 const baseCommands: readonly WidgetLogicCommandDef[] = [
@@ -501,6 +554,30 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             { propPath: "min", displayName: "Min" },
             { propPath: "max", displayName: "Max" },
             { propPath: "step", displayName: "Step" },
+        ],
+    },
+    "nl.textInput": {
+        supportsPrivateBlueprint: true,
+        blueprintLabel: "Text input logic",
+        events: TEXT_INPUT_EVENTS,
+        commands: [
+            ...baseCommands,
+            {
+                id: "setValue",
+                displayName: "Set value",
+                capabilityId: "widget.setTextInputProperties",
+                availability: "available",
+            },
+        ],
+        readableState: [
+            { id: "value", displayName: "Value" },
+            { id: "length", displayName: "Length" },
+        ],
+        writableProps: [
+            { propPath: "value", displayName: "Value" },
+            { propPath: "placeholder", displayName: "Placeholder" },
+            { propPath: "readOnly", displayName: "Read only" },
+            { propPath: "disabled", displayName: "Disabled" },
         ],
     },
     "nl.frame": {

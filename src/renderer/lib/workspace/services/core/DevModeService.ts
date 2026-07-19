@@ -45,7 +45,7 @@ export class DevModeService extends Service<DevModeService> {
         }
         this.refreshInFlight = true;
         try {
-            const result = await getInterface().devMode.getStatus();
+            const result = await getInterface().devMode.getStatus(this.projectPath());
             if (result.success) {
                 this.updateStatus(result.data.status);
             }
@@ -63,7 +63,7 @@ export class DevModeService extends Service<DevModeService> {
             this.updateStatus("error");
             return this.status;
         }
-        const path = projectPath ?? this.getContext().project.getConfig().projectPath;
+        const path = projectPath ?? this.projectPath();
         const result = await getInterface().devMode.launch(path, entry);
         if (result.success) {
             this.updateStatus(result.data.status);
@@ -90,22 +90,27 @@ export class DevModeService extends Service<DevModeService> {
         await character.flushPendingChanges();
     }
 
-    public async stop(): Promise<DevModeStatus> {
-        const result = await getInterface().devMode.stop();
+    public async stop(projectPath?: string): Promise<DevModeStatus> {
+        const result = await getInterface().devMode.stop(projectPath ?? this.projectPath());
         if (result.success) {
             this.updateStatus(result.data.status);
         }
         return this.status;
     }
 
-    public async reload(): Promise<DevModeStatus> {
-        const result = await getInterface().devMode.reload();
+    public async reload(projectPath?: string): Promise<DevModeStatus> {
+        const result = await getInterface().devMode.reload(projectPath ?? this.projectPath());
         if (result.success) {
             this.updateStatus(result.data.status);
         } else {
             this.updateStatus("error");
         }
         return this.status;
+    }
+
+    /** This window's project - every Dev Mode call is scoped to it, never to "whatever is running". */
+    private projectPath(): string {
+        return this.getContext().project.getConfig().projectPath;
     }
 
     private updateStatus(nextStatus: DevModeStatus): void {

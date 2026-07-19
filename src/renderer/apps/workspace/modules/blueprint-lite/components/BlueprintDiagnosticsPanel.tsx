@@ -29,9 +29,9 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick }: Props) {
             <span
                 className={
                     d.severity === "error"
-                        ? "text-red-400"
+                        ? "text-danger"
                         : d.severity === "warning"
-                          ? "text-amber-400"
+                          ? "text-warning"
                           : "text-fg-muted"
                 }
             >

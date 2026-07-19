@@ -20,9 +20,16 @@ import {
     ActionSubmenu,
     EditorLayout,
     EditorGroup,
+    EditorSplit,
     EditorTabDefinition,
     ActionSeparator,
 } from "@/apps/workspace/registry/types";
+
+/**
+ * Hard floor/ceiling for a split ratio - a backstop against a zero-width pane, not a usability
+ * limit. Small enough that the sash's pixel minimum always binds first, at any window size.
+ */
+export const EDITOR_SPLIT_RATIO_EPSILON = 0.02;
 
 export interface SelectionState {
     type: "asset" | "character" | "element" | "scene" | "storyMotionKeyframe" | null;
@@ -563,11 +570,411 @@ export class UIStore {
 
     // === Editor Layout ===
 
+    /** Replace the group node with the given id by an arbitrary layout subtree. */
+    private replaceGroupNode(
+        layout: EditorLayout,
+        groupId: string,
+        replacement: (group: EditorGroup) => EditorLayout,
+    ): EditorLayout {
+        if ("tabs" in layout) {
+            return layout.id === groupId ? replacement(layout) : layout;
+        }
+        return {
+            ...layout,
+            first: this.replaceGroupNode(layout.first, groupId, replacement),
+            second: this.replaceGroupNode(layout.second, groupId, replacement),
+        };
+    }
+
+    /** All groups in the layout, first/left before second/right. */
+    private collectGroups(layout: EditorLayout = this.state.editorLayout): EditorGroup[] {
+        if ("tabs" in layout) {
+            return [layout];
+        }
+        return [...this.collectGroups(layout.first), ...this.collectGroups(layout.second)];
+    }
+
+    /** A group/split id not used anywhere in the current layout. */
+    private nextLayoutNodeId(prefix: string): string {
+        const used = new Set<string>();
+        const visit = (layout: EditorLayout) => {
+            used.add(layout.id);
+            if (!("tabs" in layout)) {
+                visit(layout.first);
+                visit(layout.second);
+            }
+        };
+        visit(this.state.editorLayout);
+        for (let index = 1; ; index++) {
+            const candidate = `${prefix}-${index}`;
+            if (!used.has(candidate)) {
+                return candidate;
+            }
+        }
+    }
+
+    /**
+     * Split a group: its active tab moves into a fresh group placed beside it ("horizontal" puts
+     * the new group to the right, "vertical" below). The moved tab keeps focus, now in the new
+     * group.
+     *
+     * Needs two tabs to be meaningful: splitting a single-tab group would move the only tab out
+     * and leave an empty pane sitting on half the editor area - exactly the state
+     * {@link pruneEmptyEditorGroups} exists to undo. Enforced here rather than only at the call
+     * sites so the chord, the palette command and the tab menu cannot disagree.
+     */
+    public splitEditorGroup(groupId: string, direction: "horizontal" | "vertical", tabId?: string): boolean {
+        const group = this.findGroup(this.state.editorLayout, groupId);
+        if (!group || group.tabs.length < 2) {
+            return false;
+        }
+        // `tabId` is the tab a context menu was opened on; commands and chords have no click
+        // target and split the focused tab instead.
+        const movedTab =
+            (tabId ? group.tabs.find((tab) => tab.id === tabId) : undefined) ??
+            group.tabs.find((tab) => tab.id === group.focus) ??
+            group.tabs[group.tabs.length - 1];
+        const newGroupId = this.nextLayoutNodeId("group");
+        const splitId = this.nextLayoutNodeId("split");
+
+        this.state.editorLayout = this.replaceGroupNode(this.state.editorLayout, groupId, (target) => {
+            const remaining = target.tabs.filter((tab) => tab.id !== movedTab.id);
+            return {
+                id: splitId,
+                direction,
+                ratio: 0.5,
+                first: {
+                    ...target,
+                    tabs: remaining,
+                    focus: remaining.some((tab) => tab.id === target.focus)
+                        ? target.focus
+                        : remaining[remaining.length - 1]?.id ?? null,
+                },
+                second: { id: newGroupId, tabs: [movedTab], focus: movedTab.id },
+            };
+        });
+
+        this.recordEditorTabFocus(newGroupId, movedTab.id);
+        this.events.emit("editorLayoutChanged", this.state.editorLayout);
+        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+        return true;
+    }
+
+    /**
+     * Insert a fresh empty group beside `targetGroupId`, returning its id. "before" puts the new
+     * group left/above the target, "after" right/below.
+     *
+     * Does not emit - the caller is mid-operation and emits once its own work is done. The caller
+     * MUST also put something in the returned group: an empty pane renders as half the editor area
+     * showing nothing, and {@link pruneEmptyEditorGroups} only runs on close.
+     */
+    private insertEmptyGroupBeside(
+        targetGroupId: string,
+        direction: "horizontal" | "vertical",
+        side: "before" | "after",
+    ): string | null {
+        if (!this.findGroup(this.state.editorLayout, targetGroupId)) {
+            return null;
+        }
+        const newGroupId = this.nextLayoutNodeId("group");
+        const splitId = this.nextLayoutNodeId("split");
+        const created: EditorGroup = { id: newGroupId, tabs: [], focus: null };
+
+        this.state.editorLayout = this.replaceGroupNode(this.state.editorLayout, targetGroupId, (group) => ({
+            id: splitId,
+            direction,
+            ratio: 0.5,
+            first: side === "before" ? created : group,
+            second: side === "before" ? group : created,
+        }));
+
+        return newGroupId;
+    }
+
+    /**
+     * Split a group to receive dropped content, returning the new empty group's id.
+     *
+     * Unlike {@link splitEditorGroup} there is no two-tab requirement: the content lands from
+     * outside (the assets panel), so the target group never gives a tab up. The caller must open
+     * something in the returned group - see {@link insertEmptyGroupBeside}.
+     */
+    public splitEditorGroupForDrop(
+        targetGroupId: string,
+        direction: "horizontal" | "vertical",
+        side: "before" | "after",
+    ): string | null {
+        const newGroupId = this.insertEmptyGroupBeside(targetGroupId, direction, side);
+        if (!newGroupId) {
+            return null;
+        }
+        this.events.emit("editorLayoutChanged", this.state.editorLayout);
+        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+        return newGroupId;
+    }
+
+    /**
+     * Move a tab to `toGroupId` at `index` (appended when omitted). Same-group moves reorder.
+     *
+     * The tab object travels as-is, so its payload and modified flag survive; the React subtree is
+     * still remounted, since the tab lands under a different group component.
+     */
+    public moveEditorTabToGroup(
+        tabId: string,
+        fromGroupId: string,
+        toGroupId: string,
+        index?: number,
+    ): boolean {
+        const from = this.findGroup(this.state.editorLayout, fromGroupId);
+        if (!from) {
+            return false;
+        }
+        const currentIndex = from.tabs.findIndex((tab) => tab.id === tabId);
+        if (currentIndex < 0) {
+            return false;
+        }
+        if (fromGroupId === toGroupId) {
+            // Dropping a tab onto either side of where it already sits is a no-op. Bailing keeps
+            // an accidental nudge from remounting the editor for an identical layout.
+            const insertAt = index ?? from.tabs.length;
+            if (insertAt === currentIndex || insertAt === currentIndex + 1) {
+                return false;
+            }
+        }
+        return this.relocateEditorTab(tabId, fromGroupId, toGroupId, index);
+    }
+
+    /**
+     * Move a tab into a new pane split off `targetGroupId` - the drag-to-split landing.
+     *
+     * Splitting a group's *own* only tab off itself is rejected for the same reason
+     * {@link splitEditorGroup} needs two tabs: the source would empty out and immediately collapse
+     * back, so the whole gesture would be an expensive no-op.
+     */
+    public moveEditorTabToNewSplit(
+        tabId: string,
+        fromGroupId: string,
+        targetGroupId: string,
+        direction: "horizontal" | "vertical",
+        side: "before" | "after",
+    ): boolean {
+        const from = this.findGroup(this.state.editorLayout, fromGroupId);
+        if (!from?.tabs.some((tab) => tab.id === tabId)) {
+            return false;
+        }
+        if (fromGroupId === targetGroupId && from.tabs.length < 2) {
+            return false;
+        }
+        const newGroupId = this.insertEmptyGroupBeside(targetGroupId, direction, side);
+        if (!newGroupId) {
+            return false;
+        }
+        return this.relocateEditorTab(tabId, fromGroupId, newGroupId, undefined);
+    }
+
+    /** Detach a tab from one group and re-attach it to another, focused. Emits on success. */
+    private relocateEditorTab(
+        tabId: string,
+        fromGroupId: string,
+        toGroupId: string,
+        index: number | undefined,
+    ): boolean {
+        const from = this.findGroup(this.state.editorLayout, fromGroupId);
+        const moved = from?.tabs.find((tab) => tab.id === tabId);
+        if (!from || !moved || !this.findGroup(this.state.editorLayout, toGroupId)) {
+            return false;
+        }
+
+        // A same-group index was measured against the list *including* the dragged tab, so once the
+        // tab is pulled out every position past it shifts down by one.
+        const currentIndex = from.tabs.findIndex((tab) => tab.id === tabId);
+        const insertAt =
+            index !== undefined && fromGroupId === toGroupId && index > currentIndex ? index - 1 : index;
+
+        this.state.editorLayout = this.updateGroup(this.state.editorLayout, fromGroupId, (group) => ({
+            ...group,
+            tabs: group.tabs.filter((tab) => tab.id !== tabId),
+            focus: group.focus === tabId ? null : group.focus,
+        }));
+
+        this.state.editorLayout = this.updateGroup(this.state.editorLayout, toGroupId, (group) => {
+            // Filter again: the same tab id can be open in two groups, and a move must merge into
+            // the destination's copy rather than duplicate it.
+            const tabs = group.tabs.filter((tab) => tab.id !== tabId);
+            const at = insertAt === undefined ? tabs.length : Math.max(0, Math.min(insertAt, tabs.length));
+            tabs.splice(at, 0, moved);
+            return { ...group, tabs, focus: tabId };
+        });
+
+        this.pruneEmptyEditorGroups();
+        this.ensureEditorGroupHasValidFocus(fromGroupId);
+        this.recordEditorTabFocus(toGroupId, tabId);
+
+        this.events.emit("editorLayoutChanged", this.state.editorLayout);
+        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+        return true;
+    }
+
+    /**
+     * Collapse the layout to a single group: every other group's tabs append into the kept group
+     * (nothing is closed - "close other groups" merges, it does not discard work).
+     */
+    public closeOtherEditorGroups(keepGroupId: string): boolean {
+        const keep = this.findGroup(this.state.editorLayout, keepGroupId);
+        if (!keep) {
+            return false;
+        }
+        const groups = this.collectGroups();
+        if (groups.length < 2) {
+            return false;
+        }
+
+        const merged: EditorGroup = { ...keep, tabs: [...keep.tabs] };
+        const knownIds = new Set(merged.tabs.map((tab) => tab.id));
+        for (const group of groups) {
+            if (group.id === keepGroupId) {
+                continue;
+            }
+            for (const tab of group.tabs) {
+                if (!knownIds.has(tab.id)) {
+                    knownIds.add(tab.id);
+                    merged.tabs.push(tab);
+                }
+            }
+        }
+        if (!merged.focus || !merged.tabs.some((tab) => tab.id === merged.focus)) {
+            merged.focus = merged.tabs[merged.tabs.length - 1]?.id ?? null;
+        }
+
+        this.state.editorLayout = merged;
+        this.pruneEditorTabFocusHistory();
+        if (merged.focus) {
+            this.recordEditorTabFocus(merged.id, merged.focus);
+        }
+        this.events.emit("editorLayoutChanged", this.state.editorLayout);
+        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+        return true;
+    }
+
+    /**
+     * Drop split panes that no longer hold an editor. Closing the last tab of one side of a split
+     * would otherwise leave an empty pane with a bare tab strip sitting on half the editor area;
+     * the split exists to show two editors, so it collapses back to the surviving side. The root
+     * group is kept even when empty - that is the "no tabs open" drop zone.
+     */
+    private pruneEmptyEditorGroups(): void {
+        const prune = (layout: EditorLayout): EditorLayout => {
+            if ("tabs" in layout) {
+                return layout;
+            }
+            const first = prune(layout.first);
+            const second = prune(layout.second);
+            const isEmptyGroup = (node: EditorLayout) => "tabs" in node && node.tabs.length === 0;
+            if (isEmptyGroup(first)) {
+                return second;
+            }
+            if (isEmptyGroup(second)) {
+                return first;
+            }
+            return first === layout.first && second === layout.second ? layout : { ...layout, first, second };
+        };
+        this.state.editorLayout = prune(this.state.editorLayout);
+    }
+
     private findGroup(layout: EditorLayout, groupId?: string): EditorGroup | null {
         if ("tabs" in layout) {
             return !groupId || layout.id === groupId ? layout : null;
         }
         return this.findGroup(layout.first, groupId) || this.findGroup(layout.second, groupId);
+    }
+
+    /**
+     * A group id that definitely exists: the named one, else the first group in the layout.
+     *
+     * Callers hold group ids across time (a restored session, a queued open, a pane that has since
+     * been closed), so a stale id must land somewhere real rather than address a group that is
+     * gone - reading `.id` off a split root yields `undefined`, and every update then silently
+     * matches nothing.
+     */
+    private resolveGroupId(groupId?: string): string {
+        const named = this.findGroup(this.state.editorLayout, groupId);
+        if (named) {
+            return named.id;
+        }
+        const first = this.findGroup(this.state.editorLayout);
+        return first?.id ?? (this.state.editorLayout as EditorGroup).id;
+    }
+
+    /** Update the split node with the given id, leaving the rest of the tree alone. */
+    private updateSplit(
+        layout: EditorLayout,
+        splitId: string,
+        updater: (split: EditorSplit) => EditorSplit,
+    ): EditorLayout {
+        if ("tabs" in layout) {
+            return layout;
+        }
+        if (layout.id === splitId) {
+            return updater(layout);
+        }
+        return {
+            ...layout,
+            first: this.updateSplit(layout.first, splitId, updater),
+            second: this.updateSplit(layout.second, splitId, updater),
+        };
+    }
+
+    /**
+     * Resize a split. `ratio` is the first/left/top side's share of the axis.
+     *
+     * The bound here is deliberately loose - it exists only to stop a pane reaching literal zero,
+     * where it would render a tab strip too thin to grab and drag back. The *meaningful* minimum is
+     * a pixel one and belongs to the sash, which is the only caller that knows how wide the
+     * container actually is. Tightening this to something like 10% would silently override that:
+     * on a 2560px editor area it would forbid any pane under 256px, which is not a limit anyone
+     * asked for. See EDITOR_MIN_PANE_PX in editorSplitResize.ts for the real constraint.
+     */
+    public setEditorSplitRatio(splitId: string, ratio: number): boolean {
+        if (!Number.isFinite(ratio)) {
+            return false;
+        }
+        const clamped = Math.min(1 - EDITOR_SPLIT_RATIO_EPSILON, Math.max(EDITOR_SPLIT_RATIO_EPSILON, ratio));
+        let changed = false;
+
+        this.state.editorLayout = this.updateSplit(this.state.editorLayout, splitId, (split) => {
+            if (split.ratio === clamped) {
+                return split;
+            }
+            changed = true;
+            return { ...split, ratio: clamped };
+        });
+
+        if (!changed) {
+            return false;
+        }
+        this.events.emit("editorLayoutChanged", this.state.editorLayout);
+        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+        return true;
+    }
+
+    /**
+     * Install a whole layout tree - the session restore path, and the only caller that should use
+     * it. Everything else mutates through the targeted operations above so the focus history and
+     * empty-pane invariants stay intact; this rebuilds them from scratch instead.
+     */
+    public restoreEditorLayout(layout: EditorLayout): void {
+        this.state.editorLayout = layout;
+        this.pruneEmptyEditorGroups();
+        for (const group of this.collectGroups()) {
+            this.ensureEditorGroupHasValidFocus(group.id);
+        }
+        this.editorTabFocusHistory = [];
+        for (const group of this.collectGroups()) {
+            if (group.focus) {
+                this.recordEditorTabFocus(group.id, group.focus);
+            }
+        }
+        this.events.emit("editorLayoutChanged", this.state.editorLayout);
+        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
     }
 
     private updateGroup(
@@ -689,9 +1096,9 @@ export class UIStore {
         return [...this.editorTabFocusHistory];
     }
 
-    public openEditorTabInGroup<TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string, activate: boolean = true): void {
+    public openEditorTabInGroup<TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string, activate: boolean = true, index?: number): void {
         const targetGroup = this.findGroup(this.state.editorLayout, groupId);
-        const targetId = targetGroup?.id ?? (this.state.editorLayout as EditorGroup).id;
+        const targetId = this.resolveGroupId(groupId);
 
         this.state.editorLayout = this.updateGroup(this.state.editorLayout, targetId, (group) => {
             // Check if tab already exists
@@ -702,11 +1109,12 @@ export class UIStore {
                 updatedTabs[existingIndex] = tab as EditorTabDefinition<any>;
                 return { ...group, tabs: updatedTabs, focus: activate ? tab.id : group.focus };
             }
-            // Add new tab
-            const newGroup = {
-                ...group,
-                tabs: [...group.tabs, tab as EditorTabDefinition<any>],
-            };
+            // Add new tab - at `index` when given (reopening a closed tab puts it
+            // back where it was), appended otherwise.
+            const updatedTabs = [...group.tabs];
+            const insertAt = index === undefined ? updatedTabs.length : Math.max(0, Math.min(index, updatedTabs.length));
+            updatedTabs.splice(insertAt, 0, tab as EditorTabDefinition<any>);
+            const newGroup = { ...group, tabs: updatedTabs };
             return activate ? { ...newGroup, focus: tab.id } : newGroup;
         });
 
@@ -723,7 +1131,7 @@ export class UIStore {
 
     public updateEditorTabPayload<TPayload = any>(tabId: string, payload: TPayload, groupId?: string): void {
         const targetGroup = this.findGroup(this.state.editorLayout, groupId);
-        const targetId = targetGroup?.id ?? (this.state.editorLayout as EditorGroup).id;
+        const targetId = this.resolveGroupId(groupId);
 
         this.state.editorLayout = this.updateGroup(this.state.editorLayout, targetId, (group) => {
             const tabIndex = group.tabs.findIndex((t) => t.id === tabId);
@@ -741,7 +1149,7 @@ export class UIStore {
 
     public closeEditorTabInGroup(tabId: string, groupId?: string): EditorTabFocusTarget | null {
         const targetGroup = this.findGroup(this.state.editorLayout, groupId);
-        const targetId = targetGroup?.id ?? (this.state.editorLayout as EditorGroup).id;
+        const targetId = this.resolveGroupId(groupId);
         const closedActiveTab = targetGroup?.focus === tabId;
 
         this.state.editorLayout = this.updateGroup(this.state.editorLayout, targetId, (group) => {
@@ -755,6 +1163,7 @@ export class UIStore {
 
             return { ...group, tabs, focus: activeTabId };
         });
+        this.pruneEmptyEditorGroups();
 
         const entriesAfterClose = this.collectEditorTabFocusEntries();
         this.pruneEditorTabFocusHistory(entriesAfterClose);
@@ -797,7 +1206,7 @@ export class UIStore {
         }
 
         const targetGroup = this.findGroup(this.state.editorLayout, groupId);
-        const targetId = targetGroup?.id ?? (this.state.editorLayout as EditorGroup).id;
+        const targetId = this.resolveGroupId(groupId);
         const groupSnapshot =
             targetGroup ?? (this.state.editorLayout as EditorGroup);
         const closedIds = groupSnapshot.tabs.filter((t) => idSet.has(t.id)).map((t) => t.id);
@@ -818,6 +1227,7 @@ export class UIStore {
 
             return { ...group, tabs, focus: activeTabId };
         });
+        this.pruneEmptyEditorGroups();
 
         const entriesAfterClose = this.collectEditorTabFocusEntries();
         this.pruneEditorTabFocusHistory(entriesAfterClose);

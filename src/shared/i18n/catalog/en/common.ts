@@ -1,5 +1,5 @@
 /**
- * `common` — ubiquitous verbs, nouns, and chrome reused across every surface.
+ * `common` - ubiquitous verbs, nouns, and chrome reused across every surface.
  * Prefer reusing these keys over re-declaring the same word in a module
  * namespace, so a single translation covers the whole app.
  */

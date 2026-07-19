@@ -1,5 +1,5 @@
 /**
- * `defaultDoc` — default UI-document content baked into a newly created project.
+ * `defaultDoc` - default UI-document content baked into a newly created project.
  *
  * These element names, preview placeholder text, and blueprint display names are
  * resolved with `translate("defaultDoc.…")` at document-build time, so the

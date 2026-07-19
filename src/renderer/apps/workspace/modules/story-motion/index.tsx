@@ -17,6 +17,7 @@ export const STORY_MOTION_PANEL_ID = "narraleaf-studio:story-motion";
 export const storyMotionPanelModule: PanelModule<StoryMotionPanelPayload> = {
     metadata: {
         id: STORY_MOTION_PANEL_ID,
+        titleKey: "placeholders.moduleTitles.storyMotion",
         get title() { return translate("placeholders.moduleTitles.storyMotion"); },
         icon: <Spline className="w-4 h-4" />,
         position: PanelPosition.Bottom,

@@ -75,7 +75,7 @@ export const widgetChrome = {
             one: "UI 文档中存在 {count} 个旧版钩子",
             other: "UI 文档中存在 {count} 个旧版钩子",
         },
-        eventSchemaMismatch: "事件结构不匹配。请在编辑器中查看诊断信息",
+        eventSchemaMismatch: "事件结构不匹配，请在编辑器中查看诊断信息",
     },
     dockerItems: {
         size: "尺寸",

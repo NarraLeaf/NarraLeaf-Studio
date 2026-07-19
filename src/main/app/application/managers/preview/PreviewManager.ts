@@ -6,14 +6,12 @@ import { spawn, type ChildProcess } from "child_process";
 import chokidar, { type FSWatcher } from "chokidar";
 import { WebSocket } from "ws";
 import { App } from "@/app/app";
-import { AppWindow } from "../window/appWindow";
-import { WindowAppType } from "@shared/types/window";
-import { IPCEventType } from "@shared/types/ipcEvents";
 import type { DevModeConsoleLogPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
+import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
 import {
-    compileGameRuntimePreviewArtifact,
+    compileGameRuntimeArtifact,
     type GameRuntimeArtifactCompileResult,
 } from "./compiler/gameRuntimeArtifactCompiler";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
@@ -137,13 +135,16 @@ export class PreviewManager {
             if (encryptionKey) {
                 this.emitVerbose(session, "asset protection enabled; encrypting pack");
             }
-            const artifact = await compileGameRuntimePreviewArtifact({
+            const artifact = await compileGameRuntimeArtifact({
                 projectPath: normalizedProjectPath,
                 entry,
                 runtimeDistDir: this.getRuntimeDistDir(),
                 runtimeVersion: this.readRuntimeVersion(),
-                controlPort: session.controlPort,
-                controlToken: session.controlToken,
+                outputRoot: path.join(normalizedProjectPath, ".nlstudio", "preview"),
+                preview: {
+                    controlPort: session.controlPort,
+                    controlToken: session.controlToken,
+                },
                 runtimePlugins: pluginSelection.selected,
                 mode: "preview",
                 encryptionKey,
@@ -430,26 +431,7 @@ export class PreviewManager {
     }
 
     private emitWorkspaceConsoleLog(session: PreviewSession, payload: DevModeConsoleLogPayload): void {
-        const workspaceWindow = this.findWorkspaceWindow(session.projectPath);
-        if (!workspaceWindow) {
-            return;
-        }
-        workspaceWindow.sendIpcEvent(IPCEventType.workspaceDevModeConsoleLog, {
-            timestamp: Date.now(),
-            ...payload,
-        });
-    }
-
-    private findWorkspaceWindow(projectPath: string): AppWindow<WindowAppType.Workspace> | undefined {
-        return this.app.windowManager
-            .getWindows()
-            .find(
-                w =>
-                    w.getWindowType() === WindowAppType.Workspace &&
-                    !w.isDestroyed() &&
-                    !w.isClosed() &&
-                    path.normalize(w.getProps().projectPath) === path.normalize(projectPath),
-            ) as AppWindow<WindowAppType.Workspace> | undefined;
+        emitWorkspaceConsoleLog(this.app, session.projectPath, payload);
     }
 
     private describeEntry(entry: GameRuntimeLaunchEntry): string {

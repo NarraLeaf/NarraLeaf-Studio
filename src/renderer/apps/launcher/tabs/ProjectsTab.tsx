@@ -4,30 +4,19 @@ import { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
 import { Button } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { FolderOpen, Plus, Upload, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useRecentProjects, useRemoveRecentProject } from "@/lib/app/hooks/useRecentProjects";
+import { createProjectFromWizard, openProjectFromFolder } from "../projectActions";
 
 export function ProjectsTab() {
     const { t } = useTranslation();
     const [isOpening, setIsOpening] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const [operationError, setOperationError] = useState<string | null>(null);
-    const [recentProjects, setRecentProjects] = useState<RecentlyOpenedProject[]>([]);
+    // Live, so a project opened or removed from another window shows up here too.
+    const recentProjects = useRecentProjects();
+    const removeRecentProject = useRemoveRecentProject();
     const isBusy = isOpening || isImporting;
-
-    useEffect(() => {
-        const loadRecentProjects = async () => {
-            try {
-                const result = await getInterface().app.state.getGlobalState("app.recentProjects");
-                if (result.success) {
-                    setRecentProjects(result.data.value || []);
-                }
-            } catch (error) {
-                console.error("Failed to load recent projects:", error);
-            }
-        };
-
-        loadRecentProjects();
-    }, []);
 
     const handleOpenRecentProject = async (project: RecentlyOpenedProject) => {
         if (isBusy) return;
@@ -49,71 +38,31 @@ export function ProjectsTab() {
     };
 
     const handleRemoveRecentProject = async (project: RecentlyOpenedProject) => {
-        const next = recentProjects.filter((p) => p.path !== project.path);
-        setRecentProjects(next);
-        try {
-            const result = await getInterface().app.state.setGlobalState("app.recentProjects", next);
-            if (!result.success) {
-                const reload = await getInterface().app.state.getGlobalState("app.recentProjects");
-                if (reload.success) {
-                    setRecentProjects(reload.data.value || []);
-                }
-            }
-        } catch (error) {
-            console.error("Failed to remove recent project:", error);
-            try {
-                const reload = await getInterface().app.state.getGlobalState("app.recentProjects");
-                if (reload.success) {
-                    setRecentProjects(reload.data.value || []);
-                }
-            } catch {
-                /* ignore */
-            }
-        }
+        // The main process rebuilds the list and broadcasts it back, which is what re-renders this
+        // one. No optimistic local copy: writing a filtered snapshot back would erase whatever
+        // another window did to the history in the meantime.
+        await removeRecentProject(project.path);
     };
 
     const handleNewProject = async () => {
         if (isBusy) return;
         setOperationError(null);
-        const result = await getInterface().app.launchProjectWizard({});
-        if (!result.success) {
-            setOperationError(result.error || t("launcher.projects.errorCreate"));
-            return;
-        }
-        if (result.success && result.data?.created) {
-            // Open workspace with the selected folder
-            await getInterface().workspace.launch(
-                { projectPath: result.data.projectPath },
-                true // Close launcher window after opening workspace
-            );
+        const error = await createProjectFromWizard();
+        if (error !== null) {
+            setOperationError(error || t("launcher.projects.errorCreate"));
         }
     };
 
     const handleOpenFolder = async () => {
         if (isBusy) return;
-        
+
         setIsOpening(true);
         setOperationError(null);
         try {
-            // Select folder
-            const result = await getInterface().selectFolder();
-            
-            if (!result.success) {
-                console.error("Failed to select folder:", result.error);
-                setOperationError(result.error || t("launcher.projects.errorOpenFolder"));
-                return;
+            const error = await openProjectFromFolder();
+            if (error !== null) {
+                setOperationError(error || t("launcher.projects.errorOpenFolder"));
             }
-
-            if (!result.data.path) {
-                // User cancelled
-                return;
-            }
-
-            // Open workspace with the selected folder
-            await getInterface().workspace.launch(
-                { projectPath: result.data.path },
-                true // Close launcher window after opening workspace
-            );
         } catch (error) {
             console.error("Error opening folder:", error);
             setOperationError(error instanceof Error ? error.message : String(error));
@@ -191,7 +140,7 @@ export function ProjectsTab() {
             </div>
 
             {operationError && (
-                <div className="mb-4 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                <div className="mb-4 rounded-md border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger">
                     {operationError}
                 </div>
             )}
@@ -243,7 +192,7 @@ export function ProjectsTab() {
                                         e.stopPropagation();
                                         void handleRemoveRecentProject(project);
                                     }}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-fg-muted opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 transition-opacity cursor-default"
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-fg-muted opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-edge-strong transition-opacity cursor-default"
                                     title={t("launcher.projects.removeFromRecent")}
                                     aria-label={t("launcher.projects.removeNamedFromRecent", { name: project.name })}
                                 >

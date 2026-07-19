@@ -1,4 +1,4 @@
-/** `motion` — the Story Motion editor: motion assets, timeline, keyframes, easing, and stage preview. */
+/** `motion` - the Story Motion editor: motion assets, timeline, keyframes, easing, and stage preview. */
 export const motion = {
     storyMotion: "Story Motion",
     editMotion: "Edit motion",
@@ -71,7 +71,7 @@ export const motion = {
         newMotion: "New Motion",
         motionActions: "Motion actions",
         repeat: "Repeat",
-        repeatDelayMs: "Repeat delay ms",
+        repeatDelaySeconds: "Repeat delay (s)",
         actionUses: "Current action uses {id}",
         actionNoMotion: "Current action has no motion asset",
         bindToAction: "Bind to action",
@@ -105,7 +105,7 @@ export const motion = {
         keyframeActions: "Keyframe actions",
         motionLabel: "Motion",
         time: "Time",
-        timeMs: "Time ms",
+        timeSeconds: "Time (s)",
         easing: "Easing",
         easingDefault: "Default",
         easingCustom: "Custom",

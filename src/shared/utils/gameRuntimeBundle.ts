@@ -4,7 +4,7 @@
  *
  * The store keeps the whole game payload as one file; individual items are
  * addressed by these stable names. Asset entries are keyed by their storage id
- * alone — never by their original filename or extension — so an item's media
+ * alone - never by their original filename or extension - so an item's media
  * type is not recoverable from the entry name. The compiler and runtime are the
  * only two callers and must agree, so the scheme lives here in one place.
  */

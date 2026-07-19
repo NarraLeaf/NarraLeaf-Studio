@@ -16,7 +16,7 @@ import type {
     InlineRowItemContext,
 } from "@/apps/workspace/modules/properties/framework/types";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
-import { listLocalizationKeyOptions } from "@/lib/ui-editor/widget-modules/shared/localizationKeyOptions";
+import { createLocalizationKeyField } from "@/lib/ui-editor/widget-modules/shared/LocalizationKeyField";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
@@ -82,7 +82,7 @@ const ButtonLabelBlueprintValueField = createBlueprintValueField({
         const buttonProps = getButtonProps(liveElement);
         return (
             <textarea
-                className="min-h-[88px] w-full resize-y rounded-md border border-edge bg-[#0b0d10] px-2 py-1.5 text-xs text-fg outline-none focus:border-cyan-400/70 focus:ring-1 focus:ring-cyan-400/40"
+                className="min-h-[88px] w-full resize-y rounded-md border border-edge bg-surface-sunken px-2 py-1.5 text-xs text-fg outline-none focus:border-primary/70 focus:ring-1 focus:ring-primary/40"
                 value={buttonProps.label}
                 rows={4}
                 onChange={event => {
@@ -93,6 +93,14 @@ const ButtonLabelBlueprintValueField = createBlueprintValueField({
                 }}
             />
         );
+    },
+});
+
+const ButtonLocalizationKeyField = createLocalizationKeyField({
+    getKey: element => getButtonProps(element).localizationKey ?? "",
+    setKey: (data, value) => {
+        const live = data.documentService.getDocument().elements[data.element.id] ?? data.element;
+        data.documentService.updateElementProps(live.id, { localizationKey: value });
     },
 });
 
@@ -389,11 +397,9 @@ export function createButtonInspector(ctx: InspectorContext) {
                             }),
                             defineField<D, any>({
                                 id: "button.localizationKey",
-                                type: "select",
+                                type: "custom",
                                 label: t("widgets.localization.textKey"),
-                                options: () => listLocalizationKeyOptions(),
-                                getValue: (d: D) => getButtonProps(d.element).localizationKey ?? "",
-                                setValue: (_d: D, v: string | number) => patch({ localizationKey: String(v).trim() || undefined }),
+                                component: ButtonLocalizationKeyField,
                             }),
                         ],
                     }),

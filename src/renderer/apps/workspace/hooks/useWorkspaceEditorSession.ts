@@ -6,11 +6,20 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import {
     WORKSPACE_EDITOR_SESSION_SETTINGS_KEY,
+    countSessionTabs,
     getWorkspaceEditorSessionSettingsKey,
     parseWorkspaceEditorSession,
     restoreWorkspaceEditorSession,
     serializeEditorSession,
 } from "../session/workspaceEditorSession";
+import { collectEditorGroups } from "../components/layout/editorCommandsModel";
+import { FocusArea } from "@/lib/workspace/services/ui/types";
+import { openDashboardTab } from "../modules/dashboard/openDashboardTab";
+import {
+    DASHBOARD_OPEN_DEFAULT_KEY,
+    getDashboardOpenProjectKey,
+    resolveDashboardOpen,
+} from "@shared/constants/dashboard";
 
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -30,13 +39,15 @@ export function useWorkspaceEditorSession() {
     const uiService = context?.services.get<UIService>(Services.UI) ?? null;
     const settingsService = context?.services.get<GlobalSettingsService>(Services.GlobalSettings) ?? null;
     const projectService = context?.services.get<ProjectService>(Services.Project) ?? null;
-    const sessionSettingsKey =
+    const projectRef =
         context && projectService
-            ? getWorkspaceEditorSessionSettingsKey({
+            ? {
                   projectPath: context.project.getConfig().projectPath,
                   projectIdentifier: projectService.getProjectConfig().identifier,
-              })
+              }
             : null;
+    const sessionSettingsKey = projectRef ? getWorkspaceEditorSessionSettingsKey(projectRef) : null;
+    const dashboardOpenProjectKey = projectRef ? getDashboardOpenProjectKey(projectRef) : null;
 
     useEffect(() => {
         if (!context || !uiService || !settingsService || !sessionSettingsKey) {
@@ -56,14 +67,28 @@ export function useWorkspaceEditorSession() {
                         session = parseWorkspaceEditorSession(legacyRaw);
                         shouldMigrateLegacySession = Boolean(session);
                     }
-                    if (session?.tabs.length) {
+                    if (session && countSessionTabs(session.layout) > 0) {
                         const restoredCount = restoreWorkspaceEditorSession(context, session, uiService);
                         if (shouldMigrateLegacySession && restoredCount > 0) {
-                            const restoredSession = serializeEditorSession(uiService.getStore().getEditorLayout());
-                            if (restoredSession) {
-                                await settingsService.set(sessionSettingsKey, restoredSession);
-                            }
+                            await settingsService.set(
+                                sessionSettingsKey,
+                                serializeEditorSession(uiService.getStore().getEditorLayout()),
+                            );
                         }
+                    }
+
+                    // Opened after the restore rather than alongside it so the dashboard ends up
+                    // focused rather than buried, and outside the `session?.tabs.length` guard
+                    // above because a first-run project has no session to restore at all. The tab
+                    // id is constant, so re-opening an already-restored dashboard just focuses it.
+                    const [projectChoice, globalDefault] = await Promise.all([
+                        dashboardOpenProjectKey
+                            ? settingsService.get<boolean>(dashboardOpenProjectKey)
+                            : Promise.resolve(undefined),
+                        settingsService.get<boolean>(DASHBOARD_OPEN_DEFAULT_KEY, true),
+                    ]);
+                    if (resolveDashboardOpen(projectChoice, globalDefault)) {
+                        openDashboardTab(context);
                     }
                 } catch (error) {
                     console.error("[WorkspaceEditorSession] Failed to restore:", error);
@@ -78,7 +103,7 @@ export function useWorkspaceEditorSession() {
         }
 
         return () => {};
-    }, [context, uiService, settingsService, sessionSettingsKey]);
+    }, [context, uiService, settingsService, sessionSettingsKey, dashboardOpenProjectKey]);
 
     useEffect(() => {
         if (!context || !uiService || !settingsService || !sessionSettingsKey) {
@@ -95,11 +120,18 @@ export function useWorkspaceEditorSession() {
             }
             try {
                 const layout = uiService.getStore().getEditorLayout();
-                const session = serializeEditorSession(layout);
-                if (session === null) {
-                    return;
-                }
-                await settingsService.set(sessionSettingsKey, session);
+                // Which pane the caret is in is part of the layout the user arranged, so it is
+                // restored alongside the splits rather than always landing in the first group.
+                const focus = uiService.focus.getFocus();
+                const activeGroup =
+                    focus.area === FocusArea.EditorTabs
+                        ? collectEditorGroups(layout).find(group => group.id === focus.targetId)
+                        : focus.area === FocusArea.Editor && focus.targetId
+                          ? collectEditorGroups(layout).find(group =>
+                                group.tabs.some(tab => tab.id === focus.targetId),
+                            )
+                          : undefined;
+                await settingsService.set(sessionSettingsKey, serializeEditorSession(layout, activeGroup?.id ?? null));
             } catch (error) {
                 console.error("[WorkspaceEditorSession] Failed to save:", error);
             }

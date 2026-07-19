@@ -129,7 +129,7 @@ export function InterpolationPopover(props: {
     return createPortal(
         <div
             ref={panelRef}
-            className="fixed z-[70] w-60 rounded-lg border border-edge bg-[#16191e] p-2 shadow-2xl"
+            className="fixed z-[70] w-60 rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl"
             style={{ top, left: Math.max(8, left) }}
             onMouseDown={event => event.stopPropagation()}
         >
@@ -158,7 +158,7 @@ export function InterpolationPopover(props: {
             </div>
             <button
                 type="button"
-                className="mt-2 flex items-center gap-1 text-xs text-fg-muted transition-colors hover:text-red-300"
+                className="mt-2 flex items-center gap-1 text-xs text-fg-muted transition-colors hover:text-danger"
                 onClick={props.onRemove}
             >
                 <Trash2 className="h-3 w-3" />
