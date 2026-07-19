@@ -49,6 +49,12 @@ export type { SelectProps, SelectOption } from "./Select";
 export { Switch } from "./Switch";
 export type { SwitchProps, SwitchSize, SwitchVariant } from "./Switch";
 
+// Tooltip / hint components
+export { Tooltip } from "./Tooltip";
+export type { TooltipProps, TooltipSide } from "./Tooltip";
+export { HintPopover } from "./HintPopover";
+export type { HintPopoverProps } from "./HintPopover";
+
 // Slider components
 export { Slider } from "./Slider";
 export type { SliderProps } from "./Slider";
