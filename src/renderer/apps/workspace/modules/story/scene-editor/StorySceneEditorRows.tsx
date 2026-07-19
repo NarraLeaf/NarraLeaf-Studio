@@ -8,6 +8,7 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { getCommandGhost } from "./storyCommandGhost";
+import { getCommandLineReason } from "./storyCommandReason";
 import { isMacPlatform } from "@/lib/app/platform";
 import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -859,10 +860,16 @@ function candidateIcon(cursor: StoryCommandCursor, candidate: StoryCommandCandid
  * padding, `whitespace-pre` so runs of spaces measure as typed, and `pointer-events-none` so a click
  * anywhere still lands in the field beneath.
  */
-function CommandGhostHint(props: { value: string; caret: number; textStyle: CSSProperties }) {
+function CommandGhostHint(props: { value: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext }) {
     const { t } = useTranslation();
     const ghost = useMemo(() => getCommandGhost(props.value, props.caret), [props.caret, props.value]);
-    if (!ghost) {
+    // Why the line will not commit, if it will not. It outranks the hint: naming the next slot while
+    // the line is already broken answers a question the author is no longer asking.
+    const reason = useMemo(
+        () => getCommandLineReason(props.value, props.commandContext),
+        [props.commandContext, props.value],
+    );
+    if (!ghost && !reason) {
         return null;
     }
     return (
@@ -872,9 +879,13 @@ function CommandGhostHint(props: { value: string; caret: number; textStyle: CSSP
             style={props.textStyle}
         >
             {/* Invisible, not `opacity-0` on the whole span: only the copy of the typed text should be
-                hidden, and it still has to occupy its exact width to push the hint into place. */}
+                hidden, and it still has to occupy its exact width to push what follows into place. */}
             <span className="invisible">{props.value}</span>
-            <span className="italic text-fg-subtle">{`<${t(`story.paramHint.${ghost.hintKey}` as TranslationKey)}>`}</span>
+            {reason ? (
+                <span className="text-danger/80">{`  ${t(reason.key, reason.params)}`}</span>
+            ) : (
+                <span className="italic text-fg-subtle">{`<${t(`story.paramHint.${ghost!.hintKey}` as TranslationKey)}>`}</span>
+            )}
         </span>
     );
 }
@@ -1022,7 +1033,7 @@ export function InsertRow(props: {
                     anchor, so it is positioned against the field's box and inherits its exact metrics.
                     `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
                 <div className="relative flex min-w-0 flex-1">
-                <CommandGhostHint value={props.mode.value} caret={caret} textStyle={textStyle} />
+                <CommandGhostHint value={props.mode.value} caret={caret} textStyle={textStyle} commandContext={props.commandContext} />
                 <textarea
                     ref={props.inputRef}
                     // Same in-place surface as an editing row (see TextEditBox): the new line reads as a

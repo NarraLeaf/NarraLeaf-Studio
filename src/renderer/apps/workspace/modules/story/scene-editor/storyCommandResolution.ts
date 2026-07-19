@@ -1,7 +1,7 @@
 import type { StoryExpression, StoryExprType, StoryLiteralValue, StoryVariableRef, StoryVariableValueType } from "@shared/types/story";
 import { collectStoryExpressionVariables, storyVariableRefKey } from "@shared/types/story";
 import { inferStoryExpressionType, storyExprTypeFits } from "@shared/utils/storyExpressionEval";
-import type { StoryExpressionScope } from "@shared/utils/storyExpressionParser";
+import type { StoryExpressionIssue, StoryExpressionScope } from "@shared/utils/storyExpressionParser";
 import { createStoryExpressionScope, parseStoryExpression } from "@shared/utils/storyExpressionParser";
 import {
     allowsFreeValue,
@@ -105,17 +105,23 @@ export type StoryCommandResolutionIssue =
      */
     | { code: "conflictingParams"; span: StoryCommandSpan; keys: readonly string[] }
     /**
-     * The expression did not parse or names something that does not exist. `message` is the underlying
-     * {@link StoryExpressionIssue} code, so the row can say *which* mistake it was - an unknown
-     * variable and an unbalanced paren are different problems and used to collapse into one red badge.
+     * Carries the whole underlying {@link StoryExpressionIssue}, not just its code: the issues have
+     * params (which name, which prefix, which function) and a row that says "no variable named gold"
+     * is worth the extra field over one that says "invalid expression".
      */
-    | { code: "expressionError"; span: StoryCommandSpan; value: string; message: string }
+    | { code: "expressionError"; span: StoryCommandSpan; value: string; issue: StoryExpressionIssue }
     /** `/if gold` - parses fine, but a condition that is not a comparison is nearly always unfinished. */
     | { code: "expressionNotBoolean"; span: StoryCommandSpan; value: string; received: StoryExprType }
     /** `/set gold "rich"` where `gold` is a number - the expression's result type cannot be stored. */
     | { code: "expressionTypeMismatch"; span: StoryCommandSpan; value: string; expected: StoryVariableValueType; received: StoryExprType }
     /** `/local gold` where a variable of that name already exists in that scope. */
-    | { code: "duplicateVariable"; span: StoryCommandSpan; value: string };
+    | { code: "duplicateVariable"; span: StoryCommandSpan; value: string }
+    /**
+     * `/set += 1` — a compound assignment with no variable to compound against. Its own code rather
+     * than a borrowed expression issue: nothing here failed to *parse*, the line is just missing its
+     * target, which is a fact about the command and not about the expression language.
+     */
+    | { code: "compoundWithoutTarget"; span: StoryCommandSpan; value: string };
 
 export type StoryCommandResolution = {
     args: StoryCommandResolvedArgs;
@@ -293,14 +299,14 @@ function resolveExpression(
         if (target?.kind !== "variable") {
             // `+= 1` with no variable to add to: the target's own issue already stands, and inventing
             // a second one here would double-report the same mistake.
-            return { issue: { code: "expressionError", span, value, message: "compoundWithoutTarget" } };
+            return { issue: { code: "compoundWithoutTarget", span, value } };
         }
         source = `${target.name} ${compound.op} (${compound.rest})`;
     }
 
     const { expression, issues } = parseStoryExpression(source, expressionScope(context));
     if (issues.length > 0) {
-        return { issue: { code: "expressionError", span, value: source, message: issues[0].code } };
+        return { issue: { code: "expressionError", span, value: source, issue: issues[0] } };
     }
 
     if (type.expects === "boolean") {
