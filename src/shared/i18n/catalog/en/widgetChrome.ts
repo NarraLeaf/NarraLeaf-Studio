@@ -16,7 +16,7 @@ export const widgetChrome = {
     outline: {
         title: "Layers",
         noSurface: "No surface available",
-        linkedSurfaceHint: "Linked surface — editing the linked app root tree (same as canvas).",
+        linkedSurfaceHint: "Linked surface, editing the linked app root tree (same as canvas).",
         layer: "Layer",
         dragToReorder: "Drag to reorder",
     },

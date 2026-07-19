@@ -31,6 +31,7 @@ import type {
     PrivilegedBashExecuteResult,
 } from "./privileged";
 import { AppEventToken } from "./app";
+import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsRepositoryInfo, VcsThreeWayResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -214,14 +215,17 @@ export interface RendererPreloadedInterface {
             onGlobalStateChanged(handler: (change: { key: GlobalStateKeys; value: any }) => void): AppEventToken;
         };
         addRecentProject(name: string, path: string): Promise<RequestStatus<void>>;
+        /** Removes by path; the main process owns the read-modify-write. */
+        removeRecentProject(path: string): Promise<RequestStatus<void>>;
         getSystemPath(name: "desktop"): Promise<RequestStatus<{ path: string }>>;
     };
 
     devMode: {
         launch(projectPath: string, entry: DevModeEntry): Promise<RequestStatus<{ status: DevModeStatus }>>;
-        stop(): Promise<RequestStatus<{ status: DevModeStatus }>>;
-        reload(): Promise<RequestStatus<{ status: DevModeStatus }>>;
-        getStatus(): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        /** Dev Mode is per-project; these name the project rather than acting on "whatever runs". */
+        stop(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        reload(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        getStatus(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus }>>;
         /** Fullscreen state of the Dev Mode window itself. */
         getFullscreen(): Promise<RequestStatus<{ isFullscreen: boolean }>>;
         setFullscreen(fullscreen: boolean): Promise<RequestStatus<void>>;
@@ -260,6 +264,29 @@ export interface RendererPreloadedInterface {
         launch(projectPath: string, entry: GameRuntimeLaunchEntry): Promise<RequestStatus<{ status: PreviewStatus }>>;
         stop(projectPath: string): Promise<RequestStatus<{ status: PreviewStatus }>>;
         getStatus(projectPath: string): Promise<RequestStatus<{ status: PreviewStatus }>>;
+    };
+
+    /**
+     * Version control. Read-only until the resolve UI lands.
+     * Every call is per project — Studio is one-project-one-window and the VCS
+     * runtime is keyed by project path.
+     */
+    vcs: {
+        /**
+         * Ask first. Version control is optional — no native build exists for
+         * macOS Intel or Windows ARM64 — and every other call below fails on a
+         * host without one. Branch the UI on this; do not probe with try/catch.
+         */
+        getAvailability(): Promise<RequestStatus<VcsAvailability>>;
+        isRepository(projectPath: string): Promise<RequestStatus<{ isRepository: boolean }>>;
+        getInfo(projectPath: string): Promise<RequestStatus<VcsRepositoryInfo>>;
+        getHistory(projectPath: string, limit?: number): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>;
+        /** File contents at a revision, base64-encoded. */
+        readBlob(projectPath: string, revision: RevisionId, path: string): Promise<RequestStatus<{ contentBase64: string }>>;
+        getChangedPaths(projectPath: string, from: RevisionId, to: RevisionId): Promise<RequestStatus<{ paths: string[] }>>;
+        /** base/mine/theirs for a merge. A missing `base` is an add/add, not an empty file. */
+        getThreeWay(projectPath: string, mine: RevisionId, theirs: RevisionId, path: string): Promise<RequestStatus<VcsThreeWayResult>>;
+        getMergeBase(projectPath: string, a: RevisionId, b: RevisionId): Promise<RequestStatus<{ base?: RevisionId }>>;
     };
 
     gameBuild: {

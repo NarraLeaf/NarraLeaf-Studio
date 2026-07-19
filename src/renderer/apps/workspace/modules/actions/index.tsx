@@ -219,10 +219,8 @@ export const fileActionGroup: ModuleActionGroup = {
                 void (async () => {
                     const result = await getInterface().app.launchProjectWizard({});
                     if (result.success && result.data?.created) {
-                        await getInterface().workspace.launch(
-                            { projectPath: result.data.projectPath },
-                            true
-                        );
+                        // Opens alongside: File ▸ New is not a request to close this project.
+                        await getInterface().workspace.launch({ projectPath: result.data.projectPath });
                     }
                 })();
             },
@@ -239,10 +237,8 @@ export const fileActionGroup: ModuleActionGroup = {
                 void (async () => {
                     const result = await getInterface().selectFolder();
                     if (!result.success || !result.data?.path) return;
-                    await getInterface().workspace.launch(
-                        { projectPath: result.data.path },
-                        true
-                    );
+                    // Focuses the project's window if it already has one, else opens alongside.
+                    await getInterface().workspace.launch({ projectPath: result.data.path });
                 })();
             },
             order: 1,

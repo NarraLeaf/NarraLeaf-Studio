@@ -4,7 +4,8 @@ import { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
 import { Button } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { FolderOpen, Plus, Upload, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useRecentProjects, useRemoveRecentProject } from "@/lib/app/hooks/useRecentProjects";
 import { createProjectFromWizard, openProjectFromFolder } from "../projectActions";
 
 export function ProjectsTab() {
@@ -12,23 +13,10 @@ export function ProjectsTab() {
     const [isOpening, setIsOpening] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const [operationError, setOperationError] = useState<string | null>(null);
-    const [recentProjects, setRecentProjects] = useState<RecentlyOpenedProject[]>([]);
+    // Live, so a project opened or removed from another window shows up here too.
+    const recentProjects = useRecentProjects();
+    const removeRecentProject = useRemoveRecentProject();
     const isBusy = isOpening || isImporting;
-
-    useEffect(() => {
-        const loadRecentProjects = async () => {
-            try {
-                const result = await getInterface().app.state.getGlobalState("app.recentProjects");
-                if (result.success) {
-                    setRecentProjects(result.data.value || []);
-                }
-            } catch (error) {
-                console.error("Failed to load recent projects:", error);
-            }
-        };
-
-        loadRecentProjects();
-    }, []);
 
     const handleOpenRecentProject = async (project: RecentlyOpenedProject) => {
         if (isBusy) return;
@@ -50,27 +38,10 @@ export function ProjectsTab() {
     };
 
     const handleRemoveRecentProject = async (project: RecentlyOpenedProject) => {
-        const next = recentProjects.filter((p) => p.path !== project.path);
-        setRecentProjects(next);
-        try {
-            const result = await getInterface().app.state.setGlobalState("app.recentProjects", next);
-            if (!result.success) {
-                const reload = await getInterface().app.state.getGlobalState("app.recentProjects");
-                if (reload.success) {
-                    setRecentProjects(reload.data.value || []);
-                }
-            }
-        } catch (error) {
-            console.error("Failed to remove recent project:", error);
-            try {
-                const reload = await getInterface().app.state.getGlobalState("app.recentProjects");
-                if (reload.success) {
-                    setRecentProjects(reload.data.value || []);
-                }
-            } catch {
-                /* ignore */
-            }
-        }
+        // The main process rebuilds the list and broadcasts it back, which is what re-renders this
+        // one. No optimistic local copy: writing a filtered snapshot back would erase whatever
+        // another window did to the history in the meantime.
+        await removeRecentProject(project.path);
     };
 
     const handleNewProject = async () => {

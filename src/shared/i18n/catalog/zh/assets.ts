@@ -178,7 +178,7 @@ export const assets = {
         typePlaceholder: "输入文字以预览效果…",
     },
     jsonPreview: {
-        invalid: "此文件不是合法的 JSON——显示原始内容",
-        truncated: "文件过大，无法格式化——仅显示开头部分",
+        invalid: "此文件不是合法的 JSON，显示原始内容",
+        truncated: "文件过大无法格式化，仅显示开头部分",
     },
 } satisfies LocaleNamespace<"assets">;

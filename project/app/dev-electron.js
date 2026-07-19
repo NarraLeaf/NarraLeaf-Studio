@@ -213,7 +213,7 @@ function broadcastReload(target = 'all') {
         platform: 'node',
         bundle: true,
         format: 'cjs',
-        external: ['electron', '@narraleaf/encryption'],
+        external: ['electron', '@narraleaf/encryption', '@lore-vcs/sdk', 'koffi'],
         sourcemap: true,
         target: ['node18'],
     }, () => {

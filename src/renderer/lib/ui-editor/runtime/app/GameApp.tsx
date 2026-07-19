@@ -519,7 +519,7 @@ export function GameApp(props: GameAppProps): ReactNode {
      * Save Game node was ignoring its Capture pin.
      */
     const reportSaveCaptureFailure = useCallback((id: string, reason: string): void => {
-        const message = `Save Game: screenshot capture failed for "${id}" — ${reason}`;
+        const message = `Save Game: screenshot capture failed for "${id}": ${reason}`;
         core?.debug.emit({ type: "devtools.log", level: "warn", message });
         host.log("warning", message);
     }, [core, host.log]);

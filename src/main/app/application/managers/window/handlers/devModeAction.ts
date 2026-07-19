@@ -29,8 +29,11 @@ export class DevModeStopHandler extends IPCHandler<IPCEventType.devModeStop> {
     readonly name = IPCEventType.devModeStop;
     readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<{ status: IPCEvents[IPCEventType.devModeStop]["response"]["status"] }>> {
-        const status = await window.getApp().getDevModeManager().stop();
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.devModeStop]["data"],
+    ): Promise<RequestStatus<{ status: IPCEvents[IPCEventType.devModeStop]["response"]["status"] }>> {
+        const status = await window.getApp().getDevModeManager().stop(projectPath);
         return this.success({ status });
     }
 }
@@ -69,9 +72,12 @@ export class DevModeReloadHandler extends IPCHandler<IPCEventType.devModeReload>
     readonly name = IPCEventType.devModeReload;
     readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<{ status: IPCEvents[IPCEventType.devModeReload]["response"]["status"] }>> {
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.devModeReload]["data"],
+    ): Promise<RequestStatus<{ status: IPCEvents[IPCEventType.devModeReload]["response"]["status"] }>> {
         return this.tryUse(async () => {
-            const status = await window.getApp().getDevModeManager().reload();
+            const status = await window.getApp().getDevModeManager().reload(projectPath);
             return { status };
         });
     }
@@ -81,8 +87,11 @@ export class DevModeGetStatusHandler extends IPCHandler<IPCEventType.devModeGetS
     readonly name = IPCEventType.devModeGetStatus;
     readonly type = IPCMessageType.request;
 
-    public handle(window: AppWindow): RequestStatus<{ status: IPCEvents[IPCEventType.devModeGetStatus]["response"]["status"] }> {
-        const status = window.getApp().getDevModeManager().getStatus();
+    public handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.devModeGetStatus]["data"],
+    ): RequestStatus<{ status: IPCEvents[IPCEventType.devModeGetStatus]["response"]["status"] }> {
+        const status = window.getApp().getDevModeManager().getStatus(projectPath);
         return this.success({ status });
     }
 }

@@ -22,7 +22,9 @@ const { rootDir, isDev } = require('./utils');
         format: 'cjs',
         bundle: true,
         // @narraleaf/encryption is kept external (required from node_modules, not bundled).
-        external: ['electron', 'esbuild', '@narraleaf/encryption'],
+        // @lore-vcs/sdk and koffi likewise: koffi resolves its own .node addon and the
+        // platform lorelib shared library by path at runtime, which bundling breaks.
+        external: ['electron', 'esbuild', '@narraleaf/encryption', '@lore-vcs/sdk', 'koffi'],
         sourcemap: isDev(),
         minify: !isDev(),
         target: ['node18'],

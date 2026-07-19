@@ -16,7 +16,17 @@ process.on('uncaughtException', (error) => {
 app.whenReady().then(async () => {
     app.logger.info('App is ready');
 
-    app.windowManager.events.on("window-closed", () => {
+    app.windowManager.events.on("window-closed", (window) => {
+        // Lore takes an EXCLUSIVE repository lock for as long as a store handle is
+        // open, and a second process blocks (does not fail) trying to acquire it.
+        // Holding it past the project's lifetime would leave the `lore` CLI and any
+        // other tool hanging on a project the user already closed.
+        const projectPath = window.getProps()?.projectPath;
+        if (typeof projectPath === "string" && projectPath.length > 0) {
+            void app.getVcsManager().closeProject(projectPath).catch((error) => {
+                app.logger.warn("[Vcs] Failed to release session on window close", error);
+            });
+        }
         if (!app.windowManager.hasWindows()) {
             app.quit();
         }

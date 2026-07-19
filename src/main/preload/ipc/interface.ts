@@ -13,6 +13,7 @@ import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/dev
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
+import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsRepositoryInfo, VcsThreeWayResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -223,6 +224,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         },
         addRecentProject: (name: string, path: string) =>
             ipcClient.invoke(IPCEventType.appAddRecentProject, { name, path }) as Promise<RequestStatus<void>>,
+        removeRecentProject: (path: string) =>
+            ipcClient.invoke(IPCEventType.appRemoveRecentProject, { path }) as Promise<RequestStatus<void>>,
         getSystemPath: (name: "desktop") =>
             ipcClient.invoke(IPCEventType.appSystemPath, { name }) as Promise<RequestStatus<{ path: string }>>,
     },
@@ -230,12 +233,12 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     devMode: {
         launch: (projectPath: string, entry: DevModeEntry) =>
             ipcClient.invoke(IPCEventType.devModeLaunch, { projectPath, entry }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
-        stop: () =>
-            ipcClient.invoke(IPCEventType.devModeStop, {}) as Promise<RequestStatus<{ status: DevModeStatus }>>,
-        reload: () =>
-            ipcClient.invoke(IPCEventType.devModeReload, {}) as Promise<RequestStatus<{ status: DevModeStatus }>>,
-        getStatus: () =>
-            ipcClient.invoke(IPCEventType.devModeGetStatus, {}) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        stop: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.devModeStop, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        reload: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.devModeReload, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        getStatus: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.devModeGetStatus, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
         getFullscreen: () =>
             ipcClient.invoke(IPCEventType.devModeFullscreenGet, {}) as Promise<RequestStatus<{ isFullscreen: boolean }>>,
         setFullscreen: (fullscreen: boolean) =>
@@ -295,6 +298,30 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.previewStop, { projectPath }) as Promise<RequestStatus<{ status: PreviewStatus }>>,
         getStatus: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.previewGetStatus, { projectPath }) as Promise<RequestStatus<{ status: PreviewStatus }>>,
+    },
+
+    /**
+     * Version control. Read-only for now; writes wait on the resolve UI.
+     * Blobs arrive base64-encoded — decode at the call site that needs bytes.
+     */
+    vcs: {
+        /** Ask first: VCS is optional and absent on macOS Intel / Windows ARM64. */
+        getAvailability: () =>
+            ipcClient.invoke(IPCEventType.vcsGetAvailability, {}) as Promise<RequestStatus<VcsAvailability>>,
+        isRepository: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsIsRepository, { projectPath }) as Promise<RequestStatus<{ isRepository: boolean }>>,
+        getInfo: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetInfo, { projectPath }) as Promise<RequestStatus<VcsRepositoryInfo>>,
+        getHistory: (projectPath: string, limit?: number) =>
+            ipcClient.invoke(IPCEventType.vcsGetHistory, { projectPath, limit }) as Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>,
+        readBlob: (projectPath: string, revision: RevisionId, path: string) =>
+            ipcClient.invoke(IPCEventType.vcsReadBlob, { projectPath, revision, path }) as Promise<RequestStatus<{ contentBase64: string }>>,
+        getChangedPaths: (projectPath: string, from: RevisionId, to: RevisionId) =>
+            ipcClient.invoke(IPCEventType.vcsGetChangedPaths, { projectPath, from, to }) as Promise<RequestStatus<{ paths: string[] }>>,
+        getThreeWay: (projectPath: string, mine: RevisionId, theirs: RevisionId, path: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetThreeWay, { projectPath, mine, theirs, path }) as Promise<RequestStatus<VcsThreeWayResult>>,
+        getMergeBase: (projectPath: string, a: RevisionId, b: RevisionId) =>
+            ipcClient.invoke(IPCEventType.vcsGetMergeBase, { projectPath, a, b }) as Promise<RequestStatus<{ base?: RevisionId }>>,
     },
 
     gameBuild: {

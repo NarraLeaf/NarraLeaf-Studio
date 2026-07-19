@@ -1,6 +1,18 @@
 import { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
 
 /**
+ * Strip trailing separators so two spellings of the same project path compare equal.
+ *
+ * Every comparison of project paths goes through this — the history's own dedupe, and the
+ * "is this project already open" lookup that keeps one project to one window. They have to agree:
+ * a history that treats `C:\game` and `C:\game\` as two projects hands out two entries, and the
+ * window lookup then misses on whichever spelling it was not given.
+ */
+export function normalizeProjectPath(projectPath: string): string {
+    return projectPath.replace(/[\\/]+$/, "");
+}
+
+/**
  * Collapse a home-directory prefix to `~`, the way a path reads in a menu. Only an exact
  * segment match counts, so `/Users/aria-notes` is never mistaken for a child of `/Users/aria`.
  * A missing or empty `homeDir` leaves the path untouched — the renderer has no cheap way to know

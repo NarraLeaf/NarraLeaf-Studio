@@ -31,6 +31,14 @@ import type {
     MenuActionId,
     NativeMenuModel,
 } from "./menu";
+import type {
+    RevisionId,
+    VcsAvailability,
+    VcsBlobRequest,
+    VcsHistoryEntry,
+    VcsRepositoryInfo,
+    VcsThreeWayResult,
+} from "./vcs";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
@@ -57,6 +65,7 @@ export enum IPCEventType {
     appGlobalStateGetAll = "app.globalState.getAll",
     appGlobalStateChanged = "app.globalState.changed",
     appAddRecentProject = "app.addRecentProject",
+    appRemoveRecentProject = "app.removeRecentProject",
     appSystemPath = "app.systemPath",
 
     fsStat = "fs.stat",
@@ -162,6 +171,15 @@ export enum IPCEventType {
     workspaceReportLoadResult = "workspace.reportLoadResult",
     workspaceOpenView = "workspace.openView",
     settingsHighlight = "settings.highlight",
+
+    vcsGetAvailability = "vcs.getAvailability",
+    vcsGetInfo = "vcs.getInfo",
+    vcsIsRepository = "vcs.isRepository",
+    vcsGetHistory = "vcs.getHistory",
+    vcsReadBlob = "vcs.readBlob",
+    vcsGetChangedPaths = "vcs.getChangedPaths",
+    vcsGetThreeWay = "vcs.getThreeWay",
+    vcsGetMergeBase = "vcs.getMergeBase",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -377,6 +395,18 @@ export type IPCEvents = {
         },
         response: void;
     };
+    /**
+     * Remove one entry. Takes the path rather than the resulting list: the main process owns the
+     * read-modify-write, so a stale renderer snapshot cannot erase another window's changes.
+     */
+    [IPCEventType.appRemoveRecentProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: void;
+    };
     [IPCEventType.appSystemPath]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -387,7 +417,72 @@ export type IPCEvents = {
             path: string;
         };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameBuildEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCPrivilegedEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameBuildEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCPrivilegedEvents & IPCVcsEvents;
+
+/**
+ * Version control. Every event carries `projectPath`: Studio is
+ * one-project-one-window and the VCS runtime is keyed per project, so an event
+ * without it would be ambiguous the moment two projects are open.
+ *
+ * Blobs cross as base64 rather than Buffer — structured clone would turn a
+ * Buffer into a Uint8Array on the renderer side anyway, and base64 keeps the
+ * contract explicit.
+ */
+export type IPCVcsEvents = {
+    /**
+     * Ask this FIRST. Version control is optional — there is no native build for
+     * macOS Intel or Windows ARM64 — and every other VCS call fails on a host
+     * without one. Branch the UI on this, do not probe by catching errors.
+     */
+    [IPCEventType.vcsGetAvailability]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: VcsAvailability;
+    };
+    [IPCEventType.vcsIsRepository]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: { isRepository: boolean };
+    };
+    [IPCEventType.vcsGetInfo]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsRepositoryInfo;
+    };
+    [IPCEventType.vcsGetHistory]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; limit?: number },
+        response: { entries: VcsHistoryEntry[] };
+    };
+    [IPCEventType.vcsReadBlob]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: VcsBlobRequest,
+        response: { contentBase64: string };
+    };
+    [IPCEventType.vcsGetChangedPaths]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; from: RevisionId; to: RevisionId },
+        response: { paths: string[] };
+    };
+    [IPCEventType.vcsGetThreeWay]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; mine: RevisionId; theirs: RevisionId; path: string },
+        response: VcsThreeWayResult;
+    };
+    [IPCEventType.vcsGetMergeBase]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; a: RevisionId; b: RevisionId },
+        response: { base?: RevisionId };
+    };
+};
 
 export type IPCFsEvents = {
     [IPCEventType.fsStat]: {
@@ -773,10 +868,17 @@ export type IPCDevModeEvents = {
             status: DevModeStatus;
         };
     };
+    /**
+     * Dev Mode is per-project, so stop/reload/getStatus all name the project they mean — without
+     * it a workspace would drive (and report) whichever session happened to exist, which with two
+     * projects open is somebody else's.
+     */
     [IPCEventType.devModeStop]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: {},
+        data: {
+            projectPath: string;
+        },
         response: {
             status: DevModeStatus;
         };
@@ -784,7 +886,9 @@ export type IPCDevModeEvents = {
     [IPCEventType.devModeReload]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: {},
+        data: {
+            projectPath: string;
+        },
         response: {
             status: DevModeStatus;
         };
@@ -792,7 +896,9 @@ export type IPCDevModeEvents = {
     [IPCEventType.devModeGetStatus]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: {},
+        data: {
+            projectPath: string;
+        },
         response: {
             status: DevModeStatus;
         };

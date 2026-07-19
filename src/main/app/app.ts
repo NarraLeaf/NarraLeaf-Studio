@@ -7,11 +7,9 @@ import { DevModeManager } from "./application/managers/devMode/DevModeManager";
 import { devModeNetworkPolicy, readProjectAllowHttp } from "./application/managers/devMode/devModeNetworkPolicy";
 import { GameBuildManager } from "./application/managers/build/GameBuildManager";
 import { PreviewManager } from "./application/managers/preview/PreviewManager";
-
-/** Strip trailing slashes so two spellings of the same project path compare equal. */
-function normalizeProjectPath(projectPath: string): string {
-    return projectPath.replace(/[\\/]+$/, "");
-}
+import { VcsManager } from "./application/managers/vcs/VcsManager";
+// Shared with the recently-opened history, which must agree with the "already open?" lookup here.
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 
 export interface AppConfig extends BaseAppConfig {
 }
@@ -26,11 +24,13 @@ export class App extends BaseApp {
         this.devModeManager = new DevModeManager(this);
         this.previewManager = new PreviewManager(this);
         this.gameBuildManager = new GameBuildManager(this);
+        this.vcsManager = new VcsManager(this);
     }
 
     private readonly devModeManager: DevModeManager;
     private readonly previewManager: PreviewManager;
     private readonly gameBuildManager: GameBuildManager;
+    private readonly vcsManager: VcsManager;
 
     public getDevModeManager(): DevModeManager {
         return this.devModeManager;
@@ -42,6 +42,10 @@ export class App extends BaseApp {
 
     public getGameBuildManager(): GameBuildManager {
         return this.gameBuildManager;
+    }
+
+    public getVcsManager(): VcsManager {
+        return this.vcsManager;
     }
 
     private applyWindowIcon(window: AppWindow): void {
@@ -277,6 +281,16 @@ export class App extends BaseApp {
             return true;
         });
 
+        // Wired here rather than at the call site: openProject hands back an already-open window
+        // unchanged when the project is one, and binding F12 there would stack a second toggle
+        // onto that window every time the user re-opened the same project — two toggles per press
+        // cancelling each other out.
+        if (this.isDevMode()) {
+            window.onKeyUp("F12", () => {
+                window.toggleDevTools();
+            });
+        }
+
         await window.loadFile(this.getAppEntry(WindowAppType.Workspace));
 
         // Project is added to recently opened only when workspace successfully loads it (see WorkspaceContext)
@@ -309,61 +323,98 @@ export class App extends BaseApp {
         }
     }
 
+    /** The live workspace window for a project, if one already has it open. */
+    public findWorkspaceForProject(projectPath: string): AppWindow<WindowAppType.Workspace> | undefined {
+        const target = normalizeProjectPath(projectPath);
+        return this.windowManager.getWindows().find(window =>
+            window.getWindowType() === WindowAppType.Workspace
+            && !window.isClosed()
+            && normalizeProjectPath(window.getProps().projectPath) === target,
+        ) as AppWindow<WindowAppType.Workspace> | undefined;
+    }
+
     /**
-     * Open a recent project by path: authorize its files, then focus the workspace window that
-     * already has it open, or launch a fresh one. Used by the native "Open Recent" menu and the
-     * title-bar project switcher.
-     *
-     * With `replaceOpener`, this is a "switch in the current window": the target takes over the
-     * opener's place on screen (same bounds) and the opener closes once the target is ready, so it
-     * reads as the same window reused rather than a second one piling up. Without it, the opener
-     * is left untouched — the menu's history-open behaviour.
-     *
-     * The launcher's launch flow keeps its own path rather than calling this, because it also owns
-     * closeCurrentWindow and the dev-mode devtools wiring against the freshly launched window.
+     * Project opens still in flight, keyed by normalized path. A window only becomes findable once
+     * it exists, so without this two clicks on the same project would both miss the lookup in
+     * {@link openProject} and each open a window of their own — two windows editing one project's
+     * files, saving over each other.
      */
-    public async openRecentProject(
+    private readonly projectOpenings = new Map<string, Promise<AppWindow<WindowAppType.Workspace>>>();
+
+    /**
+     * Open a project: authorize its files, then focus the window that already has it open, or
+     * launch a fresh one.
+     *
+     * Every path that opens a project goes through here — the launcher's recent list and folder
+     * picker, the project wizard, the native "Open Recent" menu, and the title-bar switcher — so
+     * "one project, one window" holds however the user got there.
+     *
+     * A project that is already open is *focused*, never opened a second time, and focusing it
+     * never retires the window the user came from: asking to go to another project is not asking
+     * to close the one you are in. Only a genuine "open in this window" that actually launches
+     * something new takes the opener's place, and only once the new window reports a working
+     * project — an error screen is "ready" too, and trading a working workspace for a dead end is
+     * exactly the thing to avoid.
+     *
+     * The launcher is the exception to all of it: it is a home screen rather than somewhere work
+     * happens, so it always steps aside once the project it was asked for is on screen.
+     */
+    public async openProject(
         opener: AppWindow,
         projectPath: string,
         options: { replaceOpener?: boolean } = {},
     ): Promise<AppWindow<WindowAppType.Workspace>> {
         this.authorizeRecentProjectAccess(opener, projectPath);
 
-        // forceClose() is deliberate: a switch is not a "close this workspace" gesture, so it must
-        // skip the close guard's confirm sheet and return-to-launcher, which would otherwise
-        // interrupt the switch or flash the home window. Changes auto-save, so nothing is lost.
-        const replaceOpener = Boolean(options.replaceOpener) && opener.getWindowType() === WindowAppType.Workspace;
+        const openerIsLauncher = opener.getWindowType() === WindowAppType.Launcher;
+        // "Reuse this window" only means something for a workspace: the launcher retires either
+        // way, and no other window type is a place a project could take over.
+        const replaceOpener = Boolean(options.replaceOpener)
+            && opener.getWindowType() === WindowAppType.Workspace;
 
-        const existing = this.windowManager.getWindows().find(window =>
-            window.getWindowType() === WindowAppType.Workspace
-            && !window.isClosed()
-            && normalizeProjectPath(window.getProps().projectPath) === normalizeProjectPath(projectPath),
-        ) as AppWindow<WindowAppType.Workspace> | undefined;
+        // forceClose() is deliberate wherever the opener is retired below: opening a project is
+        // not a "close this workspace" gesture, so it must skip the close guard's confirm sheet
+        // and return-to-launcher, which would otherwise interrupt the open or flash the home
+        // window. Changes auto-save, so nothing is lost.
+        const retireOpener = () => {
+            if (!opener.isClosed()) {
+                opener.forceClose();
+            }
+        };
+
+        const existing = this.findWorkspaceForProject(projectPath);
         if (existing) {
             // A minimized window ignores focus() on macOS, so bring it back up first.
             if (existing.win.isMinimized()) {
                 existing.win.restore();
             }
             existing.focus();
-            // Switching to a project already open elsewhere still retires the window left behind —
-            // unless that window *is* the target (clicking the current project in the menu).
-            if (replaceOpener && existing !== opener && !opener.isClosed()) {
-                opener.forceClose();
+            if (openerIsLauncher) {
+                retireOpener();
             }
             return existing;
         }
 
+        const key = normalizeProjectPath(projectPath);
+        const pending = this.projectOpenings.get(key);
         const bounds = replaceOpener ? opener.win.getBounds() : undefined;
-        const workspaceWindow = await this.launchWorkspace(opener, { projectPath }, bounds
+        const launch = pending ?? this.launchWorkspace(opener, { projectPath }, bounds
             ? { minWidth: 800, minHeight: 600, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, center: false }
             : { minWidth: 800, minHeight: 600, width: 1400, height: 900 });
 
-        if (replaceOpener) {
-            // Load result, not window readiness: an error screen (not a project) is "ready" too,
-            // and retiring the opener for it would silently destroy a working workspace.
+        if (!pending) {
+            this.projectOpenings.set(key, launch);
+            void launch.catch(() => void 0).finally(() => {
+                this.projectOpenings.delete(key);
+            });
+        }
+
+        const workspaceWindow = await launch;
+
+        if ((openerIsLauncher || replaceOpener) && workspaceWindow !== opener) {
             workspaceWindow.onLoadResult(ok => {
-                if (ok && !opener.isClosed()) {
-                    opener.forceClose();
+                if (ok) {
+                    retireOpener();
                 }
             });
         }

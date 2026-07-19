@@ -209,7 +209,7 @@ export const ACTION_COMMANDS: ActionCommand[] = [
     { id: "condition", category: "control", label: "Condition (if…)", detail: "Run actions only when a condition is met", icon: Settings2, nlrCapability: "Condition.If" },
     { id: "repeat", category: "control", label: "Repeat", detail: "Run the enclosed actions a number of times", icon: Settings2, nlrCapability: "Control.repeat" },
     { id: "parallel", category: "control", label: "Run at the same time", detail: "Run all enclosed actions together", icon: Settings2, nlrCapability: "Control.all" },
-    { id: "race", category: "control", label: "Race — first to finish", detail: "Run all, continue when the first finishes", icon: Settings2, nlrCapability: "Control.any" },
+    { id: "race", category: "control", label: "Race, first to finish", detail: "Run all, continue when the first finishes", icon: Settings2, nlrCapability: "Control.any" },
     { id: "sequence", category: "control", label: "In order", detail: "Run the enclosed actions one after another", icon: Settings2, nlrCapability: "Control.do" },
     { id: "waitDuration", category: "control", label: "Wait duration", detail: "Pause for a number of milliseconds", icon: Clock, nlrCapability: "Control.sleep" },
     { id: "waitClick", category: "control", label: "Wait for click", detail: "Pause until the player clicks", icon: Clock, nlrCapability: "Control.waitForClick" },

@@ -290,7 +290,7 @@ export class BaseApp {
         this.logger.error("[App] Fatal error, terminating:", message);
         try {
             if (this.electronApp.isReady()) {
-                dialog.showErrorBox(`${APP_DISPLAY_NAME} — Fatal Error`, message);
+                dialog.showErrorBox(`${APP_DISPLAY_NAME}: Fatal Error`, message);
             } else {
                 console.error(message);
             }

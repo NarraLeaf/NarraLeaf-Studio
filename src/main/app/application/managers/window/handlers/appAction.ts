@@ -7,6 +7,7 @@ import { WindowControlAbility } from "@shared/types/window";
 import { app as electronApp, dialog, shell } from "electron";
 import { promises as fs } from "fs";
 import path from "path";
+import { backgroundCacheDirectory, cacheBackgroundImage, pruneBackgroundCache } from "../../storage/backgroundCache";
 
 export class AppPlatformInfoHandler extends IPCHandler<IPCEventType.getPlatform> {
     readonly name = IPCEventType.getPlatform;
@@ -189,28 +190,46 @@ export class AppGlobalStateGetAllHandler extends IPCHandler<IPCEventType.appGlob
     }
 }
 
+/**
+ * Add a project to the history.
+ *
+ * The next list is computed here in the main process rather than sent up by the renderer: with
+ * several windows open, a renderer writing back an array it read earlier would erase every change
+ * made in between. Broadcasting (and the native "Open Recent" rebuild it triggers) comes free with
+ * setGlobalStateAndBroadcast, so every other window's list updates too.
+ */
 export class AppAddRecentProjectHandler extends IPCHandler<IPCEventType.appAddRecentProject> {
     readonly name = IPCEventType.appAddRecentProject;
     readonly type = IPCMessageType.request;
 
     public handle(window: AppWindow, data: IPCEvents[IPCEventType.appAddRecentProject]["data"]) {
-        window.app.globalState.recentlyOpened.addProject({
+        const next = window.app.globalState.recentlyOpened.withProject({
             name: data.name,
             path: data.path,
             icon: undefined,
             openedAt: Date.now(),
             securityScopedBookmark: window.app.storageManager.getSecurityScopedBookmarkForPath(data.path),
         });
-        // Keep the native "Open Recent" submenu in step with the history it renders. No-op off
-        // macOS, where the application menu is empty.
-        window.app.menuManager.updateMenu();
+        window.app.setGlobalStateAndBroadcast("app.recentProjects", next);
+        return this.success(void 0);
+    }
+}
+
+/** Remove one project from the history. Atomic for the same reason as its Add counterpart. */
+export class AppRemoveRecentProjectHandler extends IPCHandler<IPCEventType.appRemoveRecentProject> {
+    readonly name = IPCEventType.appRemoveRecentProject;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow, data: IPCEvents[IPCEventType.appRemoveRecentProject]["data"]) {
+        const next = window.app.globalState.recentlyOpened.without(data.path);
+        window.app.setGlobalStateAndBroadcast("app.recentProjects", next);
         return this.success(void 0);
     }
 }
 
 /**
- * Picks a background image via the native dialog and copies it into userData/backgrounds. Only
- * the stored filename travels back — renderers never hand us arbitrary paths to copy from later.
+ * Picks a background image via the native dialog and caches it under userData/backgrounds. Only
+ * the cache file name travels back — renderers never hand us arbitrary paths to copy from later.
  */
 export class AppPickBackgroundImageHandler extends IPCHandler<IPCEventType.appPickBackgroundImage> {
     readonly name = IPCEventType.appPickBackgroundImage;
@@ -226,17 +245,22 @@ export class AppPickBackgroundImageHandler extends IPCHandler<IPCEventType.appPi
         if (result.canceled || !source) {
             return this.success({ file: null });
         }
-        const extension = path.extname(source).toLowerCase() || ".png";
-        const directory = path.join(electronApp.getPath("userData"), "backgrounds");
-        await fs.mkdir(directory, { recursive: true });
-        const fileName = `background${extension}`;
-        await fs.copyFile(source, path.join(directory, fileName));
+        const directory = backgroundCacheDirectory(electronApp.getPath("userData"));
+        const fileName = await cacheBackgroundImage(
+            directory,
+            await fs.readFile(source),
+            path.extname(source).toLowerCase() || ".png",
+        );
+        // A cache that failed to shrink is not worth failing the pick over.
+        await pruneBackgroundCache(directory, fileName).catch(error => {
+            window.app.logger.warn(`[Background] Failed to prune the background cache: ${String(error)}`);
+        });
         return this.success({ file: fileName });
     }
 }
 
 /**
- * Reads a stored background image (basename-only lookup inside userData/backgrounds — path
+ * Reads a cached background image (basename-only lookup inside userData/backgrounds — path
  * separators are rejected so this can never be steered at arbitrary files).
  */
 export class AppReadBackgroundImageHandler extends IPCHandler<IPCEventType.appReadBackgroundImage> {
@@ -248,7 +272,7 @@ export class AppReadBackgroundImageHandler extends IPCHandler<IPCEventType.appRe
             return this.failed(new Error("Invalid background image name"));
         }
         try {
-            const data = await fs.readFile(path.join(electronApp.getPath("userData"), "backgrounds", file));
+            const data = await fs.readFile(path.join(backgroundCacheDirectory(electronApp.getPath("userData")), file));
             return this.success({ data: new Uint8Array(data) });
         } catch {
             return this.success({ data: null });
