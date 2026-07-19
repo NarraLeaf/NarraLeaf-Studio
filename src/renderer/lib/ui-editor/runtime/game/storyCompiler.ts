@@ -79,6 +79,12 @@ import {
     toNlrTransformSequence,
 } from "./storyTransformProps";
 import type { StageSnapshotDisplayable, StageSnapshotEffects, StoryStageSnapshot } from "./storyStageSnapshot";
+import {
+    collectStoryPlaybackPlan,
+    groupPlaybackStepsByNvl,
+    type StoryPlaybackPlan,
+    type StoryPlaybackStop,
+} from "./storyPlaybackWalk";
 import type { ScriptCtx } from "narraleaf-react";
 import {
     compileStoryActionBlueprintToScript,
@@ -231,6 +237,8 @@ export type CompiledNlrStory = {
     diagnostics: NlrStoryCompileDiagnostic[];
     /** Per-scene element registries, keyed by scene id (normalized object name → element). */
     sceneElements?: Record<string, CompiledSceneElements>;
+    /** Continuous stage previews only: why the compiled playback tail ends. */
+    playbackStop?: StoryPlaybackStop;
 };
 
 /**
@@ -265,6 +273,15 @@ export type StagePreviewCompileInput = {
     onBeforeTarget: () => void;
     /** Fires synchronously immediately after the target's own statements complete. */
     onAfterTarget: () => void;
+    /**
+     * Continuous playback ("play from here"). Instead of playing the target's own action and
+     * holding on the resulting frame, compile the whole execution tail from the target onwards —
+     * the rest of its branch, then everything after it in the scene (see collectStoryPlaybackPlan).
+     * The stage still *arrives* via the snapshot; only what happens next changes. Where the tail
+     * ends (scene end, or a jump the single-scene preview cannot follow) comes back on the
+     * compiled story's `playbackStop`.
+     */
+    continuous?: boolean;
 };
 
 type SceneCompileContext = {
@@ -605,13 +622,20 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     }
 
     statements.push(previewMarker(input.onBeforeTarget));
-    const targetBlock = input.targetBlockId ? scene.blocks[input.targetBlockId] : undefined;
-    if (targetBlock) {
-        let own = await compilePreviewTargetOwnStatements(ctx, targetBlock);
-        if (snapshot.nvl && own.length > 0) {
-            own = [previewScene.nvl({ duration: 0 } as any, own as any)];
+    let playbackStop: StoryPlaybackStop | undefined;
+    if (input.continuous) {
+        const plan = collectStoryPlaybackPlan(scene, input.targetBlockId);
+        playbackStop = plan.stop;
+        statements.push(...await compilePlaybackTail(ctx, plan));
+    } else {
+        const targetBlock = input.targetBlockId ? scene.blocks[input.targetBlockId] : undefined;
+        if (targetBlock) {
+            let own = await compilePreviewTargetOwnStatements(ctx, targetBlock);
+            if (snapshot.nvl && own.length > 0) {
+                own = [previewScene.nvl({ duration: 0 } as any, own as any)];
+            }
+            statements.push(...own);
         }
-        statements.push(...own);
     }
     statements.push(previewMarker(input.onAfterTarget));
 
@@ -636,7 +660,46 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         actionIdBindings,
         diagnostics,
         sceneElements: { [scene.id]: { images: ctx.images, texts: ctx.texts, layers: ctx.layers } },
+        playbackStop,
     };
+}
+
+/**
+ * Compile a continuous-playback tail: every block that runs from the start row onwards, in
+ * execution order. Consecutive in-NVL steps share one `nvl` wrapper, so a run of NVL lines
+ * accumulates in a single NVL screen instead of restarting the mode on every line.
+ */
+async function compilePlaybackTail(ctx: SceneCompileContext, plan: StoryPlaybackPlan): Promise<NlrStatement[]> {
+    const statements: NlrStatement[] = [];
+    for (const group of groupPlaybackStepsByNvl(plan.steps)) {
+        const body: NlrStatement[] = [];
+        for (const step of group.steps) {
+            const block = ctx.scene.blocks[step.blockId];
+            if (!block) {
+                continue;
+            }
+            // A branch entry (menu option / condition branch) is a label, not an action: playback
+            // was *entered* inside it, so its body is what plays — the container is already behind us.
+            body.push(...step.bodyOnly
+                ? await compileBlockList(ctx, block.childrenIds)
+                : await compileBlock(ctx, block.id));
+        }
+        if (group.insideNvl && body.length > 0) {
+            statements.push(ctx.nlrScene.nvl({ duration: 0 } as any, body as any));
+        } else {
+            statements.push(...body);
+        }
+    }
+    if (plan.stop.reason === "jump") {
+        const targetScene = ctx.document.scenes[plan.stop.targetSceneId];
+        diagnostic(
+            ctx,
+            "warning",
+            plan.stop.blockId,
+            `Playback ends here: the preview runs one scene, so it holds before the jump to ${targetScene?.name || plan.stop.targetSceneId || "(empty)"}.`,
+        );
+    }
+    return statements;
 }
 
 /** Constructor-config pose: settled props with visibility folded into opacity. */

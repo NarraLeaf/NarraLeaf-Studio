@@ -7,28 +7,10 @@ import type { StoryBlock, StoryScene } from "@shared/types/story";
  * - anything unresolved previews the scene start (`null`).
  */
 export function resolvePreviewTargetBlockId(scene: StoryScene, activeBlockId: string | null): string | null {
-    if (!activeBlockId || !scene.blocks[activeBlockId]) {
+    const block = resolveRunnableBlock(scene, activeBlockId);
+    if (!block) {
         return null;
     }
-    let block = scene.blocks[activeBlockId];
-
-    if (isNonPreviewableKind(block)) {
-        const order = executionOrderBlockIds(scene);
-        const index = order.indexOf(block.id);
-        let fallback: StoryBlock | null = null;
-        for (let i = index - 1; i >= 0; i -= 1) {
-            const candidate = scene.blocks[order[i]];
-            if (candidate && !isNonPreviewableKind(candidate)) {
-                fallback = candidate;
-                break;
-            }
-        }
-        if (!fallback) {
-            return null;
-        }
-        block = fallback;
-    }
-
     if (block.kind === "nodeAction" && block.payload.action === "choiceOption") {
         return block.parentId && scene.blocks[block.parentId] ? block.parentId : null;
     }
@@ -36,6 +18,37 @@ export function resolvePreviewTargetBlockId(scene: StoryScene, activeBlockId: st
         return block.parentId && scene.blocks[block.parentId] ? block.parentId : null;
     }
     return block.id;
+}
+
+/**
+ * Resolve the row "play from here" starts continuous playback at.
+ *
+ * Deliberately *not* {@link resolvePreviewTargetBlockId}: that collapses an option row to its menu,
+ * which is right for showing state (the menu is what's on screen) and exactly wrong for playback —
+ * starting on an option means "take this branch", so the option must survive as the start row.
+ */
+export function resolvePlaybackStartBlockId(scene: StoryScene, blockId: string | null): string | null {
+    return resolveRunnableBlock(scene, blockId)?.id ?? null;
+}
+
+/** The nearest block with runtime behaviour: the row itself, or the previous one for code/note rows. */
+function resolveRunnableBlock(scene: StoryScene, blockId: string | null): StoryBlock | null {
+    if (!blockId || !scene.blocks[blockId]) {
+        return null;
+    }
+    const block = scene.blocks[blockId];
+    if (!isNonPreviewableKind(block)) {
+        return block;
+    }
+    const order = executionOrderBlockIds(scene);
+    const index = order.indexOf(block.id);
+    for (let i = index - 1; i >= 0; i -= 1) {
+        const candidate = scene.blocks[order[i]];
+        if (candidate && !isNonPreviewableKind(candidate)) {
+            return candidate;
+        }
+    }
+    return null;
 }
 
 function isNonPreviewableKind(block: StoryBlock): boolean {
