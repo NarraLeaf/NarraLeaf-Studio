@@ -17,7 +17,7 @@ import type {
     StoryVariableScope,
     StoryVariableValueType,
 } from "@shared/types/story";
-import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
+import { isStoryExpressionEvaluable, layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import { useTranslation } from "@/lib/i18n";
 import type { Translator } from "@shared/i18n";
@@ -1765,9 +1765,12 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
                         value={branchPayload.condition}
                         onChange={condition => props.onChange({ ...branchPayload, condition })}
                     />
-                    {branchPayload.condition?.kind === "expression" ? (
+                    {/* An expression condition used to warrant a "not supported" banner. It now compiles
+                        and previews like any other, so the only thing worth surfacing is the opposite
+                        case: an expression that stopped resolving (its variable was renamed or deleted). */}
+                    {branchPayload.condition?.kind === "expression" && !isStoryExpressionEvaluable(branchPayload.condition.expression.ast) ? (
                         <div className="rounded-md border border-warning/20 bg-warning/10 px-2 py-1.5 text-xs text-warning">
-                            {t("storyInspector.condition.legacyExpression")}
+                            {t("storyInspector.condition.brokenExpression")}
                         </div>
                     ) : null}
                     {branchPayload.condition ? (

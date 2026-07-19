@@ -13,7 +13,7 @@ const CONTEXT: StoryCommandContext = {
     tempSpeakers: [],
     scenes: [{ id: "scn-2", name: "Chapter 2" }],
     variables: [
-        { name: "gold", ref: { scope: "scene", variableId: "var-gold" }, valueType: "number" },
+        { name: "gold", ref: { scope: "scene", variableId: "var-gold" }, valueType: "number", defaultValue: 50 },
         { name: "met", ref: { scope: "saved", variableId: "var-met" }, valueType: "boolean" },
     ],
     formsByCharacterId: { "chr-alice": ["smile", "angry"] },
@@ -23,7 +23,7 @@ const CONTEXT: StoryCommandContext = {
 let counter = 0;
 const nextId = () => `id-${++counter}`;
 
-/** Type a line, resolve it against CONTEXT, and write the args onto a fresh block — the whole pipeline. */
+/** Type a line, resolve it against CONTEXT, and write the args onto a fresh block - the whole pipeline. */
 function run(source: string): { block: StoryBlock; issues: string[] } {
     const line = parseCommandLine(source);
     if (line.kind !== "command" || !line.def) {
@@ -33,6 +33,18 @@ function run(source: string): { block: StoryBlock; issues: string[] } {
     const commandId = line.def.commandId as ActionCommandId;
     const block = applyCommandArgs(createBlockForCommand(commandId, nextId), commandId, args);
     return { block, issues: issues.map(issue => issue.code) };
+}
+
+/**
+ * Parse and resolve only - no block. Declaration commands build nothing (and `createBlockForCommand`
+ * throws for them by design), so their whole contract is in what resolution accepts and rejects.
+ */
+function issuesOf(source: string): string[] {
+    const line = parseCommandLine(source);
+    if (line.kind !== "command" || !line.def) {
+        throw new Error(`not a command: ${source}`);
+    }
+    return resolveCommandLine(line, CONTEXT).issues.map(issue => issue.code);
 }
 
 function payload(source: string) {
@@ -63,7 +75,7 @@ describe("background", () => {
         expect(payload("/bg forest_day d=0.25")).toMatchObject({ transition: { kind: "fadeIn", durationMs: 250 } });
     });
 
-    it("leaves an unfilled command valid — the palette commits these too", () => {
+    it("leaves an unfilled command valid - the palette commits these too", () => {
         expect(payload("/bg")).toEqual({ action: "setBackground" });
     });
 
@@ -106,7 +118,7 @@ describe("show", () => {
         });
     });
 
-    it("faults an unknown character — unlike a speaker, a portrait must resolve", () => {
+    it("faults an unknown character - unlike a speaker, a portrait must resolve", () => {
         expect(run("/show Zoe").issues).toEqual(["unknownCharacter"]);
     });
 
@@ -143,13 +155,110 @@ describe("set", () => {
     });
 
     it("catches the dependent type: a value the declared variable cannot hold", () => {
-        // The check the parser structurally cannot do — `100`'s legality depends on what `met` resolves to.
-        expect(run("/set met 100").issues).toEqual(["valueTypeMismatch"]);
-        expect(run("/set gold true").issues).toEqual(["valueTypeMismatch"]);
+        // The check the parser structurally cannot do - `100`'s legality depends on what `met` resolves to.
+        expect(run("/set met 100").issues).toEqual(["expressionTypeMismatch"]);
+        expect(run("/set gold true").issues).toEqual(["expressionTypeMismatch"]);
     });
 
     it("faults an undeclared variable", () => {
         expect(run("/set nope 1").issues).toEqual(["unknownVariable"]);
+    });
+
+    it("stores a computed right-hand side as an expression, leaving a literal a literal", () => {
+        // The whole point of the change: adding one no longer needs a blueprint.
+        expect(payload("/set gold gold + 1")).toMatchObject({
+            target: { scope: "scene", variableId: "var-gold" },
+            expression: { source: "gold + 1" },
+        });
+        // A bare literal must NOT grow an expression around it - old documents and the inspector's
+        // literal editor both depend on `value` staying the storage for a constant.
+        expect(payload("/set gold 100")).toMatchObject({ value: 100, expression: undefined });
+    });
+
+    it("type-checks a computed right-hand side, and declines where inference cannot decide", () => {
+        expect(run("/set gold \"rich\"").issues).toEqual(["expressionTypeMismatch"]);
+        expect(run("/set gold gold + 1").issues).toEqual([]);
+        expect(run("/set met gold > 50").issues).toEqual([]);
+        // A ternary with disagreeing branches infers `unknown`, which is deliberately allowed.
+        expect(run("/set gold met ? 1 : \"none\"").issues).toEqual([]);
+    });
+
+    it("desugars compound assignment into the same tree the longhand builds", () => {
+        expect(payload("/set gold += 1")).toMatchObject({ expression: { source: "gold + (1)" } });
+        expect(payload("/set gold -= 5")).toMatchObject({ expression: { source: "gold - (5)" } });
+    });
+
+    it("supports the ternary, including chained without parentheses", () => {
+        const { expression } = payload("/set gold gold > 100 ? 1 : gold > 50 ? 2 : 3") as { expression: { ast: { kind: string } } };
+        expect(expression.ast.kind).toBe("ternary");
+    });
+
+    it("faults an expression that does not parse, naming the actual mistake", () => {
+        expect(run("/set gold gold +").issues).toEqual(["expressionError"]);
+        expect(run("/set gold nope + 1").issues).toEqual(["expressionError"]);
+        expect(run("/set gold eval(\"x\")").issues).toEqual(["expressionError"]);
+    });
+
+    it("resolves a shadowed name by scope prefix", () => {
+        expect(payload("/set gold saved.met ? 1 : 0")).toMatchObject({ expression: {} });
+    });
+});
+
+describe("assignment sugar", () => {
+    it("lowers /inc and /dec to a setVariable expression, defaulting the step to 1", () => {
+        expect(payload("/inc gold")).toMatchObject({
+            action: "setVariable",
+            target: { scope: "scene", variableId: "var-gold" },
+            expression: { source: "gold + (1)" },
+        });
+        expect(payload("/dec gold 5")).toMatchObject({ expression: { source: "gold - (5)" } });
+    });
+
+    it("lowers /toggle to a negation of the target", () => {
+        expect(payload("/toggle met")).toMatchObject({
+            target: { scope: "saved", variableId: "var-met" },
+            expression: { source: "!met" },
+        });
+    });
+
+    it("lowers /reset to the declared default, snapshotted as a literal", () => {
+        // `gold` declares 50 in CONTEXT; `met` declares nothing, so it falls to its type's zero.
+        expect(payload("/reset gold")).toMatchObject({ value: 50, expression: undefined });
+        expect(payload("/reset met")).toMatchObject({ value: false, expression: undefined });
+    });
+
+    it("accepts an expression as the step", () => {
+        expect(payload("/inc gold gold * 2")).toMatchObject({ expression: { source: "gold + (gold * 2)" } });
+    });
+});
+
+describe("variable declarations", () => {
+    it("parses all three scopes with the same shape", () => {
+        for (const token of ["local", "var", "persis"]) {
+            expect(issuesOf(`/${token} hp 100 type=number`)).toEqual([]);
+        }
+    });
+
+    it("refuses a default that reads another variable", () => {
+        // A declaration is evaluated before any variable exists, so there is nothing to read.
+        expect(issuesOf("/local hp gold + 1")).toEqual(["declarationDefaultNotConstant"]);
+    });
+
+    it("refuses a name already declared in the same scope", () => {
+        expect(issuesOf("/local gold 1")).toEqual(["duplicateVariable"]);
+        // Same name in a *different* scope is legal - that is what the scope prefixes exist to address.
+        expect(issuesOf("/var gold 1")).toEqual([]);
+    });
+});
+
+describe("/if", () => {
+    it("resolves a boolean expression", () => {
+        expect(run("/if gold >= 100").issues).toEqual([]);
+    });
+
+    it("refuses a condition that is not a comparison", () => {
+        // Legal as an expression (a non-zero number is truthy), but almost always an unfinished line.
+        expect(run("/if gold").issues).toEqual(["expressionNotBoolean"]);
     });
 });
 
@@ -182,7 +291,7 @@ describe("enum aliases", () => {
     });
 });
 
-describe("P1 — the rest of the palette", () => {
+describe("P1 - the rest of the palette", () => {
     it("expr: sets a character's form, positionally or by name", () => {
         // `/expr Alice angry` reads as one thought; `form=angry` still works (a positional stays named).
         expect(payload("/expr Alice angry")).toMatchObject({
@@ -246,7 +355,7 @@ describe("P1 — the rest of the palette", () => {
             expect(payload("/imgshow hero t=slideLeft d=0.3")).toMatchObject({ objectName: "hero", transform: { preset: "slideLeft", durationMs: 300 } });
         });
 
-        it("accepts an object name not yet on stage — a reference need not resolve", () => {
+        it("accepts an object name not yet on stage - a reference need not resolve", () => {
             // `ghost` is in no stage list, but a reference is a free value (dynamic / cross-scene), so it
             // binds without an issue rather than faulting like an asset would.
             expect(run("/imgshow ghost").issues).toEqual([]);
@@ -275,13 +384,13 @@ describe("P1 — the rest of the palette", () => {
             expect(payload("/settext title New copy")).toMatchObject({ operation: "setText", objectName: "title", text: "New copy" });
         });
 
-        it("font routes to the op the typed field implies — size, else colour", () => {
+        it("font routes to the op the typed field implies - size, else colour", () => {
             expect(payload("/font title 48")).toMatchObject({ operation: "setFontSize", objectName: "title", fontSize: 48 });
             expect(payload("/font title color=#ff0000")).toMatchObject({ operation: "setFontColor", objectName: "title", fontColor: "#ff0000" });
         });
 
         it("font faults rather than silently dropping the colour when both size and colour are given", () => {
-            // One block runs one op, so honouring both is impossible — fault instead of losing the colour.
+            // One block runs one op, so honouring both is impossible - fault instead of losing the colour.
             expect(run("/font title 48 color=#ff0000").issues).toEqual(["conflictingParams"]);
         });
     });

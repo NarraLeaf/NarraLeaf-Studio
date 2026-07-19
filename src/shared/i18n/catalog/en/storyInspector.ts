@@ -1,4 +1,4 @@
-/** `storyInspector` — the per-action-type inspector in the story scene editor. */
+/** `storyInspector` - the per-action-type inspector in the story scene editor. */
 export const storyInspector = {
     closeEditor: "Close editor",
     noEditableFields: "No editable fields for this action yet.",
@@ -350,7 +350,7 @@ export const storyInspector = {
     },
 
     condition: {
-        legacyExpression: "Legacy expression conditions are preserved in the document but are not part of the NLR action surface.",
+        brokenExpression: "This expression no longer resolves - a variable it reads may have been renamed or deleted. The branch evaluates false until it is fixed.",
         clear: "Clear condition",
     },
 

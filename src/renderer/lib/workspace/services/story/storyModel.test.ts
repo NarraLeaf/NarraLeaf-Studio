@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { StoryBlock } from "@shared/types/story";
-import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
+import type { StoryBlock, StoryExpr } from "@shared/types/story";
+import { isStoryExpressionEvaluable, STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import {
     collectInvalidBlocks,
     collectTempSpeakers,
@@ -482,7 +482,7 @@ describe("storyModel", () => {
             kind: "action",
             parentId: null,
             childrenIds: [],
-            // Legacy layer name with no matching layer block — keeps the last-known name only.
+            // Legacy layer name with no matching layer block - keeps the last-known name only.
             payload: { action: "text", operation: "create", objectName: "caption", layerName: "ghost" },
         } as unknown as StoryBlock, { parentId: null });
         (document as { schemaVersion: number }).schemaVersion = 2;
@@ -712,9 +712,65 @@ describe("story document migration ladder", () => {
     // The regression that shipped: bumping the constant without adding a step left v3 documents
     // falling through migrateStoryDocumentToLatest untouched, so every existing project threw
     // "migration is not implemented" and its story panel would not open.
-    it.each([[1], [2], [3]])("brings a v%i document to the current schema", version => {
+    it.each([[1], [2], [3], [4]])("brings a v%i document to the current schema", version => {
         expect(normalizeStoryDocument(docAtVersion(version), "2026-07-16T00:00:00.000Z").schemaVersion)
             .toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    });
+
+    /** A v4 document holding one `conditionBranch` whose expression condition is the legacy raw string. */
+    function docWithLegacyExpression(source: string) {
+        const document = docAtVersion(4);
+        const sceneId = Object.keys(document.scenes)[0];
+        const scene = document.scenes[sceneId];
+        return {
+            ...document,
+            scenes: {
+                [sceneId]: {
+                    ...scene,
+                    sceneVariables: {
+                        "v-gold": { id: "v-gold", name: "gold", valueType: "number", storageKey: "v-gold", defaultValue: 0 },
+                    },
+                    rootBlockIds: ["b-branch"],
+                    blocks: {
+                        "b-branch": {
+                            id: "b-branch",
+                            parentId: null,
+                            childrenIds: [],
+                            kind: "control",
+                            payload: { control: "conditionBranch", branch: "if", condition: { kind: "expression", source } },
+                        },
+                    },
+                },
+            },
+        } as never;
+    }
+
+    function migratedCondition(source: string) {
+        const migrated = normalizeStoryDocument(docWithLegacyExpression(source), "2026-07-16T00:00:00.000Z");
+        const scene = Object.values(migrated.scenes)[0];
+        const payload = scene.blocks["b-branch"].payload as { condition: { kind: string; expression: { source: string; ast: { kind: string } } } };
+        return payload.condition;
+    }
+
+    it("parses a v4 expression condition into a tree, so conditions that never worked start working", () => {
+        // v4 stored raw text here and every consumer refused it - the compiler returned a constant
+        // false. Migration is what turns those rows into conditions that actually branch.
+        const condition = migratedCondition("gold >= 100");
+        expect(condition.kind).toBe("expression");
+        expect(condition.expression.source).toBe("gold >= 100");
+        expect(condition.expression.ast.kind).toBe("binary");
+    });
+
+    it("keeps unresolvable legacy source as a non-evaluable tree rather than dropping the row", () => {
+        // Still evaluates false, exactly as it did in v4 - but now the row can say so instead of
+        // looking like a condition that simply never matched.
+        //
+        // The assertion is `isStoryExpressionEvaluable`, not the shape of the root node: the tree keeps
+        // its structure (`someLongGoneVariable > 1` is still a comparison) and marks only the part that
+        // failed, so the author sees where the problem is. Evaluability is what the compiler gates on.
+        const condition = migratedCondition("someLongGoneVariable > 1");
+        expect(condition.expression.source).toBe("someLongGoneVariable > 1");
+        expect(isStoryExpressionEvaluable(condition.expression.ast as StoryExpr)).toBe(false);
     });
 
     it("leaves a current-version document alone", () => {

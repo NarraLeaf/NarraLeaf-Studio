@@ -600,7 +600,7 @@ function conditionSummary(condition: unknown, scene: StoryScene, document: Story
     const value = condition as
         | { kind: "variable"; target: { scope: string; variableId?: string; storageKey?: string }; operator: string; value?: unknown }
         | { kind: "blueprint"; blueprintId: string }
-        | { kind: "expression"; source: string }
+        | { kind: "expression"; expression: { source: string } }
         | undefined;
     if (!value) {
         return t("story.condition.summarySet");
@@ -609,7 +609,7 @@ function conditionSummary(condition: unknown, scene: StoryScene, document: Story
         return t("story.condition.summaryGraph");
     }
     if (value.kind === "expression") {
-        return value.source || t("story.condition.summaryExpression");
+        return value.expression?.source || t("story.condition.summaryExpression");
     }
     const target = value.target;
     const name = target.scope === "scene"

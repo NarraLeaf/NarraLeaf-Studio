@@ -20,6 +20,7 @@ function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[]
                 sceneVariables: {
                     locked: { id: "locked", name: "locked", valueType: "boolean", storageKey: "locked" },
                     started: { id: "started", name: "started", valueType: "boolean", storageKey: "started" },
+                    gold: { id: "gold", name: "gold", valueType: "number", storageKey: "gold", defaultValue: 100 },
                 },
             },
             "scene-2": {
@@ -821,7 +822,7 @@ describe("compileStudioStoryToNlr", () => {
 
         // A blank name must not produce `new Character("")`: NLR's Narrator collapses to
         // `state.name === ""`, so useDialog would report this real character as `isNarrator` and
-        // Avatar would bail on `!character.state.name` — both silent.
+        // Avatar would bail on `!character.state.name` - both silent.
         it.each([
             ["empty", ""],
             ["whitespace-only", "   "],
@@ -1043,6 +1044,102 @@ describe("compileStudioStoryToNlr", () => {
                 message: "Code/Script blocks are not part of the NLR Story action surface and were skipped.",
             },
         ]);
+    });
+
+    describe("expression assignments and conditions", () => {
+        /** A `setVariable` whose right-hand side is computed - `/set gold gold + 1`. */
+        function incrementGold(): StoryBlock {
+            return {
+                id: "set-var",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "setVariable",
+                    target: { scope: "scene", variableId: "gold" },
+                    value: null,
+                    expression: {
+                        source: "gold + 1",
+                        ast: {
+                            kind: "binary",
+                            op: "+",
+                            left: { kind: "var", target: { scope: "scene", variableId: "gold" }, name: "gold" },
+                            right: { kind: "literal", value: 1 },
+                        },
+                    },
+                },
+            };
+        }
+
+        it("compiles a computed assignment with no diagnostics", async () => {
+            // The headline of the change: adding one to a number no longer needs a blueprint. If this
+            // regresses, `/set gold gold + 1` silently stops assigning.
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({ "set-var": incrementGold() }, ["set-var"]),
+                sceneId: "scene-1",
+            });
+            expect(compiled.diagnostics).toEqual([]);
+            expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("set-var");
+        });
+
+        it("skips the assignment and says so when the expression never resolved", async () => {
+            // A tree carrying an `invalid` node must not be evaluated around - writing whatever the
+            // rest of it computes would produce a plausible wrong number.
+            const broken: StoryBlock = {
+                id: "set-var",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "setVariable",
+                    target: { scope: "scene", variableId: "gold" },
+                    value: null,
+                    expression: { source: "gone + 1", ast: { kind: "invalid", source: "gone + 1" } },
+                },
+            };
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({ "set-var": broken }, ["set-var"]),
+                sceneId: "scene-1",
+            });
+            expect(compiled.diagnostics).toEqual([
+                { level: "warning", blockId: "set-var", message: "Expression `gone + 1` did not resolve; the assignment was skipped." },
+            ]);
+        });
+
+        it("compiles an expression condition instead of refusing it", async () => {
+            // v4 returned a constant false here and emitted a "raw script is outside the NLR action
+            // surface" warning. A clean compile is the whole point of the v5 migration.
+            const branch: StoryBlock = {
+                id: "if-branch",
+                kind: "control",
+                parentId: "condition",
+                childrenIds: [],
+                payload: {
+                    control: "conditionBranch",
+                    branch: "if",
+                    condition: {
+                        kind: "expression",
+                        expression: {
+                            source: "gold >= 100",
+                            ast: {
+                                kind: "binary",
+                                op: ">=",
+                                left: { kind: "var", target: { scope: "scene", variableId: "gold" }, name: "gold" },
+                                right: { kind: "literal", value: 100 },
+                            },
+                        },
+                    },
+                },
+            };
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    condition: { id: "condition", kind: "control", parentId: null, childrenIds: ["if-branch"], payload: { control: "condition" } },
+                    "if-branch": branch,
+                }, ["condition"]),
+                sceneId: "scene-1",
+            });
+            expect(compiled.diagnostics).toEqual([]);
+        });
     });
 
     it("maps the custom transition kinds onto real NLR transitions without diagnostics", async () => {
