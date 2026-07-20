@@ -12,6 +12,7 @@ import type {
 import { WindowAppType, WindowCloseResults } from "@shared/types/window";
 import { resolveDependencies } from "@shared/utils/resolveDependencies";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
+import { readPublishedPluginData } from "../../pluginRuntimeData";
 import { authorizeActorCapabilityRequest } from "../actorAuthorization";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
@@ -152,7 +153,41 @@ export class PluginRuntimeListHandler extends IPCHandler<IPCEventType.pluginRunt
             return this.failed("Runtime plugins can only be requested by Dev Mode windows");
         }
         const plugins = await window.app.pluginManager.listRuntimePlugins();
-        return this.success({ plugins: await this.filterSuppressed(window, plugins) });
+        const allowed = await this.filterSuppressed(window, plugins);
+        return this.success({ plugins: await this.attachRuntimeData(window, allowed) });
+    }
+
+    /**
+     * Dev Mode reads the live project rather than a pack, so publishable plugin
+     * storage is loaded straight from `editor/services`. Best-effort: a project
+     * without a resolvable path just gets descriptors with no data, and the
+     * plugin degrades the same way it would in a game built before the data
+     * channel existed.
+     */
+    private async attachRuntimeData(
+        window: AppWindow,
+        plugins: RuntimePluginDescriptor[],
+    ): Promise<RuntimePluginDescriptor[]> {
+        const projectPath = (window.getProps() as { projectPath?: unknown }).projectPath;
+        if (typeof projectPath !== "string" || !projectPath.trim()) {
+            return plugins;
+        }
+        return Promise.all(plugins.map(async descriptor => {
+            try {
+                const data = await readPublishedPluginData({
+                    projectPath,
+                    manifest: descriptor.manifest,
+                    onWarning: message => console.warn("[PluginRuntimeListHandler]", message),
+                });
+                return data ? { ...descriptor, data } : descriptor;
+            } catch (error) {
+                console.warn(
+                    `[PluginRuntimeListHandler] failed to read runtime data of plugin "${descriptor.plugin.id}":`,
+                    error,
+                );
+                return descriptor;
+            }
+        }));
     }
 
     /**

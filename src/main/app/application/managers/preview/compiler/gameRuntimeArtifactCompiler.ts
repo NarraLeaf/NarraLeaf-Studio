@@ -27,6 +27,7 @@ import {
     gameRuntimeBundleRuntimeEntry,
 } from "@shared/utils/gameRuntimeBundle";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
+import { readPublishedPluginData } from "../../pluginRuntimeData";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { getMimeType } from "@shared/utils/fs";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
@@ -225,6 +226,7 @@ export async function compileGameRuntimeArtifact(
         });
         const packPlugins = await copyRuntimePlugins({
             appDir,
+            projectPath: input.projectPath,
             runtimePlugins: input.runtimePlugins ?? [],
             target,
         });
@@ -460,6 +462,7 @@ async function copyProjectAssets(input: {
 
 async function copyRuntimePlugins(input: {
     appDir: string;
+    projectPath: string;
     runtimePlugins: GameRuntimePluginSource[];
     target: PackTarget;
 }): Promise<GameRuntimePackPluginEntry[]> {
@@ -480,9 +483,15 @@ async function copyRuntimePlugins(input: {
                 `${error instanceof Error ? error.message : String(error)}`,
             );
         }
+        const data = await readPublishedPluginData({
+            projectPath: input.projectPath,
+            manifest: plugin.manifest,
+            onWarning: message => console.warn("[gameRuntimeArtifactCompiler]", message),
+        });
         entries.push({
             manifest: plugin.manifest,
             entryRelativePath: relativePath,
+            ...(data ? { data } : {}),
         });
     }
     return entries;

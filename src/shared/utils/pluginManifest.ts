@@ -75,15 +75,16 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
     return { ok: true, manifest };
 }
 
-const CONTRIBUTES_KEYS = ["blueprintNodes", "widgets"] as const;
+const CONTRIBUTES_KEYS = ["blueprintNodes", "widgets", "runtimeData"] as const;
 
 const CONTRIBUTES_KIND_LABEL: Record<(typeof CONTRIBUTES_KEYS)[number], string> = {
     blueprintNodes: "blueprint node",
     widgets: "widget",
+    runtimeData: "storage namespace",
 };
 
 function validateContributes(value: unknown, pluginId: string): Required<PluginContributes> | string {
-    const empty: Required<PluginContributes> = { blueprintNodes: [], widgets: [] };
+    const empty: Required<PluginContributes> = { blueprintNodes: [], widgets: [], runtimeData: [] };
     if (value === undefined) {
         return empty;
     }
@@ -103,7 +104,7 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
             continue;
         }
         if (!Array.isArray(raw)) {
-            return `Plugin contributes.${key} must be an array of type strings`;
+            return `Plugin contributes.${key} must be an array of strings`;
         }
         const types: string[] = [];
         for (const item of raw) {
@@ -112,7 +113,7 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
                 return `Plugin contributes.${key} entries must be non-empty strings`;
             }
             if (!type.startsWith(`${pluginId}.`)) {
-                return `Contributed ${CONTRIBUTES_KIND_LABEL[key]} type must be prefixed with the plugin id: ${type}`;
+                return `Contributed ${CONTRIBUTES_KIND_LABEL[key]} must be prefixed with the plugin id: ${type}`;
             }
             if (!types.includes(type)) {
                 types.push(type);
