@@ -427,7 +427,7 @@ export type IPCEvents = {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {
-            name: "desktop";
+            name: "desktop" | "home";
         },
         response: {
             path: string;

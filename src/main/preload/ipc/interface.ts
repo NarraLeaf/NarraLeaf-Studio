@@ -229,7 +229,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appRemoveRecentProject, { path }) as Promise<RequestStatus<void>>,
         checkRecentProjects: () =>
             ipcClient.invoke(IPCEventType.appCheckRecentProjects, {}) as Promise<RequestStatus<{ missing: MissingRecentProject[] }>>,
-        getSystemPath: (name: "desktop") =>
+        getSystemPath: (name: "desktop" | "home") =>
             ipcClient.invoke(IPCEventType.appSystemPath, { name }) as Promise<RequestStatus<{ path: string }>>,
     },
 
