@@ -1,5 +1,5 @@
 import type { TranslationKey } from "@shared/i18n";
-import { parseCommandLine, type StoryCommandIssue, type StoryCommandLine } from "./storyCommandParser";
+import { missingCoreParams, parseCommandLine, type StoryCommandIssue, type StoryCommandLine } from "./storyCommandParser";
 import type { StoryExpressionIssue } from "@shared/utils/storyExpressionParser";
 import { resolveCommandLine, type StoryCommandContext, type StoryCommandResolutionIssue } from "./storyCommandResolution";
 
@@ -16,7 +16,12 @@ import { resolveCommandLine, type StoryCommandContext, type StoryCommandResoluti
  * compile-time checked, and the caller already holds `t`.
  */
 
-export type StoryCommandReason = { key: TranslationKey; params: Record<string, string | number> };
+export type StoryCommandReason = {
+    key: TranslationKey;
+    params: Record<string, string | number>;
+    /** When set, the caller translates this hint key and substitutes it for `params.slot`. */
+    paramHintKey?: TranslationKey;
+};
 
 const reasonKey = (code: string): TranslationKey => `storyExpr.reason.${code}` as TranslationKey;
 
@@ -41,6 +46,34 @@ export function getCommandLineReason(source: string, context: StoryCommandContex
     }
     const resolutionIssue = resolveCommandLine(line, context).issues[0];
     return resolutionIssue ? resolutionReason(resolutionIssue) : null;
+}
+
+/**
+ * Why this line landed as a draft instead of a row - the reason a draft row shows.
+ *
+ * A superset of {@link getCommandLineReason}: an error-free line can still be missing its required
+ * core (bible B9), which is not worth a red line while typing (the ghost hint already names the next
+ * slot) but is exactly what the draft row must say. `paramHintKey` names the missing slot's hint for
+ * the caller to translate.
+ */
+export function getCommandLineDraftReason(source: string, context: StoryCommandContext): StoryCommandReason | null {
+    const live = getCommandLineReason(source, context);
+    if (live) {
+        return live;
+    }
+    const line = parseCommandLine(source);
+    if (line.kind !== "command" || !line.def) {
+        return null;
+    }
+    const missing = missingCoreParams(line);
+    if (missing.length === 0) {
+        return null;
+    }
+    return {
+        key: "storyExpr.reason.missingCore" as TranslationKey,
+        params: { token: line.token ?? "", slot: missing[0].hint ?? missing[0].name },
+        paramHintKey: `story.paramHint.${missing[0].hint ?? missing[0].name}` as TranslationKey,
+    };
 }
 
 /**
@@ -102,8 +135,11 @@ function resolutionReason(issue: StoryCommandResolutionIssue): StoryCommandReaso
             return { key: reasonKey(issue.code), params: { value: issue.value } };
         case "unknownForm":
             return { key: reasonKey(issue.code), params: { value: issue.value, characterName: issue.characterName } };
+        case "unknownTarget":
         case "ambiguousName":
             return { key: reasonKey(issue.code), params: { value: issue.value } };
+        case "unsupportedOption":
+            return { key: reasonKey(issue.code), params: { value: issue.value, allowed: issue.allowed.join(", ") } };
         case "conflictingParams":
             return { key: reasonKey(issue.code), params: { keys: issue.keys.join(" / ") } };
         case "expressionError":

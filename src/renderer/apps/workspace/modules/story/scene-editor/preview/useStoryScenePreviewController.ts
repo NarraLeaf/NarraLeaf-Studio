@@ -6,7 +6,6 @@ import {
     type NlrStoryCompileDiagnostic,
 } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
-import type { StoryPlaybackStop } from "@/lib/ui-editor/runtime/game/storyPlaybackWalk";
 import {
     waitForPaintFrames,
     waitForStageVisualReadyWithTimeout,
@@ -17,7 +16,7 @@ import { Services, WorkspaceContext } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import { useStoryPreviewGameUi, type StoryPreviewIssue } from "./useStoryPreviewGameUi";
-import { resolvePlaybackStartBlockId, resolvePreviewTargetBlockId } from "./storyScenePreviewTarget";
+import { resolvePreviewTargetBlockId } from "./storyScenePreviewTarget";
 import { STORY_CONSOLE_CHANNEL_ID } from "./storyPreviewConsole";
 
 const RECOMPILE_DEBOUNCE_MS = 300;
@@ -32,22 +31,9 @@ export type StoryScenePreviewPhase =
     | "compiling"
     | "mounting"
     | "starting"
-    /** Snapshot mode: the target row's action has played and the frame holds. */
+    /** The target row's action has played and the frame holds. */
     | "settled"
-    /** Playback mode: the scene is running forward from the start row, driven by the author. */
-    | "playing"
-    /** Playback mode: the compiled tail ran out (scene end, or a jump the preview can't follow). */
-    | "ended"
     | "error";
-
-/**
- * What the preview is doing:
- * - `follow` — the original state player: it tracks the selected row and shows that one frame.
- * - `play` — continuous playback pinned to a start row, advancing on the author's clicks. Selection
- *   changes and document edits deliberately do *not* rebuild it; a run in flight is not restarted
- *   out from under the person watching it.
- */
-export type StoryScenePreviewMode = "follow" | "play";
 
 export type StoryScenePreviewStageContext = {
     liveGame: LiveGame;
@@ -75,24 +61,6 @@ export type StoryScenePreviewController = {
     stageLayers: StoryScenePreviewStageLayer[];
     designSize: { width: number; height: number };
     targetBlockId: string | null;
-    mode: StoryScenePreviewMode;
-    /** The row playback is pinned to, in `play` mode. */
-    playFromBlockId: string | null;
-    /** Why the running playback's compiled tail ends; null until a playback run is on screen. */
-    playbackStop: StoryPlaybackStop | null;
-    /** The stage takes pointer input (advance the story, pick menu options) — playback mode only. */
-    interactive: boolean;
-    /** Author-controlled audio for playback; `follow` mode is always silent regardless. */
-    muted: boolean;
-    setMuted: (muted: boolean) => void;
-    /** Enter playback at `blockId` (null = the scene start). Re-entering restarts from that row. */
-    startPlayback: (blockId: string | null) => void;
-    /** Enter playback at the row the editor has selected — the pane's own play button. */
-    startPlaybackFromSelection: () => void;
-    /** Replay the current playback run from its start row. */
-    restartPlayback: () => void;
-    /** Leave playback and go back to following the selected row. */
-    stopPlayback: () => void;
     /** Phase-2 seam: the live stage at the previewed row (motion editor prefill). */
     getStageContext: () => StoryScenePreviewStageContext | null;
     /** Wire into NlrStageLayer's onLiveGameReady. */
@@ -121,10 +89,6 @@ type PreviewRun = {
     posed: boolean;
     arrived: boolean;
     targetBlockId: string | null;
-    /** This run plays the scene forward from its target rather than holding on one row. */
-    continuous: boolean;
-    /** Where a continuous run's compiled tail ends (compile-time knowledge). */
-    playbackStop: StoryPlaybackStop | null;
 };
 
 /**
@@ -157,10 +121,6 @@ export function useStoryScenePreviewController(input: {
     const [diagnostics, setDiagnostics] = useState<NlrStoryCompileDiagnostic[]>([]);
     const [issues, setIssues] = useState<StoryPreviewIssue[]>([]);
     const [stageLayers, setStageLayers] = useState<StoryScenePreviewStageLayer[]>([]);
-    /** Non-null while in playback mode. `token` bumps on every explicit (re)start. */
-    const [playback, setPlayback] = useState<{ blockId: string | null; token: number } | null>(null);
-    const [playbackStop, setPlaybackStop] = useState<StoryPlaybackStop | null>(null);
-    const [muted, setMuted] = useState(false);
 
     const runIdRef = useRef(0);
     const phaseRef = useRef<StoryScenePreviewPhase>("idle");
@@ -176,11 +136,6 @@ export function useStoryScenePreviewController(input: {
     const blobResolverRef = useRef<WorkspaceBlobUrlResolver | null>(null);
     /** Last rebuild input; a change in target alone is a row switch and debounces shorter. */
     const lastRunInputRef = useRef<{ document: StoryDocument; sceneId: string; targetId: string | null } | null>(null);
-    /** Playback token the current run was built for; guards against rebuilding a live playback. */
-    const builtPlaybackTokenRef = useRef<number | null>(null);
-    /** Read by callbacks that must not close over a stale `muted`. */
-    const mutedRef = useRef(muted);
-    mutedRef.current = muted;
 
     const consoleService = useMemo(
         () => context?.services.get<ConsoleService>(Services.Console) ?? null,
@@ -234,8 +189,6 @@ export function useStoryScenePreviewController(input: {
         () => (scene ? resolvePreviewTargetBlockId(scene, activeBlockId) : null),
         [scene, activeBlockId],
     );
-    // Playback pins its own start row; only `follow` mode tracks the selection.
-    const effectiveTargetId = playback ? playback.blockId : resolvedTargetId;
 
     const clearDriveTimers = useCallback(() => {
         if (settleTimeoutRef.current !== null) {
@@ -332,7 +285,6 @@ export function useStoryScenePreviewController(input: {
         const retiring = displayRunRef.current;
         displayRunRef.current = run;
         pendingRunRef.current = null;
-        setPlaybackStop(run.playbackStop);
         // Dispose the retiring run in the same task as the swap: its Player is still mounted, so
         // the reset aborts cleanly, and React commits the removal and the reveal in one paint.
         disposeRunObject(retiring);
@@ -364,25 +316,11 @@ export function useStoryScenePreviewController(input: {
         }
         run.arrived = true;
         clearDriveTimers();
-        // Snapshot: the target action (if any) plays once after this marker and the frame holds.
-        // Playback: everything from here on is the author's to drive, click by click.
-        setPhase(run.continuous ? "playing" : "settled");
+        // The target action (if any) plays once after this marker and the frame holds.
+        setPhase("settled");
     }, [clearDriveTimers, setPhase]);
 
-    // End of a continuous run's compiled tail: the scene ran out, or it reached a jump the
-    // single-scene preview cannot follow. The last frame holds; the pane offers a replay.
-    const handleAfterTarget = useCallback((runId: number) => {
-        if (runId !== runIdRef.current) {
-            return;
-        }
-        const run = displayRunRef.current?.runId === runId ? displayRunRef.current : null;
-        if (run?.continuous) {
-            setPhase("ended");
-        }
-    }, [setPhase]);
-
-    /** Kick a mounted run's compiled story into motion. Distinct from `startPlayback`, which is
-     *  the author entering playback mode; every run — snapshot or playback — starts through here. */
+    /** Kick a mounted run's compiled story into motion. */
     const beginRun = useCallback((run: PreviewRun) => {
         if (run.runId !== runIdRef.current || !run.liveGame) {
             return;
@@ -431,8 +369,7 @@ export function useStoryScenePreviewController(input: {
             if (runId !== runIdRef.current) {
                 return;
             }
-            const continuous = playback !== null;
-            const targetBlockId = continuous ? playback.blockId : resolvedTargetId;
+            const targetBlockId = resolvedTargetId;
             const snapshot = computeStoryStageSnapshot({
                 document,
                 sceneId,
@@ -459,8 +396,8 @@ export function useStoryScenePreviewController(input: {
                 onStagePosed: () => handleStagePosed(runId),
                 revealGate,
                 onBeforeTarget: () => handleBeforeTarget(runId),
-                onAfterTarget: () => handleAfterTarget(runId),
-                continuous,
+                // Follow mode holds on the target frame; there is no continuation to observe.
+                onAfterTarget: () => undefined,
             });
             if (runId !== runIdRef.current) {
                 return;
@@ -515,8 +452,6 @@ export function useStoryScenePreviewController(input: {
                 posed: false,
                 arrived: false,
                 targetBlockId,
-                continuous,
-                playbackStop: compiled.playbackStop ?? null,
             };
             pendingRunRef.current = run;
             setPhase("mounting");
@@ -532,13 +467,11 @@ export function useStoryScenePreviewController(input: {
         document,
         failRun,
         findRunBySessionId,
-        handleAfterTarget,
         handleBeforeTarget,
         handleStagePosed,
         host,
         logStoryConsole,
         open,
-        playback,
         refreshStageLayers,
         resolveAssetUrl,
         resolvedTargetId,
@@ -569,30 +502,11 @@ export function useStoryScenePreviewController(input: {
         if (!open || !active) {
             runIdRef.current += 1;
             lastRunInputRef.current = null;
-            builtPlaybackTokenRef.current = null;
             disposeAllRuns();
             refreshStageLayers();
             setPhase("idle");
             return;
         }
-        if (playback) {
-            // A playback run is pinned: only an explicit (re)start rebuilds it. Selecting rows or
-            // typing while it runs must not yank the stage out from under the author — those edits
-            // land on the next start.
-            if (builtPlaybackTokenRef.current === playback.token) {
-                return;
-            }
-            if (!host.ready) {
-                // Leave the token unbuilt so the rebuild lands once the game host comes up —
-                // marking it here would swallow the only chance to start this run.
-                return;
-            }
-            builtPlaybackTokenRef.current = playback.token;
-            lastRunInputRef.current = null;
-            void startRunRef.current();
-            return;
-        }
-        builtPlaybackTokenRef.current = null;
         const previousInput = lastRunInputRef.current;
         const rowSwitchOnly = previousInput !== null
             && document !== null && sceneId !== null
@@ -612,7 +526,7 @@ export function useStoryScenePreviewController(input: {
                 debounceTimerRef.current = null;
             }
         };
-    }, [open, active, host.ready, document, sceneId, resolvedTargetId, playback, disposeAllRuns, refreshStageLayers, setPhase]);
+    }, [open, active, host.ready, document, sceneId, resolvedTargetId, disposeAllRuns, refreshStageLayers, setPhase]);
 
     // Full teardown on unmount.
     useEffect(() => () => {
@@ -633,9 +547,8 @@ export function useStoryScenePreviewController(input: {
         run.wireDispose = run.wireLiveGame(liveGame);
         try {
             const preference = liveGame.game.preference;
-            // Scrubbing rows must stay silent — a frame per keystroke would machine-gun the audio.
-            // Playback is the one mode where sound is the point, so it follows the author's toggle.
-            preference.setPreference("globalVolume", run.continuous && !mutedRef.current ? 1 : 0);
+            // The frozen state preview is always silent — a frame per keystroke would machine-gun the audio.
+            preference.setPreference("globalVolume", 0);
             preference.setPreference("autoForward", false);
             preference.setPreference("skip", false);
         } catch {
@@ -665,52 +578,6 @@ export function useStoryScenePreviewController(input: {
         failRun(runIdRef.current, error.message);
     }, [failRun, findRunBySessionId, pushIssue]);
 
-    // Live audio toggle: applies to the frame already on screen, not just the next run.
-    useEffect(() => {
-        const run = displayRunRef.current;
-        if (!run?.liveGame || !run.continuous) {
-            return;
-        }
-        try {
-            run.liveGame.game.preference.setPreference("globalVolume", muted ? 0 : 1);
-        } catch {
-            // Non-fatal; the next run applies the preference at start.
-        }
-    }, [muted, stageLayers]);
-
-    const startPlayback = useCallback((blockId: string | null) => {
-        const startId = scene ? resolvePlaybackStartBlockId(scene, blockId) : null;
-        setPlaybackStop(null);
-        setPlayback(current => ({ blockId: startId, token: (current?.token ?? 0) + 1 }));
-    }, [scene]);
-
-    const startPlaybackFromSelection = useCallback(() => {
-        startPlayback(activeBlockId);
-    }, [activeBlockId, startPlayback]);
-
-    const restartPlayback = useCallback(() => {
-        setPlaybackStop(null);
-        setPlayback(current => (current ? { ...current, token: current.token + 1 } : current));
-    }, []);
-
-    const stopPlayback = useCallback(() => {
-        setPlaybackStop(null);
-        setPlayback(null);
-    }, []);
-
-    // Leaving the scene (or closing the pane) drops playback: its pinned row belongs to a scene
-    // that is no longer on screen, and resuming it silently would preview the wrong thing.
-    useEffect(() => {
-        setPlayback(null);
-        setPlaybackStop(null);
-    }, [sceneId]);
-    useEffect(() => {
-        if (!open || !active) {
-            setPlayback(null);
-            setPlaybackStop(null);
-        }
-    }, [open, active]);
-
     const getStageContext = useCallback((): StoryScenePreviewStageContext | null => {
         const run = displayRunRef.current;
         if (!run || !run.liveGame) {
@@ -722,7 +589,7 @@ export function useStoryScenePreviewController(input: {
             targetBlockId: run.targetBlockId,
             // While a newer run builds hidden, the visible stage is still the old frame — report
             // what *it* is doing, not the pending run's phase.
-            phase: run.arrived && !run.continuous ? "settled" : phaseRef.current,
+            phase: run.arrived ? "settled" : phaseRef.current,
         };
     }, []);
 
@@ -733,17 +600,7 @@ export function useStoryScenePreviewController(input: {
         issues,
         stageLayers,
         designSize: host.designSize,
-        targetBlockId: effectiveTargetId,
-        mode: playback ? "play" : "follow",
-        playFromBlockId: playback?.blockId ?? null,
-        playbackStop,
-        interactive: playback !== null,
-        muted,
-        setMuted,
-        startPlayback,
-        startPlaybackFromSelection,
-        restartPlayback,
-        stopPlayback,
+        targetBlockId: resolvedTargetId,
         getStageContext,
         onLiveGameReady: handleLiveGameReady,
         onStageError: handleStageError,

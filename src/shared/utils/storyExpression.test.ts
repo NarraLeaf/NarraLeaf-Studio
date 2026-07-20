@@ -2,7 +2,7 @@ import type { StoryLiteralValue, StoryVariableRef } from "@shared/types/story";
 import { collectStoryExpressionVariables, isStoryExpressionEvaluable } from "@shared/types/story/expression";
 import { describe, expect, it } from "vitest";
 import { evaluateStoryExpression, inferStoryExpressionType, storyExprTypeFits } from "./storyExpressionEval";
-import { createStoryExpressionScope, parseStoryExpression } from "./storyExpressionParser";
+import { createStoryExpressionScope, formatStoryExpressionName, parseStoryExpression } from "./storyExpressionParser";
 
 /**
  * The expression language's contract, tested at the level an author experiences it: type a line, get
@@ -64,8 +64,8 @@ describe("parseStoryExpression", () => {
         expect(evaluate("true")).toBe(true);
         expect(evaluate("false")).toBe(false);
         expect(evaluate("null")).toBe(null);
+        // Double quotes only: single quotes are entity references now, not strings.
         expect(evaluate("\"hello\"")).toBe("hello");
-        expect(evaluate("'hello'")).toBe("hello");
     });
 
     it("reads a variable through the scope chain", () => {
@@ -102,6 +102,45 @@ describe("parseStoryExpression", () => {
         const { expression, issues } = parseStoryExpression("金币 + 1", scope);
         expect(issues).toEqual([]);
         expect(evaluateStoryExpression(expression.ast, ref => VALUES[keyOf(ref)])).toBe(101);
+    });
+});
+
+describe("quoted identifiers", () => {
+    it("reads a single-quoted name as one variable reference, same node a bare name makes", () => {
+        expect(evaluate("'gold' + 1")).toBe(101);
+        expect(evaluate("'playerName'")).toBe("Zoe");
+        // Same scope chain as a bare name: the narrowest declaration wins.
+        expect(evaluate("'chapter'")).toBe(1);
+    });
+
+    it("resolves a name with spaces - the whole reason quoting exists", () => {
+        const scope = createStoryExpressionScope([
+            { name: "Complex Var Name", ref: { scope: "persistent", storageKey: "complex" } },
+        ]);
+        const { expression, issues } = parseStoryExpression("'Complex Var Name' + 1", scope);
+        expect(issues).toEqual([]);
+        expect(evaluateStoryExpression(expression.ast, () => 41)).toBe(42);
+    });
+
+    it("takes the quoted name verbatim: no keyword reading, no scope-prefix split", () => {
+        // `'saved.chapter'` looks up a variable literally named "saved.chapter" - nothing declares
+        // one, so it faults as an unknown NAME, not as a qualified reference.
+        expect(issueCodes("'saved.chapter'")).toEqual(["unknownVariable"]);
+        expect(issueCodes("'true'")).toEqual(["unknownVariable"]);
+    });
+
+    it("faults an unknown quoted name with the same issue a bare name gets", () => {
+        expect(issueCodes("'mystery'")).toEqual(["unknownVariable"]);
+    });
+
+    it("faults an unterminated quote and keeps the tree non-evaluable", () => {
+        expect(issueCodes("'gold")).toEqual(["unterminatedString"]);
+        const { expression } = parseStoryExpression("'gold", SCOPE);
+        expect(isStoryExpressionEvaluable(expression.ast)).toBe(false);
+    });
+
+    it("keeps double quotes as strings: '\"gold\"' is text, not a read of gold", () => {
+        expect(evaluate("\"gold\"")).toBe("gold");
     });
 });
 
@@ -265,6 +304,7 @@ describe("failure handling", () => {
         const sources = [
             "", "+", "1 +", "(1", "1)", "\"unterminated", "gold gold", "?:", "met ? 1",
             "mystery", "saved.mystery", "nope.chapter", "eval(\"1\")", "abs(1, 2)", "gold + 1 oops", "gold @ 1",
+            "'mystery'", "'gold", "''",
         ];
         for (const source of sources) {
             const { expression, issues } = parseStoryExpression(source, SCOPE);
@@ -282,6 +322,27 @@ describe("failure handling", () => {
         // `gold + 1 oops` must not quietly become `gold + 1`.
         const { expression } = parseStoryExpression("gold + 1 oops", SCOPE);
         expect(isStoryExpressionEvaluable(expression.ast)).toBe(false);
+    });
+});
+
+describe("formatStoryExpressionName", () => {
+    it("prints a name the lexer reads back as one reference", () => {
+        expect(formatStoryExpressionName("gold")).toBe("gold");
+        expect(formatStoryExpressionName("金币")).toBe("金币");
+        expect(formatStoryExpressionName("Complex Var Name")).toBe("'Complex Var Name'");
+        // A dot would re-parse as a scope prefix, and a keyword's spelling as a literal.
+        expect(formatStoryExpressionName("saved.gold")).toBe("'saved.gold'");
+        expect(formatStoryExpressionName("true")).toBe("'true'");
+    });
+
+    it("round-trips through the parser", () => {
+        const scope = createStoryExpressionScope([
+            { name: "Complex Var Name", ref: { scope: "saved", variableId: "v_c" } },
+        ]);
+        const source = `${formatStoryExpressionName("Complex Var Name")} + 1`;
+        const { expression, issues } = parseStoryExpression(source, scope);
+        expect(issues).toEqual([]);
+        expect(evaluateStoryExpression(expression.ast, () => 1)).toBe(2);
     });
 });
 

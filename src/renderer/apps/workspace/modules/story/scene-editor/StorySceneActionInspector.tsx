@@ -5,6 +5,7 @@ import type {
     StoryCodePayload,
     StoryConditionRef,
     StoryControlPayload,
+    StoryDeclarationPayload,
     StoryDocument,
     StoryDisplayableTargetKind,
     StoryLiteralValue,
@@ -17,7 +18,14 @@ import type {
     StoryVariableScope,
     StoryVariableValueType,
 } from "@shared/types/story";
-import { isStoryExpressionEvaluable, layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
+import {
+    isStoryExpressionEvaluable,
+    layerActionTargetRef,
+    resolveDisplayableTargetRef,
+    resolveStoryLayerRef,
+    savedVariableDefs,
+    sceneVariableDefs,
+} from "@shared/types/story";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import { useTranslation } from "@/lib/i18n";
 import type { Translator } from "@shared/i18n";
@@ -88,12 +96,13 @@ function useStoryVariableOptions(document: StoryDocument, sceneId: StorySceneId)
         return service.onBlueprintHistoryChanged(read);
     }, [context, isInitialized]);
     return useMemo(() => {
-        const scene = Object.values(document.scenes[sceneId]?.sceneVariables ?? {}).map(variable => ({
+        const sceneDoc = document.scenes[sceneId];
+        const scene = Object.values(sceneDoc ? sceneVariableDefs(sceneDoc) : {}).map(variable => ({
             id: variable.id,
             name: variable.name,
             valueType: variable.valueType,
         }));
-        const saved = Object.values(document.savedVariables ?? {}).map(variable => ({
+        const saved = Object.values(savedVariableDefs(document)).map(variable => ({
             id: variable.id,
             name: variable.name,
             valueType: variable.valueType,
@@ -147,18 +156,20 @@ function VariableRefPicker(props: {
 
 /** Value editor whose control matches the declared variable type. */
 function VariableValueField(props: {
+    label?: string;
     valueType: StoryVariableValueType;
     value: StoryLiteralValue;
     onChange: (value: StoryLiteralValue) => void;
 }) {
     const { t } = useTranslation();
+    const label = props.label ?? t("storyInspector.field.value");
     if (props.valueType === "boolean") {
-        return <CheckboxField label={t("storyInspector.field.value")} checked={props.value === true} onChange={checked => props.onChange(checked)} />;
+        return <CheckboxField label={label} checked={props.value === true} onChange={checked => props.onChange(checked)} />;
     }
     if (props.valueType === "number") {
         return (
             <NumberField
-                label={t("storyInspector.field.value")}
+                label={label}
                 value={typeof props.value === "number" ? props.value : undefined}
                 onChange={value => props.onChange(value ?? 0)}
             />
@@ -168,7 +179,7 @@ function VariableValueField(props: {
         const text = typeof props.value === "string" ? props.value : JSON.stringify(props.value ?? null);
         return (
             <LabeledTextarea
-                label={t("storyInspector.field.valueJson")}
+                label={props.label ?? t("storyInspector.field.valueJson")}
                 value={text}
                 onChange={next => {
                     try {
@@ -180,7 +191,7 @@ function VariableValueField(props: {
             />
         );
     }
-    return <TextField label={t("storyInspector.field.value")} value={String(props.value ?? "")} onChange={value => props.onChange(value)} />;
+    return <TextField label={label} value={String(props.value ?? "")} onChange={value => props.onChange(value)} />;
 }
 
 const transformPresetOptions = (t: TFunc): SelectOption[] => [
@@ -590,7 +601,63 @@ function InspectorFields(props: {
             />
         );
     }
+    if (block.kind === "declaration") {
+        return <DeclarationPayloadFields payload={block.payload} onChange={props.onUpdatePayload} />;
+    }
     return <div className="text-sm text-fg-muted">{t("storyInspector.noEditableFields")}</div>;
+}
+
+const declarationTypeOptions = (t: TFunc): SelectOption[] => [
+    { value: "boolean", label: t("storyVars.valueType.boolean") },
+    { value: "number", label: t("storyVars.valueType.number") },
+    { value: "string", label: t("storyVars.valueType.string") },
+    { value: "json", label: t("storyVars.valueType.json") },
+];
+
+/** The zero value a retype resets the default to (mirrors the Story Variables panel). */
+function declarationDefaultForType(valueType: StoryVariableValueType): StoryLiteralValue {
+    if (valueType === "boolean") return false;
+    if (valueType === "number") return 0;
+    if (valueType === "json") return {};
+    return "";
+}
+
+/** Editor for a `declaration` row - the row IS the variable, so this edits the declaration itself. */
+function DeclarationPayloadFields(props: {
+    payload: StoryDeclarationPayload;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    const payload = props.payload;
+    return (
+        <div className="nl-field-grid">
+            <TextField
+                label={t("storyInspector.declaration.name")}
+                value={payload.name}
+                onChange={name => props.onChange({ ...payload, name })}
+            />
+            <SelectField
+                label={t("storyInspector.declaration.type")}
+                options={declarationTypeOptions(t)}
+                value={payload.valueType}
+                onChange={value => {
+                    const valueType = String(value) as StoryVariableValueType;
+                    props.onChange({ ...payload, valueType, defaultValue: declarationDefaultForType(valueType) });
+                }}
+            />
+            <VariableValueField
+                label={t("storyInspector.declaration.default")}
+                valueType={payload.valueType}
+                value={payload.defaultValue ?? null}
+                onChange={defaultValue => props.onChange({ ...payload, defaultValue })}
+            />
+            <TextField
+                label={t("storyInspector.declaration.description")}
+                value={payload.description ?? ""}
+                onChange={description => props.onChange({ ...payload, description: description || undefined })}
+            />
+        </div>
+    );
 }
 
 function SetVariableEditor(props: {

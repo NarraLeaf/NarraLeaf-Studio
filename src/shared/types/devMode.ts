@@ -14,9 +14,16 @@ export type DevModeEntry =
       }
     | {
           kind: "story";
+          storyId: StoryId;
+          sceneId: string;
+          /** Row to enter the game at; omitted = the scene start. */
+          blockId?: string;
+          /** Scene Snapshot whose variable values seed the launch (Phase 2). */
+          snapshotId?: string;
+          /** Legacy source-locator fields; unused by the current boot path. */
           scriptId?: string;
           filePath?: string;
-          line: number;
+          line?: number;
           checkpointId?: string;
       }
     | {
@@ -78,6 +85,8 @@ export type DevModeStoryLibrary = {
 export type DevModeStartStoryRequest = {
     storyId: StoryId;
     sceneId: string;
+    /** Row-precise "play from here": enter the game pre-posed at this block and play forward. */
+    startBlockId?: string;
 };
 
 export type DevModeBundle = {
