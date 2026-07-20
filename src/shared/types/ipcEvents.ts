@@ -4,6 +4,7 @@ import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
+import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
@@ -66,6 +67,7 @@ export enum IPCEventType {
     appGlobalStateChanged = "app.globalState.changed",
     appAddRecentProject = "app.addRecentProject",
     appRemoveRecentProject = "app.removeRecentProject",
+    appCheckRecentProjects = "app.checkRecentProjects",
     appSystemPath = "app.systemPath",
 
     fsStat = "fs.stat",
@@ -406,6 +408,20 @@ export type IPCEvents = {
             path: string;
         },
         response: void;
+    };
+    /**
+     * Check every remembered project against the disk and report the ones that are gone.
+     *
+     * Takes no paths: the main process reads the history itself, so a renderer cannot use this to
+     * probe arbitrary parts of the file system for existence.
+     */
+    [IPCEventType.appCheckRecentProjects]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            missing: MissingRecentProject[];
+        };
     };
     [IPCEventType.appSystemPath]: {
         type: IPCMessageType.request,

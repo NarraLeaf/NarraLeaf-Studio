@@ -21,6 +21,16 @@ export const launcher = {
         errorCreate: "Failed to create project.",
         errorOpenFolder: "Failed to open folder.",
         errorImport: "Failed to import project.",
+        // Startup sweep over the recent list - see useMissingRecentProjects.
+        missing: {
+            reasonFolderMissing: "This project folder was deleted or moved",
+            reasonNotAProject: "This folder is no longer a NarraLeaf project",
+            dialogTitle: "Project not found",
+            note: "Removing only updates this list. Nothing on disk is deleted.",
+            relocate: "Locate…",
+            remove: "Remove from list",
+            errorNotAProject: "That folder is not a NarraLeaf project.",
+        },
     },
     // Plural example - read with translator.tn("launcher.recentCount", count).
     recentCount: {

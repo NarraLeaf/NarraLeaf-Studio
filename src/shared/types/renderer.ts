@@ -7,6 +7,7 @@ import { FsRequestResult, PlatformInfo } from "./os";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
+import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
@@ -217,6 +218,8 @@ export interface RendererPreloadedInterface {
         addRecentProject(name: string, path: string): Promise<RequestStatus<void>>;
         /** Removes by path; the main process owns the read-modify-write. */
         removeRecentProject(path: string): Promise<RequestStatus<void>>;
+        /** Which remembered projects are no longer on disk. Reports only; removes nothing. */
+        checkRecentProjects(): Promise<RequestStatus<{ missing: MissingRecentProject[] }>>;
         getSystemPath(name: "desktop"): Promise<RequestStatus<{ path: string }>>;
     };
 

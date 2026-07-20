@@ -4,6 +4,7 @@ import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
 import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
+import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
@@ -226,6 +227,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appAddRecentProject, { name, path }) as Promise<RequestStatus<void>>,
         removeRecentProject: (path: string) =>
             ipcClient.invoke(IPCEventType.appRemoveRecentProject, { path }) as Promise<RequestStatus<void>>,
+        checkRecentProjects: () =>
+            ipcClient.invoke(IPCEventType.appCheckRecentProjects, {}) as Promise<RequestStatus<{ missing: MissingRecentProject[] }>>,
         getSystemPath: (name: "desktop") =>
             ipcClient.invoke(IPCEventType.appSystemPath, { name }) as Promise<RequestStatus<{ path: string }>>,
     },
