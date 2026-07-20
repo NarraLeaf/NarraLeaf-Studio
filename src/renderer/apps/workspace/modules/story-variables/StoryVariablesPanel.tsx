@@ -16,10 +16,9 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import type {
     StoryDocument,
     StoryLiteralValue,
-    StorySavedVariableDefinition,
-    StorySceneVariableDefinition,
     StoryVariableValueType,
 } from "@shared/types/story";
+import { savedVariableDefs, sceneVariableDefs } from "@shared/types/story";
 import type { StoryVariablesPanelPayload } from "./storyVariablesPanelId";
 
 const INPUT_CLASS =
@@ -184,10 +183,11 @@ export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariab
 
     const sceneRows: VariableRow[] = useMemo(() => {
         if (!document || !sceneId) return [];
-        return Object.values(document.scenes[sceneId]?.sceneVariables ?? {});
+        const scene = document.scenes[sceneId];
+        return scene ? Object.values(sceneVariableDefs(scene)) : [];
     }, [document, sceneId]);
 
-    const savedRows: VariableRow[] = useMemo(() => Object.values(document?.savedVariables ?? {}), [document]);
+    const savedRows: VariableRow[] = useMemo(() => (document ? Object.values(savedVariableDefs(document)) : []), [document]);
 
     const addScene = useCallback(() => {
         if (storyService && storyId && sceneId) {

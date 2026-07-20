@@ -4,7 +4,29 @@ import type { StoryAnimationAsset, StoryBlock, StoryDocument, StoryTransitionRef
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
 
+function declarationBlock(id: string, valueType: "boolean" | "number", defaultValue?: number | boolean): StoryBlock {
+    return {
+        id,
+        kind: "declaration",
+        parentId: null,
+        childrenIds: [],
+        payload: {
+            scope: "scene",
+            name: id,
+            valueType,
+            ...(defaultValue !== undefined ? { defaultValue } : {}),
+            storageKey: id,
+        },
+    };
+}
+
 function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[] = Object.keys(blocks)): StoryDocument {
+    // v6: scene variables are declaration ROWS in the block tree; the block id is the variableId.
+    const declarations: Record<string, StoryBlock> = {
+        locked: declarationBlock("locked", "boolean"),
+        started: declarationBlock("started", "boolean"),
+        gold: declarationBlock("gold", "number", 100),
+    };
     return {
         schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
         id: "story-1",
@@ -15,13 +37,8 @@ function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[]
                 id: "scene-1",
                 name: "Scene 1",
                 runtimeName: "Scene 1",
-                rootBlockIds,
-                blocks,
-                sceneVariables: {
-                    locked: { id: "locked", name: "locked", valueType: "boolean", storageKey: "locked" },
-                    started: { id: "started", name: "started", valueType: "boolean", storageKey: "started" },
-                    gold: { id: "gold", name: "gold", valueType: "number", storageKey: "gold", defaultValue: 100 },
-                },
+                rootBlockIds: [...Object.keys(declarations), ...rootBlockIds],
+                blocks: { ...declarations, ...blocks },
             },
             "scene-2": {
                 id: "scene-2",
@@ -1044,6 +1061,27 @@ describe("compileStudioStoryToNlr", () => {
                 message: "Code/Script blocks are not part of the NLR Story action surface and were skipped.",
             },
         ]);
+    });
+
+    it("seeds declared scene-local defaults at the scene head and compiles declaration rows to nothing", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say: narrationBlock("say", "text-say", "Hello.") }, ["say"]),
+            sceneId: "scene-1",
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        // The declaration rows themselves emit no statements and bind no actions...
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toEqual(["say"]);
+        // ...but `gold`'s declared default (100) becomes a head-of-scene `local.set` statement, so a
+        // fresh scene entry reads 100 rather than null (`Scene.local.init` resets on every entry).
+        // `locked`/`started` declare no default and must not be seeded.
+        const statements = ((compiled.scene as any).actions ?? []) as unknown[];
+        const statementTypes = statements.map(statement => DevTools.chainToActions(statement as any)
+            .flat(Number.POSITIVE_INFINITY)
+            .map((action: any) => action?.type as string));
+        const seedStatements = statementTypes.filter(types => types.includes("persistent:set"));
+        expect(seedStatements).toHaveLength(1);
+        expect(statementTypes[0]).toContain("persistent:set");
     });
 
     describe("expression assignments and conditions", () => {

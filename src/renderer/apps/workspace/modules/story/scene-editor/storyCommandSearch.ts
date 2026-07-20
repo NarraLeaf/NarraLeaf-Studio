@@ -1,4 +1,4 @@
-import { ALL_STORY_COMMANDS } from "./storyCommandGrammar";
+import { listCommandDefs } from "./commands/registry";
 import type { PaletteActionCommand } from "./storyActionCommands";
 
 /**
@@ -15,7 +15,7 @@ import type { PaletteActionCommand } from "./storyActionCommands";
 
 /** English tokens the parser accepts for a command id - its canonical token plus every alias. */
 const KEYWORDS_BY_COMMAND_ID: ReadonlyMap<string, readonly string[]> = new Map(
-    ALL_STORY_COMMANDS.map(def => [
+    listCommandDefs().map(def => [
         def.commandId.toLowerCase(),
         [def.token, ...(def.aliases ?? [])].map(keyword => keyword.toLowerCase()),
     ]),

@@ -4,7 +4,7 @@ import { Check } from "lucide-react";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
-import type { DevModeBundle } from "@shared/types/devMode";
+import type { DevModeBundle, DevModeEntry } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import type { DevModeSaveProjectRef } from "@shared/types/devModeSave";
@@ -15,6 +15,7 @@ import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance
 import { BlueprintRuntimeDebugPanel } from "./BlueprintRuntimeDebugPanel";
 import { GameApp } from "@/lib/ui-editor/runtime/app/GameApp";
 import type {
+    GameAppBootAction,
     GameAppFrameContext,
     GameAppHost,
     GameAppOverlayContext,
@@ -25,6 +26,7 @@ import { resolveDevModeViewportSize } from "./devModeViewport";
 
 type DevModeContentProps = {
     bundle: DevModeBundle | null;
+    entry: DevModeEntry | null;
     projectPath: string | null;
     surface: UISurface | null;
     surfaceId: string;
@@ -201,6 +203,7 @@ export function DevModeContent(props: DevModeContentProps) {
     const { t } = useTranslation();
     const {
         bundle,
+        entry,
         projectPath,
         surface,
         surfaceId,
@@ -210,6 +213,22 @@ export function DevModeContent(props: DevModeContentProps) {
         sessionError,
         onDismissSessionError,
     } = props;
+
+    // A "story" launch entry (a row's ▶ in the story editor) boots straight into the game at that
+    // scene/row; everything else boots to the app surface (the menu). Mirrors how the packaged
+    // runtime honors a story entry.
+    const bootAction = useMemo<GameAppBootAction>(() => {
+        if (entry?.kind === "story") {
+            return {
+                kind: "story",
+                storyId: entry.storyId,
+                sceneId: entry.sceneId,
+                startBlockId: entry.blockId,
+                snapshotId: entry.snapshotId,
+            };
+        }
+        return { kind: "surface" };
+    }, [entry]);
 
     const projectRef = useMemo<BlueprintPersistenceProjectRef & DevModeSaveProjectRef | null>(() => {
         if (!projectPath) {
@@ -413,7 +432,7 @@ export function DevModeContent(props: DevModeContentProps) {
             sessionKey: `${bundle.bundleId}:${bundle.revision}:${surface.id}`,
             entrySurfaceId: surface.id,
             ready: runtimePlugins.ready,
-            bootAction: { kind: "surface" },
+            bootAction,
             persistenceAdapter,
             onDebugEvent,
             disposeMessage: "Dev Mode runtime disposed",
@@ -427,6 +446,7 @@ export function DevModeContent(props: DevModeContentProps) {
             subscribeCloseRequested,
         };
     }, [
+        bootAction,
         bundle,
         getFullscreen,
         log,

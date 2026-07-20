@@ -52,5 +52,8 @@ export const storyExpr = {
         expressionNotBoolean: "A condition has to be a true/false test, like gold >= 100.",
         expressionTypeMismatch: "This produces {received}, but \"{value}\" holds {expected}.",
         duplicateVariable: "\"{value}\" already exists — pick another name, or use /set to change it.",
+        unknownTarget: "Nothing on stage is named \"{value}\".",
+        unsupportedOption: "\"{value}\" does not apply here. Try: {allowed}.",
+        missingCore: "/{token} still needs its {slot}.",
     },
 };

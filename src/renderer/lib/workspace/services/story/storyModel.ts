@@ -16,6 +16,7 @@ import {
     StoryBlockId,
     StoryChapter,
     StoryConditionRef,
+    StoryDeclarationBlock,
     StoryDocument,
     StoryId,
     StoryLayerRef,
@@ -164,7 +165,6 @@ export function createEmptyStoryDocument(input: {
         scenes: {
             [sceneId]: scene,
         },
-        savedVariables: {},
         meta: {
             createdAt: input.now,
             updatedAt: input.now,
@@ -296,6 +296,16 @@ type LegacyStorySceneFields = {
     localVariables?: Record<string, StoryVariableDefinitionLegacy>;
 };
 
+// v5 and earlier persisted the variable REGISTRIES these fields carry; v6 turned them into
+// declaration rows. The migrations below read and write them through these casts only.
+type LegacyRegistryDocumentFields = {
+    savedVariables?: Record<string, StorySavedVariableDefinition>;
+};
+
+type LegacyRegistrySceneFields = {
+    sceneVariables?: Record<string, StorySceneVariableDefinition>;
+};
+
 export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocument {
     const version = typeof document.schemaVersion === "number" ? document.schemaVersion : 1;
     if (version >= STORY_DOCUMENT_SCHEMA_VERSION) {
@@ -310,6 +320,9 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     }
     if (version < 5) {
         migrated = migrateStoryDocumentV4toV5(migrated);
+    }
+    if (version < 6) {
+        migrated = migrateStoryDocumentV5toV6(migrated);
     }
     // v4 (the `invalid` block kind and dialogue's `speakerName`) is purely additive: a v3 document is
     // already a valid v4 one, so there is no step for it - only the stamp.
@@ -339,7 +352,7 @@ function migrateStoryDocumentV1toV2(document: StoryDocument): StoryDocument {
     for (const [sceneId, scene] of Object.entries(document.scenes)) {
         const sceneVariables = migrateLegacySceneVariables(scene);
         const blocks = migrateSceneBlockRefs(scene.blocks, sceneVariables, savedVariables);
-        const cleanedScene = { ...scene, sceneVariables, blocks } as StoryScene & LegacyStorySceneFields;
+        const cleanedScene = { ...scene, sceneVariables, blocks } as StoryScene & LegacyStorySceneFields & LegacyRegistrySceneFields;
         delete cleanedScene.localVariables;
         scenes[sceneId] = cleanedScene;
     }
@@ -349,7 +362,7 @@ function migrateStoryDocumentV1toV2(document: StoryDocument): StoryDocument {
         schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
         scenes,
         savedVariables,
-    } as StoryDocument & LegacyStoryDocumentFields;
+    } as StoryDocument & LegacyStoryDocumentFields & LegacyRegistryDocumentFields;
     delete migrated.studioGlobals;
     delete migrated.gamePersistents;
     return migrated;
@@ -398,16 +411,69 @@ function migrateBlockExpressionCondition(block: StoryBlock, scope: StoryExpressi
  * expression naming one becomes `invalid` rather than silently binding to the wrong scope.
  */
 function listStoryVariableEntries(document: StoryDocument, scene: StoryScene): { name: string; ref: StoryVariableRef }[] {
+    const legacyScene = scene as StoryScene & LegacyRegistrySceneFields;
+    const legacyDoc = document as StoryDocument & LegacyRegistryDocumentFields;
     return [
-        ...Object.values(scene.sceneVariables ?? {}).map(def => ({
+        ...Object.values(legacyScene.sceneVariables ?? {}).map(def => ({
             name: def.name,
             ref: { scope: "scene", variableId: def.id } as StoryVariableRef,
         })),
-        ...Object.values(document.savedVariables ?? {}).map(def => ({
+        ...Object.values(legacyDoc.savedVariables ?? {}).map(def => ({
             name: def.name,
             ref: { scope: "saved", variableId: def.id } as StoryVariableRef,
         })),
     ];
+}
+
+// ---------------------------------------------------------------------------
+// Schema migration (v5 → v6): variable declarations become rows.
+//   The persisted registries turn into `declaration` blocks - one row per variable, prepended to
+//   its owning scene (saved variables land at the top of the entry scene). The block id TAKES OVER
+//   the old variableId, so every stored ref keeps resolving; deleting the row now deletes the
+//   variable, which also makes registry entries that had lost their authoring surface (the
+//   "cannot delete an old variable" complaint) visible and deletable again.
+// ---------------------------------------------------------------------------
+
+function migrateStoryDocumentV5toV6(document: StoryDocument): StoryDocument {
+    const legacyDoc = document as StoryDocument & LegacyRegistryDocumentFields;
+    const sceneIds = Object.keys(document.scenes);
+    const homeSceneId = document.entrySceneId && document.scenes[document.entrySceneId] ? document.entrySceneId : sceneIds[0];
+    const scenes: Record<StorySceneId, StoryScene> = {};
+    for (const [sceneId, scene] of Object.entries(document.scenes)) {
+        const legacyScene = scene as StoryScene & LegacyRegistrySceneFields;
+        const rows: StoryDeclarationBlock[] = Object.values(legacyScene.sceneVariables ?? {})
+            .map(def => declarationRowFromDef("scene", def));
+        if (sceneId === homeSceneId) {
+            rows.push(...Object.values(legacyDoc.savedVariables ?? {}).map(def => declarationRowFromDef("saved", def)));
+        }
+        const cleaned = { ...legacyScene };
+        delete cleaned.sceneVariables;
+        scenes[sceneId] = {
+            ...cleaned,
+            blocks: { ...scene.blocks, ...Object.fromEntries(rows.map(row => [row.id, row])) },
+            rootBlockIds: [...rows.map(row => row.id), ...scene.rootBlockIds],
+        };
+    }
+    const migrated = { ...document, schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION, scenes } as StoryDocument & LegacyRegistryDocumentFields;
+    delete migrated.savedVariables;
+    return migrated;
+}
+
+function declarationRowFromDef(scope: "scene" | "saved", def: StorySceneVariableDefinition | StorySavedVariableDefinition): StoryDeclarationBlock {
+    return {
+        // The old variableId becomes the block id - refs point at it and must keep resolving.
+        id: def.id,
+        kind: "declaration",
+        parentId: null,
+        childrenIds: [],
+        payload: {
+            scope,
+            name: def.name,
+            valueType: def.valueType,
+            defaultValue: def.defaultValue,
+            storageKey: def.storageKey || def.id,
+        },
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -627,7 +693,6 @@ export function normalizeStoryDocument(document: StoryDocument, now: string): St
         chapters,
         scenes,
         entrySceneId,
-        savedVariables: migrated.savedVariables ?? {},
         meta: {
             ...migrated.meta,
             updatedAt: migrated.meta?.updatedAt ?? now,
@@ -682,7 +747,6 @@ export function createScene(input: { id: string; name: string; runtimeName: stri
         description: "",
         rootBlockIds: [],
         blocks: {},
-        sceneVariables: {},
         meta: {
             createdAt: input.now,
             updatedAt: input.now,
@@ -809,7 +873,6 @@ function normalizeScene(scene: StoryScene): StoryScene {
         defaultBackgroundAssetId: normalizeOptionalString(scene.defaultBackgroundAssetId),
         rootBlockIds,
         blocks,
-        sceneVariables: scene.sceneVariables ?? migrateLegacySceneVariables(scene),
     };
 }
 

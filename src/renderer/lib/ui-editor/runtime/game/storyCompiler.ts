@@ -57,6 +57,8 @@ import type {
     StoryLiteralValue,
     StoryScene,
     StorySceneId,
+    StorySavedVariableDefinition,
+    StorySceneVariableDefinition,
     StoryTextMarks,
     StoryTextSegment,
     StoryTransitionRef,
@@ -70,6 +72,9 @@ import {
     layerActionTargetRef,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
+    savedVariableDefs,
+    sceneVariableDefs,
+    storyPersistentDefs,
     storyVariableRefKey,
 } from "@shared/types/story";
 import type { StoryExpressionReader } from "@shared/utils/storyExpressionEval";
@@ -118,6 +123,21 @@ export type StoryPersistenceBridge = {
 
 /** Single NLR Storable namespace holding all Story "saved" variables. */
 const SAVED_PERSISTENT_NAMESPACE = "__nlr_story_saved__";
+
+/**
+ * Story-declared persistent defaults, keyed by storage key. The host bridge only carries values that
+ * were ever written; a declared `//persis` row's default lives in the story document, so reads fall
+ * back here when the snapshot has no entry.
+ */
+function collectPersistentDefaults(document: StoryDocument): Record<string, StoryLiteralValue> {
+    const defaults: Record<string, StoryLiteralValue> = {};
+    for (const def of Object.values(storyPersistentDefs(document))) {
+        if (def.defaultValue !== undefined) {
+            defaults[def.storageKey] = def.defaultValue;
+        }
+    }
+    return defaults;
+}
 
 /**
  * Game localization input: the bundle payload (locales + translation tables)
@@ -311,6 +331,12 @@ type SceneCompileContext = {
     characterSummaries: Map<string, DevModeCharacterSummary>;
     /** Single NLR Persistent (Storable-backed, per-save) holding all "saved" variables. */
     savedPersistent: Persistent<Record<string, StoryLiteralValue>>;
+    /** Scene-scope declaration table of this scene (variableId → def), scanned once per compile. */
+    sceneVariables: Record<string, StorySceneVariableDefinition>;
+    /** Document-wide "saved" declaration table (variableId → def), scanned once per compile. */
+    savedVariables: Record<string, StorySavedVariableDefinition>;
+    /** Story-declared persistent defaults (storageKey → default), the fallback for host reads. */
+    persistentDefaults: Record<string, StoryLiteralValue>;
     /** App-level persistent bridge (shared with UI blueprints); absent outside Dev Mode host. */
     persistence?: StoryPersistenceBridge;
     /** Blueprint document for compiling story-action blueprints referenced by this scene. */
@@ -348,6 +374,14 @@ type CompileInput = {
     localization?: StoryLocalizationRuntime;
     /** Game voice (bundle payload + current voice-language getter); see {@link StoryVoiceRuntime}. */
     voice?: StoryVoiceRuntime;
+    /**
+     * Row-precise launch ("play from here" in Dev Mode). When set, the entry scene is replaced by a
+     * one-shot pre-posed scene: the stage arrives at `targetBlockId`'s settled state (from the
+     * snapshot) and then plays the real story forward from that row — following jumps into the other
+     * (normally-compiled) scenes. The normal entry scene stays in the story so a later jump back to
+     * it re-enters the full scene.
+     */
+    launch?: { targetBlockId: string | null; snapshot: StoryStageSnapshot };
 };
 
 const EMPTY_IMAGE_SRC = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'></svg>";
@@ -408,11 +442,18 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     });
 
     // Single Storable-backed namespace seeded with every saved variable's default.
+    const savedVariables = savedVariableDefs(input.document);
     const savedDefaults: Record<string, StoryLiteralValue> = {};
-    for (const saved of Object.values(input.document.savedVariables ?? {})) {
+    for (const saved of Object.values(savedVariables)) {
         savedDefaults[saved.storageKey] = saved.defaultValue ?? null;
     }
+    // A launch starts the story mid-way, so the saved namespace opens at the snapshot's accumulated
+    // values (defaults overlaid with everything set on the path to the target row).
+    if (input.launch) {
+        Object.assign(savedDefaults, input.launch.snapshot.savedVariables);
+    }
     const savedPersistent = nlrStory.createPersistent(SAVED_PERSISTENT_NAMESPACE, savedDefaults);
+    const persistentDefaults = collectPersistentDefaults(input.document);
     const localization = input.localization ? createSceneLocalizationResolver(input.localization) : undefined;
 
     for (const scene of Object.values(input.document.scenes)) {
@@ -431,6 +472,9 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             characters,
             characterSummaries,
             savedPersistent,
+            sceneVariables: sceneVariableDefs(scene),
+            savedVariables,
+            persistentDefaults,
             persistence: input.persistence,
             blueprintDocument: input.blueprintDocument,
             localization,
@@ -448,12 +492,44 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             actionIdBindings,
             nextActionIndex: () => actionIndex++,
         };
+        // Seed declared scene-local defaults at the head of the scene's statement list. They must be
+        // statements (not build-time sets): `Scene.local.init` resets the namespace on every scene
+        // entry, so the seeds have to re-run each time the scene starts.
+        const seeds: NlrStatement[] = [];
+        for (const def of Object.values(ctx.sceneVariables)) {
+            if (def.defaultValue !== undefined) {
+                seeds.push(nlrScene.local.set(def.storageKey, def.defaultValue as any));
+            }
+        }
         const statements = await compileBlockList(ctx, scene.rootBlockIds);
-        nlrScene.action(statements as unknown as Parameters<Scene["action"]>[0]);
+        nlrScene.action([...seeds, ...statements] as unknown as Parameters<Scene["action"]>[0]);
         sceneElements[scene.id] = { images: ctx.images, texts: ctx.texts, layers: ctx.layers };
     }
 
-    const nlrEntryScene = allScenes[input.sceneId];
+    // Row-precise launch: the story enters through a one-shot pre-posed scene that arrives at the
+    // target row's settled state and then plays the real story forward from there. The normal scene
+    // stays in `allScenes`, so a later jump back to it re-enters the full scene from the top.
+    const nlrEntryScene = input.launch
+        ? await buildLaunchEntryScene({
+            input,
+            launch: input.launch,
+            nlrStory,
+            allScenes,
+            actionIdBindings,
+            diagnostics,
+            characters,
+            characterSummaries,
+            savedPersistent,
+            savedVariables,
+            persistentDefaults,
+            animations,
+            resolveAssetUrl,
+            assetUrlCache,
+            localization,
+            voiceIdMap,
+            nextActionIndex: () => actionIndex++,
+        })
+        : allScenes[input.sceneId];
     nlrStory.entry(nlrEntryScene);
 
     return {
@@ -466,6 +542,181 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         diagnostics,
         sceneElements,
     };
+}
+
+/**
+ * Build the row-precise launch entry scene (see {@link CompileInput.launch}). Mirrors the stage
+ * preview's pre-pose - construct the snapshot's displayables pre-posed via constructor config and
+ * register them in one synchronous step - then, instead of holding, compiles the real playback tail
+ * from the target row onward with jumps followed (`previewSingleScene: false`), so control flows into
+ * the other, normally-compiled scenes and the run continues as a real playthrough.
+ */
+async function buildLaunchEntryScene(params: {
+    input: CompileInput;
+    launch: NonNullable<CompileInput["launch"]>;
+    nlrStory: Story;
+    allScenes: Record<string, Scene>;
+    actionIdBindings: NlrActionIdBinding[];
+    diagnostics: NlrStoryCompileDiagnostic[];
+    characters: Map<string, Character>;
+    characterSummaries: Map<string, DevModeCharacterSummary>;
+    savedPersistent: Persistent<Record<string, StoryLiteralValue>>;
+    savedVariables: Record<string, StorySavedVariableDefinition>;
+    persistentDefaults: Record<string, StoryLiteralValue>;
+    animations: Map<string, StoryAnimationAsset>;
+    resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
+    assetUrlCache: Map<string, string | null>;
+    localization?: SceneLocalizationResolver;
+    voiceIdMap?: Record<string, string>;
+    nextActionIndex: () => number;
+}): Promise<Scene> {
+    const { input, launch, nlrStory, allScenes, diagnostics, resolveAssetUrl, assetUrlCache } = params;
+    const snapshot = launch.snapshot;
+    const scene = input.document.scenes[input.sceneId];
+    if (!scene) {
+        throw new Error(`Scene not found: ${input.sceneId}`);
+    }
+
+    // Snapshot background wins; otherwise the scene's default initial background.
+    const backgroundSrc = snapshot.background?.assetId
+        ? await resolveAssetUrlCached({
+            assetId: snapshot.background.assetId,
+            assetType: "image",
+            blockId: SCENE_INITIAL_BACKGROUND_BLOCK_ID,
+            resolveAssetUrl,
+            assetUrlCache,
+            diagnostics,
+        })
+        : snapshot.background?.color
+            ?? await resolveSceneInitialBackground({ scene, resolveAssetUrl, assetUrlCache, diagnostics });
+    const launchScene = new Scene(
+        scene.runtimeName || scene.name || scene.id,
+        backgroundSrc ? { background: backgroundSrc } : undefined,
+    );
+
+    const ctx: SceneCompileContext = {
+        document: input.document,
+        nlrStory,
+        scene,
+        nlrScene: launchScene,
+        allScenes,
+        previewSingleScene: false,
+        characters: params.characters,
+        characterSummaries: params.characterSummaries,
+        savedPersistent: params.savedPersistent,
+        sceneVariables: sceneVariableDefs(scene),
+        savedVariables: params.savedVariables,
+        persistentDefaults: params.persistentDefaults,
+        persistence: input.persistence,
+        blueprintDocument: input.blueprintDocument,
+        localization: params.localization,
+        voiceIdMap: params.voiceIdMap,
+        sceneFnCatalog: collectSceneStoryActionFns({
+            document: input.document,
+            blueprintDocument: input.blueprintDocument,
+            scene,
+        }),
+        images: new Map(),
+        texts: new Map(),
+        layers: new Map(),
+        videos: new Map(),
+        sounds: new Map(),
+        animations: params.animations,
+        resolveAssetUrl,
+        assetUrlCache,
+        diagnostics,
+        actionIdBindings: params.actionIdBindings,
+        nextActionIndex: params.nextActionIndex,
+    };
+
+    // Custom layers first so images/texts can bind to them, all pre-posed via constructor config.
+    for (const record of snapshot.displayables) {
+        if (record.kind === "layer") {
+            getLayer(ctx, record.objectName, record.zIndex ?? 0, snapshotPoseProps(record));
+        }
+    }
+    const registrations: { element: Image | Text; layer: Layer | undefined }[] = [];
+    for (const record of snapshot.displayables) {
+        if (record.kind === "layer") {
+            continue;
+        }
+        const layer = resolveLayerForRef(ctx, record.layer);
+        if (record.kind === "image") {
+            const src = await resolveSnapshotImageSource(ctx, record);
+            const image = getImage(ctx, record.objectName, {
+                autoFit: record.autoFit ?? false,
+                layer,
+                src: src ?? undefined,
+                initialProps: snapshotPoseProps(record),
+            });
+            registrations.push({ element: image, layer });
+        } else {
+            const text = getText(ctx, record.objectName, {
+                text: record.text ?? "",
+                fontSize: record.fontSize,
+                fontColor: record.fontColor,
+                layer,
+                initialProps: snapshotPoseProps(record),
+            });
+            registrations.push({ element: text, layer });
+        }
+    }
+    registrations.forEach((registration, index) => {
+        DevTools.setElementId(registration.element as any, `launch-e-${index}`);
+    });
+
+    const statements: NlrStatement[] = [];
+    // Seed scene variables to the snapshot's accumulated values, so conditions and interpolations in
+    // the tail read the state as it was on the path to the target row.
+    for (const def of Object.values(ctx.sceneVariables)) {
+        const value = snapshot.sceneVariables[def.storageKey] ?? def.defaultValue ?? null;
+        statements.push(launchScene.local.set(def.storageKey, value as any));
+    }
+
+    // One synchronous injection step: register the pre-posed elements and apply built-in-singleton props.
+    const backgroundProps = snapshot.backgroundProps;
+    const builtinLayerProps = snapshot.builtinLayerProps;
+    statements.push(Script.execute(((scriptCtx: ScriptCtx) => {
+        for (const registration of registrations) {
+            DevTools.registerDisplayable(scriptCtx.gameState, registration.element as any, launchScene, registration.layer ?? null);
+        }
+        if (Object.keys(backgroundProps).length > 0) {
+            DevTools.setDisplayableTransformProps(scriptCtx.gameState, launchScene.background as any, backgroundProps);
+        }
+        if (Object.keys(builtinLayerProps.backgroundLayer).length > 0) {
+            DevTools.setDisplayableTransformProps(scriptCtx.gameState, launchScene.backgroundLayer as any, builtinLayerProps.backgroundLayer);
+        }
+        if (Object.keys(builtinLayerProps.displayableLayer).length > 0) {
+            DevTools.setDisplayableTransformProps(scriptCtx.gameState, launchScene.displayableLayer as any, builtinLayerProps.displayableLayer);
+        }
+    }) as any));
+
+    // Residual instant effects (mask/clip/filter/darken end states) re-applied at duration 0.
+    for (const record of snapshot.displayables) {
+        const element = record.kind === "image"
+            ? ctx.images.get(normalizeObjectName(record.objectName))
+            : record.kind === "text"
+                ? ctx.texts.get(normalizeObjectName(record.objectName))
+                : ctx.layers.get(normalizeObjectName(record.objectName));
+        if (element) {
+            statements.push(...await compileSnapshotEffects(ctx, element, record.effects));
+        }
+    }
+    statements.push(...await compileSnapshotEffects(ctx, launchScene.background, snapshot.backgroundEffects));
+
+    // Play the real story forward from the target row, following jumps into the other scenes.
+    const plan = collectStoryPlaybackPlan(scene, launch.targetBlockId, { followJumps: true });
+    statements.push(...await compilePlaybackTail(ctx, plan));
+
+    // Injected elements bypass NLR's preload prediction, so register every resolved image URL.
+    for (const [cacheKey, url] of assetUrlCache) {
+        if (cacheKey.startsWith("image:") && url) {
+            launchScene.preloadImage(url);
+        }
+    }
+
+    launchScene.action(statements as unknown as Parameters<Scene["action"]>[0]);
+    return launchScene;
 }
 
 /** A compiled statement that synchronously invokes a host callback when execution reaches it. */
@@ -498,8 +749,9 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     let actionIndex = 0;
 
     const nlrStory = new Story(`${input.document.name || input.document.id} (preview)`);
+    const savedVariables = savedVariableDefs(input.document);
     const savedDefaults: Record<string, StoryLiteralValue> = {};
-    for (const saved of Object.values(input.document.savedVariables ?? {})) {
+    for (const saved of Object.values(savedVariables)) {
         savedDefaults[saved.storageKey] = saved.defaultValue ?? null;
     }
     Object.assign(savedDefaults, snapshot.savedVariables);
@@ -532,6 +784,9 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         characters: new Map(),
         characterSummaries,
         savedPersistent,
+        sceneVariables: sceneVariableDefs(scene),
+        savedVariables,
+        persistentDefaults: collectPersistentDefaults(input.document),
         persistence: input.persistence,
         blueprintDocument: input.blueprintDocument,
         sceneFnCatalog: collectSceneStoryActionFns({
@@ -593,7 +848,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     const statements: NlrStatement[] = [];
     // Seed scene variables (defaults overlaid with the snapshot's assignments) so conditions and
     // inline interpolations in the target line read the accumulated values.
-    for (const def of Object.values(scene.sceneVariables ?? {})) {
+    for (const def of Object.values(ctx.sceneVariables)) {
         const value = snapshot.sceneVariables[def.storageKey] ?? def.defaultValue ?? null;
         statements.push(previewScene.local.set(def.storageKey, value as any));
     }
@@ -894,6 +1149,12 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
         return [recordStatement(ctx, chain, block)];
     }
 
+    if (block.kind === "declaration") {
+        // Authoring metadata, not a runtime action: the scanned variable tables carry its meaning,
+        // and the scene-head seeds carry its default. Nothing to emit, nothing to warn about.
+        return [];
+    }
+
     if (block.kind === "code") {
         diagnostic(ctx, "warning", block.id, "Code/Script blocks are not part of the NLR Story action surface and were skipped.");
         return [];
@@ -1079,8 +1340,8 @@ function buildStoryActionScriptInput(
         blueprintId,
         nlrScene: ctx.nlrScene,
         sceneFnCatalog: ctx.sceneFnCatalog,
-        sceneVariables: ctx.scene.sceneVariables ?? {},
-        savedVariables: ctx.document.savedVariables ?? {},
+        sceneVariables: ctx.sceneVariables,
+        savedVariables: ctx.savedVariables,
         savedNamespace: SAVED_PERSISTENT_NAMESPACE,
         persistence: ctx.persistence,
         onDiagnostic,
@@ -1144,7 +1405,7 @@ function buildInterpolationWord(
     }
     const target = interp.target;
     if (target.scope === "scene") {
-        const def = ctx.scene.sceneVariables?.[target.variableId];
+        const def = ctx.sceneVariables[target.variableId];
         if (!def) {
             diagnostic(ctx, "warning", blockId, "Scene variable not found; interpolation skipped.");
             return null;
@@ -1152,22 +1413,25 @@ function buildInterpolationWord(
         return applyInterpolationWordMarks(ctx.nlrScene.local.toWord(def.storageKey as any), marks);
     }
     if (target.scope === "saved") {
-        const def = ctx.document.savedVariables?.[target.variableId];
+        const def = ctx.savedVariables[target.variableId];
         if (!def) {
             diagnostic(ctx, "warning", blockId, "Saved variable not found; interpolation skipped.");
             return null;
         }
         return applyInterpolationWordMarks(ctx.savedPersistent.toWord(def.storageKey as any), marks);
     }
-    // Persistent (app-level): a dynamic word reading the shared host snapshot synchronously.
+    // Persistent (app-level): a dynamic word reading the shared host snapshot synchronously,
+    // falling back to the story-declared default while the host has never stored a value.
     const persistence = ctx.persistence;
     if (!persistence) {
         diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence; interpolation skipped.");
         return null;
     }
     const storageKey = target.storageKey;
+    const persistentDefaults = ctx.persistentDefaults;
     return applyInterpolationWordMarks(new Word(((() => {
-        const value = persistence.get(storageKey);
+        const stored = persistence.get(storageKey);
+        const value = stored === undefined ? persistentDefaults[storageKey] : stored;
         return value === null || value === undefined ? "" : String(value);
     }) as unknown) as any), marks);
 }
@@ -1332,6 +1596,7 @@ async function compileAudioAction(
 ): Promise<NlrStatement[]> {
     if (payload.operation === "setBgm") {
         if (!payload.assetId) {
+            ctx.sounds.delete("bgm");
             return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(null, payload.fadeMs), block)];
         }
         const url = await resolveAsset(ctx, payload.assetId, "audio", block.id);
@@ -1339,6 +1604,9 @@ async function compileAudioAction(
             return [];
         }
         const sound = Sound.bgm({ src: url, loop: payload.loop ?? true, volume: payload.volume ?? 1 });
+        // The reserved name the sound-control family defaults to: `/vol 0.5` addresses the music
+        // channel by registering the BGM handle under "bgm" (see BGM_OBJECT_NAME in the editor).
+        ctx.sounds.set("bgm", sound);
         return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(sound, payload.fadeMs), block)];
     }
 
@@ -1709,7 +1977,9 @@ async function getSound(
         return existing;
     }
     if (!assetId) {
-        diagnostic(ctx, "warning", blockId, `Sound "${name}" has no asset.`);
+        diagnostic(ctx, "warning", blockId, name === "bgm"
+            ? "No background music is set before this row - /bgm has to run first."
+            : `Sound "${name}" has no asset.`);
         return null;
     }
     const url = await resolveAsset(ctx, assetId, "audio", blockId);
@@ -2090,7 +2360,7 @@ type StoryVariableSlot =
  */
 function resolveVariableSlot(ctx: SceneCompileContext, ref: StoryVariableRef, blockId: string): StoryVariableSlot | null {
     if (ref.scope === "scene") {
-        const def = ctx.scene.sceneVariables?.[ref.variableId];
+        const def = ctx.sceneVariables[ref.variableId];
         if (!def) {
             diagnostic(ctx, "warning", blockId, "Scene variable not found; the assignment was skipped.");
             return null;
@@ -2098,7 +2368,7 @@ function resolveVariableSlot(ctx: SceneCompileContext, ref: StoryVariableRef, bl
         return { kind: "storable", namespace: DevTools.getNamespaceName(ctx.nlrScene.local), key: def.storageKey };
     }
     if (ref.scope === "saved") {
-        const def = ctx.document.savedVariables?.[ref.variableId];
+        const def = ctx.savedVariables[ref.variableId];
         if (!def) {
             diagnostic(ctx, "warning", blockId, "Saved variable not found; the assignment was skipped.");
             return null;
@@ -2131,15 +2401,19 @@ function buildExpressionReader(
         slots.set(storyVariableRefKey(ref), slot);
     }
     const persistence = ctx.persistence;
+    const persistentDefaults = ctx.persistentDefaults;
 
     return (scriptCtx: ScriptCtx) => ref => {
         const slot = slots.get(storyVariableRefKey(ref));
         if (!slot) {
             return undefined;
         }
-        return slot.kind === "host"
-            ? (persistence?.get(slot.key) as StoryLiteralValue | undefined)
-            : (scriptCtx.storable.getNamespace(slot.namespace).get(slot.key) as StoryLiteralValue | undefined);
+        if (slot.kind === "host") {
+            const stored = persistence?.get(slot.key) as StoryLiteralValue | undefined;
+            // Declared persistent rows read as their default until the host first stores a value.
+            return stored === undefined ? persistentDefaults[slot.key] : stored;
+        }
+        return scriptCtx.storable.getNamespace(slot.namespace).get(slot.key) as StoryLiteralValue | undefined;
     };
 }
 
@@ -2154,7 +2428,7 @@ function setVariable(
         return setVariableFromExpression(ctx, target, expression, blockId);
     }
     if (target.scope === "scene") {
-        const def = ctx.scene.sceneVariables?.[target.variableId];
+        const def = ctx.sceneVariables[target.variableId];
         if (!def) {
             diagnostic(ctx, "warning", blockId, "Scene variable not found; the assignment was skipped.");
             return null;
@@ -2162,7 +2436,7 @@ function setVariable(
         return ctx.nlrScene.local.set(def.storageKey, value as any);
     }
     if (target.scope === "saved") {
-        const def = ctx.document.savedVariables?.[target.variableId];
+        const def = ctx.savedVariables[target.variableId];
         if (!def) {
             diagnostic(ctx, "warning", blockId, "Saved variable not found; the assignment was skipped.");
             return null;
@@ -2259,7 +2533,7 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
     let persistent: Persistent<any>;
     let storageKey: string;
     if (target.scope === "scene") {
-        const def = ctx.scene.sceneVariables?.[target.variableId];
+        const def = ctx.sceneVariables[target.variableId];
         if (!def) {
             diagnostic(ctx, "warning", blockId, "Scene variable not found; condition evaluates false.");
             return falseCondition;
@@ -2267,7 +2541,7 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
         persistent = ctx.nlrScene.local as Persistent<any>;
         storageKey = def.storageKey;
     } else {
-        const def = ctx.document.savedVariables?.[target.variableId];
+        const def = ctx.savedVariables[target.variableId];
         if (!def) {
             diagnostic(ctx, "warning", blockId, "Saved variable not found; condition evaluates false.");
             return falseCondition;
@@ -2302,8 +2576,11 @@ function persistentCondition(
     if (!persistence) {
         return falseCondition;
     }
+    const persistentDefaults = ctx.persistentDefaults;
     return () => {
-        const current = persistence.get(storageKey);
+        const stored = persistence.get(storageKey);
+        // Declared persistent rows test against their default until the host first stores a value.
+        const current = stored === undefined ? persistentDefaults[storageKey] : stored;
         switch (operator) {
             case "isTrue":
                 return current === true;

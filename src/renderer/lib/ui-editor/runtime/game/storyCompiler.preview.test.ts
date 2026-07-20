@@ -281,12 +281,11 @@ describe("compileStagePreviewToNlr", () => {
 
     it("seeds scene variables so the target's interpolations read accumulated values", async () => {
         const document = baseDocument({
+            // v6: the variable is a declaration ROW; its block id is the variableId the ref points at.
+            flag: block("flag", "declaration", { scope: "scene", name: "flag", valueType: "boolean", defaultValue: false, storageKey: "flag" }),
             set: block("set", "action", { action: "setVariable", target: { scope: "scene", variableId: "flag" }, value: true }),
             target: say("target"),
-        }, ["set", "target"]);
-        document.scenes["scene-1"].sceneVariables = {
-            flag: { id: "flag", name: "flag", valueType: "boolean", storageKey: "flag", defaultValue: false },
-        };
+        }, ["flag", "set", "target"]);
         const compiled = await compilePreview(document, "target");
         const types = sceneStatementTypes(compiled.scene);
         // A seed statement precedes the injection script.

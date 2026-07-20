@@ -22,13 +22,11 @@ import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { StorySceneEditorTabPayload } from "./storySceneEditorTabId";
 import { createBlockForCommand, isActionCommandId, isInspectorFirstCommand, type ActionCommandId } from "./storyActionCommands";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
-import { applyCommandArgs, declarationFromArgs } from "./storyCommandApply";
 import { buildStoryCommandContext } from "./storyCommandContext";
 import { canCommit, parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandResolvedArgs } from "./storyCommandResolution";
-import { STORY_DECLARATION_COMMANDS } from "./storyCommandGrammar";
+import { getCommandSpec } from "./commands/registry";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
-import { GLOBAL_MAIN_OWNER_KEY } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 
 import { collectTempSpeakers, promoteTempSpeaker } from "@/lib/workspace/services/story/storyModel";
 import { CHARACTERS_PANEL_ID } from "../../characters";
@@ -137,6 +135,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     });
     const [collapsedBlockIds, setCollapsedBlockIds] = useState<Set<StoryBlockId>>(() => new Set());
     const [editorMode, setEditorMode] = useState<EditorMode>({ kind: "idle" });
+    /**
+     * The keyboard cursor is on the "add a row" line that sits just past the last row, reached by
+     * arrowing Down off the bottom. It is a position with no row behind it (activeBlockId is null
+     * while it holds focus), so Enter there opens a fresh insert slot — the same as clicking it.
+     */
+    const [addRowFocused, setAddRowFocused] = useState(false);
     const [draggingBlockId, setDraggingBlockId] = useState<StoryBlockId | null>(null);
     const [dragSelectActive, setDragSelectActive] = useState(false);
     const [, setStatusText] = useState("Action row editor. Slash and hash only trigger on the first character.");
@@ -156,6 +160,15 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         patchStoryEditorViewState(panelStateService, sceneId, { activeBlockId, selectedBlockIds: [...selectedBlockIds] });
     }, [panelStateService, sceneId, activeBlockId, selectedBlockIds]);
+
+    // The add-row line has no row behind it: any real active row must clear its focus, or a row and
+    // the add-row line would both read as focused. Runs after the render that set activeBlockId, so
+    // focusAddRow (which sets activeBlockId to null) is left alone.
+    useEffect(() => {
+        if (activeBlockId !== null) {
+            setAddRowFocused(false);
+        }
+    }, [activeBlockId]);
 
     useEffect(() => {
         if (!storyService || !storyId) {
@@ -1037,12 +1050,20 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             if (current.kind !== "insert") {
                 return current;
             }
-            // Once dismissed, the chooser stays gone for the life of this slot. Without this the menu
-            // would spring back on the very next keystroke, since `chooser` is derived from the prefix.
-            if (current.chooserDismissed) {
-                return { ...current, value, chooser: "none" };
+            // Dismissal is one-shot: Escape keeps the menu shut only while the text stands still
+            // (caret moves, clicks). The next actual edit re-derives the chooser from the prefix -
+            // which is what lets a re-opened draft row have its autocomplete back the moment the
+            // author starts fixing it, instead of never (the old flag was one-way for the slot's
+            // whole life, so a returned-to line got no candidates at all).
+            if (current.chooserDismissed && value === current.value) {
+                return current;
             }
-            return { ...current, value, chooser: value.startsWith("/") ? "action" : value.startsWith("#") ? "character" : "none" };
+            return {
+                ...current,
+                value,
+                chooserDismissed: undefined,
+                chooser: value.startsWith("/") ? "action" : value.startsWith("#") ? "character" : "none",
+            };
         });
     }, []);
 
@@ -1147,31 +1168,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [storyService, uiService, uuidService]);
 
-    const chooseCommand = useCallback((commandId: string) => {
-        if (editorMode.kind !== "insert") {
-            return;
-        }
-        const target = editorMode.slot.target;
-        const replaceBlockId = editorMode.slot.replaceBlockId;
-        const initialText = editorMode.value.replace(/^\/\S*\s?/, "");
-        if (!isActionCommandId(commandId)) {
-            const block = createPluginActionBlock(commandId, initialText);
-            if (block) {
-                insertBlock(block, editorMode.slot.afterBlockId, true, { target, replaceBlockId });
-            }
-            return;
-        }
-        const block = createBlock(commandId, initialText);
-        if (!block) {
-            return;
-        }
-        insertBlock(block, editorMode.slot.afterBlockId, isInspectorFirstCommand(commandId), { target, replaceBlockId });
-        scaffoldContainer(block);
-        if (!isInspectorFirstCommand(commandId) && isTextEditableBlock(block)) {
-            setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
-        }
-    }, [createBlock, createPluginActionBlock, editorMode, insertBlock, scaffoldContainer]);
-
     const chooseCharacterForInsert = useCallback((characterId: string) => {
         if (editorMode.kind !== "insert") {
             return;
@@ -1187,63 +1183,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [createBlock, editorMode, insertBlock]);
 
-    /**
-     * Commit a `/local` `/var` `/persis` line: declare the variable and insert nothing.
-     *
-     * These are the only commands with no row to show for themselves, which is a real cost - the
-     * author gets no visible confirmation from the scene. The status line is what pays for it, and the
-     * variables panel updates live off the same document, so the declaration does land somewhere the
-     * author can see it.
-     *
-     * Persistent variables are declared in the *blueprint* document, so `/persis` routes through
-     * `LocalBlueprintService`. That has a consequence worth knowing: it lands in the blueprint's undo
-     * stack, not the story editor's, so Ctrl+Z in this editor will not take it back.
-     */
-    const commitVariableDeclaration = useCallback((scope: StoryVariableScope, args: StoryCommandResolvedArgs): boolean => {
-        if (!storyService || !storyId) {
-            return false;
-        }
-        const declaration = declarationFromArgs(args);
-        if (!declaration) {
-            return false;
-        }
-        const { name, valueType, defaultValue } = declaration;
-
-        if (scope === "persistent") {
-            if (!blueprintService) {
-                return false;
-            }
-            const owner = blueprintService.getBlueprintDocument().ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.activeBlueprintId;
-            if (!owner) {
-                // No global blueprint means no history owner to attribute the edit to. Refusing keeps
-                // the author's text as an invalid row rather than dropping the declaration silently.
-                return false;
-            }
-            blueprintService.createPersistentVariable(owner, { name, valueType, defaultValue });
-            setStatusText(`Declared global variable "${name}".`);
-            return true;
-        }
-
-        recordHistory();
-        if (scope === "scene") {
-            if (!sceneId || !storyService.createSceneVariable(storyId, sceneId, { name, valueType, defaultValue })) {
-                return false;
-            }
-        } else if (!storyService.createSavedVariable(storyId, { name, valueType, defaultValue })) {
-            return false;
-        }
-        setStatusText(`Declared ${scope} variable "${name}".`);
-        return true;
-    }, [blueprintService, recordHistory, sceneId, storyId, storyService]);
-
-    /**
-     * Enter on a `/…` line: parse it, resolve every name it mentions, and commit the action it
-     * describes - arguments and all.
-     *
-     * Returns false when the line does not stand on its own (unknown command, a name that resolves to
-     * nothing, a value the variable cannot hold), so the caller lands an invalid row and the author's
-     * text survives verbatim. Nothing half-written is ever committed as an action.
-     */
     const commitCommandFromInsert = useCallback((value: string): boolean => {
         if (editorMode.kind !== "insert") {
             return false;
@@ -1252,13 +1191,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (line.kind !== "command" || !line.def) {
             return false;
         }
-        // A command P0 gave no grammar to takes no args: it keeps the menu's behaviour, including
-        // inspector-first and treating the rest of the line as initial text (`/note some words`).
-        // Parsing it as arguments would only invent errors it never had.
-        if (line.def.params.length === 0) {
-            chooseCommand(line.def.commandId);
-            return true;
-        }
+        // One gate, one path: parser issues and an unfilled required core block here (bible B9), and
+        // every command - paramless containers included - commits through its spec. The old paramless
+        // fall-through to the menu path is gone with the dual behaviour it carried.
         if (!canCommit(line)) {
             return false;
         }
@@ -1266,30 +1201,21 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (issues.length > 0) {
             return false;
         }
-        const commandId = line.def.commandId;
-        // A declaration writes a variable and leaves the scene alone - there is no row to insert. It
-        // has to be intercepted before `createBlock`, which throws for these commands precisely so
-        // that a missing interception cannot quietly land a stray row.
-        if (STORY_DECLARATION_COMMANDS[commandId]) {
-            if (!commitVariableDeclaration(STORY_DECLARATION_COMMANDS[commandId], args)) {
-                return false;
-            }
-            // A declaration inserts no block, so it never reaches `insertBlock` — the one place that
-            // clears a rewritten row. Fixing a mistyped `/local` therefore has to drop the invalid row
-            // here, or the declaration would land and the broken line would stay next to it.
-            if (editorMode.slot.replaceBlockId && storyService && storyId && sceneId) {
-                storyService.deleteBlock(storyId, sceneId, editorMode.slot.replaceBlockId);
-                setEditorMode({ kind: "idle" });
-            }
-            return true;
-        }
-        const base = createBlock(commandId);
-        if (!base) {
+        const spec = getCommandSpec(line.def.commandId);
+        if (!spec) {
             return false;
         }
-        const block = applyCommandArgs(base, commandId, args);
-        insertBlock(block, editorMode.slot.afterBlockId, false, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
+        // v6: a declaration builds a ROW like everything else - the row is the variable, so Enter's
+        // visible result is the line itself, and the ordinary insert path (undo included) covers it.
+        if (!spec.build || !uuidService) {
+            return false;
+        }
+        const block = spec.build(args, { generateId: () => uuidService.generate(), context: commandContext });
+        insertBlock(block, editorMode.slot.afterBlockId, spec.inspectorAfterCommit === true, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
         scaffoldContainer(block, args.test?.kind === "expression" ? args.test.expression : undefined);
+        if (spec.inspectorAfterCommit) {
+            return true;
+        }
         // A speaker with no line yet (`/say Alice`) lands the caret in the body, exactly as picking a
         // speaker after `#` does. A line that already carries its text moves on to the next row -
         // the command line never routes to the inspector, or it would stop the author mid-flow.
@@ -1299,7 +1225,29 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         startInsertAfter(block.id, true);
         return true;
-    }, [chooseCommand, commandContext, createBlock, editorMode, insertBlock, scaffoldContainer, startInsertAfter]);
+    }, [commandContext, editorMode, insertBlock, scaffoldContainer, sceneId, startInsertAfter, storyId, storyService, uuidService]);
+
+    /**
+     * A pick from the slash menu. A spec command routes through the same commit path a typed line
+     * takes - a paramless container (`/parallel`) lands in one keystroke, and one with a required
+     * core never gets here (the menu completes its token instead, so the author fills the core).
+     * Plugin actions keep their registration path.
+     */
+    const chooseCommand = useCallback((commandId: string) => {
+        if (editorMode.kind !== "insert") {
+            return;
+        }
+        const spec = getCommandSpec(commandId);
+        if (spec) {
+            commitCommandFromInsert(`/${spec.token}`);
+            return;
+        }
+        const initialText = editorMode.value.replace(/^\/\S*\s?/, "");
+        const block = createPluginActionBlock(commandId, initialText);
+        if (block) {
+            insertBlock(block, editorMode.slot.afterBlockId, true, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
+        }
+    }, [commitCommandFromInsert, createPluginActionBlock, editorMode, insertBlock]);
 
     /**
      * Enter / Shift+Enter with no candidate to take - the chooser was dismissed, or never opened.
@@ -1637,11 +1585,41 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         selectionAnchorRef.current = blockId;
     }, []);
 
+    /**
+     * Move the keyboard cursor onto the "add a row" line past the last row. No row stays active, so
+     * Enter falls through to opening a blank insert slot (see {@link enterEditOrInspectorForActive}),
+     * matching a click on the affordance.
+     */
+    const focusAddRow = useCallback(() => {
+        setActiveBlockId(null);
+        setSelectedBlockIds(new Set());
+        selectionAnchorRef.current = null;
+        goalColumnRef.current = null;
+        setAddRowFocused(true);
+    }, []);
+
     const moveActiveRowSelection = useCallback((direction: "up" | "down") => {
+        // The add-row line sits one step past the last row in the keyboard order: Down off the bottom
+        // lands on it, Up steps back onto the last row (nothing below it to reach with Down).
+        if (addRowFocused) {
+            if (direction === "up") {
+                const last = visibleRows[visibleRows.length - 1];
+                last ? selectSingleRow(last.block.id) : setAddRowFocused(false);
+            }
+            return;
+        }
         if (visibleRows.length === 0) {
+            // An empty scene has nothing but the add-row line to move onto.
+            if (direction === "down") {
+                focusAddRow();
+            }
             return;
         }
         const currentIndex = activeBlockId ? rowIndexById.get(activeBlockId) ?? -1 : -1;
+        if (direction === "down" && currentIndex === visibleRows.length - 1) {
+            focusAddRow();
+            return;
+        }
         const nextIndex = currentIndex === -1
             ? (direction === "down" ? 0 : visibleRows.length - 1)
             : direction === "down"
@@ -1651,7 +1629,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (next) {
             selectSingleRow(next.block.id);
         }
-    }, [activeBlockId, rowIndexById, selectSingleRow, visibleRows]);
+    }, [activeBlockId, addRowFocused, focusAddRow, rowIndexById, selectSingleRow, visibleRows]);
 
     // Shift+Arrow - grow (or shrink) the selection between the anchor row and the moving head.
     const extendRowSelection = useCallback((direction: "up" | "down") => {
@@ -1826,7 +1804,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     return {
         context, isInitialized, document, scene, loading,
-        activeBlockId, selectedBlockIds, collapsedBlockIds, editorMode,
+        activeBlockId, selectedBlockIds, collapsedBlockIds, editorMode, addRowFocused,
         characters, commandContext, visibleRows, shouldRenderActiveInsertSlot,
         rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,

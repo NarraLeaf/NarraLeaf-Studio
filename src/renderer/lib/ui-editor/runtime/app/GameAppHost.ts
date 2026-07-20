@@ -26,7 +26,15 @@ export type GameAppSaveStore = {
 
 /** What the boot preload should do once the NLR environment can mount. */
 export type GameAppBootAction =
-    | { kind: "story"; storyId: string; sceneId: string }
+    | {
+          kind: "story";
+          storyId: string;
+          sceneId: string;
+          /** Row to enter the game at (row-precise "play from here"); omitted = the scene start. */
+          startBlockId?: string;
+          /** Scene Snapshot whose variable values seed the launch (Phase 2); omitted = declared defaults. */
+          snapshotId?: string;
+      }
     | { kind: "surface" };
 
 /**
