@@ -19,6 +19,7 @@ import { characters } from "./characters";
 import { properties } from "./properties";
 import { motion } from "./motion";
 import { storyVars } from "./storyVars";
+import { storySnapshot } from "./storySnapshot";
 import { uiEditor } from "./uiEditor";
 import { widgets } from "./widgets";
 import { widgetAppearance } from "./widgetAppearance";
@@ -52,6 +53,7 @@ export const zh = {
     properties,
     motion,
     storyVars,
+    storySnapshot,
     uiEditor,
     widgets,
     widgetAppearance,

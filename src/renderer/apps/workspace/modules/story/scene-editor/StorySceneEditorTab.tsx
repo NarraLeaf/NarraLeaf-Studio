@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent } from "react";
-import { FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Trash2, Variable } from "lucide-react";
+import { Camera, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Trash2, Variable } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -11,6 +11,7 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { DevModeService } from "@/lib/workspace/services/core/DevModeService";
+import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { StoryBlockId, StoryDocument, StoryScene, StorySceneUpdate } from "@shared/types/story";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -26,6 +27,7 @@ import {
 } from "./storyActionCreatorEvents";
 import { STORY_MOTION_PANEL_ID } from "../../story-motion";
 import { StoryVariablesPanel, STORY_VARIABLES_PANEL_ID } from "../../story-variables";
+import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, setSelectedSnapshotId } from "../../story-snapshots";
 import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { StoryEditorTextStyleProvider } from "./storyEditorTextStyle";
 import { getTextSegment } from "./storySceneBlockUtils";
@@ -501,6 +503,45 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             return;
         }
         const uiService = editor.context.services.get<UIService>(Services.UI);
+        const unregister = uiService.panels.register({
+            id: STORY_SNAPSHOT_PANEL_ID,
+            title: t("story.sceneEditor.snapshotsPanel"),
+            icon: <Camera className="w-4 h-4" />,
+            position: PanelPosition.Right,
+            component: StorySnapshotPanel,
+            defaultVisible: false,
+            order: 12,
+            payload: {
+                tabId,
+                storyId: payload.storyId,
+                sceneId: payload.sceneId,
+            },
+        });
+        return () => {
+            uiService.panels.hide(STORY_SNAPSHOT_PANEL_ID);
+            unregister();
+        };
+    }, [active, editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId, t]);
+
+    useEffect(() => {
+        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
+            return;
+        }
+        const uiService = editor.context.services.get<UIService>(Services.UI);
+        uiService.panels.updatePayload(STORY_SNAPSHOT_PANEL_ID, {
+            tabId,
+            storyId: payload.storyId,
+            sceneId: payload.sceneId,
+            storyName: editor.document?.name,
+            sceneName: editor.scene?.name,
+        });
+    }, [active, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
+
+    useEffect(() => {
+        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
+            return;
+        }
+        const uiService = editor.context.services.get<UIService>(Services.UI);
         uiService.panels.updatePayload(STORY_MOTION_PANEL_ID, {
             storyId: payload.storyId,
             sceneId: payload.sceneId,
@@ -764,20 +805,47 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     });
 
     // A row's ▶ launches the real game in Dev Mode, entering at that row — this is where the
-    // interactive "play from here" lives now (the live preview stays a frozen state view). Phase 1
-    // launches with declared-default variables; the Scene Snapshot guard/injection lands in Phase 2.
+    // interactive "play from here" lives now (the live preview stays a frozen state view). It carries
+    // the scene's selected Scene Snapshot so conditions on non-static variables (e.g. global flags)
+    // launch with concrete values; with no snapshot yet, it opens the panel and prompts instead.
     const playFromRow = useCallback((blockId: StoryBlockId) => {
-        if (!editor.context || !payload?.storyId || !payload.sceneId) {
+        const storyId = payload?.storyId;
+        const sceneId = payload?.sceneId;
+        if (!editor.context || !storyId || !sceneId) {
             return;
         }
-        const devModeService = editor.context.services.get<DevModeService>(Services.DevMode);
-        void devModeService.launch({
+        const services = editor.context.services;
+        const storyService = services.get<StoryService>(Services.Story);
+        const uiService = services.get<UIService>(Services.UI);
+        const snapshots = storyService.listSceneSnapshots(storyId, sceneId);
+        if (snapshots.length === 0) {
+            uiService.panels.show(STORY_SNAPSHOT_PANEL_ID);
+            uiService.notifications.warning(
+                t("storySnapshot.launch.needSnapshot"),
+                t("storySnapshot.launch.needSnapshotDetail"),
+                [{
+                    label: t("storySnapshot.launch.createAction"),
+                    primary: true,
+                    onClick: () => {
+                        const created = storyService.createSceneSnapshot(storyId, sceneId, `${t("storySnapshot.defaultName")} 1`);
+                        if (created && panelStateService) {
+                            setSelectedSnapshotId(panelStateService, storyId, sceneId, created);
+                        }
+                    },
+                }],
+            );
+            return;
+        }
+        const saved = panelStateService ? getSelectedSnapshotId(panelStateService, storyId, sceneId) : undefined;
+        const snapshotId = saved && snapshots.some(snapshot => snapshot.id === saved) ? saved : snapshots[0].id;
+        services.get<DevModeService>(Services.DevMode).launch({
             kind: "story",
-            storyId: payload.storyId,
-            sceneId: payload.sceneId,
+            storyId,
+            sceneId,
             blockId,
+            snapshotId,
         });
-    }, [editor.context, payload?.storyId, payload?.sceneId]);
+    }, [editor.context, payload?.storyId, payload?.sceneId, panelStateService, t]);
 
     if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
         return (

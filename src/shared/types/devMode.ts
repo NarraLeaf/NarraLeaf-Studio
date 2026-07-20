@@ -87,6 +87,8 @@ export type DevModeStartStoryRequest = {
     sceneId: string;
     /** Row-precise "play from here": enter the game pre-posed at this block and play forward. */
     startBlockId?: string;
+    /** Scene Snapshot (变量快照) whose variable overrides seed the launch. */
+    snapshotId?: string;
 };
 
 export type DevModeBundle = {
