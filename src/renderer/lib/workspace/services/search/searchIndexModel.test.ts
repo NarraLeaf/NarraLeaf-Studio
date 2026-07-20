@@ -36,7 +36,7 @@ function storyDoc(): StoryDocument {
                 id: "scene-1",
                 name: "Opening",
                 runtimeName: "opening",
-                rootBlockIds: ["b1", "b2"],
+                rootBlockIds: ["b1", "b2", "v1", "sv1"],
                 blocks: {
                     b1: dialogueBlock("b1", "Good morning, Inko!"),
                     b2: {
@@ -46,14 +46,22 @@ function storyDoc(): StoryDocument {
                         childrenIds: [],
                         payload: {},
                     } as unknown as StoryBlock,
-                },
-                sceneVariables: {
-                    v1: { id: "v1", name: "Affection" } as never,
+                    v1: {
+                        id: "v1",
+                        kind: "declaration",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { scope: "scene", name: "Affection", valueType: "number", storageKey: "v1" },
+                    } as StoryBlock,
+                    sv1: {
+                        id: "sv1",
+                        kind: "declaration",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { scope: "saved", name: "Route Flag", valueType: "boolean", storageKey: "sv1" },
+                    } as StoryBlock,
                 },
             },
-        },
-        savedVariables: {
-            sv1: { id: "sv1", name: "Route Flag" } as never,
         },
     } as unknown as StoryDocument;
 }
@@ -136,14 +144,20 @@ describe("extractStoryEntries", () => {
         expect(entries.filter(e => e.group === "story")).toHaveLength(1);
     });
 
-    it("indexes scene variables as variable entries with a scene jump", () => {
+    it("indexes scene variable declarations as variable entries jumping to their row", () => {
         const sceneVar = entries.find(e => e.text === "Affection");
-        expect(sceneVar).toMatchObject({ group: "variable", target: { kind: "storyScene", sceneId: "scene-1" } });
+        expect(sceneVar).toMatchObject({
+            group: "variable",
+            target: { kind: "storyBlock", sceneId: "scene-1", blockId: "v1" },
+        });
     });
 
-    it("indexes saved variables against the entry scene", () => {
+    it("indexes saved variable declarations against their declaring row", () => {
         const savedVar = entries.find(e => e.text === "Route Flag");
-        expect(savedVar).toMatchObject({ group: "variable", target: { kind: "storyScene", sceneId: "scene-1" } });
+        expect(savedVar).toMatchObject({
+            group: "variable",
+            target: { kind: "storyBlock", sceneId: "scene-1", blockId: "sv1" },
+        });
     });
 });
 

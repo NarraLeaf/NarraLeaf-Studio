@@ -358,4 +358,11 @@ export const storyInspector = {
         language: "Language",
         source: "Source",
     },
+
+    declaration: {
+        name: "Name",
+        type: "Type",
+        default: "Default",
+        description: "Description",
+    },
 } as const;

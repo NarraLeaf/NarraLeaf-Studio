@@ -1,6 +1,6 @@
 import {
     findParam,
-    getCommandDef,
+    isFlagParam,
     matchEnumOption,
     paramTypes,
     positionalParams,
@@ -8,6 +8,10 @@ import {
     type StoryCommandParam,
     type StoryCommandParamType,
 } from "./storyCommandGrammar";
+import { getCommandDef } from "./commands/registry";
+import type { StoryCommandSpan } from "./storyCommandValues";
+
+export type { StoryCommandSpan };
 
 /**
  * Parser for the story editor's slash command line: source text → structured args + issues.
@@ -22,8 +26,6 @@ import {
  * that resolves.
  */
 
-export type StoryCommandSpan = { start: number; end: number };
-
 export type StoryCommandToken = {
     /** Token text with quotes removed. */
     text: string;
@@ -31,6 +33,13 @@ export type StoryCommandToken = {
     raw: string;
     span: StoryCommandSpan;
     quoted: boolean;
+    /**
+     * Which quote wrapped the token: `"` is a string, `'` is an entity reference. Advisory for now -
+     * both kinds group identically and resolution reads the stripped text either way - but recorded
+     * so a stricter pass can tell `/set "gold" 1` from `/set 'gold' 1` later. When a token mixes both
+     * kinds (not a real case), the first structural quote wins. Unset on bare tokens.
+     */
+    quote?: "double" | "single";
 };
 
 export type StoryCommandArg = {
@@ -67,7 +76,12 @@ export type StoryCommandLine =
           issues: StoryCommandIssue[];
       };
 
-/** Split on unquoted whitespace, keeping absolute spans. Quotes group; there is no escape syntax (an asset name containing a quote is not a real case). */
+/**
+ * Split on unquoted whitespace, keeping absolute spans. Both quote kinds group and there is no escape
+ * syntax (an asset name containing a quote is not a real case): `"…"` marks a string, `'…'` an entity
+ * reference - same shape, different intent, recorded on the token's `quote`. Inside one kind the
+ * other is data, so `"Bob's Bar"` keeps its apostrophe and `'say "hi"'` its quotes.
+ */
 export function tokenizeCommandLine(source: string, from = 0): { tokens: StoryCommandToken[]; unterminatedQuote: boolean } {
     const tokens: StoryCommandToken[] = [];
     let unterminatedQuote = false;
@@ -82,49 +96,65 @@ export function tokenizeCommandLine(source: string, from = 0): { tokens: StoryCo
         }
         const start = index;
         let text = "";
-        let quoted = false;
-        let inQuote = false;
+        let quote: "double" | "single" | undefined;
+        let inQuote: "\"" | "'" | null = null;
         while (index < source.length) {
             const char = source[index];
-            if (char === "\"") {
-                inQuote = !inQuote;
-                quoted = true;
+            if ((char === "\"" || char === "'") && (inQuote === null || inQuote === char)) {
+                inQuote = inQuote === null ? char : null;
+                quote ??= char === "\"" ? "double" : "single";
                 index += 1;
                 continue;
             }
-            if (char === " " && !inQuote) {
+            if (char === " " && inQuote === null) {
                 break;
             }
             text += char;
             index += 1;
         }
-        if (inQuote) {
+        if (inQuote !== null) {
             unterminatedQuote = true;
         }
-        tokens.push({ text, raw: source.slice(start, index), span: { start, end: index }, quoted });
+        tokens.push({
+            text,
+            raw: source.slice(start, index),
+            span: { start, end: index },
+            quoted: quote !== undefined,
+            ...(quote ? { quote } : {}),
+        });
     }
 
     return { tokens, unterminatedQuote };
 }
 
-/** Index of the first `=` outside quotes, or -1. `t="a b"` splits at 1; a `=` inside quotes is data. */
+/** Index of the first `=` outside quotes, or -1. `t="a b"` splits at 1; a `=` inside either quote kind is data. */
 function firstUnquotedEquals(raw: string): number {
-    let inQuote = false;
+    let inQuote: "\"" | "'" | null = null;
     for (let index = 0; index < raw.length; index += 1) {
         const char = raw[index];
-        if (char === "\"") {
-            inQuote = !inQuote;
+        if ((char === "\"" || char === "'") && (inQuote === null || inQuote === char)) {
+            inQuote = inQuote === null ? char : null;
             continue;
         }
-        if (char === "=" && !inQuote) {
+        if (char === "=" && inQuote === null) {
             return index;
         }
     }
     return -1;
 }
 
+/** Remove the structural quotes of either kind, keeping the other kind's characters as data. */
 function stripQuotes(raw: string): string {
-    return raw.replace(/"/g, "");
+    let inQuote: "\"" | "'" | null = null;
+    let text = "";
+    for (const char of raw) {
+        if ((char === "\"" || char === "'") && (inQuote === null || inQuote === char)) {
+            inQuote = inQuote === null ? char : null;
+            continue;
+        }
+        text += char;
+    }
+    return text;
 }
 
 function acceptsType(type: StoryCommandParamType, value: string): boolean {
@@ -147,7 +177,8 @@ function acceptsType(type: StoryCommandParamType, value: string): boolean {
             return !(type.max !== undefined && parsed > type.max);
         }
         case "boolean":
-            return ["true", "false"].includes(value.trim().toLowerCase());
+            // Flags accept the human spellings too; resolution canonicalizes to true/false (bible B5).
+            return ["true", "false", "on", "off", "yes", "no"].includes(value.trim().toLowerCase());
         case "color":
             return /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value.trim());
         // Context-dependent or unconstrained: the parser has nothing to check against.
@@ -156,8 +187,8 @@ function acceptsType(type: StoryCommandParamType, value: string): boolean {
         case "characterForm":
         case "scene":
         case "variable":
-        case "displayable":
-        case "stageObject":
+        case "target":
+        case "content":
         case "literal":
         case "constant":
         case "text":
@@ -179,6 +210,25 @@ function isBadValue(param: StoryCommandParam, value: string): boolean {
         return false;
     }
     return !paramTypes(param).some(type => acceptsType(type, value));
+}
+
+/** Checkable kinds only - what the skippable rule may dispatch on. An uncheckable branch never "strictly matches". */
+function strictlyMatches(param: StoryCommandParam, value: string): boolean {
+    if (!value) {
+        return false;
+    }
+    return paramTypes(param).some(type => {
+        switch (type.kind) {
+            case "enum":
+            case "keyword":
+            case "number":
+            case "boolean":
+            case "color":
+                return acceptsType(type, value);
+            default:
+                return false;
+        }
+    });
 }
 
 function parseCommand(source: string): Extract<StoryCommandLine, { kind: "command" }> {
@@ -225,7 +275,12 @@ function parseCommand(source: string): Extract<StoryCommandLine, { kind: "comman
             const span = { start: token.span.start, end: source.length };
             seen.add(pending.name);
             args.push({ param: pending, key: null, value: source.slice(span.start), valueSpan: span });
-            return { kind: "command", token: nameToken.text, tokenSpan: nameToken.span, def, args, issues };
+            // A quote left open is not an error inside greedy prose: the value is the raw tail, quote
+            // characters and all, so nothing about the arg that lands is unterminated. This is what
+            // keeps `/say alice don't worry` committable now that `'` is quote syntax - an unclosed
+            // quote runs to the end of the line, so it always sits inside the claimed tail.
+            const kept = issues.filter(issue => issue.code !== "unterminatedQuote");
+            return { kind: "command", token: nameToken.text, tokenSpan: nameToken.span, def, args, issues: kept };
         }
 
         if (equals > 0) {
@@ -248,12 +303,34 @@ function parseCommand(source: string): Extract<StoryCommandLine, { kind: "comman
             continue;
         }
 
-        const param = positionals[positionalIndex];
+        // A bare token naming an unfilled named boolean is a flag: `/bgm battle loop` (bible B5).
+        // Bound only after the first positional has been consumed (or when there are none), so a
+        // leading value that happens to spell a flag name still fills the slot the author meant.
+        const flagParam = findParam(def, token.text);
+        if (flagParam && isFlagParam(flagParam) && !seen.has(flagParam.name) && (positionalIndex > 0 || positionals.length === 0)) {
+            seen.add(flagParam.name);
+            args.push({ param: flagParam, key: token.text, keySpan: token.span, value: "true", valueSpan: token.span });
+            continue;
+        }
+
+        let param = positionals[positionalIndex];
         if (!param) {
             issues.push({ code: "extraPositional", span: token.span, value: token.text });
             args.push({ param: null, key: null, value: token.text, valueSpan: token.span });
             continue;
         }
+
+        // An omissible leading positional (bible B4): when the token strictly matches the NEXT
+        // positional's closed value set and not this one's, this slot was skipped, not filled -
+        // `/vol 0.5` is a volume with the default target, not a sound named "0.5".
+        if (param.skippable) {
+            const next = positionals[positionalIndex + 1];
+            if (next && !seen.has(next.name) && strictlyMatches(next, token.text) && !strictlyMatches(param, token.text)) {
+                positionalIndex += 1;
+                param = next;
+            }
+        }
+
         positionalIndex += 1;
         seen.add(param.name);
 
@@ -315,9 +392,10 @@ export function unfilledParams(line: Extract<StoryCommandLine, { kind: "command"
 }
 
 /**
- * Whether the line may be committed. Issues always block; unfilled params only block when `required`.
- * "Unfinished" is not "wrong": `/bg` with no image commits a background block awaiting an image,
- * which is exactly what picking Background from the palette does today.
+ * Whether the line may be committed as its action. Issues always block; unfilled params block when
+ * they are part of the command's required core (bible B9) - a committed row is always a complete,
+ * working instruction. An incomplete line is not lost: the commit path lands it as a draft row, and
+ * the reason line names the missing slot.
  */
 export function canCommit(line: StoryCommandLine): boolean {
     switch (line.kind) {
@@ -331,6 +409,14 @@ export function canCommit(line: StoryCommandLine): boolean {
             if (!line.def || line.issues.length > 0) {
                 return false;
             }
-            return !unfilledParams(line).some(param => param.required);
+            return !unfilledParams(line).some(param => param.core);
     }
+}
+
+/** The unfilled core params - what the reason line names when Enter lands a draft instead of a row. */
+export function missingCoreParams(line: StoryCommandLine): readonly StoryCommandParam[] {
+    if (line.kind !== "command" || !line.def) {
+        return [];
+    }
+    return unfilledParams(line).filter(param => param.core);
 }
