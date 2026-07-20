@@ -7,6 +7,7 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
 } from "@shared/types/blueprint/graph";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import { defineBlueprintNode } from "@/lib/ui-editor/blueprint-nodes/defineBlueprintNode";
 import { AsyncNodeInSyncGraphError, executeGraphSync } from "./executeGraphSync";
 
 const hostAdapter = { host: "player" } as unknown as UIHostAdapter;
@@ -55,5 +56,86 @@ describe("executeGraphSync", () => {
                 hostAdapter,
             }),
         ).toThrow(AsyncNodeInSyncGraphError);
+    });
+
+    /**
+     * Plugin-provided nodes cannot import the core data pin resolver, so without
+     * ctx.resolveInput any input pin they declare is dead: they could emit
+     * output values but never read a wired input.
+     */
+    it("resolves a declared data input pin through ctx.resolveInput", () => {
+        let captured: unknown = "not-run";
+        defineBlueprintNode({
+            type: "test.plugin.readsInput",
+            displayName: "Reads Input",
+            category: "Test",
+            graphKinds: ["event", "function", "macro"],
+            isPure: false,
+            pins: [
+                { id: "in", kind: "input", semantic: "exec", label: "In" },
+                { id: "amount", kind: "input", semantic: "data", valueType: "string", label: "Amount" },
+                { id: "next", kind: "output", semantic: "exec", label: "Next" },
+            ],
+            execute: ctx => {
+                captured = ctx.resolveInput?.("amount");
+                return { nextPort: "next" };
+            },
+        });
+
+        const g = graph(
+            {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL, params: {} },
+                lit: { id: "lit", type: BLUEPRINT_NODE_TYPE_LITERAL_STRING, params: { value: "wired" } },
+                reader: { id: "reader", type: "test.plugin.readsInput", params: {} },
+            },
+            [
+                { from: { nodeId: "head", port: "then" }, to: { nodeId: "reader", port: "in" } },
+                { from: { nodeId: "lit", port: "value" }, to: { nodeId: "reader", port: "amount" } },
+            ],
+        );
+
+        executeGraphSync({
+            graph: g,
+            entry: { start: { nodeId: "head", port: "then" } },
+            hostAdapter,
+        });
+
+        expect(captured).toBe("wired");
+    });
+
+    it("resolves an unwired data input pin to undefined", () => {
+        let captured: unknown = "not-run";
+        defineBlueprintNode({
+            type: "test.plugin.readsUnwiredInput",
+            displayName: "Reads Unwired Input",
+            category: "Test",
+            graphKinds: ["event", "function", "macro"],
+            isPure: false,
+            pins: [
+                { id: "in", kind: "input", semantic: "exec", label: "In" },
+                { id: "amount", kind: "input", semantic: "data", valueType: "string", label: "Amount" },
+                { id: "next", kind: "output", semantic: "exec", label: "Next" },
+            ],
+            execute: ctx => {
+                captured = ctx.resolveInput?.("amount");
+                return { nextPort: "next" };
+            },
+        });
+
+        const g = graph(
+            {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL, params: {} },
+                reader: { id: "reader", type: "test.plugin.readsUnwiredInput", params: {} },
+            },
+            [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "reader", port: "in" } }],
+        );
+
+        executeGraphSync({
+            graph: g,
+            entry: { start: { nodeId: "head", port: "then" } },
+            hostAdapter,
+        });
+
+        expect(captured).toBeUndefined();
     });
 });
