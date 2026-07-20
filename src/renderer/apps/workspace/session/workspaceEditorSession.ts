@@ -1,7 +1,7 @@
 import { FileText, Image, Music, PanelsTopLeft, User } from "lucide-react";
 import { createElement, type ReactNode } from "react";
 import type { EditorGroup, EditorLayout, EditorTabDefinition } from "@/apps/workspace/registry/types";
-import { welcomeModule } from "@/apps/workspace/modules/welcome";
+import { createWelcomeTab } from "@/apps/workspace/modules/welcome/openWelcomeTab";
 import { BlueprintEntryTab } from "@/apps/workspace/modules/blueprint-lite/editors/BlueprintEntryTab";
 import {
     getBlueprintEntryTabId,
@@ -458,13 +458,7 @@ function storyIcon(): ReactNode {
  */
 export function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab): EditorTabDefinition | null {
     if (entry.kind === "welcome") {
-        return {
-            id: welcomeModule.metadata.id,
-            title: welcomeModule.metadata.title,
-            icon: welcomeModule.metadata.icon,
-            component: welcomeModule.component as EditorTabDefinition["component"],
-            closable: welcomeModule.metadata.closable,
-        };
+        return createWelcomeTab();
     }
     if (entry.kind === "dashboard") {
         return createDashboardTab();
