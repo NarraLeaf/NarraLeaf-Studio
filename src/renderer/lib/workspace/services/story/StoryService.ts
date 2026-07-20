@@ -18,6 +18,7 @@ import {
     StorySavedVariableDefinition,
     StoryScene,
     StorySceneId,
+    StorySceneSnapshot,
     StorySceneUpdate,
     StorySceneVariableDefinition,
     StoryVariableValueType,
@@ -720,6 +721,90 @@ export class StoryService extends Service<StoryService> implements IStoryService
 
     public deleteSavedVariable(storyId: StoryId, variableId: string): boolean {
         return this.deleteDeclaration(storyId, variableId);
+    }
+
+    // -----------------------------------------------------------------------
+    // Scene Snapshots (变量快照): named per-scene sets of variable override values, used to launch a
+    // row-precise Dev Mode preview under conditions the editor cannot analyse statically. Stored on
+    // the scene (authoring data, not runtime); edits ride the ordinary document history.
+    // -----------------------------------------------------------------------
+
+    public listSceneSnapshots(storyId: StoryId, sceneId: StorySceneId): StorySceneSnapshot[] {
+        try {
+            return this.getStoryDocument(storyId).scenes[sceneId]?.sceneSnapshots ?? [];
+        } catch {
+            return [];
+        }
+    }
+
+    public createSceneSnapshot(storyId: StoryId, sceneId: StorySceneId, name: string): string | null {
+        const id = this.getUuidService().generate();
+        let created: string | null = null;
+        this.mutateDocument(storyId, document => {
+            const scene = document.scenes[sceneId];
+            if (!scene) return;
+            const snapshot: StorySceneSnapshot = { id, name: name.trim() || "Snapshot", values: {} };
+            scene.sceneSnapshots = [...(scene.sceneSnapshots ?? []), snapshot];
+            created = id;
+        });
+        return created;
+    }
+
+    public renameSceneSnapshot(storyId: StoryId, sceneId: StorySceneId, snapshotId: string, name: string): boolean {
+        const trimmed = name.trim();
+        if (!trimmed) return false;
+        return this.mutateSceneSnapshot(storyId, sceneId, snapshotId, snapshot => {
+            snapshot.name = trimmed;
+        });
+    }
+
+    public deleteSceneSnapshot(storyId: StoryId, sceneId: StorySceneId, snapshotId: string): boolean {
+        let changed = false;
+        this.mutateDocument(storyId, document => {
+            const scene = document.scenes[sceneId];
+            if (!scene?.sceneSnapshots) return;
+            const next = scene.sceneSnapshots.filter(snapshot => snapshot.id !== snapshotId);
+            if (next.length === scene.sceneSnapshots.length) return;
+            scene.sceneSnapshots = next;
+            changed = true;
+        });
+        return changed;
+    }
+
+    public setSceneSnapshotValue(
+        storyId: StoryId,
+        sceneId: StorySceneId,
+        snapshotId: string,
+        refKey: string,
+        value: StoryLiteralValue,
+    ): boolean {
+        return this.mutateSceneSnapshot(storyId, sceneId, snapshotId, snapshot => {
+            snapshot.values = { ...snapshot.values, [refKey]: value };
+        });
+    }
+
+    public clearSceneSnapshotValue(storyId: StoryId, sceneId: StorySceneId, snapshotId: string, refKey: string): boolean {
+        return this.mutateSceneSnapshot(storyId, sceneId, snapshotId, snapshot => {
+            const next = { ...snapshot.values };
+            delete next[refKey];
+            snapshot.values = next;
+        });
+    }
+
+    private mutateSceneSnapshot(
+        storyId: StoryId,
+        sceneId: StorySceneId,
+        snapshotId: string,
+        mutate: (snapshot: StorySceneSnapshot) => void,
+    ): boolean {
+        let changed = false;
+        this.mutateDocument(storyId, document => {
+            const snapshot = document.scenes[sceneId]?.sceneSnapshots?.find(entry => entry.id === snapshotId);
+            if (!snapshot) return;
+            mutate(snapshot);
+            changed = true;
+        });
+        return changed;
     }
 
     private createDeclaration(

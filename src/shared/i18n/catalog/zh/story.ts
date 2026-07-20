@@ -233,6 +233,7 @@ export const story = {
         addRow: "点击或输入以添加一行…",
         actionsPanel: "动作",
         variablesPanel: "故事变量",
+        snapshotsPanel: "场景快照",
     },
     preview: {
         label: "预览",

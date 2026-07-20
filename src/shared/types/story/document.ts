@@ -88,7 +88,24 @@ export type StoryScene = {
     defaultBackgroundAssetId?: string;
     rootBlockIds: StoryBlockId[];
     blocks: Record<StoryBlockId, StoryBlock>;
+    /**
+     * Named "Scene Snapshots" (变量快照): author-authored sets of variable values used to launch a
+     * mid-story preview under conditions the editor cannot analyse statically (e.g. global flags).
+     * Per-scene and additive (no schema bump); the scene-variable rows shown re-bind per scene.
+     */
+    sceneSnapshots?: StorySceneSnapshot[];
     meta?: StoryMeta;
+};
+
+/**
+ * One named variable snapshot. `values` holds only the explicit overrides, keyed by
+ * `storyVariableRefKey(ref)` (spanning scene / saved / persistent scopes); anything unset falls back
+ * to the variable's declared default at launch time.
+ */
+export type StorySceneSnapshot = {
+    id: string;
+    name: string;
+    values: Record<string, StoryLiteralValue>;
 };
 
 export type StorySceneUpdate = {
