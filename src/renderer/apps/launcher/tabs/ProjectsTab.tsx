@@ -1,13 +1,17 @@
 
 import { getInterface } from "@/lib/app/bridge";
 import { RecentProjectMissingReason, RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
-import { Button, Modal, dialogFooterButtonClass } from "@/lib/components/elements";
+import { Button, ContextMenu, Input, Modal, dialogFooterButtonClass } from "@/lib/components/elements";
+import type { ContextMenuDef } from "@/lib/components/elements";
+import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
-import { AlertTriangle, FolderOpen, Plus, Upload, X } from "lucide-react";
-import { useState } from "react";
-import { normalizeProjectPath } from "@shared/utils/recentProject";
+import { AlertTriangle, FolderOpen, MoreVertical, Plus, Search, Upload, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { collapseHomePath, normalizeProjectPath } from "@shared/utils/recentProject";
+import { useHomeDir } from "@/lib/app/hooks/useHomeDir";
 import { useMissingRecentProjects, useRecentProjects, useRemoveRecentProject } from "@/lib/app/hooks/useRecentProjects";
 import { createProjectFromWizard, openProjectFromFolder, relocateRecentProject } from "../projectActions";
+import { projectAvatarColor, projectInitials } from "../projectAvatar";
 
 export function ProjectsTab() {
     const { t } = useTranslation();
@@ -23,7 +27,24 @@ export function ProjectsTab() {
     const [missingTarget, setMissingTarget] = useState<RecentlyOpenedProject | null>(null);
     const [missingError, setMissingError] = useState<string | null>(null);
     const [isRelocating, setIsRelocating] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
+    // The row whose overflow menu is open, with the screen point to anchor it to.
+    const [rowMenu, setRowMenu] = useState<{ project: RecentlyOpenedProject; x: number; y: number } | null>(null);
+    const homeDir = useHomeDir();
     const isBusy = isOpening || isImporting;
+
+    // Plain case-insensitive substring, over name *and* path. Matching the path is what makes this
+    // worth having: several projects can share a name ("Demo", "test"), and where they live is
+    // often the only thing that tells them apart. No fuzzy matching, in line with global search -
+    // over a list this short it mostly produces surprising hits rather than helpful ones.
+    const visibleProjects = useMemo(() => {
+        const query = searchQuery.trim().toLowerCase();
+        if (!query) return recentProjects;
+        return recentProjects.filter(project =>
+            project.name.toLowerCase().includes(query)
+            || project.path.toLowerCase().includes(query),
+        );
+    }, [recentProjects, searchQuery]);
 
     const handleOpenRecentProject = async (project: RecentlyOpenedProject) => {
         if (isBusy) return;
@@ -85,6 +106,36 @@ export function ProjectsTab() {
         await removeRecentProject(project.path);
     };
 
+    /**
+     * The row's overflow menu. Everything here is also reachable another way (a row opens on
+     * click, a missing row offers the same two actions in its dialog) - this is the discoverable
+     * home for them, not the only one.
+     */
+    const rowMenuItems = (project: RecentlyOpenedProject): ContextMenuDef => {
+        const isMissing = missingByPath.has(normalizeProjectPath(project.path));
+        return [
+            {
+                id: "open",
+                label: t("launcher.projects.openProject"),
+                onClick: () => void handleOpenRecentProject(project),
+            },
+            ...(isMissing ? [{
+                id: "relocate",
+                label: t("launcher.projects.missing.relocate"),
+                onClick: () => {
+                    setMissingError(null);
+                    setMissingTarget(project);
+                },
+            }] : []),
+            { id: "sep", separator: true as const },
+            {
+                id: "remove",
+                label: t("launcher.projects.removeFromRecent"),
+                onClick: () => void handleRemoveRecentProject(project),
+            },
+        ];
+    };
+
     const handleNewProject = async () => {
         if (isBusy) return;
         setOperationError(null);
@@ -140,121 +191,154 @@ export function ProjectsTab() {
     };
 
     return (
-        <div className="h-full w-full pt-6 px-8 pb-8 text-fg">
-            <div className="flex items-center justify-between mb-6">
-                <div className="text-lg font-semibold">{t("launcher.projects.title")}</div>
-                <div className="flex items-center gap-2">
-                    <Button
-                        variant="ghost"
-                        size="md"
-                        onClick={handleOpenFolder}
-                        disabled={isBusy}
-                        className="h-9 w-9 px-0 text-fg-muted"
-                        title={t("launcher.projects.openFolder")}
-                        aria-label={t("launcher.projects.openFolder")}
-                    >
-                        <FolderOpen className="w-5 h-5" />
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="md"
-                        onClick={handleImportProject}
-                        disabled={isBusy}
-                        className="h-9 w-9 px-0 text-fg-muted"
-                        title={t("launcher.projects.importProject")}
-                        aria-label={t("launcher.projects.importProject")}
-                    >
-                        <Upload className="w-5 h-5" />
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="md"
-                        onClick={handleNewProject}
-                        disabled={isBusy}
-                        className="text-fg-muted"
-                        title={t("launcher.projects.newProject")}
-                    >
-                        <Plus className="w-4 h-4" />
-                        <span>{t("launcher.projects.newProject")}</span>
-                    </Button>
+        <div className="h-full w-full flex flex-col pt-4 px-6 pb-6 text-fg">
+            <div className="flex items-center gap-2 mb-3">
+                <div className="flex-1 min-w-0">
+                    <Input
+                        fullWidth
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        // Escape clears rather than blurs: with the field always on screen, a
+                        // stale query is what hides projects, so the key that means "never
+                        // mind" has to undo the filtering.
+                        onKeyDown={(e) => {
+                            if (e.key === "Escape") {
+                                e.preventDefault();
+                                setSearchQuery("");
+                            }
+                        }}
+                        placeholder={t("launcher.projects.search.placeholder")}
+                        aria-label={t("launcher.projects.search.placeholder")}
+                        leftIcon={<Search className="w-4 h-4" />}
+                        rightIcon={searchQuery ? <X className="w-4 h-4" /> : undefined}
+                        rightIconLabel={t("launcher.projects.search.clear")}
+                        onRightIconClick={searchQuery ? () => setSearchQuery("") : undefined}
+                        // Borderless until focused: the field spans the header, and a permanent box
+                        // that wide competes with the list for attention.
+                        className="bg-transparent border-transparent focus:border-edge-strong"
+                    />
                 </div>
+                <Button
+                    variant="ghost"
+                    size="md"
+                    onClick={handleOpenFolder}
+                    disabled={isBusy}
+                    className="h-9 w-9 px-0 text-fg-muted"
+                    title={t("launcher.projects.openFolder")}
+                    aria-label={t("launcher.projects.openFolder")}
+                >
+                    <FolderOpen className="w-5 h-5" />
+                </Button>
+                <Button
+                    variant="ghost"
+                    size="md"
+                    onClick={handleImportProject}
+                    disabled={isBusy}
+                    className="h-9 w-9 px-0 text-fg-muted"
+                    title={t("launcher.projects.importProject")}
+                    aria-label={t("launcher.projects.importProject")}
+                >
+                    <Upload className="w-5 h-5" />
+                </Button>
+                <Button
+                    variant="ghost"
+                    size="md"
+                    onClick={handleNewProject}
+                    disabled={isBusy}
+                    className="h-9 w-9 px-0 text-fg-muted"
+                    title={t("launcher.projects.newProject")}
+                    aria-label={t("launcher.projects.newProject")}
+                >
+                    <Plus className="w-5 h-5" />
+                </Button>
             </div>
 
             {operationError && (
-                <div className="mb-4 rounded-md border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger">
+                <div className="mb-3 rounded-md border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger">
                     {operationError}
                 </div>
             )}
 
-            {recentProjects.length > 0 && (
-                <div className="mb-6">
-                    {/* <div className="flex items-center gap-2 mb-3 text-sm text-fg-muted">
-                        <Clock className="w-4 h-4" />
-                        <span>Recent Projects</span>
-                    </div> */}
-                    <div className="space-y-2">
-                        {recentProjects.map((project, index) => {
-                            const missingEntry = missingByPath.get(normalizeProjectPath(project.path));
-                            return (
-                            <div
-                                key={`${project.path}-${index}`}
-                                className="relative group rounded-md bg-fill-subtle hover:bg-fill transition-colors"
-                            >
-                                <button
-                                    type="button"
-                                    onClick={() => handleOpenRecentProject(project)}
-                                    disabled={isOpening}
-                                    className="w-full p-3 pr-11 text-left rounded-md transition-colors cursor-default disabled:opacity-50 disabled:cursor-not-allowed"
-                                    title={t("launcher.projects.openNamed", { name: project.name })}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex-shrink-0 w-8 h-8 bg-fill rounded-md flex items-center justify-center">
-                                            {missingEntry ? (
-                                                <AlertTriangle className="w-4 h-4 text-warning" />
-                                            ) : project.icon ? (
-                                                <img
-                                                    src={project.icon}
-                                                    alt=""
-                                                    className="w-5 h-5 object-contain"
-                                                />
-                                            ) : (
-                                                <FolderOpen className="w-4 h-4 text-fg-muted" />
-                                            )}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className={missingEntry
-                                                ? "text-sm font-medium text-fg-muted truncate"
-                                                : "text-sm font-medium text-fg truncate"}>
-                                                {project.name}
-                                            </div>
-                                            {missingEntry && (
-                                                <div className="text-xs text-warning truncate">
-                                                    {t(missingReasonKey(missingEntry.reason))}
-                                                </div>
-                                            )}
-                                            <div className="text-xs text-fg-subtle truncate">
-                                                {project.path}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        void handleRemoveRecentProject(project);
-                                    }}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-fg-muted opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-edge-strong transition-opacity cursor-default"
-                                    title={t("launcher.projects.removeFromRecent")}
-                                    aria-label={t("launcher.projects.removeNamedFromRecent", { name: project.name })}
-                                >
-                                    <X className="w-4 h-4" />
-                                </button>
-                            </div>
-                            );
-                        })}
+            <div className="flex-1 min-h-0 overflow-y-auto">
+                {recentProjects.length === 0 && (
+                    <div className="px-3 py-10 text-center text-sm text-fg-muted">
+                        {t("launcher.projects.empty")}
                     </div>
-                </div>
+                )}
+
+                {recentProjects.length > 0 && visibleProjects.length === 0 && (
+                    <div className="px-3 py-10 text-center text-sm text-fg-muted">
+                        {t("launcher.projects.search.empty", { query: searchQuery.trim() })}
+                    </div>
+                )}
+
+                {visibleProjects.map((project, index) => {
+                    const missingEntry = missingByPath.get(normalizeProjectPath(project.path));
+                    return (
+                        <div key={`${project.path}-${index}`} className="relative group">
+                            <button
+                                type="button"
+                                onClick={() => handleOpenRecentProject(project)}
+                                disabled={isOpening}
+                                className="w-full flex items-center gap-3 rounded-md px-3 py-2.5 pr-11 text-left hover:bg-fill transition-colors cursor-default disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={t("launcher.projects.openNamed", { name: project.name })}
+                            >
+                                {project.icon && !missingEntry ? (
+                                    <img src={project.icon} alt="" className="flex-shrink-0 w-10 h-10 rounded-lg object-contain" />
+                                ) : (
+                                    <span
+                                        aria-hidden
+                                        className={cn(
+                                            "flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center",
+                                            "text-sm font-medium text-white/90",
+                                            // A project that is not there is not a place to go, so its
+                                            // tile stops advertising itself as one.
+                                            missingEntry && "opacity-40 saturate-50",
+                                        )}
+                                        style={{ backgroundColor: projectAvatarColor(project.name) }}
+                                    >
+                                        {projectInitials(project.name)}
+                                    </span>
+                                )}
+                                <span className="flex-1 min-w-0">
+                                    <span className={cn("block text-sm truncate", missingEntry ? "text-fg-muted" : "text-fg")}>
+                                        {project.name}
+                                    </span>
+                                    <span className="block text-xs text-fg-subtle truncate">
+                                        {collapseHomePath(project.path, homeDir)}
+                                    </span>
+                                    {missingEntry && (
+                                        <span className="mt-0.5 flex items-center gap-1 text-xs text-fg-muted">
+                                            <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                                            <span className="truncate">{t(missingReasonKey(missingEntry.reason))}</span>
+                                        </span>
+                                    )}
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    setRowMenu({ project, x: rect.right, y: rect.bottom + 4 });
+                                }}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-fg-muted opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-edge-strong transition-opacity cursor-default"
+                                title={t("launcher.projects.moreActions")}
+                                aria-label={t("launcher.projects.moreActionsNamed", { name: project.name })}
+                            >
+                                <MoreVertical className="w-4 h-4" />
+                            </button>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {rowMenu && (
+                <ContextMenu
+                    items={rowMenuItems(rowMenu.project)}
+                    position={{ x: rowMenu.x, y: rowMenu.y }}
+                    onClose={() => setRowMenu(null)}
+                />
             )}
 
             {missingTarget && (

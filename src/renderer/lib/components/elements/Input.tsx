@@ -11,6 +11,12 @@ export interface BaseInputProps extends Omit<React.InputHTMLAttributes<HTMLInput
     leftIcon?: React.ReactNode;
     rightIcon?: React.ReactNode;
     onRightIconClick?: () => void;
+    /**
+     * Accessible name for the right-icon button. An icon-only button has no text to derive a name
+     * from, so without this it reaches assistive tech unnamed - pass one whenever the icon is
+     * clickable.
+     */
+    rightIconLabel?: string;
 }
 
 const variantStyles: Record<InputVariant, string> = {
@@ -71,6 +77,7 @@ export function Input({
     leftIcon,
     rightIcon,
     onRightIconClick,
+    rightIconLabel,
     ...props
 }: BaseInputProps) {
     return (
@@ -103,6 +110,8 @@ export function Input({
                     <button
                         type="button"
                         onClick={onRightIconClick}
+                        title={rightIconLabel}
+                        aria-label={rightIconLabel}
                         className="text-fg-muted hover:text-fg transition-colors cursor-default"
                     >
                         {rightIcon}
