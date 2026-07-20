@@ -1,0 +1,35 @@
+{
+    // Type-checks the built-in plugins, which no other project covered.
+    //
+    // They import the bare specifiers `narraleaf-studio/plugin` and
+    // `narraleaf-studio/runtime`. Those are supplied by an import map at
+    // runtime and marked external at build time, so nothing on disk backs them
+    // and the imports were silently unchecked.
+    //
+    // The paths below point at the live source rather than at the generated
+    // packages/plugin-types output on purpose: a change to the plugin API that
+    // breaks a built-in plugin then fails `yarn lint` immediately, instead of
+    // waiting for the types package to be regenerated.
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "jsx": "react-jsx",
+        "baseUrl": ".",
+        "strict": true,
+        "noEmit": true,
+        "skipLibCheck": true,
+        "esModuleInterop": true,
+        "paths": {
+            "narraleaf-studio/plugin": ["../renderer/plugin/index.ts"],
+            "narraleaf-studio/runtime": ["../renderer/lib/ui-editor/runtime/plugins/runtimePluginApi.ts"],
+            "@/*": ["../renderer/*"],
+            "@shared/*": ["../shared/*"],
+            "@lib/*": ["../renderer/lib/*"],
+            "@services/*": ["../renderer/lib/workspace/services/*"]
+        },
+        "typeRoots": ["../../node_modules/@types"],
+        "types": ["node", "react", "react-dom"]
+    },
+    "include": ["./**/*"]
+}
