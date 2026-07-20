@@ -252,6 +252,7 @@ export const story = {
         addRow: "Click or type to add a row…",
         actionsPanel: "Actions",
         variablesPanel: "Story Variables",
+        snapshotsPanel: "Scene Snapshots",
     },
     preview: {
         label: "Preview",
