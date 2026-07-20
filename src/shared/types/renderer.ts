@@ -220,7 +220,7 @@ export interface RendererPreloadedInterface {
         removeRecentProject(path: string): Promise<RequestStatus<void>>;
         /** Which remembered projects are no longer on disk. Reports only; removes nothing. */
         checkRecentProjects(): Promise<RequestStatus<{ missing: MissingRecentProject[] }>>;
-        getSystemPath(name: "desktop"): Promise<RequestStatus<{ path: string }>>;
+        getSystemPath(name: "desktop" | "home"): Promise<RequestStatus<{ path: string }>>;
     };
 
     devMode: {
