@@ -6,6 +6,10 @@
 
 # NarraLeaf-Studio
 
+![NarraLeaf Studio preview](https://raw.githubusercontent.com/NarraLeaf/.github/refs/heads/master/doc/studio-preview-wide.png)
+
+![NarraLeaf Studio screenshots](https://raw.githubusercontent.com/NarraLeaf/.github/refs/heads/master/doc/screenshots-grid.png)
+
 > This project is currently in the early stages of development.
 
 The development of visual novel engines has often been hampered by clunky interactive experiences and limited team collaboration capabilities; NarraLeaf Studio offers a more intuitive solution.
