@@ -49,6 +49,13 @@ jobs:
       - name: Typecheck
         run: yarn lint
 
+      # Regenerates the published plugin API declarations and fails if they no
+      # longer compile on their own. Without this, a refactor that leaks an
+      # unexportable internal type into the plugin surface would only be caught
+      # at publish time, by which point the API has already shipped.
+      - name: Build plugin API types
+        run: yarn build:plugin-types
+
       # REQUIRE_ANDROID_SDK_ORACLE turns a missing SDK into a failure rather than
       # a skip: the oracle tests are the only external judgement of whether a
       # repacked APK is installable, and a silent skip is indistinguishable from
