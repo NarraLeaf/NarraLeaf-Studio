@@ -34,7 +34,7 @@
     "stop": "node project/app/stop-dev.js",
     "pack-electron": "yarn clean && node project/app/pack-electron.js",
     "clean": "rimraf dist",
-    "lint": "tsc --project src/shared/tsconfig.json && tsc --project src/main/tsconfig.json && tsc --project src/renderer/tsconfig.json && tsc --project src/runtime/tsconfig.json",
+    "lint": "tsc --project src/shared/tsconfig.json && tsc --project src/main/tsconfig.json && tsc --project src/renderer/tsconfig.json && tsc --project src/runtime/tsconfig.json && tsc --project src/builtin-plugins/tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "style:ratchet": "node scripts/style-ratchet.mjs"

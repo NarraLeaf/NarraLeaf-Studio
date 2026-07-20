@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "baseUrl": "..",
+    "paths": {
+      "narraleaf-studio/plugin": ["./renderer/plugin/index.ts"],
+      "narraleaf-studio/runtime": ["./renderer/lib/ui-editor/runtime/plugins/runtimePluginApi.ts"],
+      "@/*": ["./renderer/*"],
+      "@shared/*": ["./shared/*"],
+      "@lib/*": ["./renderer/lib/*"],
+      "@services/*": ["./renderer/lib/workspace/services/*"]
+    },
+    "typeRoots": [
+      "../../node_modules/@types",
+      "../shared/types"
+    ],
+    "types": ["node", "react", "react-dom"]
+  },
+  "include": [
+    "./**/*"
+  ]
+}
