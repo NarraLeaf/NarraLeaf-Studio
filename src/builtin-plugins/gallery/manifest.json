@@ -2,8 +2,8 @@
   "manifestVersion": 2,
   "id": "narraleaf.gallery",
   "name": "Gallery",
-  "version": "1.1.0",
-  "description": "Manage visual novel gallery entries and unlock them from blueprint graphs.",
+  "version": "1.2.0",
+  "description": "Manage visual novel gallery artworks and their variants, and unlock them from blueprint graphs.",
   "publisher": "NarraLeaf Studio",
   "entries": {
     "studio": "main.js",
@@ -13,7 +13,16 @@
     "blueprintNodes": [
       "narraleaf.gallery.add",
       "narraleaf.gallery.remove",
-      "narraleaf.gallery.clear"
+      "narraleaf.gallery.clear",
+      "narraleaf.gallery.isUnlocked",
+      "narraleaf.gallery.getVariantCount",
+      "narraleaf.gallery.getVariant",
+      "narraleaf.gallery.getCover",
+      "narraleaf.gallery.getArtworkCount",
+      "narraleaf.gallery.getArtworkAt"
+    ],
+    "runtimeData": [
+      "narraleaf.gallery.items"
     ]
   },
   "permissions": []
