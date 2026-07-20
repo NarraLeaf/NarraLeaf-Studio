@@ -67,6 +67,12 @@ export function IconButton({
 }: Omit<ButtonProps, "children"> & {
     "aria-label": string;
     title?: string;
+    /**
+     * Optional icon content. Omitted from ButtonProps to drop its `required`,
+     * then re-added as optional: the spread below already forwards children to
+     * the button, so forbidding them outright contradicted the runtime.
+     */
+    children?: React.ReactNode;
 }) {
     const iconSizeStyles: Record<ButtonSize, string> = {
         sm: "w-8 h-8",
