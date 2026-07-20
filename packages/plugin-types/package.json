@@ -1,0 +1,50 @@
+{
+  "name": "narraleaf-studio",
+  "version": "0.1.0",
+  "description": "TypeScript declarations for the NarraLeaf Studio plugin API (narraleaf-studio/plugin and narraleaf-studio/runtime).",
+  "license": "MPL-2.0",
+  "type": "module",
+  "keywords": [
+    "narraleaf",
+    "narraleaf-studio",
+    "plugin",
+    "types"
+  ],
+  "homepage": "https://github.com/NarraLeaf/NarraLeaf-Studio",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NarraLeaf/NarraLeaf-Studio.git",
+    "directory": "packages/plugin-types"
+  },
+  "bugs": {
+    "url": "https://github.com/NarraLeaf/NarraLeaf-Studio/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "default": "./dist/plugin.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "default": "./dist/runtime.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "dependencies": {
+    "@types/node": "^24.8.1",
+    "@types/react": "^19.2.0",
+    "lucide-react": "^0.546.0"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node build.mjs --check",
+    "prepack": "node build.mjs"
+  }
+}
