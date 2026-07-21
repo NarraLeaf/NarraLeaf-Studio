@@ -1,4 +1,4 @@
-/** `widgets` — property inspectors and renderers for the built-in game-UI widgets. */
+/** `widgets` - property inspectors and renderers for the built-in game-UI widgets. */
 export const widgets = {
     tabs: {
         properties: "Properties",

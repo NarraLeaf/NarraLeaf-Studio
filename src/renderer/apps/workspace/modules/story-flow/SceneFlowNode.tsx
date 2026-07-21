@@ -6,7 +6,11 @@ import { SCENE_FLOW_NODE_HEIGHT, SCENE_FLOW_NODE_WIDTH, type SceneFlowNodeModel 
 
 export type SceneFlowNodeData = SceneFlowNodeModel & Record<string, unknown>;
 
-const HANDLE_CLASS = "!h-2 !w-2 !border !border-edge-strong !bg-surface-raised";
+/**
+ * Edges still need handles to anchor to, but the map is read-only, so they are kept invisible: a
+ * visible dot on the rim reads as "drag from here to connect", which is not on offer.
+ */
+const HANDLE_CLASS = "!h-2 !w-2 !border-0 !bg-transparent !opacity-0";
 
 /**
  * One scene. Everything that could be wrong with it (dangling jump, never reached) is a badge, so

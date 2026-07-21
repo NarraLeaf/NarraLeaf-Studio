@@ -310,11 +310,17 @@ export const storyInspector = {
         elseHint: "当之前的分支均不匹配时，运行 Else 分支",
     },
     condition: {
-        legacyExpression: "旧版表达式条件会保留在文档中，但不属于 NLR 动作界面的一部分",
+        brokenExpression: "该表达式已无法解析--它引用的变量可能被重命名或删除了。修复前该分支恒为假",
         clear: "清除条件",
     },
     code: {
         language: "语言",
         source: "源码",
+    },
+    declaration: {
+        name: "名称",
+        type: "类型",
+        default: "默认值",
+        description: "描述",
     },
 } satisfies LocaleNamespace<"storyInspector">;

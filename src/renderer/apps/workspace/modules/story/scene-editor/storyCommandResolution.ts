@@ -1,106 +1,52 @@
 import type { StoryLiteralValue, StoryVariableRef, StoryVariableValueType } from "@shared/types/story";
+import { storyVariableRefKey } from "@shared/types/story";
+import { inferStoryExpressionType } from "@shared/utils/storyExpressionEval";
+import type { StoryExpressionScope } from "@shared/utils/storyExpressionParser";
+import { createStoryExpressionScope, formatStoryExpressionName, parseStoryExpression } from "@shared/utils/storyExpressionParser";
 import {
     allowsFreeValue,
-    matchEnumOption,
     paramTypes,
+    matchEnumOption,
     type StoryCommandParam,
     type StoryCommandParamType,
 } from "./storyCommandGrammar";
 import type { StoryCommandLine, StoryCommandSpan } from "./storyCommandParser";
+import { getCommandSpec } from "./commands/registry";
+import type {
+    StoryCommandContext,
+    StoryCommandNamedRef,
+    StoryCommandResolution,
+    StoryCommandResolutionIssue,
+    StoryCommandStageObjectKind,
+    StoryCommandTargetValue,
+    StoryCommandValue,
+} from "./storyCommandValues";
+import { BGM_OBJECT_NAME } from "./storyCommandValues";
 
 /**
  * Resolution: parsed args → values the payload can hold.
  *
  * This is the half the parser deliberately cannot do. It turns author-typed *names* into the *ids*
- * the document stores, and performs every check that needs project state — does this asset exist, is
+ * the document stores, and performs every check that needs project state - does this asset exist, is
  * `100` a legal value for `gold`. An arg that parses is not yet an arg that resolves.
  *
  * Still pure: the project is injected as {@link StoryCommandContext}, never read from a service here.
- * The same context is what the candidate list will read, so the two can never disagree about what a
- * name means — see the plan's §3.3.
+ * The same context is what the candidate list reads, so the two can never disagree about what a name
+ * means. Command-specific checks live on the specs (`validate` / `deriveArgs`) - this layer stays
+ * generic and calls them blind.
  */
 
-export type StoryCommandNamedRef = { id: string; name: string };
-
-export type StoryCommandVariableEntry = {
-    name: string;
-    ref: StoryVariableRef;
-    valueType: StoryVariableValueType;
-};
-
-/** The five kinds of named object a `show`/`hide`/`set` command can address by `objectName`. */
-export type StoryCommandStageObjectKind = "image" | "text" | "layer" | "video" | "audio";
-
-/** The object names on stage, per kind — the candidate source for `{ kind: "stageObject" }` params. */
-export type StoryCommandStageObjects = Readonly<Record<StoryCommandStageObjectKind, readonly string[]>>;
-
-export const EMPTY_STORY_COMMAND_STAGE_OBJECTS: StoryCommandStageObjects = {
-    image: [], text: [], layer: [], video: [], audio: [],
-};
-
-export type StoryCommandContext = {
-    images: readonly StoryCommandNamedRef[];
-    audio: readonly StoryCommandNamedRef[];
-    videos: readonly StoryCommandNamedRef[];
-    characters: readonly StoryCommandNamedRef[];
-    /**
-     * Bare speaker names already used somewhere in this story. They back no character record, so they
-     * carry no id — but they are what the speaker picker offers between the real characters and the
-     * name being typed, and the command line must offer the same list.
-     */
-    tempSpeakers: readonly string[];
-    scenes: readonly StoryCommandNamedRef[];
-    variables: readonly StoryCommandVariableEntry[];
-    /** Form / appearance names per character id — the candidates for `form=`, which only exist once the character resolves. */
-    formsByCharacterId: Readonly<Record<string, readonly string[]>>;
-    /** Named objects on stage in the current scene, per kind — the picker `/imgshow`, `/settext`, `/stop` lead with. */
-    stageObjects: StoryCommandStageObjects;
-};
-
-export const EMPTY_STORY_COMMAND_CONTEXT: StoryCommandContext = {
-    images: [], audio: [], videos: [], characters: [], tempSpeakers: [], scenes: [], variables: [], formsByCharacterId: {},
-    stageObjects: EMPTY_STORY_COMMAND_STAGE_OBJECTS,
-};
-
-export type StoryCommandValue =
-    | { kind: "asset"; assetId: string }
-    | { kind: "color"; color: string }
-    | { kind: "character"; characterId: string }
-    /** A name backing no character — legal only where the param opted in via `allowTemp`. */
-    | { kind: "speakerName"; speakerName: string }
-    | { kind: "characterForm"; formName: string }
-    | { kind: "scene"; sceneId: string }
-    | { kind: "variable"; ref: StoryVariableRef; valueType: StoryVariableValueType }
-    | { kind: "enum"; value: string }
-    | { kind: "keyword"; value: string }
-    | { kind: "number"; value: number }
-    | { kind: "boolean"; value: boolean }
-    | { kind: "literal"; value: StoryLiteralValue }
-    | { kind: "text"; value: string };
-
-export type StoryCommandResolvedArgs = Readonly<Record<string, StoryCommandValue>>;
-
-export type StoryCommandResolutionIssue =
-    | { code: "unknownAsset"; span: StoryCommandSpan; value: string; assetType: "image" | "audio" | "video" }
-    | { code: "unknownCharacter"; span: StoryCommandSpan; value: string }
-    | { code: "unknownScene"; span: StoryCommandSpan; value: string }
-    | { code: "unknownVariable"; span: StoryCommandSpan; value: string }
-    | { code: "unknownForm"; span: StoryCommandSpan; value: string; characterName: string }
-    /** Two things share this name, so the line does not say which one. See the note on `findByName`. */
-    | { code: "ambiguousName"; span: StoryCommandSpan; value: string }
-    /** `/set gold true` where `gold` is a number. The dependent type, finally checked. */
-    | { code: "valueTypeMismatch"; span: StoryCommandSpan; value: string; expected: StoryVariableValueType }
-    /**
-     * Two args that a one-op-per-block command cannot honour together — `/font title 48 color=#f00`
-     * would set the size and silently drop the colour. Faulting keeps the line uncommitted (author
-     * splits it into two) rather than losing the second value without a word.
-     */
-    | { code: "conflictingParams"; span: StoryCommandSpan; keys: readonly string[] };
-
-export type StoryCommandResolution = {
-    args: StoryCommandResolvedArgs;
-    issues: StoryCommandResolutionIssue[];
-};
+export type {
+    StoryCommandContext,
+    StoryCommandNamedRef,
+    StoryCommandResolution,
+    StoryCommandResolutionIssue,
+    StoryCommandStageObjectKind,
+    StoryCommandTargetValue,
+    StoryCommandValue,
+} from "./storyCommandValues";
+export type { StoryCommandVariableEntry, StoryCommandStageObjects, StoryCommandResolvedArgs } from "./storyCommandValues";
+export { EMPTY_STORY_COMMAND_CONTEXT, EMPTY_STORY_COMMAND_STAGE_OBJECTS } from "./storyCommandValues";
 
 /**
  * Exact, case-insensitive match by name.
@@ -108,8 +54,7 @@ export type StoryCommandResolution = {
  * Returns "ambiguous" rather than guessing when a name is not unique: asset names are not unique in a
  * project, and a command line addresses them by name, so `/bg forest` with two "forest" images does
  * not say which. Picking the first would silently bind to whichever happened to sort first and change
- * under the author later. Failing loudly is the honest answer — see the plan's §8 for the gap this
- * leaves.
+ * under the author later. Failing loudly is the honest answer.
  */
 function findByName(entries: readonly StoryCommandNamedRef[], raw: string): StoryCommandNamedRef | "ambiguous" | null {
     const needle = raw.trim().toLowerCase();
@@ -135,21 +80,100 @@ export function parseLiteral(raw: string): StoryLiteralValue {
     return raw;
 }
 
-function literalMatchesType(value: StoryLiteralValue, valueType: StoryVariableValueType): boolean {
-    switch (valueType) {
-        case "boolean":
-            return typeof value === "boolean";
-        case "number":
-            return typeof value === "number";
-        case "string":
-            return typeof value === "string";
-        case "json":
-            return true;
-    }
-}
-
 function assetsOfType(context: StoryCommandContext, assetType: "image" | "audio" | "video"): readonly StoryCommandNamedRef[] {
     return assetType === "image" ? context.images : assetType === "audio" ? context.audio : context.videos;
+}
+
+/** The character an owner param resolved to, whether it came through a `character` or a `target` slot. */
+function ownerCharacterId(owner: StoryCommandValue | undefined): string | null {
+    if (owner?.kind === "character") {
+        return owner.characterId;
+    }
+    if (owner?.kind === "target" && owner.target.type === "character") {
+        return owner.target.characterId;
+    }
+    return null;
+}
+
+/**
+ * Resolve a generic verb's subject: a character or a stage object, whichever `accepts` allows and
+ * the name turns out to be. One name matching several worlds is ambiguous, not first-match.
+ */
+function resolveTarget(
+    type: Extract<StoryCommandParamType, { kind: "target" }>,
+    value: string,
+    span: StoryCommandSpan,
+    context: StoryCommandContext,
+): { value: StoryCommandValue } | { issue: StoryCommandResolutionIssue } {
+    const needle = value.trim().toLowerCase();
+    const matches: StoryCommandTargetValue[] = [];
+
+    if (type.accepts.includes("character")) {
+        const found = context.characters.filter(entry => entry.name.trim().toLowerCase() === needle);
+        if (found.length > 1) {
+            return { issue: { code: "ambiguousName", span, value } };
+        }
+        if (found.length === 1) {
+            matches.push({ type: "character", characterId: found[0].id, name: found[0].name });
+        }
+    }
+
+    for (const kind of type.accepts) {
+        if (kind === "character") {
+            continue;
+        }
+        // The background-music channel answers to the reserved name; it is always "on stage".
+        if (kind === "audio" && needle === BGM_OBJECT_NAME) {
+            matches.push({ type: "stageObject", objectKind: "audio", name: BGM_OBJECT_NAME, known: true });
+            continue;
+        }
+        const names = context.stageObjects[kind] ?? [];
+        const found = names.find(name => name.trim().toLowerCase() === needle);
+        if (found !== undefined) {
+            matches.push({ type: "stageObject", objectKind: kind, name: found, known: true });
+        }
+    }
+
+    if (matches.length > 1) {
+        return { issue: { code: "ambiguousName", span, value } };
+    }
+    if (matches.length === 1) {
+        return { value: { kind: "target", target: matches[0] } };
+    }
+
+    // Nothing on stage answers. A free-typed name can stand only where exactly one object kind is
+    // possible (made dynamically, or in another scene); with several kinds there is nothing to
+    // dispatch the block type on.
+    const stageKinds = type.accepts.filter((kind): kind is StoryCommandStageObjectKind => kind !== "character");
+    if (stageKinds.length === 1 && value.trim() !== "") {
+        return { value: { kind: "target", target: { type: "stageObject", objectKind: stageKinds[0], name: value.trim(), known: false } } };
+    }
+    return { issue: { code: "unknownTarget", span, value } };
+}
+
+/** Resolve a `/swap` content by what its target turned out to be: an asset for image, words for text. */
+function resolveContent(
+    type: Extract<StoryCommandParamType, { kind: "content" }>,
+    value: string,
+    span: StoryCommandSpan,
+    context: StoryCommandContext,
+    resolved: Record<string, StoryCommandValue>,
+): { value: StoryCommandValue } | { issue: StoryCommandResolutionIssue } {
+    const owner = resolved[type.dependsOn];
+    const target = owner?.kind === "target" ? owner.target : null;
+    if (!target || target.type !== "stageObject" || target.objectKind === "text") {
+        // Text content, or an unresolved target whose own issue already stands: pass the words through.
+        return { value: { kind: "text", value } };
+    }
+    const assetType = target.objectKind === "video" ? "video" : "image";
+    const found = findByName(assetsOfType(context, assetType), value);
+    if (found === "ambiguous") {
+        return { issue: { code: "ambiguousName", span, value } };
+    }
+    if (!found) {
+        return { issue: { code: "unknownAsset", span, value, assetType } };
+    }
+    return { value: { kind: "asset", assetId: found.id } };
 }
 
 /**
@@ -189,18 +213,19 @@ function resolveAgainstType(
                 : { issue: { code: "unknownCharacter", span, value } };
         }
         case "characterForm": {
-            const owner = resolved[type.dependsOn];
-            if (!owner || owner.kind !== "character") {
-                // The character is unresolved or is a temp speaker, so there are no forms to check
-                // against. Not this param's error to report — the character's own issue already stands.
+            const characterId = ownerCharacterId(resolved[type.dependsOn]);
+            if (!characterId) {
+                // The owner is unresolved, a temp speaker, or a stage object - there are no forms to
+                // check against. Not this param's error to report; the owner's own issue (or the
+                // spec's validate) already stands.
                 return { value: { kind: "characterForm", formName: value.trim() } };
             }
-            const forms = context.formsByCharacterId[owner.characterId] ?? [];
+            const forms = context.formsByCharacterId[characterId] ?? [];
             const match = forms.find(form => form.trim().toLowerCase() === value.trim().toLowerCase());
             if (match) {
                 return { value: { kind: "characterForm", formName: match } };
             }
-            const characterName = context.characters.find(entry => entry.id === owner.characterId)?.name ?? "";
+            const characterName = context.characters.find(entry => entry.id === characterId)?.name ?? "";
             return { issue: { code: "unknownForm", span, value, characterName } };
         }
         case "scene": {
@@ -219,8 +244,12 @@ function resolveAgainstType(
             if (matches.length === 0) {
                 return { issue: { code: "unknownVariable", span, value } };
             }
-            return { value: { kind: "variable", ref: matches[0].ref, valueType: matches[0].valueType } };
+            return { value: { kind: "variable", ref: matches[0].ref, valueType: matches[0].valueType, name: matches[0].name, defaultValue: matches[0].defaultValue } };
         }
+        case "target":
+            return resolveTarget(type, value, span, context);
+        case "content":
+            return resolveContent(type, value, span, context, resolved);
         case "enum": {
             const option = matchEnumOption(type, value);
             // Normalizing the alias to its canonical value happens here, not in the parser: the parser
@@ -236,36 +265,95 @@ function resolveAgainstType(
             return value.trim() !== "" && Number.isFinite(parsed) ? { value: { kind: "number", value: parsed } } : null;
         }
         case "boolean": {
+            // The human spellings collapse to the canonical pair here (bible B5).
             const normalized = value.trim().toLowerCase();
-            return normalized === "true" || normalized === "false"
-                ? { value: { kind: "boolean", value: normalized === "true" } }
-                : null;
-        }
-        case "displayable":
-            // Displayables are static and bound to their creator block; resolving one needs the scene
-            // graph, which arrives with the displayable candidate work. No P0 command uses it.
+            if (["true", "on", "yes"].includes(normalized)) {
+                return { value: { kind: "boolean", value: true } };
+            }
+            if (["false", "off", "no"].includes(normalized)) {
+                return { value: { kind: "boolean", value: false } };
+            }
             return null;
-        case "stageObject":
-            // The name a `show`/`hide`/`set` addresses is just a string the payload stores as `objectName`
-            // — no binding to resolve. A free-typed name is legal (see `allowsFreeValue`), so this always
-            // succeeds; the candidate list is what makes it a pick rather than a guess. Carried as a text
-            // value so `applyArgs` writes it exactly as it writes a `create`'s free name.
-            return { value: { kind: "text", value: value.trim() } };
+        }
         case "literal":
-        // A dependent value carries the same literal the payload stores; the candidate list is the only
-        // thing `dependsOn` changes. The type check against the variable happens in the post-pass below.
-        case "variableValue":
+        // A constant resolves exactly like a literal - the difference between them is what each
+        // *offers* and what each *forbids*, both of which are settled before we get here.
+        case "constant":
             return { value: { kind: "literal", value: parseLiteral(value) } };
+        case "expression":
+            return resolveExpression(type, value, span, context, resolved);
         case "text":
             return { value: { kind: "text", value } };
     }
 }
 
 /**
+ * Parse an expression against the variables this project declares.
+ *
+ * The compound-assignment sugar is desugared here rather than in the expression language, because
+ * `+=` is a property of *assignment*, not of values. Rewriting `/set gold += 1` into the source
+ * `gold + (1)` also means the stored tree is exactly the one the longhand would have produced.
+ */
+function resolveExpression(
+    type: Extract<StoryCommandParamType, { kind: "expression" }>,
+    value: string,
+    span: StoryCommandSpan,
+    context: StoryCommandContext,
+    resolved: Record<string, StoryCommandValue>,
+): { value: StoryCommandValue } | { issue: StoryCommandResolutionIssue } {
+    let source = value;
+    const compound = type.assignTo ? matchCompoundAssignment(value) : null;
+    if (compound) {
+        const target = resolved[type.assignTo!];
+        if (target?.kind !== "variable") {
+            // `+= 1` with no variable to add to: the target's own issue already stands, and inventing
+            // a second one here would double-report the same mistake.
+            return { issue: { code: "compoundWithoutTarget", span, value } };
+        }
+        // The name goes back through the expression lexer, so it must be spelled the way the lexer
+        // reads one reference: bare when it can be, `'…'`-quoted when a space or dot would split it.
+        source = `${formatStoryExpressionName(target.name)} ${compound.op} (${compound.rest})`;
+    }
+
+    const { expression, issues } = parseStoryExpression(source, expressionScope(context));
+    if (issues.length > 0) {
+        return { issue: { code: "expressionError", span, value: source, issue: issues[0] } };
+    }
+
+    if (type.expects === "boolean") {
+        const inferred = inferStoryExpressionType(expression.ast, ref => variableTypeOf(context, ref));
+        // `unknown` passes: a `json` variable or a mixed ternary defeats inference, and refusing a
+        // correct condition is worse than letting a truthy number through.
+        if (inferred !== "boolean" && inferred !== "unknown") {
+            return { issue: { code: "expressionNotBoolean", span, value: source, received: inferred } };
+        }
+    }
+
+    return { value: { kind: "expression", expression, source } };
+}
+
+/** `+= 1` → `{ op: "+", rest: "1" }`. Anything else is an ordinary expression. */
+function matchCompoundAssignment(value: string): { op: "+" | "-" | "*" | "/"; rest: string } | null {
+    const match = /^\s*([+\-*/])=\s*(.*)$/.exec(value);
+    return match && match[2].trim() !== "" ? { op: match[1] as "+" | "-" | "*" | "/", rest: match[2] } : null;
+}
+
+/** The scope chain an expression's identifiers resolve through, built from the same context everything else reads. */
+export function expressionScope(context: StoryCommandContext): StoryExpressionScope {
+    return createStoryExpressionScope(context.variables.map(entry => ({ name: entry.name, ref: entry.ref })));
+}
+
+function variableTypeOf(context: StoryCommandContext, ref: StoryVariableRef): StoryVariableValueType | undefined {
+    const key = storyVariableRefKey(ref);
+    return context.variables.find(entry => storyVariableRefKey(entry.ref) === key)?.valueType;
+}
+
+/**
  * Resolve every arg on a parsed command line.
  *
- * Params resolve in grammar order so a dependent param (`form=`) sees the value it depends on
- * (`character`) already resolved.
+ * Params resolve in grammar order so a dependent param (a form, a swap's content) sees the value it
+ * depends on already resolved. After the generic pass, the owning spec gets its say: `deriveArgs`
+ * fills what the author may omit (auto-names), `validate` reports what no single param can know.
  */
 export function resolveCommandLine(line: StoryCommandLine, context: StoryCommandContext): StoryCommandResolution {
     const issues: StoryCommandResolutionIssue[] = [];
@@ -287,78 +375,17 @@ export function resolveCommandLine(line: StoryCommandLine, context: StoryCommand
         resolved[param.name] = outcome.value;
     }
 
-    // `/set gold true` where `gold` is a number: only checkable now that both params have resolved.
-    const target = resolved.variable;
-    const literal = resolved.value;
-    if (target?.kind === "variable" && literal?.kind === "literal" && !literalMatchesType(literal.value, target.valueType)) {
-        const span = line.args.find(arg => arg.param?.name === "value")?.valueSpan;
-        if (span) {
-            issues.push({ code: "valueTypeMismatch", span, value: String(literal.value), expected: target.valueType });
-        }
+    const spec = getCommandSpec(line.def.commandId);
+    if (spec?.deriveArgs) {
+        Object.assign(resolved, spec.deriveArgs(resolved, context));
     }
-
-    autoNameCreatedObject(line.def.commandId, resolved, context);
-
-    // `/font title 48 color=#f00`: one block runs one op, so honouring both is impossible. Fault on the
-    // colour rather than let `applyArgs` keep the size and drop the colour on the floor.
-    if (line.def.commandId === "textFont" && resolved.size?.kind === "number" && resolved.color?.kind === "color") {
-        const span = line.args.find(arg => arg.param?.name === "color")?.valueSpan;
-        if (span) {
-            issues.push({ code: "conflictingParams", span, keys: ["size", "color"] });
-        }
+    if (spec?.validate) {
+        const spanOf = (paramName: string): StoryCommandSpan | undefined =>
+            line.args.find(arg => arg.param?.name === paramName)?.valueSpan;
+        issues.push(...spec.validate(resolved, { context, spanOf }));
     }
 
     return { args: resolved, issues };
-}
-
-/**
- * A `create` command whose object the author need not name: what to derive the name from, and the list
- * to dedupe it against. `assetParam` is the positional whose filename seeds the name (image/video);
- * text and layer have no asset, so they fall back to `base`.
- */
-const CREATE_AUTO_NAME: Record<string, { stageKind: StoryCommandStageObjectKind; assetParam?: string; base: string }> = {
-    imageCreate: { stageKind: "image", assetParam: "image", base: "image" },
-    videoCreate: { stageKind: "video", assetParam: "video", base: "video" },
-    textCreate: { stageKind: "text", base: "text" },
-    layerCreate: { stageKind: "layer", base: "layer" },
-};
-
-/**
- * Fill in the object name a `create` line left blank, so `/image forest.png` lands an image called
- * `forest` — the same "no name needed" feel as `/bg`. Derived from the asset's filename when there is
- * one, else a deduped default, so two `/text` lines become `text` and `text2` rather than colliding.
- * Skipped when the author named it (`name=`) — their choice wins.
- */
-function autoNameCreatedObject(commandId: string, resolved: Record<string, StoryCommandValue>, context: StoryCommandContext): void {
-    const spec = CREATE_AUTO_NAME[commandId];
-    if (!spec || resolved.name) {
-        return;
-    }
-    const asset = spec.assetParam ? resolved[spec.assetParam] : undefined;
-    const seed = asset?.kind === "asset" ? assetBaseName(context, spec.stageKind, asset.assetId) ?? spec.base : spec.base;
-    resolved.name = { kind: "text", value: dedupeObjectName(seed, context.stageObjects[spec.stageKind]) };
-}
-
-/** The asset's display name without its extension — `forest.png` → `forest` — or null when unknown. */
-function assetBaseName(context: StoryCommandContext, stageKind: StoryCommandStageObjectKind, assetId: string): string | null {
-    const list = stageKind === "video" ? context.videos : context.images;
-    const found = list.find(entry => entry.id === assetId);
-    const base = found?.name.replace(/\.[^./\\]+$/, "").trim();
-    return base ? base : null;
-}
-
-/** `base`, or `base2`, `base3`… — the first not already taken (case-insensitive) by an object on stage. */
-function dedupeObjectName(base: string, existing: readonly string[]): string {
-    const taken = new Set(existing.map(name => name.trim().toLowerCase()));
-    if (!taken.has(base.trim().toLowerCase())) {
-        return base;
-    }
-    for (let suffix = 2; ; suffix += 1) {
-        const candidate = `${base}${suffix}`;
-        if (!taken.has(candidate.toLowerCase())) {
-            return candidate;
-        }
-    }
 }
 
 function resolveParam(
@@ -400,6 +427,8 @@ function issueForUnresolvable(type: StoryCommandParamType, value: string, span: 
             return { code: "unknownScene", span, value };
         case "variable":
             return { code: "unknownVariable", span, value };
+        case "target":
+            return { code: "unknownTarget", span, value };
         default:
             return { code: "unknownCharacter", span, value };
     }

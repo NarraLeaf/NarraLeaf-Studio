@@ -31,7 +31,7 @@ describe("orderStatusBarEntries", () => {
     });
 
     it("keeps the outermost entry outermost when an inner one is hidden", () => {
-        // Hiding R3 must not promote a different entry into the corner — R1 stays pinned there.
+        // Hiding R3 must not promote a different entry into the corner - R1 stays pinned there.
         expect(ids(orderStatusBarEntries(ENTRIES, Right, new Set(["R3"])))).toEqual(["R2", "R1"]);
     });
 

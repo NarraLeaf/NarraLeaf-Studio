@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { HelpCircle, Plus, Trash2, Variable } from "lucide-react";
 import type { PanelComponentProps } from "../types";
 import { useTranslation } from "@/lib/i18n";
-import { Select, type SelectOption } from "@/lib/components/elements";
+import { HintPopover, Select, type SelectOption } from "@/lib/components/elements";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
@@ -16,10 +16,9 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import type {
     StoryDocument,
     StoryLiteralValue,
-    StorySavedVariableDefinition,
-    StorySceneVariableDefinition,
     StoryVariableValueType,
 } from "@shared/types/story";
+import { savedVariableDefs, sceneVariableDefs } from "@shared/types/story";
 import type { StoryVariablesPanelPayload } from "./storyVariablesPanelId";
 
 const INPUT_CLASS =
@@ -108,37 +107,17 @@ function VariableRowEditor(props: {
     );
 }
 
-/**
- * A compact "?" affordance that reveals its explanation in a hover/focus popover, keeping the
- * category header uncluttered (the description no longer sits as a permanent caption line).
- */
-function HintPopover(props: { text: string }) {
-    return (
-        <span className="group/hint relative inline-flex">
-            <button
-                type="button"
-                aria-label={props.text}
-                className="flex h-4 w-4 items-center justify-center rounded-full text-fg-subtle outline-none transition-colors hover:text-fg-muted focus-visible:text-fg-muted"
-            >
-                <HelpCircle className="h-3.5 w-3.5" />
-            </button>
-            <span
-                role="tooltip"
-                className="pointer-events-none absolute left-0 top-full z-30 mt-1 w-44 rounded-md border border-edge bg-surface-raised px-2 py-1.5 text-2xs leading-snug text-fg-muted opacity-0 shadow-xl transition-opacity duration-100 group-hover/hint:opacity-100 group-focus-within/hint:opacity-100"
-            >
-                {props.text}
-            </span>
-        </span>
-    );
-}
-
 function SectionHeader(props: { title: string; hint: string; onAdd?: () => void }) {
     const { t } = useTranslation();
     return (
         <div className="flex items-center justify-between">
             <div className="flex min-w-0 items-center gap-1">
                 <div className="truncate text-xs font-medium text-fg">{props.title}</div>
-                <HintPopover text={props.hint} />
+                <HintPopover
+                    text={props.hint}
+                    icon={<HelpCircle className="h-3.5 w-3.5" />}
+                    width={176}
+                />
             </div>
             {props.onAdd ? (
                 <button
@@ -204,10 +183,11 @@ export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariab
 
     const sceneRows: VariableRow[] = useMemo(() => {
         if (!document || !sceneId) return [];
-        return Object.values(document.scenes[sceneId]?.sceneVariables ?? {});
+        const scene = document.scenes[sceneId];
+        return scene ? Object.values(sceneVariableDefs(scene)) : [];
     }, [document, sceneId]);
 
-    const savedRows: VariableRow[] = useMemo(() => Object.values(document?.savedVariables ?? {}), [document]);
+    const savedRows: VariableRow[] = useMemo(() => (document ? Object.values(savedVariableDefs(document)) : []), [document]);
 
     const addScene = useCallback(() => {
         if (storyService && storyId && sceneId) {

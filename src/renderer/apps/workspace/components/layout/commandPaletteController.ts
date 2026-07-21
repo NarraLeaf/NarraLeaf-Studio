@@ -7,7 +7,7 @@ import type * as React from "react";
  * the palette owns every bit of session logic (mode, ranking, selection, commit). This file wires
  * the two across component trees: the palette registers a {@link PaletteBridge} on mount, and
  * publishes its session ({open, query}) for the box to render as a controlled input. Deliberately
- * not a service — one window-local wiring, dead once the layout unmounts.
+ * not a service - one window-local wiring, dead once the layout unmounts.
  */
 
 export interface PaletteBridge {
@@ -53,7 +53,7 @@ export function closeCommandPalette(): void {
 
 /**
  * Whether a title-bar search box is on screen. It can be switched off in settings, and the
- * palette must then grow its own input inside the candidate card — otherwise `mod+shift+p` would
+ * palette must then grow its own input inside the candidate card - otherwise `mod+shift+p` would
  * open a list with nowhere to type. Reported by the box itself rather than sniffed from the DOM,
  * so the palette never renders a second input for one frame before the box is measured.
  */

@@ -83,7 +83,7 @@ function shouldUseNativeEditCommand(role: EditMenuRole): boolean {
     if (isEditableKeyboardTarget(document.activeElement)) {
         return true;
     }
-    // Copying a text selection is meaningful outside a text field too — but only a selection the
+    // Copying a text selection is meaningful outside a text field too - but only a selection the
     // focused surface actually holds. A leftover selection elsewhere in the workspace must not
     // hijack the surface's own copy.
     if (role === "copy" || role === "cut") {

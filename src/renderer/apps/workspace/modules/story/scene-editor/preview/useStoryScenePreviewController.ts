@@ -20,7 +20,7 @@ import { resolvePreviewTargetBlockId } from "./storyScenePreviewTarget";
 import { STORY_CONSOLE_CHANNEL_ID } from "./storyPreviewConsole";
 
 const RECOMPILE_DEBOUNCE_MS = 300;
-/** Pure row switches (same document, new target) rebuild sooner — they are the hot path. */
+/** Pure row switches (same document, new target) rebuild sooner - they are the hot path. */
 const ROW_SWITCH_DEBOUNCE_MS = 150;
 /** Pre-posed state mounts within a few frames; anything longer means the marker never fired. */
 const STATE_SETTLE_TIMEOUT_MS = 5_000;
@@ -31,6 +31,7 @@ export type StoryScenePreviewPhase =
     | "compiling"
     | "mounting"
     | "starting"
+    /** The target row's action has played and the frame holds. */
     | "settled"
     | "error";
 
@@ -79,7 +80,7 @@ type PreviewRun = {
     wireDispose: (() => void) | null;
     /**
      * Releases the compiled story's reveal gate (a `Control.sleep` between the posed stage and the
-     * target's own action). Only ever resolved at promotion — superseded runs are disposed instead,
+     * target's own action). Only ever resolved at promotion - superseded runs are disposed instead,
      * which aborts the sleeping timeline.
      */
     resolveReveal: () => void;
@@ -94,11 +95,11 @@ type PreviewRun = {
  * Drives the story preview stage. The Studio computes the settled stage state at the selected row
  * (computeStoryStageSnapshot) and compiles it into a "state player" story whose elements mount
  * pre-posed; the target row's own action then plays once on that stage and the preview holds the
- * resulting frame. The shell never fast-forwards — mounting IS the state.
+ * resulting frame. The shell never fast-forwards - mounting IS the state.
  *
  * Rebuilds are double-buffered: the new session mounts *beneath* the currently visible frame,
  * poses itself, and is only revealed (old buffer unmounted, reveal gate released) once its images
- * have decoded and painted. Row switches therefore never flash black or show half-loaded content —
+ * have decoded and painted. Row switches therefore never flash black or show half-loaded content -
  * the previous frame simply holds until the next one is pixel-ready, and the target row's own
  * action plays entirely on the visible stage.
  */
@@ -211,7 +212,7 @@ export function useStoryScenePreviewController(input: {
                 liveGame.reset();
             }
         } catch {
-            // The game may never have fully initialised (no game state yet) — nothing to abort.
+            // The game may never have fully initialised (no game state yet) - nothing to abort.
         }
     }, []);
 
@@ -315,11 +316,12 @@ export function useStoryScenePreviewController(input: {
         }
         run.arrived = true;
         clearDriveTimers();
-        // The target action (if any) plays once after this marker and the frame holds there.
+        // The target action (if any) plays once after this marker and the frame holds.
         setPhase("settled");
     }, [clearDriveTimers, setPhase]);
 
-    const beginPlayback = useCallback((run: PreviewRun) => {
+    /** Kick a mounted run's compiled story into motion. */
+    const beginRun = useCallback((run: PreviewRun) => {
         if (run.runId !== runIdRef.current || !run.liveGame) {
             return;
         }
@@ -394,6 +396,7 @@ export function useStoryScenePreviewController(input: {
                 onStagePosed: () => handleStagePosed(runId),
                 revealGate,
                 onBeforeTarget: () => handleBeforeTarget(runId),
+                // Follow mode holds on the target frame; there is no continuation to observe.
                 onAfterTarget: () => undefined,
             });
             if (runId !== runIdRef.current) {
@@ -401,7 +404,7 @@ export function useStoryScenePreviewController(input: {
             }
             setDiagnostics(compiled.diagnostics);
             // Forward compile diagnostics to the Story console tab, but only the ones that are new
-            // versus the previous compile — the preview recompiles on every row switch/edit, so
+            // versus the previous compile - the preview recompiles on every row switch/edit, so
             // re-appending the whole (usually unchanged) set each time would flood the console.
             const diagnosticKeys = new Set<string>();
             for (const diag of compiled.diagnostics) {
@@ -544,6 +547,7 @@ export function useStoryScenePreviewController(input: {
         run.wireDispose = run.wireLiveGame(liveGame);
         try {
             const preference = liveGame.game.preference;
+            // The frozen state preview is always silent — a frame per keystroke would machine-gun the audio.
             preference.setPreference("globalVolume", 0);
             preference.setPreference("autoForward", false);
             preference.setPreference("skip", false);
@@ -551,7 +555,7 @@ export function useStoryScenePreviewController(input: {
             // Preference names are stable across NLR versions; a failure here is non-fatal.
         }
         if (run === pendingRunRef.current) {
-            beginPlayback(run);
+            beginRun(run);
         } else {
             // The display run remounted (StrictMode): replay the compiled state to restore the
             // frame. Its markers are idempotent and its reveal gate is already resolved.
@@ -561,13 +565,13 @@ export function useStoryScenePreviewController(input: {
                 failRun(run.runId, error instanceof Error ? error.message : String(error));
             }
         }
-    }, [beginPlayback, disposeLiveGame, failRun, findRunBySessionId]);
+    }, [beginRun, disposeLiveGame, failRun, findRunBySessionId]);
 
     const handleStageError = useCallback((error: Error, sessionId: string) => {
         const run = findRunBySessionId(sessionId);
         if (!run || (run === displayRunRef.current && pendingRunRef.current !== null)) {
             // Teardown noise from a replaced session, or a stale frame kept only as the backdrop
-            // while the next state builds — neither may fail the current run.
+            // while the next state builds - neither may fail the current run.
             pushIssue({ level: "warning", message: `Previous preview session: ${error.message}` });
             return;
         }
@@ -583,7 +587,8 @@ export function useStoryScenePreviewController(input: {
             liveGame: run.liveGame,
             compiled: run.session.compiled,
             targetBlockId: run.targetBlockId,
-            // While a newer run builds hidden, the visible stage is still the settled old frame.
+            // While a newer run builds hidden, the visible stage is still the old frame — report
+            // what *it* is doing, not the pending run's phase.
             phase: run.arrived ? "settled" : phaseRef.current,
         };
     }, []);

@@ -19,6 +19,17 @@ export function useClipPlayback(clip: AudioClip | null) {
     const [playing, setPlaying] = useState(false);
     const [position, setPosition] = useState(0);
     const [loop, setLoop] = useState(false);
+    /**
+     * True when the last run ended by reaching the end of what it was playing, rather than being
+     * stopped or seeked away from.
+     *
+     * Only a natural end fires `onended` - {@link stop} detaches the handler before stopping the
+     * source - so this is exact, where inspecting the parked playhead would not be: the audio
+     * clock stops on a frame boundary and leaves it a few hundred samples either side of the end.
+     * The transport reads it to decide that the next press means "play it again" rather than
+     * "resume", which from the end would play nothing.
+     */
+    const [finished, setFinished] = useState(false);
 
     const getContext = useCallback((): AudioContext => {
         if (!contextRef.current) {
@@ -32,7 +43,7 @@ export function useClipPlayback(clip: AudioClip | null) {
         return contextRef.current;
     }, []);
 
-    /** Monitoring volume only — it never touches the samples, so it is not an edit. */
+    /** Monitoring volume only - it never touches the samples, so it is not an edit. */
     const setGain = useCallback((value: number) => {
         gainValueRef.current = value;
         if (gainRef.current) {
@@ -48,11 +59,22 @@ export function useClipPlayback(clip: AudioClip | null) {
             try {
                 source.stop();
             } catch {
-                // Already stopped — nothing to unwind.
+                // Already stopped - nothing to unwind.
             }
             source.disconnect();
         }
         setPlaying(false);
+        // Stopping is not finishing: a paused run resumes from where it was left.
+        setFinished(false);
+    }, []);
+
+    /**
+     * Move the playhead. Seeking clears {@link finished} - once the author has chosen a spot, the
+     * next press plays from there, even if the previous run had run itself out.
+     */
+    const seek = useCallback((sample: number) => {
+        setFinished(false);
+        setPosition(sample);
     }, []);
 
     const play = useCallback(
@@ -92,6 +114,8 @@ export function useClipPlayback(clip: AudioClip | null) {
                 if (sourceRef.current === source) {
                     sourceRef.current = null;
                     setPlaying(false);
+                    // Reached here on its own: `stop` detaches this handler, so nothing else can.
+                    setFinished(true);
                 }
             };
             if (durationSeconds === undefined) {
@@ -101,6 +125,7 @@ export function useClipPlayback(clip: AudioClip | null) {
             }
             sourceRef.current = source;
             setPlaying(true);
+            setFinished(false);
             setPosition(start);
         },
         [clip, getContext, loop, stop],
@@ -138,5 +163,5 @@ export function useClipPlayback(clip: AudioClip | null) {
         };
     }, [stop]);
 
-    return { playing, position, setPosition, loop, setLoop, play, stop, setGain };
+    return { playing, position, setPosition: seek, finished, loop, setLoop, play, stop, setGain };
 }

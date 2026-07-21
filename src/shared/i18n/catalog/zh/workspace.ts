@@ -74,7 +74,7 @@ export const workspace = {
     voice: {
         panel: {
             languagesTitle: "配音语言",
-            languagesHint: "游戏已有配音的语言。与文本语言相互独立——你可以在文本保持英文的同时录制日语配音。",
+            languagesHint: "游戏已有配音的语言。与文本语言相互独立，你可以在文本保持英文的同时录制日语配音。",
             empty: "还没有配音语言。添加一个，再把导入的音频指派到台词上。",
             addLanguage: "添加配音语言",
             codePlaceholder: "代码（ja、en、zh-CN…）",
@@ -92,7 +92,7 @@ export const workspace = {
             exportPickup: "导出补录脚本（仅待更新）",
             importAudio: "导入音频…",
             exportDone: "已导出到 {path}",
-            pickupEmpty: "没有待更新的行——无需补录。",
+            pickupEmpty: "没有待更新的行，无需补录。",
             importSummary: "已关联 {linked} 条（{unmatched} 条未匹配，{failed} 条失败）",
             importFailed: "无法导入音频文件",
         },
@@ -122,10 +122,10 @@ export const workspace = {
             reject: "退回",
             clipMissing: "音频缺失",
             outdatedHint: "导入该配音后台词发生了变化。重新导入音频后才会重新计入。",
-            noStories: "先创建一个故事——它的口白台词会显示在这里供配音。",
+            noStories: "先创建一个故事，它的口白台词会显示在这里供配音。",
             emptyStory: "这个故事还没有可配音的口白台词。",
             emptyFilter: "没有符合此筛选条件的内容。",
-            auditionAllClear: "已全部处理——没有需要试听的内容了。",
+            auditionAllClear: "已全部处理，没有需要试听的内容了。",
             auditionPendingCount: "{count} 项待处理",
             statusMissing: "缺失",
             statusVoiced: "已配音",
@@ -145,6 +145,7 @@ export const workspace = {
         openLauncher: "打开启动器",
         panelRenderError: "此面板渲染时出错",
         mainEditorRegion: "主编辑器",
+        resizeSplit: "调整分屏比例",
         noActiveEditor: "没有活动的编辑器",
         closePanel: "关闭面板",
         closeTab: "关闭 {name}",
@@ -204,6 +205,9 @@ export const workspace = {
             imagePlaceholder: "未选择图像",
             browse: "浏览…",
             opacity: "不透明度",
+            blur: "模糊",
+            // 值为 0 时代替像素读数显示，此时滤镜完全关闭。
+            blurOff: "关闭",
             fillMode: "填充方式",
             anchor: "位置",
             fill: {

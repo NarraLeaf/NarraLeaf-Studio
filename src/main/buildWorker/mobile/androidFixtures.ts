@@ -1,6 +1,6 @@
 /**
- * Builders for synthetic Android binary fixtures — a minimal binary
- * AndroidManifest.xml and resources.arsc — used by the repack tests.
+ * Builders for synthetic Android binary fixtures - a minimal binary
+ * AndroidManifest.xml and resources.arsc - used by the repack tests.
  *
  * Deliberately hand-encoded rather than produced by the patchers under test:
  * a fixture built with the production encoder would hide any symmetric
@@ -117,7 +117,7 @@ export function buildBinaryManifestFixture(options: BinaryManifestFixtureOptions
         packageName,                        // 7
         options.versionName ?? "0.0.0",     // 8
         options.label ?? "NarraLeaf Shell", // 9
-        `${packageName}.provider`,          // 10 — authority-shaped derived string
+        `${packageName}.provider`,          // 10 - authority-shaped derived string
     ];
     const pool = buildPool(strings, utf8);
 

@@ -1,5 +1,5 @@
 /**
- * Dock layout model — the single source of truth for how the workspace shell sizes its
+ * Dock layout model - the single source of truth for how the workspace shell sizes its
  * three dock regions (left / right sidebars and the bottom panel).
  *
  * Design goals (replacing the legacy per-handler constants + `available / 2` caps):
@@ -10,13 +10,13 @@
  * 2. INTENT vs EFFECTIVE. Callers store the user's *intended* size (their last drag target).
  *    The rendered *effective* size is always derived from the intent via {@link resolveDock}.
  *    Nothing mutates the stored intent on window resize, so a panel that was clamped down on a
- *    small window grows back toward its intent when space returns — killing the old
+ *    small window grows back toward its intent when space returns - killing the old
  *    "shrink-only, never-restore" behaviour.
  *
  * 3. The editor has a logical FLOOR ({@link EDITOR_FLOOR}). The solver protects it for the
  *    sidebars (`clamp`) but lets the bottom panel cover it (`clip`). The floor is also applied
- *    as a CSS `min-width`/`min-height` on the editor content box: that CSS floor — not this
- *    solver — is the real anti-deform guarantee. When the editor's layout box is smaller than
+ *    as a CSS `min-width`/`min-height` on the editor content box: that CSS floor - not this
+ *    solver - is the real anti-deform guarantee. When the editor's layout box is smaller than
  *    the floor, the content renders at the floor and is cropped, never squished. The solver's
  *    job is only to give sensible drag bounds.
  */
@@ -26,8 +26,8 @@ export type DockRegion = "left" | "right" | "bottom";
 export type DockAxis = "horizontal" | "vertical";
 
 /**
- * `clamp` — the region may never push the editor below its floor (used by the sidebars).
- * `clip`  — the region may grow past the editor floor and cover it; the editor keeps its
+ * `clamp` - the region may never push the editor below its floor (used by the sidebars).
+ * `clip`  - the region may grow past the editor floor and cover it; the editor keeps its
  *           logical size and is cropped (used by the bottom panel, so terminals/logs can
  *           fill the height without deforming the editor above).
  */
@@ -52,8 +52,8 @@ export interface RegionSpec {
 export const EDITOR_FLOOR = { width: 480, height: 240 } as const;
 
 /**
- * Chrome reserved outside the resizable regions. These are approximate — the CSS editor floor
- * is the actual guarantee — so being a few px off (e.g. selector rail width) is harmless.
+ * Chrome reserved outside the resizable regions. These are approximate - the CSS editor floor
+ * is the actual guarantee - so being a few px off (e.g. selector rail width) is harmless.
  */
 export const TITLE_BAR_HEIGHT = 40;
 export const RAIL_SELECTOR_WIDTH = 48;
@@ -97,7 +97,7 @@ export function maxSidebarWidth(side: "left" | "right", env: DockEnv, otherEffec
 
 /**
  * Largest the bottom panel may be. It is a `clip` region, so it is allowed to cover the editor
- * entirely — only the title bar (which lives outside the center column) is reserved.
+ * entirely - only the title bar (which lives outside the center column) is reserved.
  */
 export function maxBottomHeight(env: DockEnv): number {
     const available = env.windowHeight - TITLE_BAR_HEIGHT;

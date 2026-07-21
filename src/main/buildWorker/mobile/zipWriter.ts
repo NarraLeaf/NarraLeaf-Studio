@@ -17,14 +17,14 @@ import {
  * Streaming zip writer for the mobile repack pipeline. Entry data is never
  * buffered whole: sources stream through (optionally via deflate) into the
  * output, and the few header fields that are only known afterwards (CRC,
- * deflated size) are patched in place — which is why the output interface
+ * deflated size) are patched in place - which is why the output interface
  * has random-access `patch` instead of the writer using data descriptors
  * (Android tooling and the later v2 signing step both prefer descriptor-free
  * archives).
  *
  * Determinism: every entry is stamped with the caller-injected `mtime` and
  * entries are written in caller order, so identical inputs produce
- * byte-identical archives — the property the golden-template tests pin.
+ * byte-identical archives - the property the golden-template tests pin.
  *
  * No fs in this module: file-backed outputs/sources are supplied by the
  * repack orchestration layer (and by tests, which use in-memory ones).
@@ -103,7 +103,7 @@ export type ZipWriteEntry = {
     unixMode?: number;
     /**
      * Align this entry's data start regardless of the archive-wide stored
-     * alignment — resources.arsc needs 4 even if it were compressed-eligible.
+     * alignment - resources.arsc needs 4 even if it were compressed-eligible.
      */
     forceAlign?: number;
 };
@@ -118,7 +118,7 @@ export type ZipWriteOptions = {
     alignStoredEntries?: number;
     /**
      * Allow zip64 records (ipa). When false, an archive that would need them
-     * fails loudly instead — Android's installer does not read zip64, so an
+     * fails loudly instead - Android's installer does not read zip64, so an
      * APK crossing 4 GiB (or 65535 entries) must be an error, not a corrupt
      * artifact.
      */
@@ -216,18 +216,18 @@ function zip64Extra(fields: number[]): Buffer {
  * padding: apksig reads the FIRST uint16 of the payload as the entry's
  * "alignment multiple" and re-aligns entries by it when a later re-sign
  * (standard `apksigner`, the documented route to release signing) rewrites
- * the archive — a zero or missing multiple means "never re-align", which
+ * the archive - a zero or missing multiple means "never re-align", which
  * turns an offset shift from META-INF changes into a misaligned
  * resources.arsc and an install rejection on Android 11+. So the block
  * always carries the multiple and is grown (by whole alignment strides,
  * preserving the target residue) until it can: apksig's minimum block is
- * 6 bytes — id + length + the uint16 multiple.
+ * 6 bytes - id + length + the uint16 multiple.
  */
 function alignmentPadding(dataStartWithoutPad: number, alignment: number): Buffer {
     const pad = (alignment - (dataStartWithoutPad % alignment)) % alignment;
     if (pad === 0) {
         // Already aligned: no block. apksig's fallback for entries without
-        // one is filename-based (4, or page size for .so) — correct here.
+        // one is filename-based (4, or page size for .so) - correct here.
         return Buffer.alloc(0);
     }
     let total = pad + 4;
@@ -388,7 +388,7 @@ export async function writeZip(
         if (openData) {
             // Only a stream source still needs encoding here; raw and buffer
             // sources already carry encoded bytes (and their pumped CRC would
-            // be of the encoded form — meaningless, so it is ignored).
+            // be of the encoded form - meaningless, so it is ignored).
             const deflateWhilePumping = source !== null && source.kind === "stream" && method === ZIP_METHOD_DEFLATE;
             const pumped = await pumpData(output, openData(), deflateWhilePumping);
             if (source !== null && source.kind === "stream") {
@@ -490,7 +490,7 @@ export async function writeZip(
     const centralDirectorySize = output.position - centralDirectoryOffset;
 
     // >= rather than >: 0xFFFF is the zip64 sentinel, so an archive with
-    // exactly 65535 entries already needs the real count in a zip64 record —
+    // exactly 65535 entries already needs the real count in a zip64 record -
     // otherwise the EOCD alone is ambiguous and readers (including our own
     // parser) reject it.
     if (records.length >= MAX_UINT16 || centralDirectoryOffset >= MAX_UINT32 || centralDirectorySize >= MAX_UINT32) {

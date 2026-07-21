@@ -72,6 +72,14 @@ export type GameRuntimePackPluginEntry = {
     manifest: NormalizedPluginManifestV2;
     /** Path of the plugin's prebundled runtime ESM entry relative to the app dir, e.g. plugins/{id}/runtime.js. */
     entryRelativePath: string;
+    /**
+     * Plugin storage published with the game, keyed by the namespaces declared
+     * in `contributes.runtimeData`. Inlined rather than written as pack files:
+     * these are small authored catalogs, and inlining keeps them on the same
+     * load path as the manifest itself. Absent on packs built before the data
+     * channel existed, and on plugins that declare no runtime data.
+     */
+    data?: Record<string, unknown>;
 };
 
 export type GameRuntimePackV1 = {
@@ -95,7 +103,7 @@ export type GameRuntimePackV1 = {
     plugins: GameRuntimePackPluginEntry[];
     /**
      * Network policy for the packaged/previewed game. Absent on packs produced
-     * before this field existed — the runtime treats a missing value as the
+     * before this field existed - the runtime treats a missing value as the
      * secure default ({@link GameRuntimeNetworkConfig} all disabled).
      */
     network?: GameRuntimeNetworkConfig;

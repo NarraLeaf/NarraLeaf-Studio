@@ -11,6 +11,8 @@ import { SettingCategory, SettingDescriptor } from "@/lib/settings/models";
 import { filterCategoryEntries } from "@/lib/settings/searchSettings";
 import { useTranslation } from "@/lib/i18n";
 import { SETTING_PANELS } from "../panels";
+import { SettingColorPicker } from "./SettingColorPicker";
+import { ACCENT_COLOR_DEFAULT, ACCENT_SWATCHES, normalizeHexColor } from "@shared/constants/accent";
 
 /** `null` is the Action type's stand-in: it renders a button and stores nothing. */
 export type SettingValue = string | number | boolean | null;
@@ -55,6 +57,7 @@ function parseSettingInput(type: SettingValueType, rawValue: string): SettingVal
             return Number.isNaN(parsed) ? null : parsed;
         }
         case SettingValueType.Enum:
+        case SettingValueType.Color:
             return rawValue;
         case SettingValueType.Boolean:
             return rawValue === "true";
@@ -374,6 +377,63 @@ export function SettingsExplorer<T>({
                         disabled={isSaving || options.length === 0}
                         placeholder={descriptor.optionLabels?.[displayValue] ?? displayValue}
                     />
+                );
+            }
+            case SettingValueType.Color: {
+                // A row of swatches rather than a dropdown: the option list is short and the
+                // thing being chosen is the color itself, which no label describes as well as
+                // the color does. The name still reaches a screen reader through the label.
+                const options = descriptor.options ?? [];
+                // Anything that is not one of the preset ids is a custom hex, which puts the
+                // selection on the picker chip instead of a swatch.
+                const isCustom = !options.includes(displayValue);
+                // Falling back to the brand anchor, not white: before global state resolves there is
+                // no selection yet, and seeding the picker with white would commit white on open.
+                const effectiveHex = (isCustom ? normalizeHexColor(displayValue) : descriptor.optionColors?.[displayValue])
+                    ?? ACCENT_SWATCHES[ACCENT_COLOR_DEFAULT];
+                return (
+                    <div className="flex items-center gap-1.5" role="radiogroup" aria-label={descriptor.label}>
+                        {options.map(option => {
+                            const selected = option === displayValue;
+                            const name = descriptor.optionLabels?.[option] ?? option;
+                            return (
+                                <button
+                                    key={option}
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={selected}
+                                    aria-label={name}
+                                    title={name}
+                                    disabled={isSaving}
+                                    onClick={() => handleEnumChange(entry, option)}
+                                    // The ring sits outside the swatch so the color the user is
+                                    // judging is never overlaid by the selection indicator.
+                                    className={`h-5 w-5 rounded-full transition duration-150 disabled:opacity-50 ${
+                                        selected
+                                            ? "ring-2 ring-offset-2 ring-fg/60 ring-offset-surface"
+                                            : "ring-1 ring-inset ring-edge-strong hover:scale-110"
+                                    }`}
+                                    style={{ backgroundColor: descriptor.optionColors?.[option] }}
+                                />
+                            );
+                        })}
+                        {descriptor.allowCustomColor && (
+                            <>
+                                <span className="mx-0.5 h-4 w-px bg-edge" aria-hidden />
+                                <SettingColorPicker
+                                    hex={effectiveHex}
+                                    selected={isCustom}
+                                    label={t("settings.customColor")}
+                                    disabled={isSaving}
+                                    // Live preview while dragging, one write on release: a
+                                    // commit persists and broadcasts to every window, and the
+                                    // picker's map emits on every pointer move.
+                                    onPreview={descriptor.onPreview}
+                                    onCommit={(hex) => handleEnumChange(entry, hex)}
+                                />
+                            </>
+                        )}
+                    </div>
                 );
             }
             case SettingValueType.Number:

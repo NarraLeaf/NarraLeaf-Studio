@@ -1,5 +1,5 @@
 /**
- * Blueprint graph taxonomy — kinds, node type constants, and rules for editors / validators.
+ * Blueprint graph taxonomy - kinds, node type constants, and rules for editors / validators.
  * Comments in English per project convention.
  */
 
@@ -85,7 +85,7 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED = "blueprint.even
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED = "blueprint.event.head.windowCloseRequested" as const;
 /**
  * Entry for a Story Action Blueprint's single "On Call" event. Deliberately kept OUT of
- * EVENT_DISPATCH_HEAD_TYPES — story-action graphs run via the story compiler's Script wrapper,
+ * EVENT_DISPATCH_HEAD_TYPES - story-action graphs run via the story compiler's Script wrapper,
  * never through the UI dispatch paths.
  */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL = "blueprint.event.head.onCall" as const;
@@ -697,7 +697,7 @@ export const BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT = "blueprint.broad
 /**
  * Fn nodes: surface-scoped callable functions declared by a head node in event graphs.
  * The fn identity is the head node id; callers reference it via an encoded fnRef param.
- * Deliberately NOT part of EVENT_DISPATCH_HEAD_TYPES — fn bodies only run via explicit invocation.
+ * Deliberately NOT part of EVENT_DISPATCH_HEAD_TYPES - fn bodies only run via explicit invocation.
  */
 export const BLUEPRINT_NODE_TYPE_FN_HEAD = "blueprint.fn.head" as const;
 export const BLUEPRINT_NODE_TYPE_FN_CALL = "blueprint.fn.call" as const;

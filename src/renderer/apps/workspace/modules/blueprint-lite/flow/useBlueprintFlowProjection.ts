@@ -49,7 +49,7 @@ function wiredInputPortIdsByNodeId(ir: BlueprintGraphIr): Map<string, Set<string
 }
 
 /**
- * Project IR to flow nodes without `selected` — selection must be applied via applyNodeChanges
+ * Project IR to flow nodes without `selected` - selection must be applied via applyNodeChanges
  * so React Flow drag/selection state stays consistent (avoids error #015).
  */
 export function blueprintIrToFlowNodes(

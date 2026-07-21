@@ -94,7 +94,7 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         }
 
         // Normalize (or drop) a possibly-malformed dependency table up front so a
-        // corrupt table can never propagate — a broken table must not block load.
+        // corrupt table can never propagate - a broken table must not block load.
         const normalizedDependencies = normalizeProjectDependencyTable(projectConfig.dependencies);
         if (normalizedDependencies) {
             projectConfig.dependencies = normalizedDependencies;
@@ -464,7 +464,7 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
             config.metadata = {};
         }
         // Tolerate the machine-managed dependency table: normalize it if present,
-        // drop it if malformed. Never throw — dependencies must not gate a save.
+        // drop it if malformed. Never throw - dependencies must not gate a save.
         const normalizedDependencies = normalizeProjectDependencyTable(config.dependencies);
         if (normalizedDependencies && normalizedDependencies.plugins.length > 0) {
             config.dependencies = normalizedDependencies;

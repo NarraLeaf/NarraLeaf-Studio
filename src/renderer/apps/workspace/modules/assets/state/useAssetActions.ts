@@ -4,6 +4,8 @@ import { AssetType } from '@/lib/workspace/services/assets/assetTypes';
 import { WorkspaceContext } from '@/lib/workspace/services/services';
 import { AssetsService } from '@/lib/workspace/services/core/AssetsService';
 import { UIService } from '@/lib/workspace/services/core/UIService';
+import { ReferenceService } from '@/lib/workspace/services/references/ReferenceService';
+import type { AssetReference } from '@/lib/workspace/services/references/referenceModel';
 import { Services } from '@/lib/workspace/services/services';
 import { InputDialog } from '@/lib/components/dialogs/InputDialog';
 import { ClipboardState } from './useClipboard';
@@ -32,6 +34,55 @@ export interface UseAssetActionsParams {
     setActionLoading?: (loading: boolean) => void;
     /** Function to expand a group by its ID */
     expandGroup?: (groupId: string) => void;
+}
+
+/** How many reference lines to spell out per asset in the delete warning before collapsing. */
+const REFERENCE_PREVIEW_LIMIT = 5;
+
+type DeleteTarget = { isGroup: boolean; type: AssetType; item: Asset | AssetGroup };
+
+/**
+ * Expand delete targets into the assets that would actually be removed.
+ *
+ * Group deletion cascades (`deleteGroup(type, id, true)`), and nested groups cascade with it, so a
+ * reference check that looked only at the selected rows would clear a folder containing referenced
+ * assets without a word.
+ */
+function collectAffectedAssets(
+    targets: readonly DeleteTarget[],
+    assets: Record<AssetType, Asset[]>,
+    groups: Record<AssetType, AssetGroup[]>,
+): Asset[] {
+    const collected = new Map<string, Asset>();
+
+    for (const target of targets) {
+        if (!target.isGroup) {
+            const asset = target.item as Asset;
+            collected.set(asset.id, asset);
+            continue;
+        }
+
+        const groupIds = new Set<string>([target.item.id]);
+        const candidates = groups[target.type] ?? [];
+        // Descend until no new child group appears; group nesting has no depth bound.
+        let grew = true;
+        while (grew) {
+            grew = false;
+            for (const group of candidates) {
+                if (group.parentGroupId && groupIds.has(group.parentGroupId) && !groupIds.has(group.id)) {
+                    groupIds.add(group.id);
+                    grew = true;
+                }
+            }
+        }
+        for (const asset of assets[target.type] ?? []) {
+            if (asset.groupId && groupIds.has(asset.groupId)) {
+                collected.set(asset.id, asset);
+            }
+        }
+    }
+
+    return [...collected.values()];
 }
 
 function parseFileUriList(dataTransfer?: DataTransfer): string[] {
@@ -85,7 +136,7 @@ export function useAssetActions({
     setActionLoading,
     expandGroup
 }: UseAssetActionsParams) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
 
     // Use ref to always have latest context inside callbacks to avoid stale closure issues.
     const contextRef = useRef(context);
@@ -554,32 +605,70 @@ export function useAssetActions({
 
             if (targets.length === 0) return;
 
-            // Check for locked assets
-            const lockedAssets: { asset: Asset; reasons: string[] }[] = [];
-            for (const target of targets) {
-                if (!target.isGroup) {
-                    const asset = target.item as Asset;
-                    if (assetsService.isAssetLocked(asset.id)) {
-                        const reasons = assetsService.getAssetLocks(asset.id);
-                        lockedAssets.push({ asset, reasons });
-                    }
+            // Every asset the delete would actually remove — including the contents of any selected
+            // group. Deleting a group cascades to its assets, so checking only the bare asset
+            // targets let a whole folder of referenced material through without a warning.
+            const affectedAssets = collectAffectedAssets(targets, assets, groups);
+
+            const referenceService = context?.services.get<ReferenceService>(Services.Reference) ?? null;
+            // "No references found" and "could not look for references" must not be the same answer.
+            // An empty index reports every asset as unused, so a build that failed - or a service
+            // that is missing entirely - has to stop the delete rather than wave it through.
+            let referencesByAsset = new Map<string, AssetReference[]>();
+            let referencesChecked = false;
+            if (referenceService) {
+                try {
+                    // The index is lazy; without this an unopened project reports everything as unused.
+                    await referenceService.ensureReady();
+                    // And it is debounced, so an edit made moments ago may still be sitting in a timer.
+                    await referenceService.flushPendingRebuilds();
+                    referencesByAsset = referenceService.getReferencesForAll(affectedAssets.map(asset => asset.id));
+                    referencesChecked = true;
+                } catch {
+                    referencesChecked = false;
                 }
             }
 
-            // If there are locked assets, show warning
-            if (lockedAssets.length > 0) {
-                const lockMessages = lockedAssets.map(({ asset, reasons }) => 
-                    `- ${asset.name}:\n  ${reasons.join('\n  ')}`
-                ).join('\n');
-                
-                const message = `${lockMessages}`;
-                const forceConfirmed = await uiService.showConfirm('Assets are in use', message);
+            if (!referencesChecked) {
+                const proceedUnverified = await uiService.showConfirm(
+                    t("assets.delete.unverifiedTitle"),
+                    t("assets.delete.unverifiedMessage"),
+                );
+                if (!proceedUnverified) {
+                    return;
+                }
+            }
+
+            if (referencesByAsset.size > 0) {
+                const details = affectedAssets
+                    .map(asset => ({ asset, references: referencesByAsset.get(asset.id) ?? [] }))
+                    .filter(entry => entry.references.length > 0)
+                    .map(({ asset, references }) => {
+                        const shown = references.slice(0, REFERENCE_PREVIEW_LIMIT).map(reference => {
+                            const where = reference.detail ? `${reference.label} - ${reference.detail}` : reference.label;
+                            return `  ${where}${reference.dormant ? ` (${t("properties.references.dormant")})` : ""}`;
+                        });
+                        const remaining = references.length - shown.length;
+                        if (remaining > 0) {
+                            shown.push(`  ${t("assets.delete.moreReferences", { count: remaining })}`);
+                        }
+                        return `- ${asset.name}:\n${shown.join("\n")}`;
+                    })
+                    .join("\n");
+
+                const forceConfirmed = await uiService.showConfirm(
+                    t("assets.delete.inUseTitle"),
+                    `${t("assets.delete.inUseMessage")}\n\n${details}`,
+                );
                 if (!forceConfirmed) {
                     return;
                 }
             }
 
-            const confirmed = await uiService.showConfirm(`Delete ${targets.length} items?`, 'All assets in the group will be deleted. This action cannot be undone.');
+            const confirmed = await uiService.showConfirm(
+                tn("assets.delete.confirmTitle", targets.length),
+                t("assets.delete.confirmMessage"),
+            );
             if (!confirmed) {
                 return;
             }
@@ -604,7 +693,7 @@ export function useAssetActions({
         } finally {
             notifyLoading(false);
         }
-    }, [selectedItems, assets, groups, contextMenuTarget, onActionComplete, withAssetsService, focusedItemId, notifyLoading]);
+    }, [selectedItems, assets, groups, contextMenuTarget, onActionComplete, withAssetsService, focusedItemId, notifyLoading, context, t, tn]);
 
 
     const handleCreateMagicTags = useCallback(async () => {

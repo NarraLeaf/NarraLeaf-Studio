@@ -6,7 +6,7 @@ import {
 /**
  * Persisted shape of one game save. Shared by every runtime shell: the desktop
  * runtime stores it as a JSON file per save, the web runtime as an IndexedDB
- * record — both write and validate exactly this structure.
+ * record - both write and validate exactly this structure.
  */
 export type RuntimeSaveFileRecord = DevModeSaveRecord & {
     version: 1;

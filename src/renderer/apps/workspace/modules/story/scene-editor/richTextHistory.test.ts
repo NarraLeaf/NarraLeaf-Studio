@@ -42,7 +42,7 @@ describe("editKindForInputType", () => {
     });
 });
 
-describe("RichTextHistory — coalescing", () => {
+describe("RichTextHistory - coalescing", () => {
     it("keeps a burst of typing as one entry", () => {
         const history = new RichTextHistory();
         type(history, "hello", "", 0);
@@ -84,7 +84,7 @@ describe("RichTextHistory — coalescing", () => {
     });
 });
 
-describe("RichTextHistory — undo and redo", () => {
+describe("RichTextHistory - undo and redo", () => {
     it("undoes a chip before the text that preceded it, and stops at the start", () => {
         // The reported bug: type, insert a pause, Mod+Z. The pause goes first, then the text.
         const history = new RichTextHistory();
@@ -138,7 +138,7 @@ describe("RichTextHistory — undo and redo", () => {
     });
 });
 
-describe("RichTextHistory — bounds", () => {
+describe("RichTextHistory - bounds", () => {
     it("drops the oldest entries past its limit rather than growing without end", () => {
         const history = new RichTextHistory(3);
         for (let index = 0; index < 5; index += 1) {

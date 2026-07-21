@@ -14,12 +14,12 @@ import {
  *
  * The templates ship as a devDependency rather than a runtime one: Studio only
  * needs them when packaging (and in development), and asarUnpack copies
- * node_modules wholesale — a runtime dependency would ship the same ~1.5 MB
+ * node_modules wholesale - a runtime dependency would ship the same ~1.5 MB
  * twice, once inside app.asar.unpacked and once under resources/. So packaged
  * Studio reads the copy staged by project/build/prepare-mobile-shell.js, and
  * development reads node_modules directly (no staging step to forget after a
- * dependency bump). Both roots hold the same package layout, so manifest.json —
- * which addresses its templates relative to the package root — reads the same
+ * dependency bump). Both roots hold the same package layout, so manifest.json -
+ * which addresses its templates relative to the package root - reads the same
  * either way.
  */
 
@@ -79,7 +79,7 @@ async function resolveTemplateFile(dir: string, relativePath: string, label: str
  * Read and validate the shell template manifest, resolving the given variant's
  * template paths. Every failure is loud: a schema mismatch means Studio and the
  * template package disagree about the contract, and a missing file means the
- * staging step did not run — both would otherwise surface as a corrupt artifact
+ * staging step did not run - both would otherwise surface as a corrupt artifact
  * much later.
  */
 export async function loadMobileShellTemplate(

@@ -123,7 +123,7 @@ export function applyLockedAspectToResizePreview(
     const absH = Math.abs(newH);
 
     // Always anchor-based uniform translate (including s < 0) so the pivot stays the opposite
-    // corner / edge center — not pointer-chasing computeResizeTranslate after flip.
+    // corner / edge center - not pointer-chasing computeResizeTranslate after flip.
     const t = computeUniformScaleResizeTranslate(
         directionX,
         directionY,

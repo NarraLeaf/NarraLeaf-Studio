@@ -1,4 +1,4 @@
-/** `console` — the bottom Console panel (log channels, level filter, entries). */
+/** `console` - the bottom Console panel (log channels, level filter, entries). */
 export const console = {
     level: {
         error: "Error",

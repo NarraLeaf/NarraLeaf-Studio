@@ -1,6 +1,6 @@
 import { Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video } from "lucide-react";
-import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment, StoryVariableRef } from "@shared/types/story";
-import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
+import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryExpr, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment, StoryVariableRef } from "@shared/types/story";
+import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef, storyVariableRefKey } from "@shared/types/story";
 import { storyMsToSeconds } from "@shared/utils/storyTime";
 import { richIfMeaningful } from "./richText";
 import type { Character } from "@/lib/workspace/services/character/Character";
@@ -141,8 +141,8 @@ export function isTextEditableBlock(block: StoryBlock): boolean {
 /**
  * Whether opening this block's property inspector shows anything worth a card.
  *
- * A condition container has nothing of its own to edit — its branches carry the logic, and its
- * add-branch affordances live in the footer — and a condition branch (if / else-if / else) authors
+ * A condition container has nothing of its own to edit - its branches carry the logic, and its
+ * add-branch affordances live in the footer - and a condition branch (if / else-if / else) authors
  * its condition inline through the header chip, not a card. Both would otherwise open a near-empty
  * placeholder card, which reads as broken. They are "card-less": {@link isTextEditableBlock} still
  * wins for text rows, so this is only consulted for the non-text action/control rows.
@@ -175,7 +175,7 @@ export type StoryContainerHeaderInfo = {
     repeatTimes?: number;
 };
 
-/** Header descriptor for a container block — the pill text + which inline editors it exposes. */
+/** Header descriptor for a container block - the pill text + which inline editors it exposes. */
 export function getContainerHeaderInfo(block: StoryBlock): StoryContainerHeaderInfo | null {
     if (block.kind === "control") {
         const payload = block.payload;
@@ -251,18 +251,76 @@ export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typ
         // build will refuse it. It has to read as wrong at a glance.
         return { label: translate("story.badge.invalid"), icon: TriangleAlert, iconColor: "rgb(var(--nl-danger))" };
     }
+    if (block.kind === "declaration") {
+        return withCategory(translate(`story.badge.declare.${block.payload.scope}` as Parameters<typeof translate>[0]), Variable, "data");
+    }
     return withCategory(translate("story.badge.note"), StickyNote, "utils");
 }
 
-/** Short, user-safe label for a variable reference (never exposes internal ids). */
-function variableRefShortLabel(ref: StoryVariableRef, scene?: StoryScene): string {
-    if (ref.scope === "scene") {
-        return scene?.sceneVariables?.[ref.variableId]?.name ?? translate("story.describe.variableFallback");
+/**
+ * Short, user-safe label for a variable reference (never exposes internal ids).
+ *
+ * v6: the variableId IS a declaration block's id, so the name comes straight off the row - the
+ * current scene first, then the rest of the document. This is what made "saved variable += 5" read
+ * as `gold += 5`: a row that does not say WHICH variable it touches is a row the author has to open
+ * to understand, which fails the first principle.
+ */
+function variableRefShortLabel(ref: StoryVariableRef, scene?: StoryScene, scenes?: Record<string, StoryScene>): string {
+    if (ref.scope === "persistent") {
+        for (const candidate of Object.values(scenes ?? {})) {
+            for (const block of Object.values(candidate.blocks)) {
+                if (block.kind === "declaration" && block.payload.storageKey === ref.storageKey) {
+                    return block.payload.name;
+                }
+            }
+        }
+        // Blueprint-declared: its name lives in the blueprint document, out of reach here.
+        return translate("story.describe.persistent");
     }
-    if (ref.scope === "saved") {
-        return translate("story.describe.savedVariable");
+    const inScene = scene?.blocks[ref.variableId];
+    if (inScene?.kind === "declaration") {
+        return inScene.payload.name;
     }
-    return translate("story.describe.persistent");
+    for (const candidate of Object.values(scenes ?? {})) {
+        const block = candidate.blocks[ref.variableId];
+        if (block?.kind === "declaration") {
+            return block.payload.name;
+        }
+    }
+    return translate("story.describe.variableFallback");
+}
+
+/**
+ * How an assignment row reads in the list.
+ *
+ * `gold = 100` for a constant, and the *shorthand* for the shapes that have one — `/inc gold` rather
+ * than `gold = gold + (1)`. The author typed a shorthand; echoing back the desugared form would make
+ * the row grow every time they glanced at it and teach them the shorthand does not survive.
+ *
+ * Recognized structurally rather than from a stored "this was an /inc" flag, so a `/set gold gold + 1`
+ * typed longhand reads as an increment too — it *is* one.
+ *
+ * This mirrors `describeAssignment` in `storySceneProjection`, which formats the same block for the
+ * text projection. Two renderers for one payload is pre-existing here (every action has both); the
+ * expression case was added to the projection first and this one was missed, which is why an
+ * `/inc gold` row displayed as `gold = true` — the seed value — while the stored payload was correct.
+ */
+function describeAssignment(payload: Extract<StoryActionPayload, { action: "setVariable" }>, name: string): string {
+    const ast = payload.expression?.ast;
+    if (!ast) {
+        return `${name} = ${String(payload.value)}`;
+    }
+    const targetKey = storyVariableRefKey(payload.target);
+    const readsTarget = (node: StoryExpr) => node.kind === "var" && storyVariableRefKey(node.target) === targetKey;
+
+    if (ast.kind === "unary" && ast.op === "!" && readsTarget(ast.operand)) {
+        return `${name} = !${name}`;
+    }
+    if (ast.kind === "binary" && (ast.op === "+" || ast.op === "-") && readsTarget(ast.left)) {
+        const step = ast.right.kind === "literal" ? String(ast.right.value) : "…";
+        return `${name} ${ast.op}= ${step}`;
+    }
+    return `${name} = ${payload.expression?.source ?? ""}`;
 }
 
 export function describeBlock(block: StoryBlock, characters: Character[], scene?: StoryScene, scenes?: Record<StorySceneId, StoryScene>): string {
@@ -281,7 +339,7 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
             return `${payload.operation} ${name}`;
         }
         if (payload.action === "audio") return `${payload.operation} ${payload.objectName || payload.assetId || translate("story.describe.unassigned")}`;
-        if (payload.action === "setVariable") return `${variableRefShortLabel(payload.target, scene)} = ${String(payload.value)}`;
+        if (payload.action === "setVariable") return describeAssignment(payload, variableRefShortLabel(payload.target, scene, scenes));
         if (payload.action === "wait") return payload.mode === "duration" ? translate("story.describe.waitDuration", { seconds: storyMsToSeconds(payload.durationMs ?? 0) }) : translate("story.describe.waitClick");
         if (payload.action === "image") return translate("story.describe.image", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
         if (payload.action === "displayable") return `${payload.operation} ${resolveDisplayableTargetRef(scene, payload.target).label || translate("story.describe.targetFallback")}`;
@@ -309,9 +367,16 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
         return translate("story.describe.code", { language: block.payload.language });
     }
     if (block.kind === "invalid") {
-        // The author's own text is the most useful thing to show them — it never parsed, so there is
+        // The author's own text is the most useful thing to show them - it never parsed, so there is
         // nothing to describe in its place.
         return block.payload.source || translate("story.describe.invalid");
+    }
+    if (block.kind === "declaration") {
+        // The row reads as what it declares: `gold: number = 100`. The scope arrives via the badge.
+        const declared = block.payload.defaultValue !== undefined
+            ? `${block.payload.name}: ${block.payload.valueType} = ${JSON.stringify(block.payload.defaultValue)}`
+            : `${block.payload.name}: ${block.payload.valueType}`;
+        return declared;
     }
     return block.payload.text.value || translate("story.describe.note");
 }
@@ -366,7 +431,7 @@ export function filterOutSelectedDescendants(scene: StoryScene, ids: StoryBlockI
 
 /**
  * The row to land on after deleting `roots` (and their descendants): the nearest survivor *above* the
- * topmost deleted row — its previous line, the editor convention — or the first survivor below when the
+ * topmost deleted row - its previous line, the editor convention - or the first survivor below when the
  * deletion starts at the very top of the list. `null` when nothing survives (the whole scene went).
  *
  * A row counts as deleted when it or any ancestor is a root, so a collapsed container's hidden children

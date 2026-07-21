@@ -30,7 +30,7 @@ export function sanitizeBlueprintDebugEvent(event: BlueprintDebugEvent): Bluepri
  * Verbose events (per-node execution tracing) are dropped here unless a consumer opts in via
  * setVerboseCaptureEnabled. They fire at least twice per executed node, and forwarding them
  * unconditionally cost far more than the panel that hides them by default: they evicted real logs
- * from the ring buffer, woke every observer, and — in Dev Mode — crossed IPC to the Workspace
+ * from the ring buffer, woke every observer, and - in Dev Mode - crossed IPC to the Workspace
  * console. Dropping at the source is what makes the gate worth having; filtering only at render
  * time would keep all of that cost.
  */
@@ -43,7 +43,7 @@ export class DebugBridge {
 
     /**
      * Start/stop capturing verbose tracing events. Off by default. Turning it on only affects
-     * subsequent events — events dropped while off are gone, like any log level.
+     * subsequent events - events dropped while off are gone, like any log level.
      */
     public setVerboseCaptureEnabled(enabled: boolean): void {
         this.verboseCaptureEnabled = enabled;

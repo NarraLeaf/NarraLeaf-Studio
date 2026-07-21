@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent } from "react";
-import { FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Trash2, Variable } from "lucide-react";
+import { Camera, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Trash2, Variable } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -10,7 +10,9 @@ import { Services } from "@/lib/workspace/services/services";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
-import type { StoryDocument, StoryScene, StorySceneUpdate } from "@shared/types/story";
+import type { DevModeService } from "@/lib/workspace/services/core/DevModeService";
+import type { StoryService } from "@/lib/workspace/services/story/StoryService";
+import type { StoryBlockId, StoryDocument, StoryScene, StorySceneUpdate } from "@shared/types/story";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
@@ -25,6 +27,7 @@ import {
 } from "./storyActionCreatorEvents";
 import { STORY_MOTION_PANEL_ID } from "../../story-motion";
 import { StoryVariablesPanel, STORY_VARIABLES_PANEL_ID } from "../../story-variables";
+import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, setSelectedSnapshotId } from "../../story-snapshots";
 import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { StoryEditorTextStyleProvider } from "./storyEditorTextStyle";
 import { getTextSegment } from "./storySceneBlockUtils";
@@ -500,6 +503,45 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             return;
         }
         const uiService = editor.context.services.get<UIService>(Services.UI);
+        const unregister = uiService.panels.register({
+            id: STORY_SNAPSHOT_PANEL_ID,
+            title: t("story.sceneEditor.snapshotsPanel"),
+            icon: <Camera className="w-4 h-4" />,
+            position: PanelPosition.Right,
+            component: StorySnapshotPanel,
+            defaultVisible: false,
+            order: 12,
+            payload: {
+                tabId,
+                storyId: payload.storyId,
+                sceneId: payload.sceneId,
+            },
+        });
+        return () => {
+            uiService.panels.hide(STORY_SNAPSHOT_PANEL_ID);
+            unregister();
+        };
+    }, [active, editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId, t]);
+
+    useEffect(() => {
+        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
+            return;
+        }
+        const uiService = editor.context.services.get<UIService>(Services.UI);
+        uiService.panels.updatePayload(STORY_SNAPSHOT_PANEL_ID, {
+            tabId,
+            storyId: payload.storyId,
+            sceneId: payload.sceneId,
+            storyName: editor.document?.name,
+            sceneName: editor.scene?.name,
+        });
+    }, [active, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
+
+    useEffect(() => {
+        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
+            return;
+        }
+        const uiService = editor.context.services.get<UIService>(Services.UI);
         uiService.panels.updatePayload(STORY_MOTION_PANEL_ID, {
             storyId: payload.storyId,
             sceneId: payload.sceneId,
@@ -543,6 +585,15 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const lastFocusedRef = useRef<HTMLElement | null>(null);
     const prevActiveRef = useRef(active);
     const handledDeepLinkRef = useRef<string | null>(null);
+    const addRowButtonRef = useRef<HTMLButtonElement | null>(null);
+
+    // Keep the "add a row" line in view when the keyboard cursor lands on it (Down past the last row),
+    // the same courtesy the deep-link effect does for a targeted block.
+    useEffect(() => {
+        if (editor.addRowFocused) {
+            addRowButtonRef.current?.scrollIntoView({ block: "nearest" });
+        }
+    }, [editor.addRowFocused]);
 
     useLayoutEffect(() => {
         const el = scrollContainerRef.current;
@@ -753,6 +804,49 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         open: previewOpen,
     });
 
+    // A row's ▶ launches the real game in Dev Mode, entering at that row — this is where the
+    // interactive "play from here" lives now (the live preview stays a frozen state view). It carries
+    // the scene's selected Scene Snapshot so conditions on non-static variables (e.g. global flags)
+    // launch with concrete values; with no snapshot yet, it opens the panel and prompts instead.
+    const playFromRow = useCallback((blockId: StoryBlockId) => {
+        const storyId = payload?.storyId;
+        const sceneId = payload?.sceneId;
+        if (!editor.context || !storyId || !sceneId) {
+            return;
+        }
+        const services = editor.context.services;
+        const storyService = services.get<StoryService>(Services.Story);
+        const uiService = services.get<UIService>(Services.UI);
+        const snapshots = storyService.listSceneSnapshots(storyId, sceneId);
+        if (snapshots.length === 0) {
+            uiService.panels.show(STORY_SNAPSHOT_PANEL_ID);
+            uiService.notifications.warning(
+                t("storySnapshot.launch.needSnapshot"),
+                t("storySnapshot.launch.needSnapshotDetail"),
+                [{
+                    label: t("storySnapshot.launch.createAction"),
+                    primary: true,
+                    onClick: () => {
+                        const created = storyService.createSceneSnapshot(storyId, sceneId, `${t("storySnapshot.defaultName")} 1`);
+                        if (created && panelStateService) {
+                            setSelectedSnapshotId(panelStateService, storyId, sceneId, created);
+                        }
+                    },
+                }],
+            );
+            return;
+        }
+        const saved = panelStateService ? getSelectedSnapshotId(panelStateService, storyId, sceneId) : undefined;
+        const snapshotId = saved && snapshots.some(snapshot => snapshot.id === saved) ? saved : snapshots[0].id;
+        services.get<DevModeService>(Services.DevMode).launch({
+            kind: "story",
+            storyId,
+            sceneId,
+            blockId,
+            snapshotId,
+        });
+    }, [editor.context, payload?.storyId, payload?.sceneId, panelStateService, t]);
+
     if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
         return (
             <div className="flex h-full items-center justify-center p-6 text-sm text-fg-muted">
@@ -781,7 +875,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     }
 
     const lastVisibleRowId = editor.visibleRows[editor.visibleRows.length - 1]?.block.id ?? null;
-    const isInsertingAfterLastRow = editor.editorMode.kind === "insert" && editor.editorMode.slot.afterBlockId === lastVisibleRowId;
+    const isInsertingAfterLastRow = editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === lastVisibleRowId;
+    // While an insert slot is open it *is* the active line (it carries its own highlight and the
+    // caret), so no row shows as active/selected — otherwise the row the slot sits after would look
+    // focused too. The row's own highlight comes back when the slot closes (commit selects the new
+    // row; cancel leaves activeBlockId on the row the slot opened from, so focus returns there).
+    const insertActive = editor.editorMode.kind === "insert";
     const sortableRowIds = editor.visibleRows.map(row => row.block.id);
     const assetsService = editor.context.services.get<AssetsService>(Services.Assets);
     const backgroundAsset = scene.defaultBackgroundAssetId
@@ -836,13 +935,38 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     <SortableContext items={sortableRowIds} strategy={verticalListSortingStrategy}>
                         {editor.visibleRows.map(row => (
                             <div key={row.block.id}>
+                                {/* A row being rewritten (an invalid line re-opened for editing) renders
+                                    *as* the editable line, in its own place. Rendering the slot beside it
+                                    instead would show the row twice — once broken, once being fixed —
+                                    which reads as "double-click added a row", the way it was reported. */}
+                                {editor.editorMode.kind === "insert" && editor.editorMode.slot.replaceBlockId === row.block.id ? (
+                                    <InsertRow
+                                        mode={editor.editorMode}
+                                        depth={row.depth}
+                                        characters={editor.characters}
+                                        commandContext={editor.commandContext}
+                                        inputRef={editor.insertInputRef}
+                                        onValueChange={editor.handleInsertValueChange}
+                                        onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
+                                        onDismissChooser={editor.dismissInsertChooser}
+                                        onDiscardSlot={editor.discardInsertSlot}
+                                        onResolveLine={editor.resolveInsertLine}
+                                        onCommitInvalid={editor.commitInvalidFromInsert}
+                                        onChooseCommand={editor.chooseCommand}
+                                        onChooseCharacter={editor.chooseCharacterForInsert}
+                                        onChooseTempSpeaker={editor.chooseTempSpeakerForInsert}
+                                        tempSpeakers={editor.tempSpeakers}
+                                        onBackspaceEmpty={editor.handleInsertBackspaceEmpty}
+                                    />
+                                ) : (
                                 <StoryBlockRow
                                     row={row}
                                     scene={scene}
                                     document={document}
                                     characters={editor.characters}
-                                    selected={editor.selectedBlockIds.has(row.block.id)}
-                                    active={editor.activeBlockId === row.block.id}
+                                    commandContext={editor.commandContext}
+                                    selected={!insertActive && editor.selectedBlockIds.has(row.block.id)}
+                                    active={!insertActive && editor.activeBlockId === row.block.id}
                                     collapsed={editor.collapsedBlockIds.has(row.block.id)}
                                     editing={editor.editorMode.kind === "text" && editor.editorMode.blockId === row.block.id}
                                     editInitialCaret={editor.editorMode.kind === "text" && editor.editorMode.blockId === row.block.id ? (editor.editorMode.caret ?? "end") : undefined}
@@ -891,8 +1015,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     onDeleteRow={() => void editor.deleteRows([row.block.id])}
                                     onAddInside={parentId => editor.addInsideContainer(parentId)}
                                     onAddBranch={(conditionId, branch) => editor.addConditionBranch(conditionId, branch)}
+                                    onPlayFromRow={playFromRow}
                                 />
-                                {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && editor.editorMode.slot.afterBlockId === row.block.id ? (
+                                )}
+                                {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === row.block.id ? (
                                     <InsertRow
                                         mode={editor.editorMode}
                                         // Inserting *inside* this row (its `+ Add action`) nests one level
@@ -918,7 +1044,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         ))}
                     </SortableContext>
                 </DndContext>
-                {editor.editorMode.kind === "insert" && editor.editorMode.slot.afterBlockId === null ? (
+                {editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === null ? (
                     <InsertRow
                         mode={editor.editorMode}
                         depth={0}
@@ -939,8 +1065,16 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     />
                 ) : isInsertingAfterLastRow ? null : (
                     <button
+                        ref={addRowButtonRef}
                         type="button"
-                        className="mt-1 flex min-h-[32px] w-full items-center gap-2 pl-[64px] pr-3 text-left text-sm italic text-fg-subtle hover:bg-fill-subtle hover:text-fg-muted"
+                        // Down off the last row lands the keyboard cursor here; the ring is how the
+                        // author sees that Enter will open a new row (see moveActiveRowSelection).
+                        className={[
+                            "mt-1 flex min-h-[32px] w-full items-center gap-2 pl-[64px] pr-3 text-left text-sm italic",
+                            editor.addRowFocused
+                                ? "bg-primary/10 text-fg-muted ring-1 ring-inset ring-primary/50"
+                                : "text-fg-subtle hover:bg-fill-subtle hover:text-fg-muted",
+                        ].join(" ")}
                         onClick={() => editor.startInsertAfter(null, true)}
                     >
                         <Plus className="h-4 w-4 text-primary" />

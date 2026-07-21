@@ -17,7 +17,7 @@ export type GameBuildMobilePlatform = "android" | "ios";
 /**
  * Desktop platforms package an Electron shell through electron-builder; the
  * "web" platform emits a static site and the mobile platforms repack a shell
- * template — neither touches the packager.
+ * template - neither touches the packager.
  */
 export type GameBuildDesktopPlatform = Exclude<GameBuildPlatform, "web" | GameBuildMobilePlatform>;
 
@@ -33,7 +33,7 @@ export type GameBuildArch = "x64" | "arm64" | "universal";
 
 /**
  * How hard the packager compresses the payload. "store" trades artifact size
- * for a much faster build — the point of a throwaway local check.
+ * for a much faster build - the point of a throwaway local check.
  */
 export type GameBuildCompression = "store" | "normal" | "maximum";
 
@@ -149,7 +149,7 @@ export const GAME_BUILD_FORMATS_BY_PLATFORM: Record<GameBuildPlatform, GameBuild
 
 /**
  * Explicit membership tests instead of `platform !== "web"`: these are type
- * predicates, whose bodies TypeScript never checks — when the platform union
+ * predicates, whose bodies TypeScript never checks - when the platform union
  * grew, every "not web means desktop" site silently misrouted mobile targets
  * into the electron-builder path. Keeping the one exhaustive answer here.
  */
@@ -215,7 +215,7 @@ export function normalizeGameBuildArch(platform: GameBuildDesktopPlatform, arch:
 }
 
 /**
- * electron-builder's `${os}` macro — Platform.buildConfigurationKey. Note
+ * electron-builder's `${os}` macro - Platform.buildConfigurationKey. Note
  * Windows is "win", not "windows".
  */
 const BUILDER_OS_TOKEN: Record<GameBuildDesktopPlatform, string> = {
@@ -275,7 +275,7 @@ export function mobileExportFileName(
 /**
  * Android versionCode derived from the project's semver: major*1e6 +
  * minor*1e3 + patch, so successive releases stay monotonic. The pre-release
- * suffix is ignored — "1.2.0-beta.3" shares 1.2.0's code, which sideloading
+ * suffix is ignored - "1.2.0-beta.3" shares 1.2.0's code, which sideloading
  * accepts (same code + same signature installs as an update); strict
  * "pre-release < release" ordering is a Play-upload concern for the future
  * signing batch. The major cap is Google Play's 2_100_000_000 ceiling, adopted
@@ -304,7 +304,7 @@ export function deriveAndroidVersionCode(version: string): number | null {
  * accepts only dot-separated integers, so the pre-release and build-metadata
  * suffixes semver allows ("1.2.0-beta.3") are stripped. Both keys take this one
  * value: they mean different things to the App Store (marketing version vs.
- * build number), but that distinction only exists once uploads do — and two
+ * build number), but that distinction only exists once uploads do - and two
  * different-looking versions on a sideloaded build would be a lie about which
  * one shipped. The store batch gives CFBundleVersion its own meaning.
  */
@@ -334,7 +334,7 @@ export function normalizeAndroidPackageName(appId: string): string {
 
 /**
  * Make an app id usable as an iOS bundle identifier: alphanumerics, hyphens
- * and periods only. Apple rejects underscores — the mirror image of Android's
+ * and periods only. Apple rejects underscores - the mirror image of Android's
  * rule, which is why the two normalizations are separate functions.
  */
 export function normalizeIosBundleId(appId: string): string {
@@ -345,7 +345,7 @@ export function normalizeIosBundleId(appId: string): string {
 }
 
 /**
- * electron-builder's `${arch}` macro — builder-util's getArtifactArchName.
+ * electron-builder's `${arch}` macro - builder-util's getArtifactArchName.
  * AppImage (and rpm/flatpak) rename x64 to "x86_64"; everything else uses the
  * arch verbatim. Getting this wrong prints a filename the build never produces,
  * which is the one thing the artifact preview must not do.
@@ -358,7 +358,7 @@ function artifactArchToken(arch: GameBuildArch, extToken: string): string {
 }
 
 /**
- * Folder name a "dir" (unpacked) target produces — PlatformPackager.computeAppOutDir:
+ * Folder name a "dir" (unpacked) target produces - PlatformPackager.computeAppOutDir:
  * `<os><archSuffix>` for macOS, `<os><archSuffix>-unpacked` elsewhere, where the
  * arch suffix is empty for the default arch (x64).
  */
@@ -425,7 +425,7 @@ export function predictGameBuildArtifacts(input: {
             continue;
         }
         // The narrowing above (not web, not mobile) is what makes `platform`
-        // desktop here — no cast, so the next platform addition fails to
+        // desktop here - no cast, so the next platform addition fails to
         // compile instead of falling into the desktop path at runtime (the
         // old cast let non-desktop platforms through, crashing in the arch
         // lookup below before any name was produced).
@@ -473,7 +473,7 @@ export function platformFromSystem(system: string): GameBuildDesktopPlatform {
  * (mac host only); Linux packaging (AppImage) needs a Unix host; Windows
  * targets build from any host. Mirrors electron-builder's cross-build support
  * for unsigned artifacts. The web target is plain file copying/zipping and the
- * mobile targets are pure-TS repacks of prebuilt shell templates — both build
+ * mobile targets are pure-TS repacks of prebuilt shell templates - both build
  * everywhere, by design rather than by fall-through: the switch is exhaustive
  * so the next platform addition must state its answer explicitly.
  */

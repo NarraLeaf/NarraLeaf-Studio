@@ -1,4 +1,4 @@
-/** `menu` — native application menu (main process, {@link menuManager.ts}).
+/** `menu` - native application menu (main process, {@link menuManager.ts}).
  *
  * Every `role:` item needs an explicit label here: macOS localizes role items to the
  * *system* language only, so without these the native menu ignores the in-app

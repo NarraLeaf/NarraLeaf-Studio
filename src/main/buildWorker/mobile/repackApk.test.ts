@@ -143,7 +143,7 @@ describe("repackApk", () => {
     it("stamps entries with the injected mtime, not the wall clock", async () => {
         // Two repacks in the same run would share a wall-clock DOS timestamp
         // (2-second granularity), so determinism alone cannot prove the
-        // injected mtime is honored — different mtimes must differ.
+        // injected mtime is honored - different mtimes must differ.
         const template = await buildTemplateApk();
         const early = await repack({ templateApk: template, mtime: new Date(Date.UTC(2020, 0, 1)) });
         const late = await repack({ templateApk: template, mtime: new Date(Date.UTC(2021, 5, 15, 10, 30)) });

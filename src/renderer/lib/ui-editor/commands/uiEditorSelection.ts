@@ -23,10 +23,10 @@ export function filterSelectionToTopLevelMovers(document: UIDocument, selection:
 /**
  * Sets the surface (scene root) as the properties target.
  *
- * This only updates the selection — it intentionally does NOT open the properties panel.
+ * This only updates the selection - it intentionally does NOT open the properties panel.
  * Every caller reaches here on deselect / lose-focus (clicking empty canvas, a marquee that
  * hits nothing, Escape, after delete/cut, restoring a surface tab, etc.); auto-opening the
- * panel on those is surprising. The panel is opened only by explicit user action — see
+ * panel on those is surprising. The panel is opened only by explicit user action - see
  * `focusSceneProperties` in UISurfacesPanel and `useFocusProperty`.
  *
  * `_uiService` is retained for call-site compatibility with the many deselect paths.

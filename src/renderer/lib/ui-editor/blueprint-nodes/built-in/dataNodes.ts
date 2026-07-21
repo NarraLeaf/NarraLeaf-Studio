@@ -253,7 +253,7 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         pins: [out("value", "JSON", "json")],
         inspectorParams: [{ key: "value", label: "JSON", kind: "json" }],
     }),
-    // Return Value lives with the Flow nodes (see controlFlowNodes.ts) — it is a terminal flow node,
+    // Return Value lives with the Flow nodes (see controlFlowNodes.ts) - it is a terminal flow node,
     // not a pure data node.
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT,

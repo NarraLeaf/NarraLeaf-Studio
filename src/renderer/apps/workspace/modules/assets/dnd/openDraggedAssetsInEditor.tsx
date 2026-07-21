@@ -16,6 +16,12 @@ export interface OpenAssetPreviewTabsOptions {
     /** Target editor group; omit for default group. */
     groupId?: string;
     /**
+     * Split `groupId` and open into the fresh pane instead of into the group itself — the
+     * drag-to-edge landing. Ignored without a `groupId`, and skipped when nothing is previewable,
+     * so a rejected drop never strands an empty pane.
+     */
+    splitInto?: { direction: "horizontal" | "vertical"; side: "before" | "after" };
+    /**
      * When set, after opening tabs, return focus to the assets panel silently (click-from-assets UX).
      * Omit for drag-drop onto editor UX (keep editor focused).
      */
@@ -33,7 +39,7 @@ export function openAssetPreviewTabsInEditor(
     assets: Asset[],
     options: OpenAssetPreviewTabsOptions = {}
 ): void {
-    const { groupId, returnFocusToAssetsPanel, showPropertiesPanel } = options;
+    const { groupId, splitInto, returnFocusToAssetsPanel, showPropertiesPanel } = options;
     const uiService = context.services.get<UIService>(Services.UI);
 
     const previewable = assets.filter(a =>
@@ -47,6 +53,13 @@ export function openAssetPreviewTabsInEditor(
         return;
     }
 
+    // Split only now that an open is certain. Falls back to the original group if the split cannot
+    // be made, so the previews still land somewhere.
+    const targetGroupId =
+        splitInto && groupId
+            ? uiService.getStore().splitEditorGroupForDrop(groupId, splitInto.direction, splitInto.side) ?? groupId
+            : groupId;
+
     previewable.forEach((asset, index) => {
         const activate = index === previewable.length - 1;
         if (asset.type === AssetType.Image) {
@@ -59,7 +72,7 @@ export function openAssetPreviewTabsInEditor(
                     closable: true,
                     payload: { asset: asset as Asset<AssetType.Image> },
                 },
-                groupId,
+                targetGroupId,
                 { activate }
             );
         } else if (asset.type === AssetType.Audio) {
@@ -72,7 +85,7 @@ export function openAssetPreviewTabsInEditor(
                     closable: true,
                     payload: { asset: asset as Asset<AssetType.Audio> },
                 },
-                groupId,
+                targetGroupId,
                 { activate }
             );
         } else if (asset.type === AssetType.Video) {
@@ -85,7 +98,7 @@ export function openAssetPreviewTabsInEditor(
                     closable: true,
                     payload: { asset: asset as Asset<AssetType.Video> },
                 },
-                groupId,
+                targetGroupId,
                 { activate }
             );
         } else if (asset.type === AssetType.Font) {
@@ -98,7 +111,7 @@ export function openAssetPreviewTabsInEditor(
                     closable: true,
                     payload: { asset: asset as Asset<AssetType.Font> },
                 },
-                groupId,
+                targetGroupId,
                 { activate }
             );
         } else if (asset.type === AssetType.JSON) {
@@ -111,7 +124,7 @@ export function openAssetPreviewTabsInEditor(
                     closable: true,
                     payload: { asset: asset as Asset<AssetType.JSON> },
                 },
-                groupId,
+                targetGroupId,
                 { activate }
             );
         }

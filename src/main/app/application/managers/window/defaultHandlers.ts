@@ -1,6 +1,6 @@
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { IPCHandler } from "./handlers/IPCHandler";
-import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler } from "./handlers/appAction";
+import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppCheckRecentProjectsHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler } from "./handlers/appAction";
 import { AppCountWorkspaceWindowsHandler, AppRequestWorkspaceViewHandler, AppSettingsWindowLaunchHandler } from "./handlers/settingAction";
 import {
     FsStatHandler, FsListHandler, FsDetailsHandler, FsRequestReadHandler, FsRequestWriteHandler,
@@ -9,6 +9,10 @@ import {
     FsFileExistsHandler, FsDirExistsHandler, FsIsFileHandler, FsIsDirHandler,
     FsSelectFileHandler, FsSelectDirectoryHandler, FsGrantFileAccessHandler, FsHashHandler,
 } from "./handlers/fsAction";
+import {
+    VcsGetAvailabilityHandler, VcsIsRepositoryHandler, VcsGetInfoHandler, VcsGetHistoryHandler, VcsReadBlobHandler,
+    VcsGetChangedPathsHandler, VcsGetThreeWayHandler, VcsGetMergeBaseHandler,
+} from "./handlers/vcsAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
 import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./handlers/projectPackageAction";
 import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler } from "./handlers/workspaceAction";
@@ -48,6 +52,7 @@ import {
     PluginApproveHandler,
     PluginInstallLocalHandler,
     PluginListHandler,
+    PluginLocaleListHandler,
     PluginReportLoadErrorHandler,
     PluginRevokeHandler,
     PluginRuntimeListHandler,
@@ -69,8 +74,8 @@ import {
 } from "./handlers/privilegedAction";
 
 /**
- * All default IPC handlers. Handlers are stateless — they receive the target
- * window on every handle() call — so the app instantiates this list once and
+ * All default IPC handlers. Handlers are stateless - they receive the target
+ * window on every handle() call - so the app instantiates this list once and
  * routes requests to the right window by sender.
  */
 export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
@@ -92,6 +97,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AppGlobalStateSetHandler(),
         new AppGlobalStateGetAllHandler(),
         new AppAddRecentProjectHandler(),
+        new AppRemoveRecentProjectHandler(),
+        new AppCheckRecentProjectsHandler(),
         new AppSystemPathHandler(),
 
         new AppSettingsWindowLaunchHandler(),
@@ -164,6 +171,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new PluginWorkspaceListHandler(),
         new PluginRuntimeListHandler(),
         new PluginReportLoadErrorHandler(),
+        new PluginLocaleListHandler(),
 
         // Actor-aware privileged facade handlers
         new PrivilegedFsCallHandler(),
@@ -196,5 +204,15 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new FsSelectDirectoryHandler(),
         new FsGrantFileAccessHandler(),
         new FsHashHandler(),
+
+        // Version control (read-only surface; see docs/version-control.md)
+        new VcsGetAvailabilityHandler(),
+        new VcsIsRepositoryHandler(),
+        new VcsGetInfoHandler(),
+        new VcsGetHistoryHandler(),
+        new VcsReadBlobHandler(),
+        new VcsGetChangedPathsHandler(),
+        new VcsGetThreeWayHandler(),
+        new VcsGetMergeBaseHandler(),
     ] as IPCHandler<IPCEventType>[];
 }

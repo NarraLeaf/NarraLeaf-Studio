@@ -14,9 +14,16 @@ export type DevModeEntry =
       }
     | {
           kind: "story";
+          storyId: StoryId;
+          sceneId: string;
+          /** Row to enter the game at; omitted = the scene start. */
+          blockId?: string;
+          /** Scene Snapshot whose variable values seed the launch (Phase 2). */
+          snapshotId?: string;
+          /** Legacy source-locator fields; unused by the current boot path. */
           scriptId?: string;
           filePath?: string;
-          line: number;
+          line?: number;
           checkpointId?: string;
       }
     | {
@@ -50,7 +57,7 @@ export type DevModeBlueprintDebugEventPayload = {
 
 export type DevModeCharacterSummary = {
     id: string;
-    /** Author-facing display name. Empty when the character is unnamed — never falls back to `id`, which is a UUID. */
+    /** Author-facing display name. Empty when the character is unnamed - never falls back to `id`, which is a UUID. */
     name: string;
     defaultForm?: string | null;
     forms?: DevModeCharacterFormSummary[];
@@ -78,6 +85,10 @@ export type DevModeStoryLibrary = {
 export type DevModeStartStoryRequest = {
     storyId: StoryId;
     sceneId: string;
+    /** Row-precise "play from here": enter the game pre-posed at this block and play forward. */
+    startBlockId?: string;
+    /** Scene Snapshot (变量快照) whose variable overrides seed the launch. */
+    snapshotId?: string;
 };
 
 export type DevModeBundle = {

@@ -37,7 +37,8 @@ export {
     AlertModal,
     ModalHeader,
     ModalBody,
-    ModalFooter
+    ModalFooter,
+    dialogFooterButtonClass
 } from "./Modal";
 export type { ModalProps } from "./Modal";
 
@@ -48,6 +49,12 @@ export type { SelectProps, SelectOption } from "./Select";
 // Switch components
 export { Switch } from "./Switch";
 export type { SwitchProps, SwitchSize, SwitchVariant } from "./Switch";
+
+// Tooltip / hint components
+export { Tooltip } from "./Tooltip";
+export type { TooltipProps, TooltipSide } from "./Tooltip";
+export { HintPopover } from "./HintPopover";
+export type { HintPopoverProps } from "./HintPopover";
 
 // Slider components
 export { Slider } from "./Slider";

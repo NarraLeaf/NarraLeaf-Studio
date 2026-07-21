@@ -22,7 +22,7 @@ interface TransformControllerConfig {
     surfaceId: string;
     surfaceDesignSize: { width: number; height: number };
     stateService: IUIEditorStateService;
-    /** e.g. Alt key held — skip snapping for this gesture. */
+    /** e.g. Alt key held - skip snapping for this gesture. */
     snapSuspended: () => boolean;
 }
 

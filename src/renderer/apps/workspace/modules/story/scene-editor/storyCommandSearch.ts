@@ -1,8 +1,8 @@
-import { ALL_STORY_COMMANDS } from "./storyCommandGrammar";
+import { listCommandDefs } from "./commands/registry";
 import type { PaletteActionCommand } from "./storyActionCommands";
 
 /**
- * Fuzzy, multilingual matching for the command-name menu — shared by the `/` inline creator and the
+ * Fuzzy, multilingual matching for the command-name menu - shared by the `/` inline creator and the
  * sidebar palette so the two never disagree about what a query finds.
  *
  * The gap it closes: a palette command's own fields never carry the short token the parser accepts
@@ -13,9 +13,9 @@ import type { PaletteActionCommand } from "./storyActionCommands";
  * commands), so `/背景` lands on `bg` without the grammar carrying any locale data.
  */
 
-/** English tokens the parser accepts for a command id — its canonical token plus every alias. */
+/** English tokens the parser accepts for a command id - its canonical token plus every alias. */
 const KEYWORDS_BY_COMMAND_ID: ReadonlyMap<string, readonly string[]> = new Map(
-    ALL_STORY_COMMANDS.map(def => [
+    listCommandDefs().map(def => [
         def.commandId.toLowerCase(),
         [def.token, ...(def.aliases ?? [])].map(keyword => keyword.toLowerCase()),
     ]),
@@ -33,7 +33,7 @@ function isSubsequence(needle: string, haystack: string): boolean {
 }
 
 /**
- * How well a command answers a query — higher is better, or null for no match. Tiers, in order: an
+ * How well a command answers a query - higher is better, or null for no match. Tiers, in order: an
  * exact keyword (including its `/`-spelled form, so `//` → Note and `/bg` both land), a keyword prefix,
  * a display prefix, a keyword substring, a display substring, then a last-resort subsequence.
  *
@@ -71,7 +71,7 @@ function scoreCommand(command: PaletteActionCommand, query: string): number | nu
 
 /**
  * Commands matching `query`, most relevant first. The input order (the palette's own grouping) is kept
- * for ties and returned as-is for an empty query. Pass commands already localized — the label is
+ * for ties and returned as-is for an empty query. Pass commands already localized - the label is
  * matched as given, which is what lets a translated label answer a query in the author's language.
  */
 export function searchActionCommands(commands: readonly PaletteActionCommand[], rawQuery: string): PaletteActionCommand[] {

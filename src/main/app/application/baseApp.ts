@@ -10,6 +10,7 @@ import EventEmitter from "events";
 // Managers
 import { AppEventToken, AppInfo } from "@shared/types/app";
 import { IPCEventType } from "@shared/types/ipcEvents";
+import { getLocaleRegistryVersion, setLocaleContributions } from "@shared/i18n";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import { WindowAppType } from "@shared/types/window";
 import { readJson } from "@shared/utils/json";
@@ -124,8 +125,8 @@ export class BaseApp {
             this.menuManager.updateMenu();
         }
 
-        // The "Open Recent" submenu is built from this list, so a change here — most
-        // visibly the launcher removing a project — has to rebuild the native menu, or it
+        // The "Open Recent" submenu is built from this list, so a change here - most
+        // visibly the launcher removing a project - has to rebuild the native menu, or it
         // keeps offering a project the user just deleted. Renderer surfaces refresh from the
         // broadcast above; the native menu is main-process-owned and does not see it.
         if (key === "app.recentProjects") {
@@ -147,6 +148,38 @@ export class BaseApp {
                 if (!window.isClosed()) {
                     window.applyStoredZoom();
                 }
+            }
+        }
+    }
+
+    /**
+     * Aggregate every enabled plugin's Studio language-pack contributions, push
+     * them into this process's locale registry (so the native menu localizes),
+     * rebuild the native menu, and notify every window to re-fetch + re-localize.
+     * Call at startup and whenever the enabled plugin set changes
+     * (install/enable/disable/uninstall).
+     */
+    public async refreshPluginLocales(): Promise<void> {
+        try {
+            const contributions = await this.pluginManager.listLocaleContributions();
+            setLocaleContributions(contributions, {
+                onWarn: (message) => this.logger.warn(message),
+            });
+        } catch (error) {
+            this.logger.warn(`Failed to aggregate plugin locale contributions: ${String(error)}`);
+        }
+
+        this.menuManager.updateMenu();
+
+        const version = getLocaleRegistryVersion();
+        for (const window of this.windowManager.getWindows()) {
+            if (window.isClosed()) {
+                continue;
+            }
+            try {
+                window.sendIpcEvent(IPCEventType.pluginLocalesChanged, { version });
+            } catch (error) {
+                this.logger.debug(`Failed to broadcast plugin locale change to a window: ${String(error)}`);
             }
         }
     }
@@ -290,7 +323,7 @@ export class BaseApp {
         this.logger.error("[App] Fatal error, terminating:", message);
         try {
             if (this.electronApp.isReady()) {
-                dialog.showErrorBox(`${APP_DISPLAY_NAME} — Fatal Error`, message);
+                dialog.showErrorBox(`${APP_DISPLAY_NAME}: Fatal Error`, message);
             } else {
                 console.error(message);
             }
@@ -369,6 +402,9 @@ export class BaseApp {
         this.storageManager.initialize();
         this.pluginPermissionManager.initialize();
         this.pluginManager.initialize();
+        // Feed plugin language packs into the locale registry and rebuild the
+        // native menu once they resolve (best-effort; never blocks startup).
+        void this.refreshPluginLocales();
 
         if (this.isDevMode()) {
             this.logger.info("App is running in development mode");

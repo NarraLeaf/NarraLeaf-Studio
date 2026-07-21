@@ -1,8 +1,19 @@
+import type { StoryExpression } from "./expression";
+
 export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
-// v4 adds the `invalid` block kind and dialogue's `speakerName`. Both are additive — v3 documents
-// load unchanged — but a v3 Studio would silently drop an unresolved command line and render a
+// v4 adds the `invalid` block kind and dialogue's `speakerName`. Both are additive - v3 documents
+// load unchanged - but a v3 Studio would silently drop an unresolved command line and render a
 // temp-speaker line with no speaker, so the bump makes it refuse the document instead.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 4 as const;
+// v5 replaces the expression condition's inert `source: string` with a parsed `StoryExpression`, and
+// adds `setVariable.expression` / the `expression` interpolation. Only the condition needs migrating
+// (the other two are additive); a v4 Studio reading a v5 document would see a condition object it
+// cannot evaluate, so the bump makes it refuse rather than test false forever.
+// v6: variable declarations became explicit rows. The persisted per-scene/per-document registries
+// (`sceneVariables` / `savedVariables`) are gone; a `declaration` block IS the variable, the maps
+// are derived by scanning (see `declarations.ts`), and deleting the row deletes the variable. The
+// migration synthesizes a declaration block per registry entry, with the block id taking over the
+// old `variableId` so every stored ref keeps resolving.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 6 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -53,8 +64,6 @@ export type StoryDocument = {
     entrySceneId?: StorySceneId;
     chapters: StoryChapter[];
     scenes: Record<StorySceneId, StoryScene>;
-    /** Document-level saved variables (per save-file, backed by NLR Storable). */
-    savedVariables?: Record<string, StorySavedVariableDefinition>;
     meta?: StoryMeta;
 };
 
@@ -79,9 +88,24 @@ export type StoryScene = {
     defaultBackgroundAssetId?: string;
     rootBlockIds: StoryBlockId[];
     blocks: Record<StoryBlockId, StoryBlock>;
-    /** Per-scene variables (backed by NLR Scene.local). */
-    sceneVariables?: Record<string, StorySceneVariableDefinition>;
+    /**
+     * Named "Scene Snapshots" (变量快照): author-authored sets of variable values used to launch a
+     * mid-story preview under conditions the editor cannot analyse statically (e.g. global flags).
+     * Per-scene and additive (no schema bump); the scene-variable rows shown re-bind per scene.
+     */
+    sceneSnapshots?: StorySceneSnapshot[];
     meta?: StoryMeta;
+};
+
+/**
+ * One named variable snapshot. `values` holds only the explicit overrides, keyed by
+ * `storyVariableRefKey(ref)` (spanning scene / saved / persistent scopes); anything unset falls back
+ * to the variable's declared default at launch time.
+ */
+export type StorySceneSnapshot = {
+    id: string;
+    name: string;
+    values: Record<string, StoryLiteralValue>;
 };
 
 export type StorySceneUpdate = {
@@ -128,7 +152,10 @@ export type StorySavedVariableDefinition = {
 
 export type StoryLiteralValue = string | number | boolean | null | StoryLiteralValue[] | { [key: string]: StoryLiteralValue };
 
-// --- Legacy (schema v1) shapes, retained only as migration input. ---
+// --- Legacy shapes, retained only as migration input. ---
+// v5 and earlier persisted variable REGISTRIES: `StoryScene.sceneVariables` and
+// `StoryDocument.savedVariables` (Record<variableId, definition>). v6 replaced both with
+// `declaration` blocks; the migration reads the old fields off the raw object and strips them.
 export type StoryVariableScopeLegacy = "studioGlobal" | "gamePersistent" | "sceneLocal";
 
 export type StoryVariableDefinitionLegacy = {
@@ -146,7 +173,7 @@ export type StoryPersistentDefinitionLegacy = {
     meta?: StoryMeta;
 };
 
-export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "code" | "note" | "invalid";
+export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "code" | "note" | "invalid" | "declaration";
 
 export type StoryBlock =
     | StoryNodeActionBlock
@@ -155,7 +182,8 @@ export type StoryBlock =
     | StoryJumpBlock
     | StoryCodeBlock
     | StoryNoteBlock
-    | StoryInvalidBlock;
+    | StoryInvalidBlock
+    | StoryDeclarationBlock;
 
 export type StoryBlockBase<TKind extends StoryBlockKind, TPayload> = {
     id: StoryBlockId;
@@ -173,14 +201,39 @@ export type StoryJumpBlock = StoryBlockBase<"jump", StoryJumpPayload>;
 export type StoryCodeBlock = StoryBlockBase<"code", StoryCodePayload>;
 export type StoryNoteBlock = StoryBlockBase<"note", StoryNotePayload>;
 export type StoryInvalidBlock = StoryBlockBase<"invalid", StoryInvalidPayload>;
+export type StoryDeclarationBlock = StoryBlockBase<"declaration", StoryDeclarationPayload>;
 
 /**
- * A command line the author left unresolved — they dismissed the candidates, or nothing matched, and
+ * A variable declaration, as a row (schema v6).
+ *
+ * The row IS the variable: its block id is the `variableId` refs point at, scanning the document is
+ * how the variable tables are built, and deleting the row deletes the variable - there is no second
+ * registry to leak orphans into. A declaration has no runtime behaviour of its own (the compiler
+ * skips it and reads the scanned table for defaults); it exists so a script reader can SEE where a
+ * variable comes from, in the same place everything else lives.
+ *
+ * Scope decides where the scan looks: "scene" declarations bind within their scene, "saved" and
+ * "persistent" are document-wide wherever the row sits. Blueprint-declared persistent variables
+ * remain in the blueprint document - the one class not authored as a story row.
+ */
+export type StoryDeclarationPayload = {
+    scope: StoryVariableScope;
+    /** Author-facing, proper-case label. Displayed to users; the id/storageKey are never shown. */
+    name: string;
+    valueType: StoryVariableValueType;
+    defaultValue?: StoryLiteralValue;
+    description?: string;
+    /** Stable runtime key; defaults to the block id and never changes on rename so saves stay valid. */
+    storageKey: string;
+};
+
+/**
+ * A command line the author left unresolved - they dismissed the candidates, or nothing matched, and
  * the text does not parse into an action.
  *
  * It is deliberately not a note and not narration: it has no runtime behaviour, and it is an *error*,
  * not a comment. Committing one of these is how the editor refuses to silently turn a half-typed
- * `/set` into a line of prose the author never meant to write — the text survives verbatim in
+ * `/set` into a line of prose the author never meant to write - the text survives verbatim in
  * `source`, re-editing the row resumes command entry from it, and nothing about it is quiet: preview
  * skips it with an error diagnostic, and a production build refuses to compile at all.
  */
@@ -200,8 +253,8 @@ export type StoryNodeActionPayload =
           /**
            * A speaker with no Studio character behind it, carried as a bare name.
            *
-           * NarraLeaf's dialogue box does not bind to Studio's `Character` abstraction — it displays
-           * whatever name its `Character` instance carries — so an unknown name is a perfectly valid
+           * NarraLeaf's dialogue box does not bind to Studio's `Character` abstraction - it displays
+           * whatever name its `Character` instance carries - so an unknown name is a perfectly valid
            * line, not an error. That is what lets the speaker picker always offer the typed name back
            * as a candidate: "nothing matched" stops being a state the editor has to have an answer
            * for. Ignored when `characterId` resolves.
@@ -264,6 +317,17 @@ export type StoryActionPayload =
           action: "setVariable";
           target: StoryVariableRef;
           value: StoryLiteralValue;
+          /**
+           * A computed right-hand side (`/set gold gold + 1`). **When present it wins**, and `value`
+           * is only the last literal the row held - never read by the compiler.
+           *
+           * Why not fold the literal case in here too: `/set gold 100` is the overwhelmingly common
+           * row, `value` is what the inspector's literal editor binds to, and every document written
+           * before expressions existed already stores it. So a bare literal stays a bare literal and
+           * this field is the escape hatch - which keeps the migration empty and the blast radius of
+           * expressions confined to rows that actually use one.
+           */
+          expression?: StoryExpression;
       }
     | {
           action: "wait";
@@ -328,7 +392,7 @@ export type StoryActionPayload =
           operation: "create" | "setZIndex" | "show" | "hide" | "transform";
           objectName: string;
           /**
-           * Which layer non-`create` ops act on — a built-in (`background`/`displayable`) or a custom
+           * Which layer non-`create` ops act on - a built-in (`background`/`displayable`) or a custom
            * layer bound by its create block. `create` names a new custom layer via `objectName`.
            */
           target?: StoryLayerRef;
@@ -421,7 +485,13 @@ export type StoryTextMarks = {
  */
 export type StoryInterpolationRef =
     | { kind: "variable"; target: StoryVariableRef }
-    | { kind: "blueprint"; blueprintId: string };
+    | { kind: "blueprint"; blueprintId: string }
+    /**
+     * A computed inline run - the `{gold + bonus}` an author types mid-sentence. A bare `{gold}`
+     * normalizes to `kind: "variable"` instead, so there is exactly one representation of "show this
+     * variable" and the existing variable-interpolation UI keeps working unchanged.
+     */
+    | { kind: "expression"; expression: StoryExpression };
 
 export type StoryRichRun =
     | { text: string; marks?: StoryTextMarks }
@@ -454,7 +524,7 @@ export type StoryDisplayableTargetRef = {
     /**
      * Stable identity of the displayable: the id of the action block that introduced it
      * (character enter / image / text / layer). Displayables can only be declared statically,
-     * so this always points at a real creator block. When present it is the source of truth —
+     * so this always points at a real creator block. When present it is the source of truth -
      * the current stage name is resolved from that block, so the reference survives renames.
      * `name` remains as a legacy fallback and last-known label when the source is unresolvable.
      */
@@ -469,7 +539,7 @@ export type StoryDisplayableTargetRef = {
 /**
  * Reference to the render layer an image/text is placed on. Layers can only be declared statically
  * (by a `layer` create block) or be one of NarraLeaf-React's two built-in scene layers, so every
- * valid target is discoverable by scanning the scene — never free-text.
+ * valid target is discoverable by scanning the scene - never free-text.
  *  - "default": one of NLR `Scene.backgroundLayer` (z-index -1) / `Scene.displayableLayer` (z-index
  *    0, the default). An absent ref is equivalent to `{ kind: "default", layer: "displayable" }`.
  *  - "custom": a user-declared layer, bound to the stable id of the `layer` create block. The
@@ -501,8 +571,17 @@ export type StoryConditionRef =
           blueprintId: string;
       }
     | {
+          /**
+           * Expression-backed condition: `/if gold >= 100`. Carries a parsed {@link StoryExpression},
+           * not raw script - the tree is built once when the row commits, so the compiler evaluates
+           * rather than parses and a condition cannot fail to compile on data that already saved.
+           *
+           * Schema v4 stored a bare `source: string` here and every consumer refused it (the compiler
+           * returned a constant false). v5 re-parses that source on load; anything that no longer
+           * resolves becomes an `invalid` tree, which faults visibly instead of silently testing false.
+           */
           kind: "expression";
-          source: string;
+          expression: StoryExpression;
       };
 
 export type StoryTransformPreset =
@@ -586,7 +665,7 @@ export type StoryAnimationAsset = {
     config?: StoryAnimationConfig;
     /**
      * Editor-only image asset rendered as the motion target in the Story Motion preview.
-     * This is a visualization hint and is NOT an animation target binding — it is
+     * This is a visualization hint and is NOT an animation target binding - it is
      * ignored by the compiler and never affects the produced Transform.
      */
     previewAssetId?: string;

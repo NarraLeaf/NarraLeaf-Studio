@@ -233,7 +233,7 @@ const BROADCAST_EVENTS: readonly WidgetLogicEventDef[] = [
 
 /**
  * Ambient application-window events. Like broadcasts these are not widget
- * interactions, but any widget may listen to them — a settings-page control can
+ * interactions, but any widget may listen to them - a settings-page control can
  * track the window without owning the Page or Global blueprint.
  */
 const WINDOW_EVENTS: readonly WidgetLogicEventDef[] = [

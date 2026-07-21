@@ -43,9 +43,9 @@ export function useRichToolbarExpanded(): [boolean, (next: boolean) => void] {
 }
 
 /**
- * Focus-anchored scroll position of a scene editor. Rather than a raw pixel `scrollTop` — which
+ * Focus-anchored scroll position of a scene editor. Rather than a raw pixel `scrollTop` - which
  * drifts whenever the rows re-flow (collapse state resets on remount, rich text / images change row
- * heights, the overview image loads in) and so fails to restore the author's place — we remember the
+ * heights, the overview image loads in) and so fails to restore the author's place - we remember the
  * top-most visible story row ("focus row") and its offset from the viewport top. Restore then puts
  * that same row back at the same spot regardless of how the content above it re-laid out.
  */
@@ -64,8 +64,8 @@ export type StoryEditorScrollAnchor = {
  * so no further nesting is needed).
  *
  * Persisted per-project on disk via {@link PanelStateService} (the same store the Story panel uses to
- * remember its selection), so the author's place survives not only a tab/page switch — the scene
- * editor fully unmounts then — but also a Studio restart: on next launch the scene reopens where it
+ * remember its selection), so the author's place survives not only a tab/page switch - the scene
+ * editor fully unmounts then - but also a Studio restart: on next launch the scene reopens where it
  * was left. `PanelStateService` loads its store from disk during workspace init, before the editor can
  * render, so the synchronous restore below always sees the persisted value.
  */
@@ -131,10 +131,10 @@ function findRow(container: HTMLElement, blockId: StoryBlockId): HTMLElement | n
 /**
  * Compute the scrollTop that restores a scene's saved place, for the container's CURRENT layout.
  * Priority: reproduce the actual scroll viewport the author left (the anchor captures the top-most
- * visible row on every scroll, so it reflects where they were looking — NOT the selected row, which
+ * visible row on every scroll, so it reflects where they were looking - NOT the selected row, which
  * they may have scrolled far away from); only fall back to bringing the focused row into view when the
  * scene was never scrolled. Returns null when there is nothing to restore or the target rows aren't in
- * the DOM yet — the caller retries across frames until the value stabilizes (content reaches full
+ * the DOM yet - the caller retries across frames until the value stabilizes (content reaches full
  * height post-mount).
  */
 export function resolveStoryEditorRestoreScrollTop(container: HTMLElement, view: StoryEditorViewState): number | null {

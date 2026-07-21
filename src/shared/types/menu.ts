@@ -12,7 +12,7 @@
 
 /**
  * Renderer action ids the native menu drives directly. These are the ids of actions registered
- * in the renderer's action registry — the native menu only names them, the renderer owns what
+ * in the renderer's action registry - the native menu only names them, the renderer owns what
  * they do (see `useMenuActionHandler`).
  */
 export const WorkspaceMenuAction = {
@@ -44,12 +44,12 @@ export type MenuActionId = string;
 /**
  * Where a group's items land on the native menu bar.
  *
- * - `top-level` — its own menu, after Edit. The default, and where an image tab's Preview or a
+ * - `top-level` - its own menu, after Edit. The default, and where an image tab's Preview or a
  *   plugin's group goes.
- * - `edit` — merged into the standard Edit menu. macOS convention is to hang context-specific
+ * - `edit` - merged into the standard Edit menu. macOS convention is to hang context-specific
  *   entries under the standard editing items rather than open a second menu named Edit.
- * - `window` — appended to the standard Window menu, below Minimize/Zoom.
- * - `none` — not mirrored at all. For groups the main process builds natively itself (File,
+ * - `window` - appended to the standard Window menu, below Minimize/Zoom.
+ * - `none` - not mirrored at all. For groups the main process builds natively itself (File,
  *   Help), which would otherwise appear twice.
  */
 export type NativeMenuSlot = "top-level" | "edit" | "window" | "none";
@@ -60,13 +60,13 @@ export type SyncedMenuSlot = Exclude<NativeMenuSlot, "none">;
 /**
  * Standard Edit-menu commands a renderer action can stand in for. When the focused surface
  * provides an action tagged with one of these, the native Edit menu routes that command to the
- * action instead of the built-in webContents role — one Copy in the menu, not two.
+ * action instead of the built-in webContents role - one Copy in the menu, not two.
  */
 export type EditMenuRole = "copy" | "cut" | "paste" | "delete";
 
 /**
  * Serializable mirror of one renderer action-registry menu item. Only what a native menu needs:
- * no icons, no React, no callbacks — clicks travel back as `id`.
+ * no icons, no React, no callbacks - clicks travel back as `id`.
  */
 export type NativeMenuItem =
     | { kind: "separator" }
@@ -95,8 +95,8 @@ export type NativeMenuGroup = {
 };
 
 /**
- * Runtime state the Develop menu's checkmarks need. The main process builds that menu itself —
- * its actions are well-known — but whether Dev Mode or Preview is live is only known to the
+ * Runtime state the Develop menu's checkmarks need. The main process builds that menu itself -
+ * its actions are well-known - but whether Dev Mode or Preview is live is only known to the
  * renderer's services, so the status rides along with the menu sync.
  */
 export type NativeMenuRuntimeStatus = {

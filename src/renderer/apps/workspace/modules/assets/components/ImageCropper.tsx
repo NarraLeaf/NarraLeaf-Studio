@@ -561,7 +561,7 @@ export function ImageCropper({
                         <button
                             onClick={handleConfirm}
                             disabled={!ready}
-                            className="px-3 py-1.5 text-sm rounded-md bg-primary text-white hover:bg-primary/90 disabled:opacity-60"
+                            className="px-3 py-1.5 text-sm rounded-md bg-primary text-on-primary hover:bg-primary/90 disabled:opacity-60"
                         >
                             {t("common.confirm")}
                         </button>

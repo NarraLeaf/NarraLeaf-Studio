@@ -11,6 +11,7 @@ import { settings } from "./settings";
 import { launcher } from "./launcher";
 import { workspace } from "./workspace";
 import { story } from "./story";
+import { storyExpr } from "./storyExpr";
 import { storyInspector } from "./storyInspector";
 import { assets } from "./assets";
 import { blueprint } from "./blueprint";
@@ -18,6 +19,7 @@ import { characters } from "./characters";
 import { properties } from "./properties";
 import { motion } from "./motion";
 import { storyVars } from "./storyVars";
+import { storySnapshot } from "./storySnapshot";
 import { uiEditor } from "./uiEditor";
 import { widgets } from "./widgets";
 import { widgetAppearance } from "./widgetAppearance";
@@ -43,6 +45,7 @@ export const zh = {
     launcher,
     workspace,
     story,
+    storyExpr,
     storyInspector,
     assets,
     blueprint,
@@ -50,6 +53,7 @@ export const zh = {
     properties,
     motion,
     storyVars,
+    storySnapshot,
     uiEditor,
     widgets,
     widgetAppearance,

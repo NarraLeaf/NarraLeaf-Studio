@@ -7,6 +7,7 @@ import { FsRequestResult, PlatformInfo } from "./os";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
+import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
@@ -31,6 +32,8 @@ import type {
     PrivilegedBashExecuteResult,
 } from "./privileged";
 import { AppEventToken } from "./app";
+import type { LocaleContribution } from "@shared/i18n";
+import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsRepositoryInfo, VcsThreeWayResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -141,7 +144,7 @@ export interface RendererPreloadedInterface {
         launch(props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean): Promise<RequestStatus<void>>;
         /**
          * Open a recent project by path, focusing an already-open window instead of duplicating it.
-         * With `replaceCurrentWindow`, the calling window is closed once the target opens — a
+         * With `replaceCurrentWindow`, the calling window is closed once the target opens - a
          * "switch in this window" rather than opening alongside.
          */
         openRecent(projectPath: string, replaceCurrentWindow?: boolean): Promise<RequestStatus<void>>;
@@ -174,7 +177,7 @@ export interface RendererPreloadedInterface {
         syncNativeMenu(model: NativeMenuModel): void;
         /**
          * Tell the main process whether this workspace actually loaded its project. Replace-style
-         * launches (`closeCurrentWindow`/`replaceOpener`) only retire the opener on `ok: true` —
+         * launches (`closeCurrentWindow`/`replaceOpener`) only retire the opener on `ok: true` -
          * a window showing the "not a project" screen must not have consumed the window it came from.
          */
         reportLoadResult(ok: boolean): void;
@@ -192,7 +195,7 @@ export interface RendererPreloadedInterface {
         launchSettings(props: WindowProps[WindowAppType.Settings]): Promise<RequestStatus<void>>;
         /** Settings window only: another window asked this one to reveal a setting. */
         onSettingsHighlight(handler: (highlight: string) => void): AppEventToken;
-        /** Open workspace-window count — gates settings actions that need a workspace to act in. */
+        /** Open workspace-window count - gates settings actions that need a workspace to act in. */
         countWorkspaceWindows(): Promise<RequestStatus<{ count: number }>>;
         /**
          * Ask one workspace window (the focused one, else the first) to reveal a surface that only
@@ -214,14 +217,19 @@ export interface RendererPreloadedInterface {
             onGlobalStateChanged(handler: (change: { key: GlobalStateKeys; value: any }) => void): AppEventToken;
         };
         addRecentProject(name: string, path: string): Promise<RequestStatus<void>>;
-        getSystemPath(name: "desktop"): Promise<RequestStatus<{ path: string }>>;
+        /** Removes by path; the main process owns the read-modify-write. */
+        removeRecentProject(path: string): Promise<RequestStatus<void>>;
+        /** Which remembered projects are no longer on disk. Reports only; removes nothing. */
+        checkRecentProjects(): Promise<RequestStatus<{ missing: MissingRecentProject[] }>>;
+        getSystemPath(name: "desktop" | "home"): Promise<RequestStatus<{ path: string }>>;
     };
 
     devMode: {
         launch(projectPath: string, entry: DevModeEntry): Promise<RequestStatus<{ status: DevModeStatus }>>;
-        stop(): Promise<RequestStatus<{ status: DevModeStatus }>>;
-        reload(): Promise<RequestStatus<{ status: DevModeStatus }>>;
-        getStatus(): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        /** Dev Mode is per-project; these name the project rather than acting on "whatever runs". */
+        stop(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        reload(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        getStatus(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus }>>;
         /** Fullscreen state of the Dev Mode window itself. */
         getFullscreen(): Promise<RequestStatus<{ isFullscreen: boolean }>>;
         setFullscreen(fullscreen: boolean): Promise<RequestStatus<void>>;
@@ -262,6 +270,29 @@ export interface RendererPreloadedInterface {
         getStatus(projectPath: string): Promise<RequestStatus<{ status: PreviewStatus }>>;
     };
 
+    /**
+     * Version control. Read-only until the resolve UI lands.
+     * Every call is per project - Studio is one-project-one-window and the VCS
+     * runtime is keyed by project path.
+     */
+    vcs: {
+        /**
+         * Ask first. Version control is optional - no native build exists for
+         * macOS Intel or Windows ARM64 - and every other call below fails on a
+         * host without one. Branch the UI on this; do not probe with try/catch.
+         */
+        getAvailability(): Promise<RequestStatus<VcsAvailability>>;
+        isRepository(projectPath: string): Promise<RequestStatus<{ isRepository: boolean }>>;
+        getInfo(projectPath: string): Promise<RequestStatus<VcsRepositoryInfo>>;
+        getHistory(projectPath: string, limit?: number): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>;
+        /** File contents at a revision, base64-encoded. */
+        readBlob(projectPath: string, revision: RevisionId, path: string): Promise<RequestStatus<{ contentBase64: string }>>;
+        getChangedPaths(projectPath: string, from: RevisionId, to: RevisionId): Promise<RequestStatus<{ paths: string[] }>>;
+        /** base/mine/theirs for a merge. A missing `base` is an add/add, not an empty file. */
+        getThreeWay(projectPath: string, mine: RevisionId, theirs: RevisionId, path: string): Promise<RequestStatus<VcsThreeWayResult>>;
+        getMergeBase(projectPath: string, a: RevisionId, b: RevisionId): Promise<RequestStatus<{ base?: RevisionId }>>;
+    };
+
     gameBuild: {
         start(projectPath: string, entry: GameRuntimeLaunchEntry, request: GameBuildRequest): Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>;
         cancel(projectPath: string): Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>;
@@ -296,6 +327,8 @@ export interface RendererPreloadedInterface {
         getWorkspacePlugins(): Promise<RequestStatus<{ plugins: WorkspacePluginDescriptor[] }>>;
         getRuntimePlugins(): Promise<RequestStatus<{ plugins: RuntimePluginDescriptor[] }>>;
         reportLoadError(pluginId: string, error: string | null): Promise<RequestStatus<PluginListItem>>;
+        getLocaleContributions(): Promise<RequestStatus<{ contributions: LocaleContribution[] }>>;
+        onLocalesChanged(handler: (change: { version: number }) => void): AppEventToken;
     };
 
     privileged: RendererPrivilegedBootstrapInterface;

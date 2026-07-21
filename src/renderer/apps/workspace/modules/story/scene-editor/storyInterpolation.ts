@@ -10,6 +10,7 @@ import type {
     StoryVariableRef,
     StoryVariableValueType,
 } from "@shared/types/story";
+import { savedVariableDefs, sceneVariableDefs } from "@shared/types/story";
 
 export type PersistentVariableOption = { storageKey: string; name: string; valueType: StoryVariableValueType };
 
@@ -30,7 +31,7 @@ export function rememberInterpolationKind(kind: StoryInterpolationRef["kind"]): 
     lastInterpolationKind = kind;
 }
 
-/** Default (empty) interpolation ref for a kind — used when inserting a fresh inline value. */
+/** Default (empty) interpolation ref for a kind - used when inserting a fresh inline value. */
 export function defaultInterpolationForKind(kind: StoryInterpolationRef["kind"]): StoryInterpolationRef {
     return kind === "blueprint"
         ? { kind: "blueprint", blueprintId: "" }
@@ -42,12 +43,13 @@ export function collectStoryVariableOptions(
     sceneId: StorySceneId,
     persistent: PersistentVariableOption[],
 ): { scene: StoryVariableOption[]; saved: StoryVariableOption[]; persistent: StoryVariableOption[] } {
-    const scene = Object.values(document.scenes[sceneId]?.sceneVariables ?? {}).map(v => ({
+    const sceneDoc = document.scenes[sceneId];
+    const scene = Object.values(sceneDoc ? sceneVariableDefs(sceneDoc) : {}).map(v => ({
         id: v.id,
         name: v.name,
         valueType: v.valueType,
     }));
-    const saved = Object.values(document.savedVariables ?? {}).map(v => ({
+    const saved = Object.values(savedVariableDefs(document)).map(v => ({
         id: v.id,
         name: v.name,
         valueType: v.valueType,
@@ -66,10 +68,11 @@ export function resolveVariableRefName(
     ref: StoryVariableRef,
 ): string {
     if (ref.scope === "scene") {
-        return document.scenes[sceneId]?.sceneVariables?.[ref.variableId]?.name ?? "variable";
+        const sceneDoc = document.scenes[sceneId];
+        return (sceneDoc ? sceneVariableDefs(sceneDoc) : {})[ref.variableId]?.name ?? "variable";
     }
     if (ref.scope === "saved") {
-        return document.savedVariables?.[ref.variableId]?.name ?? "variable";
+        return savedVariableDefs(document)[ref.variableId]?.name ?? "variable";
     }
     return persistent.find(option => option.storageKey === ref.storageKey)?.name ?? "persistent";
 }

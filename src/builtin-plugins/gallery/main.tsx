@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ImagePlus, Images, Plus, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronRight, ImagePlus, Images, Plus, Star, Trash2, X } from "lucide-react";
 import {
     AssetType,
     PanelPosition,
@@ -9,29 +9,30 @@ import {
     type BlueprintInspectorParamSelectOption,
     type PluginApp,
 } from "narraleaf-studio/plugin";
-import { DYNAMIC_OPTIONS_SOURCE, PLUGIN_ID, createGalleryBlueprintNodes } from "./nodes";
+import {
+    GALLERY_STORE_NAMESPACE,
+    GALLERY_STORE_VERSION,
+    createArtworkId,
+    createVariantId,
+    normalizeGalleryCatalog,
+    resolveCoverVariant,
+    type GalleryArtwork,
+    type GalleryStoreData,
+    type GalleryVariant,
+} from "./catalog";
+import {
+    DYNAMIC_OPTIONS_SOURCE,
+    PLUGIN_ID,
+    VARIANT_OPTIONS_SOURCE,
+    createGalleryBlueprintNodes,
+} from "./nodes";
 
 const PANEL_ID = `${PLUGIN_ID}.panel`;
-const STORE_NAMESPACE = `${PLUGIN_ID}.items`;
-
-type GalleryItem = {
-    id: string;
-    name: string;
-    imageAssetId: string | null;
-    imageAssetName?: string | null;
-    createdAt: number;
-    updatedAt: number;
-};
-
-type GalleryStoreData = {
-    version: 1;
-    items: GalleryItem[];
-};
 
 type GalleryStore = ReturnType<typeof createGalleryStore>;
 
 function createGalleryStore(app: PluginApp) {
-    let items: GalleryItem[] = [];
+    let items: GalleryArtwork[] = [];
     const listeners = new Set<() => void>();
 
     const notify = () => {
@@ -41,103 +42,121 @@ function createGalleryStore(app: PluginApp) {
         app.services.blueprintNodes.notifyDynamicSelectOptionsChanged();
     };
 
-    const commit = async (nextItems: GalleryItem[]) => {
-        items = normalizeItems(nextItems);
+    const commit = async (nextItems: GalleryArtwork[]) => {
+        items = normalizeGalleryCatalog(nextItems);
         notify();
-        await app.services.storage.writeJson<GalleryStoreData>(STORE_NAMESPACE, {
-            version: 1,
+        await app.services.storage.writeJson<GalleryStoreData>(GALLERY_STORE_NAMESPACE, {
+            version: GALLERY_STORE_VERSION,
             items,
         });
     };
 
+    const patchArtwork = (
+        artworkId: string,
+        patch: (artwork: GalleryArtwork) => GalleryArtwork,
+    ) => commit(items.map(artwork => (
+        artwork.id === artworkId
+            ? { ...patch(artwork), updatedAt: Date.now() }
+            : artwork
+    )));
+
     return {
         async load() {
-            const stored = await app.services.storage.readJson<GalleryStoreData>(STORE_NAMESPACE);
-            items = normalizeItems(stored?.items ?? []);
+            const stored = await app.services.storage.readJson<GalleryStoreData>(GALLERY_STORE_NAMESPACE);
+            items = normalizeGalleryCatalog(stored);
             notify();
         },
         getItems: () => items,
-        getOptions: (): BlueprintInspectorParamSelectOption[] =>
-            items.map(item => ({
-                value: item.id,
-                label: item.name || item.id,
-                meta: item.imageAssetId ? { imageAssetId: item.imageAssetId } : undefined,
+        /** Artwork options for the node inspector's Artwork picker. */
+        getArtworkOptions: (): BlueprintInspectorParamSelectOption[] =>
+            items.map(artwork => ({
+                value: artwork.id,
+                label: artwork.name || artwork.id,
             })),
+        /**
+         * Variant options for every artwork at once. The inspector narrows them
+         * to the selected artwork through dynamicOptionsFilter on this meta.
+         */
+        getVariantOptions: (): BlueprintInspectorParamSelectOption[] =>
+            items.flatMap(artwork => artwork.variants.map(variant => ({
+                value: variant.id,
+                label: variant.name || variant.id,
+                meta: { artworkId: artwork.id },
+            }))),
         subscribe(listener: () => void) {
             listeners.add(listener);
             return () => {
                 listeners.delete(listener);
             };
         },
-        async add() {
+        async addArtwork() {
             const now = Date.now();
             await commit([
                 ...items,
                 {
-                    id: createGalleryItemId(),
-                    name: `Gallery ${items.length + 1}`,
-                    imageAssetId: null,
-                    imageAssetName: null,
+                    id: createArtworkId(),
+                    name: `Artwork ${items.length + 1}`,
+                    variants: [],
+                    coverVariantId: null,
                     createdAt: now,
                     updatedAt: now,
                 },
             ]);
         },
-        async patch(itemId: string, patch: Partial<Pick<GalleryItem, "name" | "imageAssetId" | "imageAssetName">>) {
-            const now = Date.now();
-            await commit(items.map(item => (
-                item.id === itemId
-                    ? { ...item, ...patch, updatedAt: now }
-                    : item
-            )));
+        async renameArtwork(artworkId: string, name: string) {
+            await patchArtwork(artworkId, artwork => ({ ...artwork, name }));
         },
-        async remove(itemId: string) {
-            await commit(items.filter(item => item.id !== itemId));
+        async removeArtwork(artworkId: string) {
+            await commit(items.filter(artwork => artwork.id !== artworkId));
+        },
+        /** One variant per picked asset, so a whole differential set lands in one go. */
+        async addVariants(artworkId: string, assets: Asset[]) {
+            await patchArtwork(artworkId, artwork => ({
+                ...artwork,
+                variants: [
+                    ...artwork.variants,
+                    ...assets.map((asset, index) => ({
+                        id: createVariantId(artwork.id),
+                        name: asset.name || `Variant ${artwork.variants.length + index + 1}`,
+                        imageAssetId: asset.id,
+                        imageAssetName: asset.name,
+                    })),
+                ],
+            }));
+        },
+        async patchVariant(artworkId: string, variantId: string, patch: Partial<GalleryVariant>) {
+            await patchArtwork(artworkId, artwork => ({
+                ...artwork,
+                variants: artwork.variants.map(variant => (
+                    variant.id === variantId ? { ...variant, ...patch } : variant
+                )),
+            }));
+        },
+        async removeVariant(artworkId: string, variantId: string) {
+            await patchArtwork(artworkId, artwork => ({
+                ...artwork,
+                variants: artwork.variants.filter(variant => variant.id !== variantId),
+                coverVariantId: artwork.coverVariantId === variantId ? null : artwork.coverVariantId,
+            }));
+        },
+        async setCoverVariant(artworkId: string, variantId: string) {
+            await patchArtwork(artworkId, artwork => ({
+                ...artwork,
+                // Clicking the current cover clears it, falling back to the first variant.
+                coverVariantId: artwork.coverVariantId === variantId ? null : variantId,
+            }));
         },
     };
 }
 
-function normalizeItems(value: unknown): GalleryItem[] {
-    if (!Array.isArray(value)) {
-        return [];
-    }
-    return value.flatMap((raw): GalleryItem[] => {
-        if (!raw || typeof raw !== "object") {
-            return [];
-        }
-        const record = raw as Partial<GalleryItem>;
-        const id = typeof record.id === "string" ? record.id.trim() : "";
-        if (!id) {
-            return [];
-        }
-        const now = Date.now();
-        return [{
-            id,
-            name: typeof record.name === "string" && record.name.trim() ? record.name.trim() : id,
-            imageAssetId: typeof record.imageAssetId === "string" && record.imageAssetId.trim()
-                ? record.imageAssetId.trim()
-                : null,
-            imageAssetName: typeof record.imageAssetName === "string" && record.imageAssetName.trim()
-                ? record.imageAssetName.trim()
-                : null,
-            createdAt: typeof record.createdAt === "number" ? record.createdAt : now,
-            updatedAt: typeof record.updatedAt === "number" ? record.updatedAt : now,
-        }];
-    });
-}
-
-function createGalleryItemId(): string {
-    const random = typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-    return `${PLUGIN_ID}.${random}`;
-}
-
 function GalleryPanel({ app, store }: { app: PluginApp; store: GalleryStore }) {
-    const [items, setItems] = useState<GalleryItem[]>(() => store.getItems());
+    const [items, setItems] = useState<GalleryArtwork[]>(() => store.getItems());
     const [query, setQuery] = useState("");
     const [busy, setBusy] = useState(false);
-    const [selectingItemId, setSelectingItemId] = useState<string | null>(null);
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+    const [pickerTarget, setPickerTarget] = useState<
+        { kind: "add"; artworkId: string } | { kind: "replace"; artworkId: string; variantId: string } | null
+    >(null);
     const selectorAnchorRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => store.subscribe(() => setItems([...store.getItems()])), [store]);
@@ -147,10 +166,12 @@ function GalleryPanel({ app, store }: { app: PluginApp; store: GalleryStore }) {
         if (!q) {
             return items;
         }
-        return items.filter(item =>
-            item.name.toLowerCase().includes(q) ||
-            item.id.toLowerCase().includes(q) ||
-            item.imageAssetName?.toLowerCase().includes(q)
+        return items.filter(artwork =>
+            artwork.name.toLowerCase().includes(q) ||
+            artwork.variants.some(variant =>
+                variant.name.toLowerCase().includes(q) ||
+                variant.imageAssetName?.toLowerCase().includes(q)
+            )
         );
     }, [items, query]);
 
@@ -165,15 +186,34 @@ function GalleryPanel({ app, store }: { app: PluginApp; store: GalleryStore }) {
         }
     };
 
-    const selectingItem = selectingItemId ? items.find(item => item.id === selectingItemId) ?? null : null;
+    const toggleExpanded = (artworkId: string) => {
+        setExpandedIds(previous => {
+            const next = new Set(previous);
+            if (next.has(artworkId)) {
+                next.delete(artworkId);
+            } else {
+                next.add(artworkId);
+            }
+            return next;
+        });
+    };
+
+    const replacingVariant = pickerTarget?.kind === "replace"
+        ? items
+            .find(artwork => artwork.id === pickerTarget.artworkId)
+            ?.variants.find(variant => variant.id === pickerTarget.variantId)
+        : undefined;
+
+    const variantCountLabel = (artwork: GalleryArtwork) =>
+        `${artwork.variants.length} variant${artwork.variants.length === 1 ? "" : "s"}`;
 
     return (
         <ui.Panel.Root>
             <ui.Panel.Header
                 title="Gallery"
-                description={`${items.length} item${items.length === 1 ? "" : "s"}`}
+                description={`${items.length} artwork${items.length === 1 ? "" : "s"}`}
                 actions={(
-                    <ui.Button size="sm" variant="primary" disabled={busy} onClick={() => void run(() => store.add())}>
+                    <ui.Button size="sm" variant="primary" disabled={busy} onClick={() => void run(() => store.addArtwork())}>
                         <Plus size={14} />
                         Add
                     </ui.Button>
@@ -192,24 +232,41 @@ function GalleryPanel({ app, store }: { app: PluginApp; store: GalleryStore }) {
                 {filteredItems.length === 0 ? (
                     <ui.Panel.EmptyState
                         icon={<Images size={22} />}
-                        title={items.length === 0 ? "No gallery items" : "No matches"}
-                        description={items.length === 0 ? "Create an item and assign an image asset." : "Try another search."}
+                        title={items.length === 0 ? "No artworks" : "No matches"}
+                        description={items.length === 0
+                            ? "Create an artwork and add its variants."
+                            : "Try another search."}
                     />
                 ) : (
                     <div className="space-y-2">
-                        {filteredItems.map(item => (
-                            <GalleryItemRow
-                                key={item.id}
+                        {filteredItems.map(artwork => (
+                            <ArtworkRow
+                                key={artwork.id}
                                 app={app}
-                                item={item}
+                                artwork={artwork}
                                 busy={busy}
-                                onNameChange={name => void run(() => store.patch(item.id, { name }))}
-                                onSelectImage={() => setSelectingItemId(item.id)}
-                                onClearImage={() => void run(() => store.patch(item.id, {
-                                    imageAssetId: null,
-                                    imageAssetName: null,
-                                }))}
-                                onRemove={() => void run(() => store.remove(item.id))}
+                                expanded={expandedIds.has(artwork.id)}
+                                countLabel={variantCountLabel(artwork)}
+                                onToggle={() => toggleExpanded(artwork.id)}
+                                onRename={name => void run(() => store.renameArtwork(artwork.id, name))}
+                                onRemove={() => void run(() => store.removeArtwork(artwork.id))}
+                                onAddVariants={() => setPickerTarget({ kind: "add", artworkId: artwork.id })}
+                                onReplaceVariantImage={variantId => setPickerTarget({
+                                    kind: "replace",
+                                    artworkId: artwork.id,
+                                    variantId,
+                                })}
+                                onRenameVariant={(variantId, name) => void run(() =>
+                                    store.patchVariant(artwork.id, variantId, { name })
+                                )}
+                                onClearVariantImage={variantId => void run(() =>
+                                    store.patchVariant(artwork.id, variantId, {
+                                        imageAssetId: null,
+                                        imageAssetName: null,
+                                    })
+                                )}
+                                onRemoveVariant={variantId => void run(() => store.removeVariant(artwork.id, variantId))}
+                                onSetCover={variantId => void run(() => store.setCoverVariant(artwork.id, variantId))}
                             />
                         ))}
                     </div>
@@ -217,18 +274,26 @@ function GalleryPanel({ app, store }: { app: PluginApp; store: GalleryStore }) {
             </ui.Panel.Section>
             <div ref={selectorAnchorRef} className="h-0 w-full" />
             <ui.AssetSelector
-                visible={Boolean(selectingItem)}
+                visible={Boolean(pickerTarget)}
                 assetType={AssetType.Image}
-                selectedIds={selectingItem?.imageAssetId ? [selectingItem.imageAssetId] : []}
+                multiple={pickerTarget?.kind === "add"}
+                selectedIds={replacingVariant?.imageAssetId ? [replacingVariant.imageAssetId] : []}
                 anchorRef={selectorAnchorRef}
-                title="Select gallery image"
-                onClose={() => setSelectingItemId(null)}
+                title={pickerTarget?.kind === "replace" ? "Select variant image" : "Add variants"}
+                onClose={() => setPickerTarget(null)}
                 onConfirm={assets => {
-                    const image = assets[0] as Asset | undefined;
-                    if (!selectingItem || !image) {
+                    const target = pickerTarget;
+                    if (!target || assets.length === 0) {
                         return;
                     }
-                    void run(() => store.patch(selectingItem.id, {
+                    setPickerTarget(null);
+                    if (target.kind === "add") {
+                        void run(() => store.addVariants(target.artworkId, assets as Asset[]));
+                        setExpandedIds(previous => new Set(previous).add(target.artworkId));
+                        return;
+                    }
+                    const image = assets[0] as Asset;
+                    void run(() => store.patchVariant(target.artworkId, target.variantId, {
                         imageAssetId: image.id,
                         imageAssetName: image.name,
                     }));
@@ -238,93 +303,225 @@ function GalleryPanel({ app, store }: { app: PluginApp; store: GalleryStore }) {
     );
 }
 
-function GalleryItemRow({
+function ArtworkRow({
     app,
-    item,
+    artwork,
     busy,
-    onNameChange,
-    onSelectImage,
-    onClearImage,
+    expanded,
+    countLabel,
+    onToggle,
+    onRename,
     onRemove,
+    onAddVariants,
+    onReplaceVariantImage,
+    onRenameVariant,
+    onClearVariantImage,
+    onRemoveVariant,
+    onSetCover,
 }: {
     app: PluginApp;
-    item: GalleryItem;
+    artwork: GalleryArtwork;
     busy: boolean;
-    onNameChange: (name: string) => void;
-    onSelectImage: () => void;
-    onClearImage: () => void;
+    expanded: boolean;
+    countLabel: string;
+    onToggle: () => void;
+    onRename: (name: string) => void;
     onRemove: () => void;
+    onAddVariants: () => void;
+    onReplaceVariantImage: (variantId: string) => void;
+    onRenameVariant: (variantId: string, name: string) => void;
+    onClearVariantImage: (variantId: string) => void;
+    onRemoveVariant: (variantId: string) => void;
+    onSetCover: (variantId: string) => void;
 }) {
-    const [draftName, setDraftName] = useState(item.name);
-
-    useEffect(() => {
-        setDraftName(item.name);
-    }, [item.name]);
+    const cover = resolveCoverVariant(artwork);
+    const effectiveCoverId = cover?.id ?? null;
 
     return (
-        <div className="rounded-md border border-white/10 bg-white/[0.03] p-2">
-            <div className="flex min-w-0 gap-2">
-                <GalleryImagePreview app={app} item={item} />
+        <div className="rounded-md border border-white/10 bg-white/[0.03]">
+            <div className="flex min-w-0 gap-2 p-2">
+                <button
+                    type="button"
+                    aria-label={expanded ? "Collapse artwork" : "Expand artwork"}
+                    className="mt-1 h-4 w-4 shrink-0 text-gray-500 hover:text-gray-300"
+                    onClick={onToggle}
+                >
+                    {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                </button>
+                <GalleryImagePreview app={app} assetId={cover?.imageAssetId ?? null} />
                 <div className="min-w-0 flex-1 space-y-2">
-                    <ui.Input
-                        size="sm"
-                        fullWidth
-                        value={draftName}
-                        onChange={event => setDraftName(event.target.value)}
-                        onBlur={() => {
-                            const next = draftName.trim();
-                            if (next && next !== item.name) {
-                                onNameChange(next);
-                            } else {
-                                setDraftName(item.name);
-                            }
-                        }}
-                    />
+                    <InlineNameInput value={artwork.name} onCommit={onRename} />
                     <div className="flex min-w-0 items-center gap-1.5">
-                        <ui.Button size="sm" variant="secondary" disabled={busy} onClick={onSelectImage}>
+                        <ui.Button size="sm" variant="secondary" disabled={busy} onClick={onAddVariants}>
                             <ImagePlus size={13} />
-                            Image
+                            Variants
                         </ui.Button>
                         <ui.IconButton
                             size="sm"
-                            variant="ghost"
-                            aria-label="Remove image"
-                            title="Remove image"
-                            disabled={busy || !item.imageAssetId}
-                            onClick={onClearImage}
-                            className={!item.imageAssetId ? "hidden" : ""}
-                        >
-                            <X size={13} />
-                        </ui.IconButton>
-                        <ui.IconButton
-                            size="sm"
                             variant="danger"
-                            aria-label="Delete gallery item"
-                            title="Delete gallery item"
+                            aria-label="Delete artwork"
+                            title="Delete artwork"
                             disabled={busy}
                             onClick={onRemove}
                         >
                             <Trash2 size={13} />
                         </ui.IconButton>
+                        <span className="truncate text-[11px] text-gray-500">{countLabel}</span>
                     </div>
-                    <div className="truncate text-[11px] text-gray-500">
-                        {item.imageAssetName || item.imageAssetId || "No image selected"}
-                    </div>
+                </div>
+            </div>
+            {expanded && (
+                <div className="space-y-1.5 border-t border-white/10 p-2 pl-6">
+                    {artwork.variants.length === 0 ? (
+                        <div className="text-[11px] text-gray-500">No variants yet.</div>
+                    ) : (
+                        artwork.variants.map(variant => (
+                            <VariantRow
+                                key={variant.id}
+                                app={app}
+                                variant={variant}
+                                busy={busy}
+                                isCover={variant.id === effectiveCoverId}
+                                isExplicitCover={variant.id === artwork.coverVariantId}
+                                onSelectImage={() => onReplaceVariantImage(variant.id)}
+                                onRename={name => onRenameVariant(variant.id, name)}
+                                onClearImage={() => onClearVariantImage(variant.id)}
+                                onRemove={() => onRemoveVariant(variant.id)}
+                                onSetCover={() => onSetCover(variant.id)}
+                            />
+                        ))
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function VariantRow({
+    app,
+    variant,
+    busy,
+    isCover,
+    isExplicitCover,
+    onSelectImage,
+    onRename,
+    onClearImage,
+    onRemove,
+    onSetCover,
+}: {
+    app: PluginApp;
+    variant: GalleryVariant;
+    busy: boolean;
+    isCover: boolean;
+    isExplicitCover: boolean;
+    onSelectImage: () => void;
+    onRename: (name: string) => void;
+    onClearImage: () => void;
+    onRemove: () => void;
+    onSetCover: () => void;
+}) {
+    return (
+        <div className="flex min-w-0 items-start gap-2 rounded border border-white/10 bg-black/20 p-1.5">
+            <GalleryImagePreview app={app} assetId={variant.imageAssetId} size="sm" />
+            <div className="min-w-0 flex-1 space-y-1.5">
+                <InlineNameInput value={variant.name} onCommit={onRename} />
+                <div className="flex min-w-0 items-center gap-1">
+                    <ui.IconButton
+                        size="sm"
+                        variant="ghost"
+                        aria-label={isExplicitCover ? "Clear cover" : "Use as cover"}
+                        title={isExplicitCover
+                            ? "Clear cover"
+                            : isCover
+                                ? "Default cover (first variant)"
+                                : "Use as cover"}
+                        disabled={busy}
+                        onClick={onSetCover}
+                        className={isCover ? "text-primary" : ""}
+                    >
+                        <Star size={13} fill={isExplicitCover ? "currentColor" : "none"} />
+                    </ui.IconButton>
+                    <ui.IconButton
+                        size="sm"
+                        variant="ghost"
+                        aria-label="Change image"
+                        title="Change image"
+                        disabled={busy}
+                        onClick={onSelectImage}
+                    >
+                        <ImagePlus size={13} />
+                    </ui.IconButton>
+                    <ui.IconButton
+                        size="sm"
+                        variant="ghost"
+                        aria-label="Remove image"
+                        title="Remove image"
+                        disabled={busy || !variant.imageAssetId}
+                        onClick={onClearImage}
+                        className={!variant.imageAssetId ? "hidden" : ""}
+                    >
+                        <X size={13} />
+                    </ui.IconButton>
+                    <ui.IconButton
+                        size="sm"
+                        variant="danger"
+                        aria-label="Delete variant"
+                        title="Delete variant"
+                        disabled={busy}
+                        onClick={onRemove}
+                    >
+                        <Trash2 size={13} />
+                    </ui.IconButton>
+                    <span className="truncate text-[11px] text-gray-500">
+                        {variant.imageAssetName || "No image"}
+                    </span>
                 </div>
             </div>
         </div>
     );
 }
 
-function GalleryImagePreview({ app, item }: { app: PluginApp; item: GalleryItem }) {
+/** Local draft so typing does not commit (and re-persist) on every keystroke. */
+function InlineNameInput({ value, onCommit }: { value: string; onCommit: (name: string) => void }) {
+    const [draft, setDraft] = useState(value);
+
+    useEffect(() => {
+        setDraft(value);
+    }, [value]);
+
+    return (
+        <ui.Input
+            size="sm"
+            fullWidth
+            value={draft}
+            onChange={event => setDraft(event.target.value)}
+            onBlur={() => {
+                const next = draft.trim();
+                if (next && next !== value) {
+                    onCommit(next);
+                } else {
+                    setDraft(value);
+                }
+            }}
+        />
+    );
+}
+
+function GalleryImagePreview({
+    app,
+    assetId,
+    size = "md",
+}: {
+    app: PluginApp;
+    assetId: string | null;
+    size?: "sm" | "md";
+}) {
     const [url, setUrl] = useState<string | null>(null);
 
     useEffect(() => {
         let disposed = false;
         let localUrl: string | null = null;
-        const asset = item.imageAssetId
-            ? app.services.assets.get(AssetType.Image, item.imageAssetId)
-            : undefined;
+        const asset = assetId ? app.services.assets.get(AssetType.Image, assetId) : undefined;
         if (!asset) {
             setUrl(null);
             return;
@@ -349,14 +546,16 @@ function GalleryImagePreview({ app, item }: { app: PluginApp; item: GalleryItem 
                 app.services.assets.revokeObjectUrl(localUrl);
             }
         };
-    }, [app, item.imageAssetId]);
+    }, [app, assetId]);
+
+    const box = size === "sm" ? "h-10 w-10" : "h-16 w-16";
 
     return (
-        <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded border border-white/10 bg-black/20">
+        <div className={`grid ${box} shrink-0 place-items-center overflow-hidden rounded border border-white/10 bg-black/20`}>
             {url ? (
                 <img src={url} alt="" className="h-full w-full object-cover" />
             ) : (
-                <Images size={18} className="text-gray-500" />
+                <Images size={size === "sm" ? 14 : 18} className="text-gray-500" />
             )}
         </div>
     );
@@ -367,12 +566,18 @@ export default definePlugin({
         const store = createGalleryStore(app);
         await store.load();
 
-        const unregisterOptions = app.services.blueprintNodes.registerDynamicSelectOptionsSource(
+        const unregisterArtworkOptions = app.services.blueprintNodes.registerDynamicSelectOptionsSource(
             DYNAMIC_OPTIONS_SOURCE,
-            () => store.getOptions(),
+            () => store.getArtworkOptions(),
         );
-        app.services.blueprintNodes.registerMany(createGalleryBlueprintNodes());
-        app.services.ui.panels.register({
+        const unregisterVariantOptions = app.services.blueprintNodes.registerDynamicSelectOptionsSource(
+            VARIANT_OPTIONS_SOURCE,
+            () => store.getVariantOptions(),
+        );
+        // In the editor the catalog is the live panel store; the runtime entry
+        // reads the copy published with the game instead.
+        app.services.blueprintNodes.registerMany(createGalleryBlueprintNodes(() => store.getItems()));
+        const unregisterPanel = app.services.ui.panels.register({
             id: PANEL_ID,
             title: "Gallery",
             icon: <Images size={16} />,
@@ -383,8 +588,9 @@ export default definePlugin({
         });
 
         return () => {
-            app.services.ui.panels.unregister(PANEL_ID);
-            unregisterOptions();
+            unregisterPanel();
+            unregisterArtworkOptions();
+            unregisterVariantOptions();
         };
     },
 });

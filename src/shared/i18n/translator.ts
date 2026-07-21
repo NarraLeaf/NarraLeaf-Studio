@@ -1,31 +1,37 @@
 import { CATALOGS, PluralKey, TranslationKey } from "./catalog";
-import { FALLBACK_LOCALE, Locale, LOCALE_META } from "./locales";
+import { flattenCatalog, type FlatMessages } from "./flatten";
+import { FALLBACK_LOCALE, getLocaleMeta, isLocale, LocaleCode } from "./locales";
+import { getLocaleRegistryVersion, getOverlayMessages } from "./registry";
 
 export type InterpolationParams = Record<string, string | number>;
 
-type FlatMessages = Map<string, string>;
-
-const flatCache = new Map<Locale, FlatMessages>();
+const flatCache = new Map<LocaleCode, FlatMessages>();
 const warnedMissing = new Set<string>();
+let cachedRegistryVersion = getLocaleRegistryVersion();
 
-function flatten(node: unknown, prefix: string, out: FlatMessages): void {
-    if (typeof node === "string") {
-        out.set(prefix, node);
-        return;
+/**
+ * Flatten a locale into a `dotted.key -> string` map, memoized. Merges the
+ * built-in catalog (if any) with the plugin overlay for that code. The cache is
+ * invalidated whenever the locale registry changes, so a newly registered or
+ * removed language pack is reflected on the next call.
+ */
+function getFlat(locale: LocaleCode): FlatMessages {
+    const registryVersion = getLocaleRegistryVersion();
+    if (registryVersion !== cachedRegistryVersion) {
+        flatCache.clear();
+        cachedRegistryVersion = registryVersion;
     }
-    if (node && typeof node === "object") {
-        for (const [key, value] of Object.entries(node)) {
-            flatten(value, prefix ? `${prefix}.${key}` : key, out);
-        }
-    }
-}
-
-/** Flatten a locale's nested catalog into a `dotted.key -> string` map, memoized. */
-function getFlat(locale: Locale): FlatMessages {
     let flat = flatCache.get(locale);
     if (!flat) {
-        flat = new Map();
-        flatten(CATALOGS[locale], "", flat);
+        flat = isLocale(locale)
+            ? flattenCatalog(CATALOGS[locale])
+            : new Map();
+        const overlay = getOverlayMessages(locale);
+        if (overlay) {
+            for (const [key, value] of overlay) {
+                flat.set(key, value);
+            }
+        }
         flatCache.set(locale, flat);
     }
     return flat;
@@ -43,7 +49,7 @@ function interpolate(template: string, params?: InterpolationParams): string {
 }
 
 export interface Translator {
-    readonly locale: Locale;
+    readonly locale: LocaleCode;
     /** Translate a key, filling `{placeholders}` from `params`. */
     t(key: TranslationKey, params?: InterpolationParams): string;
     /**
@@ -60,13 +66,13 @@ export interface Translator {
 }
 
 /**
- * Build a translator for a locale. Cheap to call — catalogs are flattened once
- * and cached — so the renderer store can recreate one on every language switch.
+ * Build a translator for a locale. Cheap to call - catalogs are flattened once
+ * and cached - so the renderer store can recreate one on every language switch.
  */
-export function createTranslator(locale: Locale): Translator {
+export function createTranslator(locale: LocaleCode): Translator {
     const primary = getFlat(locale);
     const fallback = getFlat(FALLBACK_LOCALE);
-    const tag = LOCALE_META[locale].intl;
+    const tag = getLocaleMeta(locale).intl;
     const pluralRules = new Intl.PluralRules(tag);
 
     const resolve = (key: string): string | undefined => primary.get(key) ?? fallback.get(key);

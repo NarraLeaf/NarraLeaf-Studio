@@ -19,6 +19,13 @@ export type InsertSlot = {
      * a container" affordances) instead of being placed as a sibling after `afterBlockId`.
      */
     target?: StoryBlockTarget;
+    /**
+     * The block this slot is *rewriting* rather than inserting after — set when re-opening an invalid
+     * row for editing. On commit the new block takes its place and this one is removed; on Escape
+     * nothing happens and the row survives untouched, which is why the original is not deleted up
+     * front. Its text seeds the slot's `value`.
+     */
+    replaceBlockId?: StoryBlockId;
 };
 
 /**
@@ -30,7 +37,7 @@ export type InsertSlot = {
  * `goalX` is the vertical-arrow landing: the caret's own x carried over from the row the author left,
  * to be resolved against this row's text on the `line` they are arriving at (`"first"` coming down,
  * `"last"` coming up). Rows are separate editors, so the goal column has to cross the boundary as
- * data — the browser only maintains one within a single field.
+ * data - the browser only maintains one within a single field.
  */
 export type StoryCaretTarget =
     | "start"
@@ -44,7 +51,7 @@ export type EditorMode =
     /**
      * `chooserDismissed` survives until the slot is left: Escape closing the candidates is a
      * statement about this line ("I know what I'm typing"), so the menu must not reappear on the
-     * next keystroke — which it would, since the chooser is otherwise derived from `value`'s prefix.
+     * next keystroke - which it would, since the chooser is otherwise derived from `value`'s prefix.
      */
     | { kind: "insert"; slot: InsertSlot; value: string; chooser: "none" | "action" | "character"; chooserDismissed?: boolean }
     | { kind: "inspector"; blockId: StoryBlockId };

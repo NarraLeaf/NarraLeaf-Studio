@@ -3,7 +3,7 @@
  * story documents (in narrative order), derived unit state, and per-locale
  * coverage. Kept side-effect free for unit testing.
  *
- * Voiceable lines are the spoken ones — narration and dialogue. Choice text is
+ * Voiceable lines are the spoken ones - narration and dialogue. Choice text is
  * not voiced in P0. Extraction reuses the localization row extractor so text,
  * translation, and voice stay keyed by the exact same unit ids (story `textId`).
  * Comments in English per project convention.

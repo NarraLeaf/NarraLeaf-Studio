@@ -1,3 +1,4 @@
+import { ACCENT_COLOR_DEFAULT } from "@shared/constants/accent";
 import { ZOOM_PERCENT_DEFAULT } from "@shared/constants/zoom";
 import { PersistentState } from "@shared/utils/persistentState";
 import { RecentlyOpenedProject } from "./appStateTypes";
@@ -11,8 +12,19 @@ export interface GlobalStateType extends Record<string, any> {
     "ui.themeMode": "auto" | "light" | "dark" | string;
     /** Studio UI zoom as a whole percentage; see @shared/constants/zoom. */
     "ui.zoomPercent": number;
+    /**
+     * Accent preset id from @shared/constants/accent — not a free color. Applied by the renderer
+     * (lib/appearance) by overriding the `--nl-primary` channels, which every `*-primary` utility
+     * resolves through. Studio windows only; a shipped game keeps the brand anchor.
+     */
     "ui.accentColor": string;
     "ui.compactMode": boolean;
+    /**
+     * Calm the Studio interface: no CSS transitions or animations (styles.css) and no
+     * framer-motion transform/layout animations (the MotionConfig in lib/renderApp). Independent
+     * of the OS-level `prefers-reduced-motion`, which is honored on its own — this is for wanting
+     * it here without wanting it everywhere. Game content is exempt in both layers.
+     */
     "ui.reduceMotion": boolean;
     /** The slim strip along the bottom of the workspace; the dock reclaims its row when off. */
     "ui.statusBar.visible": boolean;
@@ -25,9 +37,11 @@ export interface GlobalStateType extends Record<string, any> {
     /** The search pill in the title bar. With it hidden the command palette grows its own input. */
     "ui.titleBarSearch.visible": boolean;
     /**
-     * Watermark background. `ui.backgroundImage` is a *file name* inside userData/backgrounds,
-     * never a path — the main process resolves it by basename so a renderer cannot steer the read
-     * at arbitrary files. Null (or absent) means no background, which is what disables the layer.
+     * Watermark background. `ui.backgroundImage` is a *file name* inside the userData/backgrounds
+     * cache, never a path - the main process resolves it by basename so a renderer cannot steer
+     * the read at arbitrary files. The name is `<content hash>.<ext>`, so picking a different
+     * picture always changes this value and every window notices. Null (or absent) means no
+     * background, which is what disables the layer.
      */
     "ui.backgroundImage": string | null;
     /** Watermark strength, as a percentage; clamped to 2–40 when read. */
@@ -35,6 +49,8 @@ export interface GlobalStateType extends Record<string, any> {
     "ui.backgroundFill": "cover" | "contain" | "tile" | "center" | string;
     /** CSS `background-position` keyword pair, e.g. "center center". */
     "ui.backgroundAnchor": string;
+    /** Blur radius in CSS pixels; 0 (the default) leaves the picture sharp. Clamped to 0–40. */
+    "ui.backgroundBlur": number;
     /**
      * User keybinding rebinds as one `catalogId -> chord` map. One key rather than one key per
      * binding because catalog ids contain dots, which the dotted-path settings store would split
@@ -51,7 +67,7 @@ export interface GlobalStateType extends Record<string, any> {
      * Ask for confirmation before a workspace window closes.
      *
      * Replaces the legacy `workspace.confirmOnClose`, which shipped as an unread placeholder
-     * defaulting to true and is therefore already persisted as true in existing profiles —
+     * defaulting to true and is therefore already persisted as true in existing profiles -
      * defaulting *this* feature to off was only possible under a key nobody has on disk.
      */
     "workspace.confirmBeforeClose": boolean;
@@ -92,7 +108,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "app.autoCheckUpdates": true,
     "ui.themeMode": "auto",
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,
-    "ui.accentColor": "blue",
+    "ui.accentColor": ACCENT_COLOR_DEFAULT,
     "ui.compactMode": false,
     "ui.reduceMotion": false,
     "ui.statusBar.visible": true,
@@ -100,7 +116,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "ui.titleBarSearch.visible": true,
     // The `ui.background*` keys deliberately have no defaults here. Persisted values are untrusted
     // (opacity has to be clamped, fill/anchor whitelisted), so the renderer normalizes them through
-    // readBackgroundSettings — which necessarily carries the fallbacks. Repeating them here would
+    // readBackgroundSettings - which necessarily carries the fallbacks. Repeating them here would
     // be a second source of truth that can only drift.
     "keybindings.overrides": {},
     "editor.fontSize": 14,

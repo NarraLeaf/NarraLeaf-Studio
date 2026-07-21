@@ -1,26 +1,46 @@
 import { useCallback, useEffect, useRef } from "react";
 import { computePeaks, type AudioClip, type SampleRange } from "./audioClip";
-import type { AssetCuePoint } from "@/lib/workspace/services/assets/types";
+import type { LoopPoints } from "./loopHistory";
 
-/** Cue points are stored on the asset; the view just draws whatever it is handed. */
-export type AudioCuePoint = AssetCuePoint;
+/** Which end of the loop region a gesture is about. */
+export type LoopEnd = "in" | "out";
 
 interface WaveformViewProps {
     clip: AudioClip;
-    /** Visible sample window — the zoom/scroll state, owned by the editor. */
+    /** Visible sample window - the zoom/scroll state, owned by the editor. */
     view: SampleRange;
     selection: SampleRange | null;
-    cuePoints: AudioCuePoint[];
+    /** The authored loop region, in milliseconds; either end may be unmarked. */
+    loop: LoopPoints;
     /** Playhead position in samples, or null when stopped at the start. */
     playhead: number | null;
     onSelectionChange: (range: SampleRange | null) => void;
     onSeek: (sample: number) => void;
-    onScrub?: (sample: number) => void;
+    /** Live during a marker drag - the editor applies these without touching undo history. */
+    onLoopDrag: (end: LoopEnd, sample: number) => void;
+    /** End of a marker drag: the editor commits one history step for the whole gesture. */
+    onLoopDragEnd: () => void;
+    onClearLoopPoint: (end: LoopEnd) => void;
+    onSelectAll: () => void;
 }
 
-const RULER_HEIGHT = 18;
-/** Drags shorter than this are a click (seek), not a selection. */
+const RULER_HEIGHT = 16;
+/**
+ * The marker strip, between the ruler and the waveform.
+ *
+ * The in and out points are grabbed here and nowhere else. When markers were grabbable along their
+ * full height each one was a vertical dead zone across the whole waveform that swallowed selection
+ * drags; confining them to their own band is what makes both gestures unambiguous - the same split
+ * Premiere draws between its marker bar and its tracks.
+ */
+const MARKER_STRIP_HEIGHT = 13;
+const WAVE_TOP = RULER_HEIGHT + MARKER_STRIP_HEIGHT;
+/** Drags shorter than this are a click, not a drag. */
 const DRAG_THRESHOLD_PX = 3;
+/** How close the pointer must get to grab a marker or a selection edge. */
+const GRAB_TOLERANCE_PX = 6;
+/** Below this a lane is too short to read, so the channels fold into one envelope. */
+const MIN_LANE_HEIGHT = 36;
 
 function readCssColor(element: HTMLElement, token: string, fallback: string): string {
     const value = getComputedStyle(element).getPropertyValue(token).trim();
@@ -41,43 +61,72 @@ function formatTick(seconds: number, step: number): string {
     return `${minutes}:${rest.toFixed(decimals).padStart(decimals > 0 ? decimals + 3 : 2, "0")}`;
 }
 
+/** What the pointer is doing, decided on pointer-down and fixed for the gesture. */
+type Gesture =
+    | { kind: "select"; originX: number; originSample: number; moved: boolean }
+    /** Resizing an existing selection: `anchor` is the edge that stays put. */
+    | { kind: "resize"; anchor: number }
+    | { kind: "loop"; end: LoopEnd; sample: number; moved: boolean };
+
 /**
- * The editing surface: a time ruler over a min/max waveform, with a selection band, cue markers
- * and a playhead. Drawn on a canvas because at this zoom range the DOM would be redrawing tens of
- * thousands of elements; everything it shows is derived from props, so the editor above stays the
- * single source of truth for the clip, view window and selection.
+ * The preview surface: a time ruler, a marker strip carrying the loop's in and out points, and a
+ * min/max waveform with one lane per channel when there is room - plus a selection band, a
+ * playhead and a hover readout.
+ *
+ * Drawn on a canvas because at this zoom range the DOM would be redrawing tens of thousands of
+ * elements; everything it shows is derived from props, so the editor above stays the single source
+ * of truth for the clip, view window, selection and loop.
  */
 export function WaveformView({
     clip,
     view,
     selection,
-    cuePoints,
+    loop,
     playhead,
     onSelectionChange,
     onSeek,
-    onScrub,
+    onLoopDrag,
+    onLoopDragEnd,
+    onClearLoopPoint,
+    onSelectAll,
 }: WaveformViewProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const dragRef = useRef<{ originX: number; originSample: number; moved: boolean } | null>(null);
-
-    const sampleAtClientX = useCallback(
-        (clientX: number): number => {
-            const canvas = canvasRef.current;
-            if (!canvas) {
-                return view.start;
-            }
-            const rect = canvas.getBoundingClientRect();
-            const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-            return Math.round(view.start + ratio * (view.end - view.start));
-        },
-        [view],
-    );
+    const gestureRef = useRef<Gesture | null>(null);
+    /**
+     * Hover lives in a ref, not state: it changes on every mouse move, and a re-render per move
+     * would put the whole draw (and React's reconciliation) on the pointer's critical path.
+     */
+    const hoverRef = useRef<{ sample: number; inStrip: boolean } | null>(null);
 
     // Latest props for the draw routine, so redrawing never re-subscribes the ResizeObserver:
     // re-observing on every prop change, while the draw itself resizes the canvas, is a feedback
     // loop that repaints (and reallocates the backing store) without end.
-    const propsRef = useRef({ clip, view, selection, cuePoints, playhead });
-    propsRef.current = { clip, view, selection, cuePoints, playhead };
+    const propsRef = useRef({ clip, view, selection, loop, playhead });
+    propsRef.current = { clip, view, selection, loop, playhead };
+
+    /**
+     * Last computed peaks, keyed by everything they depend on.
+     *
+     * Worth caching because `computePeaks` walks every sample in the visible window - at full zoom
+     * out that is the entire clip - and the playhead alone repaints this canvas on every animation
+     * frame while sounding. Without the cache a four-minute clip re-scans ten million samples sixty
+     * times a second just to move a one-pixel line.
+     */
+    const peaksRef = useRef<{ key: string; clip: AudioClip; lanes: Float32Array[] } | null>(null);
+
+    const lanePeaks = useCallback(
+        (clip: AudioClip, view: SampleRange, width: number, laneChannels: (number | undefined)[]): Float32Array[] => {
+            const key = `${view.start}|${view.end}|${width}|${laneChannels.join(",")}`;
+            const cached = peaksRef.current;
+            if (cached && cached.clip === clip && cached.key === key) {
+                return cached.lanes;
+            }
+            const lanes = laneChannels.map(channel => computePeaks(clip, view, width, channel));
+            peaksRef.current = { key, clip, lanes };
+            return lanes;
+        },
+        [],
+    );
 
     const draw = useCallback(() => {
         const canvas = canvasRef.current;
@@ -85,112 +134,198 @@ export function WaveformView({
         if (!canvas || !context) {
             return;
         }
-        const { clip, view, selection, cuePoints, playhead } = propsRef.current;
-        {
-            const rect = canvas.getBoundingClientRect();
-            const dpr = window.devicePixelRatio || 1;
-            const width = Math.max(1, Math.floor(rect.width));
-            const height = Math.max(1, Math.floor(rect.height));
-            // Assigning width/height clears and reallocates the canvas, so only do it on a real
-            // size change. The target must be rounded first: `canvas.width` is an integer
-            // attribute, so at a fractional device pixel ratio (any non-100% UI zoom) an
-            // unrounded target never equals what was stored, every draw resizes the canvas, the
-            // resize observer redraws — and that loop eats memory until the renderer dies.
-            const targetWidth = Math.round(width * dpr);
-            const targetHeight = Math.round(height * dpr);
-            if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
-                canvas.width = targetWidth;
-                canvas.height = targetHeight;
-            }
-            context.setTransform(dpr, 0, 0, dpr, 0, 0);
-            context.clearRect(0, 0, width, height);
+        const { clip, view, selection, loop, playhead } = propsRef.current;
+        const hover = hoverRef.current;
 
-            const styleHost = canvas.parentElement ?? canvas;
-            const waveColor = readCssColor(styleHost, "--color-fg-muted", "#8a8a8a");
-            const subtleColor = readCssColor(styleHost, "--color-fg-subtle", "#6a6a6a");
-            const primaryColor = readCssColor(styleHost, "--color-primary", "#40a8c4");
-            const edgeColor = readCssColor(styleHost, "--color-edge", "#3a3a3a");
+        const rect = canvas.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        const width = Math.max(1, Math.floor(rect.width));
+        const height = Math.max(1, Math.floor(rect.height));
+        // Assigning width/height clears and reallocates the canvas, so only do it on a real
+        // size change. The target must be rounded first: `canvas.width` is an integer
+        // attribute, so at a fractional device pixel ratio (any non-100% UI zoom) an
+        // unrounded target never equals what was stored, every draw resizes the canvas, the
+        // resize observer redraws - and that loop eats memory until the renderer dies.
+        const targetWidth = Math.round(width * dpr);
+        const targetHeight = Math.round(height * dpr);
+        if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+            canvas.width = targetWidth;
+            canvas.height = targetHeight;
+        }
+        context.setTransform(dpr, 0, 0, dpr, 0, 0);
+        context.clearRect(0, 0, width, height);
 
-            const waveTop = RULER_HEIGHT;
-            const waveHeight = height - RULER_HEIGHT;
-            const midline = waveTop + waveHeight / 2;
-            const visibleSamples = Math.max(1, view.end - view.start);
-            const sampleToX = (sample: number) => ((sample - view.start) / visibleSamples) * width;
+        const styleHost = canvas.parentElement ?? canvas;
+        const waveColor = readCssColor(styleHost, "--color-fg-muted", "#8a8a8a");
+        const subtleColor = readCssColor(styleHost, "--color-fg-subtle", "#6a6a6a");
+        const primaryColor = readCssColor(styleHost, "--color-primary", "#40a8c4");
+        const edgeColor = readCssColor(styleHost, "--color-edge", "#3a3a3a");
+        const fgColor = readCssColor(styleHost, "--color-fg", "#f0f0f0");
+        const sunkenColor = readCssColor(styleHost, "--color-surface-sunken", "#1a1a1a");
 
-            // Selection band, painted under the waveform so the samples stay legible.
-            if (selection && selection.end > selection.start) {
-                const from = sampleToX(selection.start);
-                const to = sampleToX(selection.end);
-                context.fillStyle = primaryColor;
-                context.globalAlpha = 0.18;
-                context.fillRect(from, waveTop, Math.max(1, to - from), waveHeight);
-                context.globalAlpha = 1;
-            }
+        const waveHeight = height - WAVE_TOP;
+        const visibleSamples = Math.max(1, view.end - view.start);
+        const sampleToX = (sample: number) => ((sample - view.start) / visibleSamples) * width;
+        const msToX = (ms: number) => sampleToX((ms / 1000) * clip.sampleRate);
 
-            // Ruler.
-            context.fillStyle = edgeColor;
-            context.fillRect(0, RULER_HEIGHT - 1, width, 1);
-            const secondsPerPixel = visibleSamples / clip.sampleRate / width;
-            const tickStep = chooseTickSeconds(secondsPerPixel);
-            const firstTick = Math.ceil(view.start / clip.sampleRate / tickStep) * tickStep;
-            const lastSecond = view.end / clip.sampleRate;
-            context.fillStyle = subtleColor;
-            context.font = "9px ui-monospace, monospace";
-            context.textBaseline = "top";
-            for (let seconds = firstTick; seconds <= lastSecond; seconds += tickStep) {
-                const x = sampleToX(seconds * clip.sampleRate);
-                context.fillRect(x, RULER_HEIGHT - 5, 1, 4);
-                context.fillText(formatTick(seconds, tickStep), x + 3, 3);
-            }
+        // One lane per channel, folded into a single envelope when they would be too short to
+        // read. `undefined` means "every channel at once".
+        const channelCount = Math.max(1, clip.channels.length);
+        const laneChannels: (number | undefined)[] =
+            channelCount > 1 && waveHeight / channelCount >= MIN_LANE_HEIGHT
+                ? clip.channels.map((_, index) => index)
+                : [undefined];
+        const laneHeight = waveHeight / laneChannels.length;
 
-            // Waveform: one min/max column per device-independent pixel.
-            const peaks = computePeaks(clip, view, width);
+        // Ruler.
+        const secondsPerPixel = visibleSamples / clip.sampleRate / width;
+        const tickStep = chooseTickSeconds(secondsPerPixel);
+        const firstTick = Math.ceil(view.start / clip.sampleRate / tickStep) * tickStep;
+        const lastSecond = view.end / clip.sampleRate;
+        context.fillStyle = subtleColor;
+        context.font = "9px ui-monospace, monospace";
+        context.textBaseline = "top";
+        for (let seconds = firstTick; seconds <= lastSecond; seconds += tickStep) {
+            const x = sampleToX(seconds * clip.sampleRate);
+            context.fillRect(x, RULER_HEIGHT - 4, 1, 3);
+            context.fillText(formatTick(seconds, tickStep), x + 3, 2);
+        }
+
+        // Marker strip: its own band, so it reads as the place the loop points live. Tinted with
+        // the edge colour rather than filled with a surface token - the workspace surfaces are
+        // translucent when a background image is set, so a surface fill over a surface reads as
+        // no band at all.
+        context.fillStyle = edgeColor;
+        context.globalAlpha = 0.3;
+        context.fillRect(0, RULER_HEIGHT, width, MARKER_STRIP_HEIGHT);
+        context.globalAlpha = 1;
+        context.fillRect(0, RULER_HEIGHT, width, 1);
+        context.fillRect(0, WAVE_TOP - 1, width, 1);
+
+        // Waveform: one min/max column per device-independent pixel, per lane.
+        const lanes = lanePeaks(clip, view, width, laneChannels);
+        lanes.forEach((peaks, lane) => {
+            const top = WAVE_TOP + lane * laneHeight;
+            const midline = top + laneHeight / 2;
             context.fillStyle = waveColor;
             for (let x = 0; x < width; x++) {
                 const minimum = peaks[x * 2];
                 const maximum = peaks[x * 2 + 1];
-                const top = midline - (maximum * waveHeight) / 2;
-                const bottom = midline - (minimum * waveHeight) / 2;
-                context.fillRect(x, top, 1, Math.max(1, bottom - top));
+                const barTop = midline - (maximum * laneHeight) / 2;
+                const barBottom = midline - (minimum * laneHeight) / 2;
+                context.fillRect(x, barTop, 1, Math.max(1, barBottom - barTop));
             }
-
-            // Midline.
             context.fillStyle = edgeColor;
             context.fillRect(0, midline, width, 1);
-
-            // Cue points.
-            for (const cue of cuePoints) {
-                const x = sampleToX((cue.timeMs / 1000) * clip.sampleRate);
-                if (x < 0 || x > width) {
-                    continue;
-                }
-                context.fillStyle = primaryColor;
-                context.fillRect(x, waveTop, 1, waveHeight);
-                context.beginPath();
-                context.moveTo(x, waveTop);
-                context.lineTo(x + 6, waveTop + 4);
-                context.lineTo(x, waveTop + 8);
-                context.closePath();
-                context.fill();
+            if (lane > 0) {
+                context.fillRect(0, top, width, 1);
             }
+        });
 
-            // Playhead last, so it is never hidden by anything else.
-            if (playhead !== null) {
-                const x = sampleToX(playhead);
-                if (x >= 0 && x <= width) {
-                    context.fillStyle = readCssColor(styleHost, "--color-fg", "#f0f0f0");
-                    context.fillRect(x, 0, 1, height);
-                }
+        // Selection band, painted *over* the waveform rather than under it.
+        //
+        // Underneath is where it started, on the theory that the samples should stay unobscured -
+        // but a loud, dense clip draws near-solid bars across the full lane height and swallows
+        // the band whole, which is exactly when a selection is hardest to see. A tint on top
+        // colours those same bars instead of hiding behind them, and at this alpha the waveform
+        // still reads straight through it. Opaque edges mark the handles.
+        if (selection && selection.end > selection.start) {
+            const from = sampleToX(selection.start);
+            const to = sampleToX(selection.end);
+            context.fillStyle = primaryColor;
+            context.globalAlpha = 0.28;
+            context.fillRect(from, WAVE_TOP, Math.max(1, to - from), waveHeight);
+            context.globalAlpha = 1;
+            context.fillRect(from - 1, WAVE_TOP, 2, waveHeight);
+            context.fillRect(to - 1, WAVE_TOP, 2, waveHeight);
+        }
+
+        // The loop region as a bar inside the strip, the way Premiere shows its work area. Kept
+        // out of the waveform body so it never competes with the selection band for the same
+        // pixels - one says "what plays", the other says "what is marked".
+        if (loop.inMs !== null && loop.outMs !== null) {
+            const from = msToX(loop.inMs);
+            const to = msToX(loop.outMs);
+            context.fillStyle = primaryColor;
+            context.globalAlpha = 0.85;
+            context.fillRect(from, RULER_HEIGHT + 2, Math.max(1, to - from), MARKER_STRIP_HEIGHT - 4);
+            context.globalAlpha = 1;
+        }
+
+        // In and out points: a flag facing into the region it opens or closes, plus a faint line
+        // down the waveform to read against.
+        const hoveredEnd = hover?.inStrip && gestureRef.current === null
+            ? loopEndAt(loop, clip, hover.sample, visibleSamples / width)
+            : null;
+        const drawPoint = (end: LoopEnd, ms: number) => {
+            const x = msToX(ms);
+            if (x < -10 || x > width + 10) {
+                return;
+            }
+            context.fillStyle = primaryColor;
+            context.globalAlpha = 0.4;
+            context.fillRect(x, WAVE_TOP, 1, waveHeight);
+            context.globalAlpha = end === hoveredEnd ? 1 : 0.9;
+            const direction = end === "in" ? 1 : -1;
+            context.beginPath();
+            context.moveTo(x, RULER_HEIGHT + 1);
+            context.lineTo(x + 7 * direction, RULER_HEIGHT + 1);
+            context.lineTo(x + 7 * direction, RULER_HEIGHT + 6);
+            context.lineTo(x, RULER_HEIGHT + 10);
+            context.closePath();
+            context.fill();
+            context.fillRect(x - (end === "in" ? 1 : 0), RULER_HEIGHT + 1, 1, MARKER_STRIP_HEIGHT - 2);
+            context.globalAlpha = 1;
+        };
+        if (loop.inMs !== null) {
+            drawPoint("in", loop.inMs);
+        }
+        if (loop.outMs !== null) {
+            drawPoint("out", loop.outMs);
+        }
+
+        // Hover guide: a faint line plus the time under the pointer, so a click lands where the
+        // eye expects. Suppressed mid-gesture, where the playhead and selection already say it.
+        if (hover && !hover.inStrip && gestureRef.current === null) {
+            const x = sampleToX(hover.sample);
+            if (x >= 0 && x <= width) {
+                context.fillStyle = subtleColor;
+                context.globalAlpha = 0.5;
+                context.fillRect(x, WAVE_TOP, 1, waveHeight);
+                context.globalAlpha = 1;
+                const label = formatTick(hover.sample / clip.sampleRate, Math.min(tickStep, 0.5));
+                const textWidth = context.measureText(label).width;
+                // Flip the label to the other side rather than let it run off the edge.
+                const labelX = x + 4 + textWidth > width ? x - 4 - textWidth : x + 4;
+                // Two coats: the surface token first, then an edge tint, so the readout stays
+                // legible over a translucent panel with a background image behind it.
+                context.fillStyle = sunkenColor;
+                context.fillRect(labelX - 2, WAVE_TOP + 2, textWidth + 4, 11);
+                context.fillStyle = edgeColor;
+                context.globalAlpha = 0.9;
+                context.fillRect(labelX - 2, WAVE_TOP + 2, textWidth + 4, 11);
+                context.globalAlpha = 1;
+                context.fillStyle = fgColor;
+                context.fillText(label, labelX, WAVE_TOP + 3);
             }
         }
-    }, []);
 
-    // Repaint on prop changes…
+        // Playhead last, so it is never hidden by anything else.
+        if (playhead !== null) {
+            const x = sampleToX(playhead);
+            if (x >= 0 && x <= width) {
+                context.fillStyle = fgColor;
+                context.fillRect(x, RULER_HEIGHT, 1, height - RULER_HEIGHT);
+            }
+        }
+    }, [lanePeaks]);
+
+    // Repaint on prop changes...
     useEffect(() => {
         draw();
-    }, [draw, clip, view, selection, cuePoints, playhead]);
+    }, [draw, clip, view, selection, loop, playhead]);
 
-    // …and when the element is resized. The observer watches the *container*, not the canvas:
+    // ...and when the element is resized. The observer watches the *container*, not the canvas:
     // drawing resizes the canvas, so observing the canvas would let a repaint trigger the next
     // one. It also only redraws on a real size change, as a second line of defence.
     useEffect(() => {
@@ -213,37 +348,145 @@ export function WaveformView({
         return () => observer.disconnect();
     }, [draw]);
 
+    // ---- pointer geometry ---------------------------------------------------
+
+    const localPoint = useCallback(
+        (clientX: number, clientY: number): { sample: number; y: number; samplesPerPixel: number } => {
+            const canvas = canvasRef.current;
+            const rect = canvas?.getBoundingClientRect();
+            if (!rect) {
+                return { sample: view.start, y: 0, samplesPerPixel: 1 };
+            }
+            const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+            return {
+                sample: Math.round(view.start + ratio * (view.end - view.start)),
+                y: clientY - rect.top,
+                samplesPerPixel: (view.end - view.start) / Math.max(1, rect.width),
+            };
+        },
+        [view],
+    );
+
+    /** Which selection edge the pointer is on, with the opposite edge as the resize anchor. */
+    const selectionEdgeAt = useCallback(
+        (sample: number, samplesPerPixel: number): number | null => {
+            if (!selection || selection.end <= selection.start) {
+                return null;
+            }
+            const tolerance = GRAB_TOLERANCE_PX * samplesPerPixel;
+            if (Math.abs(selection.start - sample) <= tolerance) {
+                return selection.end;
+            }
+            if (Math.abs(selection.end - sample) <= tolerance) {
+                return selection.start;
+            }
+            return null;
+        },
+        [selection],
+    );
+
+    // ---- pointer handling ---------------------------------------------------
+
     const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+        const { sample, y, samplesPerPixel } = localPoint(event.clientX, event.clientY);
+        const inStrip = y >= RULER_HEIGHT && y < WAVE_TOP;
+
         event.currentTarget.setPointerCapture(event.pointerId);
-        dragRef.current = { originX: event.clientX, originSample: sampleAtClientX(event.clientX), moved: false };
+
+        if (inStrip) {
+            // The strip only ever adjusts points that already exist. Marking is the two toolbar
+            // buttons and their shortcuts: a bare click here cannot say which end it meant.
+            const end = loopEndAt(loop, clip, sample, samplesPerPixel);
+            if (end !== null) {
+                gestureRef.current = { kind: "loop", end, sample, moved: false };
+            }
+            return;
+        }
+
+        const anchor = selectionEdgeAt(sample, samplesPerPixel);
+        if (anchor !== null) {
+            gestureRef.current = { kind: "resize", anchor };
+            return;
+        }
+        gestureRef.current = { kind: "select", originX: event.clientX, originSample: sample, moved: false };
     };
 
     const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
-        const drag = dragRef.current;
-        if (!drag) {
+        const { sample, y, samplesPerPixel } = localPoint(event.clientX, event.clientY);
+        const gesture = gestureRef.current;
+
+        if (!gesture) {
+            const inStrip = y >= RULER_HEIGHT && y < WAVE_TOP;
+            hoverRef.current = { sample, inStrip };
+            const overPoint = inStrip && loopEndAt(loop, clip, sample, samplesPerPixel) !== null;
+            const overEdge = !inStrip && selectionEdgeAt(sample, samplesPerPixel) !== null;
+            event.currentTarget.style.cursor = overPoint || overEdge ? "col-resize" : inStrip ? "default" : "text";
+            draw();
             return;
         }
-        if (!drag.moved && Math.abs(event.clientX - drag.originX) < DRAG_THRESHOLD_PX) {
+
+        if (gesture.kind === "loop") {
+            // Below the threshold this is still a click on the marker, not a move - otherwise a
+            // one-pixel wobble while clicking silently nudges it and costs an undo step.
+            if (!gesture.moved && Math.abs(sample - gesture.sample) / samplesPerPixel < DRAG_THRESHOLD_PX) {
+                return;
+            }
+            gesture.moved = true;
+            onLoopDrag(gesture.end, sample);
             return;
         }
-        drag.moved = true;
-        const current = sampleAtClientX(event.clientX);
-        onSelectionChange({ start: Math.min(drag.originSample, current), end: Math.max(drag.originSample, current) });
-        onScrub?.(current);
+        if (gesture.kind === "resize") {
+            onSelectionChange({ start: Math.min(gesture.anchor, sample), end: Math.max(gesture.anchor, sample) });
+            return;
+        }
+        if (!gesture.moved && Math.abs(event.clientX - gesture.originX) < DRAG_THRESHOLD_PX) {
+            return;
+        }
+        gesture.moved = true;
+        onSelectionChange({ start: Math.min(gesture.originSample, sample), end: Math.max(gesture.originSample, sample) });
     };
 
     const handlePointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
-        const drag = dragRef.current;
-        dragRef.current = null;
-        if (!drag) {
+        const gesture = gestureRef.current;
+        gestureRef.current = null;
+        if (!gesture) {
             return;
         }
-        event.currentTarget.releasePointerCapture(event.pointerId);
-        if (!drag.moved) {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        if (gesture.kind === "loop") {
+            if (gesture.moved) {
+                // One history step for the whole drag, not one per pointer move.
+                onLoopDragEnd();
+            } else {
+                onSeek(gesture.sample);
+            }
+            return;
+        }
+        if (gesture.kind === "select" && !gesture.moved) {
             // A plain click clears the selection and moves the playhead, like every audio editor.
             onSelectionChange(null);
-            onSeek(drag.originSample);
+            onSeek(gesture.originSample);
         }
+    };
+
+    const handlePointerLeave = () => {
+        hoverRef.current = null;
+        draw();
+    };
+
+    const handleDoubleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+        const { sample, y, samplesPerPixel } = localPoint(event.clientX, event.clientY);
+        if (y >= RULER_HEIGHT && y < WAVE_TOP) {
+            // Double-clicking a point clears that end - the strip's own delete gesture.
+            const end = loopEndAt(loop, clip, sample, samplesPerPixel);
+            if (end !== null) {
+                onClearLoopPoint(end);
+            }
+            return;
+        }
+        onSelectAll();
     };
 
     return (
@@ -253,11 +496,33 @@ export function WaveformView({
             // contributes its *attribute* size to layout, so resizing the backing store during a
             // draw resizes the container, the resize observer redraws, and the two chase each
             // other until the renderer runs out of memory. Out of flow, that path cannot exist.
-            className="absolute inset-0 block h-full w-full cursor-text select-none"
+            className="absolute inset-0 block h-full w-full select-none"
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
+            onPointerLeave={handlePointerLeave}
+            onDoubleClick={handleDoubleClick}
         />
     );
+}
+
+/** Whichever loop point is within grabbing distance of `sample`, preferring the closer one. */
+function loopEndAt(loop: LoopPoints, clip: AudioClip, sample: number, samplesPerPixel: number): LoopEnd | null {
+    const tolerance = GRAB_TOLERANCE_PX * samplesPerPixel;
+    let best: LoopEnd | null = null;
+    let bestDistance = Infinity;
+    const consider = (end: LoopEnd, ms: number | null) => {
+        if (ms === null) {
+            return;
+        }
+        const distance = Math.abs((ms / 1000) * clip.sampleRate - sample);
+        if (distance <= tolerance && distance < bestDistance) {
+            bestDistance = distance;
+            best = end;
+        }
+    };
+    consider("in", loop.inMs);
+    consider("out", loop.outMs);
+    return best;
 }

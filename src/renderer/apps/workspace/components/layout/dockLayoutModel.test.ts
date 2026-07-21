@@ -43,7 +43,7 @@ describe("resolveDock", () => {
     it("lets the bottom panel cover the editor entirely (clip policy)", () => {
         const e = env({ windowHeight: 900 });
         const out = resolveDock({ left: 320, right: 320, bottom: 100000 }, e);
-        // May consume the whole center column, leaving the editor 0px — only the title bar is reserved.
+        // May consume the whole center column, leaving the editor 0px - only the title bar is reserved.
         expect(out.bottom).toBe(e.windowHeight - TITLE_BAR_HEIGHT);
         expect(out.bottom).toBeGreaterThan(600); // far past the old 600px / half-height cap
     });
@@ -88,7 +88,7 @@ describe("applyResize", () => {
         // Drag left sidebar far below its min: size pins to min, correction cancels the unused delta.
         const { next, correction } = applyResize("left", DOCK_REGIONS.left.min, -200, env(), 320);
         expect(next).toBe(DOCK_REGIONS.left.min);
-        // sign(+1) * actualDelta(0) - delta(-200) = 200 — feeds back the fully-unused pointer travel.
+        // sign(+1) * actualDelta(0) - delta(-200) = 200 - feeds back the fully-unused pointer travel.
         expect(correction).toBe(200);
     });
 

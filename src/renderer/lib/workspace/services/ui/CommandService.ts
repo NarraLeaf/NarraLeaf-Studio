@@ -12,7 +12,7 @@ import {
 /**
  * Command Service
  *
- * The workspace's command registry and aggregator — the single place that answers "what can the
+ * The workspace's command registry and aggregator - the single place that answers "what can the
  * user do right now?" for the command palette. Modeled on {@link KeybindingService}: a `Map` of
  * registrations with `register`/`unregister`/`getAll` and a disposer-returning API.
  *
@@ -35,7 +35,7 @@ export class CommandService extends Service<CommandService> {
     }
 
     /**
-     * Register a command. Returns a disposer that unregisters it — mirrors the keybinding API so
+     * Register a command. Returns a disposer that unregisters it - mirrors the keybinding API so
      * the two can be registered side by side from the same hook.
      */
     public register(command: CommandRegistration): () => void {

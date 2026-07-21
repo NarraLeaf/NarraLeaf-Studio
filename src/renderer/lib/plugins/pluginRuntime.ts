@@ -14,7 +14,10 @@ import {
     PanelPosition,
     type PluginApp,
     type PluginCleanup,
+    type PluginMessageBundle,
+    type PluginTranslator,
 } from "@/plugin";
+import { i18nStore } from "@/lib/i18n/store";
 import { isActionMenuAction, isActionMenuSeparator } from "@/apps/workspace/components/ui/actionMenuModel";
 import type { ActionGroup, ActionMenuItem } from "@/apps/workspace/registry/types";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
@@ -33,6 +36,48 @@ type PluginModule = {
     default?: unknown;
     plugin?: unknown;
 };
+
+const PLUGIN_INTERPOLATION = /\{(\w+)\}/g;
+
+function pluginInterpolate(template: string, params?: Record<string, string | number>): string {
+    if (!params) {
+        return template;
+    }
+    return template.replace(PLUGIN_INTERPOLATION, (match, name: string) =>
+        name in params ? String(params[name]) : match,
+    );
+}
+
+/**
+ * Build a translator over a plugin's own message bundle that follows the editor
+ * locale live: `.locale` and `t()` read `i18nStore` at call time, so one
+ * instance stays correct across language switches.
+ */
+function createPluginTranslator(bundle: PluginMessageBundle): PluginTranslator {
+    const fallbackLocale = bundle.fallbackLocale ?? Object.keys(bundle.messages)[0] ?? "";
+    const resolve = (key: string): string => {
+        const active = i18nStore.getLocale();
+        const primary = bundle.messages[active]?.[key];
+        if (primary !== undefined) {
+            return primary;
+        }
+        return bundle.messages[fallbackLocale]?.[key] ?? key;
+    };
+    return {
+        get locale() {
+            return i18nStore.getLocale();
+        },
+        t: (key, params) => pluginInterpolate(resolve(key), params),
+    };
+}
+
+/** Enforce that a plugin-registered id/type is namespaced under the plugin id. */
+function assertOwnedId(pluginId: string, id: string, kind: string): void {
+    const trimmed = typeof id === "string" ? id.trim() : "";
+    if (!trimmed.startsWith(`${pluginId}.`)) {
+        throw new Error(`[plugin:${pluginId}] ${kind} id "${id}" must be prefixed with "${pluginId}."`);
+    }
+}
 
 export type WorkspacePluginLoadResult =
     | {
@@ -67,7 +112,7 @@ async function loadWorkspacePluginsNow(ctx: WorkspaceContext): Promise<Workspace
 
     // Skip plugins this project's dependency resolution flagged as incompatible
     // (e.g. a built-in plugin whose major version changed across a Studio update).
-    // Suppressing them here — before import()/setup() — keeps their nodes, widgets,
+    // Suppressing them here - before import()/setup() - keeps their nodes, widgets,
     // and actions from registering and corrupting the open project.
     const suppressed = new Set(
         ctx.services.get<ProjectDependencyService>(Services.ProjectDependency).getSuppressedPluginIds(),
@@ -219,7 +264,7 @@ function assertDeclaredWidget(descriptor: WorkspacePluginDescriptor, type: strin
  * A group declares where it lands on the macOS menu bar, and two of those slots are load-bearing
  * for Studio itself: `edit` lets a group's items stand in for the system Copy/Cut/Paste (and so
  * inherit their Cmd shortcuts), and `window` sits among the standard window commands. Those
- * belong to the surfaces Studio ships. A plugin still gets a full top-level menu — it just
+ * belong to the surfaces Studio ships. A plugin still gets a full top-level menu - it just
  * cannot quietly become the thing Cmd+V does.
  *
  * `menuRole` is dropped for the same reason: it only means anything in the `edit` slot.
@@ -267,6 +312,21 @@ export function createPluginApp(
         for (const disposer of disposables.splice(0).reverse()) {
             try {
                 disposer();
+            } catch (error) {
+                console.error(`[plugin:${descriptor.plugin.id}] failed to dispose registration:`, error);
+            }
+        }
+    };
+    // Track a disposer in the unload bag and hand it back to the plugin.
+    const trackReturn = (disposer: PluginCleanup): PluginCleanup => {
+        track(disposer);
+        return disposer;
+    };
+    // One cleanup that disposes every disposer from a registerMany call (LIFO).
+    const combine = (disposers: PluginCleanup[]): PluginCleanup => () => {
+        for (const disposer of disposers.splice(0).reverse()) {
+            try {
+                void disposer();
             } catch (error) {
                 console.error(`[plugin:${descriptor.plugin.id}] failed to dispose registration:`, error);
             }
@@ -331,24 +391,53 @@ export function createPluginApp(
                     }
                 },
             },
+            i18n: {
+                get locale() {
+                    return i18nStore.getLocale();
+                },
+                onLocaleChange: listener => {
+                    let last = i18nStore.getLocale();
+                    const disposer = i18nStore.subscribe(() => {
+                        const next = i18nStore.getLocale();
+                        if (next !== last) {
+                            last = next;
+                            listener(next);
+                        }
+                    });
+                    return trackReturn(disposer);
+                },
+                formatNumber: (value, options) => i18nStore.getTranslator().formatNumber(value, options),
+                formatDate: (value, options) => i18nStore.getTranslator().formatDate(value, options),
+                formatList: (items, options) => i18nStore.getTranslator().formatList(items, options),
+                createTranslator: bundle => createPluginTranslator(bundle),
+            },
             ui: {
                 panels: {
                     register: panel => {
-                        track(ui.panels.register(panel as any));
+                        assertOwnedId(descriptor.plugin.id, panel.id, "panel");
+                        return trackReturn(ui.panels.register(panel as any));
                     },
-                    unregister: id => ui.panels.unregister(id),
+                    registerMany: panels => combine(panels.map(panel => {
+                        assertOwnedId(descriptor.plugin.id, panel.id, "panel");
+                        return trackReturn(ui.panels.register(panel as any));
+                    })),
                 },
                 actions: {
                     register: action => {
+                        assertOwnedId(descriptor.plugin.id, action.id, "action");
                         ui.getStore().registerAction(action);
-                        track(() => ui.getStore().unregisterAction(action.id));
+                        return trackReturn(() => ui.getStore().unregisterAction(action.id));
                     },
-                    unregister: id => ui.getStore().unregisterAction(id),
+                    registerMany: actions => combine(actions.map(action => {
+                        assertOwnedId(descriptor.plugin.id, action.id, "action");
+                        ui.getStore().registerAction(action);
+                        return trackReturn(() => ui.getStore().unregisterAction(action.id));
+                    })),
                     registerGroup: group => {
+                        assertOwnedId(descriptor.plugin.id, group.id, "action group");
                         ui.getStore().registerActionGroup(confineToOwnMenu(group));
-                        track(() => ui.getStore().unregisterActionGroup(group.id));
+                        return trackReturn(() => ui.getStore().unregisterActionGroup(group.id));
                     },
-                    unregisterGroup: id => ui.getStore().unregisterActionGroup(id),
                 },
                 editors: {
                     // Opened tabs are deliberately not auto-closed on unload:
@@ -358,14 +447,14 @@ export function createPluginApp(
                 },
                 keybindings: {
                     register: keybinding => {
-                        const disposer = ui.keybindings.register(keybinding);
-                        track(disposer);
-                        return disposer;
+                        assertOwnedId(descriptor.plugin.id, keybinding.id, "keybinding");
+                        return trackReturn(ui.keybindings.register(keybinding));
                     },
                     registerMany: keybindings => {
-                        const disposer = ui.keybindings.registerMany(keybindings);
-                        track(disposer);
-                        return disposer;
+                        for (const keybinding of keybindings) {
+                            assertOwnedId(descriptor.plugin.id, keybinding.id, "keybinding");
+                        }
+                        return trackReturn(ui.keybindings.registerMany(keybindings));
                     },
                 },
                 notifications: {
@@ -379,7 +468,7 @@ export function createPluginApp(
                 register: module => {
                     assertDeclaredWidget(descriptor, module.type);
                     widgetModuleRegistry.register(module, { ownerPluginId: descriptor.plugin.id });
-                    track(() => {
+                    return trackReturn(() => {
                         if (widgetModuleRegistry.get(module.type) === module) {
                             widgetModuleRegistry.unregister(module.type);
                         }
@@ -389,14 +478,14 @@ export function createPluginApp(
                     for (const module of modules) {
                         assertDeclaredWidget(descriptor, module.type);
                     }
-                    for (const module of modules) {
+                    return combine(modules.map(module => {
                         widgetModuleRegistry.register(module, { ownerPluginId: descriptor.plugin.id });
-                        track(() => {
+                        return trackReturn(() => {
                             if (widgetModuleRegistry.get(module.type) === module) {
                                 widgetModuleRegistry.unregister(module.type);
                             }
                         });
-                    }
+                    }));
                 },
                 get: type => widgetModuleRegistry.get(type),
                 list: () => widgetModuleRegistry.list(),
@@ -405,14 +494,13 @@ export function createPluginApp(
             story: {
                 actions: {
                     register: registration => {
-                        const actionId = registration.id?.trim() ?? "";
-                        if (!actionId.startsWith(`${descriptor.plugin.id}.`)) {
-                            throw new Error(`Story action id must be prefixed with plugin id: ${descriptor.plugin.id}`);
-                        }
-                        const disposer = story.registerPluginAction(registration);
-                        track(disposer);
-                        return disposer;
+                        assertOwnedId(descriptor.plugin.id, registration.id ?? "", "story action");
+                        return trackReturn(story.registerPluginAction(registration));
                     },
+                    registerMany: registrations => combine(registrations.map(registration => {
+                        assertOwnedId(descriptor.plugin.id, registration.id ?? "", "story action");
+                        return trackReturn(story.registerPluginAction(registration));
+                    })),
                 },
             },
             blueprintNodes: {

@@ -8,7 +8,7 @@ import { WebGameStorage } from "./webStorage";
 /**
  * Web runtime shell. Loaded by the exported index.html BEFORE renderer.js, it
  * installs a browser-native implementation of the runtime bridge on
- * `window.__NLS_GAME_RUNTIME__` — the renderer bundle is byte-identical to the
+ * `window.__NLS_GAME_RUNTIME__` - the renderer bundle is byte-identical to the
  * desktop one and only talks to this contract. Everything the desktop shell
  * does in its Electron main process maps onto web platform features here:
  * pack.json and assets are plain relative fetches served by whatever static
@@ -35,7 +35,7 @@ function readPack(): Promise<GameRuntimePackV1> {
 /**
  * Same lifetime rule as the desktop shell's resolveAssetVersion: asset ids are
  * stable across recompiles, so cache entries are keyed per pack via the
- * bundle id. Before the pack is loaded there is nothing to version against —
+ * bundle id. Before the pack is loaded there is nothing to version against -
  * callers below only run after readPack() resolves.
  */
 function assetVersion(): string {

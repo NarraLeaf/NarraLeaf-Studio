@@ -4,7 +4,7 @@ import type { Asset, AssetGroup, AssetsMap } from "@/lib/workspace/services/asse
 /** Custom MIME for cross-workspace HTML5 DnD (renderer-local). */
 export const ASSET_DRAG_MIME = "application/x-narraleaf-assets+json";
 
-/** Wire format v1 — keep keys short for dataTransfer limits. */
+/** Wire format v1 - keep keys short for dataTransfer limits. */
 export interface AssetDragWirePayloadV1 {
     v: 1;
     /** Primary dragged asset id (for consumers that only handle one). */

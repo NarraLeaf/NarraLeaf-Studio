@@ -138,7 +138,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
         // Graceful application terminate: asks the NarraLeaf runtime to shut the app down cleanly
         // (leaving room for state saving, crash reporting, etc.) rather than hard-killing it. This
         // is a runtime-initiated quit, so it deliberately does NOT fire the On Window Close
-        // Requested blueprint event — that event is only for the user closing the window.
+        // Requested blueprint event - that event is only for the user closing the window.
         type: BLUEPRINT_NODE_TYPE_PAGE_QUIT,
         displayName: "Quit Application",
         category: "App",

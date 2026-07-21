@@ -1,7 +1,7 @@
 /**
  * Pure zip data layer for the mobile repack pipeline: central-directory
  * parsing, CRC-32, DOS timestamps and alignment checks. Buffer in →
- * structures out; no fs, no clock, no randomness — everything the golden
+ * structures out; no fs, no clock, no randomness - everything the golden
  * tests need to be byte-deterministic. The streaming writer lives in
  * zipWriter.ts; the fs-touching orchestration lives in repackApk/repackIpa.
  *
@@ -30,7 +30,7 @@ export const EOCD_SIZE = 22;
 
 /**
  * Android's alignment extra-field id (zipflinger/zipalign write the padding
- * as a well-formed TLV block under this id, which every parser tolerates —
+ * as a well-formed TLV block under this id, which every parser tolerates -
  * bare zero bytes in the extra field are not valid TLV).
  */
 export const ANDROID_ALIGNMENT_EXTRA_ID = 0xd935;
@@ -107,7 +107,7 @@ export function crc32(data: Buffer): number {
  * stamps every entry with one injected timestamp so identical inputs produce
  * byte-identical archives. Packed from the UTC fields: a Date is an absolute
  * instant, and using local-time getters would bake the build machine's
- * timezone into every header — the cross-machine determinism the golden
+ * timezone into every header - the cross-machine determinism the golden
  * tests rely on would quietly break.
  */
 export function toDosDateTime(date: Date): { dosTime: number; dosDate: number } {
@@ -265,9 +265,9 @@ export function parseZipIndex(buffer: Buffer): ZipIndex {
 
 /**
  * Where an entry's (still compressed) data bytes live. The local header's
- * own name/extra lengths decide the data start — they legitimately differ
+ * own name/extra lengths decide the data start - they legitimately differ
  * from the central directory's (alignment padding lives only in the local
- * extra) — while the length comes from the authoritative central directory.
+ * extra) - while the length comes from the authoritative central directory.
  */
 export function readLocalEntryDataSpan(buffer: Buffer, entry: ZipIndexEntry): { start: number; end: number } {
     const offset = entry.localHeaderOffset;
@@ -281,7 +281,7 @@ export function readLocalEntryDataSpan(buffer: Buffer, entry: ZipIndexEntry): { 
 }
 
 /**
- * The decompressed bytes of an entry — for the repack to read a template's
+ * The decompressed bytes of an entry - for the repack to read a template's
  * AndroidManifest.xml / resources.arsc / Info.plist, which may be stored or
  * deflated. Only the two methods a real template uses are handled; anything
  * else is rejected rather than returned wrong.

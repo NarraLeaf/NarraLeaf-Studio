@@ -96,8 +96,7 @@ export function StatusBar() {
 
     return (
         <div
-            // Extra side padding keeps entries clear of the window's rounded corners.
-            className="flex shrink-0 items-stretch justify-between overflow-hidden border-t border-edge bg-surface-sunken px-3"
+            className="flex shrink-0 items-stretch justify-between overflow-hidden border-t border-edge bg-surface-sunken"
             style={{ height: STATUS_BAR_HEIGHT }}
             onContextMenu={event => openMenu(event)}
         >

@@ -1,4 +1,4 @@
-/** `settings` — the Settings window (registry-driven; see appSettings.ts). */
+/** `settings` - the Settings window (registry-driven; see appSettings.ts). */
 export const settings = {
     title: "Settings",
     searchPlaceholder: "Search settings…",
@@ -8,7 +8,8 @@ export const settings = {
     noneExposed: "No implemented settings are currently exposed.",
     invalidValue: "Please provide a valid value",
     persistFailed: "Failed to persist setting",
-    // Category chrome — keys mirror the category `key` in appSettings.ts.
+    customColor: "Custom color…",
+    // Category chrome - keys mirror the category `key` in appSettings.ts.
     categories: {
         general: {
             label: "General",
@@ -35,7 +36,7 @@ export const settings = {
             description: "Telemetry, developer helpers and experimental toggles.",
         },
     },
-    // Individual settings — keyed by the setting they localize.
+    // Individual settings - keyed by the setting they localize.
     items: {
         language: {
             label: "Language",
@@ -49,6 +50,21 @@ export const settings = {
                 light: "Light",
                 dark: "Dark",
             },
+        },
+        accentColor: {
+            label: "Accent color",
+            description: "Color used for selection, focus rings, and primary buttons across the Studio interface.",
+            options: {
+                teal: "Leaf teal",
+                sky: "Sky",
+                indigo: "Indigo",
+                rose: "Rose",
+                slate: "Slate",
+            },
+        },
+        reduceMotion: {
+            label: "Reduce motion",
+            description: "Turn off animated transitions in the Studio interface. Your game's own animations are unaffected, in the editor and when it ships.",
         },
         zoomPercent: {
             label: "Interface zoom",

@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { Info } from "lucide-react";
-import { Select, Switch, type SelectOption } from "@/lib/components/elements";
+import { HintPopover, Select, Switch, type SelectOption } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import {
     MOBILE_ORIENTATIONS,
@@ -143,7 +142,7 @@ function SettingShell({
             <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-sm font-medium text-fg">
                     <span>{title}</span>
-                    {hint && <SettingHint text={hint} />}
+                    {hint && <HintPopover text={hint} />}
                 </div>
                 <div className="mt-1 text-2xs leading-relaxed text-fg-subtle">{description}</div>
             </div>
@@ -180,22 +179,3 @@ function SettingRow({
     );
 }
 
-function SettingHint(props: { text: string }) {
-    return (
-        <span className="group/hint relative inline-flex">
-            <button
-                type="button"
-                aria-label={props.text}
-                className="flex h-4 w-4 items-center justify-center rounded-full text-fg-subtle outline-none transition-colors hover:text-fg-muted focus-visible:text-fg-muted"
-            >
-                <Info className="h-3.5 w-3.5" />
-            </button>
-            <span
-                role="tooltip"
-                className="pointer-events-none absolute left-0 top-full z-30 mt-1 w-56 rounded-md border border-edge bg-surface-raised px-2 py-1.5 text-2xs font-normal leading-snug text-fg-muted opacity-0 shadow-xl transition-opacity duration-100 group-hover/hint:opacity-100 group-focus-within/hint:opacity-100"
-            >
-                {props.text}
-            </span>
-        </span>
-    );
-}

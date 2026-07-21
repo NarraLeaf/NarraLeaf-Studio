@@ -1,17 +1,17 @@
 /**
  * Info.plist patcher for the iOS repack. Pure: string in → string out, no fs.
  *
- * The shell template ships a plain-text (XML) Info.plist — the template CI
- * asserts that shape (`plutil -lint`) — so the repack rewrites values in place
+ * The shell template ships a plain-text (XML) Info.plist - the template CI
+ * asserts that shape (`plutil -lint`) - so the repack rewrites values in place
  * rather than re-encoding a binary plist. Only a fixed set of top-level keys
  * is touched: the bundle identity, the two version strings, and the
  * orientation whitelist. Every other byte of the document is preserved, and
  * nested dictionaries (e.g. CFBundleIcons, whose PNG *files* the zip layer
  * swaps) are never entered.
  *
- * Values are located structurally — the immediate children of the root
+ * Values are located structurally - the immediate children of the root
  * <dict>, tracking nesting depth so a key of the same name inside a nested
- * dict is not mistaken for the top-level one — not by blind text replacement.
+ * dict is not mistaken for the top-level one - not by blind text replacement.
  */
 
 const ORIENTATION_VALUES: Record<"landscape" | "portrait" | "auto", string[]> = {
@@ -35,7 +35,7 @@ function* iterateTags(xml: string): Generator<Token> {
     let match: RegExpExecArray | null;
     while ((match = tagRe.exec(xml)) !== null) {
         if (match[2] === undefined) {
-            continue; // comment / PI / doctype — skipped
+            continue; // comment / PI / doctype - skipped
         }
         yield {
             tag: match[2],
@@ -146,7 +146,7 @@ function orientationArray(orientation: "landscape" | "portrait" | "auto", indent
     return `<array>\n${inner}\n${indent}</array>`;
 }
 
-/** Leading whitespace of the line the offset sits on — to indent a rebuilt array. */
+/** Leading whitespace of the line the offset sits on - to indent a rebuilt array. */
 function lineIndent(xml: string, offset: number): string {
     const lineStart = xml.lastIndexOf("\n", offset - 1) + 1;
     const match = /^[\t ]*/.exec(xml.slice(lineStart, offset));
@@ -185,7 +185,7 @@ function unescapeXml(value: string): string {
         .replace(/&amp;/g, "&");
 }
 
-/** Read the identity fields back — for the repack self-check and tests. */
+/** Read the identity fields back - for the repack self-check and tests. */
 export function parseInfoPlist(xml: string): InfoPlistIdentity {
     const children = locateRootChildren(xml);
     return {
@@ -199,7 +199,7 @@ export function parseInfoPlist(xml: string): InfoPlistIdentity {
 /**
  * Rewrite the identity/orientation fields of an Info.plist. Every requested
  * key must already exist in the template (the shell contract guarantees the
- * placeholder keys are present) — a missing key is an error rather than a
+ * placeholder keys are present) - a missing key is an error rather than a
  * silent no-op, so a template drift is caught, not shipped.
  *
  * Edits are applied right-to-left by document offset so earlier spans stay

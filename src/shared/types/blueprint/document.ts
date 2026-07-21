@@ -1,5 +1,5 @@
 /**
- * Blueprint System — canonical domain model (owner, document, program, members, bindings).
+ * Blueprint System - canonical domain model (owner, document, program, members, bindings).
  * Does not import ui-editor types to avoid cycles; ui-editor bridges map to these types in M1+.
  */
 
@@ -18,7 +18,7 @@ export type BlueprintOwnerRef =
     | { kind: "sharedAsset"; assetId: string }
     /**
      * Story Action Blueprint: an implicit project resource bound 1:1 to a single story action.
-     * Self-referential — the owner key equals the blueprint id. Has no surface; its only event is
+     * Self-referential - the owner key equals the blueprint id. Has no surface; its only event is
      * "On Call". Scene membership is derived at compile time, not baked into identity.
      *
      * `mode` distinguishes how the "On Call" graph is consumed:
@@ -34,7 +34,7 @@ export type BlueprintOwnerRef =
 
 /**
  * True for synchronous story blueprints whose "On Call" graph must be evaluated inline with no async
- * nodes — both inline value interpolations and control-flow conditions.
+ * nodes - both inline value interpolations and control-flow conditions.
  */
 export function isStorySyncValueOwner(owner: BlueprintOwnerRef | undefined): boolean {
     return owner?.kind === "storyAction" && (owner.mode === "value" || owner.mode === "condition");
@@ -207,7 +207,7 @@ export type BlueprintGraphEdge = {
 export type BlueprintEventGraph = {
     id: string;
     name?: string;
-    /** Event execution graph — may contain effectful nodes */
+    /** Event execution graph - may contain effectful nodes */
     graph?: BlueprintGraphIr;
     meta?: Record<string, unknown>;
 };

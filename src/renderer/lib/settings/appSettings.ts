@@ -13,6 +13,11 @@ import {
     MAX_ACTIVE_EDITORS_MIN,
 } from "@/lib/settings/editorLayoutOptions";
 import {
+    ACCENT_COLOR_DEFAULT,
+    ACCENT_PRESETS,
+    ACCENT_SWATCHES,
+} from "@shared/constants/accent";
+import {
     ZOOM_PERCENT_DEFAULT,
     ZOOM_PERCENT_MAX,
     ZOOM_PERCENT_MIN,
@@ -124,10 +129,59 @@ export const AppSettings: AppSettingDefinition[] = [
         },
     },
     {
+        // Applied by the renderer (`lib/appearance`): the stored value overrides the
+        // `--nl-primary` channels on the root element, which every `*-primary` utility in the
+        // product resolves through. Stored as a preset id or a `#rrggbb` hex — the presets are
+        // the guided path (hue-shifts of the brand anchor at low saturation, see
+        // @shared/constants/accent), the picker is there for anything else. What keeps "any
+        // color" honest is `--nl-on-primary`, the derived ink that stops a pale accent from
+        // making every primary button unreadable. Studio chrome only; a game keeps the anchor.
+        key: "ui.accentColor",
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Color,
+        label: "Accent color",
+        labelKey: "settings.items.accentColor.label",
+        description: "Color used for selection, focus rings, and primary buttons across the Studio interface.",
+        descriptionKey: "settings.items.accentColor.description",
+        defaultValue: ACCENT_COLOR_DEFAULT,
+        options: ACCENT_PRESETS.map(preset => preset.id),
+        optionLabels: Object.fromEntries(ACCENT_PRESETS.map(preset => [preset.id, preset.label])),
+        optionLabelKeys: {
+            teal: "settings.items.accentColor.options.teal",
+            sky: "settings.items.accentColor.options.sky",
+            indigo: "settings.items.accentColor.options.indigo",
+            rose: "settings.items.accentColor.options.rose",
+            slate: "settings.items.accentColor.options.slate",
+        },
+        optionColors: ACCENT_SWATCHES,
+        allowCustomColor: true,
+        // Live preview while dragging; the commit on release is what persists and broadcasts.
+        onPreview: (value) => {
+            void import("@/lib/appearance").then(({ previewAccentColor }) => previewAccentColor(value));
+        },
+    },
+    {
+        // Applied by the renderer in two halves, because one cannot reach the other: the
+        // `.nl-reduce-motion` class on the root element neutralizes CSS transitions and
+        // animations (styles.css), and the MotionConfig in `lib/renderApp` does the same for
+        // framer-motion, which animates from JS where no CSS rule applies. Game content — the
+        // story preview's stage, Dev Mode — is exempt from both.
+        key: "ui.reduceMotion",
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Reduce motion",
+        labelKey: "settings.items.reduceMotion.label",
+        description: "Turn off animated transitions in the Studio interface. Your game's own animations are unaffected, in the editor and when it ships.",
+        descriptionKey: "settings.items.reduceMotion.description",
+        defaultValue: false,
+    },
+    {
         // Applied by the main process to every Studio window's webContents
         // (`AppWindow.applyStoredZoom`). Cmd/Ctrl +/-/0 write this same key, so the
         // shortcuts and this field stay in agreement. The Dev Mode window is
-        // excluded — it renders the game at its real stage size.
+        // excluded - it renders the game at its real stage size.
         key: "ui.zoomPercent",
         category: "appearance",
         scope: SettingScope.Global,
@@ -225,7 +279,7 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: true,
     },
     {
-        // Handled entirely by `clearAllProjectStats`; nothing is stored under this key — it is
+        // Handled entirely by `clearAllProjectStats`; nothing is stored under this key - it is
         // only the identity of the button. Scoped to every project because the Settings window is
         // its own window and has no current project; the per-project reset lives on the dashboard.
         key: "dashboard.clearAllStats",
@@ -257,7 +311,7 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: true,
     },
     {
-        // Read by WorkspaceLayout: drops the title-bar search pill. The palette keeps working —
+        // Read by WorkspaceLayout: drops the title-bar search pill. The palette keeps working -
         // with the box gone it renders its own input inside the candidate card.
         key: "ui.titleBarSearch.visible",
         category: "appearance",
@@ -270,7 +324,7 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: true,
     },
     {
-        // Nothing is stored under this key — the background's own settings (image, opacity, fill,
+        // Nothing is stored under this key - the background's own settings (image, opacity, fill,
         // anchor) are written by the workspace dialog this button opens. Picking a file, previewing
         // the opacity and choosing how it fills the window only make sense together, so they live
         // in one dialog instead of three unrelated rows here. Like `keybindings.open`, the button
@@ -307,7 +361,7 @@ export const AppSettings: AppSettingDefinition[] = [
     },
     {
         // The keyboard-shortcut table, rendered inline by `SETTING_PANELS.keybindings`. Nothing is
-        // written here by the settings layer — the panel reads and writes this key itself, as one
+        // written here by the settings layer - the panel reads and writes this key itself, as one
         // `catalogId -> chord` map, and every open workspace picks the change up through the
         // global-state broadcast (see UIService's keybinding override sync).
         key: KEYBINDING_OVERRIDES_SETTINGS_KEY,

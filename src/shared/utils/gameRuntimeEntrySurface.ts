@@ -3,7 +3,7 @@ import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 /**
  * Entry-surface lookups shared by the runtime shells: the desktop shell sizes
  * and colors its BrowserWindow from these before first paint, and the web
- * export bakes the same values into its generated index.html — so both shells
+ * export bakes the same values into its generated index.html - so both shells
  * show an identical pre-boot frame for the same pack.
  */
 
@@ -18,7 +18,7 @@ export function resolveGameRuntimeEntrySurface(pack: GameRuntimePackV1) {
  * The shell background is visible until the renderer's first paint, so it
  * should match the entry surface instead of flashing black under a light UI.
  * Mirrors the renderer's surface background defaults: app surfaces are white
- * unless configured, stage surfaces are transparent — which has no opaque
+ * unless configured, stage surfaces are transparent - which has no opaque
  * equivalent and falls back to black, as does anything unparseable.
  */
 export function resolveGameRuntimeInitialBackgroundColor(pack: GameRuntimePackV1): string {

@@ -35,7 +35,12 @@ async function resolveAvailableLogPath(exportDir: string, defaultFileName: strin
 }
 
 /**
- * Handler for launching workspace window
+ * Handler for opening a project in a workspace window - the launcher's recent list and folder
+ * picker, and the project wizard's hand-off.
+ *
+ * Shares {@link App.openProject} with {@link WorkspaceOpenRecentHandler}, so a project that is
+ * already open is focused rather than opened a second time whichever surface asked. Retiring the
+ * opener (and everything that gates it) is decided there too.
  */
 export class WorkspaceLaunchHandler extends IPCHandler<IPCEventType.workspaceLaunch> {
     readonly name = IPCEventType.workspaceLaunch;
@@ -45,30 +50,9 @@ export class WorkspaceLaunchHandler extends IPCHandler<IPCEventType.workspaceLau
         window: AppWindow,
         { props, closeCurrentWindow }: IPCEvents[IPCEventType.workspaceLaunch]["data"]
     ): Promise<RequestStatus<void>> {
-        window.getApp().authorizeRecentProjectAccess(window, props.projectPath);
-
-        const workspaceWindow = await window.getApp().launchWorkspace(window, props, {
-            minWidth: 800,
-            minHeight: 600,
-            width: 1400,
-            height: 900,
+        await window.getApp().openProject(window, props.projectPath, {
+            replaceOpener: closeCurrentWindow,
         });
-
-        if (window.getApp().isDevMode()) {
-            workspaceWindow.onKeyUp("F12", () => {
-                workspaceWindow.toggleDevTools();
-            });
-        }
-
-        // Retire the opener only once the new workspace actually loaded its project — a window
-        // that comes up on the "not a project" screen must not consume the window it came from.
-        if (closeCurrentWindow) {
-            workspaceWindow.onLoadResult(ok => {
-                if (ok && !window.isClosed()) {
-                    window.close();
-                }
-            });
-        }
 
         return this.success(void 0);
     }
@@ -90,12 +74,8 @@ export class WorkspaceReportLoadResultHandler extends IPCHandler<IPCEventType.wo
 }
 
 /**
- * Handler for opening a project from the recent list.
- *
- * Unlike {@link WorkspaceLaunchHandler}, which always launches, this focuses a window that
- * already has the project open and only launches a fresh one otherwise — the behaviour the
- * top-bar switcher and the "Open Recent" menus want. File-access authorization is shared through
- * {@link App.openRecentProject}.
+ * Handler for opening a project from the recent list - the top-bar switcher and the "Open Recent"
+ * menus. Behaviour is shared with {@link WorkspaceLaunchHandler} through {@link App.openProject}.
  */
 export class WorkspaceOpenRecentHandler extends IPCHandler<IPCEventType.workspaceOpenRecent> {
     readonly name = IPCEventType.workspaceOpenRecent;
@@ -105,7 +85,7 @@ export class WorkspaceOpenRecentHandler extends IPCHandler<IPCEventType.workspac
         window: AppWindow,
         { projectPath, replaceCurrentWindow }: IPCEvents[IPCEventType.workspaceOpenRecent]["data"],
     ): Promise<RequestStatus<void>> {
-        await window.getApp().openRecentProject(window, projectPath, { replaceOpener: replaceCurrentWindow });
+        await window.getApp().openProject(window, projectPath, { replaceOpener: replaceCurrentWindow });
         return this.success(void 0);
     }
 }
@@ -140,7 +120,7 @@ export class WorkspaceSelectFolderHandler extends IPCHandler<IPCEventType.worksp
  * Handler for closing workspace window.
  *
  * Returning to the launcher is the workspace window's own close behaviour (see the close guard
- * installed in App.launchWorkspace), so this only has to request the close — the native close
+ * installed in App.launchWorkspace), so this only has to request the close - the native close
  * box takes the exact same path.
  */
 export class WorkspaceCloseHandler extends IPCHandler<IPCEventType.workspaceClose> {

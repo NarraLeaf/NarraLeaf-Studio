@@ -105,7 +105,7 @@ function formatExportTimestamp(timestamp: number): string {
  */
 function buildExportContent(entries: ConsoleEntry[], label: string): string {
     const header = [
-        `NarraLeaf Studio — ${label} console log`,
+        `NarraLeaf Studio ${label} console log`,
         `Exported: ${formatExportTimestamp(Date.now())}`,
         `Entries: ${entries.length}`,
         "",
@@ -441,9 +441,12 @@ function ConsoleProgressBar({ progress }: { progress: ConsoleProgress | null }) 
             title={progress.label}
         >
             {progress.indeterminate ? (
+                // `nl-motion-keep`: the sweep is the only thing saying the build is alive — the
+                // pipeline gives us nothing to fill a real bar with. Under the reduced-motion
+                // preference (styles.css) a stopped bar would read as a hang instead.
                 <>
-                    <div className={`absolute inset-y-0 animate-progress-indeterminate-1 rounded-full ${barColor}`} />
-                    <div className={`absolute inset-y-0 animate-progress-indeterminate-2 rounded-full ${barColor}`} />
+                    <div className={`nl-motion-keep absolute inset-y-0 animate-progress-indeterminate-1 rounded-full ${barColor}`} />
+                    <div className={`nl-motion-keep absolute inset-y-0 animate-progress-indeterminate-2 rounded-full ${barColor}`} />
                 </>
             ) : (
                 <div

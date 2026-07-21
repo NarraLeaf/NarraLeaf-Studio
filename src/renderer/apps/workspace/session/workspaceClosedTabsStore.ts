@@ -11,7 +11,7 @@ import { buildTabDefinition, trySerializeTab } from "./workspaceEditorSession";
  *
  * Reuses the workspace-session serialization: a closed tab is stored as the same
  * `SerializedTab` the restart restore uses, so reopening goes through the exact
- * code path that already knows how to rebuild every tab kind — and silently
+ * code path that already knows how to rebuild every tab kind - and silently
  * skips tabs whose resource has since been deleted (`buildTabDefinition`
  * returns null for those).
  *
@@ -23,7 +23,7 @@ export interface ClosedTabRecord {
     /** Group the tab lived in; reopening falls back to the default group if it is gone. */
     groupId: string;
     /**
-     * Position within the group at the moment this tab was removed — not its
+     * Position within the group at the moment this tab was removed - not its
      * position before the batch started. See `recordClosedTabs`.
      */
     index: number;
@@ -36,19 +36,19 @@ let stack: ClosedTabRecord[] = [];
 /**
  * Record tabs removed by a user-initiated close. Call BEFORE the store drops
  * them (the tab definitions and their indices must still be readable).
- * Non-serializable tabs are skipped — they cannot be rebuilt, so offering to
+ * Non-serializable tabs are skipped - they cannot be rebuilt, so offering to
  * "reopen" them would produce a dead entry.
  *
  * `index` is each tab's position before the batch closed, but what gets stored
  * is its position *as it was removed*: a batch is torn down left to right, so by
  * the time the nth entry goes the n before it are already gone and every later
  * index has shifted down by n. Recording the shifted value is what lets the LIFO
- * reopen invert the close — popping newest-first re-inserts each tab into the
+ * reopen invert the close - popping newest-first re-inserts each tab into the
  * same list state its index was taken from. Storing the raw pre-close index
  * instead only round-trips when the closed tabs are a contiguous suffix ("close
  * to the right"); "close all" on [A,B,C,D] would reopen as [A,D,B,C].
  *
- * Skipped entries still count toward the shift — a non-serializable tab is
+ * Skipped entries still count toward the shift - a non-serializable tab is
  * removed like any other, it just never comes back.
  */
 export function recordClosedTabs(

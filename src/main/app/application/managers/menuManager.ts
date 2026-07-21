@@ -23,7 +23,7 @@ import type { Translator } from "@shared/i18n";
  * The menu is rebuilt rather than mutated, because its shape depends on things that change at
  * runtime: which window is focused (home and a project get different menus), the language, and
  * the menu model the focused workspace pushes up over IPC (see `syncWindowMenu`). Menu items
- * only name renderer action ids — the renderer owns the behaviour (`useMenuActionHandler`).
+ * only name renderer action ids - the renderer owns the behaviour (`useMenuActionHandler`).
  *
  * No group is recognised by id here: a synced group carries the `slot` it asked for, and this
  * class only decides what each slot means. Which panel produced a group is none of its business.
@@ -33,7 +33,7 @@ export class MenuManager {
 
     private menu: Menu | null = null;
     /**
-     * Latest menu model per window. Keyed by the AppWindow object itself — unlike its
+     * Latest menu model per window. Keyed by the AppWindow object itself - unlike its
      * webContents id, the object stays safely usable after the BrowserWindow is destroyed,
      * and forgetWindow runs from the 'closed' handler where webContents access throws.
      */
@@ -41,7 +41,7 @@ export class MenuManager {
     /**
      * The window the menu currently describes. Electron reports no focused window whenever the
      * app is not frontmost, and the menu must not collapse to the home shape just because the
-     * user clicked another app — so the last focused window stays authoritative.
+     * user clicked another app - so the last focused window stays authoritative.
      */
     private lastFocusedWindow: AppWindow | null = null;
     /** Input snapshot of the last build, so redundant rebuilds can be skipped (see computeMenuKey). */
@@ -62,7 +62,7 @@ export class MenuManager {
         // The menu shape follows the focused window. Only focus is tracked, not blur: blurring
         // means the app went to the background, which must not change the menu. Focus events
         // also fire on every app activation, so this path skips the rebuild when the menu
-        // would come out identical — rebuilding closes any open menu under the user's pointer.
+        // would come out identical - rebuilding closes any open menu under the user's pointer.
         this.app.electronApp.on("browser-window-focus", this.onBrowserWindowFocus);
     }
 
@@ -77,7 +77,7 @@ export class MenuManager {
         this.lastMenuKey = this.computeMenuKey();
         this.setMenu(this.menu);
 
-        // The native menu bar cannot be inspected from the renderer, so log what was built —
+        // The native menu bar cannot be inspected from the renderer, so log what was built -
         // it is the only way to check the menu's shape without clicking it by hand.
         this.app.logger.debug(`[Menu] Built: ${template.map(item => item.label ?? item.role).join(" | ")}`);
 
@@ -117,7 +117,7 @@ export class MenuManager {
 
     /**
      * Take the menu model a workspace renderer pushed up. Only rebuilds when that window is the
-     * focused one — a background window's model is stored for when it comes forward.
+     * focused one - a background window's model is stored for when it comes forward.
      */
     public syncWindowMenu(window: AppWindow, model: NativeMenuModel): void {
         this.syncedModels.set(window, model);
@@ -135,7 +135,7 @@ export class MenuManager {
 
     /**
      * Drop a closed window's model so it cannot leak into a later menu. Called from
-     * unregisterWindow, which can run after the BrowserWindow is destroyed — nothing here may
+     * unregisterWindow, which can run after the BrowserWindow is destroyed - nothing here may
      * touch the window's webContents.
      */
     public forgetWindow(window: AppWindow): void {
@@ -155,8 +155,8 @@ export class MenuManager {
     }
 
     /**
-     * The window the menu and its actions belong to: whatever is focused, or — while the app is
-     * in the background — whatever was focused last, as long as it is still alive.
+     * The window the menu and its actions belong to: whatever is focused, or - while the app is
+     * in the background - whatever was focused last, as long as it is still alive.
      *
      * Read-only, so it is safe to call from computeMenuKey and from a menu item's click. The
      * fallback is kept current by rememberFocus/forgetWindow.
@@ -302,8 +302,8 @@ export class MenuManager {
     private buildWorkspaceTemplate(t: Translator["t"], window: AppWindow): MenuItemConstructorOptions[] {
         const model = this.syncedModels.get(window);
         const groups = model?.groups ?? [];
-        // Each group goes where it asked to go. A slot may hold more than one group — nothing
-        // stops two surfaces from both contributing Edit items — so these are filters, not finds.
+        // Each group goes where it asked to go. A slot may hold more than one group - nothing
+        // stops two surfaces from both contributing Edit items - so these are filters, not finds.
         const editGroups = groups.filter(group => group.slot === "edit");
         const windowGroups = groups.filter(group => group.slot === "window");
         const topLevelGroups = groups.filter(group => group.slot === "top-level");
@@ -356,7 +356,7 @@ export class MenuManager {
                 submenu: [
                     // Dev Mode and Preview are toggles (the same action stops a running
                     // instance), so a checkmark shows which one is live. Electron flips a
-                    // checkbox visually on every click, before anything has actually started —
+                    // checkbox visually on every click, before anything has actually started -
                     // the rebuild right after puts the checkmark back under the synced status,
                     // which flips it for real once the runtime reports running.
                     {
@@ -420,8 +420,8 @@ export class MenuManager {
     }
 
     /**
-     * The "Open Recent" submenu. Unlike New/Open — which dispatch an action into the focused
-     * renderer — its items open (or focus, if already open) a project straight from the main
+     * The "Open Recent" submenu. Unlike New/Open - which dispatch an action into the focused
+     * renderer - its items open (or focus, if already open) a project straight from the main
      * process, so they work regardless of which surface handles menu actions. An empty history
      * shows a single disabled placeholder rather than a bare submenu.
      */
@@ -452,7 +452,7 @@ export class MenuManager {
             return;
         }
 
-        void target.getApp().openRecentProject(target, projectPath).catch((error) => {
+        void target.getApp().openProject(target, projectPath).catch((error) => {
             this.app.logger.error("Failed to open recent project from menu:", error);
         });
     }
@@ -485,7 +485,7 @@ export class MenuManager {
     /**
      * The standard Edit menu. When the focused surface supplies its own version of a standard
      * command (a copy/cut/paste/delete tagged with `role`), that command is routed to the
-     * surface's action instead of the built-in webContents role — the menu shows one Copy, and
+     * surface's action instead of the built-in webContents role - the menu shows one Copy, and
      * it does the right thing for what is focused. Untagged entries are appended below a
      * separator.
      */

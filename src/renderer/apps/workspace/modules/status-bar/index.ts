@@ -20,7 +20,7 @@ export { StatusEntry } from "./StatusEntry";
  * Registration order is what places an entry: the first entry registered for a side sits against
  * that side's outer edge, and each later one is packed further *inward*, toward the middle of the
  * bar. Items registered at runtime through `StatusBarService` join the end of the list, so plugin
- * entries land closest to the centre. Users can hide entries but cannot reorder them — the
+ * entries land closest to the centre. Users can hide entries but cannot reorder them - the
  * positions are a property of the registry, not a preference.
  *
  * Concretely: left entries render in this order left-to-right, and right entries render in the

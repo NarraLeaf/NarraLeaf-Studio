@@ -8,8 +8,10 @@ import type { StoryScenePreviewPaneMode } from "./storyScenePreviewSessionStore"
 const NOOP = () => undefined;
 
 /**
- * The story editor's live-preview pane: an embedded NLR stage rendering the state of the
- * currently selected row, with a status/diagnostics strip underneath.
+ * The story editor's live-preview pane: an embedded NLR stage rendering the settled state of the
+ * currently selected row, with a status/diagnostics strip underneath. The stage is always frozen —
+ * it shows *what the stage looks like at this row*, never a playable session. Interactive
+ * "play from here" lives in Dev Mode, launched from a row's ▶ button.
  *
  * The same pane is reused whether it is docked in the split-pane or floating as a
  * picture-in-picture window; `mode` only affects the header controls, and
@@ -25,7 +27,6 @@ export function StoryScenePreviewPane(props: {
     const { t } = useTranslation();
     const { controller, onClose, mode = "dock", onToggleFloat, onHeaderPointerDown } = props;
     const busy = controller.phase === "compiling" || controller.phase === "mounting" || controller.phase === "starting";
-    const showSceneStartHint = controller.stageLayers.length > 0 && controller.targetBlockId === null && !busy && controller.phase !== "error";
     const notes = [
         ...controller.diagnostics.map(diagnostic => ({ level: diagnostic.level, message: diagnostic.message })),
         ...controller.issues,
@@ -75,6 +76,8 @@ export function StoryScenePreviewPane(props: {
                     <div key={layer.session.id} ref={layer.setRootElement} className="absolute inset-0">
                         <NlrStageLayer
                             session={layer.session}
+                            // The state preview is inert: the stage is a still of the selected row,
+                            // never a playable session.
                             interactive={false}
                             renderOnStage
                             onLiveGameReady={controller.onLiveGameReady}
@@ -96,9 +99,6 @@ export function StoryScenePreviewPane(props: {
                             <div className="mt-1 break-words text-2xs text-white/70">{controller.errorMessage}</div>
                         </div>
                     </div>
-                ) : null}
-                {showSceneStartHint ? (
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/70 to-transparent px-3 pb-2 pt-6 text-center text-2xs text-fg-muted"></div>
                 ) : null}
             </div>
 

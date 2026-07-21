@@ -3,7 +3,7 @@ import type { StoryActionPayload, StoryBlock, StoryDocument } from "@shared/type
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { buildStoryCommandContext } from "./storyCommandContext";
 
-/** One action block per line, in root order — enough to exercise the stage-object collection. */
+/** One action block per line, in root order - enough to exercise the stage-object collection. */
 function documentWith(payloads: Record<string, StoryActionPayload>): StoryDocument {
     const blocks: Record<string, StoryBlock> = {};
     const rootBlockIds: string[] = [];
@@ -20,7 +20,7 @@ function documentWith(payloads: Record<string, StoryActionPayload>): StoryDocume
     };
 }
 
-describe("buildStoryCommandContext — stage objects", () => {
+describe("buildStoryCommandContext - stage objects", () => {
     it("collects the named objects an author can reference, per kind", () => {
         const document = documentWith({
             b1: { action: "image", operation: "create", objectName: "hero", assetId: "img-1" },
@@ -38,7 +38,7 @@ describe("buildStoryCommandContext — stage objects", () => {
             scene: document.scenes["scene-1"],
         });
 
-        // This is what makes `/imgshow`, `/settext`, `/vidshow`, `/stop` a pick rather than a guess —
+        // This is what makes `/imgshow`, `/settext`, `/vidshow`, `/stop` a pick rather than a guess -
         // image/text/layer via the shared displayable collector, video/audio scanned off the scene.
         expect(context.stageObjects.image).toEqual(["hero"]);
         expect(context.stageObjects.text).toEqual(["title"]);

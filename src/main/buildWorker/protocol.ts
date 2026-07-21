@@ -46,7 +46,7 @@ export type GameBuildWorkerTarget = {
 };
 
 /**
- * Web export packaging job. The compiled static site is finished as-is —
+ * Web export packaging job. The compiled static site is finished as-is -
  * no electron-builder involved: "dir" copies it into the output directory,
  * "zip" archives it (site files at the archive root, ready to upload).
  */
@@ -72,7 +72,7 @@ export type GameBuildWorkerWebJob = {
  * API). The worker only reads files and moves bytes.
  */
 export type GameBuildWorkerMobileJob = {
-    /** Compiled static-site dir — the same web compile the web target uses. */
+    /** Compiled static-site dir - the same web compile the web target uses. */
     sourceDir: string;
     /** The shell template contract, already validated by the manager. */
     templateManifest: MobileShellManifest;
@@ -96,9 +96,9 @@ export type GameBuildWorkerMobileJob = {
         outputName: string;
         /** Already through normalizeAndroidPackageName. */
         applicationId: string;
-        /** android:versionName — the project's raw semver. */
+        /** android:versionName - the project's raw semver. */
         versionName: string;
-        /** android:versionCode — monotonic integer from deriveAndroidVersionCode. */
+        /** android:versionCode - monotonic integer from deriveAndroidVersionCode. */
         versionCode: number;
         /** Icon slot (zip entry path) → absolute path of the scaled PNG. */
         iconPngBySlot?: Record<string, string>;

@@ -6,7 +6,7 @@ import { PROJECT_STATS_SETTINGS_KEY_PREFIX, createEmptyProjectStats } from "@sha
  * Reset the accumulated activity statistics of every project this Studio has recorded.
  *
  * Runs from the Settings window, which has no workspace context and therefore no notion of a
- * "current project" — hence the all-projects scope. The per-project equivalent lives on the
+ * "current project" - hence the all-projects scope. The per-project equivalent lives on the
  * dashboard, where the project is known.
  *
  * Keys are overwritten with an empty record rather than deleted: global state exposes no delete

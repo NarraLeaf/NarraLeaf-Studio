@@ -1,7 +1,7 @@
 /**
  * On-demand static statistics for the open project: scale (scenes, lines,
  * words, assets, blueprints), branch count, and per-language translation
- * progress. Nothing here is persisted or cached — the snapshot is recomputed
+ * progress. Nothing here is persisted or cached - the snapshot is recomputed
  * by whoever renders it.
  * Comments in English per project convention.
  */
@@ -21,6 +21,7 @@ import {
 } from "@/lib/workspace/services/localization/localizationModel";
 import { countWords } from "@/lib/workspace/stats/wordCount";
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene } from "@shared/types/story";
+import { savedVariableDefs, sceneVariableDefs } from "@shared/types/story";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 
 export type LocaleProgressStat = {
@@ -154,7 +155,7 @@ function scanStories(documents: readonly StoryDocument[]): StoriesScan {
     for (const document of documents) {
         scan.stories += 1;
         scan.chapters += document.chapters.length;
-        scan.savedVariables += Object.keys(document.savedVariables ?? {}).length;
+        scan.savedVariables += Object.keys(savedVariableDefs(document)).length;
 
         for (const scene of Object.values(document.scenes)) {
             const sceneScan = scanScene(scene);
@@ -165,7 +166,7 @@ function scanStories(documents: readonly StoryDocument[]): StoriesScan {
             scan.choices += sceneScan.choices;
             scan.branches += sceneScan.choiceOptions;
             scan.totalWords += sceneScan.words;
-            scan.sceneVariables += Object.keys(scene.sceneVariables ?? {}).length;
+            scan.sceneVariables += Object.keys(sceneVariableDefs(scene)).length;
         }
     }
     return scan;
@@ -341,7 +342,7 @@ export async function computeProjectStatsSnapshot(ctx: WorkspaceContext): Promis
     };
 }
 
-/** Total word count only — the cheap path used for the daily writing-curve snapshot. */
+/** Total word count only - the cheap path used for the daily writing-curve snapshot. */
 export async function computeTotalWordCount(ctx: WorkspaceContext): Promise<number> {
     try {
         const documents = await loadStoryDocuments(ctx);

@@ -11,7 +11,7 @@ export enum SettingScope {
 
 /**
  * Panels a `SettingValueType.Custom` entry can render. Referenced by id rather than by component
- * so this module — which the workspace imports too — stays free of React: the Settings window
+ * so this module - which the workspace imports too - stays free of React: the Settings window
  * resolves the id against its own panel registry.
  */
 export type SettingPanelId = "keybindings";
@@ -28,6 +28,20 @@ export interface SettingDescriptor<T extends SettingValueType = SettingValueType
     options?: string[];
     /** Human-facing label per option value (e.g. locale code → endonym). */
     optionLabels?: Record<string, string>;
+    /** Color only: the swatch each option value paints, as a CSS color. */
+    optionColors?: Record<string, string>;
+    /**
+     * Color only: offer a full picker alongside the preset swatches, storing a `#rrggbb` hex
+     * instead of an option id. Off by default — a setting whose colors are a design decision
+     * should not quietly accept any value.
+     */
+    allowCustomColor?: boolean;
+    /**
+     * Color only: apply a value locally, without storing it, while the user is still dragging in
+     * the picker. Nothing is persisted and no other window sees it — the commit does that. A
+     * setting that can be previewed knows how to apply itself; the settings layer does not.
+     */
+    onPreview?: (value: string) => void;
     /** Numeric bounds and granularity: Slider needs them; number inputs clamp and step by them. */
     min?: number;
     max?: number;
@@ -40,7 +54,7 @@ export interface SettingDescriptor<T extends SettingValueType = SettingValueType
     confirmLabel?: string;
     /** Action only: renders the button in the destructive variant. */
     danger?: boolean;
-    /** Action only: invoke on the first click — for navigation-style actions with no consequence. */
+    /** Action only: invoke on the first click - for navigation-style actions with no consequence. */
     skipConfirm?: boolean;
     /** Action only: renders the button disabled (the row description carries the reason). */
     disabled?: boolean;
@@ -70,6 +84,20 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     optionLabels?: Record<string, string>;
     /** i18n key per option value; when set, overrides `optionLabels` at render time. */
     optionLabelKeys?: Record<string, TranslationKey>;
+    /** Color only: the swatch each option value paints, as a CSS color. */
+    optionColors?: Record<string, string>;
+    /**
+     * Color only: offer a full picker alongside the preset swatches, storing a `#rrggbb` hex
+     * instead of an option id. Off by default — a setting whose colors are a design decision
+     * should not quietly accept any value.
+     */
+    allowCustomColor?: boolean;
+    /**
+     * Color only: apply a value locally, without storing it, while the user is still dragging in
+     * the picker. Nothing is persisted and no other window sees it — the commit does that. A
+     * setting that can be previewed knows how to apply itself; the settings layer does not.
+     */
+    onPreview?: (value: string) => void;
     /** Numeric bounds and granularity: Slider needs them; number inputs clamp and step by them. */
     min?: number;
     max?: number;
@@ -77,7 +105,7 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     /** Rendered after the value, e.g. "%". */
     unit?: string;
     /**
-     * `SettingValueType.Action` only: what the button does. It owns its own effects — the settings
+     * `SettingValueType.Action` only: what the button does. It owns its own effects - the settings
      * layer stores nothing for an Action and `key` is only an identity for it.
      */
     onInvoke?: () => Promise<void>;
@@ -94,7 +122,7 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     confirmLabelKey?: TranslationKey;
     /** Action only: renders the button in the destructive variant. */
     danger?: boolean;
-    /** Action only: invoke on the first click — for navigation-style actions with no consequence. */
+    /** Action only: invoke on the first click - for navigation-style actions with no consequence. */
     skipConfirm?: boolean;
     /**
      * Action only: dynamic availability, re-evaluated on mount and whenever the Settings window

@@ -99,7 +99,7 @@ describe("signApkV2 + verifyApkV2", () => {
 /**
  * External oracle: when the Android SDK's apksigner is on PATH (the CI runner,
  * or a dev machine that installed it), it must accept our signature. Skipped
- * otherwise — the pipeline never ships or requires the SDK.
+ * otherwise - the pipeline never ships or requires the SDK.
  */
 describe("apksigner oracle (SDK-gated)", () => {
     let apksigner: string | null = null;

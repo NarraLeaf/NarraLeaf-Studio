@@ -1,7 +1,7 @@
 /**
  * Game voice-over (player-facing spoken dialogue) shared types.
  *
- * Studio does not record audio — voice work is done externally and *imported*.
+ * Studio does not record audio - voice work is done externally and *imported*.
  * A voice unit therefore links a story line to an audio asset that already
  * lives in the project's asset library; a director then approves takes.
  *
@@ -28,7 +28,7 @@ export type VoiceDocumentVersion = typeof VOICE_DOCUMENT_SCHEMA_VERSION;
  * Persistent-storage key holding the player's current voice language. Read
  * synchronously through the shared host persistence snapshot (same channel as
  * `nls.locale`), so the scene's voice resolver can pick the right take per line
- * without recompiling. Distinct from `nls.locale` on purpose — dub language and
+ * without recompiling. Distinct from `nls.locale` on purpose - dub language and
  * subtitle language are separate player choices.
  */
 export const VOICE_LOCALE_STORAGE_KEY = "nls.voiceLocale";
@@ -46,7 +46,7 @@ export type VoiceConfiguration = {
      * Filename convention for the recording-script export and audio batch
      * import (see shared/utils/voiceNaming). The recording script also carries
      * each line's authoritative unit id, so a drifted filename never loses the
-     * link — the pattern is for humans in the booth.
+     * link - the pattern is for humans in the booth.
      */
     namingPattern: string;
     /**
@@ -101,7 +101,7 @@ function normalizeVoiceCast(value: unknown): Record<string, Record<string, strin
 
 /**
  * Coerce an unknown (persisted / partially-migrated) value into a complete
- * VoiceConfiguration. Malformed entries are dropped, never thrown — a corrupt
+ * VoiceConfiguration. Malformed entries are dropped, never thrown - a corrupt
  * config must not block project load (mirrors localization / network config).
  */
 export function normalizeVoiceConfiguration(value: unknown): VoiceConfiguration {
@@ -144,7 +144,7 @@ export function isVoiceEnabled(config: VoiceConfiguration): boolean {
  * Stored status of a voice unit.
  *  - "linked": an audio asset has been imported and assigned to the line.
  *  - "approved": a director has signed the take off.
- * A unit only exists once a clip is linked, so "missing" is never stored — it is
+ * A unit only exists once a clip is linked, so "missing" is never stored - it is
  * derived from the absence of a unit. "stale" is likewise NOT stored: it is
  * derived by comparing `sourceHash` against the current line text, so editing a
  * line never has to touch voice files (mirrors localization's stale handling).
@@ -181,7 +181,7 @@ export function createEmptyVoiceDocument(locale: LocaleCode): VoiceDocument {
 
 /**
  * Coerce an unknown parsed JSON value into a VoiceDocument, dropping malformed
- * units. Never throws — a broken voice file degrades to empty.
+ * units. Never throws - a broken voice file degrades to empty.
  */
 export function normalizeVoiceDocument(value: unknown, locale: LocaleCode): VoiceDocument {
     const document = createEmptyVoiceDocument(locale);

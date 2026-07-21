@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
-import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Music, Plus, Route, UserRoundPlus, Variable, Video } from "lucide-react";
+import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Music, Play, Plus, Route, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useTranslation } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
+import { getCommandGhost } from "./storyCommandGhost";
+import { getCommandLineDraftReason, getCommandLineReason } from "./storyCommandReason";
 import { isMacPlatform } from "@/lib/app/platform";
 import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -26,8 +29,10 @@ import {
     type PaletteActionCommand,
 } from "./storyActionCommands";
 import { searchActionCommands } from "./storyCommandSearch";
+import { localizeSpecCommand, specPaletteCommands } from "./commands/specPalette";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
-import { getCommandDef, paramTypes } from "./storyCommandGrammar";
+import { paramTypes } from "./storyCommandGrammar";
+import { getCommandDef } from "./commands/registry";
 import { completionFor, defaultHighlights, getCommandCursor, type StoryCommandCursor } from "./storyCommandCursor";
 import { getCommandCandidates, hasCandidateSource, type StoryCommandCandidate } from "./storyCommandCandidates";
 import { parseCommandLine } from "./storyCommandParser";
@@ -63,6 +68,8 @@ export function StoryBlockRow(props: {
     scene: StoryScene;
     document: StoryDocument;
     characters: Character[];
+    /** What a name on a draft line may refer to - the reason line resolves against the same view the slot does. */
+    commandContext: StoryCommandContext;
     selected: boolean;
     active: boolean;
     collapsed: boolean;
@@ -105,6 +112,8 @@ export function StoryBlockRow(props: {
     onAddInside: (parentId: StoryBlockId) => void;
     /** Append an if / else-if / else branch to a condition container. */
     onAddBranch: (conditionId: StoryBlockId, branch: "if" | "elseIf" | "else") => void;
+    /** Run the live preview forward from this row (on an option row: enter that branch). */
+    onPlayFromRow: (blockId: StoryBlockId) => void;
 }) {
     const { t } = useTranslation();
     const { row, scene, document, characters, selected, active, collapsed, editing, textInputRef, inspectorOpen } = props;
@@ -236,6 +245,7 @@ export function StoryBlockRow(props: {
                         <BlockPreview
                             block={block}
                             scene={scene}
+                            commandContext={props.commandContext}
                             tempSpeakers={props.tempSpeakers}
                             onSetSpeaker={props.onSetSpeaker}
                             onCreateCharacter={props.onCreateCharacter}
@@ -244,14 +254,17 @@ export function StoryBlockRow(props: {
                             onSetDialogueCharacter={props.onSetDialogueCharacter}
                         />
                     ) : null}
-                    {containerInfo ? (
-                        <ContainerHeaderAdd info={containerInfo} onAdd={() => props.onAddInside(block.id)} />
-                    ) : (
-                        <div className="ml-auto flex shrink-0 items-center gap-1">
-                            <StoryVoiceIndicator block={block} />
-                            <RowActions onInsertAfter={props.onInsertAfter} onDelete={props.onDeleteRow} active={active} />
-                        </div>
-                    )}
+                    <div className="ml-auto flex shrink-0 items-center gap-1">
+                        {containerInfo ? (
+                            <ContainerHeaderAdd info={containerInfo} onAdd={() => props.onAddInside(block.id)} />
+                        ) : (
+                            <>
+                                <StoryVoiceIndicator block={block} />
+                                <RowActions onInsertAfter={props.onInsertAfter} onDelete={props.onDeleteRow} active={active} />
+                            </>
+                        )}
+                        <RowPlayAction block={block} active={active} onPlay={() => props.onPlayFromRow(block.id)} />
+                    </div>
                 </div>
                 {containerInfo ? (
                     <ContainerFooter
@@ -531,6 +544,45 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
     );
 }
 
+/**
+ * "Play from here": hands this row to the live preview as a continuous playback start point.
+ *
+ * On a menu option or condition branch it is a *branch entry* — playback takes that road and keeps
+ * going past the container, which is the one thing the state preview can't show you by selecting a
+ * row. Those rows say so in words; ordinary rows keep the cluster quiet with an icon.
+ */
+function RowPlayAction(props: { block: StoryBlock; active: boolean; onPlay: () => void }) {
+    const { t } = useTranslation();
+    const { block } = props;
+    // Rows with no runtime behaviour have no meaningful "play from here" — starting there would
+    // silently begin somewhere else.
+    if (block.kind === "note" || block.kind === "code" || block.kind === "invalid") {
+        return null;
+    }
+    const branchEntry = (block.kind === "nodeAction" && block.payload.action === "choiceOption")
+        || (block.kind === "control" && block.payload.control === "conditionBranch");
+    const label = branchEntry ? t("story.rows.playBranch") : t("story.rows.playFromRow");
+    return (
+        <button
+            type="button"
+            tabIndex={-1}
+            title={label}
+            aria-label={label}
+            className={[
+                "flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-2xs text-fg-muted transition-opacity hover:bg-fill hover:text-primary group-hover:pointer-events-auto group-hover:opacity-100",
+                props.active ? "opacity-100" : "pointer-events-none opacity-0",
+            ].join(" ")}
+            onClick={event => {
+                event.stopPropagation();
+                props.onPlay();
+            }}
+        >
+            <Play className="h-3 w-3" />
+            {branchEntry ? <span>{label}</span> : null}
+        </button>
+    );
+}
+
 // --- Control-flow container rendering: accordion headers + visual indent rails. ---
 
 /** Indent step (px) per nesting level. Each level draws a vertical guide rail. */
@@ -600,7 +652,7 @@ function conditionSummary(condition: unknown, scene: StoryScene, document: Story
     const value = condition as
         | { kind: "variable"; target: { scope: string; variableId?: string; storageKey?: string }; operator: string; value?: unknown }
         | { kind: "blueprint"; blueprintId: string }
-        | { kind: "expression"; source: string }
+        | { kind: "expression"; expression: { source: string } }
         | undefined;
     if (!value) {
         return t("story.condition.summarySet");
@@ -609,14 +661,23 @@ function conditionSummary(condition: unknown, scene: StoryScene, document: Story
         return t("story.condition.summaryGraph");
     }
     if (value.kind === "expression") {
-        return value.source || t("story.condition.summaryExpression");
+        return value.expression?.source || t("story.condition.summaryExpression");
     }
     const target = value.target;
-    const name = target.scope === "scene"
-        ? scene.sceneVariables?.[target.variableId ?? ""]?.name ?? t("story.condition.fallbackVariable")
-        : target.scope === "saved"
-          ? document.savedVariables?.[target.variableId ?? ""]?.name ?? t("story.condition.fallbackVariable")
-          : t("story.condition.fallbackPersistent");
+    // v6: the variableId is a declaration row's id - read the name off the row itself.
+    const declarationName = (variableId: string | undefined): string | null => {
+        if (!variableId) return null;
+        const inScene = scene.blocks[variableId];
+        if (inScene?.kind === "declaration") return inScene.payload.name;
+        for (const candidate of Object.values(document.scenes)) {
+            const block = candidate.blocks[variableId];
+            if (block?.kind === "declaration") return block.payload.name;
+        }
+        return null;
+    };
+    const name = target.scope === "persistent"
+        ? t("story.condition.fallbackPersistent")
+        : declarationName(target.variableId) ?? t("story.condition.fallbackVariable");
     const operator = conditionOperatorLabel(value.operator, t);
     const suffix = value.operator === "equals" || value.operator === "notEquals" ? ` ${String(value.value ?? "")}` : "";
     return `${name} ${operator}${suffix}`.trim();
@@ -800,6 +861,49 @@ function candidateIcon(cursor: StoryCommandCursor, candidate: StoryCommandCandid
     }
 }
 
+/**
+ * The grey `<Var Name>` that trails the caret on a command line.
+ *
+ * Rendered as a mirror of the typed text — the text itself repeated but invisible, then the hint —
+ * rather than by measuring the caret's pixel offset. Measuring would need a canvas metrics pass that
+ * re-runs on every keystroke and still drifts on font fallback (a CJK variable name is the case that
+ * breaks it); repeating the text lets the browser do the layout with the same font, in the same box,
+ * and the hint lands exactly where the next character would.
+ *
+ * Consequently the mirror must match the textarea's own metrics exactly: same `textStyle`, same zero
+ * padding, `whitespace-pre` so runs of spaces measure as typed, and `pointer-events-none` so a click
+ * anywhere still lands in the field beneath.
+ */
+function CommandGhostHint(props: { value: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext }) {
+    const { t } = useTranslation();
+    const ghost = useMemo(() => getCommandGhost(props.value, props.caret), [props.caret, props.value]);
+    // Why the line will not commit, if it will not. It outranks the hint: naming the next slot while
+    // the line is already broken answers a question the author is no longer asking.
+    const reason = useMemo(
+        () => getCommandLineReason(props.value, props.commandContext),
+        [props.commandContext, props.value],
+    );
+    if (!ghost && !reason) {
+        return null;
+    }
+    return (
+        <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 select-none overflow-hidden whitespace-pre"
+            style={props.textStyle}
+        >
+            {/* Invisible, not `opacity-0` on the whole span: only the copy of the typed text should be
+                hidden, and it still has to occupy its exact width to push what follows into place. */}
+            <span className="invisible">{props.value}</span>
+            {reason ? (
+                <span className="text-danger/80">{`  ${t(reason.key, reason.params)}`}</span>
+            ) : (
+                <span className="italic text-fg-subtle">{`<${t(`story.paramHint.${ghost!.hintKey}` as TranslationKey)}>`}</span>
+            )}
+        </span>
+    );
+}
+
 export function InsertRow(props: {
     mode: Extract<EditorMode, { kind: "insert" }>;
     /** Nesting depth of where the new block will land, so the slot lines up under its future siblings. */
@@ -831,7 +935,11 @@ export function InsertRow(props: {
     const pluginCommands = useStoryPluginActionCommands();
     const actionOptions = useMemo<PaletteActionCommand[]>(
         () => searchActionCommands(
-            [...ACTION_COMMANDS, ...pluginCommands].map(command => localizeActionCommand(command, t)),
+            [
+                // The slash menu lists LINE commands (one per spec); plugin actions ride along as before.
+                ...specPaletteCommands().map(command => localizeSpecCommand(command, t)),
+                ...pluginCommands.map(command => localizeActionCommand(command, t)),
+            ],
             chooserQuery,
         ),
         [chooserQuery, pluginCommands, t],
@@ -869,10 +977,13 @@ export function InsertRow(props: {
                 icon: icon?.icon,
                 iconClassName: icon?.className,
                 tag: candidate.free ? t("story.rows.tempSpeaker") : undefined,
+                ...(candidate.free ? { free: true as const } : {}),
             };
         });
     }, [cursor, props.commandContext, resolvedArgs, t]);
-    const argMenu = useStoryCandidateMenuState(argItems, defaultHighlights(cursor));
+    // The candidates decide the highlight along with the cursor: an untyped slot and a slot whose best
+    // offer is the author's own text both have to leave Enter meaning "submit". See `defaultHighlights`.
+    const argMenu = useStoryCandidateMenuState(argItems, defaultHighlights(cursor, argItems));
 
     /**
      * The argument menu owns the slot whenever the caret is past the command name.
@@ -923,7 +1034,10 @@ export function InsertRow(props: {
     };
 
     return (
-        <div className="relative grid min-h-[35px] grid-cols-[36px_28px_1fr] items-start border-l-2 border-transparent pr-3">
+        // The open slot is the active line: it carries the same left-accent + fill the active/editing
+        // rows use, so "you are creating a row here" reads at a glance (the rows drop their own
+        // highlight while it is open — see the tab's `insertActive`).
+        <div className="relative grid min-h-[35px] grid-cols-[36px_28px_1fr] items-start border-l-2 border-primary bg-fill-subtle pr-3">
             <div aria-hidden />
             <div className="flex justify-center pt-1">
                 <Plus className="h-4 w-4 text-primary" />
@@ -936,12 +1050,17 @@ export function InsertRow(props: {
                 <div style={{ paddingLeft: (props.depth ?? 0) * RAIL_STEP }}>
                 <div className="flex min-h-[27px] items-center gap-2">
                 <span className="h-6 w-6 shrink-0" aria-hidden />
+                {/* The ghost hint sits in a wrapper around the textarea rather than the row's own
+                    anchor, so it is positioned against the field's box and inherits its exact metrics.
+                    `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
+                <div className="relative flex min-w-0 flex-1">
+                <CommandGhostHint value={props.mode.value} caret={caret} textStyle={textStyle} commandContext={props.commandContext} />
                 <textarea
                     ref={props.inputRef}
                     // Same in-place surface as an editing row (see TextEditBox): the new line reads as a
                     // line being typed, not a widget dropped into the list — which is what lets narration's
                     // Enter fall into this slot without the text visibly jumping.
-                    className="min-h-[20px] min-w-0 flex-1 resize-none bg-transparent px-0 py-0 text-fg outline-none placeholder:italic placeholder:text-fg-subtle"
+                    className="relative min-h-[20px] w-full resize-none bg-transparent px-0 py-0 text-fg outline-none placeholder:italic placeholder:text-fg-subtle"
                     style={textStyle}
                     rows={1}
                     value={props.mode.value}
@@ -1050,6 +1169,7 @@ export function InsertRow(props: {
                         }
                     }}
                 />
+                </div>
                 </div>
                 </div>
                 {actionMenuOpen ? (
@@ -1744,11 +1864,30 @@ function TextClickTarget(props: { style?: CSSProperties; className?: string; chi
     );
 }
 
+/** A draft row's line: the source, and why it has not committed yet. */
+function DraftRowPreview(props: { source: string; commandContext: StoryCommandContext }) {
+    const { t } = useTranslation();
+    const reason = useMemo(
+        () => getCommandLineDraftReason(props.source, props.commandContext),
+        [props.commandContext, props.source],
+    );
+    const reasonText = reason
+        ? t(reason.key, reason.paramHintKey ? { ...reason.params, slot: t(reason.paramHintKey) } : reason.params)
+        : t("story.rows.invalidHint");
+    return (
+        <span className="flex min-w-0 flex-1 items-baseline gap-2">
+            <span className="min-w-0 truncate font-mono text-sm text-warning">{props.source}</span>
+            <span className="shrink-0 truncate text-2xs text-warning/80">{reasonText}</span>
+        </span>
+    );
+}
+
 function BlockPreview(props: {
     block: StoryBlock;
     scene: StoryScene;
     document: StoryDocument;
     characters: Character[];
+    commandContext: StoryCommandContext;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     tempSpeakers: TempSpeakerRef[];
     onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
@@ -1815,15 +1954,12 @@ function BlockPreview(props: {
         );
     }
     if (block.kind === "invalid") {
-        // The muted fallback below would render this as a de-emphasized note — which is the one thing
-        // it must never look like. It is the author's text verbatim (monospace: it was a command), in
-        // danger, with the consequence stated: this row stops a build.
-        return (
-            <span className="flex min-w-0 flex-1 items-baseline gap-2">
-                <span className="min-w-0 truncate font-mono text-sm text-danger">{block.payload.source}</span>
-                <span className="shrink-0 text-2xs text-danger/70">{t("story.rows.invalidHint")}</span>
-            </span>
-        );
+        // A draft, not garbage: the author's text verbatim (monospace: it was a command), amber
+        // rather than error-red - the muted fallback below would render it as a de-emphasized note,
+        // which is the one thing it must never look like. The reason line says what is missing or
+        // wrong, so the row reads as a to-do; the BUILD is where it turns into an error. Click
+        // re-opens the line in place, candidates and all.
+        return <DraftRowPreview source={block.payload.source} commandContext={props.commandContext} />;
     }
     return <span className="min-w-0 flex-1 truncate text-sm text-fg-muted" style={textStyle}>{describeBlock(block, props.characters, props.scene, props.document.scenes)}</span>;
 }

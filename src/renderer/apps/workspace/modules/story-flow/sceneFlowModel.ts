@@ -232,40 +232,6 @@ function layoutPositions(
     return positions;
 }
 
-/** Why a drawn connection cannot become a jump. `null` means it can. */
-export type SceneFlowConnectionRejection = "unknownScene" | "selfJump" | "duplicate" | "sourceLocked";
-
-/**
- * Gate a connection the author is drawing.
- *
- * Pass `ignoreEdgeId` when re-targeting an existing edge, so the edge being moved does not count
- * itself as the duplicate.
- */
-export function validateSceneFlowConnection(
-    graph: SceneFlowGraph,
-    source: StorySceneId | null | undefined,
-    target: StorySceneId | null | undefined,
-    ignoreEdgeId?: string,
-): SceneFlowConnectionRejection | null {
-    if (!source || !target) {
-        return "unknownScene";
-    }
-    const known = new Set(graph.nodes.map(node => node.sceneId));
-    if (!known.has(source) || !known.has(target)) {
-        return "unknownScene";
-    }
-    // A self-jump has no edge to draw — it lands as a badge — so drawing one would look like a no-op.
-    if (source === target) {
-        return "selfJump";
-    }
-    // The map already collapses repeats into one line, and a second identical unconditional jump is
-    // dead code: the first one always wins.
-    if (graph.edges.some(edge => edge.id !== ignoreEdgeId && edge.source === source && edge.target === target)) {
-        return "duplicate";
-    }
-    return null;
-}
-
 export function buildSceneFlowGraph(document: StoryDocument): SceneFlowGraph {
     const sceneIds = orderSceneIds(document);
     const entrySceneId = document.entrySceneId && document.scenes[document.entrySceneId]

@@ -887,24 +887,33 @@ export function ColorPickerTrigger({
         </div>
     );
 
+    const isBareSwatch = displayMode === "swatch";
     const triggerContent = (
         <button
             ref={triggerRef}
             type="button"
             onClick={isOpen ? closePicker : openPicker}
             disabled={disabled || readOnly}
-            className={`
+            className={
+                isBareSwatch
+                    // No box, no padding: the caller frames this one itself. It still needs a focus
+                    // ring of its own - the frame around it is decoration and does not react to focus.
+                    ? "nodrag nowheel block h-5 w-5 rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-fg/70"
+                    : `
                 nodrag nowheel flex items-center rounded-md border border-edge-strong bg-surface-raised px-3 py-2 text-sm
                 text-fg transition focus:outline-none focus:ring-2 focus:ring-primary/50
                 ${displayMode === "icon" ? "gap-2" : "gap-3"}
-            `}
+            `
+            }
             onMouseDown={stopPickerPointerBubble}
             onPointerDown={stopPickerPointerBubble}
         >
-            <span
-                className="h-5 w-5 rounded-full border border-edge-strong"
-                style={{ backgroundColor: displayColor }}
-            />
+            {isBareSwatch ? null : (
+                <span
+                    className="h-5 w-5 rounded-full border border-edge-strong"
+                    style={{ backgroundColor: displayColor }}
+                />
+            )}
             {displayMode === "icon-hex" && (
                 <span className="text-xs text-fg font-mono tracking-wide">
                     {colorState.hex}

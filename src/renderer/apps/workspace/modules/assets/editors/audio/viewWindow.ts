@@ -3,7 +3,7 @@ import type { SampleRange } from "./audioClip";
 /**
  * Zoom/scroll math for the waveform's visible sample window.
  *
- * Kept apart from the component because it is the part that is easy to get subtly wrong — zooming
+ * Kept apart from the component because it is the part that is easy to get subtly wrong - zooming
  * that drifts off the anchor, scrolling that walks past the end, a window that collapses to zero
  * width. Pure functions, so those cases can be pinned down in tests.
  */
@@ -23,7 +23,7 @@ export function fitAll(totalSamples: number): SampleRange {
 }
 
 /**
- * Zoom by `factor` (>1 zooms in) keeping `anchor` — the sample under the pointer, or the playhead —
+ * Zoom by `factor` (>1 zooms in) keeping `anchor` - the sample under the pointer, or the playhead -
  * at the same relative position, so the thing you are looking at does not slide away.
  */
 export function zoomAt(view: SampleRange, totalSamples: number, factor: number, anchor: number): SampleRange {

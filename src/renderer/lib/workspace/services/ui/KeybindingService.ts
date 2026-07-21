@@ -20,7 +20,7 @@ interface ParsedKeybinding {
  * Exported for tests (the platform flag is injected there); production code goes
  * through the service, which resolves the flag itself.
  *
- * `mod` is the primary shortcut modifier — ⌘ on macOS, Ctrl elsewhere. Use it for
+ * `mod` is the primary shortcut modifier - ⌘ on macOS, Ctrl elsewhere. Use it for
  * every cross-platform shortcut instead of registering ctrl/meta twins. Literal
  * `ctrl` stays available for the few bindings that genuinely mean the Control key
  * on macOS too (e.g. ctrl+tab tab-switching, where ⌘+Tab belongs to the OS).
@@ -108,7 +108,7 @@ const KEY_LABELS: Record<string, string> = {
  * Render a binding for humans: "mod+c" → "⌘C" on macOS, "Ctrl+C" elsewhere.
  *
  * The same string a binding is registered with is the one shown in menus, so a
- * `mod` binding must not be displayed verbatim — and hardcoding "ctrl" in the
+ * `mod` binding must not be displayed verbatim - and hardcoding "ctrl" in the
  * label is how it silently drifts from what the key actually does on macOS.
  *
  * Exported for tests (the platform flag is injected there).
@@ -158,7 +158,7 @@ export function sanitizeKeybindingOverrides(raw: unknown): Record<string, string
 /**
  * Build a binding string from a keydown captured by the settings recorder, or null when the
  * event is not a complete chord (a bare modifier, or a bare key with no modifier where one is
- * required is still allowed — F-keys and the like bind fine alone).
+ * required is still allowed - F-keys and the like bind fine alone).
  *
  * The primary modifier records as `mod` (⌘ on macOS, Ctrl elsewhere) so a recorded binding stays
  * portable, matching how built-in bindings are declared. macOS's real Control key records as the
@@ -220,7 +220,7 @@ export class KeybindingService {
      * User rebinds, id → binding string. Applied at match time (and by every display surface via
      * {@link getEffectiveKey}), so a registered binding never has to know it was overridden.
      * Seeded from global state (`keybindings.overrides`) by UIService; persistence is the
-     * caller's job — this layer is intentionally storage-free.
+     * caller's job - this layer is intentionally storage-free.
      */
     private overrides = new Map<string, string>();
     private overrideListeners = new Set<() => void>();
@@ -239,7 +239,7 @@ export class KeybindingService {
         this.emitOverridesChanged();
     }
 
-    /** Set (or clear, with null) one override. Does not persist — the caller does. */
+    /** Set (or clear, with null) one override. Does not persist - the caller does. */
     public setOverride(id: string, key: string | null): void {
         if (key && key.trim()) {
             this.overrides.set(id, key.trim());

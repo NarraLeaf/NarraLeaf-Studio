@@ -106,7 +106,7 @@ export { deriveGameAppId };
  * Fixed hardening fuse set for shipped games; not user-configurable.
  *
  * `hasSigningIdentity` gates asar integrity validation. That fuse hard-quits
- * the app on any post-package mutation of app.asar — real tamper-evidence when
+ * the app on any post-package mutation of app.asar - real tamper-evidence when
  * a trusted signature seals the embedded hash, but on an ad-hoc/unsigned build
  * it is downside-only: an attacker just recomputes the hash and re-signs
  * ad-hoc, while ordinary players get a silent hard-crash if antivirus, disk
@@ -121,7 +121,7 @@ export function gameFusesForPlatform(platform: GameBuildDesktopPlatform, hasSign
         // Left off deliberately: a game stores no Chromium cookies (saves and
         // persistence are its own JSON stores), and enabling OS cookie
         // encryption makes the first launch prompt for keychain/secret-store
-        // access — a bad first impression for zero security gain here.
+        // access - a bad first impression for zero security gain here.
         enableCookieEncryption: false,
         enableNodeOptionsEnvironmentVariable: false,
         enableNodeCliInspectArguments: false,
@@ -193,7 +193,7 @@ export class GameBuildManager {
         } else if (mobileTargets.some(target => target.platform === "android")
             && deriveAndroidVersionCode(version) === null) {
             // A version semver accepts but Android cannot encode blocks only
-            // the Android target — the same project still builds elsewhere.
+            // the Android target - the same project still builds elsewhere.
             findings.push({
                 code: "version-uncodable",
                 severity: "error",
@@ -215,7 +215,7 @@ export class GameBuildManager {
             readProjectIdentifier(projectConfig),
             projectConfig?.name?.trim() || path.basename(normalizedProjectPath),
         );
-        // Both mobile platforms normalize the app id, by opposite rules — the
+        // Both mobile platforms normalize the app id, by opposite rules - the
         // shipped id can differ from the one shown everywhere else, so say so
         // rather than let them find out from the installed app's details.
         if (mobileTargets.some(target => target.platform === "android")) {
@@ -355,7 +355,7 @@ export class GameBuildManager {
         // A platform outside the union (malformed non-UI payload) must also
         // fail loudly: with the explicit partitions above it would otherwise
         // fall into none of them and the build would "succeed" with zero
-        // artifacts — worse than the TypeError the old desktop fall-through
+        // artifacts - worse than the TypeError the old desktop fall-through
         // produced.
         const unknownTargets = targets.filter(target =>
             !isDesktopBuildPlatform(target.platform)
@@ -403,7 +403,7 @@ export class GameBuildManager {
         }
         if (mobileTargets.length > 0 && this.encryptAssetsEnabled(projectConfig)) {
             // "does not yet": unlike the web export, mobile protection is a
-            // planned milestone — the shells carry the interception point
+            // planned milestone - the shells carry the interception point
             // already. This branch becomes the protected path then.
             this.emit(session, {
                 level: "info",
@@ -607,7 +607,7 @@ export class GameBuildManager {
         // assets alone exceeding the ceiling means the package certainly will.
         // Inferring the other way is not sound (compression, protection and the
         // runtime all move the number), so a payload under the bar says nothing
-        // and reports nothing — the worker still enforces the real limit on the
+        // and reports nothing - the worker still enforces the real limit on the
         // real bytes.
         const assetBytes = await directorySize(path.join(projectPath, "assets"));
         if (payloadExceedsLimit(assetBytes)) {
@@ -783,7 +783,7 @@ export class GameBuildManager {
         // The build.electronMirror setting drives only the large Electron dist
         // download (via electronDownload.mirror in the config). The separate
         // NSIS/AppImage/7za toolchain download reads ELECTRON_BUILDER_BINARIES_MIRROR,
-        // whose URL layout differs — so it is NOT synthesized from the same
+        // whose URL layout differs - so it is NOT synthesized from the same
         // string; it is inherited from the environment if the user set it.
         return new Promise<string[]>((resolve, reject) => {
             if (session.cancelled) {
@@ -999,7 +999,7 @@ type GameBuildDesktopTarget = GameBuildTarget & { platform: GameBuildDesktopPlat
 
 export function isDesktopTarget(target: GameBuildTarget): target is GameBuildDesktopTarget {
     // Must be the shared exhaustive test, not `platform !== "web"`: this is a
-    // type predicate, whose body TypeScript never checks — the old form
+    // type predicate, whose body TypeScript never checks - the old form
     // silently routed mobile targets into the electron-builder path when the
     // platform union grew.
     return isDesktopBuildPlatform(target.platform);
@@ -1027,12 +1027,12 @@ function normalizeTargets(targets: GameBuildTarget[] | undefined): GameBuildTarg
 /**
  * Only payload that must exist as a real file on disk leaves the asar. The
  * sealed pair does: the codec addon is dlopen'ed by the OS loader, and it then
- * reads the bundle through its own native file I/O — neither goes through
+ * reads the bundle through its own native file I/O - neither goes through
  * Electron's asar-aware fs. native.js (the addon's loader sidecar) and icons
  * (consumed by native image/shell APIs) stay loose for the same reason.
  * Unencrypted assets have no such constraint: the runtime reads them with
  * readFile/stat/ranged createReadStream, which Electron serves from inside
- * app.asar transparently — so they ship in the archive instead of as a loose
+ * app.asar transparently - so they ship in the archive instead of as a loose
  * per-file tree on disk.
  */
 function buildAsarUnpackPatterns(sealed: boolean): string[] {

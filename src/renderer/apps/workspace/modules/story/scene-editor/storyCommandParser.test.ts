@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { ACTION_COMMANDS } from "./storyActionCommands";
 import { allowsFreeValue } from "./storyCommandGrammar";
-import { canCommit, getArgValue, parseCommandLine, tokenizeCommandLine, unfilledParams } from "./storyCommandParser";
+import { listCommandDefs } from "./commands/registry";
+import { canCommit, getArgValue, missingCoreParams, parseCommandLine, tokenizeCommandLine, unfilledParams } from "./storyCommandParser";
 
 function command(source: string) {
     const line = parseCommandLine(source);
@@ -24,13 +24,30 @@ describe("tokenizeCommandLine", () => {
 
     it("groups quoted values and reports the raw text with quotes intact", () => {
         const { tokens, unterminatedQuote } = tokenizeCommandLine("/bg \"city rain\"", 1);
-        expect(tokens[1]).toMatchObject({ text: "city rain", raw: "\"city rain\"", quoted: true });
+        expect(tokens[1]).toMatchObject({ text: "city rain", raw: "\"city rain\"", quoted: true, quote: "double" });
         expect(unterminatedQuote).toBe(false);
     });
 
-    it("flags an unterminated quote", () => {
+    it("groups single-quoted entity references exactly like double quotes, recording the kind", () => {
+        const { tokens, unterminatedQuote } = tokenizeCommandLine("/set 'Complex Var Name' 5", 1);
+        expect(tokens.map(token => token.text)).toEqual(["set", "Complex Var Name", "5"]);
+        expect(tokens[1]).toMatchObject({ text: "Complex Var Name", raw: "'Complex Var Name'", quoted: true, quote: "single" });
+        expect(tokens[2].quote).toBeUndefined();
+        expect(tokens[2].quoted).toBe(false);
+        expect(unterminatedQuote).toBe(false);
+    });
+
+    it("treats the other quote kind as data inside a quoted token", () => {
+        // An apostrophe inside a string, and quote marks inside an entity name, are just characters.
+        expect(tokenizeCommandLine("/bg \"Bob's Bar\"", 1).tokens[1]).toMatchObject({ text: "Bob's Bar", quote: "double" });
+        expect(tokenizeCommandLine("/bg 'say \"hi\"'", 1).tokens[1]).toMatchObject({ text: "say \"hi\"", quote: "single" });
+    });
+
+    it("flags an unterminated quote of either kind", () => {
         expect(tokenizeCommandLine("/bg \"city", 1).unterminatedQuote).toBe(true);
         expect(codes("/bg \"city")).toContain("unterminatedQuote");
+        expect(tokenizeCommandLine("/jump 'Chapter", 1).unterminatedQuote).toBe(true);
+        expect(codes("/jump 'Chapter")).toContain("unterminatedQuote");
     });
 
     it("collapses runs of spaces", () => {
@@ -38,7 +55,7 @@ describe("tokenizeCommandLine", () => {
     });
 });
 
-describe("parseCommandLine — classification", () => {
+describe("parseCommandLine - classification", () => {
     it("classifies empty, narration, character and command lines", () => {
         expect(parseCommandLine("")).toEqual({ kind: "empty" });
         expect(parseCommandLine("他/她走了")).toMatchObject({ kind: "narration", text: "他/她走了" });
@@ -55,18 +72,21 @@ describe("parseCommandLine — classification", () => {
     });
 });
 
-describe("parseCommandLine — command resolution", () => {
+describe("parseCommandLine - command resolution", () => {
     it("resolves the canonical token and its aliases to the same command", () => {
         expect(command("/bg").def?.commandId).toBe("background");
         expect(command("/background").def?.commandId).toBe("background");
         expect(command("/BG").def?.commandId).toBe("background");
     });
 
-    it("still resolves every token the old seam did — short tokens are additive, not a replacement", () => {
-        // `resolveActionCommandToken` matched any ActionCommandId plus the palette aliases. The command
-        // line replaced it, so nothing an author already types may stop resolving.
-        for (const entry of ACTION_COMMANDS) {
-            expect(command(`/${entry.id}`).def?.commandId, `/${entry.id}`).toBe(entry.id);
+    it("resolves every spec token and alias to its owning command", () => {
+        // The registry is the whole vocabulary now: every commit runs one path, and the old
+        // palette-id spellings (`/characterEnter`) were retired with the seam that accepted them.
+        for (const def of listCommandDefs()) {
+            expect(command(`/${def.token}`).def?.commandId, `/${def.token}`).toBe(def.commandId);
+            for (const alias of def.aliases ?? []) {
+                expect(command(`/${alias}`).def?.commandId, `/${alias}`).toBe(def.commandId);
+            }
         }
     });
 
@@ -76,18 +96,18 @@ describe("parseCommandLine — command resolution", () => {
         expect(command("/note some text here").def?.commandId).toBe("note");
     });
 
-    it("resolves a P0 command by its long id as well as its short token", () => {
-        expect(command("/characterEnter").def?.commandId).toBe("characterEnter");
-        expect(command("/show").def?.commandId).toBe("characterEnter");
-        expect(command("/setVariable").def?.commandId).toBe("setVariable");
-        expect(command("/set").def?.commandId).toBe("setVariable");
+    it("resolves a command by its spec id as well as its token", () => {
+        expect(command("/volume").def?.commandId).toBe("volume");
+        expect(command("/vol").def?.commandId).toBe("volume");
+        expect(command("/show").def?.commandId).toBe("show");
+        expect(command("/set").def?.commandId).toBe("set");
     });
 
-    it("gives the paramless remainder no params, so the caller can route them to the menu path", () => {
-        // `displayableShow` needs a resolved displayable target, so it stays out of the grammar and keeps
-        // the menu path until that candidate work lands (see the P1 section note in the grammar).
-        expect(command("/displayableShow").def?.params).toEqual([]);
-        expect(command("/bg").def?.params.length).toBeGreaterThan(0);
+    it("lets a paramless container commit through the same path as everything else", () => {
+        // No second behaviour hides behind `params.length === 0` any more: `/parallel` has a spec, an
+        // empty grammar, and commits exactly as `/bg forest` does.
+        expect(command("/parallel").def?.params).toEqual([]);
+        expect(canCommit(parseCommandLine("/parallel"))).toBe(true);
     });
 
     it("reports an unknown command and stops", () => {
@@ -97,7 +117,7 @@ describe("parseCommandLine — command resolution", () => {
     });
 });
 
-describe("parseCommandLine — lines that must become invalid rows", () => {
+describe("parseCommandLine - lines that must become invalid rows", () => {
     // Ported from `resolveActionCommandToken.test.ts`: the command line took over that seam, so these
     // are now the parser's to get right. A line that resolves to nothing must never become prose.
     it.each([
@@ -117,7 +137,7 @@ describe("parseCommandLine — lines that must become invalid rows", () => {
     });
 });
 
-describe("parseCommandLine — args", () => {
+describe("parseCommandLine - args", () => {
     it("fills positional params in declaration order", () => {
         const line = command("/set gold 100");
         expect(line.args.map(arg => [arg.param?.name, arg.value])).toEqual([["variable", "gold"], ["value", "100"]]);
@@ -139,6 +159,19 @@ describe("parseCommandLine — args", () => {
         expect(getArgValue(command("/bg \"city rain\" t=fade"), "image")).toBe("city rain");
     });
 
+    it("addresses an entity name with spaces through single quotes", () => {
+        expect(getArgValue(command("/set 'Complex Var Name' 5"), "variable")).toBe("Complex Var Name");
+        expect(getArgValue(command("/set 'Complex Var Name' 5"), "value")).toBe("5");
+        expect(getArgValue(command("/jump 'Scene Name'"), "scene")).toBe("Scene Name");
+        expect(getArgValue(command("/show 'My Poster'"), "target")).toBe("My Poster");
+        expect(codes("/jump 'Scene Name'")).toEqual([]);
+    });
+
+    it("keeps a = inside single quotes as data, same as inside double quotes", () => {
+        expect(getArgValue(command("/bg image='city rain'"), "image")).toBe("city rain");
+        expect(getArgValue(command("/jump 'a=b'"), "scene")).toBe("a=b");
+    });
+
     it("anchors a named arg's spans to the key and the value separately", () => {
         const arg = command("/bg forest t=fade").args[1];
         expect(arg.keySpan).toEqual({ start: 11, end: 12 });
@@ -146,7 +179,7 @@ describe("parseCommandLine — args", () => {
     });
 });
 
-describe("parseCommandLine — greedy text", () => {
+describe("parseCommandLine - greedy text", () => {
     it("takes the rest of the line verbatim, spaces included", () => {
         expect(getArgValue(command("/say alice 你好 世界"), "text")).toBe("你好 世界");
     });
@@ -160,9 +193,18 @@ describe("parseCommandLine — greedy text", () => {
     it("leaves the greedy param unfilled when only the character is typed", () => {
         expect(getArgValue(command("/say alice"), "text")).toBeUndefined();
     });
+
+    it("does not read an apostrophe in dialogue as an open quote", () => {
+        // `'` is quote syntax on the command line now, but greedy prose is taken verbatim - so the
+        // unterminated-quote issue must not surface for a contraction inside the line of dialogue.
+        const line = command("/say alice don't worry");
+        expect(getArgValue(line, "text")).toBe("don't worry");
+        expect(line.issues).toEqual([]);
+        expect(canCommit(line)).toBe(true);
+    });
 });
 
-describe("parseCommandLine — grammar-level validation", () => {
+describe("parseCommandLine - grammar-level validation", () => {
     it("rejects a value no branch of the union accepts", () => {
         expect(codes("/wait abc")).toEqual(["badValue"]);
         expect(codes("/bgm track fade=soon")).toEqual(["badValue"]);
@@ -177,12 +219,12 @@ describe("parseCommandLine — grammar-level validation", () => {
     });
 
     it("stays silent on a value whose only checkable branch fails but whose context-dependent branch might not", () => {
-        // `forest_day` is not a color, but the asset branch is unresolvable here — flagging it would
+        // `forest_day` is not a color, but the asset branch is unresolvable here - flagging it would
         // be the parser overstepping into the resolution layer's job.
         expect(codes("/bg forest_day")).toEqual([]);
     });
 
-    it("accepts an enum alias without rewriting it — normalization is the resolver's job", () => {
+    it("accepts an enum alias without rewriting it - normalization is the resolver's job", () => {
         expect(codes("/bg forest t=fade")).toEqual([]);
         expect(getArgValue(command("/bg forest t=fade"), "t")).toBe("fade");
     });
@@ -204,7 +246,7 @@ describe("parseCommandLine — grammar-level validation", () => {
         expect(codes("/set gold 100")).toEqual([]);
     });
 
-    it("never faults an unknown speaker — a bare name is a temp speaker, not an error", () => {
+    it("never faults an unknown speaker - a bare name is a temp speaker, not an error", () => {
         // From the interaction model: a dialogue row carries `characterId` XOR `speakerName`, so a name
         // matching no character is a valid line. `#Zoe` and `/say Zoe` must agree on that.
         expect(codes("/say Zoe 你好")).toEqual([]);
@@ -248,11 +290,34 @@ describe("canCommit", () => {
         expect(canCommit(parseCommandLine("/wait abc"))).toBe(false);
     });
 
-    it("allows a command whose params are merely unfilled", () => {
-        // Committing an unfilled block is what picking the action from the palette does today; the
-        // command line must not regress that.
-        expect(canCommit(parseCommandLine("/bg"))).toBe(true);
+    it("allows a command whose non-core params are merely unfilled", () => {
         expect(canCommit(parseCommandLine("/bg forest"))).toBe(true);
+        expect(canCommit(parseCommandLine("/wait"))).toBe(true);
+        expect(canCommit(parseCommandLine("/say Zoe"))).toBe(true);
+    });
+
+    it("blocks a command whose required core is unfilled, and names the missing slot", () => {
+        // Bible B9: a committed row is always a complete instruction. `/bg` alone lands as a draft,
+        // and the draft's reason line reads the missing core off this list.
+        expect(canCommit(parseCommandLine("/bg"))).toBe(false);
+        expect(missingCoreParams(parseCommandLine("/bg")).map(param => param.name)).toEqual(["image"]);
+        expect(missingCoreParams(parseCommandLine("/bg forest"))).toEqual([]);
+    });
+
+    it("reads a bare flag as a named boolean (bible B5)", () => {
+        const line = command("/bgm battle loop");
+        expect(getArgValue(line, "loop")).toBe("true");
+        expect(line.issues).toEqual([]);
+        // Before any positional is filled, a flag-shaped word is a value, not a flag.
+        expect(getArgValue(command("/bgm loop"), "audio")).toBe("loop");
+    });
+
+    it("skips an omissible leading target when the value slot matches instead (bible B4)", () => {
+        // `/vol 0.5` is a volume with the default target; `/vol piano 0.5` names the sound.
+        expect(getArgValue(command("/vol 0.5"), "volume")).toBe("0.5");
+        expect(getArgValue(command("/vol 0.5"), "target")).toBeUndefined();
+        expect(getArgValue(command("/vol piano 0.5"), "target")).toBe("piano");
+        expect(getArgValue(command("/vol piano 0.5"), "volume")).toBe("0.5");
     });
 
     it("blocks a slash with no command token", () => {

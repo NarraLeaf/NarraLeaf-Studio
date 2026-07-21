@@ -12,7 +12,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 }
 
 const variantStyles: Record<ButtonVariant, string> = {
-    primary: "bg-primary text-white hover:brightness-110",
+    primary: "bg-primary text-on-primary hover:brightness-110",
     secondary: "bg-fill text-fg-muted hover:bg-fill-strong hover:text-fg",
     ghost: "text-fg-muted hover:bg-fill hover:text-fg",
     danger: "bg-danger text-white hover:brightness-110",
@@ -67,6 +67,12 @@ export function IconButton({
 }: Omit<ButtonProps, "children"> & {
     "aria-label": string;
     title?: string;
+    /**
+     * The icon to render. Optional (unlike Button, which requires children),
+     * but not omitted: the icon reaches the <button> through the {...props}
+     * spread below, so the type has to admit it.
+     */
+    children?: React.ReactNode;
 }) {
     const iconSizeStyles: Record<ButtonSize, string> = {
         sm: "w-8 h-8",

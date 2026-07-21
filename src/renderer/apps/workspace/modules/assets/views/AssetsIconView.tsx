@@ -329,7 +329,7 @@ function GroupIconTile({
     return (
         <div
             draggable
-            className={`nl-asset-drag-source border rounded-lg p-3 bg-fill-subtle flex flex-col gap-2 cursor-pointer hover:border-edge-strong ${
+            className={`nl-drag-source border rounded-lg p-3 bg-fill-subtle flex flex-col gap-2 cursor-pointer hover:border-edge-strong ${
                 isSelected ? "border-primary/80 bg-primary/10" : "border-transparent"
             } ${isDragging ? "opacity-50" : ""} ${isCut ? "opacity-40" : ""} ${isDragOverLocal ? "ring-1 ring-primary/50 bg-primary/10" : ""}`}
             onClick={(e) => {
@@ -409,7 +409,7 @@ function AssetIconTile({
     return (
         <div
             draggable
-            className={`nl-asset-drag-source border rounded-lg p-3 bg-fill-subtle flex items-start gap-3 cursor-pointer hover:border-edge-strong ${
+            className={`nl-drag-source border rounded-lg p-3 bg-fill-subtle flex items-start gap-3 cursor-pointer hover:border-edge-strong ${
                 isSelected ? "border-primary/80 bg-primary/10" : "border-transparent"
             } ${isDragging ? "opacity-50" : ""} ${
                 clipboard?.type === "cut" && clipboard.assets.some((a) => a.id === asset.id) ? "opacity-40" : ""

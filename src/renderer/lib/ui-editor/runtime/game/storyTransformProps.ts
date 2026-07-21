@@ -235,7 +235,7 @@ export function injectVisibilityDefault(sequences: { props: Record<string, unkno
 }
 
 /**
- * The settled final props of a transform ref — what the stage looks like after the transform
+ * The settled final props of a transform ref - what the stage looks like after the transform
  * completes. For animation refs this merges every sequence's props in order (later wins,
  * positions merged per-axis, matching NLR's TransformState merge); for preset refs it is the
  * inline props. Visibility folds in the trailing opacity exactly like the live compile path.

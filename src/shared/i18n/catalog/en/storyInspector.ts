@@ -1,4 +1,4 @@
-/** `storyInspector` — the per-action-type inspector in the story scene editor. */
+/** `storyInspector` - the per-action-type inspector in the story scene editor. */
 export const storyInspector = {
     closeEditor: "Close editor",
     noEditableFields: "No editable fields for this action yet.",
@@ -114,15 +114,15 @@ export const storyInspector = {
 
     transitionHint: {
         dissolve: "Crossfades from the previous image to the new one.",
-        blurDissolve: "Crossfades while blurring — a dreamy flashback / dream-state dissolve.",
+        blurDissolve: "Crossfades while blurring, a dreamy flashback / dream-state dissolve.",
         fadeIn: "Fades the new image in from a start position offset.",
         maskCircle: "Circular reveal / close driven by an animated mask radius.",
-        softIris: "Feathered circular reveal — the soft-edged counterpart of Mask circle.",
-        maskWipe: "Hard-edged directional reveal — the new image is uncovered by a sweeping straight edge (no feather).",
-        softWipe: "Feathered directional wipe — the new image erases in with a soft gradient edge.",
-        blinds: "Venetian blinds reveal — slats widen to uncover the new image.",
-        slide: "Push — the new image slides in from one edge as the old one slides out.",
-        throughColor: "Covers the frame with a solid colour (using the chosen pattern), holds, then uncovers on the new image — the target appears only after the colour hold. Covers fade-to-black/white, soft wipe through black, blinds black hold, iris to black, and flash (hold 0).",
+        softIris: "Feathered circular reveal, the soft-edged counterpart of Mask circle.",
+        maskWipe: "Hard-edged directional reveal. The new image is uncovered by a sweeping straight edge (no feather).",
+        softWipe: "Feathered directional wipe. The new image erases in with a soft gradient edge.",
+        blinds: "Venetian blinds reveal. Slats widen to uncover the new image.",
+        slide: "Push. The new image slides in from one edge as the old one slides out.",
+        throughColor: "Covers the frame with a solid colour (using the chosen pattern), holds, then uncovers on the new image. The target appears only after the colour hold. Covers fade-to-black/white, soft wipe through black, blinds black hold, iris to black, and flash (hold 0).",
     },
 
     wipeDirection: {
@@ -350,12 +350,19 @@ export const storyInspector = {
     },
 
     condition: {
-        legacyExpression: "Legacy expression conditions are preserved in the document but are not part of the NLR action surface.",
+        brokenExpression: "This expression no longer resolves - a variable it reads may have been renamed or deleted. The branch evaluates false until it is fixed.",
         clear: "Clear condition",
     },
 
     code: {
         language: "Language",
         source: "Source",
+    },
+
+    declaration: {
+        name: "Name",
+        type: "Type",
+        default: "Default",
+        description: "Description",
     },
 } as const;
