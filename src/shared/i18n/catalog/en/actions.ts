@@ -33,6 +33,10 @@ export const actions = {
             label: "Open Welcome",
             tooltip: "Open welcome screen",
         },
+        about: {
+            label: "About",
+            tooltip: "About NarraLeaf Studio",
+        },
     },
     export: {
         chooseFolder: "Choose a folder for the exported project package.",

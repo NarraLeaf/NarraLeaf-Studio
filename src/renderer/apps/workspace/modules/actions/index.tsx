@@ -14,6 +14,7 @@ import { Workspace } from "@/lib/workspace/workspace";
 import { UIService } from "@/lib/workspace/services/ui";
 import { Services } from "@/lib/workspace/services/services";
 import { openWelcomeTab } from "../welcome/openWelcomeTab";
+import { openAboutTab } from "../about/openAboutTab";
 import { getInterface } from "@/lib/app/bridge";
 import { Separator } from "../../registry/types";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
@@ -318,6 +319,17 @@ export const helpActionGroup: ModuleActionGroup = {
                 openWelcomeTab(workspace.getContext());
             },
             order: 0,
+        },
+        {
+            id: "narraleaf-studio:about",
+            label: "About",
+            labelKey: "actions.help.about.label",
+            tooltip: "About NarraLeaf Studio",
+            tooltipKey: "actions.help.about.tooltip",
+            onClick: (workspace: Workspace) => {
+                openAboutTab(workspace.getContext());
+            },
+            order: 1,
         },
     ],
 };

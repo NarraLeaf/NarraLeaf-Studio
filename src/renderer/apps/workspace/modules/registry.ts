@@ -8,6 +8,7 @@ import { assetsModule, assetsBottomModule } from "./assets";
 import { propertiesModule } from "./properties";
 import { consoleModule } from "./console";
 import { welcomeModule } from "./welcome";
+import { aboutModule } from "./about";
 import { globalActions, globalActionGroups } from "./actions";
 import { imagePreviewModule } from "./assets/editors/imagePreviewModule";
 import { audioPreviewModule } from "./assets/editors/audioPreviewModule";
@@ -53,6 +54,7 @@ export const builtInPanels: PanelModule[] = [
  */
 export const builtInEditors: EditorModule[] = [
     welcomeModule,
+    aboutModule,
     imagePreviewModule,
     audioPreviewModule,
     videoPreviewModule,

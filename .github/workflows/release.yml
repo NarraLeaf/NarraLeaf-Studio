@@ -1,0 +1,133 @@
+name: Release
+
+# Cuts a downloadable, versioned GitHub Release from a version tag. Push a tag
+# like v0.1.1 and this builds the three desktop installers — Windows x64 and
+# macOS on both architectures — and attaches them to a Release named for the
+# tag, marked as the latest stable.
+#
+# Nothing here is code-signed, so every installer is unsigned and the OS will
+# quarantine it on first launch — the same caveat as the nightly builds.
+#
+# workflow_dispatch is offered for a dry run: dispatched from a branch there is
+# no tag, so the `release` job is skipped and only the installers are produced
+# as run artifacts. A real Release is published only for a pushed v* tag.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+# The publish job creates the Release and uploads assets; the token needs write.
+permissions:
+  contents: write
+
+# One tag, one release run. Do not cancel a publish midway.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      # One broken target must not hide the results of the other two.
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            args: --win --x64
+            electron_arch: x64
+          - name: macos-x64
+            os: macos-latest
+            args: --mac --x64
+            electron_arch: x64
+          - name: macos-arm64
+            os: macos-latest
+            args: --mac --arm64
+            electron_arch: arm64
+
+    name: build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      # npm_config_arch is load-bearing on the macos-x64 target: prepare-preview-
+      # runner.js stages node_modules/electron/dist into resources/, and that copy
+      # becomes the Electron runtime the packaged Studio ships. Electron's installer
+      # honours npm_config_arch, so without this the x64 job — running on an arm64
+      # runner — would embed an arm64 runtime in an Intel-Mac installer, where it
+      # cannot execute. --no-immutable because this repo deliberately does not
+      # commit yarn.lock, so every CI run legitimately writes one.
+      - name: Install dependencies
+        run: yarn install --no-immutable
+        env:
+          npm_config_arch: ${{ matrix.electron_arch }}
+
+      # --publish never: the separate `release` job attaches the installers, so
+      # electron-builder must not try to reach a release itself.
+      # CSC_IDENTITY_AUTO_DISCOVERY=false stops it hunting for a signing identity
+      # the runner does not have.
+      - name: Package
+        run: yarn pack-electron ${{ matrix.args }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      # Only the installers — the unpacked app directories in build/ are hundreds
+      # of megabytes of intermediate output. if-no-files-found: error because a
+      # packaging step that silently produces nothing must not read as a pass.
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: narraleaf-studio-${{ matrix.name }}
+          path: |
+            build/*.exe
+            build/*.dmg
+            build/*.zip
+          if-no-files-found: error
+
+  # Collect every platform's installers and publish them as one Release for the
+  # tag. Skipped on workflow_dispatch (there is no tag to release).
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all installers
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-artifacts
+
+      # gh is preinstalled on the runner, so no third-party action is pulled in to
+      # touch the release. Re-running against an existing tag refreshes its assets
+      # in place rather than failing.
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find dist-artifacts -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' \) | sort)
+          test "${#files[@]}" -gt 0 || { echo "::error::no installers found to attach"; exit 1; }
+          printf 'attaching:\n'; printf '  %s\n' "${files[@]}"
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --repo "$REPO" --clobber
+          else
+            gh release create "$TAG" "${files[@]}" \
+              --repo "$REPO" \
+              --title "$TAG" \
+              --generate-notes \
+              --verify-tag
+          fi
