@@ -1018,6 +1018,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         onChooseTempSpeaker={editor.chooseTempSpeakerForInsert}
                                         tempSpeakers={editor.tempSpeakers}
                                         onBackspaceEmpty={editor.handleInsertBackspaceEmpty}
+                                        slashAtAlias={editor.slashAtAlias}
                                     />
                                 ) : (
                                 <StoryBlockRow
@@ -1099,6 +1100,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         onChooseTempSpeaker={editor.chooseTempSpeakerForInsert}
                                         tempSpeakers={editor.tempSpeakers}
                                         onBackspaceEmpty={editor.handleInsertBackspaceEmpty}
+                                        slashAtAlias={editor.slashAtAlias}
                                     />
                                 ) : null}
                             </div>
@@ -1123,6 +1125,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         onChooseTempSpeaker={editor.chooseTempSpeakerForInsert}
                         tempSpeakers={editor.tempSpeakers}
                         onBackspaceEmpty={editor.handleInsertBackspaceEmpty}
+                        slashAtAlias={editor.slashAtAlias}
                     />
                 ) : isInsertingAfterLastRow ? null : (
                     <button
