@@ -152,6 +152,11 @@ export const workspace = {
         noActiveEditor: "No active editor",
         closePanel: "Close panel",
         closeTab: "Close {name}",
+        newTab: "New tab",
+        // Browser-style blank tab opened by the tab strip's "+".
+        newTabPage: {
+            title: "New Tab",
+        },
         tabMenu: {
             close: "Close",
             closeOthers: "Close others",
