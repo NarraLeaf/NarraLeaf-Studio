@@ -291,6 +291,23 @@ select:focus {
 }
 
 /*
+ * Custom workspace background reveal (see WorkspaceLayout). When a wallpaper is set the workspace
+ * root carries `.nl-has-workspace-bg`, and a single pre-composited backdrop (surface colour +
+ * wallpaper at its configured strength) sits behind the chrome. Making the base `bg-surface` fill
+ * fully transparent turns every base panel — and the seams between them — into a window onto that
+ * one backdrop, so the picture reads identically everywhere and never bleeds through the gaps at
+ * full strength. Fully transparent, not merely thinned: stacked half-opaque fills would each let a
+ * little more through, so gaps (fewer fills) came out brighter than panels — the seam artefact.
+ * Only the base surface is cleared; raised/overlay/sunken surfaces (menus, dialogs, panel headers,
+ * cards) keep their opaque paints for depth, and text/icons/borders/content images are not
+ * `bg-surface`, so real content is never washed out. The descendant combinator excludes the root's
+ * own fill, which sits under the backdrop and stays opaque as the ultimate base.
+ */
+.nl-has-workspace-bg .bg-surface {
+    background-color: transparent;
+}
+
+/*
  * Range slider (see lib/components/elements/Slider.tsx). Scoped to `.nl-slider`
  * rather than `input[type="range"]` so it never reaches a range input inside the
  * game preview. The track/thumb pseudo-elements are out of Tailwind's reach.

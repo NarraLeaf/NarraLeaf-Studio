@@ -9,7 +9,6 @@ import type { EditorLayout } from "@/apps/workspace/registry/types";
 import { useTranslation } from "@/lib/i18n";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
-import { backgroundLayerStyle } from "@/lib/workspace/services/ui/backgroundSettings";
 import type { EditorTabComponentProps } from "@/lib/workspace/services/ui/types";
 
 const LOGO_MASK = "url(/img/narraleaf-studio/logo-icon-white.png)";
@@ -48,20 +47,17 @@ export function NewTabEditor({ tabId }: EditorTabComponentProps) {
         },
     });
 
-    // Same custom-background treatment as the empty editor canvas: painted behind this page's own
-    // opaque surface, never over real content.
-    const { settings, url: backgroundUrl } = useWorkspaceBackgroundImage();
+    // Same custom-background treatment as the empty editor canvas: the wallpaper is painted once,
+    // window-wide, behind all chrome (see WorkspaceLayout), and shows through this page's own
+    // transparent surface. Nothing is painted here; the watermark is only hidden so it does not
+    // fight the wallpaper for the same space.
+    const { url: backgroundUrl } = useWorkspaceBackgroundImage();
 
     return (
         <div
             {...dropTargetProps}
             className={`h-full flex items-center justify-center bg-surface relative overflow-hidden transition-colors ${overlayClassName}`}
         >
-            {backgroundUrl && (
-                <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-                    <div className="absolute" style={backgroundLayerStyle(settings, backgroundUrl)} />
-                </div>
-            )}
             {!backgroundUrl && (
                 <div className="relative z-10 flex flex-col items-center text-center pointer-events-none">
                     <div
