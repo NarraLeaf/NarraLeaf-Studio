@@ -325,6 +325,28 @@ describe("workspace editor session serialization", () => {
         });
     });
 
+    it("round-trips blank new-tab pages, keeping each one's identity", () => {
+        const layout: EditorLayout = {
+            id: "main",
+            tabs: [
+                { id: "narraleaf-studio:new-tab-t1", title: "New Tab", component: (() => null) as never },
+                { id: "narraleaf-studio:new-tab-t2", title: "New Tab", component: (() => null) as never },
+            ],
+            focus: "narraleaf-studio:new-tab-t2",
+        };
+
+        const parsed = parseWorkspaceEditorSession(JSON.parse(JSON.stringify(serializeEditorSession(layout))));
+
+        expect(parsed!.layout).toMatchObject({
+            kind: "group",
+            focus: "narraleaf-studio:new-tab-t2",
+            tabs: [
+                { kind: "newTab", token: "t1" },
+                { kind: "newTab", token: "t2" },
+            ],
+        });
+    });
+
     it("upgrades a stored v1 session into a single-group v2", () => {
         const parsed = parseWorkspaceEditorSession({
             version: 1,
