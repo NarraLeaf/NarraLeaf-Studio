@@ -9,15 +9,20 @@ import {
 
 /** Per-project store namespace and payload shape for the persisted history. */
 const HISTORY_STORE_NAMESPACE = "notification_history";
-const HISTORY_STORE_VERSION = 1;
+// v2 added the per-entry `read` flag. v1 payloads are still read (see seedHistory) so an upgrade
+// keeps the user's history; their entries are treated as already read.
+const HISTORY_STORE_VERSION = 2;
 interface NotificationHistoryStore {
-    version: typeof HISTORY_STORE_VERSION;
+    version: number;
     entries: NotificationHistoryEntry[];
 }
 
 /**
  * A history record: the serializable core of a notification, kept after the toast is dismissed.
  * Callbacks/actions are deliberately dropped - history is a log, not a live surface.
+ *
+ * `read` is persisted with the entry, so the bell badge reflects genuine unread state and does not
+ * light up again every time the project is reopened.
  */
 export interface NotificationHistoryEntry {
     id: string;
@@ -25,6 +30,7 @@ export interface NotificationHistoryEntry {
     message: string;
     detail?: string;
     timestamp: number;
+    read: boolean;
 }
 
 /**
@@ -64,7 +70,8 @@ export class NotificationService {
         this.stopPersistence();
         try {
             const stored = await serviceAssets.readStore<NotificationHistoryStore>(HISTORY_STORE_NAMESPACE);
-            if (stored.ok && stored.data?.version === HISTORY_STORE_VERSION && Array.isArray(stored.data.entries)) {
+            // Accept any known version; seedHistory normalises entries (v1 rows have no `read`).
+            if (stored.ok && Array.isArray(stored.data?.entries)) {
                 this.seedHistory(stored.data.entries);
             }
         } catch {
@@ -101,7 +108,12 @@ export class NotificationService {
 
     /** Replace the current buffer (used when seeding from persistence). */
     public seedHistory(entries: NotificationHistoryEntry[]): void {
-        this.history = entries.slice(0, NotificationService.HistoryLimit);
+        this.history = entries.slice(0, NotificationService.HistoryLimit).map(entry => ({
+            ...entry,
+            // v1 rows predate read-tracking: treat restored history as already read so reopening a
+            // project never resurrects the bell badge for notifications the user has moved past.
+            read: entry.read ?? true,
+        }));
         this.emitHistoryChanged();
     }
 
@@ -120,17 +132,19 @@ export class NotificationService {
         };
     }
 
-    // Unread tracking is shared here so the bell badge and the notifications panel agree -
-    // opening the panel through any path (bell, rail icon) marks everything seen.
-    private lastSeenTimestamp = 0;
-
+    // Read state lives on each entry (persisted with it) so the bell badge and the notifications
+    // panel agree, and so it survives a restart. Opening the panel through any path (bell, rail
+    // icon) marks everything seen.
     public markHistorySeen(): void {
-        this.lastSeenTimestamp = Date.now();
+        if (this.history.every(entry => entry.read)) {
+            return;
+        }
+        this.history = this.history.map(entry => (entry.read ? entry : { ...entry, read: true }));
         this.emitHistoryChanged();
     }
 
     public getUnreadCount(): number {
-        return this.history.filter(entry => entry.timestamp > this.lastSeenTimestamp).length;
+        return this.history.filter(entry => !entry.read).length;
     }
 
     private recordHistory(entry: NotificationHistoryEntry): void {
@@ -227,6 +241,7 @@ export class NotificationService {
             message: notification.message,
             detail: notification.detail,
             timestamp: notification.timestamp,
+            read: false,
         });
 
         // Auto-dismiss if timeout is set
