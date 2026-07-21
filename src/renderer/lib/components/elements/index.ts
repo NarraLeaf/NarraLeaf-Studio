@@ -37,7 +37,8 @@ export {
     AlertModal,
     ModalHeader,
     ModalBody,
-    ModalFooter
+    ModalFooter,
+    dialogFooterButtonClass
 } from "./Modal";
 export type { ModalProps } from "./Modal";
 

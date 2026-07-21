@@ -50,6 +50,18 @@ export type RuntimePluginApp = {
             register(def: RuntimeWidgetRendererDef): void;
             registerMany(defs: RuntimeWidgetRendererDef[]): void;
         };
+        /**
+         * Read-only access to plugin storage published with the game, for the
+         * namespaces declared in `contributes.runtimeData`. Synchronous: the
+         * data travels with the pack, so there is nothing to await.
+         *
+         * Returns null when the namespace was not declared, the project never
+         * wrote it, or the game predates the data being published. Callers must
+         * degrade gracefully rather than assume authored data exists.
+         */
+        data: {
+            readJson<T = unknown>(namespace: string): T | null;
+        };
         log(level: RuntimePluginLogLevel, message: string): void;
     };
 };

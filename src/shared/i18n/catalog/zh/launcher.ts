@@ -17,11 +17,27 @@ export const launcher = {
         openFolder: "打开文件夹",
         importProject: "导入项目",
         openNamed: "打开 {name}",
+        search: {
+            placeholder: "搜索项目",
+            clear: "清除搜索",
+            empty: "没有匹配“{query}”的项目。",
+        },
         removeFromRecent: "从最近移除",
+        moreActions: "更多操作",
+        moreActionsNamed: "{name} 的更多操作",
         removeNamedFromRecent: "将 {name} 从最近项目中移除",
         errorCreate: "创建项目失败",
         errorOpenFolder: "打开文件夹失败",
         errorImport: "导入项目失败",
+        missing: {
+            reasonFolderMissing: "此项目文件夹已被删除或移动",
+            reasonNotAProject: "此文件夹已不是 NarraLeaf 项目",
+            dialogTitle: "找不到此项目",
+            note: "移除只会更新此列表，不会删除磁盘上的任何文件。",
+            relocate: "重新定位…",
+            remove: "从列表移除",
+            errorNotAProject: "所选文件夹不是 NarraLeaf 项目。",
+        },
     },
     // 中文只有一种复数形式，只需给出 other。
     recentCount: {

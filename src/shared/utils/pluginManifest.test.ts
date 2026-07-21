@@ -118,6 +118,47 @@ describe("validatePluginManifest", () => {
         });
     });
 
+    it("normalizes contributed runtime data namespaces", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+            contributes: {
+                runtimeData: ["acme.sample-plugin.catalog", "acme.sample-plugin.catalog"],
+            },
+        });
+
+        expect(result).toMatchObject({
+            ok: true,
+            manifest: {
+                contributes: {
+                    blueprintNodes: [],
+                    widgets: [],
+                    runtimeData: ["acme.sample-plugin.catalog"],
+                },
+            },
+        });
+
+        // Namespaces are plugin-scoped on disk, so an unprefixed one would point
+        // at another plugin's store (or a core service store).
+        const invalid = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+            contributes: {
+                runtimeData: ["panelState"],
+            },
+        });
+        expect(invalid).toMatchObject({
+            ok: false,
+            error: expect.stringContaining("prefixed with the plugin id"),
+        });
+    });
+
     it("rejects contributed node types without the plugin id prefix", () => {
         const result = validatePluginManifest({
             manifestVersion: 2,
