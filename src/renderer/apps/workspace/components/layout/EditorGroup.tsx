@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef } from "react";
-import { X, Circle } from "lucide-react";
+import { X, Circle, Plus } from "lucide-react";
 import { useRegistry } from "../../registry";
 import { useWorkspace } from "../../context";
 import { EditorGroup as EditorGroupType } from "../../registry/types";
@@ -10,6 +10,7 @@ import type { FocusContext } from "@/lib/workspace/services/ui/types";
 import { useKeybinding, contextual, whenEditorTabsFocused, useMaxActiveEditors } from "../../hooks";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { hasClosedTabs, reopenLastClosedTab } from "../../session/workspaceClosedTabsStore";
+import { openNewTab } from "../../modules/new-tab/openNewTab";
 import { useEditorGroupDrop } from "./useEditorGroupDrop";
 import { EditorGroupDropOverlay } from "./EditorGroupDropOverlay";
 import { tabStripRevealScrollLeft } from "./tabStripReveal";
@@ -159,6 +160,14 @@ export function EditorGroup({ group }: EditorGroupProps) {
         const uiService = context.services.get<UIService>(Services.UI);
         uiService.focus.setFocus(FocusArea.EditorTabs, group.id);
     }, [context, group.id]);
+
+    // The "+" at the end of the strip works like a browser's: it opens a fresh blank tab in this
+    // group, showing the same idle canvas as an empty editor pane.
+    const handleNewTab = useCallback(() => {
+        if (!context) return;
+        openNewTab(context, group.id);
+        focusTabStrip();
+    }, [context, focusTabStrip, group.id]);
 
     const handleCloseTab = (tabId: string, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -499,6 +508,18 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                 </div>
                             );
                         })}
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleNewTab();
+                            }}
+                            className="flex items-center justify-center w-9 h-9 flex-shrink-0 text-fg-subtle hover:text-fg hover:bg-surface transition-colors"
+                            aria-label={t("workspace.shell.newTab")}
+                            title={t("workspace.shell.newTab")}
+                        >
+                            <Plus className="w-4 h-4" />
+                        </button>
                     </div>
                     <ContextMenu
                         items={tabMenuItems}
@@ -538,8 +559,19 @@ export function EditorGroup({ group }: EditorGroupProps) {
                     );
                 })}
                 {!activeTab && (
-                    <div className="h-full flex items-center justify-center text-fg-subtle">
+                    <div className="h-full flex flex-col items-center justify-center gap-3 text-fg-subtle">
                         <p>{t("workspace.shell.noActiveEditor")}</p>
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleNewTab();
+                            }}
+                            className="flex items-center gap-2 px-3 h-9 rounded-md border border-edge text-sm text-fg-muted hover:text-fg hover:bg-surface transition-colors"
+                        >
+                            <Plus className="w-4 h-4" />
+                            <span>{t("workspace.shell.newTab")}</span>
+                        </button>
                     </div>
                 )}
             </div>

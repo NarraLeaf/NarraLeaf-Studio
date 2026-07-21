@@ -201,7 +201,7 @@ export const story = {
         deleteTitle: "删除此行（{keys}）",
         playFromRow: "从这一行开始播放",
         playBranch: "试玩这个分支",
-        insertPlaceholder: "输入旁白，/ 插入动作，# 选择角色…",
+        insertPlaceholder: "输入旁白，{trigger} 插入动作，# 选择角色…",
         noCategoryActionFound: "未找到{category}动作",
         actionTypes: "动作类型",
         noCharacterFound: "未找到角色",

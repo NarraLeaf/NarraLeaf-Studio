@@ -62,6 +62,17 @@ export interface GlobalStateType extends Record<string, any> {
     "editor.lineNumbers": boolean;
     "editor.softWrap": boolean;
     "editor.maxActiveEditors": number;
+    /**
+     * Let "@" stand in for "/" as the trigger that opens the story editor's action creator.
+     *
+     * A Simplified-Chinese input method rewrites the "/" key as "、", so authors typing in Chinese
+     * have to switch IME just to start a command; "@" survives that mapping untouched. Deliberately
+     * absent from GLOBAL_STATE_DEFAULTS (like the `ui.background*` keys): the default is device-locale
+     * dependent, so the renderer resolves an unset value through `slashAtAliasDefault()` — on for a
+     * Simplified-Chinese device, off otherwise — rather than a static default that cannot know the
+     * locale. A value written here (the user toggled it) is honored as-is.
+     */
+    "editor.slashAtAlias": boolean;
     "workspace.restoreLastWorkspace": boolean;
     /**
      * Ask for confirmation before a workspace window closes.

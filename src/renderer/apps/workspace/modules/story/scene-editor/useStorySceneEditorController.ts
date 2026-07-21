@@ -53,6 +53,8 @@ import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
 import type { EditorMode, StoryBlockTarget, StoryCaretTarget } from "./storySceneEditorTypes";
 import { useStorySceneClipboardHandlers } from "./useStorySceneClipboardHandlers";
+import { useSlashAtAlias } from "@/apps/workspace/hooks/useSlashAtAlias";
+import { isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
 
 const STORY_EDITOR_HISTORY_LIMIT = 100;
 /** Rows the selection jumps by on PageUp / PageDown. */
@@ -83,6 +85,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const panelStateService = useMemo(() => (context && isInitialized ? context.services.get<PanelStateService>(Services.PanelState) : null), [context, isInitialized]);
     /** Owner of the persistent-variable declarations the story's `persistent` scope points at. */
     const blueprintService = useMemo(() => (context && isInitialized ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint) : null), [context, isInitialized]);
+    // When on, a leading "@" in an insert slot is rewritten to "/" so it opens the action creator -
+    // the escape hatch for a Simplified-Chinese IME, which types "、" for the "/" key. Defaults on for
+    // a Simplified-Chinese device; the user can override it in Settings (Editor).
+    const slashAtAlias = useSlashAtAlias();
 
     const storyId = payload?.storyId;
     const sceneId = payload?.sceneId;
@@ -1028,11 +1034,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setEditorMode({ kind: "idle" });
             return;
         }
-        // A `/` or `#` line is never prose - it resolves to a command, or it becomes an invalid row.
-        // This is reached on blur, which is the one caller that does not already know what the line is;
-        // without the guard, clicking away from a half-typed `/set` lands it as narration, which is the
-        // exact bug the Escape ladder was fixed to stop producing.
-        if (editorMode.value.startsWith("/") || editorMode.value.startsWith("#")) {
+        // A command (`/`, or `@` when the alias is on) or `#` line is never prose - it resolves to a
+        // command, or it becomes an invalid row. This is reached on blur, which is the one caller that
+        // does not already know what the line is; without the guard, clicking away from a half-typed
+        // `/set` lands it as narration, which is the exact bug the Escape ladder was fixed to stop.
+        if (isActionCommandLine(editorMode.value, slashAtAlias) || editorMode.value.startsWith("#")) {
             return;
         }
         const block = createBlock("narration", editorMode.value);
@@ -1043,7 +1049,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (focusNext) {
             startInsertAfter(block.id, true);
         }
-    }, [createBlock, editorMode, insertBlock, startInsertAfter]);
+    }, [createBlock, editorMode, insertBlock, slashAtAlias, startInsertAfter]);
 
     const handleInsertValueChange = useCallback((value: string) => {
         setEditorMode(current => {
@@ -1058,14 +1064,17 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             if (current.chooserDismissed && value === current.value) {
                 return current;
             }
+            // The stored value keeps the trigger the author typed ("@" or "/") - only parsing and
+            // committing fold "@" onto "/" - so the slot shows the "@" they pressed. `isActionCommandLine`
+            // treats a leading "@" as an action trigger when the alias is on, exactly like "/".
             return {
                 ...current,
                 value,
                 chooserDismissed: undefined,
-                chooser: value.startsWith("/") ? "action" : value.startsWith("#") ? "character" : "none",
+                chooser: isActionCommandLine(value, slashAtAlias) ? "action" : value.startsWith("#") ? "character" : "none",
             };
         });
-    }, []);
+    }, [slashAtAlias]);
 
     /** Escape, first press: drop the candidates but keep the line and the caret. */
     const dismissInsertChooser = useCallback(() => {
@@ -1092,7 +1101,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (editorMode.kind !== "insert" || !uuidService) {
             return;
         }
-        const source = editorMode.value;
+        // Canonicalize before it lands: an "@" trigger is a per-user input convenience, so the persisted
+        // source keeps the "/" form every reader (and the build) understands, whatever this author's
+        // alias setting is.
+        const source = toCanonicalCommandLine(editorMode.value, slashAtAlias);
         if (!source.trim()) {
             setEditorMode({ kind: "idle" });
             return;
@@ -1106,7 +1118,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         };
         insertBlock(block, editorMode.slot.afterBlockId, false, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
         startInsertAfter(block.id, true);
-    }, [editorMode, insertBlock, startInsertAfter, uuidService]);
+    }, [editorMode, insertBlock, slashAtAlias, startInsertAfter, uuidService]);
 
 
     // Backspace on an empty insert slot: dismiss the blank line and step back onto the row above it -
@@ -1242,12 +1254,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             commitCommandFromInsert(`/${spec.token}`);
             return;
         }
-        const initialText = editorMode.value.replace(/^\/\S*\s?/, "");
+        // Strip the "/command " (or "@command ") prefix off the canonical line to keep the trailing text.
+        const initialText = toCanonicalCommandLine(editorMode.value, slashAtAlias).replace(/^\/\S*\s?/, "");
         const block = createPluginActionBlock(commandId, initialText);
         if (block) {
             insertBlock(block, editorMode.slot.afterBlockId, true, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
         }
-    }, [commitCommandFromInsert, createPluginActionBlock, editorMode, insertBlock]);
+    }, [commitCommandFromInsert, createPluginActionBlock, editorMode, insertBlock, slashAtAlias]);
 
     /**
      * Enter / Shift+Enter with no candidate to take - the chooser was dismissed, or never opened.
@@ -1263,8 +1276,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setEditorMode({ kind: "idle" });
             return;
         }
-        if (value.startsWith("/")) {
-            if (!commitCommandFromInsert(value)) {
+        if (isActionCommandLine(value, slashAtAlias)) {
+            // Parse and commit against the canonical "/" line; an "@" the author typed is only display.
+            if (!commitCommandFromInsert(toCanonicalCommandLine(value, slashAtAlias))) {
                 commitInvalidFromInsert();
             }
             return;
@@ -1275,7 +1289,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         commitNarrationFromInsert(true);
-    }, [commitCommandFromInsert, commitInvalidFromInsert, commitNarrationFromInsert, editorMode]);
+    }, [commitCommandFromInsert, commitInvalidFromInsert, commitNarrationFromInsert, editorMode, slashAtAlias]);
 
     /**
      * Pick a speaker that no Studio character backs. Valid, not a fallback: NLR's dialogue box only
@@ -1820,7 +1834,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         activateBlockForInspectorOrOp, closeInspector,
         extendRowSelection, moveSelectedRows, duplicateSelection, jumpRowSelection, pageRowSelection,
         moveDraggedBlockAfter, moveDraggedBlockToSortablePosition, startDraggingBlock, endDraggingBlock,
-        createLayerBeforeBlock,
+        createLayerBeforeBlock, slashAtAlias,
     };
 }
 

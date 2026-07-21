@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent } from "react";
-import { Camera, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Trash2, Variable } from "lucide-react";
+import { Camera, ChevronDown, ChevronRight, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Trash2, Variable } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -64,15 +64,37 @@ function StorySceneOverviewBlock(props: {
     scene: StoryScene;
     backgroundAsset: Asset<AssetType.Image> | null;
     onUpdateScene: (patch: StorySceneUpdate) => boolean;
+    panelStateService: PanelStateService | null;
 }) {
     const { t } = useTranslation();
-    const { document, scene, backgroundAsset, onUpdateScene } = props;
+    const { document, scene, backgroundAsset, onUpdateScene, panelStateService } = props;
     const [nameValue, setNameValue] = useState(scene.name);
     const [descriptionValue, setDescriptionValue] = useState(scene.description ?? "");
     const [selectorOpen, setSelectorOpen] = useState(false);
     const selectButtonRef = useRef<HTMLButtonElement | null>(null);
     const backgroundAssetId = scene.defaultBackgroundAssetId ?? null;
     const { url, loading, error } = useAssetObjectUrl(backgroundAssetId);
+
+    // Collapsed by default once the scene is set up; expanded on a freshly created scene (no default
+    // background yet) so the author is prompted to name it and pick a backdrop. A manual toggle is
+    // remembered per scene (persisted with the rest of the editor view state), and takes precedence
+    // over the config-derived default on reopen. Read once on mount — the tab is keep-alive, so this
+    // component instance lives for the tab's lifetime and the default must not flip out from under a
+    // toggle when the scene object updates.
+    const [collapsed, setCollapsed] = useState<boolean>(() => {
+        const stored = panelStateService ? getStoryEditorViewState(panelStateService, scene.id)?.overviewCollapsed : undefined;
+        return stored ?? Boolean(scene.defaultBackgroundAssetId);
+    });
+
+    const toggleCollapsed = useCallback(() => {
+        setCollapsed(prev => {
+            const next = !prev;
+            if (panelStateService) {
+                patchStoryEditorViewState(panelStateService, scene.id, { overviewCollapsed: next });
+            }
+            return next;
+        });
+    }, [panelStateService, scene.id]);
 
     useEffect(() => {
         setNameValue(scene.name);
@@ -111,7 +133,50 @@ function StorySceneOverviewBlock(props: {
     const backgroundLabel = backgroundAsset?.name ?? (backgroundAssetId ? t("story.background.missingImage") : t("story.background.none"));
 
     return (
-        <div className="mx-3 mb-3 rounded-lg border border-edge bg-fill-subtle p-3">
+        <div className="mx-3 mb-3 overflow-hidden rounded-lg border border-edge bg-fill-subtle">
+            <button
+                type="button"
+                onClick={toggleCollapsed}
+                aria-expanded={!collapsed}
+                title={collapsed ? t("common.expand") : t("common.collapse")}
+                className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left outline-none transition-colors hover:bg-fill focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/60"
+            >
+                {collapsed ? (
+                    <ChevronRight className="h-4 w-4 shrink-0 text-fg-subtle" />
+                ) : (
+                    <ChevronDown className="h-4 w-4 shrink-0 text-fg-subtle" />
+                )}
+                {collapsed ? (
+                    <>
+                        <span className="relative h-9 w-16 shrink-0 overflow-hidden rounded border border-edge bg-surface">
+                            {url ? (
+                                <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+                            ) : (
+                                <span className="flex h-full w-full items-center justify-center text-fg-subtle">
+                                    <ImageIcon className="h-4 w-4" />
+                                </span>
+                            )}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium text-fg">{scene.name}</span>
+                            <span className="block truncate text-2xs text-fg-subtle">
+                                {scene.description?.trim() || t("story.sceneEditor.noDescription")}
+                            </span>
+                        </span>
+                    </>
+                ) : (
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                        <FileText className="h-4 w-4 shrink-0 text-primary" />
+                        <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium text-fg">{scene.name}</span>
+                            <span className="block truncate text-2xs text-fg-subtle">{document.name}</span>
+                        </span>
+                    </span>
+                )}
+            </button>
+
+            {collapsed ? null : (
+            <div className="border-t border-edge p-3">
             <div
                 className="grid items-start gap-3"
                 style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))" }}
@@ -145,13 +210,6 @@ function StorySceneOverviewBlock(props: {
 
                 <div className="grid min-w-0 gap-3">
                     <div>
-                        <div className="mb-2 flex min-w-0 items-center gap-2">
-                            <FileText className="h-4 w-4 shrink-0 text-primary" />
-                            <div className="min-w-0">
-                                <div className="truncate text-sm font-medium text-fg">{document.name}</div>
-                                <div className="truncate text-2xs text-fg-subtle">{scene.runtimeName || t("story.sceneEditor.untitledScene")}</div>
-                            </div>
-                        </div>
                         <label className={SCENE_FIELD_LABEL_CLASS}>{t("story.sceneEditor.sceneName")}</label>
                         <input
                             className={SCENE_TEXT_FIELD_CLASS}
@@ -224,6 +282,8 @@ function StorySceneOverviewBlock(props: {
                     </div>
                 </div>
             </div>
+            </div>
+            )}
 
             <AssetSelector
                 visible={selectorOpen}
@@ -930,6 +990,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     scene={scene}
                     backgroundAsset={backgroundAsset}
                     onUpdateScene={editor.updateSceneMetadata}
+                    panelStateService={panelStateService}
                 />
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                     <SortableContext items={sortableRowIds} strategy={verticalListSortingStrategy}>
@@ -957,6 +1018,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         onChooseTempSpeaker={editor.chooseTempSpeakerForInsert}
                                         tempSpeakers={editor.tempSpeakers}
                                         onBackspaceEmpty={editor.handleInsertBackspaceEmpty}
+                                        slashAtAlias={editor.slashAtAlias}
                                     />
                                 ) : (
                                 <StoryBlockRow
@@ -1038,6 +1100,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                         onChooseTempSpeaker={editor.chooseTempSpeakerForInsert}
                                         tempSpeakers={editor.tempSpeakers}
                                         onBackspaceEmpty={editor.handleInsertBackspaceEmpty}
+                                        slashAtAlias={editor.slashAtAlias}
                                     />
                                 ) : null}
                             </div>
@@ -1062,6 +1125,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         onChooseTempSpeaker={editor.chooseTempSpeakerForInsert}
                         tempSpeakers={editor.tempSpeakers}
                         onBackspaceEmpty={editor.handleInsertBackspaceEmpty}
+                        slashAtAlias={editor.slashAtAlias}
                     />
                 ) : isInsertingAfterLastRow ? null : (
                     <button
