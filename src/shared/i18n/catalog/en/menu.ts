@@ -59,6 +59,7 @@ export const menu = {
         title: "Help",
         welcome: "Open Welcome",
         docs: "Documentation",
+        feedback: "Send Feedback",
         about: "About {name}",
     },
 } as const;

@@ -30,6 +30,7 @@ import type { Translator } from "@shared/i18n";
  */
 export class MenuManager {
     private static readonly DocumentationUrl = "https://www.narraleaf.com/docs/studio";
+    private static readonly FeedbackUrl = "https://go.mewbaka.cn/nl-feed";
 
     private menu: Menu | null = null;
     /**
@@ -294,6 +295,12 @@ export class MenuManager {
                             void this.openDocumentation();
                         },
                     },
+                    {
+                        label: t("menu.help.feedback"),
+                        click: () => {
+                            void this.openFeedback();
+                        },
+                    },
                 ],
             },
         ];
@@ -412,6 +419,12 @@ export class MenuManager {
                         label: t("menu.help.docs"),
                         click: () => {
                             void this.openDocumentation();
+                        },
+                    },
+                    {
+                        label: t("menu.help.feedback"),
+                        click: () => {
+                            void this.openFeedback();
                         },
                     },
                     { type: "separator" },
@@ -622,6 +635,14 @@ export class MenuManager {
             await shell.openExternal(MenuManager.DocumentationUrl);
         } catch (error) {
             this.app.logger.error("Failed to open documentation:", error);
+        }
+    }
+
+    private async openFeedback(): Promise<void> {
+        try {
+            await shell.openExternal(MenuManager.FeedbackUrl);
+        } catch (error) {
+            this.app.logger.error("Failed to open feedback page:", error);
         }
     }
 
