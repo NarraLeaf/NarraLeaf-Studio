@@ -17,6 +17,7 @@ import { behaviorNodeRegistry } from "./BehaviorNodeRegistry";
 import type { BehaviorNodeExecuteResult, BehaviorNodeExecutionContext } from "./BehaviorNodeRegistry";
 import { BlueprintGraphExecutionError } from "./GraphExecutionError";
 import { writeBlueprintNodeOutputValues } from "../blueprint-nodes/nodeOutputValues";
+import { resolveBehaviorNodeInput } from "./dataPinResolver";
 import type { ExecuteGraphResult } from "./GraphExecutor";
 
 export type ExecuteGraphSyncOptions = {
@@ -106,6 +107,7 @@ export function executeGraphSync(options: ExecuteGraphSyncOptions): ExecuteGraph
             persistentVariables: options.persistentVariables,
             valueExecution,
         };
+        context.resolveInput = pinId => resolveBehaviorNodeInput(context, pinId);
 
         const raw = definition.execute(context);
         if (isThenable(raw)) {

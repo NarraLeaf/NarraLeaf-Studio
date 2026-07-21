@@ -16,6 +16,7 @@ import {
     throwIfBlueprintExecutionCancelled,
 } from "./GraphExecutionError";
 import { writeBlueprintNodeOutputValues } from "../blueprint-nodes/nodeOutputValues";
+import { resolveBehaviorNodeInput } from "./dataPinResolver";
 
 export type ExecuteGraphOptions = {
     graph: UIGraph;
@@ -123,6 +124,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
             valueExecution,
             fnCallDepth: options.fnCallDepth,
         };
+        context.resolveInput = pinId => resolveBehaviorNodeInput(context, pinId);
 
         let result: BehaviorNodeExecuteResult | void;
         try {

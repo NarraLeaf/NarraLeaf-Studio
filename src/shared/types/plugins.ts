@@ -48,6 +48,16 @@ export type PluginContributes = {
     widgets?: string[];
     /** Studio language packs: locales this plugin adds or fills. */
     locales?: PluginLocaleContribution[];
+    /**
+     * Plugin storage namespaces to publish with the game, readable at runtime
+     * through `app.game.data.readJson(namespace)`.
+     *
+     * Plugin stores live under the project's `editor/` directory, which is never
+     * packaged. A plugin whose runtime needs authored data (catalogs, tables)
+     * must list those namespaces here. The list is an explicit allowlist so
+     * editor-only plugin state cannot leak into a shipped game by accident.
+     */
+    runtimeData?: string[];
 };
 
 export type PluginManifestV2 = Omit<PluginIdentity, "id" | "name" | "version"> & Required<Pick<PluginIdentity, "id" | "name" | "version">> & {
@@ -112,6 +122,12 @@ export type RuntimePluginDescriptor = {
     plugin: PluginIdentity;
     manifest: NormalizedPluginManifestV2;
     entryUrl: string;
+    /**
+     * Published plugin storage, keyed by the namespaces declared in
+     * `contributes.runtimeData`. Absent namespaces simply have no entry - a
+     * plugin must tolerate missing data (the project may never have written it).
+     */
+    data?: Record<string, unknown>;
 };
 
 export type PluginInstallResult =

@@ -196,6 +196,7 @@ function useRuntimePlugins(pack: GameRuntimePackV1 | null, rendererRegistry: Ele
             // only a placeholder so the descriptor stays well-formed.
             entryUrl: bridge?.pluginEntryUrl(entry.entryRelativePath)
                 ?? `nlgame://runtime/${entry.entryRelativePath}`,
+            ...(entry.data ? { data: entry.data } : {}),
         }));
         void loadRuntimePlugins(descriptors, { log, elementRenderers: rendererRegistry }).finally(() => {
             if (!disposed) {

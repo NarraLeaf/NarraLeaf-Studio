@@ -77,7 +77,7 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 }
 
 /** Contribution kinds whose value is an array of `<pluginId>.`-prefixed type strings. */
-const CONTRIBUTES_TYPE_KEYS = ["blueprintNodes", "widgets"] as const;
+const CONTRIBUTES_TYPE_KEYS = ["blueprintNodes", "widgets", "runtimeData"] as const;
 
 /** Every recognized `contributes` key, including the object-shaped `locales`. */
 const CONTRIBUTES_KEYS = [...CONTRIBUTES_TYPE_KEYS, "locales"] as const;
@@ -85,13 +85,14 @@ const CONTRIBUTES_KEYS = [...CONTRIBUTES_TYPE_KEYS, "locales"] as const;
 const CONTRIBUTES_KIND_LABEL: Record<(typeof CONTRIBUTES_TYPE_KEYS)[number], string> = {
     blueprintNodes: "blueprint node",
     widgets: "widget",
+    runtimeData: "storage namespace",
 };
 
 /** BCP-47-ish locale code: primary subtag plus optional hyphen-joined subtags. */
 const LOCALE_CODE_PATTERN = /^[a-z]{2,3}(-[A-Za-z0-9]+)*$/;
 
 function validateContributes(value: unknown, pluginId: string): Required<PluginContributes> | string {
-    const empty: Required<PluginContributes> = { blueprintNodes: [], widgets: [], locales: [] };
+    const empty: Required<PluginContributes> = { blueprintNodes: [], widgets: [], runtimeData: [], locales: [] };
     if (value === undefined) {
         return empty;
     }
@@ -111,7 +112,7 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
             continue;
         }
         if (!Array.isArray(raw)) {
-            return `Plugin contributes.${key} must be an array of type strings`;
+            return `Plugin contributes.${key} must be an array of strings`;
         }
         const types: string[] = [];
         for (const item of raw) {
@@ -120,7 +121,7 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
                 return `Plugin contributes.${key} entries must be non-empty strings`;
             }
             if (!type.startsWith(`${pluginId}.`)) {
-                return `Contributed ${CONTRIBUTES_KIND_LABEL[key]} type must be prefixed with the plugin id: ${type}`;
+                return `Contributed ${CONTRIBUTES_KIND_LABEL[key]} must be prefixed with the plugin id: ${type}`;
             }
             if (!types.includes(type)) {
                 types.push(type);
