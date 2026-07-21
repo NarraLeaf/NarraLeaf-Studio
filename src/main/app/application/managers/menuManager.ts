@@ -414,6 +414,16 @@ export class MenuManager {
                             void this.openDocumentation();
                         },
                     },
+                    { type: "separator" },
+                    {
+                        // Opens the workspace's About editor tab; the renderer resolves this
+                        // action id against the Help group (see useMenuActionHandler). Distinct
+                        // from the App menu's native "About" panel (role: "about").
+                        label: t("menu.help.about", { name: APP_DISPLAY_NAME }),
+                        click: () => {
+                            this.sendActionToFocusedWindow(WorkspaceMenuAction.About);
+                        },
+                    },
                 ],
             },
         ];
