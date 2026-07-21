@@ -61,6 +61,7 @@ import {
     type StoryContainerHeaderInfo,
 } from "./storySceneBlockUtils";
 import { ConditionPopover } from "./ConditionPopover";
+import { actionTrigger, ACTION_TRIGGER, toCanonicalCommandLine } from "./commandTrigger";
 
 export function StoryBlockRow(props: {
     row: VisibleStoryRow;
@@ -873,14 +874,16 @@ function candidateIcon(cursor: StoryCommandCursor, candidate: StoryCommandCandid
  * padding, `whitespace-pre` so runs of spaces measure as typed, and `pointer-events-none` so a click
  * anywhere still lands in the field beneath.
  */
-function CommandGhostHint(props: { value: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext }) {
+function CommandGhostHint(props: { value: string; source: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext }) {
     const { t } = useTranslation();
-    const ghost = useMemo(() => getCommandGhost(props.value, props.caret), [props.caret, props.value]);
+    // The ghost and reason parse the canonical "/" line (`source`); the invisible spacer below uses the
+    // displayed `value` so it occupies the exact width the author sees ("@" and "/" render differently).
+    const ghost = useMemo(() => getCommandGhost(props.source, props.caret), [props.caret, props.source]);
     // Why the line will not commit, if it will not. It outranks the hint: naming the next slot while
     // the line is already broken answers a question the author is no longer asking.
     const reason = useMemo(
-        () => getCommandLineReason(props.value, props.commandContext),
-        [props.commandContext, props.value],
+        () => getCommandLineReason(props.source, props.commandContext),
+        [props.commandContext, props.source],
     );
     if (!ghost && !reason) {
         return null;
@@ -926,8 +929,14 @@ export function InsertRow(props: {
     onChooseTempSpeaker: (name: string) => void;
     /** Backspace on the empty slot — dismiss it and step back to the row above. */
     onBackspaceEmpty: () => void;
+    /** When on, a leading "@" opens the action creator like "/" (see `editor.slashAtAlias`). */
+    slashAtAlias: boolean;
 }) {
     const { t } = useTranslation();
+    // The line the author sees keeps the trigger they typed; the parser, the cursor, and the command
+    // search read the canonical "/" form (`source`). Same length, so `caret` indexes both.
+    const source = useMemo(() => toCanonicalCommandLine(props.mode.value, props.slashAtAlias), [props.mode.value, props.slashAtAlias]);
+    // Drop the trigger character (either "/" or "@") to get the query the menus rank against.
     const chooserQuery = props.mode.value.slice(1);
     const menuAnchorRef = useRef<HTMLDivElement | null>(null);
     const menuPlacement = useAutoMenuPlacement(menuAnchorRef, props.mode.chooser !== "none", 312);
@@ -954,13 +963,13 @@ export function InsertRow(props: {
     // Where the caret is decides what the slot offers, so it has to be state: `/bg fo|` asks for an
     // image, `/bg forest_day t=|` for a transition, and only the caret tells them apart.
     const [caret, setCaret] = useState(props.mode.value.length);
-    const cursor = useMemo(() => getCommandCursor(props.mode.value, caret), [caret, props.mode.value]);
+    const cursor = useMemo(() => getCommandCursor(source, caret), [caret, source]);
     // `form=` can only list the forms of the character this line already named, so the candidates need
     // the args resolved so far.
     const resolvedArgs = useMemo(() => {
-        const line = parseCommandLine(props.mode.value);
+        const line = parseCommandLine(source);
         return line.kind === "command" && line.def ? resolveCommandLine(line, props.commandContext).args : {};
-    }, [props.commandContext, props.mode.value]);
+    }, [props.commandContext, source]);
     const argItems = useMemo<StoryCandidateItem[]>(() => {
         if (cursor.kind !== "positional" && cursor.kind !== "paramValue" && cursor.kind !== "paramName") {
             return [];
@@ -1026,7 +1035,10 @@ export function InsertRow(props: {
     const chooseCommandCandidate = (commandId: string) => {
         const def = getCommandDef(commandId);
         if (def && def.params.length > 0) {
-            applyCompletion(`/${def.token} `, { start: 0, end: props.mode.value.length });
+            // Rebuild the whole line, but keep the trigger the author is using so "@" does not flip to
+            // "/" mid-completion. The commit path canonicalizes it either way.
+            const trigger = actionTrigger(props.mode.value, props.slashAtAlias) ?? ACTION_TRIGGER;
+            applyCompletion(`${trigger}${def.token} `, { start: 0, end: props.mode.value.length });
             return;
         }
         props.onChooseCommand(commandId);
@@ -1053,7 +1065,7 @@ export function InsertRow(props: {
                     anchor, so it is positioned against the field's box and inherits its exact metrics.
                     `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
                 <div className="relative flex min-w-0 flex-1">
-                <CommandGhostHint value={props.mode.value} caret={caret} textStyle={textStyle} commandContext={props.commandContext} />
+                <CommandGhostHint value={props.mode.value} source={source} caret={caret} textStyle={textStyle} commandContext={props.commandContext} />
                 <textarea
                     ref={props.inputRef}
                     // Same in-place surface as an editing row (see TextEditBox): the new line reads as a
@@ -1063,7 +1075,8 @@ export function InsertRow(props: {
                     style={textStyle}
                     rows={1}
                     value={props.mode.value}
-                    placeholder={t("story.rows.insertPlaceholder")}
+                    // The hint advertises whichever trigger this author actually uses.
+                    placeholder={t("story.rows.insertPlaceholder", { trigger: props.slashAtAlias ? "@" : "/" })}
                     onChange={event => {
                         setCaret(event.target.selectionStart ?? event.target.value.length);
                         props.onValueChange(event.target.value);
