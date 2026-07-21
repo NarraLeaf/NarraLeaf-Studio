@@ -317,4 +317,10 @@ export const storyInspector = {
         language: "语言",
         source: "源码",
     },
+    declaration: {
+        name: "名称",
+        type: "类型",
+        default: "默认值",
+        description: "描述",
+    },
 } satisfies LocaleNamespace<"storyInspector">;

@@ -334,14 +334,13 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
             return { ...base, kind: "action", payload: { action: "setVariable", target: { scope: "scene", variableId: "" }, value: initialText || true } };
         case "conditionIf":
             return { ...base, kind: "control", payload: { control: "condition" } };
-        // Declaration commands never reach here: the commit path intercepts them before it asks for a
-        // block (see `STORY_DECLARATION_COMMANDS`). Throwing keeps that the only route - a declaration
-        // that reached block creation would otherwise land a stray row the author never asked for,
-        // which is far harder to notice than a crash in development.
+        // v6: a declaration IS a row - the block id doubles as the variable id and storage key.
         case "declareSceneVariable":
+            return { ...base, kind: "declaration", payload: { scope: "scene", name: "variable", valueType: "boolean", storageKey: blockId } };
         case "declareSavedVariable":
+            return { ...base, kind: "declaration", payload: { scope: "saved", name: "variable", valueType: "boolean", storageKey: blockId } };
         case "declarePersistentVariable":
-            throw new Error(`${commandId} declares a variable and builds no block; the commit path must intercept it.`);
+            return { ...base, kind: "declaration", payload: { scope: "persistent", name: "variable", valueType: "boolean", storageKey: blockId } };
         case "executeScript":
             return { ...base, kind: "action", payload: { action: "blueprint", blueprintId: "" } };
         case "imageCreate":
@@ -410,30 +409,3 @@ export function isInspectorFirstCommand(commandId: ActionCommandId): boolean {
     return !["narration", "dialogue", "note", "choiceOption", "condition", "conditionBranch"].includes(commandId);
 }
 
-/**
- * Resolve a typed `/…` line to a command, without going through the menu.
- *
- * This is what runs when the author dismissed the candidates and pressed Enter anyway: the line has
- * to stand on its own or become an invalid row. Only the first token is considered - arguments are
- * the command system's job, and this is the seam its parser replaces.
- */
-export function resolveActionCommandToken(line: string): ActionCommandId | null {
-    const token = line.trim().split(/\s+/)[0] ?? "";
-    if (!token.startsWith("/")) {
-        return null;
-    }
-    const needle = token.toLowerCase();
-    const bare = needle.slice(1);
-    if (!bare) {
-        return null;
-    }
-    for (const command of ACTION_COMMANDS) {
-        if (command.id.toLowerCase() === bare) {
-            return command.id;
-        }
-        if (command.aliases?.some(alias => alias.toLowerCase() === needle)) {
-            return command.id;
-        }
-    }
-    return null;
-}

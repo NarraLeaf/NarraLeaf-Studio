@@ -15,6 +15,7 @@ import {
 import { collectEditorGroups } from "../components/layout/editorCommandsModel";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { openDashboardTab } from "../modules/dashboard/openDashboardTab";
+import { WELCOME_SHOWN_KEY, openWelcomeTab } from "../modules/welcome/openWelcomeTab";
 import {
     DASHBOARD_OPEN_DEFAULT_KEY,
     getDashboardOpenProjectKey,
@@ -67,8 +68,9 @@ export function useWorkspaceEditorSession() {
                         session = parseWorkspaceEditorSession(legacyRaw);
                         shouldMigrateLegacySession = Boolean(session);
                     }
+                    let restoredCount = 0;
                     if (session && countSessionTabs(session.layout) > 0) {
-                        const restoredCount = restoreWorkspaceEditorSession(context, session, uiService);
+                        restoredCount = restoreWorkspaceEditorSession(context, session, uiService);
                         if (shouldMigrateLegacySession && restoredCount > 0) {
                             await settingsService.set(
                                 sessionSettingsKey,
@@ -89,6 +91,15 @@ export function useWorkspaceEditorSession() {
                     ]);
                     if (resolveDashboardOpen(projectChoice, globalDefault)) {
                         openDashboardTab(context);
+                    }
+
+                    // Last, so it lands focused in front of the dashboard on the one run it
+                    // appears. Gated on `restoredCount` rather than on the live layout because the
+                    // dashboard above has already put a tab there - "nothing to restore" is what
+                    // actually distinguishes a first run from a returning one.
+                    if (restoredCount === 0 && !(await settingsService.get<boolean>(WELCOME_SHOWN_KEY, false))) {
+                        openWelcomeTab(context);
+                        await settingsService.set(WELCOME_SHOWN_KEY, true);
                     }
                 } catch (error) {
                     console.error("[WorkspaceEditorSession] Failed to restore:", error);

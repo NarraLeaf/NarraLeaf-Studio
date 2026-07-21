@@ -106,13 +106,14 @@ function countFilledPositionals(line: Extract<StoryCommandLine, { kind: "command
 
 /** Index of the first `=` outside quotes, or -1. Mirrors the parser's own splitting. */
 function firstUnquotedEquals(raw: string): number {
-    let inQuote = false;
+    let inQuote: "\"" | "'" | null = null;
     for (let index = 0; index < raw.length; index += 1) {
-        if (raw[index] === "\"") {
-            inQuote = !inQuote;
+        const char = raw[index];
+        if ((char === "\"" || char === "'") && (inQuote === null || inQuote === char)) {
+            inQuote = inQuote === null ? char : null;
             continue;
         }
-        if (raw[index] === "=" && !inQuote) {
+        if (char === "=" && inQuote === null) {
             return index;
         }
     }

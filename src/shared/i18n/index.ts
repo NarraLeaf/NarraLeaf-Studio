@@ -7,3 +7,5 @@
 export * from "./locales";
 export * from "./catalog";
 export * from "./translator";
+export * from "./registry";
+export * from "./flatten";

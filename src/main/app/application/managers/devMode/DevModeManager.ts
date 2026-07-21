@@ -486,7 +486,7 @@ export class DevModeManager {
             return `surface ${entry.surfaceId}`;
         }
         if (entry.kind === "story") {
-            return `story ${entry.scriptId ?? entry.filePath ?? "unknown"}:${entry.line}`;
+            return `story ${entry.storyId}/${entry.sceneId}${entry.blockId ? `@${entry.blockId}` : ""}`;
         }
         return `extension ${entry.extensionId}`;
     }

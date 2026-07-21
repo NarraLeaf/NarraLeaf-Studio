@@ -220,6 +220,32 @@ describe("UIStore editor group splitting", () => {
         expect("tabs" in layout.second && layout.second.tabs.map(t => t.id)).toEqual(["a"]);
     });
 
+    it("returns the source pane to its most-recently-shown tab when the active tab is split off", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("a"));
+        store.openEditorTabInGroup(tab("b"));
+        store.openEditorTabInGroup(tab("c"));
+        // Recent order in main becomes c (active) -> a -> b; `a` is the most recent tab besides `c`.
+        store.setActiveEditorTabInGroup("b", "main");
+        store.setActiveEditorTabInGroup("a", "main");
+        store.setActiveEditorTabInGroup("c", "main");
+
+        expect(store.splitEditorGroup("main", "horizontal")).toBe(true);
+
+        const layout = store.getEditorLayout();
+        if ("tabs" in layout) {
+            throw new Error("Expected a split layout");
+        }
+        const source = layout.first;
+        if (!("tabs" in source)) {
+            throw new Error("Expected the source pane to be a group");
+        }
+        expect(source.tabs.map(t => t.id)).toEqual(["a", "b"]);
+        // Not "b", the last tab in the strip - the pane returns to the tab it last showed.
+        expect(source.focus).toBe("a");
+        expect("tabs" in layout.second && layout.second.tabs.map(t => t.id)).toEqual(["c"]);
+    });
+
     it("merges every other group's tabs back instead of discarding them", () => {
         const store = new UIStore();
         store.openEditorTabInGroup(tab("a"));
@@ -302,6 +328,25 @@ describe("UIStore editor group splitting", () => {
         expect(layout.direction).toBe("vertical");
         expect(tabIds(layout.first)).toEqual(["c"]);
         expect(tabIds(layout.second)).toEqual(["a", "b"]);
+    });
+
+    it("refocuses the source pane on its most-recent tab after a tab is dragged out into a split", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("a"));
+        store.openEditorTabInGroup(tab("b"));
+        store.openEditorTabInGroup(tab("c"));
+        // Recent order in main becomes c (active) -> a -> b; `a` is the most recent besides `c`.
+        store.setActiveEditorTabInGroup("b", "main");
+        store.setActiveEditorTabInGroup("a", "main");
+        store.setActiveEditorTabInGroup("c", "main");
+
+        // Drag the active tab out of main into a fresh pane beside it.
+        expect(store.moveEditorTabToNewSplit("c", "main", "main", "horizontal", "after")).toBe(true);
+
+        const main = groupsOf(store).find(g => g.id === "main");
+        expect(main?.tabs.map(t => t.id)).toEqual(["a", "b"]);
+        // The source pane returns to the last tab it showed, not the last tab in the strip ("b").
+        expect(main?.focus).toBe("a");
     });
 
     it("refuses to split a group's only tab off itself, which would collapse straight back", () => {

@@ -1,7 +1,7 @@
 {
   "name": "narraleaf-studio",
   "productName": "NarraLeaf Studio",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "description": "IDE for NarraLeaf Projects",
   "homepage": "https://github.com/NarraLeaf/NarraLeaf-Studio#readme",
@@ -34,10 +34,11 @@
     "stop": "node project/app/stop-dev.js",
     "pack-electron": "yarn clean && node project/app/pack-electron.js",
     "clean": "rimraf dist",
-    "lint": "tsc --project src/shared/tsconfig.json && tsc --project src/main/tsconfig.json && tsc --project src/renderer/tsconfig.json && tsc --project src/runtime/tsconfig.json",
+    "lint": "tsc --project src/shared/tsconfig.json && tsc --project src/main/tsconfig.json && tsc --project src/renderer/tsconfig.json && tsc --project src/runtime/tsconfig.json && tsc --project src/builtin-plugins/tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "style:ratchet": "node scripts/style-ratchet.mjs"
+    "style:ratchet": "node scripts/style-ratchet.mjs",
+    "build:plugin-types": "node packages/plugin-types/build.mjs"
   },
   "dependencies": {
     "7zip-bin": "^5.2.0",
@@ -80,6 +81,7 @@
     "@types/ws": "^8.18.1",
     "autoprefixer": "^10.4.21",
     "chokidar": "^4.0.3",
+    "dts-bundle-generator": "^9",
     "ejs": "^3.1.10",
     "electron": "^38.3.0",
     "esbuild": "^0.25.11",
@@ -93,5 +95,8 @@
     "vitest": "^3.2.4",
     "ws": "^8.17.0"
   },
-  "packageManager": "yarn@4.10.3+sha512.c38cafb5c7bb273f3926d04e55e1d8c9dfa7d9c3ea1f36a4868fa028b9e5f72298f0b7f401ad5eb921749eb012eb1c3bb74bf7503df3ee43fd600d14a018266f"
+  "packageManager": "yarn@4.10.3+sha512.c38cafb5c7bb273f3926d04e55e1d8c9dfa7d9c3ea1f36a4868fa028b9e5f72298f0b7f401ad5eb921749eb012eb1c3bb74bf7503df3ee43fd600d14a018266f",
+  "resolutions": {
+    "dts-bundle-generator/typescript": "^5.7.3"
+  }
 }
