@@ -11,7 +11,7 @@ function manifest(id: string, version: string, blueprintNodes: string[] = [], wi
         name: id,
         version,
         entries: { runtime: "runtime.js" },
-        contributes: { blueprintNodes, widgets },
+        contributes: { blueprintNodes, widgets, runtimeData: [], locales: [] },
         permissions: [],
     };
 }

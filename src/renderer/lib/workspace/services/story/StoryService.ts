@@ -18,9 +18,13 @@ import {
     StorySavedVariableDefinition,
     StoryScene,
     StorySceneId,
+    StorySceneSnapshot,
     StorySceneUpdate,
     StorySceneVariableDefinition,
     StoryVariableValueType,
+    StoryDeclarationBlock,
+    StoryDeclarationPayload,
+    StoryVariableScope,
 } from "@shared/types/story";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
@@ -31,6 +35,7 @@ import { UuidService } from "../core/UuidService";
 import { AssetsService } from "../core/AssetsService";
 import { AssetLockReason } from "../assets/AssetLockManager";
 import { EventEmitter } from "../ui/EventEmitter";
+import { findDeclarationBlock } from "@shared/types/story/declarations";
 import { assertValidStoryId } from "@shared/utils/storyId";
 import {
     createChapter as createStoryChapterModel,
@@ -645,7 +650,12 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     // -----------------------------------------------------------------------
-    // Scene variables (backed by NLR Scene.local)
+    // Variable declarations (schema v6: a declaration ROW is the variable)
+    //
+    // These keep the pre-v6 method names so the panel and editor did not have to move, but they are
+    // block operations now: creating declares a row at the top of the owning scene, edits mutate the
+    // row's payload, and delete removes the row - which IS deleting the variable. Undo rides the
+    // ordinary scene history like any other block edit.
     // -----------------------------------------------------------------------
 
     public createSceneVariable(
@@ -653,137 +663,198 @@ export class StoryService extends Service<StoryService> implements IStoryService
         sceneId: StorySceneId,
         input: { name: string; valueType: StoryVariableValueType; defaultValue?: StoryLiteralValue },
     ): StorySceneVariableDefinition | null {
-        const id = this.getUuidService().generate();
-        let created: StorySceneVariableDefinition | null = null;
-        this.mutateDocument(storyId, document => {
-            const scene = document.scenes[sceneId];
-            if (!scene) return;
-            const definition: StorySceneVariableDefinition = {
-                id,
-                name: this.cleanName(input.name, "variable"),
-                valueType: input.valueType,
-                defaultValue: input.defaultValue,
-                storageKey: id,
-            };
-            scene.sceneVariables = { ...(scene.sceneVariables ?? {}), [id]: definition };
-            created = definition;
-        });
-        return created;
+        return this.createDeclaration(storyId, sceneId, "scene", input);
     }
 
-    public renameSceneVariable(storyId: StoryId, sceneId: StorySceneId, variableId: string, name: string): boolean {
-        return this.updateSceneVariable(storyId, sceneId, variableId, definition => {
-            definition.name = this.cleanName(name, definition.name);
+    public renameSceneVariable(storyId: StoryId, _sceneId: StorySceneId, variableId: string, name: string): boolean {
+        return this.updateDeclaration(storyId, variableId, payload => {
+            payload.name = this.cleanName(name, payload.name);
         });
     }
 
-    public retypeSceneVariable(storyId: StoryId, sceneId: StorySceneId, variableId: string, valueType: StoryVariableValueType): boolean {
-        return this.updateSceneVariable(storyId, sceneId, variableId, definition => {
-            definition.valueType = valueType;
-            definition.defaultValue = undefined;
+    public retypeSceneVariable(storyId: StoryId, _sceneId: StorySceneId, variableId: string, valueType: StoryVariableValueType): boolean {
+        return this.updateDeclaration(storyId, variableId, payload => {
+            payload.valueType = valueType;
+            payload.defaultValue = undefined;
         });
     }
 
-    public setSceneVariableDefault(storyId: StoryId, sceneId: StorySceneId, variableId: string, value: StoryLiteralValue): boolean {
-        return this.updateSceneVariable(storyId, sceneId, variableId, definition => {
-            definition.defaultValue = value;
+    public setSceneVariableDefault(storyId: StoryId, _sceneId: StorySceneId, variableId: string, value: StoryLiteralValue): boolean {
+        return this.updateDeclaration(storyId, variableId, payload => {
+            payload.defaultValue = value;
         });
     }
 
-    public deleteSceneVariable(storyId: StoryId, sceneId: StorySceneId, variableId: string): boolean {
-        let changed = false;
-        this.mutateDocument(storyId, document => {
-            const scene = document.scenes[sceneId];
-            if (!scene?.sceneVariables?.[variableId]) return;
-            const next = { ...scene.sceneVariables };
-            delete next[variableId];
-            scene.sceneVariables = next;
-            changed = true;
-        });
-        return changed;
+    public deleteSceneVariable(storyId: StoryId, _sceneId: StorySceneId, variableId: string): boolean {
+        return this.deleteDeclaration(storyId, variableId);
     }
-
-    private updateSceneVariable(
-        storyId: StoryId,
-        sceneId: StorySceneId,
-        variableId: string,
-        mutate: (definition: StorySceneVariableDefinition) => void,
-    ): boolean {
-        let changed = false;
-        this.mutateDocument(storyId, document => {
-            const definition = document.scenes[sceneId]?.sceneVariables?.[variableId];
-            if (!definition) return;
-            mutate(definition);
-            changed = true;
-        });
-        return changed;
-    }
-
-    // -----------------------------------------------------------------------
-    // Saved variables (document-level, backed by NLR Storable)
-    // -----------------------------------------------------------------------
 
     public createSavedVariable(
         storyId: StoryId,
         input: { name: string; valueType: StoryVariableValueType; defaultValue?: StoryLiteralValue },
     ): StorySavedVariableDefinition | null {
-        const id = this.getUuidService().generate();
-        let created: StorySavedVariableDefinition | null = null;
-        this.mutateDocument(storyId, document => {
-            const definition: StorySavedVariableDefinition = {
-                id,
-                name: this.cleanName(input.name, "variable"),
-                valueType: input.valueType,
-                defaultValue: input.defaultValue,
-                storageKey: id,
-            };
-            document.savedVariables = { ...(document.savedVariables ?? {}), [id]: definition };
-            created = definition;
-        });
-        return created;
+        const document = this.getStoryDocument(storyId);
+        const homeSceneId = document.entrySceneId && document.scenes[document.entrySceneId]
+            ? document.entrySceneId
+            : Object.keys(document.scenes)[0];
+        return homeSceneId ? this.createDeclaration(storyId, homeSceneId, "saved", input) : null;
     }
 
     public renameSavedVariable(storyId: StoryId, variableId: string, name: string): boolean {
-        return this.updateSavedVariable(storyId, variableId, definition => {
-            definition.name = this.cleanName(name, definition.name);
+        return this.updateDeclaration(storyId, variableId, payload => {
+            payload.name = this.cleanName(name, payload.name);
         });
     }
 
     public retypeSavedVariable(storyId: StoryId, variableId: string, valueType: StoryVariableValueType): boolean {
-        return this.updateSavedVariable(storyId, variableId, definition => {
-            definition.valueType = valueType;
-            definition.defaultValue = undefined;
+        return this.updateDeclaration(storyId, variableId, payload => {
+            payload.valueType = valueType;
+            payload.defaultValue = undefined;
         });
     }
 
     public setSavedVariableDefault(storyId: StoryId, variableId: string, value: StoryLiteralValue): boolean {
-        return this.updateSavedVariable(storyId, variableId, definition => {
-            definition.defaultValue = value;
+        return this.updateDeclaration(storyId, variableId, payload => {
+            payload.defaultValue = value;
         });
     }
 
     public deleteSavedVariable(storyId: StoryId, variableId: string): boolean {
+        return this.deleteDeclaration(storyId, variableId);
+    }
+
+    // -----------------------------------------------------------------------
+    // Scene Snapshots (变量快照): named per-scene sets of variable override values, used to launch a
+    // row-precise Dev Mode preview under conditions the editor cannot analyse statically. Stored on
+    // the scene (authoring data, not runtime); edits ride the ordinary document history.
+    // -----------------------------------------------------------------------
+
+    public listSceneSnapshots(storyId: StoryId, sceneId: StorySceneId): StorySceneSnapshot[] {
+        try {
+            return this.getStoryDocument(storyId).scenes[sceneId]?.sceneSnapshots ?? [];
+        } catch {
+            return [];
+        }
+    }
+
+    public createSceneSnapshot(storyId: StoryId, sceneId: StorySceneId, name: string): string | null {
+        const id = this.getUuidService().generate();
+        let created: string | null = null;
+        this.mutateDocument(storyId, document => {
+            const scene = document.scenes[sceneId];
+            if (!scene) return;
+            const snapshot: StorySceneSnapshot = { id, name: name.trim() || "Snapshot", values: {} };
+            scene.sceneSnapshots = [...(scene.sceneSnapshots ?? []), snapshot];
+            created = id;
+        });
+        return created;
+    }
+
+    public renameSceneSnapshot(storyId: StoryId, sceneId: StorySceneId, snapshotId: string, name: string): boolean {
+        const trimmed = name.trim();
+        if (!trimmed) return false;
+        return this.mutateSceneSnapshot(storyId, sceneId, snapshotId, snapshot => {
+            snapshot.name = trimmed;
+        });
+    }
+
+    public deleteSceneSnapshot(storyId: StoryId, sceneId: StorySceneId, snapshotId: string): boolean {
         let changed = false;
         this.mutateDocument(storyId, document => {
-            if (!document.savedVariables?.[variableId]) return;
-            const next = { ...document.savedVariables };
-            delete next[variableId];
-            document.savedVariables = next;
+            const scene = document.scenes[sceneId];
+            if (!scene?.sceneSnapshots) return;
+            const next = scene.sceneSnapshots.filter(snapshot => snapshot.id !== snapshotId);
+            if (next.length === scene.sceneSnapshots.length) return;
+            scene.sceneSnapshots = next;
             changed = true;
         });
         return changed;
     }
 
-    private updateSavedVariable(
+    public setSceneSnapshotValue(
         storyId: StoryId,
-        variableId: string,
-        mutate: (definition: StorySavedVariableDefinition) => void,
+        sceneId: StorySceneId,
+        snapshotId: string,
+        refKey: string,
+        value: StoryLiteralValue,
+    ): boolean {
+        return this.mutateSceneSnapshot(storyId, sceneId, snapshotId, snapshot => {
+            snapshot.values = { ...snapshot.values, [refKey]: value };
+        });
+    }
+
+    public clearSceneSnapshotValue(storyId: StoryId, sceneId: StorySceneId, snapshotId: string, refKey: string): boolean {
+        return this.mutateSceneSnapshot(storyId, sceneId, snapshotId, snapshot => {
+            const next = { ...snapshot.values };
+            delete next[refKey];
+            snapshot.values = next;
+        });
+    }
+
+    private mutateSceneSnapshot(
+        storyId: StoryId,
+        sceneId: StorySceneId,
+        snapshotId: string,
+        mutate: (snapshot: StorySceneSnapshot) => void,
     ): boolean {
         let changed = false;
         this.mutateDocument(storyId, document => {
-            const definition = document.savedVariables?.[variableId];
-            if (!definition) return;
-            mutate(definition);
+            const snapshot = document.scenes[sceneId]?.sceneSnapshots?.find(entry => entry.id === snapshotId);
+            if (!snapshot) return;
+            mutate(snapshot);
+            changed = true;
+        });
+        return changed;
+    }
+
+    private createDeclaration(
+        storyId: StoryId,
+        sceneId: StorySceneId,
+        scope: StoryVariableScope,
+        input: { name: string; valueType: StoryVariableValueType; defaultValue?: StoryLiteralValue },
+    ): StorySceneVariableDefinition | null {
+        const id = this.getUuidService().generate();
+        let created: StorySceneVariableDefinition | null = null;
+        this.mutateDocument(storyId, document => {
+            const scene = document.scenes[sceneId];
+            if (!scene) return;
+            const block: StoryDeclarationBlock = {
+                id,
+                kind: "declaration",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    scope,
+                    name: this.cleanName(input.name, "variable"),
+                    valueType: input.valueType,
+                    defaultValue: input.defaultValue,
+                    storageKey: id,
+                },
+            };
+            insertBlockInScene(scene, block, { parentId: null, beforeBlockId: scene.rootBlockIds[0] ?? null });
+            created = { id, name: block.payload.name, valueType: block.payload.valueType, defaultValue: block.payload.defaultValue, storageKey: id };
+        });
+        return created;
+    }
+
+    /** Saved/persistent declarations may sit in any scene, so lookups search the whole document. */
+    private updateDeclaration(storyId: StoryId, variableId: string, mutate: (payload: StoryDeclarationPayload) => void): boolean {
+        let changed = false;
+        this.mutateDocument(storyId, document => {
+            const found = findDeclarationBlock(document, variableId);
+            if (!found) return;
+            mutate(found.block.payload);
+            changed = true;
+        });
+        return changed;
+    }
+
+    private deleteDeclaration(storyId: StoryId, variableId: string): boolean {
+        let changed = false;
+        this.mutateDocument(storyId, document => {
+            const found = findDeclarationBlock(document, variableId);
+            if (!found) return;
+            deleteBlockFromScene(document.scenes[found.sceneId], variableId);
             changed = true;
         });
         return changed;

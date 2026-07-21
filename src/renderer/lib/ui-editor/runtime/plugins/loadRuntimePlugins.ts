@@ -208,6 +208,26 @@ function createRuntimePluginApp(
         });
     };
 
+    const readData = <T,>(namespace: string): T | null => {
+        const key = typeof namespace === "string" ? namespace.trim() : "";
+        if (!key) {
+            return null;
+        }
+        // Mirror the registration guards: reading an undeclared namespace is an
+        // authoring mistake, but unlike registration it must not kill the game -
+        // surface it as a warning and degrade to "no data".
+        if (!descriptor.manifest.contributes.runtimeData.includes(key)) {
+            options.log(
+                "warning",
+                `[plugin:${pluginId}] storage namespace is not declared in manifest contributes.runtimeData: ${key}. ` +
+                "Declare it so Studio publishes it with the game.",
+            );
+            return null;
+        }
+        const value = descriptor.data?.[key];
+        return value === undefined ? null : (value as T);
+    };
+
     return {
         plugin: descriptor.plugin,
         manifest: descriptor.manifest,
@@ -228,6 +248,7 @@ function createRuntimePluginApp(
                     }
                 },
             },
+            data: { readJson: readData },
             log: (level, message) => options.log(level, `[plugin:${pluginId}] ${message}`),
         },
     };

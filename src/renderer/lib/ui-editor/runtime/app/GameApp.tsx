@@ -63,6 +63,8 @@ import {
     createEmptyCompiledNlrStory,
     type CompiledNlrStory,
 } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
+import { sceneVariableDefs, savedVariableDefs } from "@shared/types/story";
 import { resolveDefaultLaunchScene } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import {
@@ -673,9 +675,46 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (!storyDocument.scenes[sceneId]) {
             throw new Error(`Start Game: scene not found: ${sceneId}`);
         }
+        // Row-precise launch ("play from here"): compute the settled stage at the target row and hand
+        // the compiler a launch spec, so the entry scene pre-poses there and plays the real story on.
+        const startBlockId = request.startBlockId?.trim() || undefined;
+        const launch = startBlockId
+            ? {
+                targetBlockId: startBlockId,
+                snapshot: computeStoryStageSnapshot({
+                    document: storyDocument,
+                    sceneId,
+                    targetBlockId: startBlockId,
+                    animations: bundle.storyLibrary?.animations,
+                }),
+            }
+            : undefined;
+        // Overlay the selected Scene Snapshot's variable overrides: scene/saved values feed the
+        // pre-pose seeds; persistent values seed the host bridge (the compiled story reads them live).
+        const snapshotId = request.snapshotId?.trim() || undefined;
+        if (launch && snapshotId) {
+            const scene = storyDocument.scenes[sceneId];
+            const overrides = scene?.sceneSnapshots?.find(entry => entry.id === snapshotId)?.values;
+            if (overrides) {
+                const sceneDefs = scene ? sceneVariableDefs(scene) : {};
+                const savedDefs = savedVariableDefs(storyDocument);
+                for (const [refKey, value] of Object.entries(overrides)) {
+                    if (refKey.startsWith("scene:")) {
+                        const def = sceneDefs[refKey.slice("scene:".length)];
+                        if (def) launch.snapshot.sceneVariables[def.storageKey] = value;
+                    } else if (refKey.startsWith("saved:")) {
+                        const def = savedDefs[refKey.slice("saved:".length)];
+                        if (def) launch.snapshot.savedVariables[def.storageKey] = value;
+                    } else if (refKey.startsWith("persistent:")) {
+                        core?.scopeBridge.persistenceSet(refKey.slice("persistent:".length), value);
+                    }
+                }
+            }
+        }
         const compiled = await compileStudioStoryToNlr({
             document: storyDocument,
             sceneId,
+            launch,
             characters: bundle.storyLibrary?.characters,
             animations: bundle.storyLibrary?.animations,
             resolveAssetUrl: host.resolveStoryAssetUrl,
@@ -890,12 +929,16 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         const storyId = String(request.storyId ?? "").trim();
         const sceneId = String(request.sceneId ?? "").trim();
+        const startBlockId = request.startBlockId?.trim() || undefined;
+        const snapshotId = request.snapshotId?.trim() || undefined;
 
         // Fast path: the environment is already mounted with this story from the boot preload and
         // has not entered a game yet. Just enter it (newGame + reveal) — no recompile, no re-mount,
-        // and gameReady does not fire again.
+        // and gameReady does not fire again. A row-precise launch never fast-paths: the pre-posed
+        // entry scene depends on the target row, so it must recompile.
         if (
             !options?.forceReinit &&
+            !startBlockId &&
             nlrLiveGameRef.current &&
             !gameEnteredRef.current &&
             activeStoryRequestRef.current?.storyId === storyId &&
@@ -905,8 +948,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             return;
         }
 
-        const compiled = await compileStoryRequest({ storyId, sceneId });
-        await mountNlrSession(compiled, { storyRequest: { storyId, sceneId } });
+        const compiled = await compileStoryRequest({ storyId, sceneId, startBlockId, snapshotId });
+        await mountNlrSession(compiled, { storyRequest: { storyId, sceneId, startBlockId, snapshotId } });
         await enterMountedGame();
     }, [activeSurface, compileStoryRequest, core, enterMountedGame, mountNlrSession]);
 
@@ -1066,7 +1109,13 @@ export function GameApp(props: GameAppProps): ReactNode {
     runBootRef.current = async () => {
         if (host.bootAction.kind === "story") {
             // A direct story launch enters the game immediately after the environment mounts.
-            await startStoryInGame({ storyId: host.bootAction.storyId, sceneId: host.bootAction.sceneId });
+            // `startBlockId` (row-precise "play from here") pre-poses the entry scene at that row.
+            await startStoryInGame({
+                storyId: host.bootAction.storyId,
+                sceneId: host.bootAction.sceneId,
+                startBlockId: host.bootAction.startBlockId,
+                snapshotId: host.bootAction.snapshotId,
+            });
         } else {
             // Menu launch: initialise the environment (gameReady) and preheat the default
             // scene, but do NOT enter the game — the player stays on the menu.

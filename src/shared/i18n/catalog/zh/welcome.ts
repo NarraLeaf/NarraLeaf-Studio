@@ -2,6 +2,24 @@ import type { LocaleNamespace } from "../types";
 
 export const welcome = {
     tagline: "面向 NarraLeaf 项目的一体化 IDE",
+    quickActions: {
+        newScene: {
+            label: "新建场景",
+            description: "为故事添加一个场景，开始写作",
+        },
+        openAssets: {
+            label: "打开资源",
+            description: "导入图片、音频与视频",
+        },
+        tutorials: {
+            label: "查看教程",
+            description: "在浏览器中打开 Studio 文档",
+        },
+    },
+    reopenHint: {
+        menu: "您可以随时在 帮助 → 打开欢迎页 中查看此页",
+        palette: "您可以随时在命令面板中搜索「打开欢迎页」查看此页",
+    },
     gettingStarted: {
         title: "快速开始",
         step1: {

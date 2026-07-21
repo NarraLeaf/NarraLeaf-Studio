@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef } from "react";
 import { X, Circle } from "lucide-react";
 import { useRegistry } from "../../registry";
 import { useWorkspace } from "../../context";
@@ -12,6 +12,7 @@ import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/componen
 import { hasClosedTabs, reopenLastClosedTab } from "../../session/workspaceClosedTabsStore";
 import { useEditorGroupDrop } from "./useEditorGroupDrop";
 import { EditorGroupDropOverlay } from "./EditorGroupDropOverlay";
+import { tabStripRevealScrollLeft } from "./tabStripReveal";
 import {
     EDITOR_TAB_DRAG_MIME,
     beginEditorTabDrag,
@@ -20,6 +21,9 @@ import {
 } from "@/apps/workspace/dnd/editorTabDragContract";
 import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
 import { useTranslation } from "@/lib/i18n";
+
+/** px of breathing room left beside the active tab when it is scrolled into view. */
+const TAB_REVEAL_MARGIN = 12;
 
 interface EditorGroupProps {
     group: EditorGroupType;
@@ -121,6 +125,34 @@ export function EditorGroup({ group }: EditorGroupProps) {
 
         return uiService.focus.onFocusChange(sync);
     }, [context, group.id, tabIds]);
+
+    // Keep the active tab visible. When focus lands on a tab scrolled out of an overflowing strip
+    // - after a command, the quick-switcher, or a close that reactivated a neighbour - reveal it so
+    // the user never has to scroll the strip by hand to find where they are. Also runs on tab-count
+    // changes, since a freshly opened active tab is appended past the right edge. useLayoutEffect so
+    // the strip is already positioned before the first paint, avoiding a visible scroll jump.
+    useLayoutEffect(() => {
+        const strip = stripRef.current;
+        if (!strip || !group.focus) {
+            return;
+        }
+        const header = Array.from(
+            strip.querySelectorAll<HTMLElement>("[data-editor-tab-id]"),
+        ).find((el) => el.dataset.editorTabId === group.focus);
+        if (!header) {
+            return;
+        }
+        const stripRect = strip.getBoundingClientRect();
+        const headerRect = header.getBoundingClientRect();
+        const next = tabStripRevealScrollLeft(
+            { scrollLeft: strip.scrollLeft, clientWidth: strip.clientWidth, scrollWidth: strip.scrollWidth },
+            { offsetLeft: headerRect.left - stripRect.left + strip.scrollLeft, width: headerRect.width },
+            TAB_REVEAL_MARGIN,
+        );
+        if (next !== null) {
+            strip.scrollLeft = next;
+        }
+    }, [group.focus, group.tabs.length, stripRef]);
 
     const focusTabStrip = useCallback(() => {
         if (!context) return;

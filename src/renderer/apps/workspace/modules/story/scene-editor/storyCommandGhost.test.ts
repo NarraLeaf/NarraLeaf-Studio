@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { story as en } from "@shared/i18n/catalog/en/story";
 import { getCommandGhost, paramHintKey } from "./storyCommandGhost";
-import { listCommandDefs } from "./storyCommandGrammar";
+import { listCommandDefs } from "./commands/registry";
 
 /**
  * The ghost hint's contract, written the way the author experiences it: type a prefix, see (or not

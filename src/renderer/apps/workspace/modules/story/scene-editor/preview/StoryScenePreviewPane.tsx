@@ -1,5 +1,5 @@
-import { Loader2, MonitorPlay, PanelRight, PictureInPicture2, Play, RotateCcw, Square, Volume2, VolumeX, X } from "lucide-react";
-import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { Loader2, MonitorPlay, PanelRight, PictureInPicture2, X } from "lucide-react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { NlrStageLayer } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import { useTranslation } from "@/lib/i18n";
 import type { StoryScenePreviewController } from "./useStoryScenePreviewController";
@@ -8,8 +8,10 @@ import type { StoryScenePreviewPaneMode } from "./storyScenePreviewSessionStore"
 const NOOP = () => undefined;
 
 /**
- * The story editor's live-preview pane: an embedded NLR stage rendering the state of the
- * currently selected row, with a status/diagnostics strip underneath.
+ * The story editor's live-preview pane: an embedded NLR stage rendering the settled state of the
+ * currently selected row, with a status/diagnostics strip underneath. The stage is always frozen —
+ * it shows *what the stage looks like at this row*, never a playable session. Interactive
+ * "play from here" lives in Dev Mode, launched from a row's ▶ button.
  *
  * The same pane is reused whether it is docked in the split-pane or floating as a
  * picture-in-picture window; `mode` only affects the header controls, and
@@ -25,11 +27,6 @@ export function StoryScenePreviewPane(props: {
     const { t } = useTranslation();
     const { controller, onClose, mode = "dock", onToggleFloat, onHeaderPointerDown } = props;
     const busy = controller.phase === "compiling" || controller.phase === "mounting" || controller.phase === "starting";
-    const playing = controller.mode === "play";
-    // Playing from the top of a scene also has no target row, but the hint belongs to the "follow the
-    // selection" mode - during playback it would just drop a gradient band over a running stage.
-    const showSceneStartHint = controller.stageLayers.length > 0 && controller.targetBlockId === null && !busy
-        && !playing && controller.phase !== "error";
     const notes = [
         ...controller.diagnostics.map(diagnostic => ({ level: diagnostic.level, message: diagnostic.message })),
         ...controller.issues,
@@ -79,9 +76,9 @@ export function StoryScenePreviewPane(props: {
                     <div key={layer.session.id} ref={layer.setRootElement} className="absolute inset-0">
                         <NlrStageLayer
                             session={layer.session}
-                            // Playback hands the stage to the author: clicks advance lines and pick
-                            // menu options. A held snapshot frame stays inert.
-                            interactive={controller.interactive}
+                            // The state preview is inert: the stage is a still of the selected row,
+                            // never a playable session.
+                            interactive={false}
                             renderOnStage
                             onLiveGameReady={controller.onLiveGameReady}
                             onEnvironmentReady={NOOP}
@@ -103,12 +100,7 @@ export function StoryScenePreviewPane(props: {
                         </div>
                     </div>
                 ) : null}
-                {showSceneStartHint ? (
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/70 to-transparent px-3 pb-2 pt-6 text-center text-2xs text-fg-muted"></div>
-                ) : null}
             </div>
-
-            <PreviewTransport controller={controller} />
 
             {/* Docked (split-pane) keeps the inline diagnostics strip as-is; the picture-in-picture
                 float drops it so problems don't eat the small preview's space — they still land in
@@ -127,76 +119,5 @@ export function StoryScenePreviewPane(props: {
                 </div>
             ) : null}
         </div>
-    );
-}
-
-/**
- * Transport strip: enters continuous playback from the selected row, and while playing offers
- * replay / stop / audio. It sits below the stage so it survives both the docked and floating shells
- * (the float drops the notes strip, and its header is a drag handle).
- */
-function PreviewTransport(props: { controller: StoryScenePreviewController }) {
-    const { t } = useTranslation();
-    const { controller } = props;
-    const playing = controller.mode === "play";
-
-    const status = controller.phase === "ended"
-        ? controller.playbackStop?.reason === "jump"
-            ? t("story.preview.endedAtJump")
-            : t("story.preview.ended")
-        : controller.phase === "playing"
-            ? t("story.preview.playing")
-            : null;
-
-    if (!playing) {
-        return (
-            <div className="flex min-h-[30px] shrink-0 items-center gap-2 border-t border-edge px-2">
-                <TransportButton
-                    icon={<Play className="h-3.5 w-3.5" />}
-                    label={t("story.preview.playFromHere")}
-                    onClick={controller.startPlaybackFromSelection}
-                />
-            </div>
-        );
-    }
-
-    return (
-        <div className="flex min-h-[30px] shrink-0 items-center gap-1 border-t border-edge px-2">
-            <TransportButton
-                icon={<RotateCcw className="h-3.5 w-3.5" />}
-                label={t("story.preview.restart")}
-                onClick={controller.restartPlayback}
-            />
-            <TransportButton
-                icon={<Square className="h-3.5 w-3.5" />}
-                label={t("story.preview.stop")}
-                onClick={controller.stopPlayback}
-            />
-            <TransportButton
-                icon={controller.muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
-                label={controller.muted ? t("story.preview.unmute") : t("story.preview.mute")}
-                onClick={() => controller.setMuted(!controller.muted)}
-                iconOnly
-            />
-            <div className="flex-1" />
-            {status ? <span className="truncate text-2xs text-fg-muted">{status}</span> : null}
-        </div>
-    );
-}
-
-function TransportButton(props: { icon: ReactNode; label: string; onClick: () => void; iconOnly?: boolean }) {
-    return (
-        <button
-            type="button"
-            className="flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill hover:text-fg"
-            // The floating shell turns the pane into a drag surface; controls must not start a move.
-            onPointerDown={event => event.stopPropagation()}
-            onClick={props.onClick}
-            title={props.label}
-            aria-label={props.label}
-        >
-            {props.icon}
-            {props.iconOnly ? null : <span>{props.label}</span>}
-        </button>
     );
 }

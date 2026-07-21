@@ -40,6 +40,15 @@ export type BehaviorNodeExecutionContext = {
     entry: UIGraphEntry;
     node: UIGraphNode;
     params: Record<string, unknown>;
+    /**
+     * Read one of this node's declared data input pins, following the wired
+     * edge. Lazy - nothing is resolved unless a node asks. Returns undefined for
+     * unwired or undeclared pins.
+     *
+     * Always supplied by both graph executors; optional only because tests build
+     * partial contexts. Call it as `ctx.resolveInput?.(pinId)`.
+     */
+    resolveInput?: (pinId: string) => unknown;
     hostAdapter: UIHostAdapter;
     trace?: BehaviorGraphExecutionTrace;
     /** Per-event execution locals; initialized from blueprint member variables (M4 simplified editor). */

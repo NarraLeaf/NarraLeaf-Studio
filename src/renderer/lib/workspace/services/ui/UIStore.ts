@@ -646,14 +646,16 @@ export class UIStore {
                 first: {
                     ...target,
                     tabs: remaining,
-                    focus: remaining.some((tab) => tab.id === target.focus)
-                        ? target.focus
-                        : remaining[remaining.length - 1]?.id ?? null,
+                    // Keep the source pane on its own tab when that tab stayed behind; when the
+                    // active tab is the one being split off, ensureEditorGroupHasValidFocus below
+                    // falls the pane back to the tab it most recently showed.
+                    focus: remaining.some((tab) => tab.id === target.focus) ? target.focus : null,
                 },
                 second: { id: newGroupId, tabs: [movedTab], focus: movedTab.id },
             };
         });
 
+        this.ensureEditorGroupHasValidFocus(groupId);
         this.recordEditorTabFocus(newGroupId, movedTab.id);
         this.events.emit("editorLayoutChanged", this.state.editorLayout);
         this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
@@ -1063,6 +1065,27 @@ export class UIStore {
         return entry ? { tabId: entry.tabId, groupId: entry.groupId } : null;
     }
 
+    /**
+     * The tab a given group most recently showed and still holds, or null when none of that
+     * group's tabs is in the focus history. Unlike {@link getPreferredEditorTabFocusTarget} the
+     * result is confined to one group - the caller wants the pane's *own* last tab, not whichever
+     * tab happens to be globally most recent.
+     */
+    private getPreferredTabIdInGroup(
+        groupId: string,
+        entries: readonly EditorTabFocusEntry[] = this.collectEditorTabFocusEntries()
+    ): string | null {
+        this.pruneEditorTabFocusHistory(entries);
+        const byKey = new Map(entries.map((entry) => [entry.key, entry]));
+        for (const key of this.editorTabFocusHistory) {
+            const entry = byKey.get(key);
+            if (entry && entry.groupId === groupId) {
+                return entry.tabId;
+            }
+        }
+        return null;
+    }
+
     private setEditorGroupFocus(target: EditorTabFocusTarget): boolean {
         let didSetFocus = false;
 
@@ -1083,11 +1106,19 @@ export class UIStore {
             if (group.focus && group.tabs.some((tab) => tab.id === group.focus)) {
                 return group;
             }
+            if (group.tabs.length === 0) {
+                return { ...group, focus: null };
+            }
 
-            return {
-                ...group,
-                focus: group.tabs.length > 0 ? group.tabs[group.tabs.length - 1].id : null,
-            };
+            // Prefer the tab this pane most recently showed - so moving or closing the active tab
+            // reveals the last one the user was on here, not whichever tab sits at the end of the
+            // strip. Falls back to that last tab when nothing in this pane is in the history.
+            const preferred = this.getPreferredTabIdInGroup(groupId);
+            const focus =
+                preferred && group.tabs.some((tab) => tab.id === preferred)
+                    ? preferred
+                    : group.tabs[group.tabs.length - 1].id;
+            return { ...group, focus };
         });
     }
 

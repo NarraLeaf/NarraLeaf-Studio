@@ -1,0 +1,29 @@
+{
+    // Generation-only compilation settings. Extends the renderer project so the
+    // path aliases and lib/target match how Studio actually compiles, with one
+    // deliberate override.
+    //
+    // The renderer config lists `../shared/types` as a typeRoot. That makes
+    // TypeScript resolve `@shared/types/*` as ambient *type packages* rather
+    // than as project source, so the declaration bundler classifies every one
+    // of them as an external library and emits bare
+    // `import { X } from '@shared/types/plugins'` lines into the output —
+    // specifiers no consumer outside this repo can resolve. Dropping the
+    // typeRoot makes them ordinary source files, which the bundler inlines.
+    "extends": "../../src/renderer/tsconfig.json",
+    "compilerOptions": {
+        "baseUrl": "../../src/renderer",
+        "typeRoots": ["../../node_modules/@types"],
+        "types": ["node", "react", "react-dom"],
+        "noEmit": true,
+        "declaration": false,
+        "emitDeclarationOnly": false
+    },
+    "include": [
+        "../../src/renderer/**/*",
+        "../../src/shared/**/*",
+        // Transient combined entry written by build.mjs; removed after bundling.
+        "./.gen/**/*"
+    ],
+    "exclude": ["**/dist/**"]
+}
