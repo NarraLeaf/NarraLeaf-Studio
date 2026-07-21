@@ -18,6 +18,7 @@ import type {
     RuntimePluginDescriptor,
     WorkspacePluginDescriptor,
 } from "./plugins";
+import type { LocaleContribution } from "@shared/i18n";
 import type {
     PrivilegedBashExecutePayload,
     PrivilegedBashExecuteResult,
@@ -160,6 +161,8 @@ export enum IPCEventType {
     pluginWorkspaceList = "plugin.workspaceList",
     pluginRuntimeList = "plugin.runtimeList",
     pluginReportLoadError = "plugin.reportLoadError",
+    pluginLocaleList = "plugin.localeList",
+    pluginLocalesChanged = "plugin.localesChanged",
 
     privilegedFsCall = "privileged.fs.call",
     privilegedPermissionRequest = "privileged.permission.request",
@@ -1277,6 +1280,26 @@ export type IPCPluginManagerEvents = {
             error: string | null;
         },
         response: PluginListItem;
+    };
+    // Aggregated Studio language-pack contributions from every enabled plugin.
+    // Any window may request these to populate the locale registry + picker.
+    [IPCEventType.pluginLocaleList]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            contributions: LocaleContribution[];
+        };
+    };
+    // Host -> renderer push: fired for every window when the enabled plugin set
+    // changes, so each window re-fetches locale contributions and re-localizes.
+    [IPCEventType.pluginLocalesChanged]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: {
+            version: number;
+        },
+        response: never;
     };
 };
 

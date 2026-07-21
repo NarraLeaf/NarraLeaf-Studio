@@ -372,6 +372,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.pluginRuntimeList, {}),
         reportLoadError: (pluginId: string, error: string | null) =>
             ipcClient.invoke(IPCEventType.pluginReportLoadError, { pluginId, error }),
+        getLocaleContributions: () =>
+            ipcClient.invoke(IPCEventType.pluginLocaleList, {}),
+        onLocalesChanged: (handler: (change: { version: number }) => void) =>
+            ipcClient.onMessage(IPCEventType.pluginLocalesChanged, handler),
     },
 
     privileged: privilegedBootstrapBridge,

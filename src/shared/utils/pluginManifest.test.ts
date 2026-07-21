@@ -136,6 +136,63 @@ describe("validatePluginManifest", () => {
         });
     });
 
+    it("normalizes contributed locales (language packs)", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.ja-pack",
+            name: "Japanese Pack",
+            version: "1.0.0",
+            entries: { studio: "main.js" },
+            contributes: {
+                locales: [
+                    { code: "ja", nativeName: "日本語", intl: "ja-JP", messages: "locales/ja.json" },
+                    { code: "zh", messages: "locales/zh-extra.json" },
+                ],
+            },
+        });
+
+        expect(result).toMatchObject({
+            ok: true,
+            manifest: {
+                contributes: {
+                    locales: [
+                        { code: "ja", nativeName: "日本語", intl: "ja-JP", messages: "locales/ja.json" },
+                        { code: "zh", messages: "locales/zh-extra.json" },
+                    ],
+                },
+            },
+        });
+    });
+
+    it("rejects a locale contribution without a messages path", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.ja-pack",
+            name: "Japanese Pack",
+            version: "1.0.0",
+            entries: { studio: "main.js" },
+            contributes: { locales: [{ code: "ja", nativeName: "日本語" }] },
+        });
+
+        expect(result).toMatchObject({
+            ok: false,
+            error: expect.stringContaining("messages must be a relative JSON file path"),
+        });
+    });
+
+    it("rejects a locale contribution whose messages path escapes the package", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.ja-pack",
+            name: "Japanese Pack",
+            version: "1.0.0",
+            entries: { studio: "main.js" },
+            contributes: { locales: [{ code: "ja", nativeName: "日本語", messages: "../../etc/passwd" }] },
+        });
+
+        expect(result).toMatchObject({ ok: false });
+    });
+
     it("rejects unknown contributes keys", () => {
         const result = validatePluginManifest({
             manifestVersion: 2,

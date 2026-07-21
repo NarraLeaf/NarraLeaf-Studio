@@ -31,6 +31,7 @@ import type {
     PrivilegedBashExecuteResult,
 } from "./privileged";
 import { AppEventToken } from "./app";
+import type { LocaleContribution } from "@shared/i18n";
 import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsRepositoryInfo, VcsThreeWayResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
@@ -323,6 +324,8 @@ export interface RendererPreloadedInterface {
         getWorkspacePlugins(): Promise<RequestStatus<{ plugins: WorkspacePluginDescriptor[] }>>;
         getRuntimePlugins(): Promise<RequestStatus<{ plugins: RuntimePluginDescriptor[] }>>;
         reportLoadError(pluginId: string, error: string | null): Promise<RequestStatus<PluginListItem>>;
+        getLocaleContributions(): Promise<RequestStatus<{ contributions: LocaleContribution[] }>>;
+        onLocalesChanged(handler: (change: { version: number }) => void): AppEventToken;
     };
 
     privileged: RendererPrivilegedBootstrapInterface;

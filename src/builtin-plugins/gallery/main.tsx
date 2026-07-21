@@ -372,7 +372,7 @@ export default definePlugin({
             () => store.getOptions(),
         );
         app.services.blueprintNodes.registerMany(createGalleryBlueprintNodes());
-        app.services.ui.panels.register({
+        const unregisterPanel = app.services.ui.panels.register({
             id: PANEL_ID,
             title: "Gallery",
             icon: <Images size={16} />,
@@ -383,7 +383,7 @@ export default definePlugin({
         });
 
         return () => {
-            app.services.ui.panels.unregister(PANEL_ID);
+            unregisterPanel();
             unregisterOptions();
         };
     },
