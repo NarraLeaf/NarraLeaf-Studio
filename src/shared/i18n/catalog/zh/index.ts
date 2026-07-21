@@ -27,6 +27,7 @@ import { widgetChrome } from "./widgetChrome";
 import { console } from "./console";
 import { project } from "./project";
 import { welcome } from "./welcome";
+import { about } from "./about";
 import { actions } from "./actions";
 import { placeholders } from "./placeholders";
 import { wizard } from "./wizard";
@@ -61,6 +62,7 @@ export const zh = {
     console,
     project,
     welcome,
+    about,
     actions,
     placeholders,
     wizard,
