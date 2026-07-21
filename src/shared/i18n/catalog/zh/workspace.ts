@@ -245,6 +245,8 @@ export const workspace = {
             resetZoom: "重置缩放到 100%",
             shortcuts: "快捷键速查",
             words: "{count} 字",
+            lines: "{count} 行",
+            noStoryOpen: "未打开故事",
             openDashboard: "打开项目仪表盘",
             // 已注册状态栏项目的名称，仅在状态栏右键开关菜单中显示。
             entries: {
@@ -252,7 +254,7 @@ export const workspace = {
                 preview: "预览状态",
                 build: "构建状态",
                 unsavedChanges: "未保存的更改",
-                wordCount: "字数统计",
+                wordCount: "故事统计",
                 shortcuts: "快捷键速查",
                 notifications: "通知",
                 theme: "主题切换",

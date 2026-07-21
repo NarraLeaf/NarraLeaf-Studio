@@ -251,6 +251,8 @@ export const workspace = {
             resetZoom: "Reset zoom to 100%",
             shortcuts: "Keyboard shortcuts",
             words: "{count} words",
+            lines: "{count} lines",
+            noStoryOpen: "No story open",
             openDashboard: "Open the project dashboard",
             // Names for the registered entries, shown only in the bar's right-click toggle menu -
             // the cells themselves are icon-first and label their own state.
@@ -259,7 +261,7 @@ export const workspace = {
                 preview: "Preview status",
                 build: "Build status",
                 unsavedChanges: "Unsaved changes",
-                wordCount: "Word count",
+                wordCount: "Story stats",
                 shortcuts: "Keyboard shortcuts",
                 notifications: "Notifications",
                 theme: "Theme switcher",
