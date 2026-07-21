@@ -1,7 +1,7 @@
 
 import { getInterface } from "@/lib/app/bridge";
 import { RecentProjectMissingReason, RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
-import { Button, ContextMenu, Input, Modal, dialogFooterButtonClass } from "@/lib/components/elements";
+import { ContextMenu, IconButton, Input, Modal, dialogFooterButtonClass } from "@/lib/components/elements";
 import type { ContextMenuDef } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
@@ -218,39 +218,36 @@ export function ProjectsTab() {
                         className="bg-transparent border-transparent focus:border-edge-strong"
                     />
                 </div>
-                <Button
+                <IconButton
                     variant="ghost"
-                    size="md"
+                    size="sm"
                     onClick={handleOpenFolder}
                     disabled={isBusy}
-                    className="h-9 w-9 px-0 text-fg-muted"
                     title={t("launcher.projects.openFolder")}
                     aria-label={t("launcher.projects.openFolder")}
                 >
-                    <FolderOpen className="w-5 h-5" />
-                </Button>
-                <Button
+                    <FolderOpen className="h-4 w-4" />
+                </IconButton>
+                <IconButton
                     variant="ghost"
-                    size="md"
+                    size="sm"
                     onClick={handleImportProject}
                     disabled={isBusy}
-                    className="h-9 w-9 px-0 text-fg-muted"
                     title={t("launcher.projects.importProject")}
                     aria-label={t("launcher.projects.importProject")}
                 >
-                    <Upload className="w-5 h-5" />
-                </Button>
-                <Button
+                    <Upload className="h-4 w-4" />
+                </IconButton>
+                <IconButton
                     variant="ghost"
-                    size="md"
+                    size="sm"
                     onClick={handleNewProject}
                     disabled={isBusy}
-                    className="h-9 w-9 px-0 text-fg-muted"
                     title={t("launcher.projects.newProject")}
                     aria-label={t("launcher.projects.newProject")}
                 >
-                    <Plus className="w-5 h-5" />
-                </Button>
+                    <Plus className="h-4 w-4" />
+                </IconButton>
             </div>
 
             {operationError && (
