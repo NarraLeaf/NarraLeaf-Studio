@@ -153,22 +153,19 @@ function EditorSplitNode({ split }: { split: EditorSplit }) {
                 onKeyDown={handleKeyDown}
                 style={{ flex: `0 0 ${EDITOR_SASH_SIZE}px` }}
                 className={`
-                    relative z-10 bg-edge outline-none group/sash
+                    relative z-10 outline-none transition-colors duration-100
                     ${isHorizontal ? "cursor-col-resize" : "cursor-row-resize"}
+                    ${dragRatio !== null ? "bg-primary" : "bg-edge hover:bg-primary/50 focus:bg-primary/50"}
                 `}
             >
                 {/*
-                  * The grab area reaches past the 4px gutter into both panes, so the sash is easy to
-                  * hit without widening the line the user sees. The highlight is on this element
-                  * rather than the gutter so it lights up the moment the pointer is close enough to
-                  * actually grab.
+                  * Invisible grab extender: reaches past the 4px gutter into both panes so the sash
+                  * is easy to hit. It carries no highlight of its own — hovering it puts THIS div
+                  * into :hover, so only the gutter line (this div's 4px box) recolors. The highlight
+                  * therefore tracks the visible line, not the wider grab area.
                   */}
                 <span
-                    className={`
-                        absolute transition-colors duration-100
-                        ${isHorizontal ? "-left-1 -right-1 inset-y-0" : "-top-1 -bottom-1 inset-x-0"}
-                        ${dragRatio !== null ? "bg-primary" : "hover:bg-primary/50 group-focus/sash:bg-primary/50"}
-                    `}
+                    className={`absolute ${isHorizontal ? "-left-1 -right-1 inset-y-0" : "-top-1 -bottom-1 inset-x-0"}`}
                     aria-hidden
                 />
             </div>

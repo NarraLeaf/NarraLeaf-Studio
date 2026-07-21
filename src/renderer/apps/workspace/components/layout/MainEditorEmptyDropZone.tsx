@@ -5,7 +5,6 @@ import {
     setWorkspaceSelectionToPrimaryAsset,
 } from "@/apps/workspace/modules/assets/dnd/openDraggedAssetsInEditor";
 import { useTranslation } from "@/lib/i18n";
-import { backgroundLayerStyle } from "@/lib/workspace/services/ui/backgroundSettings";
 import { useWorkspaceBackgroundImage } from "./useWorkspaceBackgroundImage";
 
 const LOGO_MASK = "url(/img/narraleaf-studio/logo-icon-white.png)";
@@ -32,22 +31,16 @@ export function MainEditorEmptyDropZone({ groupId }: MainEditorEmptyDropZoneProp
         },
     });
 
-    // The custom workspace background is painted here — behind the empty editor, on top of this
-    // zone's own opaque surface — never as a window overlay. This is the only place it shows, so it
-    // can never wash out real content (a scene's background image, panels, toolbars). When one is
-    // set it replaces the logo watermark, which would otherwise fight it for the same space.
-    const { settings, url: backgroundUrl } = useWorkspaceBackgroundImage();
+    // A custom workspace background shows through the whole window (as a translucent underlay behind
+    // the chrome — see WorkspaceLayout), so the faint logo watermark would fight it for the same
+    // space. Hide the watermark whenever a background is set; the wallpaper is the backdrop instead.
+    const { url: backgroundUrl } = useWorkspaceBackgroundImage();
 
     return (
         <div
             {...dropTargetProps}
             className={`h-full flex items-center justify-center bg-surface relative overflow-hidden rounded-sm transition-colors ${overlayClassName}`}
         >
-            {backgroundUrl && (
-                <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-                    <div className="absolute" style={backgroundLayerStyle(settings, backgroundUrl)} />
-                </div>
-            )}
             {!backgroundUrl && (
                 <div className="text-center text-fg-subtle relative z-10 pointer-events-none">
                     <div className="relative mb-8">
