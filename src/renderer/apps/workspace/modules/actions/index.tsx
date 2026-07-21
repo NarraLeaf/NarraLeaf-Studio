@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils/cn";
 import { Workspace } from "@/lib/workspace/workspace";
 import { UIService } from "@/lib/workspace/services/ui";
 import { Services } from "@/lib/workspace/services/services";
-import { welcomeModule } from "../welcome";
+import { openWelcomeTab } from "../welcome/openWelcomeTab";
 import { getInterface } from "@/lib/app/bridge";
 import { Separator } from "../../registry/types";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
@@ -315,15 +315,7 @@ export const helpActionGroup: ModuleActionGroup = {
             tooltip: "Open welcome screen",
             tooltipKey: "actions.help.welcome.tooltip",
             onClick: (workspace: Workspace) => {
-                const uiService = workspace.getContext().services.get<UIService>(Services.UI);
-                uiService.editor.open({
-                    id: welcomeModule.metadata.id,
-                    title: welcomeModule.metadata.title,
-                    icon: welcomeModule.metadata.icon,
-                    component: welcomeModule.component as any,
-                    closable: welcomeModule.metadata.closable,
-                    modified: welcomeModule.metadata.modified,
-                });
+                openWelcomeTab(workspace.getContext());
             },
             order: 0,
         },
