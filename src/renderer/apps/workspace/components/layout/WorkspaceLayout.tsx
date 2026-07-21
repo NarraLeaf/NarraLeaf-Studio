@@ -22,6 +22,8 @@ import { TitleBarSearchBox } from "./TitleBarSearchBox";
 import { StatusBar, STATUS_BAR_HEIGHT } from "./StatusBar";
 import { QuickOpenPicker } from "./QuickOpenPicker";
 import { BackgroundImageDialog } from "./BackgroundImageDialog";
+import { useWorkspaceBackgroundImage } from "./useWorkspaceBackgroundImage";
+import { backgroundLayerStyle } from "@/lib/workspace/services/ui/backgroundSettings";
 import { useRegistry } from "../../registry";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
@@ -623,8 +625,28 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
     const isMac = isMacPlatform();
 
+    // Custom workspace background. Rendered as ONE pre-composited backdrop behind all chrome: the
+    // surface colour with the wallpaper already blended in at its configured strength (the 2–40%
+    // "opacity" the dialog exposes). When it is active, `nl-has-workspace-bg` makes every base
+    // `bg-surface` fill fully TRANSPARENT (see styles.css), so the panels AND the seams between them
+    // reveal this single layer uniformly. Because no element ever paints the raw picture, there is
+    // no bright bleed through the gaps; and text, icons, borders, raised/overlay surfaces and content
+    // images all keep their own opaque paints, so real content never reads as see-through.
+    const { settings: backgroundSettings, url: backgroundUrl } = useWorkspaceBackgroundImage();
+
     return (
-        <div className="h-screen w-screen flex flex-col bg-surface text-fg">
+        <div
+            className={`relative isolate h-screen w-screen flex flex-col bg-surface text-fg${backgroundUrl ? " nl-has-workspace-bg" : ""}`}
+        >
+            {backgroundUrl && (
+                <div
+                    aria-hidden
+                    className="pointer-events-none fixed inset-0 overflow-hidden"
+                    style={{ zIndex: -1, backgroundColor: "rgb(var(--nl-surface))" }}
+                >
+                    <div className="absolute" style={backgroundLayerStyle(backgroundSettings, backgroundUrl)} />
+                </div>
+            )}
             {/* Title Bar with Action Bar and Control Bar */}
             <TitleBar
                 title=""
