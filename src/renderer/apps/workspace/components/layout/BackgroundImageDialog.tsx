@@ -21,9 +21,14 @@ import {
 
 /**
  * The background-image dialog, modeled on the JetBrains one: pick a file, set how strongly it
- * shows through, choose how it fills the window and where it sits. Every control writes global
- * state immediately so the change previews live behind the dialog — Cancel restores the values
- * the dialog opened with, which is why the entry snapshot is kept.
+ * shows through, choose how it fills the area and where it sits. Every control writes global state
+ * immediately so the change previews live — the picture is painted as the backdrop of the empty
+ * editor area (see MainEditorEmptyDropZone), so the preview shows when no editor tab is open.
+ * Cancel restores the values the dialog opened with, which is why the entry snapshot is kept.
+ *
+ * The picture is deliberately confined to that backdrop rather than overlaid on the whole window:
+ * an on-top overlay tinted every panel and editor beneath it, making real content (a scene's
+ * background image, toolbars) read as see-through. Behind opaque content it can never do that.
  *
  * The setting is global (one background for the whole app), so there is no per-project scope and
  * no separate targets to configure.

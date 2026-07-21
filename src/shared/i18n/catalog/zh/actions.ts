@@ -34,6 +34,10 @@ export const actions = {
             label: "打开欢迎页",
             tooltip: "打开欢迎界面",
         },
+        about: {
+            label: "关于",
+            tooltip: "关于 NarraLeaf Studio",
+        },
     },
     export: {
         chooseFolder: "请选择导出项目包的存放文件夹",
