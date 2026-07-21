@@ -9,6 +9,7 @@ import type {
     RuntimePluginDescriptor,
     WorkspacePluginDescriptor,
 } from "@shared/types/plugins";
+import type { LocaleContribution } from "@shared/i18n";
 import { WindowAppType, WindowCloseResults } from "@shared/types/window";
 import { resolveDependencies } from "@shared/utils/resolveDependencies";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
@@ -57,7 +58,11 @@ export class PluginInstallLocalHandler extends IPCHandler<IPCEventType.pluginIns
             return this.success({ canceled: true });
         }
 
-        return this.tryUse(() => window.app.pluginManager.installFromDirectory(result.filePaths[0]));
+        const installed = await this.tryUse(() => window.app.pluginManager.installFromDirectory(result.filePaths[0]));
+        if (installed.success && !installed.data.canceled) {
+            void window.app.refreshPluginLocales();
+        }
+        return installed;
     }
 }
 
@@ -71,7 +76,11 @@ export class PluginSetEnabledHandler extends IPCHandler<IPCEventType.pluginSetEn
     ): Promise<RequestStatus<PluginListItem>> {
         const denied = ensurePluginInstallCapability(window);
         if (denied) return denied;
-        return this.tryUse(() => window.app.pluginManager.setPluginEnabled(data.pluginId, data.enabled));
+        const result = await this.tryUse(() => window.app.pluginManager.setPluginEnabled(data.pluginId, data.enabled));
+        if (result.success) {
+            void window.app.refreshPluginLocales();
+        }
+        return result;
     }
 }
 
@@ -94,6 +103,7 @@ export class PluginApproveHandler extends IPCHandler<IPCEventType.pluginApprove>
             promptWindow.setCloseResultResolver(async (result: WindowCloseResults[WindowAppType.PluginPermissionPrompt]) => {
                 try {
                     const approval = await window.app.pluginManager.approvePlugin(data.pluginId, result ?? null);
+                    void window.app.refreshPluginLocales();
                     resolve(this.success(approval));
                 } catch (error) {
                     resolve(this.failed(error));
@@ -113,7 +123,11 @@ export class PluginUninstallHandler extends IPCHandler<IPCEventType.pluginUninst
     ): Promise<RequestStatus<void>> {
         const denied = ensurePluginInstallCapability(window);
         if (denied) return denied;
-        return this.tryUse(() => window.app.pluginManager.uninstallPlugin(data.pluginId));
+        const result = await this.tryUse(() => window.app.pluginManager.uninstallPlugin(data.pluginId));
+        if (result.success) {
+            void window.app.refreshPluginLocales();
+        }
+        return result;
     }
 }
 
@@ -127,7 +141,11 @@ export class PluginRevokeHandler extends IPCHandler<IPCEventType.pluginRevoke> {
     ): Promise<RequestStatus<PluginListItem>> {
         const denied = ensurePluginInstallCapability(window);
         if (denied) return denied;
-        return this.tryUse(() => window.app.pluginManager.revokePlugin(data.pluginId));
+        const result = await this.tryUse(() => window.app.pluginManager.revokePlugin(data.pluginId));
+        if (result.success) {
+            void window.app.refreshPluginLocales();
+        }
+        return result;
     }
 }
 
@@ -186,6 +204,15 @@ export class PluginRuntimeListHandler extends IPCHandler<IPCEventType.pluginRunt
             console.warn("[PluginRuntimeListHandler] dependency suppression skipped:", error);
             return plugins;
         }
+    }
+}
+
+export class PluginLocaleListHandler extends IPCHandler<IPCEventType.pluginLocaleList> {
+    readonly name = IPCEventType.pluginLocaleList;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<{ contributions: LocaleContribution[] }>> {
+        return this.success({ contributions: await window.app.pluginManager.listLocaleContributions() });
     }
 }
 

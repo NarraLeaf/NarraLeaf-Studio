@@ -16,7 +16,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import { WindowAppType } from "@shared/types/window";
 import { useTranslation } from "@/lib/i18n";
-import type { TranslationKey } from "@shared/i18n";
+import { getLocaleMeta, getRegisteredLocales, type TranslationKey } from "@shared/i18n";
 
 /** Entry kinds that own their storage; the value layer must not try to load or write them. */
 function isStoredSetting(setting: AppSettingDefinition): boolean {
@@ -134,6 +134,12 @@ export function SettingsApp() {
         (setting: AppSettingDefinition): SettingDescriptor => {
             const settingAvailability = availability[setting.key];
             const unavailable = settingAvailability ? !settingAvailability.enabled : false;
+            // The language picker's options are dynamic: plugin language packs
+            // register additional locales at runtime. Read the live registry here
+            // (re-runs on locale change since `t` is a dependency), so a newly
+            // installed pack appears and a removed one disappears.
+            const isLanguage = setting.key === "app.language";
+            const languageLocales = isLanguage ? getRegisteredLocales() : null;
             return {
             id: setting.key,
             type: setting.type,
@@ -144,12 +150,14 @@ export function SettingsApp() {
                     ? t(setting.descriptionKey, setting.descriptionParams)
                     : setting.description,
             defaultValue: setting.defaultValue,
-            options: setting.options,
-            optionLabels: setting.optionLabelKeys
-                ? Object.fromEntries(
-                    Object.entries(setting.optionLabelKeys).map(([option, key]) => [option, t(key)]),
-                )
-                : setting.optionLabels,
+            options: languageLocales ?? setting.options,
+            optionLabels: languageLocales
+                ? Object.fromEntries(languageLocales.map((code) => [code, getLocaleMeta(code).nativeName]))
+                : setting.optionLabelKeys
+                    ? Object.fromEntries(
+                        Object.entries(setting.optionLabelKeys).map(([option, key]) => [option, t(key)]),
+                    )
+                    : setting.optionLabels,
             optionColors: setting.optionColors,
             allowCustomColor: setting.allowCustomColor,
             onPreview: setting.onPreview,

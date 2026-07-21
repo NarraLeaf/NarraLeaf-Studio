@@ -24,11 +24,30 @@ export type PluginManifestEntries = {
  * provides its runtime binding. Registration APIs enforce consistency at load
  * time: registering an undeclared type is an error on both targets.
  */
+/**
+ * One Studio language-pack contribution: a locale this plugin adds (a brand-new
+ * locale) or extends (fills gaps in a built-in locale). `messages` is a
+ * safe-relative path to a JSON catalog (`{ "studio.key": "translation" }`).
+ * Meta fields are honored only for a brand-new locale; for a built-in locale
+ * they are ignored. `nativeName` is strongly recommended for a new locale (it is
+ * the endonym shown in the language picker; the code is used if omitted).
+ */
+export type PluginLocaleContribution = {
+    code: string;
+    nativeName?: string;
+    englishName?: string;
+    intl?: string;
+    dir?: "ltr" | "rtl";
+    messages: string;
+};
+
 export type PluginContributes = {
     /** Blueprint node types this plugin provides (editor def + runtime execute). */
     blueprintNodes?: string[];
     /** Widget element types this plugin provides (editor module + runtime renderer). */
     widgets?: string[];
+    /** Studio language packs: locales this plugin adds or fills. */
+    locales?: PluginLocaleContribution[];
 };
 
 export type PluginManifestV2 = Omit<PluginIdentity, "id" | "name" | "version"> & Required<Pick<PluginIdentity, "id" | "name" | "version">> & {

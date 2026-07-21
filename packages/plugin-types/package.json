@@ -1,6 +1,6 @@
 {
   "name": "narraleaf-studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "TypeScript declarations for the NarraLeaf Studio plugin API (narraleaf-studio/plugin and narraleaf-studio/runtime).",
   "license": "MPL-2.0",
   "type": "module",
