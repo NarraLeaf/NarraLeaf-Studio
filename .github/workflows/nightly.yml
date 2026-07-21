@@ -33,7 +33,8 @@ concurrency:
   group: nightly-${{ github.ref }}
   cancel-in-progress: true
 
-# Nothing is published, so the token never needs write access.
+# The package jobs publish nothing, so the default token stays read-only; the
+# release job below overrides this to contents: write to move the rolling tag.
 permissions:
   contents: read
 
@@ -120,3 +121,44 @@ jobs:
           # Nightlies are superseded by the next push; the 90-day default would
           # accumulate tens of gigabytes for builds nobody returns to.
           retention-days: 14
+
+  # Publish the freshly built installers as one rolling prerelease, so the latest
+  # nightly is always downloadable from the Releases page. The `nightly` tag is
+  # moved to each new build — there is only ever one nightly release, and its
+  # assets never pile up stale platforms.
+  release:
+    needs: package
+    runs-on: ubuntu-latest
+    # Overrides the workflow-level contents: read — this job moves the tag and
+    # uploads assets.
+    permissions:
+      contents: write
+    steps:
+      - name: Download all installers
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-artifacts
+
+      # gh is preinstalled on the runner. Delete-then-recreate moves the rolling
+      # `nightly` tag to this commit and replaces the assets in one shot, so the
+      # release never points at a stale build or accumulates old installers.
+      - name: Publish rolling nightly prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find dist-artifacts -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' \) | sort)
+          test "${#files[@]}" -gt 0 || { echo "::error::no installers found to attach"; exit 1; }
+          printf 'attaching:\n'; printf '  %s\n' "${files[@]}"
+          if gh release view nightly --repo "$REPO" >/dev/null 2>&1; then
+            gh release delete nightly --repo "$REPO" --yes --cleanup-tag
+          fi
+          gh release create nightly "${files[@]}" \
+            --repo "$REPO" \
+            --title "Nightly (latest)" \
+            --notes "Rolling nightly build from \`${SHA}\`. Unsigned — your OS will quarantine it on first launch." \
+            --prerelease \
+            --target "$SHA"
