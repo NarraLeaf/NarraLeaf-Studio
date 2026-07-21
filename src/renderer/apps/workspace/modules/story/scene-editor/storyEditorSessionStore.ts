@@ -76,6 +76,12 @@ export type StoryEditorViewState = {
     selectedBlockIds: StoryBlockId[];
     /** Focus-anchored scroll position; absent until the author scrolls. */
     scroll?: StoryEditorScrollAnchor;
+    /**
+     * Whether the scene-overview block (name / description / default background) is collapsed. Absent
+     * until the author toggles it manually: with no stored preference the editor falls back to a
+     * config-derived default (expanded while the scene is still unconfigured, collapsed once set up).
+     */
+    overviewCollapsed?: boolean;
 };
 
 const ROW_SELECTOR = "[data-story-row-block-id]";
