@@ -320,6 +320,26 @@ export class KeybindingService {
     }
 
     /**
+     * Run a registered keybinding's handler by id, as if the user pressed its keys - the escape
+     * hatch for UI affordances (a toolbar button, the tab-strip "+") that should do exactly what a
+     * shortcut does without duplicating its logic. Bypasses `when`/editable gating on purpose: the
+     * caller is an explicit click, not an ambient keypress. Returns false if no such binding exists.
+     */
+    public trigger(id: string): boolean {
+        const keybinding = this.keybindings.get(id);
+        if (!keybinding) {
+            return false;
+        }
+        const result = keybinding.handler(this.focusManager.getFocus());
+        if (result instanceof Promise) {
+            result.catch(err => {
+                console.error(`Error triggering keybinding ${id}:`, err);
+            });
+        }
+        return true;
+    }
+
+    /**
      * Start listening for keyboard events
      */
     public start(): void {

@@ -1,9 +1,11 @@
+import { Plus } from "lucide-react";
 import { useAssetDropTarget } from "@/apps/workspace/dnd/useAssetDropTarget";
 import { useWorkspace } from "@/apps/workspace/context";
 import {
     openAssetPreviewTabsInEditor,
     setWorkspaceSelectionToPrimaryAsset,
 } from "@/apps/workspace/modules/assets/dnd/openDraggedAssetsInEditor";
+import { openNewTab } from "@/apps/workspace/modules/new-tab/openNewTab";
 import { useTranslation } from "@/lib/i18n";
 import { backgroundLayerStyle } from "@/lib/workspace/services/ui/backgroundSettings";
 import { useWorkspaceBackgroundImage } from "./useWorkspaceBackgroundImage";
@@ -33,10 +35,20 @@ export function MainEditorEmptyDropZone({ groupId }: MainEditorEmptyDropZoneProp
     });
 
     // The custom workspace background is painted here — behind the empty editor, on top of this
-    // zone's own opaque surface — never as a window overlay. This is the only place it shows, so it
-    // can never wash out real content (a scene's background image, panels, toolbars). When one is
-    // set it replaces the logo watermark, which would otherwise fight it for the same space.
+    // zone's own opaque surface — never as a window overlay. It only ever shows on idle canvases
+    // (here and the blank new-tab page), so it can never wash out real content (a scene's
+    // background image, panels, toolbars). When one is set it replaces the logo watermark, which
+    // would otherwise fight it for the same space.
     const { settings, url: backgroundUrl } = useWorkspaceBackgroundImage();
+
+    const handleNewTab = () => {
+        if (!context) {
+            return;
+        }
+        // Same as the strip's "+": open a browser-style blank tab in this group. The blank page
+        // carries the Quick Open entry point itself.
+        openNewTab(context, groupId);
+    };
 
     return (
         <div
@@ -48,37 +60,48 @@ export function MainEditorEmptyDropZone({ groupId }: MainEditorEmptyDropZoneProp
                     <div className="absolute" style={backgroundLayerStyle(settings, backgroundUrl)} />
                 </div>
             )}
-            {!backgroundUrl && (
-                <div className="text-center text-fg-subtle relative z-10 pointer-events-none">
-                    <div className="relative mb-8">
-                        {/*
-                          * The logo art is a fixed white silhouette, which is invisible against the
-                          * light theme's surface. Drawing it as a mask over `bg-fg` instead lets the
-                          * watermark take the theme's foreground colour — the same way the wordmark
-                          * below follows `text-fg`.
-                          */}
-                        <div
-                            role="img"
-                            aria-label={t("workspace.shell.logoAlt")}
-                            className="w-64 h-64 mx-auto bg-fg opacity-5"
-                            style={{
-                                maskImage: LOGO_MASK,
-                                WebkitMaskImage: LOGO_MASK,
-                                maskSize: "contain",
-                                WebkitMaskSize: "contain",
-                                maskRepeat: "no-repeat",
-                                WebkitMaskRepeat: "no-repeat",
-                                maskPosition: "center",
-                                WebkitMaskPosition: "center",
-                            }}
-                        />
-                    </div>
+            <div className="relative z-10 flex flex-col items-center text-center text-fg-subtle pointer-events-none">
+                {!backgroundUrl && (
+                    <div>
+                        <div className="relative mb-8">
+                            {/*
+                              * The logo art is a fixed white silhouette, which is invisible against the
+                              * light theme's surface. Drawing it as a mask over `bg-fg` instead lets the
+                              * watermark take the theme's foreground colour — the same way the wordmark
+                              * below follows `text-fg`.
+                              */}
+                            <div
+                                role="img"
+                                aria-label={t("workspace.shell.logoAlt")}
+                                className="w-64 h-64 mx-auto bg-fg opacity-5"
+                                style={{
+                                    maskImage: LOGO_MASK,
+                                    WebkitMaskImage: LOGO_MASK,
+                                    maskSize: "contain",
+                                    WebkitMaskSize: "contain",
+                                    maskRepeat: "no-repeat",
+                                    WebkitMaskRepeat: "no-repeat",
+                                    maskPosition: "center",
+                                    WebkitMaskPosition: "center",
+                                }}
+                            />
+                        </div>
 
-                    <div className="space-y-4">
-                        <h1 className="text-4xl font-light text-fg/5">NarraLeaf Studio</h1>
+                        <div className="space-y-4 mb-8">
+                            <h1 className="text-4xl font-light text-fg/5">NarraLeaf Studio</h1>
+                        </div>
                     </div>
-                </div>
-            )}
+                )}
+
+                <button
+                    type="button"
+                    onClick={handleNewTab}
+                    className="pointer-events-auto flex items-center gap-2 px-4 h-9 rounded-md border border-edge bg-surface/60 text-sm text-fg-muted hover:text-fg hover:bg-surface transition-colors"
+                >
+                    <Plus className="w-4 h-4" />
+                    <span>{t("workspace.shell.newTab")}</span>
+                </button>
+            </div>
         </div>
     );
 }
