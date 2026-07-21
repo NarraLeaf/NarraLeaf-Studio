@@ -3,6 +3,7 @@ import {
     PluginManifestVersion,
     type NormalizedPluginManifestV2,
     type PluginContributes,
+    type PluginLocaleContribution,
     type PluginManifestEntries,
     type PluginManifestV2,
 } from "../types/plugins";
@@ -75,15 +76,22 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
     return { ok: true, manifest };
 }
 
-const CONTRIBUTES_KEYS = ["blueprintNodes", "widgets"] as const;
+/** Contribution kinds whose value is an array of `<pluginId>.`-prefixed type strings. */
+const CONTRIBUTES_TYPE_KEYS = ["blueprintNodes", "widgets"] as const;
 
-const CONTRIBUTES_KIND_LABEL: Record<(typeof CONTRIBUTES_KEYS)[number], string> = {
+/** Every recognized `contributes` key, including the object-shaped `locales`. */
+const CONTRIBUTES_KEYS = [...CONTRIBUTES_TYPE_KEYS, "locales"] as const;
+
+const CONTRIBUTES_KIND_LABEL: Record<(typeof CONTRIBUTES_TYPE_KEYS)[number], string> = {
     blueprintNodes: "blueprint node",
     widgets: "widget",
 };
 
+/** BCP-47-ish locale code: primary subtag plus optional hyphen-joined subtags. */
+const LOCALE_CODE_PATTERN = /^[a-z]{2,3}(-[A-Za-z0-9]+)*$/;
+
 function validateContributes(value: unknown, pluginId: string): Required<PluginContributes> | string {
-    const empty: Required<PluginContributes> = { blueprintNodes: [], widgets: [] };
+    const empty: Required<PluginContributes> = { blueprintNodes: [], widgets: [], locales: [] };
     if (value === undefined) {
         return empty;
     }
@@ -97,7 +105,7 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
     }
 
     const result = empty;
-    for (const key of CONTRIBUTES_KEYS) {
+    for (const key of CONTRIBUTES_TYPE_KEYS) {
         const raw = value[key];
         if (raw === undefined) {
             continue;
@@ -121,7 +129,53 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
         result[key] = types;
     }
 
+    if (value.locales !== undefined) {
+        const locales = validateLocaleContributions(value.locales);
+        if (typeof locales === "string") {
+            return locales;
+        }
+        result.locales = locales;
+    }
+
     return result;
+}
+
+function validateLocaleContributions(value: unknown): PluginLocaleContribution[] | string {
+    if (!Array.isArray(value)) {
+        return "Plugin contributes.locales must be an array of locale objects";
+    }
+    const seen = new Set<string>();
+    const out: PluginLocaleContribution[] = [];
+    for (const item of value) {
+        if (!isRecord(item)) {
+            return "Plugin contributes.locales entries must be objects";
+        }
+        const code = typeof item.code === "string" ? item.code.trim() : "";
+        if (!code || !LOCALE_CODE_PATTERN.test(code)) {
+            return `Plugin contributes.locales entry has an invalid locale code: ${String(item.code)}`;
+        }
+        if (seen.has(code)) {
+            return `Plugin contributes.locales declares "${code}" more than once`;
+        }
+        const messages = typeof item.messages === "string" ? item.messages.trim() : "";
+        if (!messages || !isSafeRelativeEntry(messages)) {
+            return `Plugin contributes.locales["${code}"].messages must be a relative JSON file path inside the plugin package`;
+        }
+        if (item.dir !== undefined && item.dir !== "ltr" && item.dir !== "rtl") {
+            return `Plugin contributes.locales["${code}"].dir must be "ltr" or "rtl"`;
+        }
+        seen.add(code);
+        const entry: PluginLocaleContribution = { code, messages };
+        const nativeName = typeof item.nativeName === "string" && item.nativeName.trim() ? item.nativeName.trim() : undefined;
+        const englishName = typeof item.englishName === "string" && item.englishName.trim() ? item.englishName.trim() : undefined;
+        const intl = typeof item.intl === "string" && item.intl.trim() ? item.intl.trim() : undefined;
+        if (nativeName) entry.nativeName = nativeName;
+        if (englishName) entry.englishName = englishName;
+        if (intl) entry.intl = intl;
+        if (item.dir === "ltr" || item.dir === "rtl") entry.dir = item.dir;
+        out.push(entry);
+    }
+    return out;
 }
 
 function validateEntries(value: unknown): PluginManifestEntries | string {

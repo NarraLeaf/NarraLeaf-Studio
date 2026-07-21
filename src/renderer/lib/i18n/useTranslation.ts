@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { getInterface } from "@/lib/app/bridge";
-import { Locale, Translator } from "@shared/i18n";
+import { LocaleCode, Translator } from "@shared/i18n";
 import { i18nStore } from "./store";
 
 export interface UseTranslation extends Translator {
@@ -9,7 +9,7 @@ export interface UseTranslation extends Translator {
      * persists to global state, which the main process broadcasts so every other
      * window updates too.
      */
-    setLocale(next: Locale): void;
+    setLocale(next: LocaleCode): void;
 }
 
 /**
@@ -26,7 +26,7 @@ export function useTranslation(): UseTranslation {
         i18nStore.getTranslator,
     );
 
-    const setLocale = (next: Locale): void => {
+    const setLocale = (next: LocaleCode): void => {
         i18nStore.setLocale(next); // optimistic: this window reacts without waiting on IPC
         void getInterface().app.state.setGlobalState("app.language", next);
     };
