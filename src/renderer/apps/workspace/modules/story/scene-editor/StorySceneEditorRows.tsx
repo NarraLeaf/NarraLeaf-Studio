@@ -23,7 +23,6 @@ import {
     ACTION_COMMANDS,
     getActionCommandCategory,
     localizeActionCommand,
-    translateActionCommandCategoryLabel,
     type ActionCommandCategory,
     type ActionCommandCategoryId,
     type PaletteActionCommand,
@@ -1177,7 +1176,6 @@ export function InsertRow(props: {
                         categories={actionMenu.visibleCategories}
                         activeCategoryId={actionMenu.activeCategoryId}
                         activeCommandId={actionMenu.activeCommand?.id ?? null}
-                        onSelectCategory={actionMenu.selectCategory}
                         onHighlightCommand={actionMenu.selectCommand}
                         onChoose={chooseCommandCandidate}
                         onCancel={props.onDismissChooser}
@@ -1368,7 +1366,6 @@ function ActionCommandMenu(props: {
     categories: VisibleActionCommandCategory[];
     activeCategoryId: ActionCommandCategoryId;
     activeCommandId: string | null;
-    onSelectCategory: (categoryId: ActionCommandCategoryId) => void;
     onHighlightCommand: (commandId: string) => void;
     onChoose: (commandId: string) => void;
     onCancel: () => void;
@@ -1377,18 +1374,6 @@ function ActionCommandMenu(props: {
     const { t } = useTranslation();
     const activeCategory = props.categories.find(category => category.id === props.activeCategoryId) ?? props.categories[0] ?? null;
     const listRef = useRef<HTMLDivElement | null>(null);
-    const categoryListRef = useRef<HTMLDivElement | null>(null);
-
-    useEffect(() => {
-        if (!activeCategory) {
-            return;
-        }
-        window.requestAnimationFrame(() => {
-            const root = categoryListRef.current;
-            const activeTab = root?.querySelector(`[data-action-category-id="${activeCategory.id}"]`);
-            activeTab?.scrollIntoView({ block: "nearest", inline: "nearest" });
-        });
-    }, [activeCategory?.id]);
 
     useEffect(() => {
         if (!props.activeCommandId) {
@@ -1414,33 +1399,10 @@ function ActionCommandMenu(props: {
                     {t("story.actionCreator.noActions")}
                 </button>
             ) : (
-                <>
-                    <div ref={categoryListRef} className="flex overflow-x-auto border-b border-edge bg-surface" role="tablist" aria-label={t("story.rows.actionTypes")}>
-                        {props.categories.map(category => {
-                            const active = category.id === activeCategory?.id;
-                            return (
-                                <button
-                                    key={category.id}
-                                    type="button"
-                                    role="tab"
-                                    aria-selected={active}
-                                    data-action-category-id={category.id}
-                                    className={[
-                                        "relative flex h-9 min-w-[74px] flex-none cursor-default items-center justify-center px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
-                                        active ? "bg-surface-raised text-fg" : "text-fg-muted hover:bg-fill-subtle hover:text-fg",
-                                    ].join(" ")}
-                                    onMouseDown={() => props.onSelectCategory(category.id)}
-                                >
-                                    <span className="block truncate">{translateActionCommandCategoryLabel(category, t)}</span>
-                                    {active ? <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-primary/70" aria-hidden /> : null}
-                                </button>
-                            );
-                        })}
-                    </div>
-                    <div ref={listRef} className="max-h-64 overflow-auto p-1">
+                    <div ref={listRef} className="nl-no-scrollbar max-h-64 overflow-auto p-1">
                         {activeCategory && activeCategory.commands.length === 0 ? (
                             <button type="button" className="w-full rounded px-2 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
-                                {t("story.rows.noCategoryActionFound", { category: translateActionCommandCategoryLabel(activeCategory, t).toLowerCase() })}
+                                {t("story.actionCreator.noActions")}
                             </button>
                         ) : activeCategory?.commands.map(command => {
                             const Icon = command.icon;
@@ -1469,7 +1431,6 @@ function ActionCommandMenu(props: {
                             );
                         })}
                     </div>
-                </>
             )}
         </div>
     );
