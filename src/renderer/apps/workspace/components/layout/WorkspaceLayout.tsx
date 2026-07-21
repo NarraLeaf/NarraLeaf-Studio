@@ -21,7 +21,6 @@ import { KeybindingCheatSheet } from "./KeybindingCheatSheet";
 import { TitleBarSearchBox } from "./TitleBarSearchBox";
 import { StatusBar, STATUS_BAR_HEIGHT } from "./StatusBar";
 import { QuickOpenPicker } from "./QuickOpenPicker";
-import { WorkspaceBackground } from "./WorkspaceBackground";
 import { BackgroundImageDialog } from "./BackgroundImageDialog";
 import { useRegistry } from "../../registry";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
@@ -748,7 +747,6 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             </div>
 
             {/* UI Overlays */}
-            <WorkspaceBackground />
             <BackgroundImageDialog />
             <WorkspaceEditorQuickSwitch />
             <CommandPalette />

@@ -6,7 +6,6 @@ import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsSe
 import {
     BACKGROUND_KEYS,
     DEFAULT_BACKGROUND,
-    backgroundLayerStyle,
     readBackgroundSettings,
     type BackgroundSettings,
 } from "@/lib/workspace/services/ui/backgroundSettings";
@@ -43,12 +42,15 @@ function cacheUrl(file: string, url: string): void {
 }
 
 /**
- * Watermark-style custom background: the picked image (stored in the userData/backgrounds cache)
- * overlays the whole window at low opacity, above the chrome but never intercepting input.
- * Overlay rather than underlay because every panel paints an opaque surface — behind them it
- * would simply be invisible. Fill mode, anchor and blur come from the settings the dialog writes.
+ * The custom workspace background: the settings the dialog writes, and an object URL for the picked
+ * image (or null when none is set, or while it is still being read out of the userData cache).
+ *
+ * Where the picture is *painted* is the caller's business — it is drawn as the backdrop of the
+ * empty editor area, behind opaque content, never as an overlay on top of the chrome. Overlaying it
+ * washed out every panel and editor below it; keeping it strictly behind opaque surfaces is what
+ * lets real content (a scene's background image, panels, toolbars) stay fully opaque.
  */
-export function WorkspaceBackground() {
+export function useWorkspaceBackgroundImage(): { settings: BackgroundSettings; url: string | null } {
     const { context } = useWorkspace();
     const [settings, setSettings] = useState<BackgroundSettings>(DEFAULT_BACKGROUND);
     const [url, setUrl] = useState<string | null>(null);
@@ -97,15 +99,5 @@ export function WorkspaceBackground() {
         };
     }, [settings.image]);
 
-    if (!url) {
-        return null;
-    }
-
-    // The outer box clips: when the picture is blurred the painted layer overhangs the window so
-    // its soft edge lands outside, and that overhang must not become a scrollable area.
-    return (
-        <div aria-hidden className="pointer-events-none fixed inset-0 z-[15] overflow-hidden">
-            <div className="absolute" style={backgroundLayerStyle(settings, url)} />
-        </div>
-    );
+    return { settings, url };
 }

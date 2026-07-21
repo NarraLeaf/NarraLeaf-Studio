@@ -54,5 +54,6 @@ export const menu = {
         title: "帮助",
         welcome: "打开欢迎页",
         docs: "文档",
+        about: "关于 {name}",
     },
 } satisfies LocaleNamespace<"menu">;
