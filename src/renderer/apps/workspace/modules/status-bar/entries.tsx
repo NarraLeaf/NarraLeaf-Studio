@@ -10,7 +10,9 @@ import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { getInterface } from "@/lib/app/bridge";
-import { computeProjectStatsSnapshot } from "@/lib/workspace/stats/projectStatsSnapshot";
+import { countSceneTextStats } from "@/lib/workspace/stats/storyTextStats";
+import { getSceneName } from "../story/scene-editor/storySceneBlockUtils";
+import type { StoryDocument, StoryId, StorySceneId } from "@shared/types/story";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "../actions/runtimeActionStatus";
 import { openKeybindingCheatSheet } from "../../components/layout/KeybindingCheatSheet";
 import { openDashboardTab } from "../dashboard";
@@ -144,60 +146,139 @@ export function UnsavedChangesEntry() {
     );
 }
 
+type SceneRef = { storyId: StoryId; sceneId: StorySceneId };
+type SceneStats = { name: string; words: number; lines: number };
+
+const sameScene = (a: SceneRef | null, b: SceneRef | null): boolean =>
+    a?.storyId === b?.storyId && a?.sceneId === b?.sceneId;
+
+/**
+ * Reports the scene the user is currently editing: its outline name (e.g. "Scene 1"), word/字 count
+ * and line count. The "current" scene is the most-recently-focused open scene-editor tab, so it
+ * follows focus between scenes but survives stepping onto a non-scene tab (the scene-flow map, the
+ * dashboard, an asset preview); only when no scene editor is open at all does it read "no story
+ * open". Counts cover that one scene and match the "N 行" the story panel shows for it. Recomputed
+ * on edits with a debounce — ambient information, not a live counter.
+ */
 export function WordCountEntry() {
     const { t } = useTranslation();
     const { context } = useWorkspace();
-    const [totalWords, setTotalWords] = useState<number | null>(null);
+    const [stats, setStats] = useState<SceneStats | null>(null);
 
-    // Computed from the same snapshot the dashboard uses, refreshed on story edits with a long
-    // debounce — this is ambient information, not a live counter.
+    const activeScene = useRef<SceneRef | null>(null);
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
     useEffect(() => {
         if (!context) {
             return;
         }
         let mounted = true;
-        const recompute = () => {
-            void computeProjectStatsSnapshot(context)
-                .then(snapshot => {
-                    if (mounted) {
-                        setTotalWords(snapshot.scale.totalWords);
-                    }
-                })
-                .catch(() => undefined);
-        };
-        recompute();
+        const uiService = context.services.get<UIService>(Services.UI);
         const storyService = context.services.get<StoryService>(Services.Story);
-        const unsubscribe = storyService.onDocumentChanged(() => {
+
+        // The most-recently-focused scene-editor tab still open. A scene editor carries both storyId
+        // and sceneId; the scene-flow map and other tabs do not, so they are skipped and the last
+        // edited scene stays on the readout instead of blanking it.
+        const resolveScene = (): SceneRef | null => {
+            for (const tab of uiService.getStore().getEditorTabsByRecency()) {
+                const payload = tab.payload as { storyId?: StoryId; sceneId?: StorySceneId } | undefined;
+                if (payload?.storyId && payload.sceneId && storyService.getStoryEntry(payload.storyId)) {
+                    return { storyId: payload.storyId, sceneId: payload.sceneId };
+                }
+            }
+            return null;
+        };
+
+        const computeFor = (target: SceneRef | null) => {
+            if (!mounted) {
+                return;
+            }
+            if (!target) {
+                setStats(null);
+                return;
+            }
+            let doc: StoryDocument;
+            try {
+                doc = storyService.getStoryDocument(target.storyId);
+            } catch {
+                // The tab is open but its document is not in memory yet (e.g. right after a session
+                // restore). Pull it in and recompute once it lands, leaving the readout untouched
+                // meanwhile rather than flashing "no story open".
+                void storyService
+                    .loadStory(target.storyId)
+                    .then(() => {
+                        if (mounted && sameScene(activeScene.current, target)) {
+                            computeFor(target);
+                        }
+                    })
+                    .catch(() => undefined);
+                return;
+            }
+            const scene = doc.scenes[target.sceneId];
+            if (!scene) {
+                setStats(null);
+                return;
+            }
+            const counts = countSceneTextStats(scene);
+            setStats({ name: getSceneName(doc.scenes, target.sceneId), words: counts.words, lines: counts.lines });
+        };
+
+        // Recompute only when the active scene actually changes, so unrelated layout noise (a split
+        // sash drag, a non-scene tab gaining focus) does not walk the document.
+        const syncActiveScene = () => {
+            const target = resolveScene();
+            if (sameScene(target, activeScene.current)) {
+                return;
+            }
+            activeScene.current = target;
+            computeFor(target);
+        };
+
+        syncActiveScene();
+
+        const unsubscribeLayout = uiService.getEvents().on("editorLayoutChanged", syncActiveScene);
+        const unsubscribeDoc = storyService.onDocumentChanged(event => {
+            if (event.storyId !== activeScene.current?.storyId) {
+                return;
+            }
             if (timer.current) {
                 clearTimeout(timer.current);
             }
-            timer.current = setTimeout(recompute, 2000);
+            timer.current = setTimeout(() => computeFor(activeScene.current), 800);
         });
+
         return () => {
             mounted = false;
-            unsubscribe();
+            unsubscribeLayout();
+            unsubscribeDoc();
             if (timer.current) {
                 clearTimeout(timer.current);
             }
         };
     }, [context]);
 
-    if (totalWords === null) {
-        return null;
+    const openDashboard = () => {
+        if (context) {
+            openDashboardTab(context);
+        }
+    };
+
+    if (!stats) {
+        return (
+            <StatusEntry title={t("workspace.shell.statusBar.openDashboard")} onClick={openDashboard}>
+                <BookText className="h-3 w-3" />
+                <span>{t("workspace.shell.statusBar.noStoryOpen")}</span>
+            </StatusEntry>
+        );
     }
     return (
-        <StatusEntry
-            title={t("workspace.shell.statusBar.openDashboard")}
-            onClick={() => {
-                if (context) {
-                    openDashboardTab(context);
-                }
-            }}
-        >
-            <BookText className="h-3 w-3" />
+        <StatusEntry title={t("workspace.shell.statusBar.openDashboard")} onClick={openDashboard}>
+            <BookText className="h-3 w-3 shrink-0" />
+            <span className="max-w-[16ch] truncate">{stats.name}</span>
             <span className="tabular-nums">
-                {t("workspace.shell.statusBar.words", { count: totalWords.toLocaleString() })}
+                {t("workspace.shell.statusBar.words", { count: stats.words.toLocaleString() })}
+            </span>
+            <span className="tabular-nums">
+                {t("workspace.shell.statusBar.lines", { count: stats.lines.toLocaleString() })}
             </span>
         </StatusEntry>
     );

@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { i18nStore } from "@/lib/i18n";
 import { allowsFreeValue } from "./storyCommandGrammar";
 import { listCommandDefs } from "./commands/registry";
 import { canCommit, getArgValue, missingCoreParams, parseCommandLine, tokenizeCommandLine, unfilledParams } from "./storyCommandParser";
@@ -114,6 +115,46 @@ describe("parseCommandLine - command resolution", () => {
         const line = command("/bgg forest");
         expect(line.def).toBeNull();
         expect(line.issues).toEqual([{ code: "unknownCommand", span: { start: 1, end: 4 }, token: "bgg" }]);
+    });
+});
+
+describe("parseCommandLine - a command named in the active locale", () => {
+    // The command TOKEN localizes (its menu label doubles as an inline alias); params and their values
+    // stay English. The label the parser accepts is the same `story.command.<id>.label` the slash menu
+    // shows, so the two can never disagree about what `/背景` means.
+    afterEach(() => {
+        i18nStore.setLocale("en");
+    });
+
+    it("resolves a Chinese command token to its canonical command", () => {
+        i18nStore.setLocale("zh");
+        expect(command("/背景").def?.commandId).toBe("background");
+        expect(command("/跳转").def?.commandId).toBe("jump");
+        expect(command("/对话").def?.commandId).toBe("say");
+    });
+
+    it("parses a Chinese token's arguments exactly as the English token would - keys stay English", () => {
+        i18nStore.setLocale("zh");
+        const localized = command("/背景 forest t=fade");
+        const english = command("/bg forest t=fade");
+        expect(localized.def?.commandId).toBe("background");
+        expect(getArgValue(localized, "image")).toBe("forest");
+        expect(getArgValue(localized, "t")).toBe("fade");
+        // The localized token is a pure front door onto the same grammar: same args, no new issues.
+        expect(localized.args.map(arg => [arg.param?.name, arg.value])).toEqual(english.args.map(arg => [arg.param?.name, arg.value]));
+        expect(localized.issues).toEqual([]);
+    });
+
+    it("still accepts the canonical English token in a non-English locale", () => {
+        i18nStore.setLocale("zh");
+        expect(command("/bg forest").def?.commandId).toBe("background");
+    });
+
+    it("does not accept a foreign-locale token once the locale changes back", () => {
+        // `/背景` is only a command while the menu is Chinese; in English it is prose-with-a-slash.
+        i18nStore.setLocale("en");
+        expect(command("/背景").def).toBeNull();
+        expect(codes("/背景")).toContain("unknownCommand");
     });
 });
 
