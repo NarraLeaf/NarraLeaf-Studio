@@ -8,7 +8,12 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // adds `setVariable.expression` / the `expression` interpolation. Only the condition needs migrating
 // (the other two are additive); a v4 Studio reading a v5 document would see a condition object it
 // cannot evaluate, so the bump makes it refuse rather than test false forever.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 5 as const;
+// v6: variable declarations became explicit rows. The persisted per-scene/per-document registries
+// (`sceneVariables` / `savedVariables`) are gone; a `declaration` block IS the variable, the maps
+// are derived by scanning (see `declarations.ts`), and deleting the row deletes the variable. The
+// migration synthesizes a declaration block per registry entry, with the block id taking over the
+// old `variableId` so every stored ref keeps resolving.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 6 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -59,8 +64,6 @@ export type StoryDocument = {
     entrySceneId?: StorySceneId;
     chapters: StoryChapter[];
     scenes: Record<StorySceneId, StoryScene>;
-    /** Document-level saved variables (per save-file, backed by NLR Storable). */
-    savedVariables?: Record<string, StorySavedVariableDefinition>;
     meta?: StoryMeta;
 };
 
@@ -85,9 +88,24 @@ export type StoryScene = {
     defaultBackgroundAssetId?: string;
     rootBlockIds: StoryBlockId[];
     blocks: Record<StoryBlockId, StoryBlock>;
-    /** Per-scene variables (backed by NLR Scene.local). */
-    sceneVariables?: Record<string, StorySceneVariableDefinition>;
+    /**
+     * Named "Scene Snapshots" (变量快照): author-authored sets of variable values used to launch a
+     * mid-story preview under conditions the editor cannot analyse statically (e.g. global flags).
+     * Per-scene and additive (no schema bump); the scene-variable rows shown re-bind per scene.
+     */
+    sceneSnapshots?: StorySceneSnapshot[];
     meta?: StoryMeta;
+};
+
+/**
+ * One named variable snapshot. `values` holds only the explicit overrides, keyed by
+ * `storyVariableRefKey(ref)` (spanning scene / saved / persistent scopes); anything unset falls back
+ * to the variable's declared default at launch time.
+ */
+export type StorySceneSnapshot = {
+    id: string;
+    name: string;
+    values: Record<string, StoryLiteralValue>;
 };
 
 export type StorySceneUpdate = {
@@ -134,7 +152,10 @@ export type StorySavedVariableDefinition = {
 
 export type StoryLiteralValue = string | number | boolean | null | StoryLiteralValue[] | { [key: string]: StoryLiteralValue };
 
-// --- Legacy (schema v1) shapes, retained only as migration input. ---
+// --- Legacy shapes, retained only as migration input. ---
+// v5 and earlier persisted variable REGISTRIES: `StoryScene.sceneVariables` and
+// `StoryDocument.savedVariables` (Record<variableId, definition>). v6 replaced both with
+// `declaration` blocks; the migration reads the old fields off the raw object and strips them.
 export type StoryVariableScopeLegacy = "studioGlobal" | "gamePersistent" | "sceneLocal";
 
 export type StoryVariableDefinitionLegacy = {
@@ -152,7 +173,7 @@ export type StoryPersistentDefinitionLegacy = {
     meta?: StoryMeta;
 };
 
-export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "code" | "note" | "invalid";
+export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "code" | "note" | "invalid" | "declaration";
 
 export type StoryBlock =
     | StoryNodeActionBlock
@@ -161,7 +182,8 @@ export type StoryBlock =
     | StoryJumpBlock
     | StoryCodeBlock
     | StoryNoteBlock
-    | StoryInvalidBlock;
+    | StoryInvalidBlock
+    | StoryDeclarationBlock;
 
 export type StoryBlockBase<TKind extends StoryBlockKind, TPayload> = {
     id: StoryBlockId;
@@ -179,6 +201,31 @@ export type StoryJumpBlock = StoryBlockBase<"jump", StoryJumpPayload>;
 export type StoryCodeBlock = StoryBlockBase<"code", StoryCodePayload>;
 export type StoryNoteBlock = StoryBlockBase<"note", StoryNotePayload>;
 export type StoryInvalidBlock = StoryBlockBase<"invalid", StoryInvalidPayload>;
+export type StoryDeclarationBlock = StoryBlockBase<"declaration", StoryDeclarationPayload>;
+
+/**
+ * A variable declaration, as a row (schema v6).
+ *
+ * The row IS the variable: its block id is the `variableId` refs point at, scanning the document is
+ * how the variable tables are built, and deleting the row deletes the variable - there is no second
+ * registry to leak orphans into. A declaration has no runtime behaviour of its own (the compiler
+ * skips it and reads the scanned table for defaults); it exists so a script reader can SEE where a
+ * variable comes from, in the same place everything else lives.
+ *
+ * Scope decides where the scan looks: "scene" declarations bind within their scene, "saved" and
+ * "persistent" are document-wide wherever the row sits. Blueprint-declared persistent variables
+ * remain in the blueprint document - the one class not authored as a story row.
+ */
+export type StoryDeclarationPayload = {
+    scope: StoryVariableScope;
+    /** Author-facing, proper-case label. Displayed to users; the id/storageKey are never shown. */
+    name: string;
+    valueType: StoryVariableValueType;
+    defaultValue?: StoryLiteralValue;
+    description?: string;
+    /** Stable runtime key; defaults to the block id and never changes on rename so saves stay valid. */
+    storageKey: string;
+};
 
 /**
  * A command line the author left unresolved - they dismissed the candidates, or nothing matched, and

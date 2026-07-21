@@ -1,4 +1,5 @@
 import type { StoryDocument, StoryLiteralValue, StoryScene, StorySceneId, StoryVariableValueType } from "@shared/types/story";
+import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { collectTempSpeakers } from "@/lib/workspace/services/story/storyModel";
 import type { Character } from "@/lib/workspace/services/character/Character";
@@ -37,7 +38,8 @@ function variableEntries(
     blueprintDocument: BlueprintDocument | null,
 ): StoryCommandVariableEntry[] {
     const entries: StoryCommandVariableEntry[] = [];
-    for (const definition of Object.values(scene?.sceneVariables ?? {})) {
+    // v6: the tables are scans over declaration rows - the row is the variable.
+    for (const definition of Object.values(scene ? sceneVariableDefs(scene) : {})) {
         entries.push({
             name: definition.name,
             ref: { scope: "scene", variableId: definition.id },
@@ -45,10 +47,20 @@ function variableEntries(
             defaultValue: definition.defaultValue,
         });
     }
-    for (const definition of Object.values(document?.savedVariables ?? {})) {
+    for (const definition of Object.values(document ? savedVariableDefs(document) : {})) {
         entries.push({
             name: definition.name,
             ref: { scope: "saved", variableId: definition.id },
+            valueType: definition.valueType,
+            defaultValue: definition.defaultValue,
+        });
+    }
+    // Persistent variables declared as story rows, then the blueprint-declared ones - one scope,
+    // two authoring surfaces until the project-level registry lands.
+    for (const definition of Object.values(document ? storyPersistentDefs(document) : {})) {
+        entries.push({
+            name: definition.name,
+            ref: { scope: "persistent", storageKey: definition.storageKey },
             valueType: definition.valueType,
             defaultValue: definition.defaultValue,
         });

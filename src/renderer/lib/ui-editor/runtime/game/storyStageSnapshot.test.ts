@@ -4,6 +4,14 @@ import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { computeStoryStageSnapshot } from "./storyStageSnapshot";
 
 function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[] = Object.keys(blocks)): StoryDocument {
+    // v6: the scene variable is a declaration ROW in the block tree, not a registry entry.
+    const flagDeclaration: StoryBlock = {
+        id: "flag",
+        kind: "declaration",
+        parentId: null,
+        childrenIds: [],
+        payload: { scope: "scene", name: "flag", valueType: "boolean", defaultValue: false, storageKey: "flag" },
+    };
     return {
         schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
         id: "story-1",
@@ -14,11 +22,8 @@ function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[]
                 id: "scene-1",
                 name: "Scene 1",
                 runtimeName: "Scene 1",
-                rootBlockIds,
-                blocks,
-                sceneVariables: {
-                    flag: { id: "flag", name: "flag", valueType: "boolean", storageKey: "flag", defaultValue: false },
-                },
+                rootBlockIds: ["flag", ...rootBlockIds],
+                blocks: { flag: flagDeclaration, ...blocks },
             },
         },
     };

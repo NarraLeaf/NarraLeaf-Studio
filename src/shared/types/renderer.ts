@@ -7,6 +7,7 @@ import { FsRequestResult, PlatformInfo } from "./os";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
+import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
@@ -31,6 +32,7 @@ import type {
     PrivilegedBashExecuteResult,
 } from "./privileged";
 import { AppEventToken } from "./app";
+import type { LocaleContribution } from "@shared/i18n";
 import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsRepositoryInfo, VcsThreeWayResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
@@ -217,7 +219,9 @@ export interface RendererPreloadedInterface {
         addRecentProject(name: string, path: string): Promise<RequestStatus<void>>;
         /** Removes by path; the main process owns the read-modify-write. */
         removeRecentProject(path: string): Promise<RequestStatus<void>>;
-        getSystemPath(name: "desktop"): Promise<RequestStatus<{ path: string }>>;
+        /** Which remembered projects are no longer on disk. Reports only; removes nothing. */
+        checkRecentProjects(): Promise<RequestStatus<{ missing: MissingRecentProject[] }>>;
+        getSystemPath(name: "desktop" | "home"): Promise<RequestStatus<{ path: string }>>;
     };
 
     devMode: {
@@ -323,6 +327,8 @@ export interface RendererPreloadedInterface {
         getWorkspacePlugins(): Promise<RequestStatus<{ plugins: WorkspacePluginDescriptor[] }>>;
         getRuntimePlugins(): Promise<RequestStatus<{ plugins: RuntimePluginDescriptor[] }>>;
         reportLoadError(pluginId: string, error: string | null): Promise<RequestStatus<PluginListItem>>;
+        getLocaleContributions(): Promise<RequestStatus<{ contributions: LocaleContribution[] }>>;
+        onLocalesChanged(handler: (change: { version: number }) => void): AppEventToken;
     };
 
     privileged: RendererPrivilegedBootstrapInterface;

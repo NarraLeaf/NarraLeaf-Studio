@@ -1,4 +1,5 @@
 import type { StoryDocument } from "@shared/types/story";
+import { isStoryDeclarationBlock } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { LocalizationKeysDocument } from "@shared/types/localization";
 import { getTextSegment } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
@@ -125,8 +126,9 @@ export function indexEntries(entries: readonly SearchIndexEntry[]): IndexedSearc
 // ---------------------------------------------------------------------------
 
 /**
- * Story slice: every block's prose (dialogue/narration/choice/note text) plus the story's
- * scene/saved variable names. Blocks land in "story"; variable definitions land in "variable".
+ * Story slice: every block's prose (dialogue/narration/choice/note text) plus the story's variable
+ * declarations. Blocks land in "story"; declaration rows land in "variable" (v6: the row IS the
+ * variable, whatever its scope, so every entry jumps straight to its declaring row).
  */
 export function extractStoryEntries(document: StoryDocument): SearchIndexEntry[] {
     const entries: SearchIndexEntry[] = [];
@@ -142,6 +144,27 @@ export function extractStoryEntries(document: StoryDocument): SearchIndexEntry[]
         };
 
         for (const block of Object.values(scene.blocks)) {
+            if (isStoryDeclarationBlock(block)) {
+                if (!block.payload.name) {
+                    continue;
+                }
+                entries.push({
+                    id: `storyvar:${document.id}:${scene.id}:${block.id}`,
+                    group: "variable",
+                    text: block.payload.name,
+                    detail: context,
+                    fields: sceneFields,
+                    target: {
+                        kind: "storyBlock",
+                        storyId: document.id,
+                        sceneId: scene.id,
+                        blockId: block.id,
+                        storyName,
+                        sceneName: scene.name,
+                    },
+                });
+                continue;
+            }
             const segment = getTextSegment(block);
             if (!segment) {
                 continue;
@@ -163,52 +186,6 @@ export function extractStoryEntries(document: StoryDocument): SearchIndexEntry[]
                     blockId: block.id,
                     storyName,
                     sceneName: scene.name,
-                },
-            });
-        }
-
-        for (const definition of Object.values(scene.sceneVariables ?? {})) {
-            if (!definition.name) {
-                continue;
-            }
-            entries.push({
-                id: `storyvar:${document.id}:${scene.id}:${definition.id}`,
-                group: "variable",
-                text: definition.name,
-                detail: context,
-                fields: sceneFields,
-                target: {
-                    kind: "storyScene",
-                    storyId: document.id,
-                    sceneId: scene.id,
-                    storyName,
-                    sceneName: scene.name,
-                },
-            });
-        }
-    }
-
-    // Saved variables are document-level; jump to the entry scene (or the first scene) as the
-    // closest editing surface.
-    const fallbackSceneId = document.entrySceneId ?? Object.keys(document.scenes)[0];
-    if (fallbackSceneId) {
-        const fallbackScene = document.scenes[fallbackSceneId];
-        for (const [variableId, definition] of Object.entries(document.savedVariables ?? {})) {
-            if (!definition.name) {
-                continue;
-            }
-            entries.push({
-                id: `storyvar:${document.id}:saved:${variableId}`,
-                group: "variable",
-                text: definition.name,
-                detail: storyName,
-                fields: { storyId: document.id, storyName },
-                target: {
-                    kind: "storyScene",
-                    storyId: document.id,
-                    sceneId: fallbackSceneId,
-                    storyName,
-                    sceneName: fallbackScene?.name ?? "",
                 },
             });
         }

@@ -9,7 +9,14 @@ import type {
     StoryScene,
     StoryVariableRef,
 } from "@shared/types/story";
-import { formatStoryLiteral, layerActionTargetRef, resolveStoryLayerRef, storyVariableRefKey } from "@shared/types/story";
+import {
+    formatStoryLiteral,
+    layerActionTargetRef,
+    resolveStoryLayerRef,
+    savedVariableDefs,
+    sceneVariableDefs,
+    storyVariableRefKey,
+} from "@shared/types/story";
 import { formatStorySecondsLabel } from "@shared/utils/storyTime";
 import { getSceneName } from "../scene-editor/storySceneBlockUtils";
 
@@ -186,6 +193,12 @@ function projectBlockLine(
         // Verbatim: the line never parsed, so there is nothing to pretty-print from.
         return { text: `${indent}${block.payload.source}`, editable: false, prefix: "" };
     }
+    if (block.kind === "declaration") {
+        // Render back as the command that declares it: `/local Gold 100`.
+        const token = block.payload.scope === "scene" ? "local" : block.payload.scope === "saved" ? "var" : "persis";
+        const suffix = block.payload.defaultValue !== undefined ? ` ${formatStoryLiteral(block.payload.defaultValue)}` : "";
+        return { text: `${indent}/${token} ${block.payload.name}${suffix}`, editable: false, prefix: "" };
+    }
     const prefix = `${indent}// `;
     return {
         text: `${prefix}${block.payload.text.value}`,
@@ -349,10 +362,10 @@ function formatExpr(expr: StoryExpr): string {
 /** Compact, user-safe label for a variable reference (never exposes internal ids). */
 function describeVariableRef(ref: StoryVariableRef, scene: StoryScene, document?: StoryDocument): string {
     if (ref.scope === "scene") {
-        return scene.sceneVariables?.[ref.variableId]?.name ?? "variable";
+        return sceneVariableDefs(scene)[ref.variableId]?.name ?? "variable";
     }
     if (ref.scope === "saved") {
-        return document?.savedVariables?.[ref.variableId]?.name ?? "variable";
+        return (document ? savedVariableDefs(document) : {})[ref.variableId]?.name ?? "variable";
     }
     return "persistent";
 }

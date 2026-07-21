@@ -7,6 +7,7 @@ export function DevModeApp() {
     const { t } = useTranslation();
     const {
         bundle,
+        entry,
         projectPath,
         surface,
         surfaceId,
@@ -22,6 +23,7 @@ export function DevModeApp() {
             <div className="h-full w-full min-h-0 bg-surface overflow-hidden">
                 <DevModeContent
                     bundle={bundle}
+                    entry={entry}
                     projectPath={projectPath}
                     surface={surface}
                     surfaceId={surfaceId}

@@ -153,3 +153,7 @@ yarn.lock
 package-lock.json
 .security/
 .DS_Store
+
+# Generated plugin API declarations (regenerate with: yarn build:plugin-types)
+packages/plugin-types/dist/
+packages/plugin-types/.gen/

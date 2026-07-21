@@ -1,4 +1,5 @@
-import { getCommandDef, paramTypes, positionalParams, type StoryCommandDef, type StoryCommandParam } from "./storyCommandGrammar";
+import { findParam, isFlagParam, paramTypes, positionalParams, type StoryCommandDef, type StoryCommandParam } from "./storyCommandGrammar";
+import { getCommandDef } from "./commands/registry";
 import { tokenizeCommandLine, type StoryCommandSpan, type StoryCommandToken } from "./storyCommandParser";
 
 /**
@@ -52,14 +53,23 @@ export type StoryCommandCursor =
  * Tab is unaffected: it takes the first candidate whether or not it was highlighted, so completing
  * `/var gold tr` to `true` still costs one key.
  */
-export function defaultHighlights(cursor: StoryCommandCursor, candidates: readonly { free?: true }[] = []): boolean {
+export function defaultHighlights(cursor: StoryCommandCursor, candidates: readonly { free?: true; value?: string }[] = []): boolean {
     switch (cursor.kind) {
         case "positional":
-        case "paramValue":
-            if (cursor.query.trim() === "" || candidates.length === 0) {
+        case "paramValue": {
+            const query = cursor.query.trim();
+            if (query === "" || candidates.length === 0) {
                 return false;
             }
-            return !candidates[0].free;
+            if (candidates[0].free) {
+                return false;
+            }
+            // The author already typed the whole answer: taking the candidate would change nothing,
+            // so Enter must mean submit. Without this, `/var met true` needed a second Enter - the
+            // first one "completed" `true` to `true` and the line looked like a dead keypress.
+            // Same rationale as the free echo above: take-and-submit build the same block.
+            return candidates[0].value?.trim().toLowerCase() !== query.toLowerCase();
+        }
         case "commandName":
         case "characterName":
             return true;
@@ -79,35 +89,51 @@ function tokenAtCaret(tokens: readonly StoryCommandToken[], caret: number): Stor
     return tokens.find(token => caret >= token.span.start && caret <= token.span.end) ?? null;
 }
 
-/** Index of the first `=` outside quotes, or -1. Mirrors the parser's own splitting. */
+/** Index of the first `=` outside quotes of either kind, or -1. Mirrors the parser's own splitting. */
 function firstUnquotedEquals(raw: string): number {
-    let inQuote = false;
+    let inQuote: "\"" | "'" | null = null;
     for (let index = 0; index < raw.length; index += 1) {
-        if (raw[index] === "\"") {
-            inQuote = !inQuote;
+        const char = raw[index];
+        if ((char === "\"" || char === "'") && (inQuote === null || inQuote === char)) {
+            inQuote = inQuote === null ? char : null;
             continue;
         }
-        if (raw[index] === "=" && !inQuote) {
+        if (char === "=" && inQuote === null) {
             return index;
         }
     }
     return -1;
 }
 
+/** Remove the structural quotes of either kind, keeping the other kind's characters as data. Mirrors the parser. */
 function stripQuotes(raw: string): string {
-    return raw.replace(/"/g, "");
+    let inQuote: "\"" | "'" | null = null;
+    let text = "";
+    for (const char of raw) {
+        if ((char === "\"" || char === "'") && (inQuote === null || inQuote === char)) {
+            inQuote = inQuote === null ? char : null;
+            continue;
+        }
+        text += char;
+    }
+    return text;
 }
 
-/** Positional params already satisfied by tokens strictly before the caret's own token. */
-function positionalIndexBefore(tokens: readonly StoryCommandToken[], activeStart: number): number {
+/** Positional params already satisfied by tokens strictly before the caret's own token. A bare flag (`loop`) is a named arg, not a positional. */
+function positionalIndexBefore(def: StoryCommandDef, tokens: readonly StoryCommandToken[], activeStart: number): number {
     let index = 0;
     for (const token of tokens.slice(1)) {
         if (token.span.start >= activeStart) {
             break;
         }
-        if (firstUnquotedEquals(token.raw) <= 0) {
-            index += 1;
+        if (firstUnquotedEquals(token.raw) > 0) {
+            continue;
         }
+        const flag = findParam(def, token.text);
+        if (flag && isFlagParam(flag) && index > 0) {
+            continue;
+        }
+        index += 1;
     }
     return index;
 }
@@ -149,9 +175,7 @@ function commandCursor(source: string, caret: number): StoryCommandCursor {
     if (active) {
         const equals = firstUnquotedEquals(active.raw);
         if (equals > 0 && caret > active.span.start + equals) {
-            const param = def.params.find(candidate =>
-                candidate.name === active.raw.slice(0, equals).toLowerCase()
-                || (candidate.aliases ?? []).includes(active.raw.slice(0, equals).toLowerCase()));
+            const param = findParam(def, active.raw.slice(0, equals));
             if (!param) {
                 return { kind: "none" };
             }
@@ -165,7 +189,7 @@ function commandCursor(source: string, caret: number): StoryCommandCursor {
     }
 
     const positionals = positionalParams(def);
-    const index = positionalIndexBefore(tokens, activeStart);
+    const index = positionalIndexBefore(def, tokens, activeStart);
 
     // A greedy param runs to the end of the line, so everything from where it starts is prose - the
     // positional counter must stop there rather than reading `hello there` as two more arguments.
@@ -202,12 +226,66 @@ function isExpressionIdentifierChar(char: string): boolean {
 }
 
 /**
+ * The opening `'` of the single-quoted entity name the caret sits inside, or -1.
+ *
+ * Walks the expression's quote state from its start, so an apostrophe inside a double-quoted string
+ * (`"don't"`) does not read as an opening quote. Mirrors the expression tokenizer: `\` escapes inside
+ * a string, nothing escapes inside a quoted name.
+ */
+function quotedNameStart(source: string, caret: number, expressionStart: number): number {
+    let openedAt = -1;
+    let inString = false;
+    for (let index = expressionStart; index < caret && index < source.length; index += 1) {
+        const char = source[index];
+        if (inString) {
+            if (char === "\\") {
+                index += 1;
+            } else if (char === "\"") {
+                inString = false;
+            }
+            continue;
+        }
+        if (openedAt >= 0) {
+            if (char === "'") {
+                openedAt = -1;
+            }
+            continue;
+        }
+        if (char === "\"") {
+            inString = true;
+        } else if (char === "'") {
+            openedAt = index;
+        }
+    }
+    return openedAt;
+}
+
+/**
  * The caret inside an expression: what fragment is being typed, and what a completion replaces.
  *
  * `expressionStart` bounds the scan so a completion can never reach back past the expression into the
  * command token or an earlier positional.
+ *
+ * Inside a single-quoted entity name the identifier-character scan would stop at the nearest space
+ * and offer to replace one word of a multi-word name. So the quoted region wins: the query is the
+ * quoted content up to the caret, and the replacement spans the whole region, quotes included -
+ * through the closing `'` when it exists, to the end of the line when it does not (an unterminated
+ * quote owns everything after it, lexically, so replacing that much is consistent with what the
+ * parser would read). A completion then re-quotes as needed, never nests inside the old quotes.
  */
 function expressionCursor(param: StoryCommandParam, source: string, caret: number, expressionStart: number): StoryCommandCursor {
+    const openedAt = quotedNameStart(source, caret, expressionStart);
+    if (openedAt >= 0) {
+        let end = caret;
+        while (end < source.length && source[end] !== "'") {
+            end += 1;
+        }
+        if (end < source.length) {
+            end += 1; // take the closing quote too
+        }
+        return { kind: "expression", param, query: source.slice(openedAt + 1, caret), replace: { start: openedAt, end } };
+    }
+
     let start = caret;
     while (start > expressionStart && isExpressionIdentifierChar(source[start - 1])) {
         start -= 1;
@@ -249,6 +327,19 @@ export function getCommandCursor(source: string, caret: number): StoryCommandCur
 }
 
 /**
+ * A completed value made safe for the tokenizer: single-quoted when it contains a space, since what
+ * the menu completes is always an entity name or an enum word, never a string literal - `'…'` is the
+ * entity-reference spelling. A name that itself contains a `'` falls back to double quotes (there is
+ * no escape syntax); resolution reads entity slots leniently under either kind.
+ */
+function quoteEntityValue(value: string): string {
+    if (!value.includes(" ")) {
+        return value;
+    }
+    return value.includes("'") ? `"${value}"` : `'${value}'`;
+}
+
+/**
  * The text to write and where, for taking a candidate.
  *
  * A param name completes to `key=` with **no** trailing space, so the value's candidates open
@@ -263,14 +354,17 @@ export function completionFor(cursor: StoryCommandCursor, value: string): { text
             return { text: `${value}=`, replace: cursor.replace };
         case "positional":
         case "paramValue":
-            return { text: `${value.includes(" ") ? `"${value}"` : value} `, replace: cursor.replace };
+            return { text: `${quoteEntityValue(value)} `, replace: cursor.replace };
         case "characterName":
             return { text: `${value} `, replace: cursor.replace };
         case "expression":
-            // No trailing space, and never quoted: this replaces one identifier inside a larger
-            // expression. `min(` completes to `min(` with the caret ready for its arguments, and a
-            // variable name completes to just the name so `gold` can be followed by `+ 1`.
-            return { text: value, replace: cursor.replace };
+            // No trailing space: this replaces one identifier inside a larger expression. `min(`
+            // completes to `min(` with the caret ready for its arguments, and a variable name
+            // completes to just the name so `gold` can be followed by `+ 1`. A name with a space is
+            // single-quoted - the expression language's quoted-identifier spelling - or the lexer
+            // would read it back as two names. The replace span already covers any quotes the author
+            // opened (see expressionCursor), so this never nests quotes.
+            return { text: value.includes(" ") ? `'${value}'` : value, replace: cursor.replace };
         case "greedy":
         case "none":
             return null;

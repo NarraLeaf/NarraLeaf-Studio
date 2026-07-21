@@ -15,6 +15,7 @@ import {
 import { PersistentState } from "@shared/utils/persistentState";
 import type { PersistentStateConfig } from "@shared/types/persistentState";
 import { validatePluginManifest } from "@shared/utils/pluginManifest";
+import { flattenCatalog, type LocaleContribution } from "@shared/i18n";
 import { PluginPermissionManager } from "./pluginPermissionManager";
 
 interface PluginRegistryState extends Record<string, any> {
@@ -94,6 +95,56 @@ export class PluginManager {
                     entryPath: path.resolve(record.installPath, ...entry.split("/")),
                 };
             });
+    }
+
+    /**
+     * Studio language-pack contributions from every enabled plugin, with each
+     * declared JSON catalog read from disk and flattened to `dotted.key ->
+     * string`. Malformed catalogs are skipped with a warning rather than
+     * crashing. Fed into the shared locale registry (main + every renderer) so a
+     * plugin locale becomes a first-class locale app-wide.
+     */
+    public async listLocaleContributions(): Promise<LocaleContribution[]> {
+        await this.initialize();
+        const out: LocaleContribution[] = [];
+        for (const record of Object.values(this.getRecords())) {
+            if (this.toListItem(record).status !== "enabled") {
+                continue;
+            }
+            const locales = record.manifest.contributes.locales;
+            if (!locales || locales.length === 0) {
+                continue;
+            }
+            const root = path.resolve(record.installPath);
+            for (const entry of locales) {
+                try {
+                    const filePath = path.resolve(record.installPath, ...entry.messages.split(/[\\/]+/));
+                    if (!this.isSameOrChild(filePath, root)) {
+                        console.warn(`[PluginManager] locale "${entry.code}" for ${record.manifest.id} escapes the package; skipped`);
+                        continue;
+                    }
+                    const parsed = JSON.parse(await fs.readFile(filePath, "utf-8"));
+                    const flat = flattenCatalog(parsed);
+                    if (flat.size === 0) {
+                        continue;
+                    }
+                    out.push({
+                        pluginId: record.manifest.id,
+                        code: entry.code,
+                        meta: {
+                            nativeName: entry.nativeName,
+                            englishName: entry.englishName,
+                            intl: entry.intl,
+                            dir: entry.dir,
+                        },
+                        messages: Object.fromEntries(flat),
+                    });
+                } catch (error) {
+                    console.warn(`[PluginManager] failed to read locale "${entry.code}" for ${record.manifest.id}:`, error);
+                }
+            }
+        }
+        return out;
     }
 
     private async listTargetPlugins(target: "studio" | "runtime"): Promise<WorkspacePluginDescriptor[]> {

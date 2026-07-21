@@ -8,7 +8,7 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { getCommandGhost } from "./storyCommandGhost";
-import { getCommandLineReason } from "./storyCommandReason";
+import { getCommandLineDraftReason, getCommandLineReason } from "./storyCommandReason";
 import { isMacPlatform } from "@/lib/app/platform";
 import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -29,8 +29,10 @@ import {
     type PaletteActionCommand,
 } from "./storyActionCommands";
 import { searchActionCommands } from "./storyCommandSearch";
+import { localizeSpecCommand, specPaletteCommands } from "./commands/specPalette";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
-import { getCommandDef, paramTypes } from "./storyCommandGrammar";
+import { paramTypes } from "./storyCommandGrammar";
+import { getCommandDef } from "./commands/registry";
 import { completionFor, defaultHighlights, getCommandCursor, type StoryCommandCursor } from "./storyCommandCursor";
 import { getCommandCandidates, hasCandidateSource, type StoryCommandCandidate } from "./storyCommandCandidates";
 import { parseCommandLine } from "./storyCommandParser";
@@ -66,6 +68,8 @@ export function StoryBlockRow(props: {
     scene: StoryScene;
     document: StoryDocument;
     characters: Character[];
+    /** What a name on a draft line may refer to - the reason line resolves against the same view the slot does. */
+    commandContext: StoryCommandContext;
     selected: boolean;
     active: boolean;
     collapsed: boolean;
@@ -241,6 +245,7 @@ export function StoryBlockRow(props: {
                         <BlockPreview
                             block={block}
                             scene={scene}
+                            commandContext={props.commandContext}
                             tempSpeakers={props.tempSpeakers}
                             onSetSpeaker={props.onSetSpeaker}
                             onCreateCharacter={props.onCreateCharacter}
@@ -659,11 +664,20 @@ function conditionSummary(condition: unknown, scene: StoryScene, document: Story
         return value.expression?.source || t("story.condition.summaryExpression");
     }
     const target = value.target;
-    const name = target.scope === "scene"
-        ? scene.sceneVariables?.[target.variableId ?? ""]?.name ?? t("story.condition.fallbackVariable")
-        : target.scope === "saved"
-          ? document.savedVariables?.[target.variableId ?? ""]?.name ?? t("story.condition.fallbackVariable")
-          : t("story.condition.fallbackPersistent");
+    // v6: the variableId is a declaration row's id - read the name off the row itself.
+    const declarationName = (variableId: string | undefined): string | null => {
+        if (!variableId) return null;
+        const inScene = scene.blocks[variableId];
+        if (inScene?.kind === "declaration") return inScene.payload.name;
+        for (const candidate of Object.values(document.scenes)) {
+            const block = candidate.blocks[variableId];
+            if (block?.kind === "declaration") return block.payload.name;
+        }
+        return null;
+    };
+    const name = target.scope === "persistent"
+        ? t("story.condition.fallbackPersistent")
+        : declarationName(target.variableId) ?? t("story.condition.fallbackVariable");
     const operator = conditionOperatorLabel(value.operator, t);
     const suffix = value.operator === "equals" || value.operator === "notEquals" ? ` ${String(value.value ?? "")}` : "";
     return `${name} ${operator}${suffix}`.trim();
@@ -921,7 +935,11 @@ export function InsertRow(props: {
     const pluginCommands = useStoryPluginActionCommands();
     const actionOptions = useMemo<PaletteActionCommand[]>(
         () => searchActionCommands(
-            [...ACTION_COMMANDS, ...pluginCommands].map(command => localizeActionCommand(command, t)),
+            [
+                // The slash menu lists LINE commands (one per spec); plugin actions ride along as before.
+                ...specPaletteCommands().map(command => localizeSpecCommand(command, t)),
+                ...pluginCommands.map(command => localizeActionCommand(command, t)),
+            ],
             chooserQuery,
         ),
         [chooserQuery, pluginCommands, t],
@@ -1016,7 +1034,10 @@ export function InsertRow(props: {
     };
 
     return (
-        <div className="relative grid min-h-[35px] grid-cols-[36px_28px_1fr] items-start border-l-2 border-transparent pr-3">
+        // The open slot is the active line: it carries the same left-accent + fill the active/editing
+        // rows use, so "you are creating a row here" reads at a glance (the rows drop their own
+        // highlight while it is open — see the tab's `insertActive`).
+        <div className="relative grid min-h-[35px] grid-cols-[36px_28px_1fr] items-start border-l-2 border-primary bg-fill-subtle pr-3">
             <div aria-hidden />
             <div className="flex justify-center pt-1">
                 <Plus className="h-4 w-4 text-primary" />
@@ -1843,11 +1864,30 @@ function TextClickTarget(props: { style?: CSSProperties; className?: string; chi
     );
 }
 
+/** A draft row's line: the source, and why it has not committed yet. */
+function DraftRowPreview(props: { source: string; commandContext: StoryCommandContext }) {
+    const { t } = useTranslation();
+    const reason = useMemo(
+        () => getCommandLineDraftReason(props.source, props.commandContext),
+        [props.commandContext, props.source],
+    );
+    const reasonText = reason
+        ? t(reason.key, reason.paramHintKey ? { ...reason.params, slot: t(reason.paramHintKey) } : reason.params)
+        : t("story.rows.invalidHint");
+    return (
+        <span className="flex min-w-0 flex-1 items-baseline gap-2">
+            <span className="min-w-0 truncate font-mono text-sm text-warning">{props.source}</span>
+            <span className="shrink-0 truncate text-2xs text-warning/80">{reasonText}</span>
+        </span>
+    );
+}
+
 function BlockPreview(props: {
     block: StoryBlock;
     scene: StoryScene;
     document: StoryDocument;
     characters: Character[];
+    commandContext: StoryCommandContext;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     tempSpeakers: TempSpeakerRef[];
     onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
@@ -1914,15 +1954,12 @@ function BlockPreview(props: {
         );
     }
     if (block.kind === "invalid") {
-        // The muted fallback below would render this as a de-emphasized note — which is the one thing
-        // it must never look like. It is the author's text verbatim (monospace: it was a command), in
-        // danger, with the consequence stated: this row stops a build.
-        return (
-            <span className="flex min-w-0 flex-1 items-baseline gap-2">
-                <span className="min-w-0 truncate font-mono text-sm text-danger">{block.payload.source}</span>
-                <span className="shrink-0 text-2xs text-danger/70">{t("story.rows.invalidHint")}</span>
-            </span>
-        );
+        // A draft, not garbage: the author's text verbatim (monospace: it was a command), amber
+        // rather than error-red - the muted fallback below would render it as a de-emphasized note,
+        // which is the one thing it must never look like. The reason line says what is missing or
+        // wrong, so the row reads as a to-do; the BUILD is where it turns into an error. Click
+        // re-opens the line in place, candidates and all.
+        return <DraftRowPreview source={block.payload.source} commandContext={props.commandContext} />;
     }
     return <span className="min-w-0 flex-1 truncate text-sm text-fg-muted" style={textStyle}>{describeBlock(block, props.characters, props.scene, props.document.scenes)}</span>;
 }

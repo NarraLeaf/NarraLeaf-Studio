@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getCommandCandidates, hasCandidateSource } from "./storyCommandCandidates";
-import { getCommandDef } from "./storyCommandGrammar";
+import { getCommandDef } from "./commands/registry";
 import { completionFor, defaultHighlights, getCommandCursor, type StoryCommandCursor } from "./storyCommandCursor";
 import type { StoryCommandContext } from "./storyCommandResolution";
 
@@ -93,6 +93,20 @@ describe("getCommandCursor", () => {
         // Sitting on an operator is not sitting on a name: nothing to complete.
         expect(at("/set gold gold +| 1")).toMatchObject({ kind: "expression", query: "" });
     });
+
+    it("widens the caret inside a single-quoted name to the whole quoted region", () => {
+        // Word-by-word replacement inside `'Complex Var'` would splice a full name into the middle of
+        // the old one; the region - quotes included - is what a completion must replace.
+        expect(at("/set gold 'Comp|lex Var' + 1")).toMatchObject({
+            kind: "expression",
+            query: "Comp",
+            replace: { start: 10, end: 23 },
+        });
+        // Unterminated: the open quote lexically owns the rest of the line, so the region runs to it.
+        expect(at("/set gold 'Comp|")).toMatchObject({ kind: "expression", query: "Comp", replace: { start: 10, end: 15 } });
+        // An apostrophe inside a double-quoted string is data, not an opening quote.
+        expect(at("/set gold \"don't\" + go|")).toMatchObject({ kind: "expression", query: "go" });
+    });
 });
 
 describe("defaultHighlights", () => {
@@ -126,6 +140,13 @@ describe("defaultHighlights", () => {
         expect(defaultHighlights(at("/var gold 1|"), [])).toBe(false);
     });
 
+    it("does not highlight when the typed text already IS the top candidate", () => {
+        // `/var met true` - taking `true` changes nothing, so Enter must submit, not complete.
+        expect(defaultHighlights(at("/var met true|"), [{ value: "true" }, { value: "false" }] as never)).toBe(false);
+        // A prefix still highlights: `/var met tr` completing to `true` is a real completion.
+        expect(defaultHighlights(at("/var met tr|"), [{ value: "true" }] as never)).toBe(true);
+    });
+
     it("does not highlight when the best offer is the author's own text echoed back", () => {
         // Taking a free echo and submitting the line build the same block, so Enter should submit.
         expect(defaultHighlights(at("/say Zoe|"), items(freeEcho()))).toBe(false);
@@ -135,10 +156,10 @@ describe("defaultHighlights", () => {
 });
 
 describe("getCommandCandidates", () => {
-    it("lists commands by token, alias and id", () => {
+    it("lists commands by token and alias", () => {
         expect(values("/b|")).toContain("bg");
         expect(values("/backg|")).toContain("bg");
-        expect(values("/characterEn|")).toContain("show");
+        expect(values("/ente|")).toContain("show");
     });
 
     it("offers assets for the image slot, prefix matches first", () => {
@@ -159,7 +180,8 @@ describe("getCommandCandidates", () => {
 
     it("offers a speaker's forms only once the speaker resolves", () => {
         expect(values("/show Alice form=|")).toEqual([]);
-        expect(values("/show Alice form=|", { character: { kind: "character", characterId: "c1" } })).toEqual(["smile", "angry"]);
+        const resolvedTarget = { target: { kind: "target" as const, target: { type: "character" as const, characterId: "c1", name: "Alice" } } };
+        expect(values("/show Alice form=|", resolvedTarget)).toEqual(["smile", "angry"]);
     });
 
     it("offers the speaker picker's order: characters, then names used in the story, then the typed name", () => {
@@ -172,36 +194,34 @@ describe("getCommandCandidates", () => {
         expect(values("/say Zo|")).toEqual(["Zoe", "Zo"]);
     });
 
-    it("does not offer a bare name where a portrait is required", () => {
-        // `/show Zoe` has no image to show - unlike a speaker, it must resolve.
+    it("does not offer a bare name where the target must resolve", () => {
+        // `/show Zoe` has nothing on stage to dispatch on - unlike a speaker, it must resolve.
         expect(values("/show Zo|")).toEqual([]);
         expect(values("/show Al|")).toEqual(["Alice"]);
     });
 
-    it("leads a show/hide/set with the objects on stage, each kind its own list", () => {
-        // The headline of this pass: `/imgshow` is a pick from what exists, like `/bg`'s asset picker -
-        // not a remembered string. A text name is never offered to an image slot.
-        expect(values("/imgshow |")).toEqual(["hero", "portrait"]);
-        // The typed fragment is offered back alongside the match, exactly as the speaker picker does -
-        // that is the never-empty invariant, applied to object references.
-        expect(values("/imgshow he|")).toEqual(["hero", "he"]);
-        expect(values("/settext |")).toEqual(["title"]);
-        expect(values("/vidshow |")).toEqual(["intro"]);
-        expect(values("/stop |")).toEqual(["sound", "music"]);
+    it("offers a generic verb everything it accepts: characters first, then each object kind", () => {
+        // The headline of the generic verbs (bible B3): `/show` is one pick from everything on stage.
+        expect(values("/show |")).toEqual(["Alice", "Bob", "hero", "portrait", "title", "intro", "fx"]);
+        expect(values("/show he|")).toEqual(["hero"]);
+        expect(values("/swap |")).toEqual(["hero", "portrait", "title"]);
+        // The sound controls lead with the reserved BGM channel - the explicit spelling of the default.
+        expect(values("/stop |")).toEqual(["bgm", "sound", "music"]);
     });
 
-    it("offers a typed object name back, so an unknown reference is still a valid pick", () => {
-        // As with speakers: the object may be created dynamically or in another scene, so the list is
-        // never empty and Tab/Enter never need a "nothing matched" rule.
-        expect(values("/imgshow new|")).toEqual(["new"]);
+    it("offers a typed name back only where one object kind is possible", () => {
+        // `/play new` can only mean a video, so the reference stays valid (never-empty invariant);
+        // `/show new` has nothing to dispatch the block type on, so nothing is offered.
+        expect(values("/play new|")).toEqual(["new"]);
         expect(values("/stop other|")).toEqual(["other"]);
+        expect(values("/show new|")).toEqual([]);
     });
 
     it("offers Alice's forms as the positional after her name once she resolves", () => {
         // `form` is positional now (`/expr Alice angry`), so it depends on the resolved character just
         // as `form=` did - an empty list until the speaker is known.
-        expect(values("/expr Alice |")).toEqual([]);
-        expect(values("/expr Alice |", { character: { kind: "character", characterId: "c1" } })).toEqual(["smile", "angry"]);
+        expect(values("/face Alice |")).toEqual([]);
+        expect(values("/face Alice |", { character: { kind: "character", characterId: "c1" } })).toEqual(["smile", "angry"]);
     });
 
     it("offers the variables in scope inside an expression, leading with true/false for a boolean target", () => {
@@ -253,8 +273,9 @@ describe("hasCandidateSource", () => {
         // An expression always has the variable list behind it, so an empty result really does mean
         // "nothing matched what you typed" - unlike a half-typed duration.
         expect(hasCandidateSource(param("set", "value"))).toBe(true);
-        // A stage-object reference has a source (the objects on stage); a create's invented name does not.
-        expect(hasCandidateSource(param("imgshow", "name"))).toBe(true);
+        // A target reference has a source (the objects on stage); a create's invented name does not.
+        expect(hasCandidateSource(param("play", "target"))).toBe(true);
+        expect(hasCandidateSource(param("swap", "content"))).toBe(true);
         expect(hasCandidateSource(param("image", "name"))).toBe(false);
     });
 
@@ -275,8 +296,18 @@ describe("completionFor", () => {
     });
 
     it("quotes a value with spaces, or the tokenizer would split it back apart", () => {
-        expect(completionFor(at("/bg |"), "city rain")?.text).toBe("\"city rain\" ");
+        // Single quotes: what the menu completes is an entity name, and `'…'` is the entity-reference
+        // spelling. A name that itself carries an apostrophe falls back to double quotes.
+        expect(completionFor(at("/bg |"), "city rain")?.text).toBe("'city rain' ");
         expect(completionFor(at("/bg |"), "forest_day")?.text).toBe("forest_day ");
+        expect(completionFor(at("/bg |"), "Bob's Bar")?.text).toBe("\"Bob's Bar\" ");
+        expect(completionFor(at("/bg t=|"), "city rain")?.text).toBe("'city rain' ");
+    });
+
+    it("single-quotes a completed identifier with spaces inside an expression, with no trailing space", () => {
+        expect(completionFor(at("/set gold |"), "Complex Var Name")?.text).toBe("'Complex Var Name'");
+        expect(completionFor(at("/set gold |"), "gold")?.text).toBe("gold");
+        expect(completionFor(at("/set gold mi|"), "min(")?.text).toBe("min(");
     });
 
     it("replaces the whole token being typed, not just what follows the caret", () => {

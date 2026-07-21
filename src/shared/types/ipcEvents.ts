@@ -4,6 +4,7 @@ import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
+import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
@@ -18,6 +19,7 @@ import type {
     RuntimePluginDescriptor,
     WorkspacePluginDescriptor,
 } from "./plugins";
+import type { LocaleContribution } from "@shared/i18n";
 import type {
     PrivilegedBashExecutePayload,
     PrivilegedBashExecuteResult,
@@ -66,6 +68,7 @@ export enum IPCEventType {
     appGlobalStateChanged = "app.globalState.changed",
     appAddRecentProject = "app.addRecentProject",
     appRemoveRecentProject = "app.removeRecentProject",
+    appCheckRecentProjects = "app.checkRecentProjects",
     appSystemPath = "app.systemPath",
 
     fsStat = "fs.stat",
@@ -160,6 +163,8 @@ export enum IPCEventType {
     pluginWorkspaceList = "plugin.workspaceList",
     pluginRuntimeList = "plugin.runtimeList",
     pluginReportLoadError = "plugin.reportLoadError",
+    pluginLocaleList = "plugin.localeList",
+    pluginLocalesChanged = "plugin.localesChanged",
 
     privilegedFsCall = "privileged.fs.call",
     privilegedPermissionRequest = "privileged.permission.request",
@@ -407,11 +412,25 @@ export type IPCEvents = {
         },
         response: void;
     };
+    /**
+     * Check every remembered project against the disk and report the ones that are gone.
+     *
+     * Takes no paths: the main process reads the history itself, so a renderer cannot use this to
+     * probe arbitrary parts of the file system for existence.
+     */
+    [IPCEventType.appCheckRecentProjects]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            missing: MissingRecentProject[];
+        };
+    };
     [IPCEventType.appSystemPath]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {
-            name: "desktop";
+            name: "desktop" | "home";
         },
         response: {
             path: string;
@@ -1277,6 +1296,26 @@ export type IPCPluginManagerEvents = {
             error: string | null;
         },
         response: PluginListItem;
+    };
+    // Aggregated Studio language-pack contributions from every enabled plugin.
+    // Any window may request these to populate the locale registry + picker.
+    [IPCEventType.pluginLocaleList]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            contributions: LocaleContribution[];
+        };
+    };
+    // Host -> renderer push: fired for every window when the enabled plugin set
+    // changes, so each window re-fetches locale contributions and re-localizes.
+    [IPCEventType.pluginLocalesChanged]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: {
+            version: number;
+        },
+        response: never;
     };
 };
 

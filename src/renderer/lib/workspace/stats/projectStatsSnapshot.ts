@@ -21,6 +21,7 @@ import {
 } from "@/lib/workspace/services/localization/localizationModel";
 import { countWords } from "@/lib/workspace/stats/wordCount";
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene } from "@shared/types/story";
+import { savedVariableDefs, sceneVariableDefs } from "@shared/types/story";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 
 export type LocaleProgressStat = {
@@ -154,7 +155,7 @@ function scanStories(documents: readonly StoryDocument[]): StoriesScan {
     for (const document of documents) {
         scan.stories += 1;
         scan.chapters += document.chapters.length;
-        scan.savedVariables += Object.keys(document.savedVariables ?? {}).length;
+        scan.savedVariables += Object.keys(savedVariableDefs(document)).length;
 
         for (const scene of Object.values(document.scenes)) {
             const sceneScan = scanScene(scene);
@@ -165,7 +166,7 @@ function scanStories(documents: readonly StoryDocument[]): StoriesScan {
             scan.choices += sceneScan.choices;
             scan.branches += sceneScan.choiceOptions;
             scan.totalWords += sceneScan.words;
-            scan.sceneVariables += Object.keys(scene.sceneVariables ?? {}).length;
+            scan.sceneVariables += Object.keys(sceneVariableDefs(scene)).length;
         }
     }
     return scan;

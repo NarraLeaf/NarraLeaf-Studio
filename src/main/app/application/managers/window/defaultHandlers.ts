@@ -1,6 +1,6 @@
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { IPCHandler } from "./handlers/IPCHandler";
-import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler } from "./handlers/appAction";
+import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppCheckRecentProjectsHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler } from "./handlers/appAction";
 import { AppCountWorkspaceWindowsHandler, AppRequestWorkspaceViewHandler, AppSettingsWindowLaunchHandler } from "./handlers/settingAction";
 import {
     FsStatHandler, FsListHandler, FsDetailsHandler, FsRequestReadHandler, FsRequestWriteHandler,
@@ -52,6 +52,7 @@ import {
     PluginApproveHandler,
     PluginInstallLocalHandler,
     PluginListHandler,
+    PluginLocaleListHandler,
     PluginReportLoadErrorHandler,
     PluginRevokeHandler,
     PluginRuntimeListHandler,
@@ -97,6 +98,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AppGlobalStateGetAllHandler(),
         new AppAddRecentProjectHandler(),
         new AppRemoveRecentProjectHandler(),
+        new AppCheckRecentProjectsHandler(),
         new AppSystemPathHandler(),
 
         new AppSettingsWindowLaunchHandler(),
@@ -169,6 +171,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new PluginWorkspaceListHandler(),
         new PluginRuntimeListHandler(),
         new PluginReportLoadErrorHandler(),
+        new PluginLocaleListHandler(),
 
         // Actor-aware privileged facade handlers
         new PrivilegedFsCallHandler(),

@@ -106,7 +106,7 @@ type TokenType = "number" | "string" | "identifier" | "operator" | "punct";
 
 type Token = {
     type: TokenType;
-    /** For strings, the decoded value; otherwise the source text. */
+    /** For strings and quoted identifiers, the decoded value; otherwise the source text. */
     text: string;
     span: StoryExpressionSpan;
     /**
@@ -116,6 +116,12 @@ type Token = {
      * perfectly-good literal would let `"unterminated` compile as if the author had closed the quote.
      */
     unterminated?: boolean;
+    /**
+     * A single-quoted identifier: `'Complex Var Name'` is one name, taken verbatim to the scope's
+     * `lookup` - never a keyword, a function call or a `scope.name` split, because the whole point of
+     * quoting is to address a declared name literally.
+     */
+    quoted?: boolean;
 };
 
 /** Multi-character operators first - otherwise `>=` tokenizes as `>` then `=`. */
@@ -143,8 +149,9 @@ function tokenize(source: string, issues: StoryExpressionIssue[]): Token[] {
             continue;
         }
 
-        if (char === "\"" || char === "'") {
-            const quote = char;
+        // Double quotes are string literals; single quotes are entity references (a quoted
+        // identifier) - the same split the command tokenizer makes. Only strings have escapes.
+        if (char === "\"") {
             const start = index;
             index += 1;
             let value = "";
@@ -156,7 +163,7 @@ function tokenize(source: string, issues: StoryExpressionIssue[]): Token[] {
                     index += 2;
                     continue;
                 }
-                if (current === quote) {
+                if (current === "\"") {
                     index += 1;
                     terminated = true;
                     break;
@@ -168,6 +175,27 @@ function tokenize(source: string, issues: StoryExpressionIssue[]): Token[] {
                 issues.push({ code: "unterminatedString", span: { start, end: source.length } });
             }
             tokens.push({ type: "string", text: value, span: { start, end: index }, ...(terminated ? {} : { unterminated: true }) });
+            continue;
+        }
+
+        if (char === "'") {
+            const start = index;
+            index += 1;
+            let name = "";
+            let terminated = false;
+            while (index < source.length) {
+                if (source[index] === "'") {
+                    index += 1;
+                    terminated = true;
+                    break;
+                }
+                name += source[index];
+                index += 1;
+            }
+            if (!terminated) {
+                issues.push({ code: "unterminatedString", span: { start, end: source.length } });
+            }
+            tokens.push({ type: "identifier", text: name, span: { start, end: index }, quoted: true, ...(terminated ? {} : { unterminated: true }) });
             continue;
         }
 
@@ -341,6 +369,21 @@ class ExpressionParser {
         this.advance();
         const name = token.text;
 
+        // A quoted identifier addresses one declared name verbatim: no keyword reading, no call, no
+        // scope-prefix split - `'saved.gold'` looks up a variable literally named "saved.gold". It
+        // resolves through the same scope chain a bare name does, to the same `var` node.
+        if (token.quoted) {
+            if (token.unterminated) {
+                return { kind: "invalid", source: this.source.slice(token.span.start, token.span.end) };
+            }
+            const target = this.scope.lookup(name);
+            if (!target) {
+                this.issues.push({ code: "unknownVariable", span: token.span, name });
+                return { kind: "invalid", source: name };
+            }
+            return { kind: "var", target, name };
+        }
+
         // Keywords first: `true`/`false`/`null` are identifiers to the tokenizer and literals here.
         const lowered = name.toLowerCase();
         if (lowered === "true" || lowered === "false") {
@@ -442,6 +485,21 @@ export function parseStoryExpression(source: string, scope: StoryExpressionScope
     const tokens = tokenize(source, issues);
     const ast = new ExpressionParser(source, tokens, scope, issues).parse();
     return { expression: { source, ast }, issues };
+}
+
+/**
+ * Print a variable name the way the lexer reads one reference back: bare when it lexes as a single
+ * identifier and parses as a plain name, single-quoted otherwise. The inverse of the quoted-identifier
+ * token - what generated sources (compound-assignment desugaring, auto-built steps) must use so a
+ * name with a space, a dot or a keyword's spelling survives the round trip.
+ */
+export function formatStoryExpressionName(name: string): string {
+    const lowered = name.toLowerCase();
+    const keyword = lowered === "true" || lowered === "false" || lowered === "null";
+    // A dot never passes isIdentifierPart, so a dotted name (which would re-parse as a scope prefix)
+    // is quoted by the same test.
+    const bare = name.length > 0 && !keyword && isIdentifierStart(name[0]) && [...name].every(isIdentifierPart);
+    return bare ? name : `'${name}'`;
 }
 
 /** Build a scope from a flat list of declared variables - the shape both the command line and tests have. */

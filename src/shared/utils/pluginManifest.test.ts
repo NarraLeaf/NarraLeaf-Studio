@@ -118,6 +118,47 @@ describe("validatePluginManifest", () => {
         });
     });
 
+    it("normalizes contributed runtime data namespaces", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+            contributes: {
+                runtimeData: ["acme.sample-plugin.catalog", "acme.sample-plugin.catalog"],
+            },
+        });
+
+        expect(result).toMatchObject({
+            ok: true,
+            manifest: {
+                contributes: {
+                    blueprintNodes: [],
+                    widgets: [],
+                    runtimeData: ["acme.sample-plugin.catalog"],
+                },
+            },
+        });
+
+        // Namespaces are plugin-scoped on disk, so an unprefixed one would point
+        // at another plugin's store (or a core service store).
+        const invalid = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+            contributes: {
+                runtimeData: ["panelState"],
+            },
+        });
+        expect(invalid).toMatchObject({
+            ok: false,
+            error: expect.stringContaining("prefixed with the plugin id"),
+        });
+    });
+
     it("rejects contributed node types without the plugin id prefix", () => {
         const result = validatePluginManifest({
             manifestVersion: 2,
@@ -134,6 +175,63 @@ describe("validatePluginManifest", () => {
             ok: false,
             error: expect.stringContaining("prefixed with the plugin id"),
         });
+    });
+
+    it("normalizes contributed locales (language packs)", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.ja-pack",
+            name: "Japanese Pack",
+            version: "1.0.0",
+            entries: { studio: "main.js" },
+            contributes: {
+                locales: [
+                    { code: "ja", nativeName: "日本語", intl: "ja-JP", messages: "locales/ja.json" },
+                    { code: "zh", messages: "locales/zh-extra.json" },
+                ],
+            },
+        });
+
+        expect(result).toMatchObject({
+            ok: true,
+            manifest: {
+                contributes: {
+                    locales: [
+                        { code: "ja", nativeName: "日本語", intl: "ja-JP", messages: "locales/ja.json" },
+                        { code: "zh", messages: "locales/zh-extra.json" },
+                    ],
+                },
+            },
+        });
+    });
+
+    it("rejects a locale contribution without a messages path", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.ja-pack",
+            name: "Japanese Pack",
+            version: "1.0.0",
+            entries: { studio: "main.js" },
+            contributes: { locales: [{ code: "ja", nativeName: "日本語" }] },
+        });
+
+        expect(result).toMatchObject({
+            ok: false,
+            error: expect.stringContaining("messages must be a relative JSON file path"),
+        });
+    });
+
+    it("rejects a locale contribution whose messages path escapes the package", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.ja-pack",
+            name: "Japanese Pack",
+            version: "1.0.0",
+            entries: { studio: "main.js" },
+            contributes: { locales: [{ code: "ja", nativeName: "日本語", messages: "../../etc/passwd" }] },
+        });
+
+        expect(result).toMatchObject({ ok: false });
     });
 
     it("rejects unknown contributes keys", () => {

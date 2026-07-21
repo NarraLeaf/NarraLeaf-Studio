@@ -8,10 +8,12 @@ import type {
     StoryLayerRef,
     StoryLiteralValue,
     StoryScene,
+    StorySavedVariableDefinition,
+    StorySceneVariableDefinition,
     StoryTransformRef,
     StoryVariableRef,
 } from "@shared/types/story";
-import { isStoryExpressionEvaluable, resolveDisplayableTargetRef } from "@shared/types/story";
+import { isStoryExpressionEvaluable, resolveDisplayableTargetRef, savedVariableDefs, sceneVariableDefs } from "@shared/types/story";
 import { evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
 import {
     getCharacterStageObjectName,
@@ -115,6 +117,9 @@ type VariableStore = {
 
 class SnapshotWalker {
     private readonly pathBlockIds = new Set<string>();
+    /** Declaration tables (variableId → def), scanned once per walk from the v6 declaration rows. */
+    private readonly sceneDefs: Record<string, StorySceneVariableDefinition>;
+    private readonly savedDefs: Record<string, StorySavedVariableDefinition>;
     private readonly displayables = new Map<string, StageSnapshotDisplayable>();
     private readonly order: string[] = [];
     private readonly diagnostics: StageSnapshotDiagnostic[] = [];
@@ -129,7 +134,7 @@ class SnapshotWalker {
     private reachedTarget = false;
 
     constructor(
-        private readonly document: StoryDocument,
+        document: StoryDocument,
         private readonly scene: StoryScene,
         private readonly targetBlockId: string | null,
         private readonly animations: ReadonlyMap<string, StoryAnimationAsset>,
@@ -139,10 +144,12 @@ class SnapshotWalker {
             this.pathBlockIds.add(cursor.id);
             cursor = cursor.parentId ? scene.blocks[cursor.parentId] : undefined;
         }
-        for (const saved of Object.values(document.savedVariables ?? {})) {
+        this.sceneDefs = sceneVariableDefs(scene);
+        this.savedDefs = savedVariableDefs(document);
+        for (const saved of Object.values(this.savedDefs)) {
             this.variables.saved.set(saved.storageKey, saved.defaultValue ?? null);
         }
-        for (const def of Object.values(scene.sceneVariables ?? {})) {
+        for (const def of Object.values(this.sceneDefs)) {
             this.variables.scene.set(def.storageKey, def.defaultValue ?? null);
         }
     }
@@ -236,7 +243,8 @@ class SnapshotWalker {
             return;
         }
 
-        // code / note: no stage effect.
+        // code / note / declaration: no stage effect (declarations are authoring metadata; their
+        // defaults already seeded the variable store above).
     }
 
     private visitChoice(block: Extract<StoryBlock, { kind: "nodeAction" }>, insideNvl: boolean): void {
@@ -304,13 +312,13 @@ class SnapshotWalker {
             this.diagnostic(blockId, "Persistent-variable condition evaluates against defaults in the preview.");
             current = undefined;
         } else if (target.scope === "scene") {
-            const def = this.scene.sceneVariables?.[target.variableId];
+            const def = this.sceneDefs[target.variableId];
             if (!def) {
                 return false;
             }
             current = this.variables.scene.get(def.storageKey);
         } else {
-            const def = this.document.savedVariables?.[target.variableId];
+            const def = this.savedDefs[target.variableId];
             if (!def) {
                 return false;
             }
@@ -596,7 +604,7 @@ class SnapshotWalker {
             return;
         }
         if (target.scope === "scene") {
-            const def = this.scene.sceneVariables?.[target.variableId];
+            const def = this.sceneDefs[target.variableId];
             if (!def) {
                 return;
             }
@@ -605,7 +613,7 @@ class SnapshotWalker {
             return;
         }
         if (target.scope === "saved") {
-            const def = this.document.savedVariables?.[target.variableId];
+            const def = this.savedDefs[target.variableId];
             if (!def) {
                 return;
             }
@@ -646,10 +654,10 @@ class SnapshotWalker {
             return undefined;
         }
         if (ref.scope === "scene") {
-            const def = this.scene.sceneVariables?.[ref.variableId];
+            const def = this.sceneDefs[ref.variableId];
             return def ? this.variables.scene.get(def.storageKey) : undefined;
         }
-        const def = this.document.savedVariables?.[ref.variableId];
+        const def = this.savedDefs[ref.variableId];
         return def ? this.variables.saved.get(def.storageKey) : undefined;
     }
 

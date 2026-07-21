@@ -47,9 +47,16 @@ const MAX_STEPS = 2_000;
 /**
  * Build the playback plan for a scene starting at `startBlockId` (null = the whole scene from its
  * first row).
+ *
+ * `followJumps` (launch mode): emit the jump as a final step so the compiled tail actually takes it
+ * into the target scene, instead of holding before it the way the single-scene preview does.
  */
-export function collectStoryPlaybackPlan(scene: StoryScene, startBlockId: StoryBlockId | null): StoryPlaybackPlan {
-    const builder = new PlanBuilder(scene);
+export function collectStoryPlaybackPlan(
+    scene: StoryScene,
+    startBlockId: StoryBlockId | null,
+    options: { followJumps?: boolean } = {},
+): StoryPlaybackPlan {
+    const builder = new PlanBuilder(scene, options.followJumps ?? false);
     const start = startBlockId ? scene.blocks[startBlockId] : undefined;
 
     if (!start) {
@@ -101,7 +108,7 @@ class PlanBuilder {
     private stop: StoryPlaybackStop = { reason: "sceneEnd" };
     private stopped = false;
 
-    constructor(private readonly scene: StoryScene) {}
+    constructor(private readonly scene: StoryScene, private readonly followJumps: boolean = false) {}
 
     /** Emit each id in order. Returns false once the walk has stopped (jump / ceiling). */
     pushList(blockIds: readonly StoryBlockId[]): boolean {
@@ -126,8 +133,11 @@ class PlanBuilder {
             return true;
         }
         if (block.kind === "jump") {
-            // The preview compiles a single scene, so the jump itself cannot be played. Stop here
-            // and name the destination; the pane turns this into "playback ends — jumps to X".
+            // Launch mode follows the jump into the target scene, so emit it as the tail's last step.
+            // The single-scene preview instead holds before it. Either way this scene runs no further.
+            if (this.followJumps && this.steps.length < MAX_STEPS) {
+                this.steps.push({ blockId: block.id, bodyOnly: false, insideNvl: this.isInsideNvl(block) });
+            }
             this.stop = { reason: "jump", blockId: block.id, targetSceneId: block.payload.targetSceneId };
             this.stopped = true;
             return false;

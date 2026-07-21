@@ -62,7 +62,7 @@ describe("createPluginApp disposal", () => {
             name: "Test",
             version: "1.0.0",
             entries: { studio: "main.js" },
-            contributes: { blueprintNodes: ["test-plugin.node"], widgets: ["test-plugin.widget"] },
+            contributes: { blueprintNodes: ["test-plugin.node"], widgets: ["test-plugin.widget"], locales: [] },
             permissions: [],
         },
         entryUrl: "app://plugins/test-plugin/main.js",
@@ -128,10 +128,10 @@ describe("createPluginApp disposal", () => {
         const { ctx, calls, store, panelDisposer, keybindingDisposer, dynamicSourceDisposer } = createFakeContext();
         const { app, dispose } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
 
-        app.services.ui.panels.register({ id: "p1" } as any);
-        app.services.ui.actions.register({ id: "a1" } as any);
-        app.services.ui.actions.registerGroup({ id: "g1" } as any);
-        app.services.ui.keybindings.register({ id: "k1" } as any);
+        app.services.ui.panels.register({ id: "test-plugin.p1" } as any);
+        app.services.ui.actions.register({ id: "test-plugin.a1" } as any);
+        app.services.ui.actions.registerGroup({ id: "test-plugin.g1" } as any);
+        app.services.ui.keybindings.register({ id: "test-plugin.k1" } as any);
         const widget = { type: "test-plugin.widget" } as unknown as UIWidgetModule;
         app.services.widgets.register(widget);
         app.services.blueprintNodes.registerDynamicSelectOptionsSource("s1", () => []);
@@ -141,8 +141,8 @@ describe("createPluginApp disposal", () => {
         dispose();
 
         expect(panelDisposer).toHaveBeenCalledTimes(1);
-        expect(store.unregisterAction).toHaveBeenCalledWith("a1");
-        expect(store.unregisterActionGroup).toHaveBeenCalledWith("g1");
+        expect(store.unregisterAction).toHaveBeenCalledWith("test-plugin.a1");
+        expect(store.unregisterActionGroup).toHaveBeenCalledWith("test-plugin.g1");
         expect(keybindingDisposer).toHaveBeenCalledTimes(1);
         expect(dynamicSourceDisposer).toHaveBeenCalledTimes(1);
         expect(widgetModuleRegistry.has("test-plugin.widget")).toBe(false);
@@ -179,7 +179,7 @@ describe("createPluginApp disposal", () => {
             id: "other.insert-thing",
             label: "Bad",
             createBlock: () => ({}) as any,
-        })).toThrow(/prefixed with plugin id/);
+        })).toThrow(/must be prefixed with/);
 
         dispose();
         expect(storyActionDisposer).toHaveBeenCalledTimes(1);
@@ -204,7 +204,7 @@ describe("createPluginApp disposal", () => {
         // A group asking to merge into the native Edit menu and stand in for Paste - i.e. to
         // become what Cmd+V does across the window.
         app.services.ui.actions.registerGroup({
-            id: "test-plugin:group",
+            id: "test-plugin.group",
             label: "Evil",
             menuSlot: "edit",
             actions: [
@@ -222,7 +222,7 @@ describe("createPluginApp disposal", () => {
         const { app } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
 
         app.services.ui.actions.registerGroup({
-            id: "test-plugin:group",
+            id: "test-plugin.group",
             label: "Evil",
             items: [
                 {
@@ -252,12 +252,12 @@ describe("createPluginApp disposal", () => {
         const { ctx, uiService, panelDisposer } = createFakeContext();
         const { app, dispose } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
 
-        app.services.ui.panels.register({ id: "p1" } as any);
+        app.services.ui.panels.register({ id: "test-plugin.p1" } as any);
         // Registered after the panel, so it throws first during reversed disposal.
         uiService.keybindings.register.mockReturnValueOnce(vi.fn(() => {
             throw new Error("disposer failure");
         }) as any);
-        app.services.ui.keybindings.register({ id: "k1" } as any);
+        app.services.ui.keybindings.register({ id: "test-plugin.k1" } as any);
 
         expect(() => dispose()).not.toThrow();
         expect(panelDisposer).toHaveBeenCalledTimes(1);

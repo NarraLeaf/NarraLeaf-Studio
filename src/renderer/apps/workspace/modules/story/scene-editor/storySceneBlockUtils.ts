@@ -251,18 +251,43 @@ export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typ
         // build will refuse it. It has to read as wrong at a glance.
         return { label: translate("story.badge.invalid"), icon: TriangleAlert, iconColor: "rgb(var(--nl-danger))" };
     }
+    if (block.kind === "declaration") {
+        return withCategory(translate(`story.badge.declare.${block.payload.scope}` as Parameters<typeof translate>[0]), Variable, "data");
+    }
     return withCategory(translate("story.badge.note"), StickyNote, "utils");
 }
 
-/** Short, user-safe label for a variable reference (never exposes internal ids). */
-function variableRefShortLabel(ref: StoryVariableRef, scene?: StoryScene): string {
-    if (ref.scope === "scene") {
-        return scene?.sceneVariables?.[ref.variableId]?.name ?? translate("story.describe.variableFallback");
+/**
+ * Short, user-safe label for a variable reference (never exposes internal ids).
+ *
+ * v6: the variableId IS a declaration block's id, so the name comes straight off the row - the
+ * current scene first, then the rest of the document. This is what made "saved variable += 5" read
+ * as `gold += 5`: a row that does not say WHICH variable it touches is a row the author has to open
+ * to understand, which fails the first principle.
+ */
+function variableRefShortLabel(ref: StoryVariableRef, scene?: StoryScene, scenes?: Record<string, StoryScene>): string {
+    if (ref.scope === "persistent") {
+        for (const candidate of Object.values(scenes ?? {})) {
+            for (const block of Object.values(candidate.blocks)) {
+                if (block.kind === "declaration" && block.payload.storageKey === ref.storageKey) {
+                    return block.payload.name;
+                }
+            }
+        }
+        // Blueprint-declared: its name lives in the blueprint document, out of reach here.
+        return translate("story.describe.persistent");
     }
-    if (ref.scope === "saved") {
-        return translate("story.describe.savedVariable");
+    const inScene = scene?.blocks[ref.variableId];
+    if (inScene?.kind === "declaration") {
+        return inScene.payload.name;
     }
-    return translate("story.describe.persistent");
+    for (const candidate of Object.values(scenes ?? {})) {
+        const block = candidate.blocks[ref.variableId];
+        if (block?.kind === "declaration") {
+            return block.payload.name;
+        }
+    }
+    return translate("story.describe.variableFallback");
 }
 
 /**
@@ -314,7 +339,7 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
             return `${payload.operation} ${name}`;
         }
         if (payload.action === "audio") return `${payload.operation} ${payload.objectName || payload.assetId || translate("story.describe.unassigned")}`;
-        if (payload.action === "setVariable") return describeAssignment(payload, variableRefShortLabel(payload.target, scene));
+        if (payload.action === "setVariable") return describeAssignment(payload, variableRefShortLabel(payload.target, scene, scenes));
         if (payload.action === "wait") return payload.mode === "duration" ? translate("story.describe.waitDuration", { seconds: storyMsToSeconds(payload.durationMs ?? 0) }) : translate("story.describe.waitClick");
         if (payload.action === "image") return translate("story.describe.image", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
         if (payload.action === "displayable") return `${payload.operation} ${resolveDisplayableTargetRef(scene, payload.target).label || translate("story.describe.targetFallback")}`;
@@ -345,6 +370,13 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
         // The author's own text is the most useful thing to show them - it never parsed, so there is
         // nothing to describe in its place.
         return block.payload.source || translate("story.describe.invalid");
+    }
+    if (block.kind === "declaration") {
+        // The row reads as what it declares: `gold: number = 100`. The scope arrives via the badge.
+        const declared = block.payload.defaultValue !== undefined
+            ? `${block.payload.name}: ${block.payload.valueType} = ${JSON.stringify(block.payload.defaultValue)}`
+            : `${block.payload.name}: ${block.payload.valueType}`;
+        return declared;
     }
     return block.payload.text.value || translate("story.describe.note");
 }

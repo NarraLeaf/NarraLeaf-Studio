@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getInterface } from "@/lib/app/bridge";
-import type { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
+import type { MissingRecentProject, RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 
 const RECENT_PROJECTS_KEY = "app.recentProjects";
 
@@ -63,4 +64,45 @@ export function useRemoveRecentProject(): (projectPath: string) => Promise<void>
             console.error("[recent] Failed to remove recent project:", error);
         }
     }, []);
+}
+
+/**
+ * Which remembered projects are not on disk, keyed by normalized path. Checked once, when the
+ * surface using this mounts.
+ *
+ * Once per entry into the app is the point: a project can be moved or deleted while the app is
+ * closed, and without a sweep the only way to find out is to click the entry and land on an error
+ * screen. Checking on the way in lets the list say so up front instead.
+ *
+ * Reporting only - nothing is pruned here or in the main process. A missing folder is often
+ * temporary (an external drive unplugged, a share not mounted yet) and the recorded path is what
+ * the user needs to find it again, so what happens to the entry is their call.
+ */
+export function useMissingRecentProjects(): ReadonlyMap<string, MissingRecentProject> {
+    const [missing, setMissing] = useState<ReadonlyMap<string, MissingRecentProject>>(new Map());
+
+    useEffect(() => {
+        let cancelled = false;
+
+        void (async () => {
+            try {
+                const result = await getInterface().app.checkRecentProjects();
+                if (!cancelled && result.success) {
+                    setMissing(new Map(result.data.missing.map(
+                        project => [normalizeProjectPath(project.path), project],
+                    )));
+                }
+            } catch (error) {
+                // A failed sweep is not worth surfacing: the list still works, and every entry in
+                // it is verified again the moment it is opened.
+                console.error("[recent] Failed to check recent projects:", error);
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    return missing;
 }

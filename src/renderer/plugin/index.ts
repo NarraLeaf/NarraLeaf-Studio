@@ -131,6 +131,58 @@ export type PluginAssetsService = {
     revokeObjectUrl(url: string): void;
 };
 
+/** An active editor locale code (built-in like "en"/"zh", or a plugin-provided locale). */
+export type LocaleCode = string;
+
+/**
+ * A plugin's own message tables: `locale code -> (message key -> string)`. This
+ * is the plugin's private catalog, unrelated to Studio's own translations.
+ * `fallbackLocale` resolves keys the active locale's table lacks (defaults to the
+ * first table declared).
+ */
+export type PluginMessageBundle = {
+    messages: Record<string, Record<string, string>>;
+    fallbackLocale?: string;
+};
+
+/**
+ * A translator over a {@link PluginMessageBundle} that follows the editor's
+ * active locale. `t()` resolves against the active locale's table, then the
+ * fallback table, then returns the key. `{placeholder}` tokens are filled from
+ * `params`. Live: `.locale` and `t()` read the current editor locale at call
+ * time, so one translator instance is enough - subscribe via
+ * {@link PluginI18n.onLocaleChange} to re-render on a language switch.
+ */
+export type PluginTranslator = {
+    readonly locale: LocaleCode;
+    t(key: string, params?: Record<string, string | number>): string;
+};
+
+/**
+ * Read access to the editor's language, so a plugin can localize its OWN strings
+ * against the current editor locale and react to live language switches. This is
+ * the editor UI language; it is unrelated to a game's player-facing localization.
+ */
+export type PluginI18n = {
+    /** The editor's active locale code. */
+    readonly locale: LocaleCode;
+    /**
+     * Subscribe to editor-language changes. The listener fires with the new
+     * locale code whenever the active editor language changes. Returns a
+     * {@link PluginCleanup} (also tracked by the host, so it is reclaimed on
+     * unload even if you forget to call it).
+     */
+    onLocaleChange(listener: (locale: LocaleCode) => void): PluginCleanup;
+    /** Locale-aware number formatting bound to the editor's active locale. */
+    formatNumber(value: number, options?: Intl.NumberFormatOptions): string;
+    /** Locale-aware date formatting bound to the editor's active locale. */
+    formatDate(value: Date | number, options?: Intl.DateTimeFormatOptions): string;
+    /** Locale-aware list formatting bound to the editor's active locale. */
+    formatList(items: string[], options?: Intl.ListFormatOptions): string;
+    /** Build a translator over the plugin's own message bundle (see {@link PluginTranslator}). */
+    createTranslator(bundle: PluginMessageBundle): PluginTranslator;
+};
+
 /**
  * The curated plugin API surface. This is intentionally a whitelist:
  * plugins do NOT get access to the workspace service registry. Anything
@@ -138,19 +190,35 @@ export type PluginAssetsService = {
  * grants) must go through the privileged facade, which is enforced
  * per-plugin by the main process.
  */
+/**
+ * The curated studio plugin API surface.
+ *
+ * Convention: every `register*` on a registration sub-service returns a
+ * {@link PluginCleanup} that removes exactly that contribution; `registerMany`
+ * returns one cleanup removing all of them. The host also tracks each
+ * registration, so unload reclaims everything even if you never call the
+ * returned cleanup. Registration ids/types must be prefixed with your plugin id.
+ * Imperative operations (`editors.*`, `notifications.*`, `i18n.format*`,
+ * `blueprintNodes.notify*`) return their natural value, not a cleanup.
+ *
+ * The one exception: `blueprintNodes.register`/`registerMany` return `void`.
+ * Node definitions are session-persistent - removing a live def would orphan
+ * nodes in open documents, and the catalog has no removal path - so there is
+ * nothing to dispose.
+ */
 export type PluginServices = {
     storage: PluginStorageService;
     assets: PluginAssetsService;
+    i18n: PluginI18n;
     ui: {
         panels: {
-            register<TPayload = unknown>(panel: PanelDefinition<TPayload>): void;
-            unregister(id: string): void;
+            register<TPayload = unknown>(panel: PanelDefinition<TPayload>): PluginCleanup;
+            registerMany(panels: PanelDefinition[]): PluginCleanup;
         };
         actions: {
-            register(action: ActionDefinition): void;
-            unregister(id: string): void;
-            registerGroup(group: ActionGroup): void;
-            unregisterGroup(id: string): void;
+            register(action: ActionDefinition): PluginCleanup;
+            registerMany(actions: ActionDefinition[]): PluginCleanup;
+            registerGroup(group: ActionGroup): PluginCleanup;
         };
         editors: {
             open<TPayload = unknown>(tab: EditorTabDefinition<TPayload>, groupId?: string): void;
@@ -168,8 +236,8 @@ export type PluginServices = {
         };
     };
     widgets: {
-        register(module: UIWidgetModule): void;
-        registerMany(modules: UIWidgetModule[]): void;
+        register(module: UIWidgetModule): PluginCleanup;
+        registerMany(modules: UIWidgetModule[]): PluginCleanup;
         get(type: string): UIWidgetModule | undefined;
         list(): UIWidgetModule[];
         has(type: string): boolean;
@@ -184,10 +252,13 @@ export type PluginServices = {
              * plugin id.
              */
             register(registration: StoryPluginActionRegistration): PluginCleanup;
+            registerMany(registrations: StoryPluginActionRegistration[]): PluginCleanup;
         };
     };
     blueprintNodes: {
+        /** Session-persistent: returns `void` (node defs cannot be removed once registered). */
         register(def: BlueprintNodeDef): void;
+        /** Session-persistent: returns `void` (node defs cannot be removed once registered). */
         registerMany(defs: BlueprintNodeDef[]): void;
         registerDynamicSelectOptionsSource(
             sourceId: string,

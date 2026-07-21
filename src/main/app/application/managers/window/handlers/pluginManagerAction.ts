@@ -9,9 +9,11 @@ import type {
     RuntimePluginDescriptor,
     WorkspacePluginDescriptor,
 } from "@shared/types/plugins";
+import type { LocaleContribution } from "@shared/i18n";
 import { WindowAppType, WindowCloseResults } from "@shared/types/window";
 import { resolveDependencies } from "@shared/utils/resolveDependencies";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
+import { readPublishedPluginData } from "../../pluginRuntimeData";
 import { authorizeActorCapabilityRequest } from "../actorAuthorization";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
@@ -57,7 +59,11 @@ export class PluginInstallLocalHandler extends IPCHandler<IPCEventType.pluginIns
             return this.success({ canceled: true });
         }
 
-        return this.tryUse(() => window.app.pluginManager.installFromDirectory(result.filePaths[0]));
+        const installed = await this.tryUse(() => window.app.pluginManager.installFromDirectory(result.filePaths[0]));
+        if (installed.success && !installed.data.canceled) {
+            void window.app.refreshPluginLocales();
+        }
+        return installed;
     }
 }
 
@@ -71,7 +77,11 @@ export class PluginSetEnabledHandler extends IPCHandler<IPCEventType.pluginSetEn
     ): Promise<RequestStatus<PluginListItem>> {
         const denied = ensurePluginInstallCapability(window);
         if (denied) return denied;
-        return this.tryUse(() => window.app.pluginManager.setPluginEnabled(data.pluginId, data.enabled));
+        const result = await this.tryUse(() => window.app.pluginManager.setPluginEnabled(data.pluginId, data.enabled));
+        if (result.success) {
+            void window.app.refreshPluginLocales();
+        }
+        return result;
     }
 }
 
@@ -94,6 +104,7 @@ export class PluginApproveHandler extends IPCHandler<IPCEventType.pluginApprove>
             promptWindow.setCloseResultResolver(async (result: WindowCloseResults[WindowAppType.PluginPermissionPrompt]) => {
                 try {
                     const approval = await window.app.pluginManager.approvePlugin(data.pluginId, result ?? null);
+                    void window.app.refreshPluginLocales();
                     resolve(this.success(approval));
                 } catch (error) {
                     resolve(this.failed(error));
@@ -113,7 +124,11 @@ export class PluginUninstallHandler extends IPCHandler<IPCEventType.pluginUninst
     ): Promise<RequestStatus<void>> {
         const denied = ensurePluginInstallCapability(window);
         if (denied) return denied;
-        return this.tryUse(() => window.app.pluginManager.uninstallPlugin(data.pluginId));
+        const result = await this.tryUse(() => window.app.pluginManager.uninstallPlugin(data.pluginId));
+        if (result.success) {
+            void window.app.refreshPluginLocales();
+        }
+        return result;
     }
 }
 
@@ -127,7 +142,11 @@ export class PluginRevokeHandler extends IPCHandler<IPCEventType.pluginRevoke> {
     ): Promise<RequestStatus<PluginListItem>> {
         const denied = ensurePluginInstallCapability(window);
         if (denied) return denied;
-        return this.tryUse(() => window.app.pluginManager.revokePlugin(data.pluginId));
+        const result = await this.tryUse(() => window.app.pluginManager.revokePlugin(data.pluginId));
+        if (result.success) {
+            void window.app.refreshPluginLocales();
+        }
+        return result;
     }
 }
 
@@ -152,7 +171,41 @@ export class PluginRuntimeListHandler extends IPCHandler<IPCEventType.pluginRunt
             return this.failed("Runtime plugins can only be requested by Dev Mode windows");
         }
         const plugins = await window.app.pluginManager.listRuntimePlugins();
-        return this.success({ plugins: await this.filterSuppressed(window, plugins) });
+        const allowed = await this.filterSuppressed(window, plugins);
+        return this.success({ plugins: await this.attachRuntimeData(window, allowed) });
+    }
+
+    /**
+     * Dev Mode reads the live project rather than a pack, so publishable plugin
+     * storage is loaded straight from `editor/services`. Best-effort: a project
+     * without a resolvable path just gets descriptors with no data, and the
+     * plugin degrades the same way it would in a game built before the data
+     * channel existed.
+     */
+    private async attachRuntimeData(
+        window: AppWindow,
+        plugins: RuntimePluginDescriptor[],
+    ): Promise<RuntimePluginDescriptor[]> {
+        const projectPath = (window.getProps() as { projectPath?: unknown }).projectPath;
+        if (typeof projectPath !== "string" || !projectPath.trim()) {
+            return plugins;
+        }
+        return Promise.all(plugins.map(async descriptor => {
+            try {
+                const data = await readPublishedPluginData({
+                    projectPath,
+                    manifest: descriptor.manifest,
+                    onWarning: message => console.warn("[PluginRuntimeListHandler]", message),
+                });
+                return data ? { ...descriptor, data } : descriptor;
+            } catch (error) {
+                console.warn(
+                    `[PluginRuntimeListHandler] failed to read runtime data of plugin "${descriptor.plugin.id}":`,
+                    error,
+                );
+                return descriptor;
+            }
+        }));
     }
 
     /**
@@ -186,6 +239,15 @@ export class PluginRuntimeListHandler extends IPCHandler<IPCEventType.pluginRunt
             console.warn("[PluginRuntimeListHandler] dependency suppression skipped:", error);
             return plugins;
         }
+    }
+}
+
+export class PluginLocaleListHandler extends IPCHandler<IPCEventType.pluginLocaleList> {
+    readonly name = IPCEventType.pluginLocaleList;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<{ contributions: LocaleContribution[] }>> {
+        return this.success({ contributions: await window.app.pluginManager.listLocaleContributions() });
     }
 }
 
