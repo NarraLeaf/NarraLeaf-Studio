@@ -262,6 +262,18 @@
     background: transparent;
 }
 
+/* Opt-in: keep the element scrollable but hide the scrollbar chrome entirely. */
+.nl-no-scrollbar {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* legacy Edge */
+}
+
+.nl-no-scrollbar::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+}
+
 /* Global focus styles - remove default browser focus outlines */
 *:focus,
 *:focus-visible {
