@@ -6,6 +6,7 @@ import {
     AppWindow,
     Box,
     Bug,
+    CornerUpRight,
     Database,
     History as HistoryIcon,
     MousePointer2,
@@ -46,6 +47,15 @@ type Props = {
     flowPosition: { x: number; y: number };
     onClose: () => void;
     onPickEntry: (entry: PaletteEntry, flowPosition: { x: number; y: number }) => void;
+    /**
+     * Restricts the listed entries (applied before category/search). Used by the
+     * drag-off-a-pin flow to show only nodes compatible with the dragged pin.
+     */
+    entryFilter?: (entry: PaletteEntry) => boolean;
+    /** Renders the "created from a pin" affordance (accent strip + chip) and the connect-empty copy. */
+    connectMode?: boolean;
+    /** Short tag for the dragged pin shown in the connect-mode chip (e.g. "exec", "string"). */
+    connectSourceLabel?: string;
 };
 
 type CategoryVisual = {
@@ -98,6 +108,9 @@ export function BlueprintAddNodeMenu({
     flowPosition,
     onClose,
     onPickEntry,
+    entryFilter,
+    connectMode = false,
+    connectSourceLabel,
 }: Props) {
     const { t } = useTranslation();
     const [query, setQuery] = useState("");
@@ -124,10 +137,10 @@ export function BlueprintAddNodeMenu({
         }
     }, [activeCategoryId, query]);
 
-    const entries = useMemo(
-        () => nodeCatalog.listPaletteEntries(paletteContext),
-        [nodeCatalog, paletteContext],
-    );
+    const entries = useMemo(() => {
+        const all = nodeCatalog.listPaletteEntries(paletteContext);
+        return entryFilter ? all.filter(entryFilter) : all;
+    }, [nodeCatalog, paletteContext, entryFilter]);
 
     const categories = useMemo(() => buildBlueprintAddNodeCategories(entries), [entries]);
     const categoriesRef = useRef(categories);
@@ -303,10 +316,24 @@ export function BlueprintAddNodeMenu({
             />
             <div
                 role="presentation"
-                className="fixed z-[101] flex max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-md border border-edge bg-surface shadow-xl"
+                className={[
+                    "fixed z-[101] flex max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-md border bg-surface shadow-xl",
+                    connectMode ? "border-primary/50 ring-1 ring-primary/20" : "border-edge",
+                ].join(" ")}
                 style={{ left: layout.left, top: layout.top, width: MENU_W, maxHeight: layout.maxHeight }}
                 onContextMenu={e => e.preventDefault()}
             >
+                {connectMode ? (
+                    <div className="flex items-center gap-1.5 border-b border-primary/30 bg-primary/10 px-3 py-1.5 text-2xs text-fg-muted">
+                        <CornerUpRight className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
+                        <span className="font-medium text-fg">{t("blueprint.addNode.fromPin")}</span>
+                        {connectSourceLabel ? (
+                            <span className="rounded-sm bg-primary/15 px-1.5 py-0.5 font-mono text-2xs text-fg-muted">
+                                {connectSourceLabel}
+                            </span>
+                        ) : null}
+                    </div>
+                ) : null}
                 <div className="border-b border-edge bg-surface px-3 py-3">
                     <SearchBox
                         value={query}
@@ -369,7 +396,7 @@ export function BlueprintAddNodeMenu({
                 >
                     {filteredEntries.length === 0 ? (
                         <div className="rounded-md border border-edge bg-fill-subtle px-3 py-3 text-sm text-fg-subtle">
-                            {t("blueprint.addNode.empty")}
+                            {connectMode ? t("blueprint.addNode.connectEmpty") : t("blueprint.addNode.empty")}
                         </div>
                     ) : (
                         filteredEntries.map((entry, index) => (

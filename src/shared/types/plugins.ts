@@ -75,7 +75,8 @@ export type NormalizedPluginManifestV2 = PluginManifestV2 & {
 
 export type PluginInstallSource =
     | { kind: "local-directory"; path: string }
-    | { kind: "builtin"; path: string };
+    | { kind: "builtin"; path: string }
+    | { kind: "registry"; url: string };
 
 export type PluginInstallRecord = {
     pluginId: string;

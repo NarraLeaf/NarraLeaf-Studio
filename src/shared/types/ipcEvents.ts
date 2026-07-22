@@ -19,6 +19,7 @@ import type {
     RuntimePluginDescriptor,
     WorkspacePluginDescriptor,
 } from "./plugins";
+import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
     PrivilegedBashExecutePayload,
@@ -165,6 +166,8 @@ export enum IPCEventType {
     pluginReportLoadError = "plugin.reportLoadError",
     pluginLocaleList = "plugin.localeList",
     pluginLocalesChanged = "plugin.localesChanged",
+    pluginRegistryFetch = "plugin.registryFetch",
+    pluginInstallFromRegistry = "plugin.installFromRegistry",
 
     privilegedFsCall = "privileged.fs.call",
     privilegedPermissionRequest = "privileged.permission.request",
@@ -1316,6 +1319,24 @@ export type IPCPluginManagerEvents = {
             version: number;
         },
         response: never;
+    };
+    // Store: fetch the registry index (configured URL, else the official default).
+    [IPCEventType.pluginRegistryFetch]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: PluginRegistryFetchResult;
+    };
+    // Store: download + extract + install a registry plugin by id. The download
+    // URL is taken from the freshly fetched index, never from the renderer. Lands
+    // in `needsAuthorization`, exactly like a local-folder install.
+    [IPCEventType.pluginInstallFromRegistry]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            pluginId: string;
+        },
+        response: PluginInstallResult;
     };
 };
 
