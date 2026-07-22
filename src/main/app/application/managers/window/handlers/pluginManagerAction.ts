@@ -1,3 +1,6 @@
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
 import { dialog } from "electron";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
@@ -9,7 +12,9 @@ import type {
     RuntimePluginDescriptor,
     WorkspacePluginDescriptor,
 } from "@shared/types/plugins";
+import type { PluginRegistryFetchResult } from "@shared/types/pluginRegistry";
 import type { LocaleContribution } from "@shared/i18n";
+import { downloadAndExtract, fetchRegistryIndex, resolveRegistryUrl } from "../../pluginRegistryClient";
 import { WindowAppType, WindowCloseResults } from "@shared/types/window";
 import { resolveDependencies } from "@shared/utils/resolveDependencies";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
@@ -263,5 +268,62 @@ export class PluginReportLoadErrorHandler extends IPCHandler<IPCEventType.plugin
             return this.failed("Plugin load errors can only be reported by workspace windows");
         }
         return this.tryUse(() => window.app.pluginManager.reportLoadError(data.pluginId, data.error));
+    }
+}
+
+export class PluginRegistryFetchHandler extends IPCHandler<IPCEventType.pluginRegistryFetch> {
+    readonly name = IPCEventType.pluginRegistryFetch;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<PluginRegistryFetchResult>> {
+        const denied = ensurePluginInstallCapability(window);
+        if (denied) return denied;
+
+        const registryUrl = resolveRegistryUrl(window.app.getGlobalState().get("plugins.registryUrl"));
+        return this.tryUse(async () => ({
+            registryUrl,
+            index: await fetchRegistryIndex(registryUrl),
+        }));
+    }
+}
+
+export class PluginInstallFromRegistryHandler extends IPCHandler<IPCEventType.pluginInstallFromRegistry> {
+    readonly name = IPCEventType.pluginInstallFromRegistry;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.pluginInstallFromRegistry]["data"],
+    ): Promise<RequestStatus<PluginInstallResult>> {
+        const denied = ensurePluginInstallCapability(window);
+        if (denied) return denied;
+
+        // Re-fetch the index and match the id here so the download URL is the one
+        // the trusted registry carries, never an address supplied by the renderer.
+        const registryUrl = resolveRegistryUrl(window.app.getGlobalState().get("plugins.registryUrl"));
+        const installed = await this.tryUse(async () => {
+            const index = await fetchRegistryIndex(registryUrl);
+            const entry = index.plugins.find(plugin => plugin.id === data.pluginId);
+            if (!entry) {
+                throw new Error(`Plugin is not in the registry: ${data.pluginId}`);
+            }
+            const tempDir = path.join(
+                os.tmpdir(),
+                `nls-plugin-install-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            );
+            try {
+                const manifestDir = await downloadAndExtract(entry, tempDir);
+                return await window.app.pluginManager.installFromDirectory(manifestDir, {
+                    kind: "registry",
+                    url: entry.release.download,
+                });
+            } finally {
+                await fs.rm(tempDir, { recursive: true, force: true });
+            }
+        });
+        if (installed.success && !installed.data.canceled) {
+            void window.app.refreshPluginLocales();
+        }
+        return installed;
     }
 }

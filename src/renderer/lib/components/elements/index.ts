@@ -59,3 +59,11 @@ export type { HintPopoverProps } from "./HintPopover";
 // Slider components
 export { Slider } from "./Slider";
 export type { SliderProps } from "./Slider";
+
+// Badge component
+export { Badge } from "./Badge";
+export type { BadgeProps, BadgeTone } from "./Badge";
+
+// EmptyState component
+export { EmptyState } from "./EmptyState";
+export type { EmptyStateProps } from "./EmptyState";

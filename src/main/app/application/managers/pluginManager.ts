@@ -163,7 +163,10 @@ export class PluginManager {
             }));
     }
 
-    public async installFromDirectory(sourceDir: string): Promise<PluginInstallResult> {
+    public async installFromDirectory(
+        sourceDir: string,
+        sourceOverride?: PluginInstallSource,
+    ): Promise<PluginInstallResult> {
         await this.initialize();
         const sourceManifest = await this.readManifest(sourceDir);
         const installPath = this.getInstallPath(sourceManifest.id);
@@ -190,7 +193,7 @@ export class PluginManager {
             enabled: existing?.enabled ?? false,
             builtIn: false,
             manifest,
-            installSource: { kind: "local-directory", path: sourceDir },
+            installSource: sourceOverride ?? { kind: "local-directory", path: sourceDir },
             installedAt: existing?.installedAt ?? now,
             updatedAt: now,
             grantedManifestVersion: existing?.grantedManifestVersion === manifest.version
@@ -563,7 +566,14 @@ export class PluginManager {
     }
 
     private formatInstallSource(source: PluginInstallSource): string {
-        return source.kind === "builtin" ? `builtin:${source.path}` : source.path;
+        switch (source.kind) {
+            case "builtin":
+                return `builtin:${source.path}`;
+            case "registry":
+                return source.url;
+            default:
+                return source.path;
+        }
     }
 
     private isSameOrChild(target: string, root: string): boolean {

@@ -22,6 +22,7 @@ import {
     useReactFlow,
     type Connection,
     type Edge,
+    type FinalConnectionState,
     type Node,
     type Viewport,
 } from "@xyflow/react";
@@ -45,6 +46,12 @@ import {
     createGraphNodeForPalette,
     isValidBlueprintIrExecConnection,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
+import {
+    pickBlueprintDragConnectTargetPin,
+    resolveBlueprintDragConnectSource,
+    type BlueprintDragConnectEnablement,
+    type BlueprintDragConnectSource,
+} from "@/lib/workspace/services/ui-editor/blueprint/blueprintDragConnect";
 import { blueprintFlowNodeTypes } from "./nodeTypes";
 import {
     applyBlueprintFlowNodeSelection,
@@ -159,6 +166,25 @@ type BlueprintFlowCanvasInnerProps = {
     onAddNodeAtFlowPosition?: (
         entry: BlueprintNodeEditorCatalogEntry,
         flowPosition: { x: number; y: number },
+    ) => string | undefined;
+    /**
+     * Per-kind enablement for the "drag off a pin onto empty canvas → create a compatible node"
+     * flow. When a kind is false, dropping such a pin on the pane does nothing (legacy behavior).
+     */
+    dragConnectCreate?: BlueprintDragConnectEnablement;
+    /**
+     * Drag-off-a-pin variant of {@link onAddNodeAtFlowPosition}: creates the node at `flowPosition`
+     * and wires it to the pin the drag started from, in a single commit. Returns the new node id.
+     */
+    onAddNodeAtFlowPositionAndConnect?: (
+        entry: BlueprintNodeEditorCatalogEntry,
+        flowPosition: { x: number; y: number },
+        connect: {
+            existingNodeId: string;
+            existingHandleId: string;
+            existingHandleType: "source" | "target";
+            newNodePinId: string;
+        },
     ) => string | undefined;
     paletteContext: BlueprintPaletteContext;
     /** When null, Delete/Backspace do not remove nodes (e.g. while typing in the sidebar). */
@@ -277,6 +303,8 @@ function BlueprintFlowCanvasInner({
     onSelectNodeIds,
     onCommitIr,
     onAddNodeAtFlowPosition,
+    dragConnectCreate,
+    onAddNodeAtFlowPositionAndConnect,
     paletteContext,
     deleteKeyCode = ["Backspace", "Delete"],
     dynamicSelectOptions,
@@ -578,6 +606,8 @@ function BlueprintFlowCanvasInner({
         clientX: number;
         clientY: number;
         flow: { x: number; y: number };
+        /** Set when the menu was opened by dragging off a pin; filters to compatible nodes + auto-wires. */
+        connectSource?: BlueprintDragConnectSource;
     } | null>(null);
 
     const [pendingPlacementEntry, setPendingPlacementEntry] = useState<BlueprintNodeEditorCatalogEntry | null>(null);
@@ -916,6 +946,56 @@ function BlueprintFlowCanvasInner({
         [commitBlueprintIr],
     );
 
+    const onConnectEnd = useCallback(
+        (event: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
+            if (!onAddNodeAtFlowPositionAndConnect || !dragConnectCreate) {
+                return;
+            }
+            // A drop onto a real handle is either a made connection (onConnect already ran) or an
+            // explicit miss on that handle — in both cases the user aimed at a node, so don't hijack
+            // it with the create menu. Only bare-canvas drops proceed.
+            if (connectionState.isValid || connectionState.toHandle) {
+                return;
+            }
+            const fromHandle = connectionState.fromHandle;
+            if (!fromHandle) {
+                return;
+            }
+            const source = resolveBlueprintDragConnectSource(
+                irRef.current,
+                fromHandle.nodeId,
+                fromHandle.id,
+                fromHandle.type,
+                variableTypeContextRef.current,
+            );
+            if (!source || source.nodeId === BP_PLACEMENT_PREVIEW_ID) {
+                return;
+            }
+            if (!dragConnectCreate[source.kind]) {
+                return;
+            }
+            if (pendingPlacementEntryRef.current) {
+                cancelPendingPlacement();
+            }
+            const point =
+                "clientX" in event
+                    ? { x: event.clientX, y: event.clientY }
+                    : {
+                          x: event.changedTouches[0]?.clientX ?? 0,
+                          y: event.changedTouches[0]?.clientY ?? 0,
+                      };
+            lastPointerClientRef.current = point;
+            const flow = screenToFlowPosition(point);
+            setAddMenu({
+                clientX: point.x,
+                clientY: point.y,
+                flow: { x: flow.x, y: flow.y },
+                connectSource: source,
+            });
+        },
+        [cancelPendingPlacement, dragConnectCreate, onAddNodeAtFlowPositionAndConnect, screenToFlowPosition],
+    );
+
     const onEdgesDelete = useCallback(
         (deleted: Edge[]) => {
             if (deleted.length === 0) {
@@ -1075,6 +1155,7 @@ function BlueprintFlowCanvasInner({
                 onEdgesChange={onEdgesChange}
                 isValidConnection={isValidConnection}
                 onConnect={onConnect}
+                onConnectEnd={onConnectEnd}
                 onNodeDragStart={onNodeDragStart}
                 onNodeDragStop={onNodeDragStop}
                 onEdgesDelete={onEdgesDelete}
@@ -1121,15 +1202,45 @@ function BlueprintFlowCanvasInner({
                     nodeColor={() => "var(--narraleaf-accent, #40a8c4)"}
                 />
             </ReactFlow>
-            {onAddNodeAtFlowPosition && addMenu ? (
+            {addMenu ? (
                 <BlueprintAddNodeMenu
                     nodeCatalog={nodeCatalog}
                     open
                     paletteContext={paletteContext}
                     anchor={{ x: addMenu.clientX, y: addMenu.clientY }}
                     flowPosition={addMenu.flow}
+                    connectMode={Boolean(addMenu.connectSource)}
+                    connectSourceLabel={
+                        addMenu.connectSource
+                            ? addMenu.connectSource.isExec
+                                ? "exec"
+                                : addMenu.connectSource.valueType
+                            : undefined
+                    }
+                    entryFilter={
+                        addMenu.connectSource
+                            ? entry => pickBlueprintDragConnectTargetPin(addMenu.connectSource!, entry) !== null
+                            : undefined
+                    }
                     onClose={() => setAddMenu(null)}
-                    onPickEntry={entry => {
+                    onPickEntry={(entry, flowPos) => {
+                        const connectSource = addMenu.connectSource;
+                        if (connectSource) {
+                            const newNodePinId = pickBlueprintDragConnectTargetPin(connectSource, entry);
+                            if (!newNodePinId) {
+                                return;
+                            }
+                            const newId = onAddNodeAtFlowPositionAndConnect?.(entry, flowPos, {
+                                existingNodeId: connectSource.nodeId,
+                                existingHandleId: connectSource.handleId,
+                                existingHandleType: connectSource.handleType,
+                                newNodePinId,
+                            });
+                            if (typeof newId === "string" && newId.length > 0) {
+                                onSelectNodeIds([newId]);
+                            }
+                            return;
+                        }
                         setPendingPlacementEntry(entry);
                     }}
                 />

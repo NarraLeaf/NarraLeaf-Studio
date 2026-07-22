@@ -379,6 +379,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.pluginLocaleList, {}),
         onLocalesChanged: (handler: (change: { version: number }) => void) =>
             ipcClient.onMessage(IPCEventType.pluginLocalesChanged, handler),
+        registryFetch: () =>
+            ipcClient.invoke(IPCEventType.pluginRegistryFetch, {}),
+        installFromRegistry: (pluginId: string) =>
+            ipcClient.invoke(IPCEventType.pluginInstallFromRegistry, { pluginId }),
     },
 
     privileged: privilegedBootstrapBridge,

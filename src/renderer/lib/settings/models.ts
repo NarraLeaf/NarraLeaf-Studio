@@ -146,4 +146,4 @@ export interface SettingCategory {
     order: number;
 }
 
-export type AppSettingCategoryKey = "general" | "appearance" | "editor" | "workspace" | "sync" | "advanced";
+export type AppSettingCategoryKey = "general" | "appearance" | "editor" | "workspace" | "sync" | "plugins" | "advanced";

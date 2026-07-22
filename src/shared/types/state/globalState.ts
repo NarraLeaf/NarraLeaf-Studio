@@ -91,6 +91,12 @@ export interface GlobalStateType extends Record<string, any> {
     "advanced.experimentalFeatures": boolean;
     /** Electron download mirror for cross-platform game builds; "" = official source. */
     "build.electronMirror": string;
+    /**
+     * Plugin store registry index URL; "" = the official NarraLeaf/Plugins index
+     * (see @shared/constants/pluginRegistry). Read by the main process when the
+     * launcher's Plugins store fetches or installs.
+     */
+    "plugins.registryUrl": string;
 }
 
 export type GlobalStateKeys = string;
@@ -137,4 +143,5 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "advanced.enableDevTools": false,
     "advanced.experimentalFeatures": false,
     "build.electronMirror": "",
+    "plugins.registryUrl": "",
 };

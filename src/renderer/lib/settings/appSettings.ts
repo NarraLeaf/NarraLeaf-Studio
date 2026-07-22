@@ -72,12 +72,20 @@ export const AppSettingCategories: SettingCategory[] = [
         order: 4,
     },
     {
+        key: "plugins",
+        label: "Plugins",
+        labelKey: "settings.categories.plugins.label",
+        description: "Plugin store and registry.",
+        descriptionKey: "settings.categories.plugins.description",
+        order: 5,
+    },
+    {
         key: "advanced",
         label: "Advanced",
         labelKey: "settings.categories.advanced.label",
         description: "Telemetry, developer helpers and experimental toggles.",
         descriptionKey: "settings.categories.advanced.description",
-        order: 5,
+        order: 6,
     },
 ];
 
@@ -386,6 +394,20 @@ export const AppSettings: AppSettingDefinition[] = [
         labelKey: "settings.items.electronMirror.label",
         description: "Mirror URL for downloading Electron when building games for other platforms. Leave empty to use the official source.",
         descriptionKey: "settings.items.electronMirror.description",
+        defaultValue: "",
+    },
+    {
+        // Read by the main process (pluginRegistryClient.resolveRegistryUrl) when the
+        // launcher's Plugins store fetches the index or installs a plugin. Empty = the
+        // official NarraLeaf/Plugins registry index.
+        key: "plugins.registryUrl",
+        category: "plugins",
+        scope: SettingScope.Global,
+        type: SettingValueType.String,
+        label: "Registry URL",
+        labelKey: "settings.items.pluginRegistryUrl.label",
+        description: "Registry index URL for the plugin store. Leave empty to use the official NarraLeaf registry.",
+        descriptionKey: "settings.items.pluginRegistryUrl.description",
         defaultValue: "",
     },
 ];

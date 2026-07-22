@@ -32,6 +32,15 @@ export interface ModalProps {
     showCloseButton?: boolean;
     footer?: React.ReactNode;
     className?: string;
+    /**
+     * Extend the *backdrop* over the whole window instead of starting below the
+     * titlebar. Needed in the launcher, whose window has no full-width titlebar -
+     * the default leaves the sidebar's top strip undimmed. Only the backdrop goes
+     * full-window; the panel still centers below the titlebar, so the `z-[20000]`
+     * titlebar (above this `z-50` layer) never overlaps the panel and its window
+     * controls stay bright and clickable.
+     */
+    fullWindowOverlay?: boolean;
 }
 
 const sizeStyles = {
@@ -56,6 +65,7 @@ export function Modal({
     showCloseButton = true,
     footer,
     className = "",
+    fullWindowOverlay = false,
 }: ModalProps) {
     const { t } = useTranslation();
     useEffect(() => {
@@ -86,9 +96,15 @@ export function Modal({
 
     return (
         <div className="nl-window-content-layer z-50 flex items-center justify-center p-4">
-            {/* Backdrop — match workspace DialogContainer */}
+            {/* Backdrop — match workspace DialogContainer. With fullWindowOverlay it
+                covers the whole window (fixed inset-0), dimming the launcher's
+                sidebar-top strip; the panel below stays centered inside this
+                below-the-titlebar layer, so the z-[20000] titlebar never crosses it. */}
             <div
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
+                className={cn(
+                    "bg-black/60 backdrop-blur-sm animate-fade-in",
+                    fullWindowOverlay ? "fixed inset-0" : "absolute inset-0",
+                )}
                 onClick={handleOverlayClick}
             />
 

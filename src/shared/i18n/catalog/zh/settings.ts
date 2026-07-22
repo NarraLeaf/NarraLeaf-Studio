@@ -31,6 +31,10 @@ export const settings = {
             label: "同步",
             description: "本地备份频率与同步辅助项",
         },
+        plugins: {
+            label: "插件",
+            description: "插件商店与注册表",
+        },
         advanced: {
             label: "高级",
             description: "遥测、开发者辅助与实验性开关",
@@ -84,6 +88,10 @@ export const settings = {
         electronMirror: {
             label: "Electron 下载镜像",
             description: "为其他平台构建游戏时下载 Electron 所用的镜像地址，留空则使用官方源",
+        },
+        pluginRegistryUrl: {
+            label: "注册表地址",
+            description: "插件商店的注册表索引地址，留空则使用 NarraLeaf 官方注册表",
         },
         confirmBeforeClose: {
             label: "关闭工作区时弹出提示",

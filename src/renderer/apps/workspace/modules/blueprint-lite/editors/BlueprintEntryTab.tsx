@@ -34,6 +34,7 @@ import {
 import { buildBlueprintPaletteContext } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { useBlueprintDocumentRevision } from "../hooks/useBlueprintDocumentRevision";
 import { useBlueprintDiagnostics } from "../hooks/useBlueprintDiagnostics";
+import { useBlueprintDragConnectSettings } from "../hooks/useBlueprintDragConnectSettings";
 import { useBlueprintEditorState, type BlueprintEditorGraphView } from "../state/useBlueprintEditorState";
 import { BlueprintEditorLayout } from "../components/BlueprintEditorLayout";
 import { BlueprintMemberTree, type BlueprintVariableGroupKey } from "../components/BlueprintMemberTree";
@@ -583,6 +584,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         isComponentDefinitionGraph,
     });
     const openBlueprint = useOpenBlueprintTarget();
+    const dragConnectCreate = useBlueprintDragConnectSettings();
     const focusBlueprintEditor = useCallback(() => {
         uiService.focus.setFocus(FocusArea.Editor, tabId);
     }, [tabId, uiService]);
@@ -847,6 +849,68 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 // Mutate `draft` in place — `ensureBlueprintGraphIr(draft)` returns a new object, so assigning
                 // to that copy would not update the IR reference held by LocalBlueprintService.
                 draft.nodes = { ...(draft.nodes ?? {}), [node.id]: node };
+                if (entry.magicElementRef) {
+                    draft.edges = applyBlueprintIrConnection(draft, {
+                        source: entry.magicElementRef.sourceNodeId,
+                        sourceHandle: entry.magicElementRef.sourcePortId,
+                        target: node.id,
+                        targetHandle: entry.magicElementRef.targetPortId,
+                    });
+                }
+            };
+            if (editor.graphView.kind === "event") {
+                localBp.updateEventGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
+            } else {
+                localBp.updateFunctionGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
+            }
+            return id;
+        },
+        [editor.graphView, localBp, payload.blueprintId, uuid],
+    );
+
+    const onAddGraphNodeAtFlowPositionAndConnect = useCallback(
+        (
+            entry: BlueprintNodeEditorCatalogEntry,
+            flowPosition: { x: number; y: number },
+            connect: {
+                existingNodeId: string;
+                existingHandleId: string;
+                existingHandleType: "source" | "target";
+                newNodePinId: string;
+            },
+        ): string | undefined => {
+            if (!editor.graphView) {
+                return undefined;
+            }
+            const id = uuid.generate();
+            const node = createGraphNodeForPalette(entry.type, id);
+            if (entry.magicElementRef) {
+                node.params = {
+                    ...(node.params ?? {}),
+                    [BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN]: true,
+                };
+            }
+            writeNodeEditorLayout(node, flowPosition);
+            const mut = (draft: BlueprintGraphIr) => {
+                draft.nodes = { ...(draft.nodes ?? {}), [node.id]: node };
+                // Wire the dragged pin to the new node. The dragged pin's direction decides which
+                // end of the edge the new node is: an output pin feeds the new node's input, an
+                // input pin is fed by the new node's output.
+                const wiring =
+                    connect.existingHandleType === "source"
+                        ? {
+                              source: connect.existingNodeId,
+                              sourceHandle: connect.existingHandleId,
+                              target: node.id,
+                              targetHandle: connect.newNodePinId,
+                          }
+                        : {
+                              source: node.id,
+                              sourceHandle: connect.newNodePinId,
+                              target: connect.existingNodeId,
+                              targetHandle: connect.existingHandleId,
+                          };
+                draft.edges = applyBlueprintIrConnection(draft, wiring);
                 if (entry.magicElementRef) {
                     draft.edges = applyBlueprintIrConnection(draft, {
                         source: entry.magicElementRef.sourceNodeId,
@@ -1592,6 +1656,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         onSelectNodeIds={editor.setSelectedNodeIds}
                         onCommitIr={commitIr}
                         onAddNodeAtFlowPosition={onAddGraphNodeAtFlowPosition}
+                        dragConnectCreate={dragConnectCreate}
+                        onAddNodeAtFlowPositionAndConnect={onAddGraphNodeAtFlowPositionAndConnect}
                         paletteContext={paletteContext}
                         deleteKeyCode={memberPanelFocusContained ? null : undefined}
                         dynamicSelectOptions={dynamicSelectOptions}

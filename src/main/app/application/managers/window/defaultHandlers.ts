@@ -50,9 +50,11 @@ import {
 import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./handlers/pluginPermissionAction";
 import {
     PluginApproveHandler,
+    PluginInstallFromRegistryHandler,
     PluginInstallLocalHandler,
     PluginListHandler,
     PluginLocaleListHandler,
+    PluginRegistryFetchHandler,
     PluginReportLoadErrorHandler,
     PluginRevokeHandler,
     PluginRuntimeListHandler,
@@ -172,6 +174,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new PluginRuntimeListHandler(),
         new PluginReportLoadErrorHandler(),
         new PluginLocaleListHandler(),
+        new PluginRegistryFetchHandler(),
+        new PluginInstallFromRegistryHandler(),
 
         // Actor-aware privileged facade handlers
         new PrivilegedFsCallHandler(),

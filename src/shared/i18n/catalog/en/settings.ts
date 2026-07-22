@@ -31,6 +31,10 @@ export const settings = {
             label: "Sync",
             description: "Local backup cadence and synchronization helpers.",
         },
+        plugins: {
+            label: "Plugins",
+            description: "Plugin store and registry.",
+        },
         advanced: {
             label: "Advanced",
             description: "Telemetry, developer helpers and experimental toggles.",
@@ -88,6 +92,11 @@ export const settings = {
             label: "Electron download mirror",
             description:
                 "Mirror URL for downloading Electron when building games for other platforms. Leave empty to use the official source.",
+        },
+        pluginRegistryUrl: {
+            label: "Registry URL",
+            description:
+                "Registry index URL for the plugin store. Leave empty to use the official NarraLeaf registry.",
         },
         confirmBeforeClose: {
             label: "Confirm before closing a workspace",
