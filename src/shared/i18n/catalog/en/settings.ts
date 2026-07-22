@@ -88,6 +88,21 @@ export const settings = {
             description:
                 "How many editor tabs stay loaded at once so their scroll position and focus are preserved when you switch between them ({min}–{max}). Tabs beyond this reload when reopened.",
         },
+        blueprintDragConnectExecOutput: {
+            label: "Drag from execution output pins to create nodes",
+            description:
+                "Dragging off an execution (next) output pin onto empty canvas opens a menu of compatible nodes and connects the new node automatically.",
+        },
+        blueprintDragConnectDataOutput: {
+            label: "Drag from data output pins to create nodes",
+            description:
+                "Dragging off a data output pin onto empty canvas opens a menu of nodes that accept that value type and connects the new node automatically.",
+        },
+        blueprintDragConnectInput: {
+            label: "Drag from input pins to create nodes",
+            description:
+                "Dragging off an input pin onto empty canvas opens a menu of compatible nodes and wires the new node's output into that input.",
+        },
         slashAtAlias: {
             label: "Use “@” to open the action creator",
             description: "Avoids the clash between / and 、 in Chinese input methods.",

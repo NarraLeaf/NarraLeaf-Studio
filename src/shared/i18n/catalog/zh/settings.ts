@@ -85,6 +85,18 @@ export const settings = {
             label: "最大活动编辑器数",
             description: "同时保持加载的编辑器标签数，切换标签时保留其滚动位置与焦点（{min}–{max}），超出的标签会在重新打开时重新加载",
         },
+        blueprintDragConnectExecOutput: {
+            label: "从执行输出引脚拖拽创建节点",
+            description: "从执行（next）输出引脚拖到空白画布并松手时，弹出兼容节点菜单，并自动连接新建的节点",
+        },
+        blueprintDragConnectDataOutput: {
+            label: "从数据输出引脚拖拽创建节点",
+            description: "从数据输出引脚拖到空白画布并松手时，弹出能接收该数据类型的节点菜单，并自动连接新建的节点",
+        },
+        blueprintDragConnectInput: {
+            label: "从输入引脚拖拽创建节点",
+            description: "从输入引脚拖到空白画布并松手时，弹出兼容节点菜单，并将新建节点的输出连到该输入",
+        },
         slashAtAlias: {
             label: "用“@”打开动作创建",
             description: "以防中文输入法的「/」与「、」冲突",

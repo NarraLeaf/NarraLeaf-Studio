@@ -560,6 +560,34 @@ input[type="radio"]:focus {
     border-radius: 0 !important;
 }
 
+/*
+ * Pin drag feel: a blueprint pin is only an ~8px dot sitting at the card edge. Pressing a
+ * pixel or two off it lands on the pane and React Flow starts a marquee (or a node drag)
+ * instead of pulling a connection — even when the crosshair cursor was showing. A transparent
+ * ::before enlarges the pointer target so those near-misses grab the pin.
+ *
+ * `pointer-events` is inherited, so the expander is only live while the handle itself is
+ * connectable (React Flow sets `pointer-events: all` + `cursor: crosshair` on connectable
+ * handles, `none` otherwise) — non-connectable handles stay inert and never swallow clicks on
+ * card controls. The pane-facing side (left for inputs, right for outputs) gets the generous
+ * inset since that is exactly where the misses land; the card-facing side stays inside the
+ * pin gutter so it never reaches labels or inline inputs, and the small vertical inset keeps
+ * each pin's target within its own row so neighbours don't overlap.
+ */
+.narraleaf-blueprint-flow .react-flow__handle::before {
+    content: "";
+    position: absolute;
+    inset: -4px -6px;
+}
+
+.narraleaf-blueprint-flow .react-flow__handle-left::before {
+    inset: -4px -6px -4px -12px;
+}
+
+.narraleaf-blueprint-flow .react-flow__handle-right::before {
+    inset: -4px -12px -4px -6px;
+}
+
 .moveable,
 .moveable * {
     --moveable-color: var(--narraleaf-accent-strong);

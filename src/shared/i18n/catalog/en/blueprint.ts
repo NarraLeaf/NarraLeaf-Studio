@@ -24,6 +24,8 @@ export const blueprint = {
         listLabel: "Node types",
         empty: "No nodes found.",
         targetTooltip: "Target: {label} ({type})",
+        fromPin: "Create from pin",
+        connectEmpty: "No nodes can connect to this pin.",
     },
     diagnostics: {
         empty: "No diagnostics.",

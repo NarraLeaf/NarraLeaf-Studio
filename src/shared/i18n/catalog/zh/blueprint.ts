@@ -25,6 +25,8 @@ export const blueprint = {
         listLabel: "节点类型",
         empty: "未找到节点",
         targetTooltip: "目标：{label}（{type}）",
+        fromPin: "从引脚创建",
+        connectEmpty: "没有可从该引脚连接的节点",
     },
     diagnostics: {
         empty: "无诊断信息",
