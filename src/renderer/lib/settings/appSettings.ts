@@ -246,6 +246,46 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: MAX_ACTIVE_EDITORS_DEFAULT,
     },
     {
+        // Read by the blueprint editor (useBlueprintDragConnectSettings): when on, dragging off an
+        // execution (next) output pin onto empty canvas opens a menu of compatible nodes and wires
+        // the chosen one automatically. Gates only the exec-output direction.
+        key: "blueprint.dragConnect.execOutput",
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Drag from execution output pins to create nodes",
+        labelKey: "settings.items.blueprintDragConnectExecOutput.label",
+        description: "Dragging off an execution (next) output pin onto empty canvas opens a menu of compatible nodes and connects the new node automatically.",
+        descriptionKey: "settings.items.blueprintDragConnectExecOutput.description",
+        defaultValue: true,
+    },
+    {
+        // Read by the blueprint editor (useBlueprintDragConnectSettings). Gates the data-output
+        // direction: only nodes that accept the dragged pin's value type are offered.
+        key: "blueprint.dragConnect.dataOutput",
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Drag from data output pins to create nodes",
+        labelKey: "settings.items.blueprintDragConnectDataOutput.label",
+        description: "Dragging off a data output pin onto empty canvas opens a menu of nodes that accept that value type and connects the new node automatically.",
+        descriptionKey: "settings.items.blueprintDragConnectDataOutput.description",
+        defaultValue: true,
+    },
+    {
+        // Read by the blueprint editor (useBlueprintDragConnectSettings). Gates dragging off any
+        // input pin: the new node's matching output is wired into that input.
+        key: "blueprint.dragConnect.input",
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Drag from input pins to create nodes",
+        labelKey: "settings.items.blueprintDragConnectInput.label",
+        description: "Dragging off an input pin onto empty canvas opens a menu of compatible nodes and wires the new node's output into that input.",
+        descriptionKey: "settings.items.blueprintDragConnectInput.description",
+        defaultValue: true,
+    },
+    {
         // Applied by the Story scene editor: `handleInsertValueChange` rewrites a leading "@" to "/"
         // in the insert slot, so "@" opens the action creator exactly as "/" does. The default is
         // device-locale dependent (on for Simplified Chinese, where the "/" key types "、"), which is
