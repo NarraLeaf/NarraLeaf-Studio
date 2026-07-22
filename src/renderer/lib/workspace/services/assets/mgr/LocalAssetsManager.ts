@@ -11,6 +11,7 @@ import { FileSystemService } from "../../core/FileSystem";
 import { UuidService } from "../../core/UuidService";
 import { RendererError } from "@shared/utils/error";
 import { basename, dirname, extname } from "@shared/utils/path";
+import { expandImportPaths, type ExpandImportPathsResult } from "../importPathExpansion";
 
 export class LocalAssetsManager {
     constructor(private assetsService: AssetsService, private context: WorkspaceContext) {
@@ -201,7 +202,7 @@ export class LocalAssetsManager {
         paths: string[]
     ): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
         const results: RequestStatus<Asset<T, AssetSource.Local>>[] = [];
-        
+
         for (const path of paths) {
             results.push(await this.importLocalAsset(type, path));
         }
@@ -212,6 +213,30 @@ export class LocalAssetsManager {
             success: true,
             data: results,
         };
+    }
+
+    /**
+     * Resolve a set of dropped paths into the concrete files to import: directories are walked
+     * recursively and filtered to the target asset type's extensions, while plain file paths pass
+     * through unchanged. Callers hand the resulting {@link ExpandImportPathsResult.files} to
+     * {@link importFromPaths}; the 1:1 path→result contract of that method is deliberately left
+     * intact for callers (e.g. voice import) that match results back by index.
+     */
+    public async expandImportPaths<T extends AssetType>(
+        type: T,
+        paths: string[]
+    ): Promise<ExpandImportPathsResult> {
+        const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        return expandImportPaths(type, paths, {
+            isDir: async (path) => {
+                const result = await fsService.isDir(path);
+                return result.ok && result.data;
+            },
+            list: async (path) => {
+                const result = await fsService.list(path);
+                return result.ok ? result.data : null;
+            },
+        });
     }
 
     private async importLocalAsset<T extends AssetType>(type: T, path: string): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
