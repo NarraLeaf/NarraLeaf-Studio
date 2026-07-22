@@ -85,6 +85,10 @@ export const settings = {
             label: "最大活动编辑器数",
             description: "同时保持加载的编辑器标签数，切换标签时保留其滚动位置与焦点（{min}–{max}），超出的标签会在重新打开时重新加载",
         },
+        slashAtAlias: {
+            label: "用“@”打开动作创建",
+            description: "以防中文输入法的「/」与「、」冲突",
+        },
         electronMirror: {
             label: "Electron 下载镜像",
             description: "为其他平台构建游戏时下载 Electron 所用的镜像地址，留空则使用官方源",

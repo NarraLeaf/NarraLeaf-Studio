@@ -88,6 +88,10 @@ export const settings = {
             description:
                 "How many editor tabs stay loaded at once so their scroll position and focus are preserved when you switch between them ({min}–{max}). Tabs beyond this reload when reopened.",
         },
+        slashAtAlias: {
+            label: "Use “@” to open the action creator",
+            description: "Avoids the clash between / and 、 in Chinese input methods.",
+        },
         electronMirror: {
             label: "Electron download mirror",
             description:
