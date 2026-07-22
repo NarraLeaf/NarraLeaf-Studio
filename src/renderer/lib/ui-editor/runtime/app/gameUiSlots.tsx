@@ -133,6 +133,37 @@ export type LiveGameUiCallbacks = Pick<GameUiSlotHostOptions,
 >;
 
 /**
+ * Fast-forward the running game to the next menu, preserving full history.
+ *
+ * Prefers the engine's `LiveGame.fastForward` primitive (feature-detected, per the same
+ * convention as `restoreToHistory`). Falls back — for an engine build without it — to a
+ * best-effort skip loop that stops once the choice runtime reports a menu on screen. Either way
+ * the backlog accumulates because the real interpreter advances line by line.
+ */
+export async function fastForwardToNextChoice(
+    liveGame: LiveGame,
+    choiceRuntimeRef: MutableRefObject<ChoiceSlotRuntime | null>,
+): Promise<void> {
+    const fastForward = (liveGame as {
+        fastForward?: (options?: { until?: "menu" | "end" }) => Promise<unknown>;
+    }).fastForward;
+    if (typeof fastForward === "function") {
+        await fastForward.call(liveGame, { until: "menu" });
+        return;
+    }
+    // Fallback for an older engine dist: drive skip until a menu is on screen (the choice runtime
+    // registers while a menu is mounted) or we hit the safety bound.
+    const maxSteps = 5000;
+    for (let step = 0; step < maxSteps; step++) {
+        if (choiceRuntimeRef.current != null) {
+            return;
+        }
+        liveGame.skipDialog();
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    }
+}
+
+/**
  * The LiveGame-backed subset of {@link GameUiSlotHostOptions}: everything a Game UI surface (or a
  * blueprint running inside one) may ask of the running game. Pure functions over the given refs —
  * no React state — so hosts can build them once per session.
