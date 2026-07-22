@@ -1211,10 +1211,8 @@ function BlueprintFlowCanvasInner({
                     flowPosition={addMenu.flow}
                     connectMode={Boolean(addMenu.connectSource)}
                     connectSourceLabel={
-                        addMenu.connectSource
-                            ? addMenu.connectSource.isExec
-                                ? "exec"
-                                : addMenu.connectSource.valueType
+                        addMenu.connectSource && !addMenu.connectSource.isExec
+                            ? addMenu.connectSource.valueType
                             : undefined
                     }
                     entryFilter={
