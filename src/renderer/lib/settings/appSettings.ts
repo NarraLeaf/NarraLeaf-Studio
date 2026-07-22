@@ -12,6 +12,7 @@ import {
     MAX_ACTIVE_EDITORS_MAX,
     MAX_ACTIVE_EDITORS_MIN,
 } from "@/lib/settings/editorLayoutOptions";
+import { SLASH_AT_ALIAS_KEY, slashAtAliasDefault } from "@/lib/settings/slashAliasOptions";
 import {
     ACCENT_COLOR_DEFAULT,
     ACCENT_PRESETS,
@@ -243,6 +244,22 @@ export const AppSettings: AppSettingDefinition[] = [
         descriptionKey: "settings.items.maxActiveEditors.description",
         descriptionParams: { min: MAX_ACTIVE_EDITORS_MIN, max: MAX_ACTIVE_EDITORS_MAX },
         defaultValue: MAX_ACTIVE_EDITORS_DEFAULT,
+    },
+    {
+        // Applied by the Story scene editor: `handleInsertValueChange` rewrites a leading "@" to "/"
+        // in the insert slot, so "@" opens the action creator exactly as "/" does. The default is
+        // device-locale dependent (on for Simplified Chinese, where the "/" key types "、"), which is
+        // why nothing is stored under this key until the user toggles it - the value shown here, and
+        // the editor's fallback, both come from `slashAtAliasDefault()`. See globalState.ts.
+        key: SLASH_AT_ALIAS_KEY,
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Use “@” to open the action creator",
+        labelKey: "settings.items.slashAtAlias.label",
+        description: "Avoids the clash between / and 、 in Chinese input methods.",
+        descriptionKey: "settings.items.slashAtAlias.description",
+        defaultValue: slashAtAliasDefault(),
     },
     {
         // Applied by the main process in `App.handleWorkspaceCloseRequest`: the workspace

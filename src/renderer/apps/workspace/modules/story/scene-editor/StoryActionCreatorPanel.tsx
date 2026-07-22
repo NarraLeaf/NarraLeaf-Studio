@@ -112,7 +112,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                     className="w-full"
                 />
                 <div
-                    className="mt-3 flex gap-1 overflow-x-auto pb-0.5"
+                    className="nl-no-scrollbar mt-3 flex gap-1 overflow-x-auto pb-0.5"
                     onWheel={event => {
                         if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
                             return;
@@ -144,13 +144,13 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                 </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-auto p-2">
+            <div className="nl-no-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
                 {filteredCommands.length === 0 ? (
                     <div className="rounded-md border border-edge bg-fill-subtle px-3 py-3 text-sm text-fg-subtle">
                         {t("story.actionCreator.noActions")}
                     </div>
                 ) : (
-                    <div className="grid gap-1">
+                    <div className="grid grid-cols-1 gap-1">
                         {filteredCommands.map(command => (
                             <ActionCreatorRow
                                 key={command.id}

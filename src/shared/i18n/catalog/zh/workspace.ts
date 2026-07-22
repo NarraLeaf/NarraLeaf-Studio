@@ -149,6 +149,11 @@ export const workspace = {
         noActiveEditor: "没有活动的编辑器",
         closePanel: "关闭面板",
         closeTab: "关闭 {name}",
+        newTab: "新建标签页",
+        // 标签条"+"打开的浏览器式空白标签页。
+        newTabPage: {
+            title: "新标签页",
+        },
         tabMenu: {
             close: "关闭",
             closeOthers: "关闭其他",
@@ -245,6 +250,8 @@ export const workspace = {
             resetZoom: "重置缩放到 100%",
             shortcuts: "快捷键速查",
             words: "{count} 字",
+            lines: "{count} 行",
+            noStoryOpen: "未打开故事",
             openDashboard: "打开项目仪表盘",
             // 已注册状态栏项目的名称，仅在状态栏右键开关菜单中显示。
             entries: {
@@ -252,7 +259,7 @@ export const workspace = {
                 preview: "预览状态",
                 build: "构建状态",
                 unsavedChanges: "未保存的更改",
-                wordCount: "字数统计",
+                wordCount: "故事统计",
                 shortcuts: "快捷键速查",
                 notifications: "通知",
                 theme: "主题切换",

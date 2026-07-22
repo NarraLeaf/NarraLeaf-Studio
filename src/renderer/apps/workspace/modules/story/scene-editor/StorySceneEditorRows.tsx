@@ -23,7 +23,6 @@ import {
     ACTION_COMMANDS,
     getActionCommandCategory,
     localizeActionCommand,
-    translateActionCommandCategoryLabel,
     type ActionCommandCategory,
     type ActionCommandCategoryId,
     type PaletteActionCommand,
@@ -62,6 +61,7 @@ import {
     type StoryContainerHeaderInfo,
 } from "./storySceneBlockUtils";
 import { ConditionPopover } from "./ConditionPopover";
+import { actionTrigger, ACTION_TRIGGER, toCanonicalCommandLine } from "./commandTrigger";
 
 export function StoryBlockRow(props: {
     row: VisibleStoryRow;
@@ -874,14 +874,16 @@ function candidateIcon(cursor: StoryCommandCursor, candidate: StoryCommandCandid
  * padding, `whitespace-pre` so runs of spaces measure as typed, and `pointer-events-none` so a click
  * anywhere still lands in the field beneath.
  */
-function CommandGhostHint(props: { value: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext }) {
+function CommandGhostHint(props: { value: string; source: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext }) {
     const { t } = useTranslation();
-    const ghost = useMemo(() => getCommandGhost(props.value, props.caret), [props.caret, props.value]);
+    // The ghost and reason parse the canonical "/" line (`source`); the invisible spacer below uses the
+    // displayed `value` so it occupies the exact width the author sees ("@" and "/" render differently).
+    const ghost = useMemo(() => getCommandGhost(props.source, props.caret), [props.caret, props.source]);
     // Why the line will not commit, if it will not. It outranks the hint: naming the next slot while
     // the line is already broken answers a question the author is no longer asking.
     const reason = useMemo(
-        () => getCommandLineReason(props.value, props.commandContext),
-        [props.commandContext, props.value],
+        () => getCommandLineReason(props.source, props.commandContext),
+        [props.commandContext, props.source],
     );
     if (!ghost && !reason) {
         return null;
@@ -927,8 +929,14 @@ export function InsertRow(props: {
     onChooseTempSpeaker: (name: string) => void;
     /** Backspace on the empty slot — dismiss it and step back to the row above. */
     onBackspaceEmpty: () => void;
+    /** When on, a leading "@" opens the action creator like "/" (see `editor.slashAtAlias`). */
+    slashAtAlias: boolean;
 }) {
     const { t } = useTranslation();
+    // The line the author sees keeps the trigger they typed; the parser, the cursor, and the command
+    // search read the canonical "/" form (`source`). Same length, so `caret` indexes both.
+    const source = useMemo(() => toCanonicalCommandLine(props.mode.value, props.slashAtAlias), [props.mode.value, props.slashAtAlias]);
+    // Drop the trigger character (either "/" or "@") to get the query the menus rank against.
     const chooserQuery = props.mode.value.slice(1);
     const menuAnchorRef = useRef<HTMLDivElement | null>(null);
     const menuPlacement = useAutoMenuPlacement(menuAnchorRef, props.mode.chooser !== "none", 312);
@@ -955,13 +963,13 @@ export function InsertRow(props: {
     // Where the caret is decides what the slot offers, so it has to be state: `/bg fo|` asks for an
     // image, `/bg forest_day t=|` for a transition, and only the caret tells them apart.
     const [caret, setCaret] = useState(props.mode.value.length);
-    const cursor = useMemo(() => getCommandCursor(props.mode.value, caret), [caret, props.mode.value]);
+    const cursor = useMemo(() => getCommandCursor(source, caret), [caret, source]);
     // `form=` can only list the forms of the character this line already named, so the candidates need
     // the args resolved so far.
     const resolvedArgs = useMemo(() => {
-        const line = parseCommandLine(props.mode.value);
+        const line = parseCommandLine(source);
         return line.kind === "command" && line.def ? resolveCommandLine(line, props.commandContext).args : {};
-    }, [props.commandContext, props.mode.value]);
+    }, [props.commandContext, source]);
     const argItems = useMemo<StoryCandidateItem[]>(() => {
         if (cursor.kind !== "positional" && cursor.kind !== "paramValue" && cursor.kind !== "paramName") {
             return [];
@@ -1027,7 +1035,10 @@ export function InsertRow(props: {
     const chooseCommandCandidate = (commandId: string) => {
         const def = getCommandDef(commandId);
         if (def && def.params.length > 0) {
-            applyCompletion(`/${def.token} `, { start: 0, end: props.mode.value.length });
+            // Rebuild the whole line, but keep the trigger the author is using so "@" does not flip to
+            // "/" mid-completion. The commit path canonicalizes it either way.
+            const trigger = actionTrigger(props.mode.value, props.slashAtAlias) ?? ACTION_TRIGGER;
+            applyCompletion(`${trigger}${def.token} `, { start: 0, end: props.mode.value.length });
             return;
         }
         props.onChooseCommand(commandId);
@@ -1054,7 +1065,7 @@ export function InsertRow(props: {
                     anchor, so it is positioned against the field's box and inherits its exact metrics.
                     `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
                 <div className="relative flex min-w-0 flex-1">
-                <CommandGhostHint value={props.mode.value} caret={caret} textStyle={textStyle} commandContext={props.commandContext} />
+                <CommandGhostHint value={props.mode.value} source={source} caret={caret} textStyle={textStyle} commandContext={props.commandContext} />
                 <textarea
                     ref={props.inputRef}
                     // Same in-place surface as an editing row (see TextEditBox): the new line reads as a
@@ -1064,7 +1075,8 @@ export function InsertRow(props: {
                     style={textStyle}
                     rows={1}
                     value={props.mode.value}
-                    placeholder={t("story.rows.insertPlaceholder")}
+                    // The hint advertises whichever trigger this author actually uses.
+                    placeholder={t("story.rows.insertPlaceholder", { trigger: props.slashAtAlias ? "@" : "/" })}
                     onChange={event => {
                         setCaret(event.target.selectionStart ?? event.target.value.length);
                         props.onValueChange(event.target.value);
@@ -1177,7 +1189,6 @@ export function InsertRow(props: {
                         categories={actionMenu.visibleCategories}
                         activeCategoryId={actionMenu.activeCategoryId}
                         activeCommandId={actionMenu.activeCommand?.id ?? null}
-                        onSelectCategory={actionMenu.selectCategory}
                         onHighlightCommand={actionMenu.selectCommand}
                         onChoose={chooseCommandCandidate}
                         onCancel={props.onDismissChooser}
@@ -1368,7 +1379,6 @@ function ActionCommandMenu(props: {
     categories: VisibleActionCommandCategory[];
     activeCategoryId: ActionCommandCategoryId;
     activeCommandId: string | null;
-    onSelectCategory: (categoryId: ActionCommandCategoryId) => void;
     onHighlightCommand: (commandId: string) => void;
     onChoose: (commandId: string) => void;
     onCancel: () => void;
@@ -1377,18 +1387,6 @@ function ActionCommandMenu(props: {
     const { t } = useTranslation();
     const activeCategory = props.categories.find(category => category.id === props.activeCategoryId) ?? props.categories[0] ?? null;
     const listRef = useRef<HTMLDivElement | null>(null);
-    const categoryListRef = useRef<HTMLDivElement | null>(null);
-
-    useEffect(() => {
-        if (!activeCategory) {
-            return;
-        }
-        window.requestAnimationFrame(() => {
-            const root = categoryListRef.current;
-            const activeTab = root?.querySelector(`[data-action-category-id="${activeCategory.id}"]`);
-            activeTab?.scrollIntoView({ block: "nearest", inline: "nearest" });
-        });
-    }, [activeCategory?.id]);
 
     useEffect(() => {
         if (!props.activeCommandId) {
@@ -1414,33 +1412,10 @@ function ActionCommandMenu(props: {
                     {t("story.actionCreator.noActions")}
                 </button>
             ) : (
-                <>
-                    <div ref={categoryListRef} className="flex overflow-x-auto border-b border-edge bg-surface" role="tablist" aria-label={t("story.rows.actionTypes")}>
-                        {props.categories.map(category => {
-                            const active = category.id === activeCategory?.id;
-                            return (
-                                <button
-                                    key={category.id}
-                                    type="button"
-                                    role="tab"
-                                    aria-selected={active}
-                                    data-action-category-id={category.id}
-                                    className={[
-                                        "relative flex h-9 min-w-[74px] flex-none cursor-default items-center justify-center px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
-                                        active ? "bg-surface-raised text-fg" : "text-fg-muted hover:bg-fill-subtle hover:text-fg",
-                                    ].join(" ")}
-                                    onMouseDown={() => props.onSelectCategory(category.id)}
-                                >
-                                    <span className="block truncate">{translateActionCommandCategoryLabel(category, t)}</span>
-                                    {active ? <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-primary/70" aria-hidden /> : null}
-                                </button>
-                            );
-                        })}
-                    </div>
-                    <div ref={listRef} className="max-h-64 overflow-auto p-1">
+                    <div ref={listRef} className="nl-no-scrollbar max-h-64 overflow-auto p-1">
                         {activeCategory && activeCategory.commands.length === 0 ? (
                             <button type="button" className="w-full rounded px-2 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
-                                {t("story.rows.noCategoryActionFound", { category: translateActionCommandCategoryLabel(activeCategory, t).toLowerCase() })}
+                                {t("story.actionCreator.noActions")}
                             </button>
                         ) : activeCategory?.commands.map(command => {
                             const Icon = command.icon;
@@ -1469,7 +1444,6 @@ function ActionCommandMenu(props: {
                             );
                         })}
                     </div>
-                </>
             )}
         </div>
     );

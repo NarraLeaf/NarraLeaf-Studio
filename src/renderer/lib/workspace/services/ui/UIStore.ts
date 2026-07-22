@@ -1310,6 +1310,40 @@ export class UIStore {
     }
 
     /**
+     * Every open editor tab, ordered most-recently-focused first, across all split groups. Resolves
+     * through the layout's own per-group focus history (the focus keys embed colon-bearing tab ids,
+     * so they can only be resolved in here where the structured entries live). Tabs not yet in the
+     * focus history - e.g. right after a layout restore - are appended in layout order so the list
+     * is always complete.
+     */
+    public getEditorTabsByRecency(): EditorTab[] {
+        const groups = this.collectGroups();
+        const entriesByKey = new Map(this.collectEditorTabFocusEntries().map((entry) => [entry.key, entry]));
+        const findTab = (groupId: string, tabId: string): EditorTab | undefined =>
+            groups.find((group) => group.id === groupId)?.tabs.find((tab) => tab.id === tabId);
+
+        const ordered: EditorTab[] = [];
+        const seen = new Set<string>();
+        for (const key of this.getEditorTabFocusHistoryKeys()) {
+            const entry = entriesByKey.get(key);
+            const tab = entry && findTab(entry.groupId, entry.tabId);
+            if (tab && !seen.has(tab.id)) {
+                ordered.push(tab);
+                seen.add(tab.id);
+            }
+        }
+        for (const group of groups) {
+            for (const tab of group.tabs) {
+                if (!seen.has(tab.id)) {
+                    ordered.push(tab);
+                    seen.add(tab.id);
+                }
+            }
+        }
+        return ordered;
+    }
+
+    /**
      * Flatten all ActionDefinition objects contained in an ActionGroup (recursively).
      */
     private static flattenGroupActions(group: ActionGroup): (ModuleAction | ActionSeparator)[] {
