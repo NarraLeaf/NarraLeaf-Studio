@@ -220,7 +220,7 @@ export const story = {
         deleteTitle: "Delete this row ({keys})",
         playFromRow: "Play from this row",
         playBranch: "Play this branch",
-        insertPlaceholder: "Type narration, / for actions, # for characters…",
+        insertPlaceholder: "Type narration, {trigger} for actions, # for characters…",
         noCategoryActionFound: "No {category} action found.",
         actionTypes: "Action types",
         noCharacterFound: "No character found.",
