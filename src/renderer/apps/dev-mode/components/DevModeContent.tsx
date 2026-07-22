@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Check } from "lucide-react";
+import { Check, ChevronsRight } from "lucide-react";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
@@ -72,13 +72,42 @@ function DevModeDebugOverlay(props: {
     activeSurfaceId: string;
     widgetRuntimeStore: WidgetRuntimeStateStore;
     projectPath: string | null;
+    fastForwardToNextChoice: () => Promise<void>;
 }) {
-    const { core, bundle, uidoc, activeSurfaceId, widgetRuntimeStore, projectPath } = props;
+    const { core, bundle, uidoc, activeSurfaceId, widgetRuntimeStore, projectPath, fastForwardToNextChoice } = props;
     const { t } = useTranslation();
     const [devtoolsMenuOpen, setDevtoolsMenuOpen] = useState(false);
     const [blueprintPanelOpen, setBlueprintPanelOpen] = useState(false);
+    const [fastForwarding, setFastForwarding] = useState(false);
     const devtoolsFabRef = useRef<HTMLButtonElement>(null);
     const devtoolsMenuRef = useRef<HTMLDivElement>(null);
+
+    const handleFastForward = useCallback(async () => {
+        setDevtoolsMenuOpen(false);
+        if (fastForwarding) {
+            return;
+        }
+        setFastForwarding(true);
+        try {
+            await fastForwardToNextChoice();
+        } catch {
+            // No game running, or the run was interrupted — a debug affordance, so swallow quietly.
+        } finally {
+            setFastForwarding(false);
+        }
+    }, [fastForwarding, fastForwardToNextChoice]);
+
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            // Ctrl/Cmd + → : fast-forward to the next choice.
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key === "ArrowRight") {
+                e.preventDefault();
+                void handleFastForward();
+            }
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [handleFastForward]);
 
     useEffect(() => {
         if (!devtoolsMenuOpen) {
@@ -155,6 +184,29 @@ function DevModeDebugOverlay(props: {
                                 aria-label={t("devMode.devtools.menuAria")}
                                 className="absolute bottom-full left-0 z-10 mb-2 w-[min(15rem,calc(100vw-1.5rem))] rounded-md border border-edge bg-surface-overlay py-1 shadow-lg"
                             >
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    disabled={fastForwarding}
+                                    className={`flex w-full cursor-default items-center gap-2 px-3 py-2 text-left text-xs transition-colors ${
+                                        fastForwarding
+                                            ? "text-fg-subtle"
+                                            : "text-fg-muted hover:bg-fill hover:text-fg"
+                                    }`}
+                                    onClick={() => { void handleFastForward(); }}
+                                >
+                                    <span
+                                        className="flex h-3.5 w-3.5 shrink-0 items-center justify-center"
+                                        aria-hidden
+                                    >
+                                        <ChevronsRight className="h-3.5 w-3.5" />
+                                    </span>
+                                    <span className="min-w-0 flex-1 truncate">
+                                        {fastForwarding
+                                            ? t("devMode.devtools.skipToNextChoiceBusy")
+                                            : t("devMode.devtools.skipToNextChoice")}
+                                    </span>
+                                </button>
                                 <button
                                     type="button"
                                     role="menuitem"
@@ -501,6 +553,7 @@ export function DevModeContent(props: DevModeContentProps) {
                 activeSurfaceId={ctx.activeSurface.id}
                 widgetRuntimeStore={ctx.widgetRuntimeStore}
                 projectPath={projectPath}
+                fastForwardToNextChoice={ctx.fastForwardToNextChoice}
             />
         );
     }, [bundle, projectPath]);

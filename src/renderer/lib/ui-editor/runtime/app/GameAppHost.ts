@@ -88,6 +88,11 @@ export type GameAppOverlayContext = {
     core: BlueprintRuntimeCore | null;
     activeSurface: UISurface | null;
     widgetRuntimeStore: WidgetRuntimeStateStore;
+    /**
+     * Fast-forward the running game to the next menu, keeping full history. Rejects if no game is
+     * currently running (see `requireActiveLiveGame`).
+     */
+    fastForwardToNextChoice: () => Promise<void>;
 };
 
 /** Context handed to the host frame around the game content. */

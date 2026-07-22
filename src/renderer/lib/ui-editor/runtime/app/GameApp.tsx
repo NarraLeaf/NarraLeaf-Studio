@@ -78,7 +78,7 @@ import {
 } from "./AppSurfaceLayer";
 import type { ChoiceSlotRuntime } from "./ChoiceSlotSurface";
 import type { GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
-import { createGameUiSlotComponents, createLiveGameUiCallbacks, createNlrGameWithGameUi } from "./gameUiSlots";
+import { createGameUiSlotComponents, createLiveGameUiCallbacks, createNlrGameWithGameUi, fastForwardToNextChoice } from "./gameUiSlots";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -560,6 +560,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         currentDialogNametagRef,
         dialogVirtualClickTargetRef: nlrDialogVirtualClickTargetRef,
     }), [requireActiveLiveGame]);
+
+    const fastForwardToNextChoiceInGame = useCallback(async (): Promise<void> => {
+        const liveGame = requireActiveLiveGame("Skip To Next Choice");
+        await fastForwardToNextChoice(liveGame, choiceRuntimeRef);
+    }, [requireActiveLiveGame]);
 
     const quitGame = useCallback(async (surfaceId: string): Promise<void> => {
         const targetSurfaceId = String(surfaceId ?? "").trim();
@@ -1666,7 +1671,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         return (
             <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
                 {renderFrame({ activeSurface, gameViewport, children: null })}
-                {renderOverlays?.({ core, activeSurface, widgetRuntimeStore })}
+                {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame })}
             </GameLocalizationContext.Provider>
         );
     }
@@ -1824,7 +1829,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     return (
         <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
             {renderFrame({ activeSurface, gameViewport, children: content })}
-            {renderOverlays?.({ core, activeSurface, widgetRuntimeStore })}
+            {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame })}
         </GameLocalizationContext.Provider>
     );
 }
