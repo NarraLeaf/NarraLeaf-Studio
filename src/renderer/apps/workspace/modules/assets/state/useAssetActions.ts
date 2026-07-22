@@ -260,7 +260,17 @@ export function useAssetActions({
                             return;
                         }
                     }
-                    result = await svc.importFromPaths(type, paths);
+
+                    // Dropped folders are expanded to their matching files and everything else is
+                    // filtered out; plain files pass through untouched.
+                    const expansion = await svc.expandImportPaths(type, paths);
+                    if (expansion.files.length === 0) {
+                        if (expansion.expandedDirectory) {
+                            uiService.notifications.info(t("assets.import.noMatchingFiles"));
+                        }
+                        return;
+                    }
+                    result = await svc.importFromPaths(type, expansion.files);
                 } else {
                     result = await svc.importLocalAssets(type);
                 }

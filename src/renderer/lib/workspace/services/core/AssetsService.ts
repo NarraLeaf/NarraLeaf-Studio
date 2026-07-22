@@ -15,6 +15,7 @@ import { GroupAssetsManager } from "../assets/mgr/GroupAssetsManager";
 import { LocalAssetsManager } from "../assets/mgr/LocalAssetsManager";
 import { RemoteAssetsManager } from "../assets/mgr/RemoteAssetsManager";
 import { OtherService } from "../assets/OtherService";
+import type { ExpandImportPathsResult } from "../assets/importPathExpansion";
 import { Asset, AssetExtras, AssetGroup, AssetsMap, AssetSource } from "../assets/types";
 import { VideoService } from "../assets/VideoService";
 import { Service } from "../Service";
@@ -499,6 +500,18 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         paths: string[]
     ): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
         return this.getLocalAssetsManager().importFromPaths(type, paths);
+    }
+
+    /**
+     * Expand dropped paths (files and/or directories) into the concrete files to import for the
+     * given asset type. Directories are walked recursively and filtered by extension; plain files
+     * pass through unchanged. See {@link LocalAssetsManager.expandImportPaths}.
+     */
+    public async expandImportPaths<T extends AssetType>(
+        type: T,
+        paths: string[]
+    ): Promise<ExpandImportPathsResult> {
+        return this.getLocalAssetsManager().expandImportPaths(type, paths);
     }
 
     // Magic Tag functionality

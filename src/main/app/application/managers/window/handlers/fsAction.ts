@@ -560,18 +560,33 @@ export class FsGrantFileAccessHandler extends IPCHandler<IPCEventType.fsGrantFil
             if (!fileCheck.ok) {
                 return this.success(fileCheck as FsRequestResult<string[]>);
             }
-            if (!fileCheck.data) {
-                return this.success({
-                    ok: false,
-                    error: {
-                        code: FsRejectErrorCode.NOT_A_FILE,
-                        message: `Dropped path is not a file: ${filePath}`,
-                    },
-                });
+            if (fileCheck.data) {
+                window.app.storageManager.grantFileSystemAccess(window, filePath, grantPolicy.mode, grantPolicy.recursive);
+                grantedPaths.push(filePath);
+                continue;
             }
 
-            window.app.storageManager.grantFileSystemAccess(window, filePath, grantPolicy.mode, grantPolicy.recursive);
-            grantedPaths.push(filePath);
+            // Dropped directories are allowed so a whole folder can be imported at once. The renderer
+            // walks the tree and filters by asset type; grant recursive read on the folder so those
+            // descendant files can be listed, hashed and copied. This mirrors the directory-picker
+            // grant (selectDirectory), scoped to exactly the folder the user dropped.
+            const dirCheck = await Fs.isDir(filePath);
+            if (!dirCheck.ok) {
+                return this.success(dirCheck as FsRequestResult<string[]>);
+            }
+            if (dirCheck.data) {
+                window.app.storageManager.grantFileSystemAccess(window, filePath, grantPolicy.mode, true);
+                grantedPaths.push(filePath);
+                continue;
+            }
+
+            return this.success({
+                ok: false,
+                error: {
+                    code: FsRejectErrorCode.NOT_A_FILE,
+                    message: `Dropped path is not a file or directory: ${filePath}`,
+                },
+            });
         }
 
         return this.success({

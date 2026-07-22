@@ -80,6 +80,7 @@ export const assets = {
         moveFailedTitle: "移动已导入素材失败",
         fileAccessFailed: "文件访问授权失败",
         filePathParsingFailed: "文件路径解析失败",
+        noMatchingFiles: "拖入的文件夹中没有可导入的文件",
         moreFailures: "…还有 {count} 个",
         remoteTitle: "导入远程素材",
         remoteDescription: "粘贴远程素材的直接链接",

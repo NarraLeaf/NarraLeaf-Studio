@@ -82,6 +82,7 @@ export const assets = {
         moveFailedTitle: "Failed to move imported asset",
         fileAccessFailed: "File access grant failed.",
         filePathParsingFailed: "File path parsing failed.",
+        noMatchingFiles: "No matching files were found in the dropped folder.",
         moreFailures: "…and {count} more.",
         remoteTitle: "Import Remote Asset",
         remoteDescription: "Paste a direct link to the remote asset",
