@@ -27,6 +27,7 @@ import type {
     RuntimePluginDescriptor,
     WorkspacePluginDescriptor,
 } from "./plugins";
+import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type {
     PrivilegedActor,
     PrivilegedBashExecuteResult,
@@ -329,6 +330,8 @@ export interface RendererPreloadedInterface {
         reportLoadError(pluginId: string, error: string | null): Promise<RequestStatus<PluginListItem>>;
         getLocaleContributions(): Promise<RequestStatus<{ contributions: LocaleContribution[] }>>;
         onLocalesChanged(handler: (change: { version: number }) => void): AppEventToken;
+        registryFetch(): Promise<RequestStatus<PluginRegistryFetchResult>>;
+        installFromRegistry(pluginId: string): Promise<RequestStatus<PluginInstallResult>>;
     };
 
     privileged: RendererPrivilegedBootstrapInterface;

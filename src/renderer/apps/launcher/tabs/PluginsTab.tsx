@@ -4,17 +4,25 @@ import {
     AlertTriangle,
     CheckCircle2,
     Download,
+    FolderPlus,
     Power,
     PowerOff,
+    Puzzle,
     RefreshCw,
+    Search,
     ShieldCheck,
     Trash2,
+    X,
 } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
-import type { Translator } from "@shared/i18n";
-import { describePluginInstallPermissions } from "@shared/utils/pluginInstallPermissions";
-import type { PluginListItem, PluginStatus } from "@shared/types/plugins";
+import { Badge, Button, EmptyState, IconButton, Input } from "@/lib/components/elements";
+import { cn } from "@/lib/utils/cn";
+import type { PluginListItem } from "@shared/types/plugins";
+import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
+import { PluginAvatar, PluginDetailsModal, PluginStatusBadge, hasUpdate } from "./PluginDetailsModal";
+
+type LauncherTab = "installed" | "store";
 
 type TaskState =
     | { status: "idle"; message?: string }
@@ -25,13 +33,14 @@ type TaskState =
 export function PluginsTab() {
     const { t } = useTranslation();
     const [plugins, setPlugins] = useState<PluginListItem[]>([]);
-    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<LauncherTab>("installed");
+    const [query, setQuery] = useState("");
     const [task, setTask] = useState<TaskState>({ status: "idle" });
+    const [registry, setRegistry] = useState<PluginRegistryEntry[] | null>(null);
+    const [registryError, setRegistryError] = useState<string | null>(null);
+    const [registryLoading, setRegistryLoading] = useState(false);
+    const [detailId, setDetailId] = useState<string | null>(null);
 
-    const selected = useMemo(
-        () => plugins.find(plugin => plugin.pluginId === selectedId) ?? plugins[0] ?? null,
-        [plugins, selectedId],
-    );
     const busy = task.status === "working";
 
     const refresh = async () => {
@@ -41,14 +50,35 @@ export function PluginsTab() {
             return;
         }
         setPlugins(result.data.plugins);
-        setSelectedId(current => current && result.data.plugins.some(plugin => plugin.pluginId === current)
-            ? current
-            : result.data.plugins[0]?.pluginId ?? null);
+    };
+
+    const refreshRegistry = async () => {
+        setRegistryLoading(true);
+        setRegistryError(null);
+        try {
+            const result = await getInterface().plugins.registryFetch();
+            if (!result.success) {
+                setRegistry(null);
+                setRegistryError(result.error ?? t("launcher.plugins.error.registry"));
+                return;
+            }
+            setRegistry(result.data.index.plugins);
+        } finally {
+            setRegistryLoading(false);
+        }
     };
 
     useEffect(() => {
         void refresh();
     }, []);
+
+    // Fetch the store index the first time it is opened; a manual refresh or retry
+    // clears `registry`/`registryError` to trigger this again.
+    useEffect(() => {
+        if (activeTab === "store" && registry === null && !registryError && !registryLoading) {
+            void refreshRegistry();
+        }
+    }, [activeTab, registry, registryError, registryLoading]);
 
     const runTask = async (message: string, action: () => Promise<void>) => {
         if (busy) return;
@@ -57,6 +87,14 @@ export function PluginsTab() {
             await action();
         } catch (error) {
             setTask({ status: "error", message: getErrorMessage(error) });
+        }
+    };
+
+    const handleRefresh = () => {
+        void refresh();
+        if (activeTab === "store") {
+            setRegistry(null);
+            setRegistryError(null);
         }
     };
 
@@ -70,7 +108,7 @@ export function PluginsTab() {
             return;
         }
         await refresh();
-        setSelectedId(result.data.plugin.pluginId);
+        setActiveTab("installed");
         setTask({ status: "success", message: t("launcher.plugins.task.installed") });
     });
 
@@ -80,22 +118,26 @@ export function PluginsTab() {
             throw new Error(result.error ?? t("launcher.plugins.error.approve"));
         }
         await refresh();
-        setSelectedId(result.data.plugin.pluginId);
         setTask({
             status: result.data.approved ? "success" : "idle",
             message: result.data.approved ? t("launcher.plugins.task.authorized") : "",
         });
     });
 
-    const setEnabled = (pluginId: string, enabled: boolean) => runTask(enabled ? t("launcher.plugins.task.enabling") : t("launcher.plugins.task.disabling"), async () => {
-        const result = await getInterface().plugins.setEnabled(pluginId, enabled);
-        if (!result.success) {
-            throw new Error(result.error ?? t("launcher.plugins.error.update"));
-        }
-        await refresh();
-        setSelectedId(result.data.pluginId);
-        setTask({ status: "success", message: enabled ? t("launcher.plugins.task.enabled") : t("launcher.plugins.task.disabled") });
-    });
+    const setEnabled = (pluginId: string, enabled: boolean) => runTask(
+        enabled ? t("launcher.plugins.task.enabling") : t("launcher.plugins.task.disabling"),
+        async () => {
+            const result = await getInterface().plugins.setEnabled(pluginId, enabled);
+            if (!result.success) {
+                throw new Error(result.error ?? t("launcher.plugins.error.update"));
+            }
+            await refresh();
+            setTask({
+                status: "success",
+                message: enabled ? t("launcher.plugins.task.enabled") : t("launcher.plugins.task.disabled"),
+            });
+        },
+    );
 
     const uninstall = (pluginId: string) => runTask(t("launcher.plugins.task.uninstalling"), async () => {
         const result = await getInterface().plugins.uninstall(pluginId);
@@ -103,188 +145,326 @@ export function PluginsTab() {
             throw new Error(result.error ?? t("launcher.plugins.error.uninstall"));
         }
         await refresh();
+        // Close the detail modal unless the plugin lives on as a store entry.
+        setDetailId(current => (current && registry?.some(entry => entry.id === current) ? current : null));
         setTask({ status: "success", message: t("launcher.plugins.task.uninstalled") });
     });
 
+    // Install (or update) from the store, then chain straight into the permission
+    // prompt so browse → install → authorize is one gesture.
+    const installFromStore = (pluginId: string) => runTask(t("launcher.plugins.task.downloading"), async () => {
+        const result = await getInterface().plugins.installFromRegistry(pluginId);
+        if (!result.success) {
+            throw new Error(result.error ?? t("launcher.plugins.error.download"));
+        }
+        if (result.data.canceled) {
+            setTask({ status: "idle" });
+            return;
+        }
+        await refresh();
+        const approval = await getInterface().plugins.approve(pluginId);
+        if (!approval.success) {
+            throw new Error(approval.error ?? t("launcher.plugins.error.approve"));
+        }
+        await refresh();
+        setTask({
+            status: approval.data.approved ? "success" : "idle",
+            message: approval.data.approved ? t("launcher.plugins.task.installed") : "",
+        });
+    });
+
+    const registryById = useMemo(() => {
+        const map = new Map<string, PluginRegistryEntry>();
+        (registry ?? []).forEach(entry => map.set(entry.id, entry));
+        return map;
+    }, [registry]);
+    const installedById = useMemo(() => {
+        const map = new Map<string, PluginListItem>();
+        plugins.forEach(plugin => map.set(plugin.pluginId, plugin));
+        return map;
+    }, [plugins]);
+
+    const q = query.trim().toLowerCase();
+    const visibleInstalled = useMemo(() => plugins.filter(plugin =>
+        !q
+        || plugin.manifest.name.toLowerCase().includes(q)
+        || plugin.pluginId.toLowerCase().includes(q)
+        || (plugin.manifest.publisher ?? "").toLowerCase().includes(q),
+    ), [plugins, q]);
+    const visibleStore = useMemo(() => (registry ?? []).filter(entry =>
+        !q
+        || entry.name.toLowerCase().includes(q)
+        || entry.id.toLowerCase().includes(q)
+        || entry.publisher.toLowerCase().includes(q)
+        || entry.description.toLowerCase().includes(q),
+    ), [registry, q]);
+
+    const detailInstalled = detailId ? installedById.get(detailId) ?? null : null;
+    const detailEntry = detailId ? registryById.get(detailId) ?? null : null;
+
     return (
-        <div className="flex h-full min-h-0 bg-surface text-fg">
-            <div className="flex min-h-0 w-[320px] shrink-0 flex-col border-r border-edge">
-                <div className="flex h-10 shrink-0 items-center justify-between border-b border-edge bg-surface-sunken px-3">
-                    <div className="text-sm font-medium text-fg">{t("launcher.nav.plugins")}</div>
-                    <div className="flex items-center gap-1">
-                        <IconButton title={t("launcher.plugins.installLocal")} disabled={busy} onClick={installLocal}>
-                            <Download className="h-4 w-4" />
-                        </IconButton>
-                        <IconButton title={t("common.refresh")} disabled={busy} onClick={() => void refresh()}>
-                            <RefreshCw className="h-4 w-4" />
-                        </IconButton>
-                    </div>
+        <div className="flex h-full w-full flex-col px-6 pb-6 pt-4 text-fg">
+            <div className="mb-3 flex items-center gap-2">
+                <Segmented
+                    value={activeTab}
+                    onChange={setActiveTab}
+                    options={[
+                        { value: "installed", label: t("launcher.plugins.tab.installed") },
+                        { value: "store", label: t("launcher.plugins.tab.store") },
+                    ]}
+                />
+                <div className="min-w-0 flex-1">
+                    <Input
+                        fullWidth
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === "Escape") {
+                                e.preventDefault();
+                                setQuery("");
+                            }
+                        }}
+                        placeholder={t("launcher.plugins.search.placeholder")}
+                        aria-label={t("launcher.plugins.search.placeholder")}
+                        leftIcon={<Search className="h-4 w-4" />}
+                        rightIcon={query ? <X className="h-4 w-4" /> : undefined}
+                        rightIconLabel={t("launcher.plugins.search.clear")}
+                        onRightIconClick={query ? () => setQuery("") : undefined}
+                        className="border-transparent bg-transparent focus:border-edge-strong"
+                    />
                 </div>
-
-                <div className="min-h-0 flex-1 overflow-auto">
-                    {plugins.length === 0 ? (
-                        <div className="px-2 py-8 text-center text-xs text-fg-subtle">{t("launcher.plugins.emptyList")}</div>
-                    ) : (
-                        <div>
-                            {plugins.map(plugin => {
-                                const isSelected = selected?.pluginId === plugin.pluginId;
-
-                                return (
-                                    <button
-                                        key={plugin.pluginId}
-                                        type="button"
-                                        onClick={() => setSelectedId(plugin.pluginId)}
-                                        className={`no-drag w-full border-b border-l-2 border-b-edge px-3 py-2 text-left transition-colors ${
-                                            isSelected
-                                                ? "border-l-primary"
-                                                : "border-l-transparent hover:bg-fill"
-                                        }`}
-                                    >
-                                        <div className="flex min-w-0 items-center justify-between gap-2">
-                                            <div className="truncate text-sm font-medium text-fg">{plugin.manifest.name}</div>
-                                            <StatusBadge status={plugin.status} />
-                                        </div>
-                                        <div className="mt-1 truncate font-mono text-2xs text-fg-subtle">{plugin.pluginId}</div>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
+                <IconButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={installLocal}
+                    disabled={busy}
+                    title={t("launcher.plugins.installLocal")}
+                    aria-label={t("launcher.plugins.installLocal")}
+                >
+                    <FolderPlus className="h-4 w-4" />
+                </IconButton>
+                <IconButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRefresh}
+                    disabled={busy}
+                    title={t("common.refresh")}
+                    aria-label={t("common.refresh")}
+                >
+                    <RefreshCw className={cn("h-4 w-4", registryLoading && "animate-spin")} />
+                </IconButton>
             </div>
 
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                <div className="flex h-10 shrink-0 items-center justify-between border-b border-edge bg-surface-sunken px-4">
-                    <div className="min-w-0 truncate text-sm font-medium text-fg">
-                        {selected?.manifest.name ?? t("launcher.nav.plugins")}
-                    </div>
-                    {selected ? (
-                        <div className="flex items-center gap-1">
-                            {selected.status === "needsAuthorization" ? (
-                                <IconTextButton disabled={busy} onClick={() => void approve(selected.pluginId)} title={t("launcher.plugins.authorize")}>
-                                    <ShieldCheck className="h-4 w-4" />
-                                    <span>{t("launcher.plugins.authorize")}</span>
-                                </IconTextButton>
-                            ) : selected.enabled ? (
-                                <IconButton title={t("common.disable")} disabled={busy} onClick={() => void setEnabled(selected.pluginId, false)}>
-                                    <PowerOff className="h-4 w-4" />
-                                </IconButton>
-                            ) : (
-                                <IconButton title={t("common.enable")} disabled={busy || selected.status === "error"} onClick={() => void setEnabled(selected.pluginId, true)}>
-                                    <Power className="h-4 w-4" />
-                                </IconButton>
-                            )}
-                            <IconButton title={t("launcher.plugins.uninstall")} disabled={busy || selected.builtIn} onClick={() => void uninstall(selected.pluginId)}>
-                                <Trash2 className="h-4 w-4" />
-                            </IconButton>
-                        </div>
-                    ) : null}
-                </div>
-
-                <div className="min-h-0 flex-1 overflow-auto p-4">
-                    {task.status !== "idle" && task.message ? (
-                        <div className={`mb-3 flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${taskClass(task.status)}`}>
-                            {task.status === "error" ? (
-                                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                            ) : (
-                                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                            )}
-                            <span>{task.message}</span>
-                        </div>
-                    ) : null}
-
-                    {selected ? (
-                        <PluginDetails plugin={selected} />
+            {task.status !== "idle" && task.message ? (
+                <div className={cn("mb-3 flex items-start gap-2 rounded-md border px-3 py-2 text-xs", taskClass(task.status))}>
+                    {task.status === "error" ? (
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                     ) : (
-                        <div className="flex h-full items-center justify-center text-sm text-fg-subtle">{t("launcher.plugins.noneSelected")}</div>
+                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                     )}
+                    <span>{task.message}</span>
                 </div>
+            ) : null}
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+                {activeTab === "installed" ? (
+                    plugins.length === 0 ? (
+                        <EmptyState
+                            icon={<Puzzle className="h-6 w-6" />}
+                            title={t("launcher.plugins.emptyList")}
+                        />
+                    ) : visibleInstalled.length === 0 ? (
+                        <EmptyState title={t("launcher.plugins.emptyFiltered", { query: query.trim() })} />
+                    ) : (
+                        <div className="flex flex-col gap-0.5">
+                            {visibleInstalled.map(plugin => (
+                                <InstalledRow
+                                    key={plugin.pluginId}
+                                    plugin={plugin}
+                                    hasUpdate={hasUpdate(plugin, registryById.get(plugin.pluginId))}
+                                    busy={busy}
+                                    onOpen={() => setDetailId(plugin.pluginId)}
+                                    onAuthorize={() => approve(plugin.pluginId)}
+                                    onToggle={() => setEnabled(plugin.pluginId, !plugin.enabled)}
+                                    onUninstall={() => uninstall(plugin.pluginId)}
+                                />
+                            ))}
+                        </div>
+                    )
+                ) : registryError ? (
+                    <EmptyState
+                        icon={<AlertTriangle className="h-6 w-6" />}
+                        title={t("launcher.plugins.store.offline")}
+                        description={registryError}
+                        action={(
+                            <Button size="sm" variant="secondary" onClick={handleRefresh}>
+                                {t("launcher.plugins.store.retry")}
+                            </Button>
+                        )}
+                    />
+                ) : registry === null ? (
+                    <EmptyState icon={<RefreshCw className="h-6 w-6 animate-spin" />} />
+                ) : visibleStore.length === 0 ? (
+                    <EmptyState
+                        icon={<Puzzle className="h-6 w-6" />}
+                        title={q ? t("launcher.plugins.emptyFiltered", { query: query.trim() }) : t("launcher.plugins.store.emptyList")}
+                    />
+                ) : (
+                    <div className="flex flex-col gap-0.5">
+                        {visibleStore.map(entry => (
+                            <StoreRow
+                                key={entry.id}
+                                entry={entry}
+                                installed={installedById.get(entry.id) ?? null}
+                                busy={busy}
+                                onOpen={() => setDetailId(entry.id)}
+                                onInstall={() => installFromStore(entry.id)}
+                            />
+                        ))}
+                    </div>
+                )}
             </div>
+
+            {detailId && (detailInstalled || detailEntry) ? (
+                <PluginDetailsModal
+                    installed={detailInstalled}
+                    registryEntry={detailEntry}
+                    busy={busy}
+                    onClose={() => setDetailId(null)}
+                    onAuthorize={approve}
+                    onSetEnabled={setEnabled}
+                    onUninstall={uninstall}
+                    onInstall={installFromStore}
+                />
+            ) : null}
         </div>
     );
 }
 
-function PluginDetails({ plugin }: { plugin: PluginListItem }) {
+function InstalledRow({
+    plugin,
+    hasUpdate: updateAvailable,
+    busy,
+    onOpen,
+    onAuthorize,
+    onToggle,
+    onUninstall,
+}: {
+    plugin: PluginListItem;
+    hasUpdate: boolean;
+    busy: boolean;
+    onOpen: () => void;
+    onAuthorize: () => void;
+    onToggle: () => void;
+    onUninstall: () => void;
+}) {
     const { t } = useTranslation();
-    const permissions = describePluginInstallPermissions(plugin.manifest.permissions);
+    const needsAuth = plugin.status === "needsAuthorization";
 
     return (
-        <div className="space-y-4">
-            <div>
-                <div className="flex min-w-0 items-center gap-2">
-                    <div className="truncate text-lg font-semibold text-fg">{plugin.manifest.name}</div>
-                    <span className="shrink-0 rounded border border-edge px-1.5 py-0.5 text-2xs text-fg-muted">
-                        {plugin.manifest.version}
+        <div className="group relative">
+            <button
+                type="button"
+                onClick={onOpen}
+                className="flex w-full cursor-default items-center gap-3 rounded-md px-3 py-2.5 pr-28 text-left transition-colors hover:bg-fill"
+            >
+                <PluginAvatar name={plugin.manifest.name} />
+                <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate text-sm text-fg">{plugin.manifest.name}</span>
+                        {plugin.builtIn ? <Badge tone="primary">{t("launcher.plugins.builtIn")}</Badge> : null}
+                        <PluginStatusBadge status={plugin.status} />
+                        {updateAvailable ? <Badge tone="warning">{t("launcher.plugins.updateAvailable")}</Badge> : null}
                     </span>
-                    {plugin.builtIn ? (
-                        <span className="shrink-0 rounded border border-primary/20 px-1.5 py-0.5 text-2xs text-primary">
-                            {t("launcher.plugins.builtIn")}
-                        </span>
-                    ) : null}
-                </div>
-                <div className="mt-1 font-mono text-xs text-fg-subtle">{plugin.pluginId}</div>
-                {plugin.manifest.publisher ? (
-                    <div className="mt-1 text-xs text-fg-muted">{plugin.manifest.publisher}</div>
+                    <span className="block truncate text-xs text-fg-subtle">
+                        {plugin.manifest.publisher || plugin.pluginId}
+                    </span>
+                </span>
+            </button>
+            <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+                {needsAuth ? (
+                    <Button size="sm" variant="primary" onClick={onAuthorize} disabled={busy} className="gap-1">
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        {t("launcher.plugins.authorize")}
+                    </Button>
+                ) : plugin.status !== "error" ? (
+                    <RowIconButton
+                        title={plugin.enabled ? t("common.disable") : t("common.enable")}
+                        disabled={busy}
+                        onClick={onToggle}
+                    >
+                        {plugin.enabled ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+                    </RowIconButton>
+                ) : null}
+                {!plugin.builtIn ? (
+                    <RowIconButton title={t("launcher.plugins.uninstall")} disabled={busy} onClick={onUninstall}>
+                        <Trash2 className="h-4 w-4" />
+                    </RowIconButton>
                 ) : null}
             </div>
-
-            {plugin.manifest.description ? (
-                <div className="text-sm leading-6 text-fg-muted">{plugin.manifest.description}</div>
-            ) : null}
-
-            <div className="space-y-1 text-sm text-fg-muted">
-                <InfoLine label={t("launcher.plugins.field.status")} value={statusText(plugin.status, t)} />
-                <InfoLine
-                    label={t("launcher.plugins.field.entries")}
-                    value={(["studio", "runtime"] as const)
-                        .filter(target => plugin.manifest.entries[target])
-                        .map(target => `${target}: ${plugin.manifest.entries[target]}`)
-                        .join("  ·  ")}
-                    mono
-                />
-                <InfoLine label={t("launcher.plugins.field.installed")} value={new Date(plugin.installedAt).toLocaleString()} />
-                <InfoLine label={t("launcher.plugins.field.updated")} value={new Date(plugin.updatedAt).toLocaleString()} />
-            </div>
-
-            <div>
-                <div className="mb-2 text-xs font-medium tracking-normal text-fg-subtle">{t("launcher.plugins.permissions")}</div>
-                <div className="overflow-hidden rounded-md border border-edge bg-fill-subtle">
-                    {permissions.map((permission, index) => (
-                        <div key={`${permission}-${index}`} className="border-b border-edge px-3 py-2 text-sm text-fg last:border-b-0">
-                            {permission}
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {plugin.lastError ? (
-                <div className="rounded-md border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger">
-                    {plugin.lastError}
-                </div>
-            ) : null}
         </div>
     );
 }
 
-function InfoLine({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-    return (
-        <div className="flex min-w-0 items-baseline gap-2">
-            <span className="w-16 shrink-0 text-fg-subtle">{label}</span>
-            <span className={`min-w-0 truncate text-fg ${mono ? "font-mono" : ""}`}>{value}</span>
-        </div>
-    );
-}
-
-function StatusBadge({ status }: { status: PluginStatus }) {
+function StoreRow({
+    entry,
+    installed,
+    busy,
+    onOpen,
+    onInstall,
+}: {
+    entry: PluginRegistryEntry;
+    installed: PluginListItem | null;
+    busy: boolean;
+    onOpen: () => void;
+    onInstall: () => void;
+}) {
     const { t } = useTranslation();
+    const updateAvailable = hasUpdate(installed, entry);
+
     return (
-        <span className={`shrink-0 border px-1.5 py-0.5 text-2xs ${statusClass(status)}`}>
-            {statusText(status, t)}
-        </span>
+        <div className="group relative">
+            <button
+                type="button"
+                onClick={onOpen}
+                className="flex w-full cursor-default items-center gap-3 rounded-md px-3 py-2.5 pr-28 text-left transition-colors hover:bg-fill"
+            >
+                <PluginAvatar name={entry.name} />
+                <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate text-sm text-fg">{entry.name}</span>
+                        <span className="shrink-0 text-2xs text-fg-subtle">{entry.publisher}</span>
+                    </span>
+                    <span className="block truncate text-xs text-fg-subtle">
+                        {entry.description || entry.id}
+                    </span>
+                </span>
+            </button>
+            <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                {updateAvailable ? (
+                    <Button size="sm" variant="primary" onClick={onInstall} disabled={busy}>
+                        {t("launcher.plugins.store.update")}
+                    </Button>
+                ) : installed ? (
+                    <Badge tone="neutral">{t("launcher.plugins.store.installed")}</Badge>
+                ) : (
+                    <Button size="sm" variant="primary" onClick={onInstall} disabled={busy} className="gap-1">
+                        <Download className="h-3.5 w-3.5" />
+                        {t("launcher.plugins.store.install")}
+                    </Button>
+                )}
+            </div>
+        </div>
     );
 }
 
-function IconButton({ title, disabled, onClick, children }: {
+/** Hover-revealed icon action on a row; visible on hover, focus, or while disabled-busy. */
+function RowIconButton({
+    title,
+    disabled,
+    onClick,
+    children,
+}: {
     title: string;
     disabled?: boolean;
     onClick: () => void;
@@ -297,58 +477,41 @@ function IconButton({ title, disabled, onClick, children }: {
             aria-label={title}
             disabled={disabled}
             onClick={onClick}
-            className="no-drag grid h-8 w-8 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg disabled:cursor-not-allowed disabled:opacity-50"
+            className="no-drag grid h-8 w-8 cursor-default place-items-center rounded-md text-fg-muted opacity-0 transition hover:bg-fill-strong hover:text-fg focus-visible:opacity-100 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
             {children}
         </button>
     );
 }
 
-function IconTextButton({ title, disabled, onClick, children }: {
-    title: string;
-    disabled?: boolean;
-    onClick: () => void;
-    children: ReactNode;
+function Segmented<T extends string>({
+    value,
+    onChange,
+    options,
+}: {
+    value: T;
+    onChange: (value: T) => void;
+    options: { value: T; label: string }[];
 }) {
     return (
-        <button
-            type="button"
-            title={title}
-            disabled={disabled}
-            onClick={onClick}
-            className="no-drag flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-on-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-            {children}
-        </button>
+        <div className="inline-flex shrink-0 items-center gap-0.5 rounded-md bg-fill-subtle p-0.5">
+            {options.map(option => (
+                <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => onChange(option.value)}
+                    className={cn(
+                        "no-drag cursor-default rounded px-3 py-1 text-xs font-medium transition-colors",
+                        value === option.value
+                            ? "bg-fill-strong text-fg shadow-sm"
+                            : "text-fg-muted hover:text-fg",
+                    )}
+                >
+                    {option.label}
+                </button>
+            ))}
+        </div>
     );
-}
-
-function statusText(status: PluginStatus, t: Translator["t"]): string {
-    switch (status) {
-        case "enabled":
-            return t("launcher.plugins.status.enabled");
-        case "disabled":
-            return t("launcher.plugins.status.disabled");
-        case "needsAuthorization":
-            return t("launcher.plugins.status.needsAuthorization");
-        case "error":
-            return t("common.error");
-        default:
-            return status;
-    }
-}
-
-function statusClass(status: PluginStatus): string {
-    switch (status) {
-        case "enabled":
-            return "border-success/25 text-success";
-        case "needsAuthorization":
-            return "border-warning/25 text-warning";
-        case "error":
-            return "border-danger/25 text-danger";
-        default:
-            return "border-edge text-fg-muted";
-    }
 }
 
 function taskClass(status: TaskState["status"]): string {
