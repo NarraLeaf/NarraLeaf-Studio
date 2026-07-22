@@ -12,6 +12,8 @@ export const devMode = {
         openMenu: "打开预览调试工具菜单",
         closeMenu: "关闭预览调试工具菜单",
         panelsAria: "调试面板",
+        skipToNextChoice: "跳到下一个选项",
+        skipToNextChoiceBusy: "跳转中…",
     },
     tabs: {
         blueprints: "蓝图",

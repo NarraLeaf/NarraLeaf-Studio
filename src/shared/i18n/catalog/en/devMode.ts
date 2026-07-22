@@ -11,6 +11,8 @@ export const devMode = {
         openMenu: "Open preview debug tools menu",
         closeMenu: "Close preview debug tools menu",
         panelsAria: "Debug panels",
+        skipToNextChoice: "Skip to next choice",
+        skipToNextChoiceBusy: "Skipping…",
     },
     tabs: {
         blueprints: "Blueprints",
