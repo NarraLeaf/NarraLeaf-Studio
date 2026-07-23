@@ -31,6 +31,10 @@ type Entry = {
     disposed: boolean;
     loading: boolean;
     failed: boolean;
+    /** Bumped by every (re)load and by an invalidation. A load that settles after its generation was
+     *  superseded (the asset was replaced or deleted mid-fetch) drops its bytes instead of re-minting a
+     *  stale URL — which would otherwise resurrect a deleted image or clobber a newer replacement. */
+    generation: number;
     load: () => Promise<Uint8Array | null>;
 };
 
@@ -55,16 +59,15 @@ function emit(key: string): void {
  * (missing/unreadable) leaves the entry icon-only but `failed`, so a later subscriber can retry.
  */
 function beginLoad(key: string, entry: Entry): void {
-    if (entry.loading) {
-        return;
-    }
+    // This load owns `entry.generation`; a later load or invalidation bumps it, marking this one stale.
+    const generation = ++entry.generation;
     entry.loading = true;
     entry.failed = false;
     void entry.load()
         .then(bytes => {
-            // Released while loading: the entry is gone from the map and marked disposed, so drop the
-            // bytes rather than mint a URL that would never be revoked.
-            if (entry.disposed) {
+            // Released (disposed) or superseded (asset replaced/deleted mid-fetch): drop the bytes rather
+            // than mint a URL that would leak, clobber a newer image, or resurrect a deleted one.
+            if (entry.disposed || entry.generation !== generation) {
                 return;
             }
             if (!bytes || bytes.byteLength === 0) {
@@ -81,10 +84,15 @@ function beginLoad(key: string, entry: Entry): void {
             emit(key);
         })
         .catch(() => {
-            entry.failed = true;
+            if (!entry.disposed && entry.generation === generation) {
+                entry.failed = true;
+            }
         })
         .finally(() => {
-            entry.loading = false;
+            // Only the current generation's load owns `loading`; a superseded one must not clear it.
+            if (entry.generation === generation) {
+                entry.loading = false;
+            }
         });
 }
 
@@ -101,7 +109,7 @@ function retain(key: string, load: () => Promise<Uint8Array | null>): void {
         return;
     }
 
-    const entry: Entry = { url: null, refs: 1, disposed: false, loading: false, failed: false, load };
+    const entry: Entry = { url: null, refs: 1, disposed: false, loading: false, failed: false, generation: 0, load };
     entries.set(key, entry);
     beginLoad(key, entry);
 }
@@ -117,6 +125,10 @@ function invalidate(key: string, gone: boolean): void {
         return;
     }
     if (gone) {
+        // Supersede any in-flight load (so it cannot re-mint the deleted image) and drop the URL. A
+        // returning id reloads on the next subscribe via `failed`.
+        entry.generation++;
+        entry.loading = false;
         if (entry.url) {
             URL.revokeObjectURL(entry.url);
             entry.url = null;
@@ -125,6 +137,7 @@ function invalidate(key: string, gone: boolean): void {
         emit(key);
         return;
     }
+    // Replaced content: a fresh load supersedes any in-flight one and swaps the URL on success.
     beginLoad(key, entry);
 }
 
