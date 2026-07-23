@@ -238,6 +238,7 @@ export const story = {
         actionsPanel: "动作",
         variablesPanel: "故事变量",
         snapshotsPanel: "场景快照",
+        inspectorPanel: "检查器",
     },
     preview: {
         label: "预览",

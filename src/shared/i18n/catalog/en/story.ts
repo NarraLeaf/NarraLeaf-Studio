@@ -257,6 +257,7 @@ export const story = {
         actionsPanel: "Actions",
         variablesPanel: "Story Variables",
         snapshotsPanel: "Scene Snapshots",
+        inspectorPanel: "Inspector",
     },
     preview: {
         label: "Preview",
