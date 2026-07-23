@@ -85,6 +85,7 @@ export const characters = {
         noThumbnail: "暂无缩略图",
         selectHint: "点击“选择”来指定一张",
         thumbnailAlt: "缩略图",
+        color: "颜色",
         namePlaceholder: "角色名称",
         descriptionPlaceholder: "角色描述…",
         tags: "标签",

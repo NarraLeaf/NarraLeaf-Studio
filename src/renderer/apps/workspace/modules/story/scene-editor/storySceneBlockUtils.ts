@@ -405,6 +405,14 @@ export function getCharacterName(characters: Character[], characterId: string | 
     return characters.find(character => character.profile.getId() === characterId)?.profile.getName() ?? translate("story.characterName.unknown");
 }
 
+/** The editor accent colour a character carries, or `undefined` when none is set (keep the default ink). */
+export function getCharacterColor(characters: Character[], characterId: string | undefined): string | undefined {
+    if (!characterId) {
+        return undefined;
+    }
+    return characters.find(character => character.profile.getId() === characterId)?.profile.getColor();
+}
+
 export function selectRange(rows: VisibleStoryRow[], fromId: StoryBlockId, toId: StoryBlockId): Set<StoryBlockId> {
     const from = rows.findIndex(row => row.block.id === fromId);
     const to = rows.findIndex(row => row.block.id === toId);
