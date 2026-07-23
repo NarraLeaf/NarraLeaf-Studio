@@ -129,10 +129,16 @@ export function StoryBlockRow(props: {
     // Plain narration and studio notes hide their badge icon (but keep its slot, for alignment).
     const hideBadge = (block.kind === "nodeAction" && block.payload.action === "narration") || block.kind === "note";
     const isDialogue = block.kind === "nodeAction" && block.payload.action === "dialogue";
+    // Dialogue-group continuation rows (WI-5): a later same-speaker dialogue, or a same-character
+    // expression line folded into the run. Members drop their badge + nametag for a group rail.
+    const dialogueMember = row.groupRole === "member" && isDialogue;
+    const expressionMember = row.groupRole === "member"
+        && block.kind === "action" && block.payload.action === "character" && block.payload.operation === "expression";
     // Every non-dialogue, non-narration/note row carries a low-key category colour bar at its left
     // edge, so scene / character / sound / flow rows read apart at a glance. Same single source as the
-    // badge (ACTION_COMMAND_CATEGORIES via getBlockBadgeInfo); narration/note keep zero chrome.
-    const categoryColor = !isDialogue && !hideBadge ? getBlockBadgeInfo(block).iconColor : null;
+    // badge (ACTION_COMMAND_CATEGORIES via getBlockBadgeInfo); narration/note and in-group expression
+    // members keep zero chrome.
+    const categoryColor = !isDialogue && !hideBadge && row.groupRole !== "member" ? getBlockBadgeInfo(block).iconColor : null;
     const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
         id: row.block.id,
     });
@@ -218,7 +224,9 @@ export function StoryBlockRow(props: {
                 <div className="flex min-h-[27px] min-w-0 items-center gap-2">
                     {containerInfo ? (
                         <ContainerPill info={containerInfo} />
-                    ) : hideBadge ? (
+                    ) : dialogueMember ? (
+                        <GroupRail highlight={selected || active} />
+                    ) : expressionMember ? null : hideBadge ? (
                         <span className="h-6 w-6 shrink-0" aria-hidden />
                     ) : (
                         <BlockBadge block={block} characters={characters} appearance={row.appearance} />
@@ -234,7 +242,9 @@ export function StoryBlockRow(props: {
                     {containerInfo?.repeatTimes !== undefined ? (
                         <RepeatTimesField block={block} onUpdatePayload={props.onUpdatePayload} />
                     ) : null}
-                    {editing && textSegment ? (
+                    {expressionMember ? (
+                        <GroupExpressionMember block={block} characters={characters} />
+                    ) : editing && textSegment ? (
                         <TextEditBox
                             editorRef={textInputRef}
                             initialCaret={props.editInitialCaret}
@@ -256,6 +266,7 @@ export function StoryBlockRow(props: {
                             document={document}
                             characters={characters}
                             onSetDialogueCharacter={props.onSetDialogueCharacter}
+                            hideSpeaker={dialogueMember}
                         />
                     ) : textSegment || !containerInfo ? (
                         <BlockPreview
@@ -268,6 +279,7 @@ export function StoryBlockRow(props: {
                             document={document}
                             characters={characters}
                             onSetDialogueCharacter={props.onSetDialogueCharacter}
+                            hideSpeaker={dialogueMember}
                         />
                     ) : null}
                     <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -341,6 +353,8 @@ function TextEditBox(props: {
     tempSpeakers: TempSpeakerRef[];
     onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
     onCreateCharacter: (name: string) => void;
+    /** In-group dialogue member (WI-5): drop the nametag and indent the text, matching the read row. */
+    hideSpeaker?: boolean;
 }) {
     const { t } = useTranslation();
     const dialoguePayload = props.block.kind === "nodeAction" && props.block.payload.action === "dialogue"
@@ -437,7 +451,7 @@ function TextEditBox(props: {
     return (
         <div ref={containerRef} className="relative flex min-w-0 flex-1 items-center gap-2 overflow-visible">
             <RichTextToolbar editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} hasVariables={variableOptions.scene.length + variableOptions.saved.length + variableOptions.persistent.length > 0} />
-            {dialoguePayload ? (
+            {dialoguePayload && !props.hideSpeaker ? (
                 <CharacterSelectTrigger
                     characters={props.characters}
                     tempSpeakers={props.tempSpeakers}
@@ -455,7 +469,8 @@ function TextEditBox(props: {
                 // Edit in place, VS Code style: no box, no sunken background, no horizontal padding — the
                 // caret lands exactly where the read-only text sat. The active/selected row highlight is
                 // the "you are here" signal, so the field needs none of its own. See the interaction model.
-                className="min-h-[20px] flex-1 whitespace-pre-wrap break-words bg-transparent text-fg outline-none empty:before:italic empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]"
+                // A group member indents by the same amount as its read row, so entering edit never jumps.
+                className={["min-h-[20px] flex-1 whitespace-pre-wrap break-words bg-transparent text-fg outline-none empty:before:italic empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]", props.hideSpeaker ? GROUP_MEMBER_INDENT : ""].join(" ")}
                 style={textStyle}
                 placeholder={editorPlaceholder(props.block, t)}
                 onChange={props.onEditRichChange}
@@ -623,6 +638,67 @@ function RailGuides({ depth, highlight }: { depth: number; highlight: boolean })
                 />
             ))}
         </>
+    );
+}
+
+/** Left indent (Tailwind) applied to an in-group dialogue member's text so it reads under the speaker. */
+const GROUP_MEMBER_INDENT = "pl-6";
+
+/** The badge-slot rail an in-group dialogue member shows in place of its avatar (WI-5). */
+function GroupRail({ highlight }: { highlight: boolean }) {
+    return (
+        <span className="relative h-6 w-6 shrink-0" aria-hidden>
+            <span className={["absolute inset-y-0 left-[11px] w-px", highlight ? "bg-primary/40" : "bg-edge"].join(" ")} />
+        </span>
+    );
+}
+
+/**
+ * The compact, muted body of an in-group expression row (WI-5): a small differential avatar and the
+ * differential's name. It stays an ordinary row (selection / drag / Enter live on the row around it);
+ * only the read-only content is compacted.
+ */
+function GroupExpressionMember({ block, characters }: { block: StoryBlock; characters: Character[] }) {
+    const { t } = useTranslation();
+    const spec = getBadgeImageSpec(block, undefined);
+    const character = spec ? characters.find(next => next.profile.getId() === spec.characterId) : undefined;
+    const resolved = character && spec?.resolveVariant
+        ? resolveCharacterBadgeImage(character, spec.formName, spec.variants)
+        : { assetId: null as string | null, frame: undefined };
+    const imageId = resolved.assetId ?? character?.profile.getThumbnail() ?? null;
+    const imageUrl = useServiceAssetObjectUrl(imageId);
+    const label = useMemo(() => {
+        if (block.kind !== "action" || block.payload.action !== "character") {
+            return "";
+        }
+        const parts: string[] = [];
+        if (block.payload.formName) {
+            parts.push(block.payload.formName);
+        }
+        const variants = block.payload.variants;
+        if (Array.isArray(variants)) {
+            parts.push(...variants);
+        } else if (variants) {
+            parts.push(...Object.values(variants));
+        }
+        return parts.join(" · ") || t("story.describe.charOp.expression");
+    }, [block, t]);
+
+    return (
+        <span className="flex min-w-0 flex-1 items-center gap-2 self-stretch text-2xs text-fg-subtle">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+                <span className="relative h-4 w-4 overflow-hidden rounded-full border border-edge bg-fill-subtle">
+                    {imageUrl ? (
+                        resolved.assetId ? (
+                            <HeadThumbnail url={imageUrl} alt="" frame={resolved.frame} className="h-full w-full" iconClassName="h-2.5 w-2.5" />
+                        ) : (
+                            <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+                        )
+                    ) : null}
+                </span>
+            </span>
+            <span className="min-w-0 truncate">{label}</span>
+        </span>
     );
 }
 
@@ -1933,6 +2009,8 @@ function BlockPreview(props: {
     tempSpeakers: TempSpeakerRef[];
     onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
     onCreateCharacter: (name: string) => void;
+    /** In-group dialogue member (WI-5): drop the nametag and indent the text under the group speaker. */
+    hideSpeaker?: boolean;
 }) {
     const { t } = useTranslation();
     const block = props.block;
@@ -1940,23 +2018,26 @@ function BlockPreview(props: {
     const textStyle = useStoryEditorTextStyle();
     if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
         const hasValue = Boolean(text?.value) || Boolean(text?.rich && text.rich.length > 0);
+        const memberIndent = props.hideSpeaker ? GROUP_MEMBER_INDENT : undefined;
         return (
             <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch text-sm">
-                <CharacterSelectTrigger
-                    characters={props.characters}
-                    tempSpeakers={props.tempSpeakers}
-                    characterId={block.payload.characterId}
-                    speakerName={block.payload.speakerName}
-                    onChoose={props.onSetSpeaker}
-                    onCreateCharacter={props.onCreateCharacter}
-                    style={textStyle}
-                />
+                {props.hideSpeaker ? null : (
+                    <CharacterSelectTrigger
+                        characters={props.characters}
+                        tempSpeakers={props.tempSpeakers}
+                        characterId={block.payload.characterId}
+                        speakerName={block.payload.speakerName}
+                        onChoose={props.onSetSpeaker}
+                        onCreateCharacter={props.onCreateCharacter}
+                        style={textStyle}
+                    />
+                )}
                 {hasValue && text ? (
-                    <TextClickTarget style={textStyle}>
+                    <TextClickTarget style={textStyle} className={memberIndent}>
                         <RichTextView className="min-w-0 flex-1 whitespace-pre-wrap break-words text-fg" segment={text} document={props.document} sceneId={props.scene.id} />
                     </TextClickTarget>
                 ) : (
-                    <TextClickTarget style={textStyle} className="italic text-fg-subtle">{getEmptyTextPlaceholder(block)}</TextClickTarget>
+                    <TextClickTarget style={textStyle} className={["italic text-fg-subtle", memberIndent].filter(Boolean).join(" ")}>{getEmptyTextPlaceholder(block)}</TextClickTarget>
                 )}
             </div>
         );

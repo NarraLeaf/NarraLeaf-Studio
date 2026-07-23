@@ -20,6 +20,13 @@ export type VisibleStoryRow = {
      * follow the most recent enter/expression. Absent on non-dialogue rows and when nothing was shown.
      */
     appearance?: CharacterAppearanceRef;
+    /**
+     * Dialogue-grouping role (WI-5), a pure render projection. `"head"` is the first dialogue of a
+     * run of same-speaker lines (renders avatar + nametag as usual); `"member"` is a continuation —
+     * a later same-speaker dialogue, or a same-character expression line — which drops the badge and
+     * nametag for a group rail. Absent on rows that are not part of any dialogue group.
+     */
+    groupRole?: "head" | "member";
 };
 
 export type InsertSlot = {
