@@ -10,10 +10,8 @@ import type { DevModeConsoleLogPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
-import {
-    compileGameRuntimeArtifact,
-    type GameRuntimeArtifactCompileResult,
-} from "./compiler/gameRuntimeArtifactCompiler";
+import { type GameRuntimeArtifactCompileResult } from "./compiler/gameRuntimeArtifactCompiler";
+import { compileGameRuntimeArtifactInWorker } from "./compiler/compileGameRuntimeArtifactInWorker";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
 
@@ -135,7 +133,10 @@ export class PreviewManager {
             if (encryptionKey) {
                 this.emitVerbose(session, "asset protection enabled; encrypting pack");
             }
-            const artifact = await compileGameRuntimeArtifact({
+            // Compiled in a forked utility process, not on the main thread:
+            // sealing a protected pack drives the native codec through many
+            // seconds of synchronous CPU that would otherwise freeze Studio.
+            const artifact = await compileGameRuntimeArtifactInWorker(this.app, {
                 projectPath: normalizedProjectPath,
                 entry,
                 runtimeDistDir: this.getRuntimeDistDir(),

@@ -49,6 +49,24 @@ const { rootDir, isDev } = require('./utils');
         tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
     });
 
+    console.log('[build-main] Bundling artifact compile worker…');
+    await esbuild.build({
+        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'compileWorker.ts')],
+        outfile: path.join(outDir, 'compileWorker.js'),
+        platform: 'node',
+        format: 'cjs',
+        bundle: true,
+        // Same externals as the main bundle: @narraleaf/encryption is a native
+        // addon whose computed-require sidecars resolve by path at runtime, and
+        // koffi / @lore-vcs/sdk load their own binaries by path — bundling any of
+        // them breaks resolution.
+        external: ['electron', '@narraleaf/encryption', '@lore-vcs/sdk', 'koffi'],
+        sourcemap: isDev(),
+        minify: !isDev(),
+        target: ['node18'],
+        tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
+    });
+
     const preloadEntry = path.join(rootDir, 'src', 'main', 'preload', 'preload.ts');
     if (!fs.existsSync(preloadEntry)) {
         console.warn('[build-main] Preload entry "src/main/preload/preload.ts" not found. Skipping preload build.');
