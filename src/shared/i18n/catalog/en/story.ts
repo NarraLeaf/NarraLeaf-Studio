@@ -502,6 +502,12 @@ export const story = {
         setBackground: "Set background {value}",
         unassigned: "unassigned",
         characterFallback: "character",
+        charOp: {
+            enter: "Enter",
+            move: "Move",
+            exit: "Exit",
+            expression: "Expression",
+        },
         waitDuration: "Wait {seconds}s",
         waitClick: "Wait for click",
         unnamed: "unnamed",
