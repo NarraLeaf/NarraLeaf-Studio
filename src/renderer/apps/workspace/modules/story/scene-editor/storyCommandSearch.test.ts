@@ -49,4 +49,20 @@ describe("searchActionCommands", () => {
         expect(searchActionCommands(ACTION_COMMANDS, "").map(command => command.id))
             .toEqual(ACTION_COMMANDS.map(command => command.id));
     });
+
+    it("matches a zh-labelled command by full pinyin, so a Latin author finds 背景 as `beijing`", () => {
+        // Pinyin rides the command id, not its label — English labels here, yet the pinyin still lands.
+        expect(ids("beijing")[0]).toBe("background");
+        expect(ids("tiaozhuan")[0]).toBe("jump");
+    });
+
+    it("matches by pinyin initials (`bj` → 背景), the exact-tier hit ranked first", () => {
+        // `bgm` (beijingyinyue → bjyy) only prefix-matches `bj`, so Background's exact initials win.
+        expect(ids("bj")[0]).toBe("background");
+    });
+
+    it("matches a pinyin substring, so partial input still finds the command", () => {
+        // "yinyue" is inside `bgm`'s full pinyin "beijingyinyue".
+        expect(ids("yinyue")).toContain("bgm");
+    });
 });
