@@ -66,7 +66,7 @@ import {
 } from "./storySceneBlockUtils";
 import { ConditionPopover } from "./ConditionPopover";
 import { getQuickParams, QuickParamsInline, QuickParamsSummary, type QuickParam } from "./storyQuickParams";
-import { actionTrigger, ACTION_TRIGGER, toCanonicalCommandLine } from "./commandTrigger";
+import { actionTrigger, ACTION_TRIGGER, insertChooserType, toCanonicalCommandLine } from "./commandTrigger";
 
 export function StoryBlockRow(props: {
     row: VisibleStoryRow;
@@ -1020,8 +1020,12 @@ export function InsertRow(props: {
     const source = useMemo(() => toCanonicalCommandLine(props.mode.value, props.slashAtAlias), [props.mode.value, props.slashAtAlias]);
     // Drop the trigger character (either "/" or "@") to get the query the menus rank against.
     const chooserQuery = props.mode.value.slice(1);
+    // The menu is derived from the text, never stored - so a reopened draft row always has its
+    // completion (bible M3). Escape is the one thing text cannot express: `chooserDismissed` shuts the
+    // menu until the next keystroke clears it (see the controller), so it forces "none" here.
+    const chooser = props.mode.chooserDismissed ? "none" : insertChooserType(props.mode.value, props.slashAtAlias);
     const menuAnchorRef = useRef<HTMLDivElement | null>(null);
-    const menuPlacement = useAutoMenuPlacement(menuAnchorRef, props.mode.chooser !== "none", 312);
+    const menuPlacement = useAutoMenuPlacement(menuAnchorRef, chooser !== "none", 312);
     const pluginCommands = useStoryPluginActionCommands();
     const actionOptions = useMemo<PaletteActionCommand[]>(
         () => searchActionCommands(
@@ -1084,10 +1088,10 @@ export function InsertRow(props: {
      * where an empty list means every param is already given and there is nothing left to say.
      */
     const argValuePosition = cursor.kind === "positional" || cursor.kind === "paramValue";
-    const argMenuOpen = props.mode.chooser === "action"
+    const argMenuOpen = chooser === "action"
         && (cursor.kind === "paramName" ? argItems.length > 0
             : argValuePosition && (argItems.length > 0 || (cursor.query.length > 0 && hasCandidateSource(cursor.param))));
-    const actionMenuOpen = props.mode.chooser === "action" && cursor.kind === "commandName";
+    const actionMenuOpen = chooser === "action" && cursor.kind === "commandName";
 
     /**
      * Replace the token under the caret and put the caret after what was written. The slot's value is
@@ -1169,7 +1173,7 @@ export function InsertRow(props: {
                     // not just the text, or clicking back into `/bg |forest` would still offer transitions.
                     onSelect={event => setCaret((event.target as HTMLTextAreaElement).selectionStart ?? 0)}
                     onBlur={() => {
-                        if (props.mode.chooser === "none") {
+                        if (chooser === "none") {
                             props.onCommitNarration(false);
                         }
                     }}
@@ -1184,7 +1188,7 @@ export function InsertRow(props: {
                         // half-typed `/set` into a line of prose the author never wrote.
                         if (event.key === "Escape") {
                             event.preventDefault();
-                            props.mode.chooser === "none" ? props.onDiscardSlot() : props.onDismissChooser();
+                            chooser === "none" ? props.onDiscardSlot() : props.onDismissChooser();
                             return;
                         }
                         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -1198,7 +1202,7 @@ export function InsertRow(props: {
                                 actionMenu.moveCommand(event.key === "ArrowDown" ? 1 : -1);
                                 return;
                             }
-                            if (props.mode.chooser === "character") {
+                            if (chooser === "character") {
                                 event.preventDefault();
                                 characterMenu.moveCharacter(event.key === "ArrowDown" ? 1 : -1);
                                 return;
@@ -1225,7 +1229,7 @@ export function InsertRow(props: {
                                 chooseCommandCandidate(command.id);
                                 return true;
                             }
-                            if (props.mode.chooser === "character") {
+                            if (chooser === "character") {
                                 const candidate = characterMenu.activeCharacter;
                                 if (!candidate) {
                                     return false;
@@ -1256,7 +1260,7 @@ export function InsertRow(props: {
                             // there is no dialogue to keep, so it lands as invalid rather than as a
                             // speaker with nothing to say.
                             if (event.shiftKey) {
-                                props.mode.chooser === "character" ? props.onCommitInvalid() : props.onResolveLine();
+                                chooser === "character" ? props.onCommitInvalid() : props.onResolveLine();
                                 return;
                             }
                             if (!takeHighlighted()) {
@@ -1289,7 +1293,7 @@ export function InsertRow(props: {
                         placement={menuPlacement}
                     />
                 ) : null}
-                {props.mode.chooser === "character" ? (
+                {chooser === "character" ? (
                     <CharacterPicker
                         characters={characterOptions}
                         activeCharacterId={characterMenu.activeCharacter?.key ?? null}

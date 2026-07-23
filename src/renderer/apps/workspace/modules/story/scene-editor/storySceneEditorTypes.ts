@@ -72,11 +72,14 @@ export type EditorMode =
     | { kind: "idle" }
     | { kind: "text"; blockId: StoryBlockId; value: string; rich?: StoryRichRun[]; caret?: StoryCaretTarget }
     /**
-     * `chooserDismissed` survives until the slot is left: Escape closing the candidates is a
-     * statement about this line ("I know what I'm typing"), so the menu must not reappear on the
-     * next keystroke - which it would, since the chooser is otherwise derived from `value`'s prefix.
+     * The candidate menu the slot shows is derived from `value` (see `insertChooserType`), never stored -
+     * a stored copy drifted, and a reopened draft row inherited a stale "none" that killed its completion.
+     * `chooserDismissed` is the one thing text cannot express: Escape closing the candidates is a
+     * statement about this line ("I know what I'm typing"). It is one-shot - the next keystroke clears it
+     * (see `handleInsertValueChange`), so the menu comes back the moment the author edits, rather than
+     * staying shut for the slot's whole life.
      */
-    | { kind: "insert"; slot: InsertSlot; value: string; chooser: "none" | "action" | "character"; chooserDismissed?: boolean }
+    | { kind: "insert"; slot: InsertSlot; value: string; chooserDismissed?: boolean }
     | { kind: "inspector"; blockId: StoryBlockId };
 
 export type SerializedStoryBlock = {
