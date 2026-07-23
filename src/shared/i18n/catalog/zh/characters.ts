@@ -133,6 +133,9 @@ export const characters = {
         zoomIn: "放大",
         resetView: "重置视图",
         alt: "差分预览",
+        setPortrait: "头像取景",
+        resetPortrait: "重置头像取景",
+        portraitTitle: "头像取景",
     },
     variantsPanel: {
         title: "差分",
