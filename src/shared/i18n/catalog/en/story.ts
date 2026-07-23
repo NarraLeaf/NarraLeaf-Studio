@@ -206,6 +206,10 @@ export const story = {
         z: "Z-Index",
     },
 
+    view: {
+        narrativeOnly: "Narrative only",
+        comfortableDensity: "Comfortable density",
+    },
     rows: {
         placeholderDialogue: "Dialogue…",
         placeholderNarration: "Narration…",

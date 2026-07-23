@@ -455,6 +455,16 @@ input[type="radio"]:focus {
     box-shadow: 0 0 0 2px rgb(var(--nl-primary) / 0.3);
 }
 
+/**
+ * Comfortable reading density for the story editor (WI-6). Font size and line spacing come from the
+ * story text-style provider; this one lever opens up the row boxes to match, so lines breathe instead
+ * of just growing taller text inside the same 35px slot. Unlayered so it outranks the row's own
+ * `min-h-[35px]` Tailwind utility. Compact (the default) has no rule and keeps the status quo.
+ */
+[data-story-density="comfortable"] [data-story-row-block-id] {
+    min-height: 46px;
+}
+
 @layer utilities {
     .titlebar-drag { -webkit-app-region: drag; }
     .no-drag { -webkit-app-region: no-drag; }

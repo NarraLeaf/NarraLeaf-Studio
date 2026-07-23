@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
-import { annotateDialogueGroups, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, nextSelectionAfterDelete } from "./storySceneBlockUtils";
+import { annotateDialogueGroups, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isNarrativeRow, nextSelectionAfterDelete } from "./storySceneBlockUtils";
 
 function control(payload: Extract<StoryBlock, { kind: "control" }>["payload"]): StoryBlock {
     return { id: "b", kind: "control", parentId: null, childrenIds: [], payload };
@@ -152,6 +152,20 @@ describe("annotateDialogueGroups", () => {
         expect(rolesOf([dialogue("a", { speakerName: "Guard" }), dialogue("b", { speakerName: "Guard" })])).toEqual(["head", "member"]);
         expect(rolesOf([dialogue("a", { speakerName: "Guard" }), dialogue("b", { speakerName: "Maid" })])).toEqual(["head", "head"]);
         expect(rolesOf([dialogue("a"), dialogue("b")])).toEqual(["head", "head"]);
+    });
+});
+
+describe("isNarrativeRow", () => {
+    it("keeps narration, dialogue, choice, option and note; hides staging", () => {
+        expect(isNarrativeRow(narration("n"))).toBe(true);
+        expect(isNarrativeRow(dialogue("d", { characterId: "c1" }))).toBe(true);
+        expect(isNarrativeRow(nodeAction({ action: "choice" }))).toBe(true);
+        expect(isNarrativeRow(nodeAction({ action: "choiceOption", text: { textId: "t", role: "choiceText", value: "" } }))).toBe(true);
+        expect(isNarrativeRow({ id: "b", kind: "note", parentId: null, childrenIds: [], payload: { text: { textId: "t", role: "note", value: "" } } })).toBe(true);
+        // Staging kinds hide, including a character expression (an action).
+        expect(isNarrativeRow(characterAction("x", { action: "character", operation: "expression", characterId: "c1" }))).toBe(false);
+        expect(isNarrativeRow(control({ control: "condition" }))).toBe(false);
+        expect(isNarrativeRow({ id: "b", kind: "jump", parentId: null, childrenIds: [], payload: { targetSceneId: "s2" } })).toBe(false);
     });
 });
 

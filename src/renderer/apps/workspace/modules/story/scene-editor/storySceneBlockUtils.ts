@@ -41,6 +41,22 @@ export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, C
     return result;
 }
 
+/**
+ * Whether a row survives the "narrative only" filter (WI-6): narration, dialogue, choice prompts and
+ * options, and studio notes. Everything else — action (including expression), control, jump,
+ * declaration, code, invalid — is staging and hides. A whitelist, so a new staging kind hides by default.
+ */
+export function isNarrativeRow(block: StoryBlock): boolean {
+    if (block.kind === "note") {
+        return true;
+    }
+    if (block.kind === "nodeAction") {
+        const action = block.payload.action;
+        return action === "narration" || action === "dialogue" || action === "choice" || action === "choiceOption";
+    }
+    return false;
+}
+
 type GroupSpeaker = { characterId?: string; speakerName?: string };
 
 /** Whether two dialogue speakers are the same run: character id wins; a bare, non-empty name ties otherwise. */
