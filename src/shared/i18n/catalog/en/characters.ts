@@ -84,6 +84,7 @@ export const characters = {
         noThumbnail: "No thumbnail yet",
         selectHint: "Click Select to choose one",
         thumbnailAlt: "thumbnail",
+        color: "Color",
         namePlaceholder: "Character name",
         descriptionPlaceholder: "Character description…",
         tags: "Tags",
