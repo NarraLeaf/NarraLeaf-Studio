@@ -32,7 +32,9 @@ describe("getQuickParams", () => {
     it("exposes a transition duration only when a transition already exists", () => {
         expect(getQuickParams(action({ action: "setBackground", assetId: "img" }))).toEqual([]);
         const withTransition = getQuickParams(action({ action: "setBackground", assetId: "img", transition: { kind: "dissolve", durationMs: 300 } }));
-        expect(withTransition[0]).toMatchObject({ id: "t" });
+        // The token edits the transition *duration* (`d=`), matching the `bg` spec's `quickParams: ["d"]`.
+        // The transition *kind* (`t=`, an enum) stays an inspector choice, so the token is labelled "d".
+        expect(withTransition[0]).toMatchObject({ id: "d" });
         expect(withTransition[0].apply({ kind: "duration", ms: 700 })).toMatchObject({ transition: { kind: "dissolve", durationMs: 700 } });
     });
 
