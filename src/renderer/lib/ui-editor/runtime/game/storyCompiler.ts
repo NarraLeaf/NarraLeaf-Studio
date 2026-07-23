@@ -35,6 +35,7 @@ import {
     type WipeDirection,
 } from "./transitions/customImageTransitions";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
+import { resolveVariantAssetId, selectCharacterVariantNames } from "@shared/utils/characterVariant";
 import type {
     StoryActionPayload,
     StoryAnimationAsset,
@@ -2621,32 +2622,8 @@ async function resolveCharacterImageUrl(
         return null;
     }
     const variantNames = selectCharacterVariantNames(form, variants);
-    for (const variantName of variantNames) {
-        const assetId = form.variantAssets?.[variantName]?.assetId;
-        if (assetId) {
-            return resolveAsset(ctx, assetId, "image", blockId);
-        }
-    }
-    const firstAsset = Object.values(form.variantAssets ?? {}).find(asset => asset.assetId)?.assetId;
-    return firstAsset ? resolveAsset(ctx, firstAsset, "image", blockId) : null;
-}
-
-function selectCharacterVariantNames(
-    form: NonNullable<DevModeCharacterSummary["forms"]>[number],
-    variants: StoryCharacterVariantSelection | undefined,
-): string[] {
-    if (Array.isArray(variants)) {
-        return variants;
-    }
-    const selected: string[] = [];
-    for (const group of form.groups ?? []) {
-        const explicit = variants?.[group.name];
-        const fallback = group.defaultVariant ?? group.variants?.[0]?.name;
-        if (explicit || fallback) {
-            selected.push(explicit || fallback);
-        }
-    }
-    return selected;
+    const assetId = resolveVariantAssetId(form.variantAssets, variantNames, entry => entry.assetId);
+    return assetId ? resolveAsset(ctx, assetId, "image", blockId) : null;
 }
 
 async function resolveAsset(ctx: SceneCompileContext, assetId: string, assetType: StoryAssetKind, blockId: string): Promise<string | null> {

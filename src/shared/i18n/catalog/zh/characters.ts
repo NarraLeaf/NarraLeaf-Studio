@@ -85,6 +85,7 @@ export const characters = {
         noThumbnail: "暂无缩略图",
         selectHint: "点击“选择”来指定一张",
         thumbnailAlt: "缩略图",
+        color: "颜色",
         namePlaceholder: "角色名称",
         descriptionPlaceholder: "角色描述…",
         tags: "标签",
@@ -132,6 +133,9 @@ export const characters = {
         zoomIn: "放大",
         resetView: "重置视图",
         alt: "差分预览",
+        setPortrait: "头像取景",
+        resetPortrait: "重置头像取景",
+        portraitTitle: "头像取景",
     },
     variantsPanel: {
         title: "差分",

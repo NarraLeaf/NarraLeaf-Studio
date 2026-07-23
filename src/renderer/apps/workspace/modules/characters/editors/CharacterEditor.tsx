@@ -10,7 +10,8 @@ import { ContextMenu, ContextMenuDef } from "@/lib/components/elements/ContextMe
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset } from "@/lib/workspace/services/assets/types";
 import { Character } from "@/lib/workspace/services/character/Character";
-import { CharacterForm, CharacterVariantGroup, CharacterVariant } from "@/lib/workspace/services/character/types";
+import { CharacterForm, CharacterVariantGroup, CharacterVariant, PortraitCrop } from "@/lib/workspace/services/character/types";
+import { ImageCropper } from "@/apps/workspace/modules/assets/components/ImageCropper";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
@@ -40,6 +41,7 @@ const cloneForms = (forms: CharacterForm[]): CharacterForm[] =>
             variants: group.variants.map((variant: CharacterVariant) => ({ ...variant })),
         })),
         variantAssets: { ...form.variantAssets },
+        portrait: form.portrait,
     }));
 
 function getFormThumbnailVariant(form?: CharacterForm | null): string | null {
@@ -95,6 +97,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
     const [formsCollapsed, setFormsCollapsed] = useState(false);
     const [variantsCollapsed, setVariantsCollapsed] = useState(false);
+    const [portraitCropperOpen, setPortraitCropperOpen] = useState(false);
 
     const [forms, setForms] = useState<CharacterForm[]>(() => (appearance ? cloneForms(appearance.getForms()) : []));
 
@@ -602,6 +605,59 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         return assetViews[asset.id] ?? null;
     }, [activeForm, previewVariant, getVariantAsset, assetViews]);
 
+    // Portrait framing (WI-4). Effective rect = the active form's override, else the profile default;
+    // editing an unoverridden form writes the profile rect ("未覆盖时编辑的是 profile 级 rect").
+    // `profileVersion` is a dep so the effective rect re-reads after a write.
+    const effectivePortrait = useMemo<PortraitCrop | undefined>(
+        () => activeForm?.portrait ?? profile?.getPortrait(),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [activeForm, profile, profileVersion],
+    );
+    const previewImageSize = previewAsset?.metadata
+        ? { width: previewAsset.metadata.width, height: previewAsset.metadata.height }
+        : null;
+    const canEditPortrait = Boolean(previewAsset?.url && previewImageSize);
+    const portraitPixelSelection = useMemo(() => {
+        if (!previewImageSize) return undefined;
+        if (effectivePortrait) {
+            return {
+                x: effectivePortrait.x * previewImageSize.width,
+                y: effectivePortrait.y * previewImageSize.height,
+                width: effectivePortrait.w * previewImageSize.width,
+                height: effectivePortrait.h * previewImageSize.height,
+            };
+        }
+        // No rect yet: seed a square-pixel crop framed on the head (top-centre). ImageCropper's own
+        // default is a 0.6×0.6 box that ignores the aspect lock until a handle is dragged, so seeding a
+        // square here keeps a confirm-without-drag from saving a rect the square badge would distort.
+        const side = Math.min(previewImageSize.width, previewImageSize.height);
+        return { x: (previewImageSize.width - side) / 2, y: 0, width: side, height: side };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [effectivePortrait, previewImageSize?.width, previewImageSize?.height]);
+
+    const writePortrait = useCallback((rect: PortraitCrop | undefined) => {
+        if (!profile) return;
+        if (activeForm && activeForm.portrait !== undefined) {
+            appearance?.setFormPortrait(activeForm.name, rect);
+        } else {
+            profile.setPortrait(rect);
+        }
+        setProfileVersion(v => v + 1);
+    }, [appearance, activeForm, profile]);
+
+    const handlePortraitConfirm = useCallback((selection: { x: number; y: number; width: number; height: number }) => {
+        if (previewImageSize) {
+            writePortrait({
+                x: selection.x / previewImageSize.width,
+                y: selection.y / previewImageSize.height,
+                w: selection.width / previewImageSize.width,
+                h: selection.height / previewImageSize.height,
+            });
+        }
+        setPortraitCropperOpen(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [previewImageSize?.width, previewImageSize?.height, writePortrait]);
+
     const gridTemplateColumns = useMemo(() => {
         const left = formsCollapsed ? "32px" : "260px";
         const right = variantsCollapsed ? "32px" : "360px";
@@ -639,6 +695,10 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                     previewAsset={previewAsset}
                     previewLoading={previewLoading}
                     previewError={previewError}
+                    canEditPortrait={canEditPortrait}
+                    portraitSet={effectivePortrait !== undefined}
+                    onEditPortrait={() => setPortraitCropperOpen(true)}
+                    onResetPortrait={() => writePortrait(undefined)}
                 />
 
                 <VariantsPanel
@@ -678,6 +738,15 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                 position={menuState.position}
                 visible={menuState.visible}
                 onClose={() => setMenuState(prev => ({ ...prev, visible: false }))}
+            />
+            <ImageCropper
+                visible={portraitCropperOpen}
+                imageUrl={previewAsset?.url ?? ""}
+                initialSelection={portraitPixelSelection}
+                aspectRatio={1}
+                title={t("characters.preview.portraitTitle")}
+                onClose={() => setPortraitCropperOpen(false)}
+                onConfirm={handlePortraitConfirm}
             />
         </div>
     );

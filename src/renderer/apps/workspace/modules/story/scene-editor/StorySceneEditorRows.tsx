@@ -3,7 +3,10 @@ import type { CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
 import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Music, Play, Plus, Route, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
-import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
+import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterVariantSelection, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
+import { resolveVariantAssetId, selectCharacterVariantNames } from "@shared/utils/characterVariant";
+import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
+import type { NormalizedCrop } from "@/lib/utils/headCrop";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
@@ -48,11 +51,12 @@ import { StoryVoiceIndicator } from "./StoryVoiceIndicator";
 import { PausePopover } from "./PausePopover";
 import { segmentToRuns } from "./richText";
 import { useStoryEditorTextStyle } from "./storyEditorTextStyle";
-import type { EditorMode, StoryCaretTarget, VisibleStoryRow } from "./storySceneEditorTypes";
+import type { CharacterAppearanceRef, EditorMode, StoryCaretTarget, VisibleStoryRow } from "./storySceneEditorTypes";
 import {
     canAcceptChildren,
     describeBlock,
     getBlockBadgeInfo,
+    getCharacterColor,
     getCharacterName,
     getContainerHeaderInfo,
     getEmptyTextPlaceholder,
@@ -124,6 +128,17 @@ export function StoryBlockRow(props: {
     const textSegment = getTextSegment(block);
     // Plain narration and studio notes hide their badge icon (but keep its slot, for alignment).
     const hideBadge = (block.kind === "nodeAction" && block.payload.action === "narration") || block.kind === "note";
+    const isDialogue = block.kind === "nodeAction" && block.payload.action === "dialogue";
+    // Dialogue-group continuation rows (WI-5): a later same-speaker dialogue, or a same-character
+    // expression line folded into the run. Members drop their badge + nametag for a group rail.
+    const dialogueMember = row.groupRole === "member" && isDialogue;
+    const expressionMember = row.groupRole === "member"
+        && block.kind === "action" && block.payload.action === "character" && block.payload.operation === "expression";
+    // Every non-dialogue, non-narration/note row carries a low-key category colour bar at its left
+    // edge, so scene / character / sound / flow rows read apart at a glance. Same single source as the
+    // badge (ACTION_COMMAND_CATEGORIES via getBlockBadgeInfo); narration/note and in-group expression
+    // members keep zero chrome.
+    const categoryColor = !isDialogue && !hideBadge && row.groupRole !== "member" ? getBlockBadgeInfo(block).iconColor : null;
     const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
         id: row.block.id,
     });
@@ -160,6 +175,13 @@ export function StoryBlockRow(props: {
         >
             {block.kind === "action" && block.payload.action === "setBackground" && !inspectorOpen ? (
                 <BackgroundRowArtwork payload={block.payload} selected={selected} active={active} />
+            ) : null}
+            {categoryColor ? (
+                <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-y-0 left-0 w-0.5"
+                    style={{ backgroundColor: categoryColor, opacity: 0.55 }}
+                />
             ) : null}
             <div className="relative flex h-full items-start justify-end pt-1 text-[12px] tabular-nums text-fg-subtle">
                 <div className="flex min-h-[27px] items-center gap-1">
@@ -202,10 +224,12 @@ export function StoryBlockRow(props: {
                 <div className="flex min-h-[27px] min-w-0 items-center gap-2">
                     {containerInfo ? (
                         <ContainerPill info={containerInfo} />
-                    ) : hideBadge ? (
+                    ) : dialogueMember ? (
+                        <GroupRail highlight={selected || active} />
+                    ) : expressionMember ? null : hideBadge ? (
                         <span className="h-6 w-6 shrink-0" aria-hidden />
                     ) : (
-                        <BlockBadge block={block} characters={characters} />
+                        <BlockBadge block={block} characters={characters} appearance={row.appearance} />
                     )}
                     {containerInfo?.role === "branch" && containerInfo.hasCondition ? (
                         <ConditionChip
@@ -218,7 +242,9 @@ export function StoryBlockRow(props: {
                     {containerInfo?.repeatTimes !== undefined ? (
                         <RepeatTimesField block={block} onUpdatePayload={props.onUpdatePayload} />
                     ) : null}
-                    {editing && textSegment ? (
+                    {expressionMember ? (
+                        <GroupExpressionMember block={block} characters={characters} />
+                    ) : editing && textSegment ? (
                         <TextEditBox
                             editorRef={textInputRef}
                             initialCaret={props.editInitialCaret}
@@ -240,6 +266,7 @@ export function StoryBlockRow(props: {
                             document={document}
                             characters={characters}
                             onSetDialogueCharacter={props.onSetDialogueCharacter}
+                            hideSpeaker={dialogueMember}
                         />
                     ) : textSegment || !containerInfo ? (
                         <BlockPreview
@@ -252,6 +279,7 @@ export function StoryBlockRow(props: {
                             document={document}
                             characters={characters}
                             onSetDialogueCharacter={props.onSetDialogueCharacter}
+                            hideSpeaker={dialogueMember}
                         />
                     ) : null}
                     <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -325,6 +353,8 @@ function TextEditBox(props: {
     tempSpeakers: TempSpeakerRef[];
     onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
     onCreateCharacter: (name: string) => void;
+    /** In-group dialogue member (WI-5): drop the nametag and indent the text, matching the read row. */
+    hideSpeaker?: boolean;
 }) {
     const { t } = useTranslation();
     const dialoguePayload = props.block.kind === "nodeAction" && props.block.payload.action === "dialogue"
@@ -421,7 +451,7 @@ function TextEditBox(props: {
     return (
         <div ref={containerRef} className="relative flex min-w-0 flex-1 items-center gap-2 overflow-visible">
             <RichTextToolbar editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} hasVariables={variableOptions.scene.length + variableOptions.saved.length + variableOptions.persistent.length > 0} />
-            {dialoguePayload ? (
+            {dialoguePayload && !props.hideSpeaker ? (
                 <CharacterSelectTrigger
                     characters={props.characters}
                     tempSpeakers={props.tempSpeakers}
@@ -439,7 +469,8 @@ function TextEditBox(props: {
                 // Edit in place, VS Code style: no box, no sunken background, no horizontal padding — the
                 // caret lands exactly where the read-only text sat. The active/selected row highlight is
                 // the "you are here" signal, so the field needs none of its own. See the interaction model.
-                className="min-h-[20px] flex-1 whitespace-pre-wrap break-words bg-transparent text-fg outline-none empty:before:italic empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]"
+                // A group member indents by the same amount as its read row, so entering edit never jumps.
+                className={["min-h-[20px] flex-1 whitespace-pre-wrap break-words bg-transparent text-fg outline-none empty:before:italic empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]", props.hideSpeaker ? GROUP_MEMBER_INDENT : ""].join(" ")}
                 style={textStyle}
                 placeholder={editorPlaceholder(props.block, t)}
                 onChange={props.onEditRichChange}
@@ -607,6 +638,67 @@ function RailGuides({ depth, highlight }: { depth: number; highlight: boolean })
                 />
             ))}
         </>
+    );
+}
+
+/** Left indent (Tailwind) applied to an in-group dialogue member's text so it reads under the speaker. */
+const GROUP_MEMBER_INDENT = "pl-6";
+
+/** The badge-slot rail an in-group dialogue member shows in place of its avatar (WI-5). */
+function GroupRail({ highlight }: { highlight: boolean }) {
+    return (
+        <span className="relative h-6 w-6 shrink-0" aria-hidden>
+            <span className={["absolute inset-y-0 left-[11px] w-px", highlight ? "bg-primary/40" : "bg-edge"].join(" ")} />
+        </span>
+    );
+}
+
+/**
+ * The compact, muted body of an in-group expression row (WI-5): a small differential avatar and the
+ * differential's name. It stays an ordinary row (selection / drag / Enter live on the row around it);
+ * only the read-only content is compacted.
+ */
+function GroupExpressionMember({ block, characters }: { block: StoryBlock; characters: Character[] }) {
+    const { t } = useTranslation();
+    const spec = getBadgeImageSpec(block, undefined);
+    const character = spec ? characters.find(next => next.profile.getId() === spec.characterId) : undefined;
+    const resolved = character && spec?.resolveVariant
+        ? resolveCharacterBadgeImage(character, spec.formName, spec.variants)
+        : { assetId: null as string | null, frame: undefined };
+    const imageId = resolved.assetId ?? character?.profile.getThumbnail() ?? null;
+    const imageUrl = useServiceAssetObjectUrl(imageId);
+    const label = useMemo(() => {
+        if (block.kind !== "action" || block.payload.action !== "character") {
+            return "";
+        }
+        const parts: string[] = [];
+        if (block.payload.formName) {
+            parts.push(block.payload.formName);
+        }
+        const variants = block.payload.variants;
+        if (Array.isArray(variants)) {
+            parts.push(...variants);
+        } else if (variants) {
+            parts.push(...Object.values(variants));
+        }
+        return parts.join(" · ") || t("story.describe.charOp.expression");
+    }, [block, t]);
+
+    return (
+        <span className="flex min-w-0 flex-1 items-center gap-2 self-stretch text-2xs text-fg-subtle">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+                <span className="relative h-4 w-4 overflow-hidden rounded-full border border-edge bg-fill-subtle">
+                    {imageUrl ? (
+                        resolved.assetId ? (
+                            <HeadThumbnail url={imageUrl} alt="" frame={resolved.frame} className="h-full w-full" iconClassName="h-2.5 w-2.5" />
+                        ) : (
+                            <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+                        )
+                    ) : null}
+                </span>
+            </span>
+            <span className="min-w-0 truncate">{label}</span>
+        </span>
     );
 }
 
@@ -1593,6 +1685,10 @@ function CharacterSelectTrigger(props: {
     const committedName = props.characterId
         ? getCharacterName(props.characters, props.characterId)
         : props.speakerName ?? "";
+    // A real character (not a bare temp speaker) may carry an editor accent colour for its nametag.
+    const characterColor = props.characterId && !props.speakerName
+        ? getCharacterColor(props.characters, props.characterId)
+        : undefined;
     const candidates = useMemo(
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, draft),
         [draft, props.characters, props.tempSpeakers],
@@ -1652,10 +1748,10 @@ function CharacterSelectTrigger(props: {
                     type="button"
                     className={[
                         "flex h-full min-h-[28px] max-w-full items-center truncate rounded px-1 py-0.5 text-left text-sm hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
-                        unassigned ? "italic text-fg-subtle hover:text-primary" : props.speakerName ? "text-fg-muted" : "text-primary",
+                        unassigned ? "italic text-fg-subtle hover:text-primary" : props.speakerName ? "text-fg-muted" : characterColor ? "" : "text-primary",
                         props.className ?? "",
                     ].join(" ")}
-                    style={props.style}
+                    style={characterColor ? { ...props.style, color: characterColor } : props.style}
                     onMouseDown={event => {
                         event.preventDefault();
                         event.stopPropagation();
@@ -1722,30 +1818,77 @@ function CharacterSelectTrigger(props: {
     );
 }
 
-function BlockBadge({ block, characters }: { block: StoryBlock; characters: Character[] }) {
+/**
+ * Which character and appearance a row's badge should picture, and whether to resolve a
+ * differential-specific sprite (vs. fall straight through to the profile thumbnail).
+ *
+ * A character action row (`/show`, `/face`…) pictures its own payload's form/variants. A dialogue row
+ * pictures the speaker's accumulated appearance (WI-3) — but only when one exists; a speaker who has
+ * not been shown keeps the plain thumbnail, so a line before any `/show` does not invent a look.
+ */
+function getBadgeImageSpec(
+    block: StoryBlock,
+    appearance: CharacterAppearanceRef | undefined,
+): { characterId: string; formName?: string; variants?: StoryCharacterVariantSelection; resolveVariant: boolean } | null {
+    if (block.kind === "action" && block.payload.action === "character" && block.payload.characterId) {
+        return { characterId: block.payload.characterId, formName: block.payload.formName, variants: block.payload.variants, resolveVariant: true };
+    }
+    if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
+        return { characterId: block.payload.characterId, formName: appearance?.formName, variants: appearance?.variants, resolveVariant: appearance !== undefined };
+    }
+    return null;
+}
+
+/**
+ * The sprite asset id + portrait frame for a character's form/variants, resolved against the exact
+ * selection rule the runtime uses (shared `selectCharacterVariantNames` / `resolveVariantAssetId`).
+ * The frame is the form's own portrait override, else the profile default; `undefined` lets the badge
+ * fall back to the automatic head crop.
+ */
+function resolveCharacterBadgeImage(
+    character: Character,
+    formName: string | undefined,
+    variants: StoryCharacterVariantSelection | undefined,
+): { assetId: string | null; frame?: NormalizedCrop } {
+    const forms = character.profile.appearance.getForms();
+    const form = forms.find(candidate => candidate.name === formName)
+        ?? forms.find(candidate => candidate.name === character.profile.getDefaultForm())
+        ?? forms[0];
+    if (!form) {
+        return { assetId: null };
+    }
+    const variantNames = selectCharacterVariantNames(form, variants);
+    const assetId = resolveVariantAssetId(form.variantAssets, variantNames, entry => entry.data?.id);
+    return { assetId, frame: form.portrait ?? character.profile.getPortrait() };
+}
+
+function BlockBadge({ block, characters, appearance }: { block: StoryBlock; characters: Character[]; appearance?: CharacterAppearanceRef }) {
     const { label, icon: Icon, iconColor } = getBlockBadgeInfo(block);
-    const characterId = block.kind === "nodeAction" && block.payload.action === "dialogue"
-        ? block.payload.characterId
-        : block.kind === "action" && block.payload.action === "character"
-            ? block.payload.characterId
-            : undefined;
-    const character = characterId
-        ? characters.find(next => next.profile.getId() === characterId)
-        : undefined;
-    const thumbnailId = character?.profile.getThumbnail() ?? null;
-    const thumbnailUrl = useServiceAssetObjectUrl(thumbnailId);
+    const spec = getBadgeImageSpec(block, appearance);
+    const character = spec ? characters.find(next => next.profile.getId() === spec.characterId) : undefined;
+    // A differential-resolved sprite (framed on the face) when a look applies; otherwise the profile
+    // thumbnail (already a square crop, shown as-is); otherwise the category icon.
+    const resolved = character && spec?.resolveVariant
+        ? resolveCharacterBadgeImage(character, spec.formName, spec.variants)
+        : { assetId: null as string | null, frame: undefined };
+    const showingSprite = resolved.assetId !== null;
+    const imageId = resolved.assetId ?? character?.profile.getThumbnail() ?? null;
+    const imageUrl = useServiceAssetObjectUrl(imageId);
 
     return (
-        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded border border-edge bg-fill-subtle" title={label} aria-label={label}>
-            {thumbnailUrl ? (
-                <img
-                    src={thumbnailUrl}
-                    alt=""
-                    className="h-full w-full object-cover"
-                    draggable={false}
-                />
+        <span className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded border border-edge bg-fill-subtle" title={label} aria-label={label}>
+            {imageUrl ? (
+                showingSprite ? (
+                    <HeadThumbnail url={imageUrl} alt="" frame={resolved.frame} className="h-full w-full" iconClassName="h-3.5 w-3.5" />
+                ) : (
+                    <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+                )
             ) : (
-                <Icon className="h-3.5 w-3.5" style={{ color: iconColor }} />
+                <>
+                    {/* Badge fill carries the category colour (dimmed), so the icon reads on its own tint. */}
+                    <span aria-hidden className="absolute inset-0" style={{ backgroundColor: iconColor, opacity: 0.14 }} />
+                    <Icon className="relative h-3.5 w-3.5" style={{ color: iconColor }} />
+                </>
             )}
         </span>
     );
@@ -1866,6 +2009,8 @@ function BlockPreview(props: {
     tempSpeakers: TempSpeakerRef[];
     onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
     onCreateCharacter: (name: string) => void;
+    /** In-group dialogue member (WI-5): drop the nametag and indent the text under the group speaker. */
+    hideSpeaker?: boolean;
 }) {
     const { t } = useTranslation();
     const block = props.block;
@@ -1873,23 +2018,26 @@ function BlockPreview(props: {
     const textStyle = useStoryEditorTextStyle();
     if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
         const hasValue = Boolean(text?.value) || Boolean(text?.rich && text.rich.length > 0);
+        const memberIndent = props.hideSpeaker ? GROUP_MEMBER_INDENT : undefined;
         return (
             <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch text-sm">
-                <CharacterSelectTrigger
-                    characters={props.characters}
-                    tempSpeakers={props.tempSpeakers}
-                    characterId={block.payload.characterId}
-                    speakerName={block.payload.speakerName}
-                    onChoose={props.onSetSpeaker}
-                    onCreateCharacter={props.onCreateCharacter}
-                    style={textStyle}
-                />
+                {props.hideSpeaker ? null : (
+                    <CharacterSelectTrigger
+                        characters={props.characters}
+                        tempSpeakers={props.tempSpeakers}
+                        characterId={block.payload.characterId}
+                        speakerName={block.payload.speakerName}
+                        onChoose={props.onSetSpeaker}
+                        onCreateCharacter={props.onCreateCharacter}
+                        style={textStyle}
+                    />
+                )}
                 {hasValue && text ? (
-                    <TextClickTarget style={textStyle}>
+                    <TextClickTarget style={textStyle} className={memberIndent}>
                         <RichTextView className="min-w-0 flex-1 whitespace-pre-wrap break-words text-fg" segment={text} document={props.document} sceneId={props.scene.id} />
                     </TextClickTarget>
                 ) : (
-                    <TextClickTarget style={textStyle} className="italic text-fg-subtle">{getEmptyTextPlaceholder(block)}</TextClickTarget>
+                    <TextClickTarget style={textStyle} className={["italic text-fg-subtle", memberIndent].filter(Boolean).join(" ")}>{getEmptyTextPlaceholder(block)}</TextClickTarget>
                 )}
             </div>
         );

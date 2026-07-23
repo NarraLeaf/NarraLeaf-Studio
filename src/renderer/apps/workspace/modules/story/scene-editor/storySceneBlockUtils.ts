@@ -4,9 +4,102 @@ import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef
 import { storyMsToSeconds } from "@shared/utils/storyTime";
 import { richIfMeaningful } from "./richText";
 import type { Character } from "@/lib/workspace/services/character/Character";
-import type { StoryBlockTarget, VisibleStoryRow } from "./storySceneEditorTypes";
+import type { CharacterAppearanceRef, StoryBlockTarget, VisibleStoryRow } from "./storySceneEditorTypes";
 import { getActionCommandCategory, type ActionCommandCategoryId } from "./storyActionCommands";
 import { translate } from "@/lib/i18n";
+
+/**
+ * The appearance each dialogue speaker has at its line, accumulated in a single document-order pass:
+ * a character's most recent `enter`/`expression` sets it, an `exit` resets to default (absent =
+ * the character's default form + default variants). A reading aid for the row avatars, not runtime
+ * truth — it walks the tree linearly and does not model branch-specific stage state.
+ */
+export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, CharacterAppearanceRef> {
+    const current = new Map<string, CharacterAppearanceRef>();
+    const result = new Map<StoryBlockId, CharacterAppearanceRef>();
+    const visit = (blockId: StoryBlockId) => {
+        const block = scene.blocks[blockId];
+        if (!block) {
+            return;
+        }
+        if (block.kind === "action" && block.payload.action === "character" && block.payload.characterId) {
+            const characterId = block.payload.characterId;
+            if (block.payload.operation === "exit") {
+                current.delete(characterId);
+            } else if (block.payload.operation === "enter" || block.payload.operation === "expression") {
+                current.set(characterId, { formName: block.payload.formName, variants: block.payload.variants });
+            }
+        } else if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
+            const appearance = current.get(block.payload.characterId);
+            if (appearance) {
+                result.set(block.id, appearance);
+            }
+        }
+        block.childrenIds.forEach(visit);
+    };
+    scene.rootBlockIds.forEach(visit);
+    return result;
+}
+
+/**
+ * Whether a row survives the "narrative only" filter (WI-6): narration, dialogue, choice prompts and
+ * options, and studio notes. Everything else — action (including expression), control, jump,
+ * declaration, code, invalid — is staging and hides. A whitelist, so a new staging kind hides by default.
+ */
+export function isNarrativeRow(block: StoryBlock): boolean {
+    if (block.kind === "note") {
+        return true;
+    }
+    if (block.kind === "nodeAction") {
+        const action = block.payload.action;
+        return action === "narration" || action === "dialogue" || action === "choice" || action === "choiceOption";
+    }
+    return false;
+}
+
+type GroupSpeaker = { characterId?: string; speakerName?: string };
+
+/** Whether two dialogue speakers are the same run: character id wins; a bare, non-empty name ties otherwise. */
+function sameGroupSpeaker(a: GroupSpeaker, b: GroupSpeaker): boolean {
+    if (a.characterId || b.characterId) {
+        return Boolean(a.characterId) && a.characterId === b.characterId;
+    }
+    return Boolean(a.speakerName) && a.speakerName === b.speakerName;
+}
+
+/**
+ * Annotate rows with their dialogue-group role (WI-5), a pure render projection over the visible
+ * sequence. A run is consecutive dialogue rows with the same speaker; a same-character `expression`
+ * row rides along without breaking it (it renders as an in-group differential note). Any other kind
+ * ends the run. Only dialogue and in-group expression rows are cloned; every other row is returned
+ * untouched, so referential identity is preserved where it can be.
+ */
+export function annotateDialogueGroups(rows: VisibleStoryRow[]): VisibleStoryRow[] {
+    let groupSpeaker: GroupSpeaker | null = null;
+    return rows.map(row => {
+        const block = row.block;
+        if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
+            const speaker: GroupSpeaker = { characterId: block.payload.characterId, speakerName: block.payload.speakerName };
+            if (groupSpeaker && sameGroupSpeaker(groupSpeaker, speaker)) {
+                return { ...row, groupRole: "member" as const };
+            }
+            groupSpeaker = speaker;
+            return { ...row, groupRole: "head" as const };
+        }
+        if (
+            block.kind === "action"
+            && block.payload.action === "character"
+            && block.payload.operation === "expression"
+            && groupSpeaker?.characterId
+            && block.payload.characterId === groupSpeaker.characterId
+        ) {
+            // An expression change for the group's speaker: an in-group note; the run continues.
+            return { ...row, groupRole: "member" as const };
+        }
+        groupSpeaker = null;
+        return row;
+    });
+}
 
 export function buildVisibleRows(scene: StoryScene, collapsedIds: Set<StoryBlockId>): VisibleStoryRow[] {
     const rows: VisibleStoryRow[] = [];
@@ -336,7 +429,9 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
         if (payload.action === "setBackground") return translate("story.describe.setBackground", { value: payload.assetId || payload.color || translate("story.describe.unassigned") });
         if (payload.action === "character") {
             const name = payload.characterId ? getCharacterName(characters, payload.characterId) : (payload.objectName || translate("story.describe.characterFallback"));
-            return `${payload.operation} ${name}`;
+            // Localized verb + the target name ("Enter · Alice"), not the raw English enum ("enter Alice").
+            const operation = translate(`story.describe.charOp.${payload.operation}` as Parameters<typeof translate>[0]);
+            return `${operation} ${name}`;
         }
         if (payload.action === "audio") return `${payload.operation} ${payload.objectName || payload.assetId || translate("story.describe.unassigned")}`;
         if (payload.action === "setVariable") return describeAssignment(payload, variableRefShortLabel(payload.target, scene, scenes));
@@ -403,6 +498,14 @@ export function getCharacterName(characters: Character[], characterId: string | 
         return translate("story.characterName.unassigned");
     }
     return characters.find(character => character.profile.getId() === characterId)?.profile.getName() ?? translate("story.characterName.unknown");
+}
+
+/** The editor accent colour a character carries, or `undefined` when none is set (keep the default ink). */
+export function getCharacterColor(characters: Character[], characterId: string | undefined): string | undefined {
+    if (!characterId) {
+        return undefined;
+    }
+    return characters.find(character => character.profile.getId() === characterId)?.profile.getColor();
 }
 
 export function selectRange(rows: VisibleStoryRow[], fromId: StoryBlockId, toId: StoryBlockId): Set<StoryBlockId> {
