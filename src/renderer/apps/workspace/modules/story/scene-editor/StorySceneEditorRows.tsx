@@ -65,6 +65,7 @@ import {
     type StoryContainerHeaderInfo,
 } from "./storySceneBlockUtils";
 import { ConditionPopover } from "./ConditionPopover";
+import { getQuickParams, QuickParamsInline, QuickParamsSummary, type QuickParam } from "./storyQuickParams";
 import { actionTrigger, ACTION_TRIGGER, toCanonicalCommandLine } from "./commandTrigger";
 
 export function StoryBlockRow(props: {
@@ -279,6 +280,7 @@ export function StoryBlockRow(props: {
                             onSetDialogueCharacter={props.onSetDialogueCharacter}
                             hideSpeaker={dialogueMember}
                             suppressSpeakerColor={selected}
+                            onUpdatePayload={props.onUpdatePayload}
                         />
                     ) : null}
                     <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -1966,11 +1968,14 @@ function BlockPreview(props: {
     hideSpeaker?: boolean;
     /** Row is selected: the nametag yields its accent colour to the selection highlight. */
     suppressSpeakerColor?: boolean;
+    /** Commit an inline quick-param edit (WI-2) through the same history path the inspector uses. */
+    onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
     const { t } = useTranslation();
     const block = props.block;
     const text = getTextSegment(block);
     const textStyle = useStoryEditorTextStyle();
+    const quickParams = getQuickParams(block);
     if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
         const hasValue = Boolean(text?.value) || Boolean(text?.rich && text.rich.length > 0);
         const memberIndent = props.hideSpeaker ? GROUP_MEMBER_INDENT : undefined;
@@ -2017,7 +2022,7 @@ function BlockPreview(props: {
         );
     }
     if (block.kind === "action" && block.payload.action === "setBackground") {
-        return <BackgroundBlockPreview payload={block.payload} />;
+        return <BackgroundBlockPreview payload={block.payload} quickParams={quickParams} onUpdatePayload={props.onUpdatePayload} />;
     }
     if (block.kind === "action" && block.payload.action === "displayable" && block.payload.operation === "transform") {
         return (
@@ -2038,6 +2043,19 @@ function BlockPreview(props: {
         // wrong, so the row reads as a to-do; the BUILD is where it turns into an error. Click
         // re-opens the line in place, candidates and all.
         return <DraftRowPreview source={block.payload.source} commandContext={props.commandContext} />;
+    }
+    if (quickParams.length > 0) {
+        return (
+            <QuickParamsSummary
+                block={block}
+                characters={props.characters}
+                scene={props.scene}
+                scenes={props.document.scenes}
+                params={quickParams}
+                textStyle={textStyle}
+                onUpdatePayload={props.onUpdatePayload}
+            />
+        );
     }
     return <span className="min-w-0 flex-1 truncate text-sm text-fg-muted" style={textStyle}>{describeBlock(block, props.characters, props.scene, props.document.scenes)}</span>;
 }
@@ -2100,7 +2118,11 @@ function BackgroundRowArtwork({ payload, selected, active }: {
     );
 }
 
-function BackgroundBlockPreview({ payload }: { payload: Extract<StoryActionPayload, { action: "setBackground" }> }) {
+function BackgroundBlockPreview({ payload, quickParams, onUpdatePayload }: {
+    payload: Extract<StoryActionPayload, { action: "setBackground" }>;
+    quickParams: QuickParam[];
+    onUpdatePayload: (payload: StoryBlock["payload"]) => void;
+}) {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const textStyle = useStoryEditorTextStyle();
@@ -2112,10 +2134,11 @@ function BackgroundBlockPreview({ payload }: { payload: Extract<StoryActionPaylo
     const label = asset?.name ?? (payload.assetId ? t("story.background.missingImage") : payload.color || t("story.background.unassigned"));
 
     return (
-        <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-fg-muted" style={textStyle}>
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-fg-muted" style={textStyle}>
             <span className="min-w-0 truncate" style={{ maxWidth: BACKGROUND_LABEL_MAX_WIDTH }}>
                 {t("story.rows.setBackground")} <span className={payload.assetId || payload.color ? "text-fg" : "italic text-fg-subtle"}>{label}</span>
             </span>
+            <QuickParamsInline params={quickParams} onUpdatePayload={onUpdatePayload} />
         </span>
     );
 }

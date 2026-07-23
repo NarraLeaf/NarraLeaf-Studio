@@ -657,6 +657,10 @@ export const story = {
         savedVariable: "存档变量",
         persistent: "持久化",
     },
+    quickParam: {
+        waitLabel: "等待",
+        jumpLabel: "跳转到",
+    },
     keybindings: {
         deleteRows: "删除选中的故事行",
         deleteRowsConfirm: "删除选中的故事行（多选时需确认）",
