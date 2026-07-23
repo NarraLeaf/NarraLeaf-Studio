@@ -618,13 +618,20 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         : null;
     const canEditPortrait = Boolean(previewAsset?.url && previewImageSize);
     const portraitPixelSelection = useMemo(() => {
-        if (!effectivePortrait || !previewImageSize) return undefined;
-        return {
-            x: effectivePortrait.x * previewImageSize.width,
-            y: effectivePortrait.y * previewImageSize.height,
-            width: effectivePortrait.w * previewImageSize.width,
-            height: effectivePortrait.h * previewImageSize.height,
-        };
+        if (!previewImageSize) return undefined;
+        if (effectivePortrait) {
+            return {
+                x: effectivePortrait.x * previewImageSize.width,
+                y: effectivePortrait.y * previewImageSize.height,
+                width: effectivePortrait.w * previewImageSize.width,
+                height: effectivePortrait.h * previewImageSize.height,
+            };
+        }
+        // No rect yet: seed a square-pixel crop framed on the head (top-centre). ImageCropper's own
+        // default is a 0.6×0.6 box that ignores the aspect lock until a handle is dragged, so seeding a
+        // square here keeps a confirm-without-drag from saving a rect the square badge would distort.
+        const side = Math.min(previewImageSize.width, previewImageSize.height);
+        return { x: (previewImageSize.width - side) / 2, y: 0, width: side, height: side };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [effectivePortrait, previewImageSize?.width, previewImageSize?.height]);
 
