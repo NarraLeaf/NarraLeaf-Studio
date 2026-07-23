@@ -60,6 +60,8 @@ const { postcssPlugin } = require('./postCss-plugin');
             format: 'iife',
             sourcemap: isDev(),
             minify: !isDev(),
+            // Dev-only debug hooks compile in for dev builds and tree-shake out otherwise.
+            define: { __NLS_STUDIO_DEV__: JSON.stringify(isDev()) },
             jsx: 'automatic',
             target: ['chrome114', 'firefox120', 'safari16'],
             // narraleaf-react is linked from a sibling checkout whose own node_modules also

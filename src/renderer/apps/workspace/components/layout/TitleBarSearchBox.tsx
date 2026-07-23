@@ -11,6 +11,7 @@ import {
     type PaletteSessionState,
 } from "./commandPaletteController";
 import { compositionHandlers, isComposingText } from "./imeComposition";
+import { useProjectDisplayName } from "../../hooks";
 import type { ChangeEvent, CompositionEvent } from "react";
 
 /** Shared pill chrome for both states, so opening never visually jumps. */
@@ -25,6 +26,8 @@ const PILL_CLASS =
  */
 export function TitleBarSearchBox() {
     const { t } = useTranslation();
+    const projectName = useProjectDisplayName();
+    const placeholder = t("workspace.shell.search.titleBarPlaceholder", { name: projectName });
     const [session, setSession] = useState<PaletteSessionState>({ open: false, query: "" });
     const inputRef = useRef<HTMLInputElement>(null);
     // The input is controlled by this local draft, not by `session.query` directly: the query round-trips
@@ -84,7 +87,7 @@ export function TitleBarSearchBox() {
                         ref={inputRef}
                         type="text"
                         value={draft}
-                        placeholder={t("workspace.shell.search.titleBarPlaceholder")}
+                        placeholder={placeholder}
                         aria-label={t("workspace.shell.commandPalette.title")}
                         spellCheck={false}
                         autoComplete="off"
@@ -119,12 +122,12 @@ export function TitleBarSearchBox() {
                 <button
                     type="button"
                     onClick={() => openCommandPalette("")}
-                    title={t("workspace.shell.search.titleBarPlaceholder")}
-                    aria-label={t("workspace.shell.search.titleBarPlaceholder")}
+                    title={placeholder}
+                    aria-label={placeholder}
                     className={`${PILL_CLASS} cursor-default justify-center text-fg-subtle transition-colors hover:bg-fill hover:text-fg-muted`}
                 >
                     <Search className="h-3 w-3 shrink-0" />
-                    <span className="truncate">{t("workspace.shell.search.titleBarPlaceholder")}</span>
+                    <span className="truncate">{placeholder}</span>
                 </button>
             )}
         </div>

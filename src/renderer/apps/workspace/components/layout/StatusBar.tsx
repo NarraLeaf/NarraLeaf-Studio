@@ -2,7 +2,12 @@ import { useMemo } from "react";
 import { useStatusBarItems } from "../../hooks/useUIService";
 import { useTranslation } from "@/lib/i18n";
 import { StatusBarAlignment, type StatusBarItem } from "@/lib/workspace/services/ui/types";
-import { builtInStatusBarEntries, StatusEntry } from "../../modules/status-bar";
+import {
+    builtInStatusBarEntries,
+    StatusEntry,
+    StatusBarRunningContext,
+    useActiveRunMode,
+} from "../../modules/status-bar";
 import type { StatusBarEntryModule } from "../../modules/types";
 import { orderStatusBarEntries } from "./statusBarEntryOrder";
 import { useStatusBarContextMenu } from "./useStatusBarContextMenu";
@@ -31,6 +36,10 @@ type ResolvedEntry =
 export function StatusBar() {
     const { t } = useTranslation();
     const serviceItems = useStatusBarItems();
+    // While any mode runs the whole strip switches to the theme colour; cells read this through
+    // StatusBarRunningContext and flip to on-primary ink. The wash IS the "running" signal — there
+    // is no separate status dot.
+    const running = useActiveRunMode() !== null;
 
     // Built-ins first, then runtime registrations — so plugin entries pack closest to the centre.
     const entries: ResolvedEntry[] = useMemo(
@@ -95,14 +104,18 @@ export function StatusBar() {
         orderStatusBarEntries(entries, alignment, hiddenIds).map(renderEntry);
 
     return (
-        <div
-            className="flex shrink-0 items-stretch justify-between overflow-hidden border-t border-edge bg-surface-sunken"
-            style={{ height: STATUS_BAR_HEIGHT }}
-            onContextMenu={event => openMenu(event)}
-        >
-            <div className="flex min-w-0 items-stretch">{renderSide(StatusBarAlignment.Left)}</div>
-            <div className="flex min-w-0 items-stretch">{renderSide(StatusBarAlignment.Right)}</div>
-            {menu}
-        </div>
+        <StatusBarRunningContext.Provider value={running}>
+            <div
+                className={`flex shrink-0 items-stretch justify-between overflow-hidden border-t transition-colors duration-300 ${
+                    running ? "border-primary bg-primary" : "border-edge bg-surface-sunken"
+                }`}
+                style={{ height: STATUS_BAR_HEIGHT }}
+                onContextMenu={event => openMenu(event)}
+            >
+                <div className="flex min-w-0 items-stretch">{renderSide(StatusBarAlignment.Left)}</div>
+                <div className="flex min-w-0 items-stretch">{renderSide(StatusBarAlignment.Right)}</div>
+                {menu}
+            </div>
+        </StatusBarRunningContext.Provider>
     );
 }

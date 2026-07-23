@@ -1,10 +1,8 @@
 import { StatusBarAlignment } from "@/lib/workspace/services/ui/types";
 import type { StatusBarEntryModule } from "../types";
 import {
-    BuildEntry,
-    DevModeEntry,
     NotificationsEntry,
-    PreviewEntry,
+    RunStatusEntry,
     ShortcutsEntry,
     ThemeEntry,
     UnsavedChangesEntry,
@@ -12,7 +10,8 @@ import {
     ZoomEntry,
 } from "./entries";
 
-export { StatusEntry } from "./StatusEntry";
+export { StatusEntry, StatusBarRunningContext } from "./StatusEntry";
+export { useActiveRunMode } from "./useActiveRunMode";
 
 /**
  * The built-in status bar entries, in **registration order**.
@@ -29,22 +28,10 @@ export { StatusEntry } from "./StatusEntry";
  */
 export const builtInStatusBarEntries: StatusBarEntryModule[] = [
     {
-        id: "narraleaf-studio:status-bar/dev-mode",
-        labelKey: "workspace.shell.statusBar.entries.devMode",
+        id: "narraleaf-studio:status-bar/run-status",
+        labelKey: "workspace.shell.statusBar.entries.runStatus",
         alignment: StatusBarAlignment.Left,
-        component: DevModeEntry,
-    },
-    {
-        id: "narraleaf-studio:status-bar/preview",
-        labelKey: "workspace.shell.statusBar.entries.preview",
-        alignment: StatusBarAlignment.Left,
-        component: PreviewEntry,
-    },
-    {
-        id: "narraleaf-studio:status-bar/build",
-        labelKey: "workspace.shell.statusBar.entries.build",
-        alignment: StatusBarAlignment.Left,
-        component: BuildEntry,
+        component: RunStatusEntry,
     },
     {
         id: "narraleaf-studio:status-bar/unsaved-changes",

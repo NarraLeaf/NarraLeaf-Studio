@@ -10,6 +10,15 @@ export const actions = {
     build: {
         tooltip: "构建项目",
     },
+    // 运行拆分按钮：承载当前所选模式的运行按钮，配一个用于切换模式的下拉框。
+    run: {
+        devMode: "开发模式",
+        preview: "预览",
+        runDevMode: "运行开发模式",
+        runPreview: "运行预览",
+        // 用于切换按钮运行哪种模式的下拉框；有模式运行时禁用。
+        switchMode: "切换运行模式",
+    },
     file: {
         label: "文件",
         new: {

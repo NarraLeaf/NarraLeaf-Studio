@@ -240,11 +240,22 @@ export const workspace = {
         },
         // 底部状态条。各信号只在有意义时出现（运行中/构建中/未保存）。
         statusBar: {
+            // 统一「运行状态」单元格的模式名称，格式为「模式 | 阶段」，任一模式运行时整条状态栏都会染成主题色。
             devMode: "开发模式",
-            devModeRunning: "开发模式运行中",
             preview: "预览",
-            previewRunning: "预览运行中",
-            building: "构建中…",
+            production: "生产构建",
+            // 分隔符之后的阶段文案。并非每个阶段都适用于每种模式。
+            phase: {
+                starting: "启动中…",
+                preparing: "准备中…",
+                compiling: "编译中…",
+                launching: "启动中…",
+                packaging: "打包中…",
+                running: "运行中",
+                reloading: "重载中…",
+                stopping: "停止中…",
+            },
+            openConsole: "打开控制台",
             unsavedChanges: "未保存的更改",
             saveNow: "立即保存",
             resetZoom: "重置缩放到 100%",
@@ -253,11 +264,10 @@ export const workspace = {
             lines: "{count} 行",
             noStoryOpen: "未打开故事",
             openDashboard: "打开项目仪表盘",
+            openCurrentScene: "打开当前场景",
             // 已注册状态栏项目的名称，仅在状态栏右键开关菜单中显示。
             entries: {
-                devMode: "开发模式状态",
-                preview: "预览状态",
-                build: "构建状态",
+                runStatus: "运行状态",
                 unsavedChanges: "未保存的更改",
                 wordCount: "故事统计",
                 shortcuts: "快捷键速查",
@@ -328,8 +338,8 @@ export const workspace = {
         // 全局项目搜索：dock 面板与命令面板搜索模式共用。
         search: {
             placeholder: "搜索项目…",
-            // 顶栏搜索 pill 上的文案（点击后打开搜索模式的命令面板）。
-            titleBarPlaceholder: "在项目里搜索",
+            // 顶栏搜索 pill 上的文案（点击后打开搜索模式的命令面板）。`{name}` 为当前项目名。
+            titleBarPlaceholder: "在 {name} 里搜索",
             building: "正在建立搜索索引…",
             empty: "没有匹配结果",
             more: "还有 {count} 条",

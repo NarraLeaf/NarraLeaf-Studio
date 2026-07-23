@@ -1412,3 +1412,4 @@ export type IPCMenuEvents = {
         response: never;
     };
 };
+

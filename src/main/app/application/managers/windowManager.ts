@@ -37,6 +37,7 @@ export class WindowManager {
     public registerWindow(win: AppWindow): void {
         this.windows.push(win);
         this.byWebContentsId.set(win.getWebContents().id, win);
+        this.events.emit("window-created", win);
     }
 
     public unregisterWindow(win: AppWindow): void {

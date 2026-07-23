@@ -3,6 +3,10 @@
 Use `project/app/cdp.js` to talk to the Electron dev app through Chrome DevTools
 Protocol without rewriting the WebSocket setup each time.
 
+> Just need the logs? Reach for [`debug.js`](./debug.md) first — it dumps the
+> app Console panel and any window's DevTools console over HTTP without a CDP
+> session. Use this CDP helper for page control: reload, evaluate JS, screenshots.
+
 The dev command already enables CDP on port `9222`:
 
 ```sh

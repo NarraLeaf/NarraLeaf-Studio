@@ -26,6 +26,7 @@ import { PluginPermissionManager } from "./managers/pluginPermissionManager";
 import { PluginManager } from "./managers/pluginManager";
 import { isMainDevMode, parseMainCommandLine } from "./commandLine";
 import { applyThemeMode, getWindowBackgroundColor } from "./theme";
+import { StudioDebugServer } from "./managers/debug/studioDebugServer";
 import { APP_DISPLAY_NAME } from "@shared/constants/app";
 
 export interface AppDependencies {
@@ -65,6 +66,7 @@ export class BaseApp {
     private quitting: boolean = false;
     protected appInfo: AppInfo | null = null;
     private readonly commandLine = parseMainCommandLine(process.argv);
+    private debugServer: StudioDebugServer | null = null;
 
     constructor(config: BaseAppConfig) {
         this.config = config;
@@ -409,6 +411,7 @@ export class BaseApp {
         if (this.isDevMode()) {
             this.logger.info("App is running in development mode");
             void this.setupDevReloadSocket();
+            this.startDebugServer();
         }
 
         await this.electronApp.whenReady();
@@ -483,6 +486,22 @@ export class BaseApp {
             };
         } catch (error) {
             this.logger.warn("[Dev] Failed to set up reload socket:", error);
+        }
+    }
+
+    /**
+     * Start the dev-only debug HTTP server (127.0.0.1). It exposes the app's
+     * Console service and every window's DevTools console feed so tooling can
+     * pull Studio's logs without a hand-rolled CDP session. Never fatal: a
+     * failure here only disables the convenience surface.
+     */
+    private startDebugServer(): void {
+        try {
+            this.debugServer = new StudioDebugServer(this);
+            this.debugServer.start();
+            this.electronApp.on("before-quit", () => this.debugServer?.stop());
+        } catch (error) {
+            this.logger.warn("[Debug] Failed to start debug server:", error);
         }
     }
 

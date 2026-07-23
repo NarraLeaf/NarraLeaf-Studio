@@ -305,6 +305,8 @@ function broadcastReload(target = 'all') {
             sourcemap: true,
             jsx: 'automatic',
             target: ['chrome114'],
+            // `yarn dev` is always a development build.
+            define: { __NLS_STUDIO_DEV__: 'true' },
             // narraleaf-react is linked from a sibling checkout whose own node_modules also
             // contains these packages; pin them to THIS repo's copies so the bundle never
             // carries two React (or motion) instances (see build-apps.js).

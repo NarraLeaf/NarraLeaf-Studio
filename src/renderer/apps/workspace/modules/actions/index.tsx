@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-    Play,
-    Hammer,
     Package,
     FileText,
     FolderOpen,
@@ -17,17 +15,10 @@ import { openWelcomeTab } from "../welcome/openWelcomeTab";
 import { openAboutTab } from "../about/openAboutTab";
 import { getInterface } from "@/lib/app/bridge";
 import { Separator } from "../../registry/types";
-import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
-import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
-import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
 import { BuildService } from "@/lib/workspace/services/core/BuildService";
-import type { DevModeStatus } from "@shared/types/devMode";
-import type { PreviewStatus } from "@shared/types/gameRuntime";
 import type { GameBuildStatus } from "@shared/types/gameBuild";
 import { useWorkspace } from "../../context";
-import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
-import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "./runtimeActionStatus";
 import { openBuildDialog } from "./BuildDialog";
 import { translate, translateN } from "@/lib/i18n";
 
@@ -37,109 +28,11 @@ import { translate, translateN } from "@/lib/i18n";
  */
 
 /**
- * Run project action
- * Executes the current project
- */
-/**
- * Dev mode action
- * Launches dev mode window for the current project
- */
-export const devModeAction: ModuleAction = {
-    id: "narraleaf-studio:dev-mode",
-    icon: <DevModeActionIcon />,
-    tooltip: "Dev Mode",
-    tooltipKey: "actions.devMode.tooltip",
-    onClick: (workspace: Workspace) => {
-        const devModeService = workspace.getContext().services.get<DevModeService>(Services.DevMode);
-        const status = devModeService.getStatus();
-        if (isDevModeRuntimeActive(status)) {
-            void devModeService.stop();
-            return;
-        }
-        void (async () => {
-            try {
-                await flushUIDocAndGraphIfDirty(workspace);
-            } catch (e) {
-                console.error("[DevMode] flush before launch failed", e);
-            }
-            await devModeService.launch({
-                kind: "surface",
-                surfaceId: MAIN_APP_SURFACE_ID,
-            });
-        })();
-    },
-    order: 1,
-};
-
-function DevModeActionIcon() {
-    const { context } = useWorkspace();
-    const [status, setStatus] = useState<DevModeStatus>("idle");
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const devModeService = context.services.get<DevModeService>(Services.DevMode);
-        setStatus(devModeService.getStatus());
-        const unsub = devModeService.onStatusChanged(setStatus);
-        return () => {
-            unsub();
-        };
-    }, [context]);
-
-    // Anything but the error tint inherits the button's own text color: idle it is
-    // `text-fg-muted` (and gains the hover brighten), running it is the white of the
-    // danger-filled stop button. Pinning a color here would defeat both.
-    const iconClass = useMemo(() => (status === "error" ? "text-danger" : ""), [status]);
-
-    return <Play className={cn("w-4 h-4", iconClass)} />;
-}
-
-export const previewAction: ModuleAction = {
-    id: "narraleaf-studio:preview",
-    icon: <PreviewActionIcon />,
-    tooltip: "Preview",
-    tooltipKey: "actions.preview.tooltip",
-    onClick: (workspace: Workspace) => {
-        const previewService = workspace.getContext().services.get<PreviewService>(Services.Preview);
-        const status = previewService.getStatus();
-        if (isPreviewRuntimeActive(status)) {
-            void previewService.stop();
-            return;
-        }
-        void previewService.launch({
-            kind: "surface",
-            surfaceId: MAIN_APP_SURFACE_ID,
-        });
-    },
-    order: 2,
-};
-
-function PreviewActionIcon() {
-    const { context } = useWorkspace();
-    const [status, setStatus] = useState<PreviewStatus>("idle");
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const previewService = context.services.get<PreviewService>(Services.Preview);
-        setStatus(previewService.getStatus());
-        const unsub = previewService.onStatusChanged(setStatus);
-        return () => {
-            unsub();
-        };
-    }, [context]);
-
-    // See DevModeActionIcon: every state but "error" inherits the button's text color.
-    const iconClass = useMemo(() => (status === "error" ? "text-danger" : ""), [status]);
-
-    return <Hammer className={cn("w-4 h-4", iconClass)} />;
-}
-
-/**
  * Build project action
  * Opens the production build dialog for the current project.
+ *
+ * Dev Mode and Preview are no longer standalone actions — the toolbar's Run split-button
+ * ({@link RunControl}) owns launching and stopping both. Build keeps its own single-icon button.
  */
 export const buildAction: ModuleAction = {
     id: "narraleaf-studio:build",
@@ -338,7 +231,7 @@ export const helpActionGroup: ModuleActionGroup = {
  * All global actions
  * Array of all actions that should be registered globally
  */
-export const globalActions: ModuleAction[] = [devModeAction, previewAction, buildAction];
+export const globalActions: ModuleAction[] = [buildAction];
 
 /**
  * All global action groups
