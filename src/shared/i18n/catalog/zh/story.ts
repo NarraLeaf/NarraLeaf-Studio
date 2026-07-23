@@ -187,6 +187,10 @@ export const story = {
         z: "层级",
     },
 
+    view: {
+        narrativeOnly: "只看叙事",
+        comfortableDensity: "舒适密度",
+    },
     rows: {
         placeholderDialogue: "对话…",
         placeholderNarration: "旁白…",

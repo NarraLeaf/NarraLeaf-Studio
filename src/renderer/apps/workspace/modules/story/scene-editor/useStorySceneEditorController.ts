@@ -36,6 +36,7 @@ import {
     buildVisibleRows,
     canAcceptChildren,
     describeBlock,
+    isNarrativeRow,
     filterOutSelectedDescendants,
     findPreviousSibling,
     nextSelectionAfterDelete,
@@ -49,7 +50,7 @@ import {
     updateTextPayload,
 } from "./storySceneBlockUtils";
 import { isInteractiveTarget, isTextInputActive } from "./storySceneDom";
-import { getStoryEditorViewState, patchStoryEditorViewState } from "./storyEditorSessionStore";
+import { getStoryEditorViewPrefs, getStoryEditorViewState, patchStoryEditorViewPrefs, patchStoryEditorViewState, type StoryEditorDensity } from "./storyEditorSessionStore";
 import { cloneSerializedBlock, insertSerializedClone, serializeBlockSubtree } from "./storySceneClipboard";
 import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
@@ -142,6 +143,22 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         return new Set(saved ?? []);
     });
     const [collapsedBlockIds, setCollapsedBlockIds] = useState<Set<StoryBlockId>>(() => new Set());
+    // Editor-wide view preferences (WI-6). PanelStateService loads from disk before the editor renders,
+    // so the synchronous read below sees the persisted value; the setters write it back.
+    const [narrativeOnly, setNarrativeOnlyState] = useState<boolean>(() => (panelStateService ? getStoryEditorViewPrefs(panelStateService).narrativeOnly : false));
+    const [density, setDensityState] = useState<StoryEditorDensity>(() => (panelStateService ? getStoryEditorViewPrefs(panelStateService).density : "compact"));
+    const setNarrativeOnly = useCallback((value: boolean) => {
+        setNarrativeOnlyState(value);
+        if (panelStateService) {
+            patchStoryEditorViewPrefs(panelStateService, { narrativeOnly: value });
+        }
+    }, [panelStateService]);
+    const setDensity = useCallback((value: StoryEditorDensity) => {
+        setDensityState(value);
+        if (panelStateService) {
+            patchStoryEditorViewPrefs(panelStateService, { density: value });
+        }
+    }, [panelStateService]);
     const [editorMode, setEditorMode] = useState<EditorMode>({ kind: "idle" });
     /**
      * The keyboard cursor is on the "add a row" line that sits just past the last row, reached by
@@ -259,6 +276,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return [];
         }
         let rows = buildVisibleRows(scene, collapsedBlockIds);
+        // "Narrative only" (WI-6) drops staging rows but leaves each survivor's line number as-is —
+        // filtering after buildVisibleRows (which assigns them) is what keeps the numbers un-renumbered.
+        if (narrativeOnly) {
+            rows = rows.filter(row => isNarrativeRow(row.block));
+        }
         if (dialogueAppearances) {
             rows = rows.map(row => {
                 const appearance = dialogueAppearances.get(row.block.id);
@@ -267,7 +289,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         // Grouping runs last, over the exact rows that will render (WI-5).
         return annotateDialogueGroups(rows);
-    }, [collapsedBlockIds, dialogueAppearances, scene]);
+    }, [collapsedBlockIds, dialogueAppearances, narrativeOnly, scene]);
     const rowIndexById = useMemo(() => {
         const result = new Map<StoryBlockId, number>();
         visibleRows.forEach((row, index) => result.set(row.block.id, index));
@@ -1838,6 +1860,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         context, isInitialized, document, scene, loading,
         activeBlockId, selectedBlockIds, collapsedBlockIds, editorMode, addRowFocused,
         characters, commandContext, visibleRows, shouldRenderActiveInsertSlot,
+        density, setDensity, narrativeOnly, setNarrativeOnly,
         rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
         deleteRows, deleteSelection, startInsertAfter, selectRow, beginDragSelection,
