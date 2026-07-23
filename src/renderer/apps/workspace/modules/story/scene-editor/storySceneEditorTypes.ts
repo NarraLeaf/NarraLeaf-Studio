@@ -78,8 +78,13 @@ export type EditorMode =
      * statement about this line ("I know what I'm typing"). It is one-shot - the next keystroke clears it
      * (see `handleInsertValueChange`), so the menu comes back the moment the author edits, rather than
      * staying shut for the slot's whole life.
+     *
+     * `confirmation` is the just-declared line's ghost receipt (`✓ Var gold: number = 0`, bible §3.5),
+     * carried on the fresh slot that opens after a declaration commits. Like `chooserDismissed` it is
+     * one-shot — the next edit strips it (see `handleInsertValueChange`) — and it lives on the slot, not
+     * in separate state, so navigating to any other slot leaves it behind without anyone clearing it.
      */
-    | { kind: "insert"; slot: InsertSlot; value: string; chooserDismissed?: boolean }
+    | { kind: "insert"; slot: InsertSlot; value: string; chooserDismissed?: boolean; confirmation?: string }
     | { kind: "inspector"; blockId: StoryBlockId };
 
 export type SerializedStoryBlock = {

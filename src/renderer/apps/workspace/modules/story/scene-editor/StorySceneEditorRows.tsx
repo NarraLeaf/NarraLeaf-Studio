@@ -956,7 +956,7 @@ function candidateIcon(cursor: StoryCommandCursor, candidate: StoryCommandCandid
  * padding, `whitespace-pre` so runs of spaces measure as typed, and `pointer-events-none` so a click
  * anywhere still lands in the field beneath.
  */
-function CommandGhostHint(props: { value: string; source: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext }) {
+function CommandGhostHint(props: { value: string; source: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext; confirmation?: string }) {
     const { t } = useTranslation();
     // The ghost and reason parse the canonical "/" line (`source`); the invisible spacer below uses the
     // displayed `value` so it occupies the exact width the author sees ("@" and "/" render differently).
@@ -967,7 +967,7 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
         () => getCommandLineReason(props.source, props.commandContext),
         [props.commandContext, props.source],
     );
-    if (!ghost && !reason) {
+    if (!ghost && !reason && !props.confirmation) {
         return null;
     }
     return (
@@ -979,7 +979,11 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
             {/* Invisible, not `opacity-0` on the whole span: only the copy of the typed text should be
                 hidden, and it still has to occupy its exact width to push what follows into place. */}
             <span className="invisible">{props.value}</span>
-            {reason ? (
+            {props.confirmation ? (
+                // The just-declared line's receipt (bible §3.5). It only ever rides an empty slot (the
+                // commit clears the value and the next edit strips it), so it renders flush at the start.
+                <span className="not-italic text-success/80">{props.confirmation}</span>
+            ) : reason ? (
                 <span className="text-danger/80">{`  ${t(reason.key, reason.params)}`}</span>
             ) : (
                 <span className="italic text-fg-subtle">{`<${t(`story.paramHint.${ghost!.hintKey}` as TranslationKey)}>`}</span>
@@ -1153,7 +1157,7 @@ export function InsertRow(props: {
                     anchor, so it is positioned against the field's box and inherits its exact metrics.
                     `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
                 <div className="relative flex min-w-0 flex-1">
-                <CommandGhostHint value={props.mode.value} source={source} caret={caret} textStyle={textStyle} commandContext={props.commandContext} />
+                <CommandGhostHint value={props.mode.value} source={source} caret={caret} textStyle={textStyle} commandContext={props.commandContext} confirmation={props.mode.confirmation} />
                 <textarea
                     ref={props.inputRef}
                     // Same in-place surface as an editing row (see TextEditBox): the new line reads as a
@@ -1163,8 +1167,10 @@ export function InsertRow(props: {
                     style={textStyle}
                     rows={1}
                     value={props.mode.value}
-                    // The hint advertises whichever trigger this author actually uses.
-                    placeholder={t("story.rows.insertPlaceholder", { trigger: props.slashAtAlias ? "@" : "/" })}
+                    // The hint advertises whichever trigger this author actually uses. Suppressed while a
+                    // declaration receipt occupies the ghost zone, so the two do not overprint on the
+                    // empty slot; the next keystroke clears the receipt and the placeholder is moot anyway.
+                    placeholder={props.mode.confirmation ? "" : t("story.rows.insertPlaceholder", { trigger: props.slashAtAlias ? "@" : "/" })}
                     onChange={event => {
                         setCaret(event.target.selectionStart ?? event.target.value.length);
                         props.onValueChange(event.target.value);
