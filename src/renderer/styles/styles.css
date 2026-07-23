@@ -461,7 +461,8 @@ input[type="radio"]:focus {
  * of just growing taller text inside the same 35px slot. Unlayered so it outranks the row's own
  * `min-h-[35px]` Tailwind utility. Compact (the default) has no rule and keeps the status quo.
  */
-[data-story-density="comfortable"] [data-story-row-block-id] {
+[data-story-density="comfortable"] [data-story-row-block-id],
+[data-story-density="comfortable"] [data-story-insert-slot] {
     min-height: 46px;
 }
 

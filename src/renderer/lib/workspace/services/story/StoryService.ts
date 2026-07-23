@@ -980,6 +980,22 @@ export class StoryService extends Service<StoryService> implements IStoryService
         });
     }
 
+    /** Set or clear a block's compiled-out flag (schema v7). Clearing deletes the field so an enabled block stays clean. */
+    public setBlockDisabled(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, disabled: boolean): void {
+        this.mutateDocument(storyId, document => {
+            const scene = this.getSceneOrThrow(document, sceneId);
+            const block = scene.blocks[blockId];
+            if (!block) {
+                return;
+            }
+            if (disabled) {
+                block.disabled = true;
+            } else {
+                delete block.disabled;
+            }
+        });
+    }
+
     public replaceScene(storyId: StoryId, sceneId: StorySceneId, scene: StoryScene): void {
         this.mutateDocument(storyId, document => {
             this.getSceneOrThrow(document, sceneId);

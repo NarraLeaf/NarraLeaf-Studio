@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
-import { annotateDialogueGroups, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isNarrativeRow, nextSelectionAfterDelete } from "./storySceneBlockUtils";
+import { annotateDialogueGroups, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isNarrativeRow, isReadableAccentColor, nextSelectionAfterDelete } from "./storySceneBlockUtils";
 
 function control(payload: Extract<StoryBlock, { kind: "control" }>["payload"]): StoryBlock {
     return { id: "b", kind: "control", parentId: null, childrenIds: [], payload };
@@ -153,6 +153,39 @@ describe("annotateDialogueGroups", () => {
         expect(rolesOf([dialogue("a", { speakerName: "Guard" }), dialogue("b", { speakerName: "Maid" })])).toEqual(["head", "head"]);
         expect(rolesOf([dialogue("a"), dialogue("b")])).toEqual(["head", "head"]);
     });
+
+    it("never groups a real character with a bare name, even when the names would print the same", () => {
+        // One row keys on `characterId`, the other on `speakerName`; they are different identities.
+        expect(rolesOf([dialogue("a", { characterId: "c1" }), dialogue("b", { speakerName: "c1" })])).toEqual(["head", "head"]);
+        expect(rolesOf([dialogue("a", { speakerName: "c1" }), dialogue("b", { characterId: "c1" })])).toEqual(["head", "head"]);
+    });
+
+    it("does not group across a container boundary — an option body's last line vs a same-speaker line outside", () => {
+        // Flattened order is [option, inside, outside]; adjacency in that list is not adjacency in the
+        // tree, so `inside` (parent=opt) must not merge with `outside` (parent=root) despite same speaker.
+        const opt: StoryBlock = { id: "opt", kind: "nodeAction", parentId: null, childrenIds: ["inside"], payload: { action: "choiceOption", text: { textId: "opt-t", role: "choiceText", value: "pick" } } };
+        const inside: StoryBlock = { id: "inside", kind: "nodeAction", parentId: "opt", childrenIds: [], payload: { action: "dialogue", characterId: "c1", text: { textId: "inside-t", role: "dialogue", value: "inside" } } };
+        const outside: StoryBlock = { id: "outside", kind: "nodeAction", parentId: null, childrenIds: [], payload: { action: "dialogue", characterId: "c1", text: { textId: "outside-t", role: "dialogue", value: "outside" } } };
+        const rows = annotateDialogueGroups(buildVisibleRows(scene([opt, inside, outside], ["opt", "outside"]), new Set()));
+        expect(rows.map(row => row.groupRole)).toEqual([undefined, "head", "head"]);
+    });
+});
+
+describe("filter then group", () => {
+    it("keeps original line numbers and groups the survivors that filtering made adjacent", () => {
+        // Pipeline mirrors the controller: buildVisibleRows -> narrative filter -> annotateDialogueGroups.
+        const blocks = [
+            dialogue("d1", { characterId: "c1" }),
+            characterAction("x", { action: "character", operation: "enter", characterId: "c1" }),
+            dialogue("d2", { characterId: "c1" }),
+        ];
+        const visible = buildVisibleRows(scene(blocks, blocks.map(b => b.id)), new Set());
+        const filtered = annotateDialogueGroups(visible.filter(row => isNarrativeRow(row.block)));
+        // The hidden `enter` (line 2) is dropped, but d1/d2 keep their original numbers — not renumbered.
+        expect(filtered.map(row => row.lineNumber)).toEqual([1, 3]);
+        // With the staging row gone, d1/d2 are adjacent and group.
+        expect(filtered.map(row => row.groupRole)).toEqual(["head", "member"]);
+    });
 });
 
 describe("isNarrativeRow", () => {
@@ -166,6 +199,36 @@ describe("isNarrativeRow", () => {
         expect(isNarrativeRow(characterAction("x", { action: "character", operation: "expression", characterId: "c1" }))).toBe(false);
         expect(isNarrativeRow(control({ control: "condition" }))).toBe(false);
         expect(isNarrativeRow({ id: "b", kind: "jump", parentId: null, childrenIds: [], payload: { targetSceneId: "s2" } })).toBe(false);
+    });
+});
+
+describe("buildVisibleRows disabled propagation", () => {
+    it("marks a disabled block and its whole subtree, leaving siblings enabled", () => {
+        const grp: StoryBlock = { id: "grp", kind: "control", parentId: null, childrenIds: ["c1"], disabled: true, payload: { control: "sequence", mode: "do" } };
+        const c1 = narration("c1", "grp");
+        const after = narration("after");
+        const rows = buildVisibleRows(scene([grp, c1, after], ["grp", "after"]), new Set());
+        expect(rows.map(row => [row.block.id, Boolean(row.disabled)])).toEqual([
+            ["grp", true],
+            ["c1", true],
+            ["after", false],
+        ]);
+    });
+});
+
+describe("isReadableAccentColor", () => {
+    it("keeps mid-range accents that clear both themes", () => {
+        expect(isReadableAccentColor("#40a8c4")).toBe(true);
+        expect(isReadableAccentColor("#3b82f6")).toBe(true);
+        expect(isReadableAccentColor("#808080")).toBe(true);
+        expect(isReadableAccentColor("#1a3a8f")).toBe(true);
+    });
+
+    it("rejects near-background extremes and unparseable values", () => {
+        expect(isReadableAccentColor("#000000")).toBe(false); // drowns on dark
+        expect(isReadableAccentColor("#ffffff")).toBe(false); // washes on light
+        expect(isReadableAccentColor("#ffff00")).toBe(false); // bright yellow, unreadable on light
+        expect(isReadableAccentColor("not-a-color")).toBe(false);
     });
 });
 

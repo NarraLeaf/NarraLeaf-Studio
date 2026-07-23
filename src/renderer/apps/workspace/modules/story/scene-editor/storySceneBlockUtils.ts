@@ -69,51 +69,62 @@ function sameGroupSpeaker(a: GroupSpeaker, b: GroupSpeaker): boolean {
 
 /**
  * Annotate rows with their dialogue-group role (WI-5), a pure render projection over the visible
- * sequence. A run is consecutive dialogue rows with the same speaker; a same-character `expression`
- * row rides along without breaking it (it renders as an in-group differential note). Any other kind
- * ends the run. Only dialogue and in-group expression rows are cloned; every other row is returned
- * untouched, so referential identity is preserved where it can be.
+ * sequence. A run is consecutive dialogue rows with the same speaker *under the same container*; a
+ * same-character `expression` row rides along without breaking it (it renders as an in-group
+ * differential note). Any other kind — or a change of `parentId` — ends the run, so an option body's
+ * last line never groups with a same-speaker line that lives outside the container (adjacency in the
+ * flattened list is not adjacency in the tree). Only dialogue and in-group expression rows are cloned;
+ * every other row is returned untouched, so referential identity is preserved where it can be.
  */
 export function annotateDialogueGroups(rows: VisibleStoryRow[]): VisibleStoryRow[] {
     let groupSpeaker: GroupSpeaker | null = null;
+    let groupParentId: StoryBlockId | null = null;
     return rows.map(row => {
         const block = row.block;
+        const parentId = block.parentId ?? null;
+        const sameContainer = groupSpeaker !== null && groupParentId === parentId;
         if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
             const speaker: GroupSpeaker = { characterId: block.payload.characterId, speakerName: block.payload.speakerName };
-            if (groupSpeaker && sameGroupSpeaker(groupSpeaker, speaker)) {
+            if (sameContainer && sameGroupSpeaker(groupSpeaker!, speaker)) {
                 return { ...row, groupRole: "member" as const };
             }
             groupSpeaker = speaker;
+            groupParentId = parentId;
             return { ...row, groupRole: "head" as const };
         }
         if (
             block.kind === "action"
             && block.payload.action === "character"
             && block.payload.operation === "expression"
-            && groupSpeaker?.characterId
-            && block.payload.characterId === groupSpeaker.characterId
+            && sameContainer
+            && groupSpeaker!.characterId
+            && block.payload.characterId === groupSpeaker!.characterId
         ) {
             // An expression change for the group's speaker: an in-group note; the run continues.
             return { ...row, groupRole: "member" as const };
         }
         groupSpeaker = null;
+        groupParentId = null;
         return row;
     });
 }
 
 export function buildVisibleRows(scene: StoryScene, collapsedIds: Set<StoryBlockId>): VisibleStoryRow[] {
     const rows: VisibleStoryRow[] = [];
-    const visit = (blockId: StoryBlockId, depth: number) => {
+    const visit = (blockId: StoryBlockId, depth: number, disabledAncestor: boolean) => {
         const block = scene.blocks[blockId];
         if (!block) {
             return;
         }
-        rows.push({ block, depth, lineNumber: rows.length + 1 });
+        // Disabled propagates down: a disabled container's whole subtree renders muted (and compiles
+        // out), so a row is effectively disabled when it or any ancestor is (WI-3 / schema v7).
+        const disabled = disabledAncestor || Boolean(block.disabled);
+        rows.push(disabled ? { block, depth, lineNumber: rows.length + 1, disabled } : { block, depth, lineNumber: rows.length + 1 });
         if (!collapsedIds.has(blockId)) {
-            block.childrenIds.forEach(childId => visit(childId, depth + 1));
+            block.childrenIds.forEach(childId => visit(childId, depth + 1, disabled));
         }
     };
-    scene.rootBlockIds.forEach(blockId => visit(blockId, 0));
+    scene.rootBlockIds.forEach(blockId => visit(blockId, 0, false));
     return rows;
 }
 
@@ -500,12 +511,55 @@ export function getCharacterName(characters: Character[], characterId: string | 
     return characters.find(character => character.profile.getId() === characterId)?.profile.getName() ?? translate("story.characterName.unknown");
 }
 
-/** The editor accent colour a character carries, or `undefined` when none is set (keep the default ink). */
+function parseHexColor(hex: string): { r: number; g: number; b: number } | null {
+    const value = hex.trim().replace(/^#/, "");
+    const full = value.length === 3 ? value.split("").map(channel => channel + channel).join("") : value;
+    if (!/^[0-9a-fA-F]{6}$/.test(full)) {
+        return null;
+    }
+    return {
+        r: parseInt(full.slice(0, 2), 16),
+        g: parseInt(full.slice(2, 4), 16),
+        b: parseInt(full.slice(4, 6), 16),
+    };
+}
+
+/** WCAG relative luminance (0–1) of a hex colour, or `null` when it cannot be parsed. */
+function relativeLuminance(hex: string): number | null {
+    const rgb = parseHexColor(hex);
+    if (!rgb) {
+        return null;
+    }
+    const linear = (value: number) => {
+        const c = value / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * linear(rgb.r) + 0.7152 * linear(rgb.g) + 0.0722 * linear(rgb.b);
+}
+
+/**
+ * Whether a nametag accent stays legible on *both* themes. The editor renders light and dark, so an
+ * accent that all but matches one theme's surface — near-white (washes out on light) or near-black
+ * (drowns on dark) — is unreadable there. The luminance band keeps ordinary saturated accents and
+ * drops only those near-background extremes, which then fall back to the default ink. The bounds are a
+ * chosen guard, not a WCAG-AA promise: an accent is decorative, it only has to be visible.
+ */
+export function isReadableAccentColor(hex: string): boolean {
+    const luminance = relativeLuminance(hex);
+    return luminance !== null && luminance > 0.03 && luminance < 0.85;
+}
+
+/**
+ * The editor accent colour a character carries, or `undefined` when none is set — or when the one set
+ * would be unreadable on either theme's surface, in which case the nametag keeps the default ink
+ * rather than disappearing into the background (see {@link isReadableAccentColor}).
+ */
 export function getCharacterColor(characters: Character[], characterId: string | undefined): string | undefined {
     if (!characterId) {
         return undefined;
     }
-    return characters.find(character => character.profile.getId() === characterId)?.profile.getColor();
+    const color = characters.find(character => character.profile.getId() === characterId)?.profile.getColor();
+    return color && isReadableAccentColor(color) ? color : undefined;
 }
 
 export function selectRange(rows: VisibleStoryRow[], fromId: StoryBlockId, toId: StoryBlockId): Set<StoryBlockId> {
