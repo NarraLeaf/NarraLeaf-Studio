@@ -27,8 +27,8 @@ import {
     ACTION_COMMANDS,
     getActionCommandCategory,
     localizeActionCommand,
+    translateActionCommandCategoryLabel,
     type ActionCommandCategory,
-    type ActionCommandCategoryId,
     type PaletteActionCommand,
 } from "./storyActionCommands";
 import { searchActionCommands } from "./storyCommandSearch";
@@ -1046,7 +1046,7 @@ export function InsertRow(props: {
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, chooserQuery),
         [chooserQuery, props.characters, props.tempSpeakers],
     );
-    const actionMenu = useActionCommandMenuState(actionOptions);
+    const actionMenu = useActionCommandMenuState(actionOptions, chooserQuery);
     const characterMenu = useCharacterPickerState(characterOptions);
     const textStyle = useStoryEditorTextStyle();
 
@@ -1280,8 +1280,9 @@ export function InsertRow(props: {
                 </div>
                 {actionMenuOpen ? (
                     <ActionCommandMenu
-                        categories={actionMenu.visibleCategories}
-                        activeCategoryId={actionMenu.activeCategoryId}
+                        browse={actionMenu.browse}
+                        groups={actionMenu.groups}
+                        commands={actionMenu.flatCommands}
                         activeCommandId={actionMenu.activeCommand?.id ?? null}
                         onHighlightCommand={actionMenu.selectCommand}
                         onChoose={chooseCommandCandidate}
@@ -1406,72 +1407,96 @@ function getPopupPlacementClass(placement: PopupPlacement): string {
     return placement === "above" ? "bottom-full mb-1" : "top-full mt-1";
 }
 
-function useActionCommandMenuState(options: PaletteActionCommand[]) {
-    const visibleCategories = useMemo<VisibleActionCommandCategory[]>(() => {
-        return ACTION_COMMAND_CATEGORIES.map(category => ({
-            ...category,
-            commands: category.id === "all"
-                ? options
-                : options.filter(command => command.category === category.id),
-        }));
+/**
+ * State for the inline `/` command menu, in two display modes decided by whether the author has typed
+ * a query yet (WI-2):
+ *  - **browse** (empty query): the whole command set laid out under category headers, in category
+ *    order — a "here is everything you can write" map rather than a wall of names. `flatCommands`
+ *    concatenates the groups so the highlight walks the sections top-to-bottom.
+ *  - **filter** (a query): the matcher's ranked hits, flat across categories, best match first — the
+ *    ranking is the point, so headers would only get in its way.
+ * `options` arrives already filtered/ranked for the query, so the empty-query case is the full set.
+ */
+function useActionCommandMenuState(options: PaletteActionCommand[], query: string) {
+    const browse = query.trim() === "";
+    // Only non-empty categories, "all" excluded (it is every command, not a section). Category order
+    // is the layout order.
+    const groups = useMemo<VisibleActionCommandCategory[]>(() => {
+        return ACTION_COMMAND_CATEGORIES
+            .filter(category => category.id !== "all")
+            .map(category => ({ ...category, commands: options.filter(command => command.category === category.id) }))
+            .filter(group => group.commands.length > 0);
     }, [options]);
-    const [activeCategoryId, setActiveCategoryId] = useState<ActionCommandCategoryId>("all");
+    // The order the highlight walks and Enter commits from: grouped sections while browsing, the raw
+    // ranked list while filtering.
+    const flatCommands = useMemo(
+        () => (browse ? groups.flatMap(group => group.commands) : options),
+        [browse, groups, options],
+    );
     const [activeCommandId, setActiveCommandId] = useState<string | null>(null);
-
-    const activeCategory = visibleCategories.find(category => category.id === activeCategoryId) ?? visibleCategories[0] ?? null;
-    const activeCommand = activeCategory?.commands.find(command => command.id === activeCommandId) ?? activeCategory?.commands[0] ?? null;
+    const activeCommand = flatCommands.find(command => command.id === activeCommandId) ?? flatCommands[0] ?? null;
 
     useEffect(() => {
-        if (visibleCategories.length === 0) {
-            setActiveCommandId(null);
-            return;
-        }
-        setActiveCategoryId(current => visibleCategories.some(category => category.id === current) ? current : visibleCategories[0].id);
-    }, [visibleCategories]);
-
-    useEffect(() => {
-        if (!activeCategory) {
-            setActiveCommandId(null);
-            return;
-        }
-        setActiveCommandId(current => activeCategory.commands.some(command => command.id === current) ? current : activeCategory.commands[0]?.id ?? null);
-    }, [activeCategory]);
-
-    const selectCategory = (categoryId: ActionCommandCategoryId) => {
-        const category = visibleCategories.find(next => next.id === categoryId);
-        if (!category) {
-            return;
-        }
-        setActiveCategoryId(category.id);
-        setActiveCommandId(category.commands[0]?.id ?? null);
-    };
+        setActiveCommandId(current => flatCommands.some(command => command.id === current) ? current : flatCommands[0]?.id ?? null);
+    }, [flatCommands]);
 
     const selectCommand = (commandId: string) => {
         setActiveCommandId(commandId);
     };
 
     const moveCommand = (direction: -1 | 1) => {
-        if (!activeCategory || activeCategory.commands.length === 0) {
+        if (flatCommands.length === 0) {
             return;
         }
-        const currentIndex = Math.max(0, activeCategory.commands.findIndex(command => command.id === activeCommand?.id));
-        const nextIndex = (currentIndex + direction + activeCategory.commands.length) % activeCategory.commands.length;
-        setActiveCommandId(activeCategory.commands[nextIndex].id);
+        const currentIndex = Math.max(0, flatCommands.findIndex(command => command.id === activeCommand?.id));
+        const nextIndex = (currentIndex + direction + flatCommands.length) % flatCommands.length;
+        setActiveCommandId(flatCommands[nextIndex].id);
     };
 
     return {
-        visibleCategories,
-        activeCategoryId: activeCategory?.id ?? activeCategoryId,
+        browse,
+        groups,
+        flatCommands,
         activeCommand,
-        selectCategory,
         selectCommand,
         moveCommand,
     };
 }
 
+function ActionCommandMenuRow(props: {
+    command: PaletteActionCommand;
+    active: boolean;
+    onHighlight: (commandId: string) => void;
+    onChoose: (commandId: string) => void;
+}) {
+    const Icon = props.command.icon;
+    const category = getActionCommandCategory(props.command.category);
+    return (
+        <button
+            type="button"
+            role="option"
+            aria-selected={props.active}
+            data-action-command-id={props.command.id}
+            className={[
+                "flex w-full items-center gap-2 rounded px-2 py-2 text-left transition-colors",
+                props.active ? "bg-primary/15 text-fg" : "hover:bg-fill",
+            ].join(" ")}
+            onMouseDown={() => props.onChoose(props.command.id)}
+            onMouseEnter={() => props.onHighlight(props.command.id)}
+        >
+            <Icon className="h-4 w-4 shrink-0" style={{ color: category.iconColor }} />
+            <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-fg">{props.command.label}</span>
+                {props.command.detail ? <span className="block truncate text-2xs text-fg-subtle">{props.command.detail}</span> : null}
+            </span>
+        </button>
+    );
+}
+
 function ActionCommandMenu(props: {
-    categories: VisibleActionCommandCategory[];
-    activeCategoryId: ActionCommandCategoryId;
+    browse: boolean;
+    groups: VisibleActionCommandCategory[];
+    commands: PaletteActionCommand[];
     activeCommandId: string | null;
     onHighlightCommand: (commandId: string) => void;
     onChoose: (commandId: string) => void;
@@ -1479,7 +1504,6 @@ function ActionCommandMenu(props: {
     placement: PopupPlacement;
 }) {
     const { t } = useTranslation();
-    const activeCategory = props.categories.find(category => category.id === props.activeCategoryId) ?? props.categories[0] ?? null;
     const listRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -1487,11 +1511,10 @@ function ActionCommandMenu(props: {
             return;
         }
         window.requestAnimationFrame(() => {
-            const root = listRef.current;
-            const activeItem = root?.querySelector(`[data-action-command-id="${props.activeCommandId}"]`);
+            const activeItem = listRef.current?.querySelector(`[data-action-command-id="${props.activeCommandId}"]`);
             activeItem?.scrollIntoView({ block: "nearest" });
         });
-    }, [activeCategory?.id, props.activeCommandId]);
+    }, [props.activeCommandId]);
 
     return (
         <div
@@ -1501,43 +1524,48 @@ function ActionCommandMenu(props: {
                 event.stopPropagation();
             }}
         >
-            {props.categories.length === 0 ? (
+            {props.commands.length === 0 ? (
                 <button type="button" className="w-full px-3 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
                     {t("story.actionCreator.noActions")}
                 </button>
             ) : (
-                    <div ref={listRef} className="nl-no-scrollbar max-h-64 overflow-auto p-1">
-                        {activeCategory && activeCategory.commands.length === 0 ? (
-                            <button type="button" className="w-full rounded px-2 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
-                                {t("story.actionCreator.noActions")}
-                            </button>
-                        ) : activeCategory?.commands.map(command => {
-                            const Icon = command.icon;
-                            const active = command.id === props.activeCommandId;
-                            const category = getActionCommandCategory(command.category);
+                <div ref={listRef} className="nl-no-scrollbar max-h-64 overflow-auto p-1">
+                    {props.browse ? (
+                        // Empty query: the full set as a browsable map, one section per category so the
+                        // author sees what is available rather than a flat wall of names (WI-2).
+                        props.groups.map(group => {
+                            const Icon = group.icon;
                             return (
-                                <button
-                                    key={command.id}
-                                    type="button"
-                                    role="option"
-                                    aria-selected={active}
-                                    data-action-command-id={command.id}
-                                    className={[
-                                        "flex w-full items-center gap-2 rounded px-2 py-2 text-left transition-colors",
-                                        active ? "bg-primary/15 text-fg" : "hover:bg-fill",
-                                    ].join(" ")}
-                                    onMouseDown={() => props.onChoose(command.id)}
-                                    onMouseEnter={() => props.onHighlightCommand(command.id)}
-                                >
-                                    <Icon className="h-4 w-4 shrink-0" style={{ color: category.iconColor }} />
-                                    <span className="min-w-0 flex-1">
-                                        <span className="block truncate text-sm text-fg">{command.label}</span>
-                                        <span className="block truncate text-2xs text-fg-subtle">{command.detail}</span>
-                                    </span>
-                                </button>
+                                <div key={group.id}>
+                                    <div className="flex items-center gap-1.5 px-2 pb-1 pt-2 text-2xs font-medium uppercase tracking-wide text-fg-subtle">
+                                        <Icon className="h-3 w-3 shrink-0" style={{ color: group.iconColor }} />
+                                        <span>{translateActionCommandCategoryLabel(group, t)}</span>
+                                    </div>
+                                    {group.commands.map(command => (
+                                        <ActionCommandMenuRow
+                                            key={command.id}
+                                            command={command}
+                                            active={command.id === props.activeCommandId}
+                                            onHighlight={props.onHighlightCommand}
+                                            onChoose={props.onChoose}
+                                        />
+                                    ))}
+                                </div>
                             );
-                        })}
-                    </div>
+                        })
+                    ) : (
+                        // A query: the matcher's ranking, flat and best-first — headers would fight it.
+                        props.commands.map(command => (
+                            <ActionCommandMenuRow
+                                key={command.id}
+                                command={command}
+                                active={command.id === props.activeCommandId}
+                                onHighlight={props.onHighlightCommand}
+                                onChoose={props.onChoose}
+                            />
+                        ))
+                    )}
+                </div>
             )}
         </div>
     );
