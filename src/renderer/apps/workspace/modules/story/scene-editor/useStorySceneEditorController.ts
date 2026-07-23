@@ -728,7 +728,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     const startInsertAfter = useCallback((afterBlockId: StoryBlockId | null, focus = true) => {
         slotDiscardedRef.current = false;
-        setEditorMode({ kind: "insert", slot: { afterBlockId, focusToken: Date.now() }, value: "", chooser: "none" });
+        setEditorMode({ kind: "insert", slot: { afterBlockId, focusToken: Date.now() }, value: "" });
         if (afterBlockId) {
             setActiveBlockId(afterBlockId);
         }
@@ -753,7 +753,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             kind: "insert",
             slot: { afterBlockId: null, focusToken: Date.now(), target: { parentId: block.parentId, beforeBlockId: blockId } },
             value: "",
-            chooser: "none",
         });
         setActiveBlockId(blockId);
         if (focus) {
@@ -785,10 +784,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 replaceBlockId: block.id,
             },
             value: block.kind === "invalid" ? block.payload.source : getTextSegment(block)?.value ?? "",
-            chooser: "none",
-            // The menu must not spring open on a line the author is returning to fix — they have
-            // already seen it once. It reopens as soon as they actually type.
-            chooserDismissed: true,
+            // Reopening a draft row lands with its completion menu open (bible M3): the author is here
+            // to fix the line, so the candidates it needs are what should greet them - not the suppressed
+            // slot the old `chooserDismissed: true` left, which gave a returned-to line no menu at all.
         });
         setActiveBlockId(block.id);
         window.requestAnimationFrame(() => insertInputRef.current?.focus());
@@ -826,7 +824,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             kind: "insert",
             slot: { afterBlockId: lastChildId ?? parentId, focusToken: Date.now(), target: { parentId, beforeBlockId: null } },
             value: "",
-            chooser: "none",
         });
         setActiveBlockId(parentId);
         window.requestAnimationFrame(() => insertInputRef.current?.focus());
@@ -1149,28 +1146,23 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 return current;
             }
             // Dismissal is one-shot: Escape keeps the menu shut only while the text stands still
-            // (caret moves, clicks). The next actual edit re-derives the chooser from the prefix -
-            // which is what lets a re-opened draft row have its autocomplete back the moment the
-            // author starts fixing it, instead of never (the old flag was one-way for the slot's
-            // whole life, so a returned-to line got no candidates at all).
+            // (caret moves, clicks). The next actual edit clears the flag, and the chooser re-derives
+            // from the value (see `insertChooserType`) - which is what lets a re-opened draft row have
+            // its autocomplete back the moment the author starts fixing it, instead of never (the old
+            // flag was one-way for the slot's whole life, so a returned-to line got no candidates).
             if (current.chooserDismissed && value === current.value) {
                 return current;
             }
             // The stored value keeps the trigger the author typed ("@" or "/") - only parsing and
-            // committing fold "@" onto "/" - so the slot shows the "@" they pressed. `isActionCommandLine`
-            // treats a leading "@" as an action trigger when the alias is on, exactly like "/".
-            return {
-                ...current,
-                value,
-                chooserDismissed: undefined,
-                chooser: isActionCommandLine(value, slashAtAlias) ? "action" : value.startsWith("#") ? "character" : "none",
-            };
+            // committing fold "@" onto "/" - so the slot shows the "@" they pressed. The menu the value
+            // asks for is derived at render, so nothing here has to recompute it.
+            return { ...current, value, chooserDismissed: undefined };
         });
-    }, [slashAtAlias]);
+    }, []);
 
     /** Escape, first press: drop the candidates but keep the line and the caret. */
     const dismissInsertChooser = useCallback(() => {
-        setEditorMode(current => current.kind !== "insert" ? current : { ...current, chooser: "none", chooserDismissed: true });
+        setEditorMode(current => current.kind !== "insert" ? current : { ...current, chooserDismissed: true });
     }, []);
 
     /** Escape, last press: an uncommitted slot never existed, so leaving it must not create anything. */
