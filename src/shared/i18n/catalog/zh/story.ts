@@ -187,6 +187,10 @@ export const story = {
         z: "层级",
     },
 
+    view: {
+        narrativeOnly: "只看叙事",
+        comfortableDensity: "舒适密度",
+    },
     rows: {
         placeholderDialogue: "对话…",
         placeholderNarration: "旁白…",
@@ -623,6 +627,12 @@ export const story = {
         setBackground: "设置背景 {value}",
         unassigned: "未指定",
         characterFallback: "角色",
+        charOp: {
+            enter: "入场",
+            move: "移动",
+            exit: "退场",
+            expression: "表情",
+        },
         waitDuration: "等待 {seconds}s",
         waitClick: "等待点击",
         unnamed: "未命名",

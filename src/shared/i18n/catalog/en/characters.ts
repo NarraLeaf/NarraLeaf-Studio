@@ -84,6 +84,7 @@ export const characters = {
         noThumbnail: "No thumbnail yet",
         selectHint: "Click Select to choose one",
         thumbnailAlt: "thumbnail",
+        color: "Color",
         namePlaceholder: "Character name",
         descriptionPlaceholder: "Character description…",
         tags: "Tags",
@@ -131,6 +132,9 @@ export const characters = {
         zoomIn: "Zoom In",
         resetView: "Reset View",
         alt: "Variant preview",
+        setPortrait: "Portrait framing",
+        resetPortrait: "Reset portrait framing",
+        portraitTitle: "Portrait framing",
     },
     variantsPanel: {
         title: "Variants",

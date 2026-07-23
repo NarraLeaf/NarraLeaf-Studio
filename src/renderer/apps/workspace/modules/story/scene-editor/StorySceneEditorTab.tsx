@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent } from "react";
-import { Camera, ChevronDown, ChevronRight, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Trash2, Variable } from "lucide-react";
+import { AlignLeft, Camera, ChevronDown, ChevronRight, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, StretchVertical, Trash2, Variable } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -956,10 +956,11 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     };
 
     return (
-        <StoryEditorTextStyleProvider>
+        <StoryEditorTextStyleProvider density={editor.density}>
         <div
             ref={editor.rootRef}
             tabIndex={0}
+            data-story-density={editor.density}
             className="flex h-full min-h-0 flex-col bg-surface text-fg outline-none"
             onFocus={editor.focusWorkspace}
             onFocusCapture={handleEditorFocusCapture}
@@ -974,6 +975,28 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         <div className="truncate text-sm font-medium text-fg">{scene.name}</div>
                         <div className="truncate text-2xs text-fg-muted">{document.name}</div>
                     </div>
+                </div>
+                <div className="ml-auto flex shrink-0 items-center gap-1">
+                    <button
+                        type="button"
+                        onClick={() => editor.setNarrativeOnly(!editor.narrativeOnly)}
+                        title={t("story.view.narrativeOnly")}
+                        aria-label={t("story.view.narrativeOnly")}
+                        aria-pressed={editor.narrativeOnly}
+                        className={["rounded p-1.5 transition-colors", editor.narrativeOnly ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
+                    >
+                        <AlignLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => editor.setDensity(editor.density === "comfortable" ? "compact" : "comfortable")}
+                        title={t("story.view.comfortableDensity")}
+                        aria-label={t("story.view.comfortableDensity")}
+                        aria-pressed={editor.density === "comfortable"}
+                        className={["rounded p-1.5 transition-colors", editor.density === "comfortable" ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
+                    >
+                        <StretchVertical className="h-4 w-4" />
+                    </button>
                 </div>
             </div>
 

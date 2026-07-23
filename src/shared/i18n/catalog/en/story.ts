@@ -206,6 +206,10 @@ export const story = {
         z: "Z-Index",
     },
 
+    view: {
+        narrativeOnly: "Narrative only",
+        comfortableDensity: "Comfortable density",
+    },
     rows: {
         placeholderDialogue: "Dialogue…",
         placeholderNarration: "Narration…",
@@ -502,6 +506,12 @@ export const story = {
         setBackground: "Set background {value}",
         unassigned: "unassigned",
         characterFallback: "character",
+        charOp: {
+            enter: "Enter",
+            move: "Move",
+            exit: "Exit",
+            expression: "Expression",
+        },
         waitDuration: "Wait {seconds}s",
         waitClick: "Wait for click",
         unnamed: "unnamed",

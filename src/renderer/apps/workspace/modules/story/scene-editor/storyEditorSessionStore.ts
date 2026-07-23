@@ -84,6 +84,31 @@ export type StoryEditorViewState = {
     overviewCollapsed?: boolean;
 };
 
+/** Reading-density of the scene editor (WI-6): compact is the status quo, comfortable enlarges type. */
+export type StoryEditorDensity = "compact" | "comfortable";
+
+/**
+ * Editor-wide view preferences (WI-6): density and the "narrative only" filter. Persisted per-project
+ * via {@link PanelStateService} (the same store the row view-state uses), so they survive tab switches
+ * and restarts. Editor-wide, not per-scene, so they live under their own key rather than the scene map.
+ */
+export type StoryEditorViewPrefs = {
+    density: StoryEditorDensity;
+    /** When on, the projection hides staging rows and keeps only narration / dialogue / choice / note. */
+    narrativeOnly: boolean;
+};
+
+const STORY_EDITOR_VIEW_PREFS_KEY = "story:editor:view-prefs";
+const DEFAULT_STORY_EDITOR_VIEW_PREFS: StoryEditorViewPrefs = { density: "compact", narrativeOnly: false };
+
+export function getStoryEditorViewPrefs(panelState: PanelStateService): StoryEditorViewPrefs {
+    return { ...DEFAULT_STORY_EDITOR_VIEW_PREFS, ...panelState.getPanelState<StoryEditorViewPrefs>(STORY_EDITOR_VIEW_PREFS_KEY) };
+}
+
+export function patchStoryEditorViewPrefs(panelState: PanelStateService, patch: Partial<StoryEditorViewPrefs>): void {
+    panelState.setPanelState<StoryEditorViewPrefs>(STORY_EDITOR_VIEW_PREFS_KEY, patch);
+}
+
 const ROW_SELECTOR = "[data-story-row-block-id]";
 
 // One PanelStateService entry holds every scene's view state as a `sceneId -> state` map.
