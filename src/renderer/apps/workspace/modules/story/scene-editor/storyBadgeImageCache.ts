@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
@@ -21,9 +21,18 @@ export type BadgeImageSource =
 /**
  * One shared object URL per asset. `refs` counts the mounted rows subscribed to it; `disposed` guards
  * the in-flight load against a release that lands before the bytes do (so a URL is never created for
- * an entry nobody is watching, which would leak).
+ * an entry nobody is watching, which would leak). `failed` marks an entry whose last load produced no
+ * bytes: it stays icon-only, but the next subscriber retries it rather than being pinned to the icon
+ * for the entry's whole life. `load` is stored so an asset-content change can re-run it in place.
  */
-type Entry = { url: string | null; refs: number; disposed: boolean };
+type Entry = {
+    url: string | null;
+    refs: number;
+    disposed: boolean;
+    loading: boolean;
+    failed: boolean;
+    load: () => Promise<Uint8Array | null>;
+};
 
 const entries = new Map<string, Entry>();
 const listeners = new Map<string, Set<() => void>>();
@@ -40,30 +49,100 @@ function emit(key: string): void {
     }
 }
 
-function retain(key: string, load: () => Promise<Uint8Array | null>): void {
-    const existing = entries.get(key);
-    if (existing) {
-        existing.refs++;
+/**
+ * Run the entry's loader and swap its URL in on success. The currently-shown URL survives until the
+ * fresh bytes arrive, so a re-load (asset replaced) never flashes back to the fallback icon. No bytes
+ * (missing/unreadable) leaves the entry icon-only but `failed`, so a later subscriber can retry.
+ */
+function beginLoad(key: string, entry: Entry): void {
+    if (entry.loading) {
         return;
     }
-
-    const entry: Entry = { url: null, refs: 1, disposed: false };
-    entries.set(key, entry);
-    void load()
+    entry.loading = true;
+    entry.failed = false;
+    void entry.load()
         .then(bytes => {
             // Released while loading: the entry is gone from the map and marked disposed, so drop the
             // bytes rather than mint a URL that would never be revoked.
-            if (entry.disposed || !bytes || bytes.byteLength === 0) {
+            if (entry.disposed) {
+                return;
+            }
+            if (!bytes || bytes.byteLength === 0) {
+                entry.failed = true;
                 return;
             }
             // Copy into a fresh Uint8Array so the Blob part is backed by a plain ArrayBuffer (not the
             // SharedArrayBuffer-permitting `ArrayBufferLike` the reader returns).
-            entry.url = URL.createObjectURL(new Blob([new Uint8Array(bytes)]));
+            const nextUrl = URL.createObjectURL(new Blob([new Uint8Array(bytes)]));
+            if (entry.url) {
+                URL.revokeObjectURL(entry.url);
+            }
+            entry.url = nextUrl;
             emit(key);
         })
         .catch(() => {
-            /* a missing/unreadable asset just stays icon-only */
+            entry.failed = true;
+        })
+        .finally(() => {
+            entry.loading = false;
         });
+}
+
+function retain(key: string, load: () => Promise<Uint8Array | null>): void {
+    const existing = entries.get(key);
+    if (existing) {
+        existing.refs++;
+        // Keep the freshest loader (services/source may have re-resolved) and, if the last attempt
+        // came up empty, give this new subscriber a fresh try instead of the pinned fallback icon.
+        existing.load = load;
+        if (existing.failed && !existing.loading) {
+            beginLoad(key, existing);
+        }
+        return;
+    }
+
+    const entry: Entry = { url: null, refs: 1, disposed: false, loading: false, failed: false, load };
+    entries.set(key, entry);
+    beginLoad(key, entry);
+}
+
+/**
+ * The bytes behind a project asset changed (`updated`) or the asset is gone (`deleted`). Reload the
+ * matching entry so a live sprite replacement refreshes every row picturing it; on delete, drop the
+ * stale URL and mark the entry for retry should the id come back.
+ */
+function invalidate(key: string, gone: boolean): void {
+    const entry = entries.get(key);
+    if (!entry) {
+        return;
+    }
+    if (gone) {
+        if (entry.url) {
+            URL.revokeObjectURL(entry.url);
+            entry.url = null;
+        }
+        entry.failed = true;
+        emit(key);
+        return;
+    }
+    beginLoad(key, entry);
+}
+
+/**
+ * Subscribe the cache to project-asset changes exactly once per `AssetsService`. Differential sprites
+ * are project assets (see `BadgeImageSource`), so a content replacement fires `updated`/`deleted` here
+ * and the matching `project:<id>` entry refreshes. Never unsubscribed: the service and this module are
+ * both window-lifetime singletons (one project = one window), and a new project mounts a new service.
+ */
+let wiredAssets: AssetsService | null = null;
+function ensureAssetInvalidationWired(assets: AssetsService): void {
+    if (wiredAssets === assets) {
+        return;
+    }
+    wiredAssets = assets;
+    const events = assets.getEvents();
+    events.on("updated", asset => invalidate(`project:${asset.id}`, false));
+    events.on("deleted", asset => invalidate(`project:${asset.id}`, true));
 }
 
 function release(key: string): void {
@@ -119,6 +198,14 @@ export function useBadgeImageUrl(source: BadgeImageSource | null): string | null
             serviceAssets: context.services.get<ServiceAssetsService>(Services.ServiceAssets),
         };
     }, [context, isInitialized]);
+
+    // Wire the cache to project-asset changes once the services are up, so a live sprite replacement
+    // invalidates the shared entry (idempotent per service instance).
+    useEffect(() => {
+        if (services) {
+            ensureAssetInvalidationWired(services.assets);
+        }
+    }, [services]);
 
     const key = source && services ? sourceKey(source) : null;
 

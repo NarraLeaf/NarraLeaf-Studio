@@ -35,7 +35,6 @@ import {
     buildDialogueAppearances,
     buildVisibleRows,
     canAcceptChildren,
-    describeBlock,
     isNarrativeRow,
     filterOutSelectedDescendants,
     findPreviousSibling,
@@ -168,7 +167,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const [addRowFocused, setAddRowFocused] = useState(false);
     const [draggingBlockId, setDraggingBlockId] = useState<StoryBlockId | null>(null);
     const [dragSelectActive, setDragSelectActive] = useState(false);
-    const [, setStatusText] = useState("Action row editor. Slash and hash only trigger on the first character.");
     const [characterRevision, setCharacterRevision] = useState(0);
     /**
      * Bumped when the blueprint document changes, because that is where persistent (game-level)
@@ -234,7 +232,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         return characterService.subscribe(() => {
             setCharacterRevision(revision => revision + 1);
-            setStatusText("Character list refreshed.");
         });
     }, [characterService]);
 
@@ -575,7 +572,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         return true;
     }, [captureHistoryState]);
 
-    const restoreHistoryState = useCallback((state: StorySceneHistoryState, label: string) => {
+    const restoreHistoryState = useCallback((state: StorySceneHistoryState) => {
         if (!storyService || !storyId || !sceneId) {
             return;
         }
@@ -585,33 +582,30 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setSelectedBlockIds(new Set(state.selectedBlockIds));
         setCollapsedBlockIds(new Set(state.collapsedBlockIds));
         setEditorMode({ kind: "idle" });
-        setStatusText(label);
     }, [sceneId, storyId, storyService, tabId, uiService]);
 
     const undoEdit = useCallback(() => {
         const previous = undoStackRef.current.pop();
         if (!previous) {
-            setStatusText("Nothing to undo.");
             return;
         }
         const current = captureHistoryState();
         if (current) {
             redoStackRef.current.push(current);
         }
-        restoreHistoryState(previous, "Undid edit.");
+        restoreHistoryState(previous);
     }, [captureHistoryState, restoreHistoryState]);
 
     const redoEdit = useCallback(() => {
         const next = redoStackRef.current.pop();
         if (!next) {
-            setStatusText("Nothing to redo.");
             return;
         }
         const current = captureHistoryState();
         if (current) {
             undoStackRef.current.push(current);
         }
-        restoreHistoryState(next, "Redid edit.");
+        restoreHistoryState(next);
     }, [captureHistoryState, restoreHistoryState]);
 
     const updateBlockPayloadFor = useCallback((blockId: StoryBlockId, payload: StoryBlock["payload"]) => {
@@ -654,7 +648,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             if (hasNameChange) {
                 uiService?.editor.update(tabId, { title: nextName });
             }
-            setStatusText("Updated scene details.");
         }
         return changed;
     }, [recordHistory, scene, sceneId, storyId, storyService, tabId, uiService]);
@@ -710,9 +703,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         setActiveBlockId(block.id);
         setSelectedBlockIds(new Set([block.id]));
-        setStatusText(`Inserted ${describeBlock(block, characters, scene, document?.scenes)}.`);
         setEditorMode(openInspector ? { kind: "inspector", blockId: block.id } : { kind: "idle" });
-    }, [characters, document, recordHistory, scene, sceneId, storyId, storyService]);
+    }, [recordHistory, scene, sceneId, storyId, storyService]);
 
     // Insert a `layer` create block immediately before `beforeBlockId` at the same nesting level and
     // return its id, without stealing focus from the currently-open inspector. Used by the Layer
@@ -1192,6 +1184,21 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         focusRoot();
     }, [focusRoot]);
 
+    // An open insert slot is anchored to a row (insert after it, or above it). If that row leaves the
+    // visible set while the slot is open — the author toggled the "narrative only" filter or collapsed
+    // the anchor's container — the slot has nowhere on screen to render and the editor is stranded in an
+    // invisible insert state. Close it so the surface is never stuck where the author cannot see it
+    // (WI-0 #3). A top-of-scene slot (no anchor row) is always visible and is left alone.
+    useEffect(() => {
+        if (editorMode.kind !== "insert") {
+            return;
+        }
+        const anchorId = editorMode.slot.target?.beforeBlockId ?? editorMode.slot.afterBlockId;
+        if (anchorId && !rowIndexById.has(anchorId)) {
+            discardInsertSlot();
+        }
+    }, [editorMode, rowIndexById, discardInsertSlot]);
+
     /**
      * Commit the line as an invalid row: it did not resolve to anything, and the author's text is too
      * expensive to throw away and too wrong to quietly turn into prose. The build refuses these, so
@@ -1568,7 +1575,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setActiveBlockId,
         setSelectedBlockIds,
         setEditorMode,
-        setStatusText,
     });
 
     const handleCopy = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
@@ -1599,7 +1605,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         if (options?.confirmMultiple && ids.length > 1) {
             if (!uiService) {
-                setStatusText("Could not confirm row deletion.");
                 return;
             }
             const confirmed = await uiService.showConfirm(
@@ -1630,7 +1635,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setSelectedBlockIds(new Set());
             setActiveBlockId(null);
         }
-        setStatusText(`Deleted ${roots.length} row${roots.length === 1 ? "" : "s"}.`);
     }, [focusRoot, recordHistory, scene, sceneId, storyId, storyService, uiService, visibleRows]);
 
     const deleteSelection = useCallback(async (options?: { confirmMultiple?: boolean }) => {
@@ -1827,7 +1831,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             storyService.moveBlock(storyId, sceneId, id, getMoveTargetAfter(scene, id, nextId));
         }
         selectSingleRow(id);
-        setStatusText("Moved row.");
     }, [activeBlockId, recordHistory, scene, sceneId, selectSingleRow, selectedBlockIds, storyId, storyService]);
 
     // Cmd/Ctrl+D - duplicate the selected rows (with their subtrees, new ids) directly below the block.
@@ -1857,7 +1860,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             selectionAnchorRef.current = insertedIds[0];
         }
         setEditorMode({ kind: "idle" });
-        setStatusText(`Duplicated ${insertedIds.length} row${insertedIds.length === 1 ? "" : "s"}.`);
     }, [activeBlockId, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uuidService, visibleRows]);
 
     /**
@@ -1888,7 +1890,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         const nextDisabled = !roots.every(id => scene.blocks[id]?.disabled);
         recordHistory();
         roots.forEach(id => storyService.setBlockDisabled(storyId, sceneId, id, nextDisabled));
-        setStatusText(nextDisabled ? `Disabled ${roots.length} row${roots.length === 1 ? "" : "s"}.` : `Enabled ${roots.length} row${roots.length === 1 ? "" : "s"}.`);
     }, [recordHistory, scene, sceneId, selectionRootIds, storyId, storyService]);
 
     const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
@@ -1916,9 +1917,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             storyService.moveBlock(storyId, sceneId, movingBlockId, getMoveTargetAfter(scene, movingBlockId, targetBlockId));
             setActiveBlockId(movingBlockId);
             setSelectedBlockIds(new Set([movingBlockId]));
-            setStatusText("Moved row.");
-        } catch (error) {
-            setStatusText(error instanceof Error ? error.message : "Could not move row.");
+        } catch {
+            /* move failed; nothing to surface */
         }
         draggingBlockIdRef.current = null;
         setDraggingBlockId(null);
@@ -1941,9 +1941,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             storyService.moveBlock(storyId, sceneId, draggedBlockId, target);
             setActiveBlockId(draggedBlockId);
             setSelectedBlockIds(new Set([draggedBlockId]));
-            setStatusText("Moved row.");
-        } catch (error) {
-            setStatusText(error instanceof Error ? error.message : "Could not move row.");
+        } catch {
+            /* move failed; nothing to surface */
         }
     }, [recordHistory, rowIndexById, scene, sceneId, storyId, storyService]);
 

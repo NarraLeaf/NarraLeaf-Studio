@@ -75,7 +75,7 @@ export function getQuickParams(block: StoryBlock): QuickParam[] {
         if (!transition) {
             return [];
         }
-        return [durationParam("t", "t", transition.durationMs ?? 0, undefined, ms => ({ ...payload, transition: { ...transition, durationMs: ms } }))];
+        return [durationParam("d", "d", transition.durationMs ?? 0, undefined, ms => ({ ...payload, transition: { ...transition, durationMs: ms } }))];
     }
     if (payload.action === "character" && (payload.operation === "enter" || payload.operation === "exit")) {
         const transition = payload.transition;

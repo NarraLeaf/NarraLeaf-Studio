@@ -20,6 +20,14 @@ import type {
  * is authoring metadata, not a runtime action - which keeps "where may I put this row" a
  * non-question. Scope decides the scan's reach: "scene" within its scene, "saved"/"persistent"
  * across the whole document.
+ *
+ * A `disabled` declaration row is deliberately NOT skipped here (unlike the compiler, which compiles
+ * disabled rows out of the runtime). A declaration is a lexical entry, not an executed statement:
+ * dropping it from the table would make every reference to that variable elsewhere in the document
+ * resolve to "undeclared", cascading errors through lines the author never touched. So a disabled
+ * declaration still declares and still seeds its default (the seeding at `storyCompiler` reads this
+ * same table); disabling it only greys the row, it does not un-declare the variable. This is an
+ * intentional exception to "disabled = compiled out" - do not add a `.disabled` guard to these scans.
  */
 
 export function isStoryDeclarationBlock(block: StoryBlock): block is StoryDeclarationBlock {
