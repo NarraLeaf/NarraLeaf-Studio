@@ -65,7 +65,7 @@ import {
     type StoryContainerHeaderInfo,
 } from "./storySceneBlockUtils";
 import { ConditionPopover } from "./ConditionPopover";
-import { getQuickParams, QuickParamsInline, QuickParamsSummary, type QuickParam } from "./storyQuickParams";
+import { BlockOverview, getQuickParams, QuickParamsInline, type QuickParam } from "./storyQuickParams";
 import { actionTrigger, ACTION_TRIGGER, insertChooserType, toCanonicalCommandLine } from "./commandTrigger";
 
 export function StoryBlockRow(props: {
@@ -2053,20 +2053,20 @@ function BlockPreview(props: {
         // re-opens the line in place, candidates and all.
         return <DraftRowPreview source={block.payload.source} commandContext={props.commandContext} />;
     }
-    if (quickParams.length > 0) {
-        return (
-            <QuickParamsSummary
-                block={block}
-                characters={props.characters}
-                scene={props.scene}
-                scenes={props.document.scenes}
-                params={quickParams}
-                textStyle={textStyle}
-                onUpdatePayload={props.onUpdatePayload}
-            />
-        );
-    }
-    return <span className="min-w-0 flex-1 truncate text-sm text-fg-muted" style={textStyle}>{describeBlock(block, props.characters, props.scene, props.document.scenes)}</span>;
+    // One structured overview path for every action row (bible M5): `[target · modifiers]` with any
+    // quick-edit params inline as clickable tokens; a row with none is just an overview whose only
+    // fragment is the `describeBlock` fallback. setBackground / displayable-transform keep their rich
+    // renderers above (spec-level overrides).
+    return (
+        <BlockOverview
+            block={block}
+            characters={props.characters}
+            scene={props.scene}
+            scenes={props.document.scenes}
+            textStyle={textStyle}
+            onUpdatePayload={props.onUpdatePayload}
+        />
+    );
 }
 
 /**

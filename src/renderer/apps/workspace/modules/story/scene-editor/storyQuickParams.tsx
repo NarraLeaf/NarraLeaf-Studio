@@ -119,32 +119,74 @@ function displayValue(value: QuickParamValue, sceneName: (id: string | undefined
 const TOKEN_CLASS = "cursor-pointer rounded px-0.5 underline decoration-dotted decoration-fg-subtle/60 underline-offset-2 transition-colors hover:bg-fill hover:text-fg";
 
 /**
- * The row summary with its quick-edit params rendered as clickable tokens (WI-2). It keeps the plain
- * `describeBlock` text for most rows and only substitutes a bare "Wait" / "Jump to" prefix where the
- * value would otherwise print twice, so the token is the single home of that value.
+ * One piece of a committed row's overview projection (WI-2 / bible M5): either a run of plain text
+ * (the target name and any modifiers the tokens do not own) or a clickable quick-edit token. The
+ * tokens ARE fragments in the same stream, not a second layer appended after a finished string.
  */
-export function QuickParamsSummary(props: {
+export type OverviewFragment =
+    | { kind: "text"; text: string }
+    | { kind: "quick"; param: QuickParam };
+
+/**
+ * The structured overview of a committed action row (bible M5): `[target · modifiers]` with the
+ * quick-edit params spliced in as first-class fragments. The row's *verb* lives in its badge
+ * (`getBlockBadgeInfo`), so the base text carries the target plus whatever the tokens do not own;
+ * `describeBlock` is that base — demoted here to the default fallback. wait/jump print their value
+ * only through the token, so their base is the bare verb label to avoid saying it twice.
+ *
+ * Keyed on payload shape, not a command spec: a committed block carries no command id (bible B11 —
+ * no reverse edit) and generic verbs make payload→spec many-to-one, so a payload-shape projection is
+ * the honest home — the same shape `describeBlock` / `getBlockBadgeInfo` / `getQuickParams` take.
+ */
+export function blockOverview(
+    block: StoryBlock,
+    characters: Character[],
+    scene: StoryScene | undefined,
+    scenes: Record<StorySceneId, StoryScene> | undefined,
+    label: (key: "story.quickParam.jumpLabel" | "story.quickParam.waitLabel") => string,
+): OverviewFragment[] {
+    const params = getQuickParams(block);
+    // The bare verb label replaces `describeBlock` only when a token actually prints the value, or it
+    // would show twice. A click-mode `/wait` owns no token, so it keeps its full "Wait for click" text.
+    const valueInToken = params.length > 0 && ((block.kind === "action" && block.payload.action === "wait") || block.kind === "jump");
+    const base = !valueInToken
+        ? describeBlock(block, characters, scene, scenes)
+        : block.kind === "jump"
+            ? label("story.quickParam.jumpLabel")
+            : label("story.quickParam.waitLabel");
+    const fragments: OverviewFragment[] = [];
+    if (base) {
+        fragments.push({ kind: "text", text: base });
+    }
+    for (const param of params) {
+        fragments.push({ kind: "quick", param });
+    }
+    return fragments;
+}
+
+/**
+ * Render a committed row's overview: the structured `[target][modifiers]` fragment stream, with any
+ * quick-edit params inline as clickable tokens (WI-2). The single summary path for every action row —
+ * a plain-`describeBlock` row is just an overview with no token fragments.
+ */
+export function BlockOverview(props: {
     block: StoryBlock;
     characters: Character[];
     scene?: StoryScene;
     scenes?: Record<StorySceneId, StoryScene>;
-    params: QuickParam[];
     textStyle?: CSSProperties;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
     const { t } = useTranslation();
-    const block = props.block;
-    const valueInSummary = (block.kind === "action" && block.payload.action === "wait") || block.kind === "jump";
-    const base = !valueInSummary
-        ? describeBlock(block, props.characters, props.scene, props.scenes)
-        : block.kind === "jump"
-            ? t("story.quickParam.jumpLabel")
-            : t("story.quickParam.waitLabel");
+    const fragments = blockOverview(props.block, props.characters, props.scene, props.scenes, key => t(key));
 
     return (
         <span className="flex min-w-0 flex-1 items-center gap-1 truncate text-sm text-fg-muted" style={props.textStyle}>
-            <span className="truncate">{base}</span>
-            <QuickParamsInline params={props.params} scenes={props.scenes} onUpdatePayload={props.onUpdatePayload} />
+            {fragments.map((fragment, index) =>
+                fragment.kind === "text"
+                    ? <span key={`t${index}`} className="truncate">{fragment.text}</span>
+                    : <QuickParamToken key={fragment.param.id} param={fragment.param} scenes={props.scenes} onApply={props.onUpdatePayload} />,
+            )}
         </span>
     );
 }
