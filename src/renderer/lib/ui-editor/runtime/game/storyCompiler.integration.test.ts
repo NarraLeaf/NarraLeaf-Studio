@@ -1100,6 +1100,50 @@ describe("compileStudioStoryToNlr", () => {
         ]);
     });
 
+    it("validates persistent references against the declared set (bible §3.3)", async () => {
+        const persistentDecl: StoryBlock = {
+            id: "flag-decl",
+            kind: "declaration",
+            parentId: null,
+            childrenIds: [],
+            payload: { scope: "persistent", name: "flag", valueType: "boolean", storageKey: "flag" },
+        };
+        const setDeclared: StoryBlock = {
+            id: "set-declared",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: { action: "setVariable", target: { scope: "persistent", storageKey: "flag" }, value: true },
+        };
+        const setGhost: StoryBlock = {
+            id: "set-ghost",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: { action: "setVariable", target: { scope: "persistent", storageKey: "ghost" }, value: true },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ "flag-decl": persistentDecl, "set-declared": setDeclared, "set-ghost": setGhost }, ["flag-decl", "set-declared", "set-ghost"]),
+            sceneId: "scene-1",
+        });
+        // The undeclared reference is caught; the declared one passes validation and only trips the
+        // separate "needs host persistence" gate (no persistence bridge in this compile).
+        expect(compiled.diagnostics).toContainEqual({ level: "warning", blockId: "set-ghost", message: "Persistent variable not found; the assignment was skipped." });
+        expect(compiled.diagnostics.find(d => d.blockId === "set-declared")?.message).toContain("require Dev Mode host persistence");
+        expect(compiled.diagnostics.some(d => d.blockId === "set-declared" && d.message.includes("not found"))).toBe(false);
+    });
+
+    it("flags two scenes sharing a runtime name (colliding scene-local namespaces)", async () => {
+        const document = baseDocument({ say: narrationBlock("say", "text-say", "Hi.") }, ["say"]);
+        // Force the collision: both scenes now resolve to the same NLR Scene name.
+        document.scenes["scene-2"].runtimeName = document.scenes["scene-1"].runtimeName;
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        expect(compiled.diagnostics).toContainEqual({
+            level: "error",
+            message: `Two scenes share the name "${document.scenes["scene-1"].runtimeName}"; their scene-local variables would collide. Rename one.`,
+        });
+    });
+
     it("seeds declared scene-local defaults at the scene head and compiles declaration rows to nothing", async () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({ say: narrationBlock("say", "text-say", "Hello.") }, ["say"]),
@@ -1325,6 +1369,15 @@ describe("compileStudioStoryToNlr localization", () => {
 
     it("maps {n} placeholders in translations back to the source interpolation words", async () => {
         let locale = "en";
+        // The persistent variable the interpolation reads must be declared (bible §3.3), so a
+        // persistent `//persis playerName` row seeds it; the host still supplies the live value.
+        const playerNameDecl: StoryBlock = {
+            id: "playerName",
+            kind: "declaration",
+            parentId: null,
+            childrenIds: [],
+            payload: { scope: "persistent", name: "playerName", valueType: "string", storageKey: "playerName" },
+        };
         const say: StoryBlock = {
             id: "say",
             kind: "nodeAction",
@@ -1345,7 +1398,7 @@ describe("compileStudioStoryToNlr localization", () => {
             },
         };
         const compiled = await compileStudioStoryToNlr({
-            document: baseDocument({ say }, ["say"]),
+            document: baseDocument({ playerName: playerNameDecl, say }, ["playerName", "say"]),
             sceneId: "scene-1",
             persistence: {
                 get: key => (key === "playerName" ? "Alice" : undefined),
