@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { CharacterForm } from "@/lib/workspace/services/character/types";
 import { useTranslation } from "@/lib/i18n";
-import { AlertCircle, RefreshCw, ZoomIn, ZoomOut } from "lucide-react";
+import { AlertCircle, Crop, RefreshCw, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import { AssetView } from "./types";
 import {
     ImagePixelPreview,
@@ -14,6 +14,12 @@ type PreviewPanelProps = {
     previewAsset: AssetView | null;
     previewLoading: boolean;
     previewError: string | null;
+    /** Whether the current preview can be portrait-framed (has an image with known dimensions). */
+    canEditPortrait: boolean;
+    /** Whether a portrait framing rect is currently set (enables the reset affordance). */
+    portraitSet: boolean;
+    onEditPortrait: () => void;
+    onResetPortrait: () => void;
 };
 
 function VariantPreview({
@@ -120,6 +126,10 @@ export function PreviewPanel({
     previewAsset,
     previewLoading,
     previewError,
+    canEditPortrait,
+    portraitSet,
+    onEditPortrait,
+    onResetPortrait,
 }: PreviewPanelProps) {
     const { t } = useTranslation();
     const label = useMemo(() => {
@@ -128,11 +138,33 @@ export function PreviewPanel({
     }, [activeForm, t]);
 
     return (
-        <div className="flex flex-col">
+        <div className="group flex flex-col">
             <div className="px-4 py-2 border-b border-edge flex items-center gap-3">
                 <span className="text-sm font-semibold">{t("characters.preview.title")}</span>
                 <span className="text-xs text-fg-subtle">{label}</span>
                 {previewVariant && <span className="text-xs text-fg-muted">{t("characters.preview.variant", { name: previewVariant })}</span>}
+                {canEditPortrait ? (
+                    <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        <button
+                            className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors"
+                            onClick={onEditPortrait}
+                            title={t("characters.preview.setPortrait")}
+                            aria-label={t("characters.preview.setPortrait")}
+                        >
+                            <Crop className="w-4 h-4" />
+                        </button>
+                        {portraitSet ? (
+                            <button
+                                className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors"
+                                onClick={onResetPortrait}
+                                title={t("characters.preview.resetPortrait")}
+                                aria-label={t("characters.preview.resetPortrait")}
+                            >
+                                <RotateCcw className="w-4 h-4" />
+                            </button>
+                        ) : null}
+                    </div>
+                ) : null}
             </div>
             <VariantPreview view={previewAsset} loading={previewLoading} error={previewError} />
         </div>
