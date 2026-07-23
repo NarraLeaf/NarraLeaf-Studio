@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useWorkspace } from "../../context";
-import { useKeybinding } from "../../hooks";
+import { useKeybinding, useProjectDisplayName } from "../../hooks";
 import { useRegistry } from "../../registry";
 import { Services } from "@/lib/workspace/services/services";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
@@ -75,6 +75,7 @@ function highlightTitle(title: string, positions: number[]) {
 export function CommandPalette() {
     const { t } = useTranslation();
     const { workspace, context } = useWorkspace();
+    const projectName = useProjectDisplayName();
     // Subscribed so the command snapshot refreshes if actions change while the palette is open.
     const { actions, actionGroups, openEditorTab, setPanelVisibility, editorLayout, setActiveEditorTab } =
         useRegistry();
@@ -451,7 +452,7 @@ export function CommandPalette() {
                         ? undefined
                         : {
                               value: query,
-                              placeholder: t("workspace.shell.search.titleBarPlaceholder"),
+                              placeholder: t("workspace.shell.search.titleBarPlaceholder", { name: projectName }),
                               ariaLabel: t("workspace.shell.commandPalette.title"),
                               onChange: setQuery,
                               onKeyDown: handleInputKeyDown,

@@ -5,6 +5,9 @@ export { useWorkspacePlugins } from "./useWorkspacePlugins";
 // Editor layout preferences
 export { useMaxActiveEditors } from "./useMaxActiveEditors";
 
+// Current project display name
+export { useProjectDisplayName } from "./useProjectDisplayName";
+
 // UI Service hooks
 export {
     useUIService,

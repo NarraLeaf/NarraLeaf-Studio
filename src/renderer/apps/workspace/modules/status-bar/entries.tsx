@@ -3,24 +3,20 @@ import { Bell, BookText, CircleDot, Keyboard, Loader2, Monitor, Moon, Sun } from
 import { useWorkspace } from "../../context";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
-import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
-import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
-import { BuildService } from "@/lib/workspace/services/core/BuildService";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { getInterface } from "@/lib/app/bridge";
 import { countSceneTextStats } from "@/lib/workspace/stats/storyTextStats";
 import { getSceneName } from "../story/scene-editor/storySceneBlockUtils";
+import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
 import type { StoryDocument, StoryId, StorySceneId } from "@shared/types/story";
-import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "../actions/runtimeActionStatus";
 import { openKeybindingCheatSheet } from "../../components/layout/KeybindingCheatSheet";
 import { openDashboardTab } from "../dashboard";
 import { NOTIFICATIONS_PANEL_ID } from "../notifications";
 import { StatusEntry } from "./StatusEntry";
+import { useActiveRunMode } from "./useActiveRunMode";
 import type { TranslationKey } from "@shared/i18n";
-import type { DevModeStatus } from "@shared/types/devMode";
-import type { PreviewStatus } from "@shared/types/gameRuntime";
 
 const ZOOM_SETTINGS_KEY = "ui.zoomPercent";
 const THEME_SETTINGS_KEY = "ui.themeMode";
@@ -39,79 +35,32 @@ const THEME_META: Record<ThemeMode, { icon: React.ReactNode; labelKey: Translati
  * is allowed to speak — not that it always occupies a cell.
  */
 
-export function DevModeEntry() {
+/**
+ * The single run-status cell. While a mode runs it reads "<mode> | <phase>" (e.g. "Dev Mode |
+ * Compiling…") and clicking it opens the console, where that mode's output lands. It renders nothing
+ * when idle — the bar is back to its resting colour then, so there is no state to report. The
+ * theme-colour wash over the whole bar (see {@link StatusBar}) is the "something is running" signal;
+ * this cell says *what*, without a status dot.
+ */
+export function RunStatusEntry() {
     const { t } = useTranslation();
     const { context } = useWorkspace();
-    const [status, setStatus] = useState<DevModeStatus>("idle");
+    const active = useActiveRunMode();
 
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const devMode = context.services.get<DevModeService>(Services.DevMode);
-        setStatus(devMode.getStatus());
-        return devMode.onStatusChanged(setStatus);
-    }, [context]);
-
-    if (!isDevModeRuntimeActive(status)) {
+    if (!active) {
         return null;
     }
+
+    const openConsole = () => {
+        context?.services.get<UIService>(Services.UI).panels.show("narraleaf-studio:console");
+    };
+
     return (
-        <StatusEntry emphasis title={t("workspace.shell.statusBar.devModeRunning")}>
-            <span className="h-1.5 w-1.5 rounded-full bg-success" />
-            <span>{t("workspace.shell.statusBar.devMode")}</span>
-        </StatusEntry>
-    );
-}
-
-export function PreviewEntry() {
-    const { t } = useTranslation();
-    const { context } = useWorkspace();
-    const [status, setStatus] = useState<PreviewStatus>("idle");
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const preview = context.services.get<PreviewService>(Services.Preview);
-        setStatus(preview.getStatus());
-        return preview.onStatusChanged(setStatus);
-    }, [context]);
-
-    if (!isPreviewRuntimeActive(status)) {
-        return null;
-    }
-    return (
-        <StatusEntry emphasis title={t("workspace.shell.statusBar.previewRunning")}>
-            <span className="h-1.5 w-1.5 rounded-full bg-success" />
-            <span>{t("workspace.shell.statusBar.preview")}</span>
-        </StatusEntry>
-    );
-}
-
-export function BuildEntry() {
-    const { t } = useTranslation();
-    const { context } = useWorkspace();
-    const [building, setBuilding] = useState(false);
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const build = context.services.get<BuildService>(Services.Build);
-        setBuilding(build.isBuilding());
-        return build.onStateChanged(state =>
-            setBuilding(state.status === "preparing" || state.status === "compiling" || state.status === "packaging"),
-        );
-    }, [context]);
-
-    if (!building) {
-        return null;
-    }
-    return (
-        <StatusEntry emphasis title={t("workspace.shell.statusBar.building")}>
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <span>{t("workspace.shell.statusBar.building")}</span>
+        <StatusEntry emphasis onClick={openConsole} title={t("workspace.shell.statusBar.openConsole")}>
+            {active.busy && <Loader2 className="h-3 w-3 animate-spin" />}
+            <span className="font-medium">{t(active.labelKey)}</span>
+            <span aria-hidden className="opacity-50">|</span>
+            <span>{t(active.phaseKey)}</span>
         </StatusEntry>
     );
 }
@@ -262,6 +211,23 @@ export function WordCountEntry() {
         }
     };
 
+    // Reopen (or refocus) the scene this cell is reporting on — the most-recently-edited scene —
+    // so the readout doubles as a jump-back-to-writing shortcut. Falls back to the dashboard when
+    // no scene is being tracked, matching the empty-state cell below.
+    const openCurrentScene = () => {
+        const scene = activeScene.current;
+        if (!context || !scene) {
+            openDashboard();
+            return;
+        }
+        context.services
+            .get<UIService>(Services.UI)
+            .editor.open(createStorySceneEditorTab(
+                { storyId: scene.storyId, sceneId: scene.sceneId },
+                stats?.name ?? "",
+            ));
+    };
+
     if (!stats) {
         return (
             <StatusEntry title={t("workspace.shell.statusBar.openDashboard")} onClick={openDashboard}>
@@ -271,7 +237,7 @@ export function WordCountEntry() {
         );
     }
     return (
-        <StatusEntry title={t("workspace.shell.statusBar.openDashboard")} onClick={openDashboard}>
+        <StatusEntry title={t("workspace.shell.statusBar.openCurrentScene")} onClick={openCurrentScene}>
             <BookText className="h-3 w-3 shrink-0" />
             <span className="max-w-[16ch] truncate">{stats.name}</span>
             <span className="tabular-nums">

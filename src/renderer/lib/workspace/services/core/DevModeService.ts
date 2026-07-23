@@ -16,6 +16,10 @@ export class DevModeService extends Service<DevModeService> {
     private status: DevModeStatus = "idle";
     private timer: ReturnType<typeof setInterval> | null = null;
     private refreshInFlight = false;
+    // True from the click until the launch IPC resolves. While set, the status poll is suppressed so
+    // it cannot momentarily revert the optimistic "starting" back to "idle" before the main process
+    // has registered the launch.
+    private launchInFlight = false;
     private readonly events = new EventEmitter<DevModeServiceEvents>();
 
     protected async init(_ctx: WorkspaceContext): Promise<void> {
@@ -40,7 +44,7 @@ export class DevModeService extends Service<DevModeService> {
     }
 
     public async refreshStatus(): Promise<DevModeStatus> {
-        if (this.refreshInFlight) {
+        if (this.refreshInFlight || this.launchInFlight) {
             return this.status;
         }
         this.refreshInFlight = true;
@@ -56,21 +60,29 @@ export class DevModeService extends Service<DevModeService> {
     }
 
     public async launch(entry: DevModeEntry, projectPath?: string): Promise<DevModeStatus> {
+        this.launchInFlight = true;
+        // Flip to a running state up front so the toolbar Run button and the status bar react the
+        // instant the user clicks — not after the flush and compile the launch entails.
+        this.updateStatus("starting");
         try {
-            await this.prepareProjectForPreview();
-        } catch (error) {
-            console.error("[DevMode] failed to prepare project before launch", error);
-            this.updateStatus("error");
+            try {
+                await this.prepareProjectForPreview();
+            } catch (error) {
+                console.error("[DevMode] failed to prepare project before launch", error);
+                this.updateStatus("error");
+                return this.status;
+            }
+            const path = projectPath ?? this.projectPath();
+            const result = await getInterface().devMode.launch(path, entry);
+            if (result.success) {
+                this.updateStatus(result.data.status);
+            } else {
+                this.updateStatus("error");
+            }
             return this.status;
+        } finally {
+            this.launchInFlight = false;
         }
-        const path = projectPath ?? this.projectPath();
-        const result = await getInterface().devMode.launch(path, entry);
-        if (result.success) {
-            this.updateStatus(result.data.status);
-        } else {
-            this.updateStatus("error");
-        }
-        return this.status;
     }
 
     private async prepareProjectForPreview(): Promise<void> {

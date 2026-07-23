@@ -246,11 +246,23 @@ export const workspace = {
         },
         // The bottom status strip. Signals only show while meaningful (running/ building/dirty).
         statusBar: {
+            // Mode names for the unified run-status cell, which reads "<mode> | <phase>" and tints
+            // the whole bar with the theme colour while any mode runs.
             devMode: "Dev Mode",
-            devModeRunning: "Dev Mode is running",
             preview: "Preview",
-            previewRunning: "Preview is running",
-            building: "Building…",
+            production: "Production",
+            // The phase after the divider. Not every phase applies to every mode.
+            phase: {
+                starting: "Starting…",
+                preparing: "Preparing…",
+                compiling: "Compiling…",
+                launching: "Launching…",
+                packaging: "Packaging…",
+                running: "Running",
+                reloading: "Reloading…",
+                stopping: "Stopping…",
+            },
+            openConsole: "Open the console",
             unsavedChanges: "Unsaved changes",
             saveNow: "Save now",
             resetZoom: "Reset zoom to 100%",
@@ -259,12 +271,11 @@ export const workspace = {
             lines: "{count} lines",
             noStoryOpen: "No story open",
             openDashboard: "Open the project dashboard",
+            openCurrentScene: "Open the current scene",
             // Names for the registered entries, shown only in the bar's right-click toggle menu -
             // the cells themselves are icon-first and label their own state.
             entries: {
-                devMode: "Dev Mode status",
-                preview: "Preview status",
-                build: "Build status",
+                runStatus: "Run status",
                 unsavedChanges: "Unsaved changes",
                 wordCount: "Story stats",
                 shortcuts: "Keyboard shortcuts",
@@ -335,8 +346,9 @@ export const workspace = {
         // Global project search: the dock panel and the palette's search mode share these.
         search: {
             placeholder: "Search project…",
-            // Label on the title-bar search pill (opens the palette in search mode).
-            titleBarPlaceholder: "Search in project",
+            // Label on the title-bar search pill (opens the palette in search mode). `{name}` is the
+            // current project's name.
+            titleBarPlaceholder: "Search in {name}",
             building: "Building search index…",
             empty: "No results",
             more: "{count} more",
