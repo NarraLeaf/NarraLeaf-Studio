@@ -31,6 +31,7 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import { collectTempSpeakers, promoteTempSpeaker } from "@/lib/workspace/services/story/storyModel";
 import { CHARACTERS_PANEL_ID } from "../../characters";
 import {
+    annotateDialogueGroups,
     buildDialogueAppearances,
     buildVisibleRows,
     canAcceptChildren,
@@ -257,14 +258,15 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!scene) {
             return [];
         }
-        const rows = buildVisibleRows(scene, collapsedBlockIds);
-        if (!dialogueAppearances) {
-            return rows;
+        let rows = buildVisibleRows(scene, collapsedBlockIds);
+        if (dialogueAppearances) {
+            rows = rows.map(row => {
+                const appearance = dialogueAppearances.get(row.block.id);
+                return appearance ? { ...row, appearance } : row;
+            });
         }
-        return rows.map(row => {
-            const appearance = dialogueAppearances.get(row.block.id);
-            return appearance ? { ...row, appearance } : row;
-        });
+        // Grouping runs last, over the exact rows that will render (WI-5).
+        return annotateDialogueGroups(rows);
     }, [collapsedBlockIds, dialogueAppearances, scene]);
     const rowIndexById = useMemo(() => {
         const result = new Map<StoryBlockId, number>();
