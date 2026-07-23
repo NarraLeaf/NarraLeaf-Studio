@@ -393,10 +393,9 @@ export function ActionInspector(props: {
     const { label, icon: Icon, iconColor } = getBlockBadgeInfo(block);
 
     return (
+        // Fills the right-sidebar panel container (WI-1): the property editor that once expanded inline
+        // under the row, now the panel body — so no floating-card chrome of its own.
         <div
-            className="mt-2 max-w-3xl animate-scale-in rounded-xl border border-edge bg-surface-raised p-3 shadow-lg"
-            onClick={event => event.stopPropagation()}
-            onMouseDown={event => event.stopPropagation()}
             onKeyDown={event => {
                 if (event.key === "Escape") {
                     event.stopPropagation();
