@@ -16,6 +16,14 @@ export const storyInspector = {
         effect: "Effect",
         transform: "Transform",
         transition: "Transition",
+        voice: "Voice",
+    },
+
+    voice: {
+        voiced: "Voiced",
+        none: "No take",
+        stale: "Outdated",
+        openTable: "Open voice table",
     },
 
     field: {

@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { CharacterForm } from "@/lib/workspace/services/character/types";
 import { useTranslation } from "@/lib/i18n";
-import { AlertCircle, Crop, RefreshCw, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
+import { AlertCircle, Crop, Layers, RefreshCw, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import { AssetView } from "./types";
 import {
     ImagePixelPreview,
@@ -20,6 +20,11 @@ type PreviewPanelProps = {
     portraitSet: boolean;
     onEditPortrait: () => void;
     onResetPortrait: () => void;
+    /** Whether a per-form portrait scope can be toggled (a form is active and framable). */
+    formScopeAvailable: boolean;
+    /** Whether the active form currently carries its own portrait override. */
+    formScoped: boolean;
+    onToggleFormScope: () => void;
 };
 
 function VariantPreview({
@@ -130,6 +135,9 @@ export function PreviewPanel({
     portraitSet,
     onEditPortrait,
     onResetPortrait,
+    formScopeAvailable,
+    formScoped,
+    onToggleFormScope,
 }: PreviewPanelProps) {
     const { t } = useTranslation();
     const label = useMemo(() => {
@@ -145,6 +153,17 @@ export function PreviewPanel({
                 {previewVariant && <span className="text-xs text-fg-muted">{t("characters.preview.variant", { name: previewVariant })}</span>}
                 {canEditPortrait ? (
                     <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        {formScopeAvailable ? (
+                            <button
+                                className={`p-1 rounded hover:bg-fill transition-colors ${formScoped ? "text-primary" : "text-fg-muted hover:text-fg"}`}
+                                onClick={onToggleFormScope}
+                                title={t(formScoped ? "characters.preview.portraitFormScopedOn" : "characters.preview.portraitFormScopedOff")}
+                                aria-label={t(formScoped ? "characters.preview.portraitFormScopedOn" : "characters.preview.portraitFormScopedOff")}
+                                aria-pressed={formScoped}
+                            >
+                                <Layers className="w-4 h-4" />
+                            </button>
+                        ) : null}
                         <button
                             className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors"
                             onClick={onEditPortrait}

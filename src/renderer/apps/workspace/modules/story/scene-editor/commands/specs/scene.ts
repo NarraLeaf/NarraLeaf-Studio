@@ -11,6 +11,9 @@ export const bg = defineStoryCommand({
     token: "bg",
     aliases: ["background"],
     category: "scene",
+    // Inline quick-edit (WI-2): the transition duration. The transition kind (`t`, an enum) stays an
+    // inspector choice — a qualitative pick, not a high-frequency micro-adjust.
+    quickParams: ["d"],
     params: {
         image: {
             hint: "imageOrColor",
@@ -44,6 +47,7 @@ export const jump = defineStoryCommand({
     id: "jump",
     token: "jump",
     category: "scene",
+    quickParams: ["scene"],
     params: {
         scene: { hint: "scene", type: { kind: "scene" }, positional: true, core: true },
         t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("scene") } },
@@ -67,6 +71,7 @@ export const wait = defineStoryCommand({
     id: "wait",
     token: "wait",
     category: "control",
+    quickParams: ["seconds"],
     params: {
         // `/wait 2` pauses two seconds, `/wait click` (or a bare `/wait`) waits for the player.
         seconds: { hint: "waitFor", type: [{ kind: "keyword", value: "click" }, { kind: "number", min: 0 }], positional: true },

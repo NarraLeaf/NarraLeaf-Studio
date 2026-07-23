@@ -144,6 +144,8 @@ export const show = defineStoryCommand({
     token: "show",
     aliases: ["enter"],
     category: "character",
+    // Inline quick-edit (WI-2): the enter transition duration (the transition kind stays inspector-only).
+    quickParams: ["d"],
     params: {
         target: targetParam(SHOW_HIDE_ACCEPTS, { core: true }),
         form: { hint: "form", type: { kind: "characterForm", dependsOn: "target" }, positional: true },
@@ -163,6 +165,8 @@ export const hide = defineStoryCommand({
     token: "hide",
     aliases: ["exit"],
     category: "character",
+    // Inline quick-edit (WI-2): the exit transition duration (the transition kind stays inspector-only).
+    quickParams: ["d"],
     params: {
         target: targetParam(SHOW_HIDE_ACCEPTS, { core: true }),
         t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: mergedTransitionOptions("character", "conceal") } },

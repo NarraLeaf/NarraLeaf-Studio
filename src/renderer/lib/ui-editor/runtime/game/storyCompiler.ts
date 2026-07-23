@@ -1100,6 +1100,13 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
         return [];
     }
 
+    // A disabled row (schema v7) is compiled out — with its whole subtree, since returning here never
+    // recurses into its children — and it is not an error (unlike `invalid`): the author chose to skip
+    // it, so at runtime it simply does not exist.
+    if (block.disabled) {
+        return [];
+    }
+
     if (block.kind === "nodeAction") {
         if (block.payload.action === "choice") {
             return compileChoice(ctx, block);
@@ -1745,7 +1752,8 @@ async function compileChoice(ctx: SceneCompileContext, block: Extract<StoryBlock
     }
     const choiceBlocks = block.childrenIds
         .map(childId => ctx.scene.blocks[childId])
-        .filter((child): child is Extract<StoryBlock, { kind: "nodeAction" }> => child?.kind === "nodeAction" && child.payload.action === "choiceOption");
+        // A disabled option is compiled out like any other disabled row — the menu never offers it.
+        .filter((child): child is Extract<StoryBlock, { kind: "nodeAction" }> => child?.kind === "nodeAction" && child.payload.action === "choiceOption" && !child.disabled);
 
     if (choiceBlocks.length === 0) {
         diagnostic(ctx, "warning", block.id, "Choice has no options.");
@@ -1778,7 +1786,8 @@ async function compileChoice(ctx: SceneCompileContext, block: Extract<StoryBlock
 async function compileCondition(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "control" }>): Promise<NlrStatement[]> {
     const branches = block.childrenIds
         .map(childId => ctx.scene.blocks[childId])
-        .filter((child): child is Extract<StoryBlock, { kind: "control" }> => child?.kind === "control" && child.payload.control === "conditionBranch");
+        // A disabled branch is compiled out — the condition behaves as if that branch were never written.
+        .filter((child): child is Extract<StoryBlock, { kind: "control" }> => child?.kind === "control" && child.payload.control === "conditionBranch" && !child.disabled);
 
     const firstBranch = branches.find(branch => branch.payload.control === "conditionBranch" && branch.payload.branch !== "else");
     if (!firstBranch || firstBranch.payload.control !== "conditionBranch") {

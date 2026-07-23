@@ -236,6 +236,8 @@ export const story = {
         createCharacter: "Create character “{name}”",
         voiceOutdated: "Voice outdated, open voice table",
         voiceManage: "Open voice table",
+        voicePlay: "Play voice take",
+        voiceStop: "Stop",
     },
     sceneEditor: {
         defaultSceneName: "Untitled Scene",
@@ -257,6 +259,7 @@ export const story = {
         actionsPanel: "Actions",
         variablesPanel: "Story Variables",
         snapshotsPanel: "Scene Snapshots",
+        inspectorPanel: "Inspector",
     },
     preview: {
         label: "Preview",
@@ -534,6 +537,20 @@ export const story = {
         variableFallback: "variable",
         savedVariable: "saved variable",
         persistent: "persistent",
+    },
+    quickParam: {
+        waitLabel: "Wait",
+        jumpLabel: "Jump to",
+    },
+    rowMenu: {
+        insertAbove: "Insert above",
+        insertBelow: "Insert below",
+        duplicate: "Duplicate",
+        disable: "Disable",
+        enable: "Enable",
+        playFromHere: "Play from here",
+        openInspector: "Open inspector",
+        delete: "Delete",
     },
     keybindings: {
         deleteRows: "Delete selected story rows",
