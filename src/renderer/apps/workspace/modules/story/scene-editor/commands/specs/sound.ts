@@ -37,6 +37,7 @@ export const bgm = defineStoryCommand({
     id: "bgm",
     token: "bgm",
     category: "media",
+    quickParams: ["vol", "loop"],
     params: {
         audio: { aliases: ["src"], hint: "audioAsset", type: { kind: "asset", assetType: "audio" }, positional: true, core: true },
         vol: { aliases: ["volume"], hint: "vol", type: { kind: "number", min: 0, max: 1 } },
@@ -73,6 +74,7 @@ export const sound = defineStoryCommand({
     token: "sound",
     aliases: ["se"],
     category: "media",
+    quickParams: ["vol", "loop"],
     params: {
         audio: { aliases: ["src"], hint: "audioAsset", type: { kind: "asset", assetType: "audio" }, positional: true, core: true },
         name: { hint: "objectName", type: { kind: "text" } },

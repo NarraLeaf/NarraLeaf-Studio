@@ -295,6 +295,32 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         visibleRows.forEach((row, index) => result.set(row.block.id, index));
         return result;
     }, [visibleRows]);
+    // While the "narrative only" filter is on, keep the selection and active row inside the visible set.
+    // Enabling the filter (or editing under it) can leave selected staging rows hidden, and a Delete
+    // must never act on a row the author cannot see — so drop any selected id that is no longer visible.
+    // Off-filter editing is untouched; navigation that needs a hidden row turns the filter off first
+    // (see revealBlock).
+    useEffect(() => {
+        if (!narrativeOnly) {
+            return;
+        }
+        setSelectedBlockIds(prev => {
+            if (prev.size === 0) {
+                return prev;
+            }
+            let changed = false;
+            const next = new Set<StoryBlockId>();
+            for (const id of prev) {
+                if (rowIndexById.has(id)) {
+                    next.add(id);
+                } else {
+                    changed = true;
+                }
+            }
+            return changed ? next : prev;
+        });
+        setActiveBlockId(prev => (prev && !rowIndexById.has(prev) ? null : prev));
+    }, [narrativeOnly, rowIndexById]);
     const shouldRenderActiveInsertSlot = editorMode.kind === "insert" && editorMode.slot.afterBlockId !== null;
     const editorFocusKey = editorMode.kind === "insert"
         ? `insert:${editorMode.slot.focusToken}`
@@ -508,14 +534,21 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     // Make a block the active/selected row (used by deep-link navigation). Scrolling the row into
     // view and moving DOM focus is handled by the tab, which owns the rendered row elements.
     const revealBlock = useCallback((blockId: StoryBlockId): boolean => {
-        if (!scene?.blocks[blockId]) {
+        const block = scene?.blocks[blockId];
+        if (!block) {
             return false;
+        }
+        // Jump wins over the filter: navigating (reveal / search) to a staging row that the "narrative
+        // only" filter would hide turns the filter off, so the target is actually visible and selected
+        // rather than an invisible selection on a hidden row.
+        if (narrativeOnly && !isNarrativeRow(block)) {
+            setNarrativeOnly(false);
         }
         setActiveBlockId(blockId);
         setSelectedBlockIds(new Set([blockId]));
         selectionAnchorRef.current = blockId;
         return true;
-    }, [scene]);
+    }, [narrativeOnly, scene, setNarrativeOnly]);
 
     const captureHistoryState = useCallback((): StorySceneHistoryState | null => {
         if (!scene) {
@@ -711,6 +744,30 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             window.requestAnimationFrame(() => insertInputRef.current?.focus());
         }
     }, []);
+
+    /**
+     * Open an insert slot directly *above* a row, at that row's own depth. Modelled on `startLineEdit`'s
+     * before-target (parent + `beforeBlockId`) but without `replaceBlockId`, so the row stays and the new
+     * line lands in front of it — the "insert above" context-menu action. The tab renders it against the
+     * `beforeBlockId` target, which is why it works uniformly whether or not the row has a previous sibling.
+     */
+    const startInsertBefore = useCallback((blockId: StoryBlockId, focus = true) => {
+        const block = scene?.blocks[blockId];
+        if (!block) {
+            return;
+        }
+        slotDiscardedRef.current = false;
+        setEditorMode({
+            kind: "insert",
+            slot: { afterBlockId: null, focusToken: Date.now(), target: { parentId: block.parentId, beforeBlockId: blockId } },
+            value: "",
+            chooser: "none",
+        });
+        setActiveBlockId(blockId);
+        if (focus) {
+            window.requestAnimationFrame(() => insertInputRef.current?.focus());
+        }
+    }, [scene]);
 
     /**
      * Re-open a row as an editable line, seeded with its source.
@@ -968,8 +1025,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             // Anchor the fresh slot to the previous sibling so it reappears at the dialogue's own level and
             // position (the continuation flow that creates these always has one). A dialogue that opens its
             // container has no sibling to anchor to - fall through to the plain delete-and-step-back.
+            // The anchor must be *visible*: under the "narrative only" filter the previous sibling can be a
+            // hidden staging row, and a slot anchored to a hidden row opens where the author cannot see it —
+            // so when that sibling is filtered out, don't demote and fall through to delete-and-step-back.
             const previousSibling = findPreviousSibling(scene, id);
-            if (previousSibling) {
+            if (previousSibling && rowIndexById.has(previousSibling.id)) {
                 recordHistory();
                 storyService.deleteBlock(storyId, sceneId, id);
                 startInsertAfter(previousSibling.id, true);
@@ -1800,6 +1860,37 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setStatusText(`Duplicated ${insertedIds.length} row${insertedIds.length === 1 ? "" : "s"}.`);
     }, [activeBlockId, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uuidService, visibleRows]);
 
+    /**
+     * The block ids a row operation acts on: the selection (deduped to roots so a container carries its
+     * subtree), else the single active row. The one place the context-menu actions and the disable
+     * toggle agree on "the rows this applies to".
+     */
+    const selectionRootIds = useCallback((): StoryBlockId[] => {
+        if (!scene) {
+            return [];
+        }
+        const ids = selectedBlockIds.size > 0 ? [...selectedBlockIds] : activeBlockId ? [activeBlockId] : [];
+        return filterOutSelectedDescendants(scene, ids);
+    }, [activeBlockId, scene, selectedBlockIds]);
+
+    /**
+     * Toggle the compiled-out flag across the selection (schema v7). When every targeted root is already
+     * disabled it enables them, so the one menu action reads "Enable"; otherwise it disables. Undoable.
+     */
+    const toggleDisableSelection = useCallback(() => {
+        if (!storyService || !storyId || !sceneId || !scene) {
+            return;
+        }
+        const roots = selectionRootIds();
+        if (roots.length === 0) {
+            return;
+        }
+        const nextDisabled = !roots.every(id => scene.blocks[id]?.disabled);
+        recordHistory();
+        roots.forEach(id => storyService.setBlockDisabled(storyId, sceneId, id, nextDisabled));
+        setStatusText(nextDisabled ? `Disabled ${roots.length} row${roots.length === 1 ? "" : "s"}.` : `Enabled ${roots.length} row${roots.length === 1 ? "" : "s"}.`);
+    }, [recordHistory, scene, sceneId, selectionRootIds, storyId, storyService]);
+
     const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
         if (!isStoryEditorFocusActive()) {
             return;
@@ -1863,7 +1954,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         density, setDensity, narrativeOnly, setNarrativeOnly,
         rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
-        deleteRows, deleteSelection, startInsertAfter, selectRow, beginDragSelection,
+        deleteRows, deleteSelection, startInsertAfter, startInsertBefore, selectRow, beginDragSelection,
+        selectionRootIds, toggleDisableSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateSceneMetadata,
         setDialogueSpeaker, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange,
         undoEdit, redoEdit,

@@ -18,19 +18,6 @@ type HeadThumbnailProps = {
 };
 
 /**
- * `undefined` while the head is still being located, `null` once the image is
- * known to have no findable head — see `headCrop`.
- */
-type CropState = {
-    url: string | null | undefined;
-    crop: NormalizedCrop | null | undefined;
-};
-
-function readCache(url: string | null | undefined): CropState {
-    return { url, crop: url ? peekHeadCrop(url) : null };
-}
-
-/**
  * A character thumbnail framed on the head rather than on the middle of the
  * image, which on a full-body sprite is the waist.
  *
@@ -38,23 +25,22 @@ function readCache(url: string | null | undefined): CropState {
  * than by re-encoding it, so the thumbnail stays sharp at any pixel density.
  */
 export function HeadThumbnail({ url, alt, className, iconClassName, frame }: HeadThumbnailProps) {
-    const [state, setState] = React.useState<CropState>(() => readCache(url));
     // An explicit frame is authoritative — the silhouette heuristic is only the fallback.
     const hasFrame = frame !== undefined;
-
-    // Swapping the image has to drop the old crop in the same render that swaps
-    // the `src`, or the new art paints a frame wearing the old one's framing.
-    if (!hasFrame && state.url !== url) {
-        setState(readCache(url));
-    }
+    // The crop is read live from the shared cache below; this bump only forces a re-render once this
+    // component's own async resolution finishes. Reading the cache directly (rather than mirroring it
+    // into state) means a crop already warmed by another thumbnail — or one that lands while an
+    // explicit frame is showing — is picked up immediately, instead of leaving the image stuck at
+    // opacity-0 when a frame is later removed and the effect short-circuits on the cache hit.
+    const [, bump] = React.useReducer((n: number) => n + 1, 0);
 
     React.useEffect(() => {
         if (hasFrame || !url || peekHeadCrop(url) !== undefined) return;
 
         let cancelled = false;
-        void resolveHeadCrop(url).then(crop => {
+        void resolveHeadCrop(url).then(() => {
             if (!cancelled) {
-                setState({ url, crop });
+                bump();
             }
         });
         return () => {
@@ -62,7 +48,7 @@ export function HeadThumbnail({ url, alt, className, iconClassName, frame }: Hea
         };
     }, [url, hasFrame]);
 
-    const crop = hasFrame ? frame : (state.url === url ? state.crop : undefined);
+    const crop = hasFrame ? frame : (url ? peekHeadCrop(url) : null);
     return (
         <div className={cn("relative flex items-center justify-center overflow-hidden shrink-0", className)}>
             {url ? (

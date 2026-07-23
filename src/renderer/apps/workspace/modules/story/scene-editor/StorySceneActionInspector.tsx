@@ -30,7 +30,7 @@ import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTi
 import { useTranslation } from "@/lib/i18n";
 import type { Translator } from "@shared/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronRight, Image as ImageIcon, Music, Palette, Trash2, Video, X } from "lucide-react";
+import { ChevronRight, ExternalLink, Image as ImageIcon, Mic, Music, Palette, Play, Square, Trash2, Video, X } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "@/apps/workspace/context";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
@@ -50,6 +50,7 @@ import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCa
 import { ConditionEditor } from "./ConditionEditor";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { describeBlock, getBlockBadgeInfo } from "./storySceneBlockUtils";
+import { useStoryVoiceState } from "./useStoryVoiceState";
 import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
 import { DisplayableTargetField } from "./DisplayableTargetField";
 import { StoryLayerField } from "./StoryLayerField";
@@ -393,10 +394,9 @@ export function ActionInspector(props: {
     const { label, icon: Icon, iconColor } = getBlockBadgeInfo(block);
 
     return (
+        // Fills the right-sidebar panel container (WI-1): the property editor that once expanded inline
+        // under the row, now the panel body — so no floating-card chrome of its own.
         <div
-            className="mt-2 max-w-3xl animate-scale-in rounded-xl border border-edge bg-surface-raised p-3 shadow-lg"
-            onClick={event => event.stopPropagation()}
-            onMouseDown={event => event.stopPropagation()}
             onKeyDown={event => {
                 if (event.key === "Escape") {
                     event.stopPropagation();
@@ -457,6 +457,7 @@ function InspectorFields(props: {
                 <div className="grid grid-cols-1 gap-2">
                     <div className="text-xs text-fg-subtle">{t("storyInspector.narration.editHint")}</div>
                     <TextIdReadout text={payload.text} />
+                    <VoiceInspectorSection block={block} />
                 </div>
             );
         }
@@ -497,6 +498,7 @@ function InspectorFields(props: {
                             ) : null}
                         </FieldGrid>
                     </Section>
+                    <VoiceInspectorSection block={block} />
                 </div>
             );
         }
@@ -2001,6 +2003,56 @@ function LabeledTextarea(props: { label: string; value: string; onChange: (value
  * A titled, boxed group used to organise the compact action editor into scannable
  * sections (Basics / Appearance / Motion / Transition / Timing / ...).
  */
+/**
+ * The inspector's voice region (WI-4): the current take's state in the primary locale, an audition
+ * play/stop button when a take exists, and a jump to the voice table where binding lives. Assignment
+ * stays import-first in the voice table (no inline assignment, `dialogue.voiceAssetId` is not revived).
+ * Hidden when the project has no voiced language or the block carries no voiceable line.
+ */
+function VoiceInspectorSection({ block }: { block: StoryBlock }) {
+    const { t } = useTranslation();
+    const voice = useStoryVoiceState(block);
+    if (!voice.segment || !voice.primary) {
+        return null;
+    }
+    const statusLabel = voice.stale
+        ? t("storyInspector.voice.stale")
+        : voice.hasTake
+            ? t("storyInspector.voice.voiced")
+            : t("storyInspector.voice.none");
+    const statusClass = voice.stale ? "text-warning" : voice.hasTake ? "text-fg" : "text-fg-subtle";
+    return (
+        <Section
+            title={t("storyInspector.section.voice")}
+            right={
+                <button
+                    type="button"
+                    className="grid h-6 w-6 place-items-center rounded text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                    title={t("storyInspector.voice.openTable")}
+                    onClick={voice.openVoiceTable}
+                >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                </button>
+            }
+        >
+            <div className="flex items-center gap-2">
+                <Mic className={`h-4 w-4 shrink-0 ${statusClass}`} />
+                <span className={`min-w-0 flex-1 truncate text-sm ${statusClass}`}>{statusLabel}</span>
+                {voice.hasTake ? (
+                    <button
+                        type="button"
+                        className={`grid h-7 w-7 shrink-0 place-items-center rounded-md border border-edge bg-surface-raised transition-colors hover:text-fg ${voice.isPlaying ? "text-primary" : "text-fg-muted"}`}
+                        title={voice.isPlaying ? t("story.rows.voiceStop") : t("story.rows.voicePlay")}
+                        onClick={voice.toggleAudition}
+                    >
+                        {voice.isPlaying ? <Square className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                    </button>
+                ) : null}
+            </div>
+        </Section>
+    );
+}
+
 function Section(props: { title?: string; right?: ReactNode; className?: string; children: ReactNode }) {
     return (
         <section className={["rounded-lg border border-edge bg-fill-subtle p-2.5", props.className ?? ""].join(" ")}>

@@ -136,6 +136,8 @@ export const characters = {
         setPortrait: "头像取景",
         resetPortrait: "重置头像取景",
         portraitTitle: "头像取景",
+        portraitFormScopedOff: "仅为该形态单独取景",
+        portraitFormScopedOn: "正在为该形态单独取景 — 点击改回默认",
     },
     variantsPanel: {
         title: "差分",

@@ -82,6 +82,13 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
      * (carrying this line's `test` expression), `choice` creates the first option.
      */
     scaffold?: "condition" | "choice";
+    /**
+     * The high-frequency param keys surfaced as inline quick-edit tokens on a committed row (WI-2) —
+     * the bible's B10 "inline high-frequency" half. A subset of `params`. There is no block→args
+     * parser, so the row's render path (`getQuickParams`) reads these values straight from the payload;
+     * this declaration keeps the intended set discoverable in one place alongside the rest of the spec.
+     */
+    quickParams?: readonly (keyof P & string)[];
 };
 
 /**

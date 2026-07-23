@@ -217,6 +217,8 @@ export const story = {
         createCharacter: "创建角色「{name}」",
         voiceOutdated: "配音待更新，打开配音表",
         voiceManage: "打开配音表",
+        voicePlay: "试听配音",
+        voiceStop: "停止",
     },
     sceneEditor: {
         defaultSceneName: "未命名场景",
@@ -238,6 +240,7 @@ export const story = {
         actionsPanel: "动作",
         variablesPanel: "故事变量",
         snapshotsPanel: "场景快照",
+        inspectorPanel: "检查器",
     },
     preview: {
         label: "预览",
@@ -655,6 +658,20 @@ export const story = {
         variableFallback: "变量",
         savedVariable: "存档变量",
         persistent: "持久化",
+    },
+    quickParam: {
+        waitLabel: "等待",
+        jumpLabel: "跳转到",
+    },
+    rowMenu: {
+        insertAbove: "在上方插入",
+        insertBelow: "在下方插入",
+        duplicate: "复制行",
+        disable: "禁用",
+        enable: "启用",
+        playFromHere: "从此行播放",
+        openInspector: "打开检查器",
+        delete: "删除",
     },
     keybindings: {
         deleteRows: "删除选中的故事行",

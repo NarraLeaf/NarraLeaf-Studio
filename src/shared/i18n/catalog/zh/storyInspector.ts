@@ -16,6 +16,13 @@ export const storyInspector = {
         effect: "效果",
         transform: "变换",
         transition: "转场",
+        voice: "配音",
+    },
+    voice: {
+        voiced: "已配音",
+        none: "无音轨",
+        stale: "待更新",
+        openTable: "打开配音表",
     },
     field: {
         operation: "操作",

@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Music, Play, Plus
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterVariantSelection, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
-import { resolveVariantAssetId, selectCharacterVariantNames } from "@shared/utils/characterVariant";
+import { resolveVariantEntry, selectCharacterVariantNames } from "@shared/utils/characterVariant";
 import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
 import type { NormalizedCrop } from "@/lib/utils/headCrop";
 import { useWorkspace } from "@/apps/workspace/context";
@@ -15,10 +15,11 @@ import { getCommandLineDraftReason, getCommandLineReason } from "./storyCommandR
 import { isMacPlatform } from "@/lib/app/platform";
 import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
-import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { useBadgeImageUrl, type BadgeImageSource } from "./storyBadgeImageCache";
 import { resolveStoryMotionPreviewTarget } from "../../story-motion/storyMotionPreviewTarget";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import {
@@ -40,7 +41,6 @@ import { getCommandCandidates, hasCandidateSource, type StoryCommandCandidate } 
 import { parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "./storyCommandResolution";
 import { StoryCommandCandidateMenu, useStoryCandidateMenuState, type StoryCandidateItem } from "./StoryCommandCandidateMenu";
-import { ActionInspector } from "./StorySceneActionInspector";
 import { RichTextInput, type ActiveMarks, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle } from "./RichTextInput";
 import { RichTextToolbar } from "./RichTextToolbar";
 import { InterpolationPopover } from "./InterpolationPopover";
@@ -65,6 +65,7 @@ import {
     type StoryContainerHeaderInfo,
 } from "./storySceneBlockUtils";
 import { ConditionPopover } from "./ConditionPopover";
+import { getQuickParams, QuickParamsInline, QuickParamsSummary, type QuickParam } from "./storyQuickParams";
 import { actionTrigger, ACTION_TRIGGER, toCanonicalCommandLine } from "./commandTrigger";
 
 export function StoryBlockRow(props: {
@@ -81,8 +82,8 @@ export function StoryBlockRow(props: {
     /** Where the caret lands when this row opens for editing (arrow-navigation, or a carried selection). */
     editInitialCaret?: StoryCaretTarget;
     textInputRef: RefObject<RichTextInputHandle | null>;
-    inspectorOpen: boolean;
     onSelect: (event: MouseEvent) => void;
+    onContextMenu: (event: MouseEvent) => void;
     onMouseDown: (event: MouseEvent) => void;
     onMouseEnter: () => void;
     onToggleCollapsed: () => void;
@@ -100,15 +101,13 @@ export function StoryBlockRow(props: {
     /** Mod+Z / Mod+Shift+Z once the row's own history is spent — hand off to story history. */
     onUndoBeyondRow: () => void;
     onRedoBeyondRow: () => void;
+    /** Activate a non-text row (Enter / double-click): opens its inspector in the right panel, or runs its card-less op. */
     onOpenInspector: () => void;
-    onCloseInspector: () => void;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     tempSpeakers: TempSpeakerRef[];
     onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
     onCreateCharacter: (name: string) => void;
-    generateTextId: () => string;
-    onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
     onInsertAfter: () => void;
     /** Quick-delete this row from its hover actions. */
     onDeleteRow: () => void;
@@ -120,7 +119,7 @@ export function StoryBlockRow(props: {
     onPlayFromRow: (blockId: StoryBlockId) => void;
 }) {
     const { t } = useTranslation();
-    const { row, scene, document, characters, selected, active, collapsed, editing, textInputRef, inspectorOpen } = props;
+    const { row, scene, document, characters, selected, active, collapsed, editing, textInputRef } = props;
     const block = row.block;
     const container = isContainerBlock(block);
     const containerInfo = container ? getContainerHeaderInfo(block) : null;
@@ -157,8 +156,12 @@ export function StoryBlockRow(props: {
             className={[
                 "group relative grid min-h-[35px] grid-cols-[36px_28px_1fr] items-start border-l-2 pr-3",
                 selected ? "border-primary bg-primary/20" : active ? "border-primary bg-fill-subtle" : "border-transparent hover:bg-fill-subtle",
+                // A disabled row (WI-3) dims whole — muted content, kept line number — but no invented
+                // chrome; the runtime treats it as absent.
+                row.disabled ? "opacity-45" : "",
             ].join(" ")}
             onClick={props.onSelect}
+            onContextMenu={props.onContextMenu}
             onMouseDown={props.onMouseDown}
             onMouseEnter={props.onMouseEnter}
             onDoubleClick={event => {
@@ -173,7 +176,7 @@ export function StoryBlockRow(props: {
                 textSegment ? props.onStartTextEdit() : props.onOpenInspector();
             }}
         >
-            {block.kind === "action" && block.payload.action === "setBackground" && !inspectorOpen ? (
+            {block.kind === "action" && block.payload.action === "setBackground" ? (
                 <BackgroundRowArtwork payload={block.payload} selected={selected} active={active} />
             ) : null}
             {categoryColor ? (
@@ -267,6 +270,7 @@ export function StoryBlockRow(props: {
                             characters={characters}
                             onSetDialogueCharacter={props.onSetDialogueCharacter}
                             hideSpeaker={dialogueMember}
+                            suppressSpeakerColor={selected}
                         />
                     ) : textSegment || !containerInfo ? (
                         <BlockPreview
@@ -280,6 +284,8 @@ export function StoryBlockRow(props: {
                             characters={characters}
                             onSetDialogueCharacter={props.onSetDialogueCharacter}
                             hideSpeaker={dialogueMember}
+                            suppressSpeakerColor={selected}
+                            onUpdatePayload={props.onUpdatePayload}
                         />
                     ) : null}
                     <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -300,19 +306,6 @@ export function StoryBlockRow(props: {
                         info={containerInfo}
                         onAddInside={() => props.onAddInside(block.id)}
                         onAddBranch={branch => props.onAddBranch(block.id, branch)}
-                    />
-                ) : null}
-                {inspectorOpen ? (
-                    <ActionInspector
-                        block={block}
-                        document={document}
-                        sceneId={scene.id}
-                        characters={characters}
-                        onUpdatePayload={props.onUpdatePayload}
-                        onClose={props.onCloseInspector}
-                        onSetDialogueCharacter={props.onSetDialogueCharacter}
-                        generateTextId={props.generateTextId}
-                        onCreateLayer={props.onCreateLayer}
                     />
                 ) : null}
                 </div>
@@ -355,6 +348,8 @@ function TextEditBox(props: {
     onCreateCharacter: (name: string) => void;
     /** In-group dialogue member (WI-5): drop the nametag and indent the text, matching the read row. */
     hideSpeaker?: boolean;
+    /** Row is selected: the nametag yields its accent colour to the selection highlight. */
+    suppressSpeakerColor?: boolean;
 }) {
     const { t } = useTranslation();
     const dialoguePayload = props.block.kind === "nodeAction" && props.block.payload.action === "dialogue"
@@ -460,6 +455,7 @@ function TextEditBox(props: {
                     onChoose={props.onSetSpeaker}
                     onCreateCharacter={props.onCreateCharacter}
                     style={textStyle}
+                    suppressColor={props.suppressSpeakerColor}
                 />
             ) : null}
             <RichTextInput
@@ -660,13 +656,7 @@ function GroupRail({ highlight }: { highlight: boolean }) {
  */
 function GroupExpressionMember({ block, characters }: { block: StoryBlock; characters: Character[] }) {
     const { t } = useTranslation();
-    const spec = getBadgeImageSpec(block, undefined);
-    const character = spec ? characters.find(next => next.profile.getId() === spec.characterId) : undefined;
-    const resolved = character && spec?.resolveVariant
-        ? resolveCharacterBadgeImage(character, spec.formName, spec.variants)
-        : { assetId: null as string | null, frame: undefined };
-    const imageId = resolved.assetId ?? character?.profile.getThumbnail() ?? null;
-    const imageUrl = useServiceAssetObjectUrl(imageId);
+    const { url: imageUrl, frame, showingSprite } = useCharacterBadgeImage(block, undefined, characters);
     const label = useMemo(() => {
         if (block.kind !== "action" || block.payload.action !== "character") {
             return "";
@@ -689,8 +679,8 @@ function GroupExpressionMember({ block, characters }: { block: StoryBlock; chara
             <span className="flex h-6 w-6 shrink-0 items-center justify-center">
                 <span className="relative h-4 w-4 overflow-hidden rounded-full border border-edge bg-fill-subtle">
                     {imageUrl ? (
-                        resolved.assetId ? (
-                            <HeadThumbnail url={imageUrl} alt="" frame={resolved.frame} className="h-full w-full" iconClassName="h-2.5 w-2.5" />
+                        showingSprite ? (
+                            <HeadThumbnail url={imageUrl} alt="" frame={frame} className="h-full w-full" iconClassName="h-2.5 w-2.5" />
                         ) : (
                             <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} />
                         )
@@ -1139,8 +1129,10 @@ export function InsertRow(props: {
     return (
         // The open slot is the active line: it carries the same left-accent + fill the active/editing
         // rows use, so "you are creating a row here" reads at a glance (the rows drop their own
-        // highlight while it is open — see the tab's `insertActive`).
-        <div className="relative grid min-h-[35px] grid-cols-[36px_28px_1fr] items-start border-l-2 border-primary bg-fill-subtle pr-3">
+        // highlight while it is open — see the tab's `insertActive`). The marker attribute lets the
+        // comfortable-density rule open it to the same 46px as a committed row, so narration's Enter
+        // falls into it without a vertical jump.
+        <div data-story-insert-slot="" className="relative grid min-h-[35px] grid-cols-[36px_28px_1fr] items-start border-l-2 border-primary bg-fill-subtle pr-3">
             <div aria-hidden />
             <div className="flex justify-center pt-1">
                 <Plus className="h-4 w-4 text-primary" />
@@ -1674,6 +1666,8 @@ function CharacterSelectTrigger(props: {
     onCreateCharacter: (name: string) => void;
     className?: string;
     style?: CSSProperties;
+    /** When the row is selected, drop the accent so the selection highlight owns the nametag colour. */
+    suppressColor?: boolean;
 }) {
     const { t } = useTranslation();
     const rootRef = useRef<HTMLDivElement | null>(null);
@@ -1685,8 +1679,9 @@ function CharacterSelectTrigger(props: {
     const committedName = props.characterId
         ? getCharacterName(props.characters, props.characterId)
         : props.speakerName ?? "";
-    // A real character (not a bare temp speaker) may carry an editor accent colour for its nametag.
-    const characterColor = props.characterId && !props.speakerName
+    // A real character (not a bare temp speaker) may carry an editor accent colour for its nametag —
+    // but a selected row yields it to the selection highlight (the "you are here" signal wins).
+    const characterColor = props.characterId && !props.speakerName && !props.suppressColor
         ? getCharacterColor(props.characters, props.characterId)
         : undefined;
     const candidates = useMemo(
@@ -1840,46 +1835,66 @@ function getBadgeImageSpec(
 }
 
 /**
- * The sprite asset id + portrait frame for a character's form/variants, resolved against the exact
- * selection rule the runtime uses (shared `selectCharacterVariantNames` / `resolveVariantAssetId`).
- * The frame is the form's own portrait override, else the profile default; `undefined` lets the badge
- * fall back to the automatic head crop.
+ * The sprite `Asset` + portrait frame for a character's form/variants, resolved against the exact
+ * selection rule the runtime uses (shared `selectCharacterVariantNames` / `resolveVariantEntry`). The
+ * frame is the form's own portrait override, else the profile default; `undefined` lets the badge fall
+ * back to the automatic head crop. The `Asset` object (not just its id) is returned because a
+ * differential sprite is a *project* asset and loads through the asset library, not the editor store.
  */
 function resolveCharacterBadgeImage(
     character: Character,
     formName: string | undefined,
     variants: StoryCharacterVariantSelection | undefined,
-): { assetId: string | null; frame?: NormalizedCrop } {
+): { asset: Asset<AssetType.Image> | null; frame?: NormalizedCrop } {
     const forms = character.profile.appearance.getForms();
     const form = forms.find(candidate => candidate.name === formName)
         ?? forms.find(candidate => candidate.name === character.profile.getDefaultForm())
         ?? forms[0];
     if (!form) {
-        return { assetId: null };
+        return { asset: null };
     }
     const variantNames = selectCharacterVariantNames(form, variants);
-    const assetId = resolveVariantAssetId(form.variantAssets, variantNames, entry => entry.data?.id);
-    return { assetId, frame: form.portrait ?? character.profile.getPortrait() };
+    const entry = resolveVariantEntry(form.variantAssets, variantNames, candidate => Boolean(candidate.data?.id));
+    return { asset: entry?.data ?? null, frame: form.portrait ?? character.profile.getPortrait() };
+}
+
+/**
+ * The framed avatar a character row should picture: the differential sprite when a look applies
+ * (loaded from the project asset library, framed on the face), else the character thumbnail (an editor
+ * asset, already a square crop). Both share the id-keyed object-URL cache so one sprite is read — and
+ * its head located — once no matter how many rows show it.
+ */
+function useCharacterBadgeImage(
+    block: StoryBlock,
+    appearance: CharacterAppearanceRef | undefined,
+    characters: Character[],
+): { url: string | null; frame?: NormalizedCrop; showingSprite: boolean } {
+    const spec = getBadgeImageSpec(block, appearance);
+    const character = spec ? characters.find(next => next.profile.getId() === spec.characterId) : undefined;
+    const resolved = character && spec?.resolveVariant
+        ? resolveCharacterBadgeImage(character, spec.formName, spec.variants)
+        : { asset: null as Asset<AssetType.Image> | null, frame: undefined };
+    const thumbnailId = character?.profile.getThumbnail() ?? null;
+    const source: BadgeImageSource | null = resolved.asset
+        ? { kind: "project", asset: resolved.asset }
+        : thumbnailId
+            ? { kind: "editor", fileId: thumbnailId }
+            : null;
+    const url = useBadgeImageUrl(source);
+    return { url, frame: resolved.frame, showingSprite: resolved.asset !== null };
 }
 
 function BlockBadge({ block, characters, appearance }: { block: StoryBlock; characters: Character[]; appearance?: CharacterAppearanceRef }) {
     const { label, icon: Icon, iconColor } = getBlockBadgeInfo(block);
-    const spec = getBadgeImageSpec(block, appearance);
-    const character = spec ? characters.find(next => next.profile.getId() === spec.characterId) : undefined;
     // A differential-resolved sprite (framed on the face) when a look applies; otherwise the profile
     // thumbnail (already a square crop, shown as-is); otherwise the category icon.
-    const resolved = character && spec?.resolveVariant
-        ? resolveCharacterBadgeImage(character, spec.formName, spec.variants)
-        : { assetId: null as string | null, frame: undefined };
-    const showingSprite = resolved.assetId !== null;
-    const imageId = resolved.assetId ?? character?.profile.getThumbnail() ?? null;
-    const imageUrl = useServiceAssetObjectUrl(imageId);
+    const { url: imageUrl, frame, showingSprite } = useCharacterBadgeImage(block, appearance, characters);
 
     return (
         <span className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded border border-edge bg-fill-subtle" title={label} aria-label={label}>
             {imageUrl ? (
                 showingSprite ? (
-                    <HeadThumbnail url={imageUrl} alt="" frame={resolved.frame} className="h-full w-full" iconClassName="h-3.5 w-3.5" />
+                    <HeadThumbnail url={imageUrl} alt="" frame={frame} className="h-full w-full" iconClassName="h-3.5 w-3.5" />
                 ) : (
                     <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} />
                 )
@@ -1892,61 +1907,6 @@ function BlockBadge({ block, characters, appearance }: { block: StoryBlock; char
             )}
         </span>
     );
-}
-
-function useServiceAssetObjectUrl(fileId: string | null): string | null {
-    const { context, isInitialized } = useWorkspace();
-    const serviceAssets = useMemo(
-        () => context && isInitialized ? context.services.get<ServiceAssetsService>(Services.ServiceAssets) : null,
-        [context, isInitialized],
-    );
-    const [url, setUrl] = useState<string | null>(null);
-    const urlRef = useRef<string | null>(null);
-
-    useEffect(() => {
-        if (urlRef.current) {
-            URL.revokeObjectURL(urlRef.current);
-            urlRef.current = null;
-        }
-        setUrl(null);
-
-        if (!fileId || !serviceAssets) {
-            return;
-        }
-
-        let cancelled = false;
-
-        (async () => {
-            const result = await serviceAssets.readRaw(fileId);
-            if (!result.ok || cancelled) {
-                return;
-            }
-
-            const objectUrl = URL.createObjectURL(new Blob([new Uint8Array(result.data)]));
-            if (cancelled) {
-                URL.revokeObjectURL(objectUrl);
-                return;
-            }
-
-            urlRef.current = objectUrl;
-            setUrl(objectUrl);
-        })();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [fileId, serviceAssets]);
-
-    useEffect(() => {
-        return () => {
-            if (urlRef.current) {
-                URL.revokeObjectURL(urlRef.current);
-                urlRef.current = null;
-            }
-        };
-    }, []);
-
-    return url;
 }
 
 function toSortableTransform(transform: { x: number; y: number } | null): string | undefined {
@@ -2011,11 +1971,16 @@ function BlockPreview(props: {
     onCreateCharacter: (name: string) => void;
     /** In-group dialogue member (WI-5): drop the nametag and indent the text under the group speaker. */
     hideSpeaker?: boolean;
+    /** Row is selected: the nametag yields its accent colour to the selection highlight. */
+    suppressSpeakerColor?: boolean;
+    /** Commit an inline quick-param edit (WI-2) through the same history path the inspector uses. */
+    onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
     const { t } = useTranslation();
     const block = props.block;
     const text = getTextSegment(block);
     const textStyle = useStoryEditorTextStyle();
+    const quickParams = getQuickParams(block);
     if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
         const hasValue = Boolean(text?.value) || Boolean(text?.rich && text.rich.length > 0);
         const memberIndent = props.hideSpeaker ? GROUP_MEMBER_INDENT : undefined;
@@ -2030,6 +1995,7 @@ function BlockPreview(props: {
                         onChoose={props.onSetSpeaker}
                         onCreateCharacter={props.onCreateCharacter}
                         style={textStyle}
+                        suppressColor={props.suppressSpeakerColor}
                     />
                 )}
                 {hasValue && text ? (
@@ -2061,7 +2027,7 @@ function BlockPreview(props: {
         );
     }
     if (block.kind === "action" && block.payload.action === "setBackground") {
-        return <BackgroundBlockPreview payload={block.payload} />;
+        return <BackgroundBlockPreview payload={block.payload} quickParams={quickParams} onUpdatePayload={props.onUpdatePayload} />;
     }
     if (block.kind === "action" && block.payload.action === "displayable" && block.payload.operation === "transform") {
         return (
@@ -2082,6 +2048,19 @@ function BlockPreview(props: {
         // wrong, so the row reads as a to-do; the BUILD is where it turns into an error. Click
         // re-opens the line in place, candidates and all.
         return <DraftRowPreview source={block.payload.source} commandContext={props.commandContext} />;
+    }
+    if (quickParams.length > 0) {
+        return (
+            <QuickParamsSummary
+                block={block}
+                characters={props.characters}
+                scene={props.scene}
+                scenes={props.document.scenes}
+                params={quickParams}
+                textStyle={textStyle}
+                onUpdatePayload={props.onUpdatePayload}
+            />
+        );
     }
     return <span className="min-w-0 flex-1 truncate text-sm text-fg-muted" style={textStyle}>{describeBlock(block, props.characters, props.scene, props.document.scenes)}</span>;
 }
@@ -2144,7 +2123,11 @@ function BackgroundRowArtwork({ payload, selected, active }: {
     );
 }
 
-function BackgroundBlockPreview({ payload }: { payload: Extract<StoryActionPayload, { action: "setBackground" }> }) {
+function BackgroundBlockPreview({ payload, quickParams, onUpdatePayload }: {
+    payload: Extract<StoryActionPayload, { action: "setBackground" }>;
+    quickParams: QuickParam[];
+    onUpdatePayload: (payload: StoryBlock["payload"]) => void;
+}) {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const textStyle = useStoryEditorTextStyle();
@@ -2156,10 +2139,11 @@ function BackgroundBlockPreview({ payload }: { payload: Extract<StoryActionPaylo
     const label = asset?.name ?? (payload.assetId ? t("story.background.missingImage") : payload.color || t("story.background.unassigned"));
 
     return (
-        <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-fg-muted" style={textStyle}>
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-fg-muted" style={textStyle}>
             <span className="min-w-0 truncate" style={{ maxWidth: BACKGROUND_LABEL_MAX_WIDTH }}>
                 {t("story.rows.setBackground")} <span className={payload.assetId || payload.color ? "text-fg" : "italic text-fg-subtle"}>{label}</span>
             </span>
+            <QuickParamsInline params={quickParams} onUpdatePayload={onUpdatePayload} />
         </span>
     );
 }
