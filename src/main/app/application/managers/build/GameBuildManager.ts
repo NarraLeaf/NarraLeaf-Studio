@@ -49,10 +49,8 @@ import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManife
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
-import {
-    compileGameRuntimeArtifact,
-    type GameRuntimeArtifactCompileResult,
-} from "../preview/compiler/gameRuntimeArtifactCompiler";
+import { type GameRuntimeArtifactCompileResult } from "../preview/compiler/gameRuntimeArtifactCompiler";
+import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
 import { buildWebIndexHtml, WEB_FAVICON_FILENAME } from "../preview/compiler/webShell";
 import { formatPreviewProcessOutput } from "../preview/PreviewManager";
 import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "../preview/selectRuntimePlugins";
@@ -418,7 +416,10 @@ export class GameBuildManager {
         const runtimeVersion = this.readRuntimeVersion();
         let desktopArtifact: GameRuntimeArtifactCompileResult | null = null;
         if (desktopTargets.length > 0) {
-            desktopArtifact = await compileGameRuntimeArtifact({
+            // Off the main thread: sealing a protected pack is many seconds of
+            // synchronous native-codec CPU. session.worker tracks the compile so
+            // cancel() kills it, same as the packaging worker below.
+            desktopArtifact = await compileGameRuntimeArtifactInWorker(this.app, {
                 projectPath,
                 entry,
                 runtimeDistDir,
@@ -427,7 +428,11 @@ export class GameBuildManager {
                 runtimePlugins: pluginSelection.selected,
                 mode: "production",
                 encryptionKey,
+            }, {
+                onStart: worker => { session.worker = worker; },
+                cancelled: () => session.cancelled,
             });
+            session.worker = null;
             this.emit(session, {
                 level: "info",
                 source: "Build",
@@ -440,7 +445,7 @@ export class GameBuildManager {
         // must not compile the game twice.
         let webArtifact: GameRuntimeArtifactCompileResult | null = null;
         if (webTarget || mobileTargets.length > 0) {
-            webArtifact = await compileGameRuntimeArtifact({
+            webArtifact = await compileGameRuntimeArtifactInWorker(this.app, {
                 projectPath,
                 entry,
                 runtimeDistDir,
@@ -449,7 +454,11 @@ export class GameBuildManager {
                 runtimePlugins: pluginSelection.selected,
                 mode: "production",
                 shell: "web",
+            }, {
+                onStart: worker => { session.worker = worker; },
+                cancelled: () => session.cancelled,
             });
+            session.worker = null;
             this.emit(session, {
                 level: "info",
                 source: "Build",

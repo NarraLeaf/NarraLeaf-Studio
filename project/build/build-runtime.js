@@ -241,21 +241,30 @@ function runtimeAliasPlugin() {
     console.log('[build-runtime] Runtime built successfully.');
 })();
 
-// The bundled runtime main.js reaches for a sibling support module through a
-// require the bundler cannot inline (the specifier is computed, not a literal),
-// so that module is neither embedded in main.js nor emitted. It must sit next to
-// main.js at runtime; copyRuntimeFiles() then carries it into every packed app.
-// Emitted for every pack because the require runs eagerly at startup; the module
-// itself is inert until the runtime asks it to do work.
+// The bundled runtime main.js reaches for sibling support modules through
+// requires the bundler cannot inline (the specifiers are computed, not literals),
+// so those modules are neither embedded in main.js nor emitted. They must sit
+// next to main.js at runtime; copyRuntimeFiles() then carries them into every
+// packed app. Emitted for every pack because the requires run eagerly at
+// startup; the modules themselves are inert until the runtime asks them to work.
+//
+// These are opaque support files of @narraleaf/encryption; treat them as a black
+// box and ship them verbatim. The list must track the encryption runtime's
+// computed-require sidecars (native.js loads the codec addon; gate.js is the
+// codec's key-gating module) — keep it in sync with REQUIRED_RUNTIME_FILES in
+// gameRuntimeArtifactCompiler.ts.
+const RUNTIME_SUPPORT_SIDECARS = ['native.js', 'gate.js'];
+
 function copyRuntimeSupportSidecar(runtimeOutDir) {
-    const SIDECAR = 'native.js';
     const packageRuntimeDir = path.dirname(require.resolve('@narraleaf/encryption/runtime'));
-    const source = path.join(packageRuntimeDir, SIDECAR);
-    if (!fs.existsSync(source)) {
-        throw new Error(
-            `[build-runtime] Missing runtime support file "${SIDECAR}" from @narraleaf/encryption. ` +
-            `Reinstall dependencies so the packaged runtime can boot.`,
-        );
+    for (const sidecar of RUNTIME_SUPPORT_SIDECARS) {
+        const source = path.join(packageRuntimeDir, sidecar);
+        if (!fs.existsSync(source)) {
+            throw new Error(
+                `[build-runtime] Missing runtime support file "${sidecar}" from @narraleaf/encryption. ` +
+                `Reinstall dependencies so the packaged runtime can boot.`,
+            );
+        }
+        fs.copyFileSync(source, path.join(runtimeOutDir, sidecar));
     }
-    fs.copyFileSync(source, path.join(runtimeOutDir, SIDECAR));
 }

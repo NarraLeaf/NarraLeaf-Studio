@@ -34,11 +34,15 @@ import { sanitizeProjectFileName } from "@shared/utils/nlproj";
 import { WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
 
 const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "other"] as const;
-// "native.js" is a support module the packaged main.js requires from its own
-// directory at startup; it is produced by the runtime build (build-runtime.js)
-// and must ship next to main.js in every pack, so it is validated and copied
-// like any other required runtime file.
-const REQUIRED_RUNTIME_FILES = ["main.js", "native.js", "preload.js", "renderer.js", "renderer.css", "index.html"] as const;
+// "native.js" and "gate.js" are opaque support modules of @narraleaf/encryption
+// that the packaged main.js requires (via computed requires the bundler cannot
+// inline) from its own directory at startup; they are produced by the runtime
+// build (build-runtime.js) and must ship next to main.js in every pack, so they
+// are validated and copied like any other required runtime file. The requires
+// run unconditionally at load, so a pack missing either crashes on launch
+// regardless of whether asset protection is enabled. Keep this list in sync with
+// RUNTIME_SUPPORT_SIDECARS in project/build/build-runtime.js.
+const REQUIRED_RUNTIME_FILES = ["main.js", "native.js", "gate.js", "preload.js", "renderer.js", "renderer.css", "index.html"] as const;
 // The web shell replaces the Electron trio with the browser bridge bundle; the
 // renderer pair is shared verbatim. Its index.html is generated per pack (see
 // webShell.ts), not copied from the runtime dist.
