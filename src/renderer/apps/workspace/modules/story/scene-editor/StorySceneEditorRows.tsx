@@ -83,6 +83,7 @@ export function StoryBlockRow(props: {
     editInitialCaret?: StoryCaretTarget;
     textInputRef: RefObject<RichTextInputHandle | null>;
     onSelect: (event: MouseEvent) => void;
+    onContextMenu: (event: MouseEvent) => void;
     onMouseDown: (event: MouseEvent) => void;
     onMouseEnter: () => void;
     onToggleCollapsed: () => void;
@@ -155,8 +156,12 @@ export function StoryBlockRow(props: {
             className={[
                 "group relative grid min-h-[35px] grid-cols-[36px_28px_1fr] items-start border-l-2 pr-3",
                 selected ? "border-primary bg-primary/20" : active ? "border-primary bg-fill-subtle" : "border-transparent hover:bg-fill-subtle",
+                // A disabled row (WI-3) dims whole — muted content, kept line number — but no invented
+                // chrome; the runtime treats it as absent.
+                row.disabled ? "opacity-45" : "",
             ].join(" ")}
             onClick={props.onSelect}
+            onContextMenu={props.onContextMenu}
             onMouseDown={props.onMouseDown}
             onMouseEnter={props.onMouseEnter}
             onDoubleClick={event => {

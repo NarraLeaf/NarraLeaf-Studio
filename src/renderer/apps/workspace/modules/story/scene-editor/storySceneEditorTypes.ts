@@ -27,6 +27,11 @@ export type VisibleStoryRow = {
      * nametag for a group rail. Absent on rows that are not part of any dialogue group.
      */
     groupRole?: "head" | "member";
+    /**
+     * The row is compiled out (WI-3 / schema v7): disabled itself or nested in a disabled container.
+     * Rendered muted at reduced opacity; the runtime behaves as if it were not there.
+     */
+    disabled?: boolean;
 };
 
 export type InsertSlot = {

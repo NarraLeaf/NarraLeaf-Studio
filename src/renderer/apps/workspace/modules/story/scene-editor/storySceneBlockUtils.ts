@@ -111,17 +111,20 @@ export function annotateDialogueGroups(rows: VisibleStoryRow[]): VisibleStoryRow
 
 export function buildVisibleRows(scene: StoryScene, collapsedIds: Set<StoryBlockId>): VisibleStoryRow[] {
     const rows: VisibleStoryRow[] = [];
-    const visit = (blockId: StoryBlockId, depth: number) => {
+    const visit = (blockId: StoryBlockId, depth: number, disabledAncestor: boolean) => {
         const block = scene.blocks[blockId];
         if (!block) {
             return;
         }
-        rows.push({ block, depth, lineNumber: rows.length + 1 });
+        // Disabled propagates down: a disabled container's whole subtree renders muted (and compiles
+        // out), so a row is effectively disabled when it or any ancestor is (WI-3 / schema v7).
+        const disabled = disabledAncestor || Boolean(block.disabled);
+        rows.push(disabled ? { block, depth, lineNumber: rows.length + 1, disabled } : { block, depth, lineNumber: rows.length + 1 });
         if (!collapsedIds.has(blockId)) {
-            block.childrenIds.forEach(childId => visit(childId, depth + 1));
+            block.childrenIds.forEach(childId => visit(childId, depth + 1, disabled));
         }
     };
-    scene.rootBlockIds.forEach(blockId => visit(blockId, 0));
+    scene.rootBlockIds.forEach(blockId => visit(blockId, 0, false));
     return rows;
 }
 

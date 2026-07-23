@@ -150,6 +150,43 @@ describe("compileStudioStoryToNlr", () => {
         expect(compiled.actionIdBindings.find(binding => binding.blockId === "say")?.staticId).toContain("text-say");
     });
 
+    it("compiles a disabled row out — no output, no diagnostic (schema v7)", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            a: narrationBlock("a", "text-a", "Kept."),
+            skip: { ...narrationBlock("skip", "text-skip", "Skipped."), disabled: true },
+            b: narrationBlock("b", "text-b", "Also kept."),
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["a", "skip", "b"]),
+            sceneId: "scene-1",
+            characters: [],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        expect(compiled.diagnostics).toEqual([]);
+        const compiledIds = compiled.actionIdBindings.map(binding => binding.blockId);
+        expect(compiledIds).toEqual(expect.arrayContaining(["a", "b"]));
+        expect(compiledIds).not.toContain("skip");
+    });
+
+    it("skips a disabled container's whole subtree", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            grp: { id: "grp", kind: "control", parentId: null, childrenIds: ["inner"], disabled: true, payload: { control: "sequence", mode: "do" } },
+            inner: { ...narrationBlock("inner", "text-inner", "Inside."), parentId: "grp" },
+            after: narrationBlock("after", "text-after", "After."),
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["grp", "after"]),
+            sceneId: "scene-1",
+            characters: [],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        expect(compiled.diagnostics).toEqual([]);
+        const compiledIds = compiled.actionIdBindings.map(binding => binding.blockId);
+        expect(compiledIds).not.toContain("grp");
+        expect(compiledIds).not.toContain("inner");
+        expect(compiledIds).toContain("after");
+    });
+
     it("uses the NarraLeaf scene initial background for scene defaults", async () => {
         const document = baseDocument({
             say: narrationBlock("say", "text-say", "The room is quiet."),
