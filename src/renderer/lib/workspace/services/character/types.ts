@@ -36,6 +36,12 @@ export interface CharacterEditorProfile extends CharacterBaseProfile {
      * Group that the character belongs to
      */
     groupId?: string;
+    /**
+     * Editor-only accent colour (hex, e.g. `#40a8c4`). Tints the speaker nametag in the story editor
+     * (and the dialogue-group header). Optional and additive: older projects load without it and keep
+     * the default nametag colour until one is set. Never consumed by the runtime.
+     */
+    color?: string;
 }
 
 export interface ICharacterAppearance {

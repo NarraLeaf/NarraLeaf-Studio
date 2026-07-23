@@ -53,6 +53,7 @@ import {
     canAcceptChildren,
     describeBlock,
     getBlockBadgeInfo,
+    getCharacterColor,
     getCharacterName,
     getContainerHeaderInfo,
     getEmptyTextPlaceholder,
@@ -1593,6 +1594,10 @@ function CharacterSelectTrigger(props: {
     const committedName = props.characterId
         ? getCharacterName(props.characters, props.characterId)
         : props.speakerName ?? "";
+    // A real character (not a bare temp speaker) may carry an editor accent colour for its nametag.
+    const characterColor = props.characterId && !props.speakerName
+        ? getCharacterColor(props.characters, props.characterId)
+        : undefined;
     const candidates = useMemo(
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, draft),
         [draft, props.characters, props.tempSpeakers],
@@ -1652,10 +1657,10 @@ function CharacterSelectTrigger(props: {
                     type="button"
                     className={[
                         "flex h-full min-h-[28px] max-w-full items-center truncate rounded px-1 py-0.5 text-left text-sm hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
-                        unassigned ? "italic text-fg-subtle hover:text-primary" : props.speakerName ? "text-fg-muted" : "text-primary",
+                        unassigned ? "italic text-fg-subtle hover:text-primary" : props.speakerName ? "text-fg-muted" : characterColor ? "" : "text-primary",
                         props.className ?? "",
                     ].join(" ")}
-                    style={props.style}
+                    style={characterColor ? { ...props.style, color: characterColor } : props.style}
                     onMouseDown={event => {
                         event.preventDefault();
                         event.stopPropagation();

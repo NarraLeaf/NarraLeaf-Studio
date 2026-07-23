@@ -142,6 +142,15 @@ export class CharacterProfile {
         this.notifyChange();
     }
 
+    public getColor(): string | undefined {
+        return this.profile.color;
+    }
+
+    public setColor(color: string | undefined): void {
+        this.profile.color = color;
+        this.notifyChange();
+    }
+
     public getNicknames(): string[] {
         return this.profile.nicknames;
     }
@@ -171,6 +180,7 @@ export class CharacterProfile {
             thumbnail: this.profile.thumbnail,
             nicknames: [...this.profile.nicknames],
             groupId: this.profile.groupId,
+            color: this.profile.color,
             appearance: this.appearance.toJSON(),
         };
     }

@@ -10,7 +10,11 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { ImageCropper } from "@/apps/workspace/modules/assets/components/ImageCropper";
 import { X, Plus } from "lucide-react";
 import { Select } from "@/lib/components/elements";
+import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { useTranslation } from "@/lib/i18n";
+
+/** Fallback swatch when a character has no accent colour yet — the story editor's default nametag ink. */
+const DEFAULT_CHARACTER_COLOR = "#40a8c4";
 
 const secondaryGhostButtonClass = "px-3 py-1.5 rounded-md border border-primary/30 bg-primary/5 text-sm text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
 const secondaryGhostIconButtonClass = "inline-flex items-center justify-center p-1.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
@@ -90,6 +94,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
     const [description, setDescription] = useState(snapshot.description);
     const [tags, setTags] = useState<string[]>(snapshot.tags || []);
     const [defaultForm, setDefaultForm] = useState<string | null>(snapshot.defaultForm ?? null);
+    const [color, setColor] = useState<string | undefined>(snapshot.color);
     const [thumbnailId, setThumbnailId] = useState<string | null>(snapshot.thumbnail);
     const [newTag, setNewTag] = useState("");
     const [selectorOpen, setSelectorOpen] = useState(false);
@@ -318,6 +323,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
         setDescription(next.description);
         setTags(next.tags || []);
         setDefaultForm(next.defaultForm ?? null);
+        setColor(next.color);
         setThumbnailId(next.thumbnail);
         setFormsVersion(v => v + 1);
     }, [character]);
@@ -330,6 +336,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
             setDescription(next.description);
             setTags(next.tags || []);
             setDefaultForm(next.defaultForm ?? null);
+            setColor(next.color);
             setThumbnailId(next.thumbnail);
             setFormsVersion(v => v + 1);
         };
@@ -469,6 +476,28 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
                     onBlur={handleNameBlur}
                     placeholder={t("characters.properties.namePlaceholder")}
                 />
+            </div>
+
+            <div>
+                <label className="block text-xs font-medium text-fg-muted mb-1">
+                    {t("characters.properties.color")}
+                </label>
+                <div className="flex items-center gap-2">
+                    <ColorPickerTrigger
+                        value={{ hex: color ?? DEFAULT_CHARACTER_COLOR }}
+                        displayMode="icon-hex"
+                        allowOpacity={false}
+                        onChange={next => { setColor(next.hex); profile.setColor(next.hex); }}
+                    />
+                    {color ? (
+                        <button
+                            className="text-xs text-danger hover:text-danger/80"
+                            onClick={() => { setColor(undefined); profile.setColor(undefined); }}
+                        >
+                            {t("common.clear")}
+                        </button>
+                    ) : null}
+                </div>
             </div>
 
             <div>
