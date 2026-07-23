@@ -132,6 +132,9 @@ export const characters = {
         zoomIn: "Zoom In",
         resetView: "Reset View",
         alt: "Variant preview",
+        setPortrait: "Portrait framing",
+        resetPortrait: "Reset portrait framing",
+        portraitTitle: "Portrait framing",
     },
     variantsPanel: {
         title: "Variants",
