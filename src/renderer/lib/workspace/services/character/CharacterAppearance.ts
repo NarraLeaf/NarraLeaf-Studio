@@ -1,6 +1,6 @@
 import { Asset } from "../assets/types";
 import { AssetType } from "../assets/assetTypes";
-import { CharacterForm, CharacterVariant, CharacterVariantGroup, ICharacterAppearance, VariantData } from "./types";
+import { CharacterForm, CharacterVariant, CharacterVariantGroup, ICharacterAppearance, PortraitCrop, VariantData } from "./types";
 
 type VariantResolver = {
     type: "add" | "remove";
@@ -53,6 +53,7 @@ export class CharacterAppearance {
                 variants: group.variants.map(v => ({ ...v })),
             })),
             variantAssets: { ...form.variantAssets },
+            portrait: form.portrait,
         }));
 
         return {
@@ -322,6 +323,21 @@ export class CharacterAppearance {
             this.notifyAssetChange(oldAssetId, newAssetId);
         }
 
+        this.notifyChange();
+    }
+
+    /**
+     * Set or clear a form's portrait framing override. Clearing (undefined) makes the form inherit the
+     * profile-level rect (or the automatic head crop).
+     */
+    public setFormPortrait(formName: string, portrait: PortraitCrop | undefined): void {
+        const form = this.getForm(formName);
+        if (!form) return;
+        if (portrait) {
+            form.portrait = portrait;
+        } else {
+            delete form.portrait;
+        }
         this.notifyChange();
     }
 

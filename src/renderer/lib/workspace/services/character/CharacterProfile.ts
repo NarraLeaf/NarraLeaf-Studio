@@ -1,5 +1,5 @@
 import { CharacterAppearance, AssetChangeCallback } from "./CharacterAppearance";
-import { CharacterEditorProfile, ICharacterAppearance } from "./types";
+import { CharacterEditorProfile, ICharacterAppearance, PortraitCrop } from "./types";
 
 export interface CharacterProfileConfig extends CharacterEditorProfile {
     appearance: ICharacterAppearance;
@@ -142,6 +142,24 @@ export class CharacterProfile {
         this.notifyChange();
     }
 
+    public getColor(): string | undefined {
+        return this.profile.color;
+    }
+
+    public setColor(color: string | undefined): void {
+        this.profile.color = color;
+        this.notifyChange();
+    }
+
+    public getPortrait(): PortraitCrop | undefined {
+        return this.profile.portrait;
+    }
+
+    public setPortrait(portrait: PortraitCrop | undefined): void {
+        this.profile.portrait = portrait;
+        this.notifyChange();
+    }
+
     public getNicknames(): string[] {
         return this.profile.nicknames;
     }
@@ -171,6 +189,8 @@ export class CharacterProfile {
             thumbnail: this.profile.thumbnail,
             nicknames: [...this.profile.nicknames],
             groupId: this.profile.groupId,
+            color: this.profile.color,
+            portrait: this.profile.portrait,
             appearance: this.appearance.toJSON(),
         };
     }

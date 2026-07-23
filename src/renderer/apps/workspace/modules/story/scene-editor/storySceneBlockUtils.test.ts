@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
-import { buildVisibleRows, getContainerHeaderInfo, isContainerBlock, nextSelectionAfterDelete } from "./storySceneBlockUtils";
+import { annotateDialogueGroups, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isNarrativeRow, nextSelectionAfterDelete } from "./storySceneBlockUtils";
 
 function control(payload: Extract<StoryBlock, { kind: "control" }>["payload"]): StoryBlock {
     return { id: "b", kind: "control", parentId: null, childrenIds: [], payload };
@@ -8,6 +8,14 @@ function control(payload: Extract<StoryBlock, { kind: "control" }>["payload"]): 
 
 function nodeAction(payload: Extract<StoryBlock, { kind: "nodeAction" }>["payload"]): StoryBlock {
     return { id: "b", kind: "nodeAction", parentId: null, childrenIds: [], payload };
+}
+
+function dialogue(id: string, speaker: { characterId?: string; speakerName?: string } = {}): StoryBlock {
+    return { id, kind: "nodeAction", parentId: null, childrenIds: [], payload: { action: "dialogue", ...speaker, text: { textId: `${id}-t`, role: "dialogue", value: id } } };
+}
+
+function characterAction(id: string, payload: Extract<StoryBlock, { kind: "action" }>["payload"]): StoryBlock {
+    return { id, kind: "action", parentId: null, childrenIds: [], payload };
 }
 
 function narration(id: string, parentId: string | null = null, childrenIds: string[] = []): StoryBlock {
@@ -101,5 +109,84 @@ describe("nextSelectionAfterDelete", () => {
         const rows = buildVisibleRows(nested, new Set());
         // grp is first and g1 is its (also-deleted) descendant, so the survivor is `after`.
         expect(nextSelectionAfterDelete(nested, rows, ["grp"])).toBe("after");
+    });
+});
+
+describe("annotateDialogueGroups", () => {
+    const rolesOf = (blocks: StoryBlock[]) =>
+        annotateDialogueGroups(buildVisibleRows(scene(blocks, blocks.map(b => b.id)), new Set())).map(row => row.groupRole);
+
+    it("marks the first same-speaker dialogue a head and the rest members", () => {
+        expect(rolesOf([dialogue("a", { characterId: "c1" }), dialogue("b", { characterId: "c1" }), dialogue("c", { characterId: "c1" })]))
+            .toEqual(["head", "member", "member"]);
+    });
+
+    it("starts a new group when the speaker changes", () => {
+        expect(rolesOf([dialogue("a", { characterId: "c1" }), dialogue("b", { characterId: "c2" })])).toEqual(["head", "head"]);
+    });
+
+    it("folds a same-character expression into the run without breaking it", () => {
+        expect(rolesOf([
+            dialogue("a", { characterId: "c1" }),
+            characterAction("x", { action: "character", operation: "expression", characterId: "c1" }),
+            dialogue("b", { characterId: "c1" }),
+        ])).toEqual(["head", "member", "member"]);
+    });
+
+    it("breaks the run on any other kind — a different-character expression, an enter, or narration", () => {
+        expect(rolesOf([
+            dialogue("a", { characterId: "c1" }),
+            characterAction("x", { action: "character", operation: "expression", characterId: "c2" }),
+            dialogue("b", { characterId: "c1" }),
+        ])).toEqual(["head", undefined, "head"]);
+        expect(rolesOf([
+            dialogue("a", { characterId: "c1" }),
+            characterAction("x", { action: "character", operation: "enter", characterId: "c1" }),
+            dialogue("b", { characterId: "c1" }),
+        ])).toEqual(["head", undefined, "head"]);
+        expect(rolesOf([dialogue("a", { characterId: "c1" }), narration("n"), dialogue("b", { characterId: "c1" })]))
+            .toEqual(["head", undefined, "head"]);
+    });
+
+    it("groups bare speakers by exact name, but never two unnamed rows", () => {
+        expect(rolesOf([dialogue("a", { speakerName: "Guard" }), dialogue("b", { speakerName: "Guard" })])).toEqual(["head", "member"]);
+        expect(rolesOf([dialogue("a", { speakerName: "Guard" }), dialogue("b", { speakerName: "Maid" })])).toEqual(["head", "head"]);
+        expect(rolesOf([dialogue("a"), dialogue("b")])).toEqual(["head", "head"]);
+    });
+});
+
+describe("isNarrativeRow", () => {
+    it("keeps narration, dialogue, choice, option and note; hides staging", () => {
+        expect(isNarrativeRow(narration("n"))).toBe(true);
+        expect(isNarrativeRow(dialogue("d", { characterId: "c1" }))).toBe(true);
+        expect(isNarrativeRow(nodeAction({ action: "choice" }))).toBe(true);
+        expect(isNarrativeRow(nodeAction({ action: "choiceOption", text: { textId: "t", role: "choiceText", value: "" } }))).toBe(true);
+        expect(isNarrativeRow({ id: "b", kind: "note", parentId: null, childrenIds: [], payload: { text: { textId: "t", role: "note", value: "" } } })).toBe(true);
+        // Staging kinds hide, including a character expression (an action).
+        expect(isNarrativeRow(characterAction("x", { action: "character", operation: "expression", characterId: "c1" }))).toBe(false);
+        expect(isNarrativeRow(control({ control: "condition" }))).toBe(false);
+        expect(isNarrativeRow({ id: "b", kind: "jump", parentId: null, childrenIds: [], payload: { targetSceneId: "s2" } })).toBe(false);
+    });
+});
+
+describe("buildDialogueAppearances", () => {
+    it("gives a dialogue its speaker's most recent enter/expression, resetting on exit", () => {
+        const blocks = [
+            characterAction("e", { action: "character", operation: "enter", characterId: "c1", formName: "casual", variants: ["smile"] }),
+            dialogue("d1", { characterId: "c1" }),
+            characterAction("f", { action: "character", operation: "expression", characterId: "c1", variants: ["angry"] }),
+            dialogue("d2", { characterId: "c1" }),
+            characterAction("x", { action: "character", operation: "exit", characterId: "c1" }),
+            dialogue("d3", { characterId: "c1" }),
+        ];
+        const map = buildDialogueAppearances(scene(blocks, blocks.map(b => b.id)));
+        expect(map.get("d1")).toMatchObject({ formName: "casual", variants: ["smile"] });
+        expect(map.get("d2")).toMatchObject({ variants: ["angry"] });
+        expect(map.has("d3")).toBe(false);
+    });
+
+    it("leaves a dialogue with no prior show unannotated", () => {
+        const blocks = [dialogue("d1", { characterId: "c1" })];
+        expect(buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).has("d1")).toBe(false);
     });
 });

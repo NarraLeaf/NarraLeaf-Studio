@@ -1,14 +1,32 @@
-import type { StoryBlock, StoryBlockId, StoryRichRun } from "@shared/types/story";
+import type { StoryBlock, StoryBlockId, StoryCharacterVariantSelection, StoryRichRun } from "@shared/types/story";
 
 export type StoryBlockTarget = {
     parentId: StoryBlockId | null;
     beforeBlockId?: StoryBlockId | null;
 };
 
+/** The form + variants a character is showing at a given point — its "current appearance". */
+export type CharacterAppearanceRef = {
+    formName?: string;
+    variants?: StoryCharacterVariantSelection;
+};
+
 export type VisibleStoryRow = {
     block: StoryBlock;
     depth: number;
     lineNumber: number;
+    /**
+     * For a dialogue row, the speaker's accumulated appearance at this line (WI-3), so its avatar can
+     * follow the most recent enter/expression. Absent on non-dialogue rows and when nothing was shown.
+     */
+    appearance?: CharacterAppearanceRef;
+    /**
+     * Dialogue-grouping role (WI-5), a pure render projection. `"head"` is the first dialogue of a
+     * run of same-speaker lines (renders avatar + nametag as usual); `"member"` is a continuation —
+     * a later same-speaker dialogue, or a same-character expression line — which drops the badge and
+     * nametag for a group rail. Absent on rows that are not part of any dialogue group.
+     */
+    groupRole?: "head" | "member";
 };
 
 export type InsertSlot = {
