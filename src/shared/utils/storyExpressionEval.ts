@@ -199,7 +199,13 @@ export function toDisplayString(value: StoryLiteralValue): string {
     return JSON.stringify(value);
 }
 
-function strictEquals(left: StoryLiteralValue, right: StoryLiteralValue): boolean {
+/**
+ * Strict, structural equality for story literals - the one the expression evaluator's `==` uses. No
+ * coercion (`"1" == 1` is false), and json/array values compare by shape rather than reference, since
+ * reference identity is not something an author can reason about. Exported so the compiler's persistent
+ * conditions can test against exactly the same rule as `/if` expressions.
+ */
+export function strictEquals(left: StoryLiteralValue, right: StoryLiteralValue): boolean {
     if (typeof left !== typeof right) {
         return false;
     }
