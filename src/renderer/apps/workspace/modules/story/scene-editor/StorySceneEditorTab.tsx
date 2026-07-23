@@ -32,6 +32,7 @@ import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { StoryInspectorPanel } from "./StoryInspectorPanel";
 import { publishStoryInspectorState, STORY_INSPECTOR_PANEL_ID } from "./storyInspectorBridge";
+import { stopVoiceAudition } from "./voiceAudition";
 import { StoryEditorTextStyleProvider } from "./storyEditorTextStyle";
 import { getTextSegment } from "./storySceneBlockUtils";
 import {
@@ -617,7 +618,13 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // Tracks whether this tab has revealed the inspector panel for the current open session, so the
     // reveal fires once on open rather than on every republish. Reset whenever the panel is (re)registered
     // (a kept-alive tab re-registers hidden on re-activation), keeping it in sync with actual visibility.
-    const inspectorPanelShownRef = useRef(false);
+    // The block id the inspector panel is currently shown for (null = hidden). Tracking the id, not a
+    // bare boolean, lets an inspector→inspector switch (Enter on a different row, never passing through
+    // idle) re-reveal the panel after a manual hide instead of a dead Enter (WI-0 #2). `lastInspectorSig`
+    // gates the republish to real changes of the inspected block, so typing in another row — which
+    // rewrites the whole scene snapshot every keystroke — no longer re-renders the panel (WI-0 #7).
+    const shownInspectorBlockRef = useRef<string | null>(null);
+    const lastInspectorSigRef = useRef<string | null>(null);
 
     // The right-sidebar inspector (WI-1). Registered like the other three dynamic panels; its body reads
     // the selection from the per-tab bridge below rather than a static payload.
@@ -626,7 +633,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             return;
         }
         const uiService = editor.context.services.get<UIService>(Services.UI);
-        inspectorPanelShownRef.current = false;
+        shownInspectorBlockRef.current = null;
+        lastInspectorSigRef.current = null;
         const unregister = uiService.panels.register({
             id: STORY_INSPECTOR_PANEL_ID,
             title: t("story.sceneEditor.inspectorPanel"),
@@ -674,26 +682,37 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         const mode = editor.editorMode;
         const inspectorBlock = mode.kind === "inspector" ? editor.scene?.blocks[mode.blockId] ?? null : null;
         if (inspectorBlock && editor.document && payload?.sceneId) {
-            publishStoryInspectorState(tabId, {
-                block: inspectorBlock,
-                document: editor.document,
-                sceneId: payload.sceneId,
-                characters: editor.characters,
-                onUpdatePayload: nextPayload => editor.updateBlockPayloadFor(inspectorBlock.id, nextPayload),
-                onClose: editor.closeInspector,
-                onSetDialogueCharacter: characterId => editor.setDialogueSpeaker(inspectorBlock, characterId ? { characterId } : null),
-                generateTextId: () => editor.uuidService?.generate() ?? crypto.randomUUID(),
-                onCreateLayer: beforeBlockId => editor.createLayerBeforeBlock(beforeBlockId),
-            });
-            if (!inspectorPanelShownRef.current) {
+            // Republish only when the inspected block itself changes. Editing any row rewrites the scene
+            // snapshot (and so `editor.scene`/`editor.document` identity) every keystroke; gating on a
+            // signature of the inspected block keeps the panel from re-rendering on unrelated typing (#7).
+            const sig = `${inspectorBlock.id}:${JSON.stringify(inspectorBlock.payload)}`;
+            if (sig !== lastInspectorSigRef.current) {
+                lastInspectorSigRef.current = sig;
+                publishStoryInspectorState(tabId, {
+                    block: inspectorBlock,
+                    document: editor.document,
+                    sceneId: payload.sceneId,
+                    characters: editor.characters,
+                    onUpdatePayload: nextPayload => editor.updateBlockPayloadFor(inspectorBlock.id, nextPayload),
+                    onClose: editor.closeInspector,
+                    onSetDialogueCharacter: characterId => editor.setDialogueSpeaker(inspectorBlock, characterId ? { characterId } : null),
+                    generateTextId: () => editor.uuidService?.generate() ?? crypto.randomUUID(),
+                    onCreateLayer: beforeBlockId => editor.createLayerBeforeBlock(beforeBlockId),
+                });
+            }
+            // Show on a fresh open — a different row than the panel is showing. An inspector→inspector
+            // switch after the author manually hid the panel then re-reveals it, rather than a dead Enter
+            // (#2). A republish of the same block after a manual hide is left hidden, respecting the hide.
+            if (shownInspectorBlockRef.current !== inspectorBlock.id) {
                 uiService.panels.show(STORY_INSPECTOR_PANEL_ID);
-                inspectorPanelShownRef.current = true;
+                shownInspectorBlockRef.current = inspectorBlock.id;
             }
         } else {
+            lastInspectorSigRef.current = null;
             publishStoryInspectorState(tabId, null);
-            if (inspectorPanelShownRef.current) {
+            if (shownInspectorBlockRef.current !== null) {
                 uiService.panels.hide(STORY_INSPECTOR_PANEL_ID);
-                inspectorPanelShownRef.current = false;
+                shownInspectorBlockRef.current = null;
             }
         }
     }, [active, editor.characters, editor.closeInspector, editor.context, editor.createLayerBeforeBlock, editor.document, editor.editorMode, editor.scene, editor.setDialogueSpeaker, editor.updateBlockPayloadFor, editor.uuidService, payload?.sceneId, tabId]);
@@ -709,6 +728,15 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         window.addEventListener(STORY_ACTION_CREATE_REQUEST_EVENT, handleCreateRequest);
         return () => window.removeEventListener(STORY_ACTION_CREATE_REQUEST_EVENT, handleCreateRequest);
     }, [editor.createActionFromSidebar, tabId]);
+
+    // Silence any voice audition this tab started when it loses focus or closes — the app-wide player
+    // otherwise plays the take to its end after the author has switched tabs or closed the project (#6).
+    useEffect(() => {
+        if (!active) {
+            stopVoiceAudition();
+        }
+        return () => stopVoiceAudition();
+    }, [active]);
 
     // Cold-mount restore: reposition to the author's saved place once the scene's rows are laid out.
     // With keep-alive tabs this runs only on a true cold mount (first open, app restart, or LRU

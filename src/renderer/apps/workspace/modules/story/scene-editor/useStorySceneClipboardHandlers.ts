@@ -34,7 +34,6 @@ export function useStorySceneClipboardHandlers(params: {
     setActiveBlockId: Dispatch<SetStateAction<StoryBlockId | null>>;
     setSelectedBlockIds: Dispatch<SetStateAction<Set<StoryBlockId>>>;
     setEditorMode: Dispatch<SetStateAction<EditorMode>>;
-    setStatusText: Dispatch<SetStateAction<string>>;
 }) {
     const pasteBlocks = useCallback((roots: SerializedStoryBlock[], afterBlockId: StoryBlockId | null) => {
         const { storyService, uuidService, storyId, sceneId, scene } = params;
@@ -54,7 +53,6 @@ export function useStorySceneClipboardHandlers(params: {
             params.setSelectedBlockIds(new Set(insertedRoots));
         }
         params.setEditorMode({ kind: "idle" });
-        params.setStatusText(`Pasted ${insertedRoots.length} raw action row${insertedRoots.length === 1 ? "" : "s"}.`);
     }, [params]);
 
     const pastePlainText = useCallback((text: string, afterBlockId: StoryBlockId | null, mode: "smart" | "plain") => {
@@ -80,11 +78,6 @@ export function useStorySceneClipboardHandlers(params: {
         if (insertedIds[0]) {
             params.setActiveBlockId(insertedIds[0]);
             params.setSelectedBlockIds(new Set(insertedIds));
-            params.setStatusText(
-                mode === "smart"
-                    ? `Pasted ${insertedIds.length} line${insertedIds.length === 1 ? "" : "s"} with dialogue detection.`
-                    : `Pasted ${insertedIds.length} narration line${insertedIds.length === 1 ? "" : "s"}.`,
-            );
         }
     }, [params]);
 
@@ -109,7 +102,6 @@ export function useStorySceneClipboardHandlers(params: {
         event.preventDefault();
         event.clipboardData.setData(STORY_ACTIONS_MIME, JSON.stringify(payload));
         event.clipboardData.setData("text/plain", roots.map(id => exportBlockPlainText(scene.blocks[id], characters, scenes)).join("\n"));
-        params.setStatusText(`Copied ${roots.length} raw action row${roots.length === 1 ? "" : "s"}.`);
     }, [params]);
 
     const handlePaste = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
@@ -127,7 +119,7 @@ export function useStorySceneClipboardHandlers(params: {
                     return;
                 }
             } catch {
-                params.setStatusText("Ignored invalid story clipboard payload.");
+                /* invalid story clipboard payload; ignore and fall through to plain text */
             }
         }
         const text = event.clipboardData.getData("text/plain");
