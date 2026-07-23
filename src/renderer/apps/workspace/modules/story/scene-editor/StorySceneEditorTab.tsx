@@ -624,7 +624,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // gates the republish to real changes of the inspected block, so typing in another row — which
     // rewrites the whole scene snapshot every keystroke — no longer re-renders the panel (WI-0 #7).
     const shownInspectorBlockRef = useRef<string | null>(null);
-    const lastInspectorSigRef = useRef<string | null>(null);
+    const lastInspectorSigRef = useRef<{ block: string; characters: unknown; sceneList: string } | null>(null);
 
     // The right-sidebar inspector (WI-1). Registered like the other three dynamic panels; its body reads
     // the selection from the per-tab bridge below rather than a static payload.
@@ -682,11 +682,17 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         const mode = editor.editorMode;
         const inspectorBlock = mode.kind === "inspector" ? editor.scene?.blocks[mode.blockId] ?? null : null;
         if (inspectorBlock && editor.document && payload?.sceneId) {
-            // Republish only when the inspected block itself changes. Editing any row rewrites the scene
-            // snapshot (and so `editor.scene`/`editor.document` identity) every keystroke; gating on a
-            // signature of the inspected block keeps the panel from re-rendering on unrelated typing (#7).
-            const sig = `${inspectorBlock.id}:${JSON.stringify(inspectorBlock.payload)}`;
-            if (sig !== lastInspectorSigRef.current) {
+            // Republish only when something the panel renders changes. Editing any row rewrites the scene
+            // snapshot (and so `editor.scene`/`editor.document` identity) every keystroke, so gating on the
+            // inspected block's payload keeps the panel from re-rendering on unrelated typing (#7). But the
+            // panel also draws the speaker dropdown from `characters` and the jump-target dropdown from the
+            // scene list, and neither is in the block payload — so a character or scene rename must republish
+            // too. `characters` re-identifies only on a character edit (not on typing), and the scene-list
+            // signature reads just ids+names, so both stay stable under row typing while catching real edits.
+            const sceneList = Object.values(editor.document.scenes).map(scene => `${scene.id}:${scene.name}`).join("|");
+            const sig = { block: `${inspectorBlock.id}:${JSON.stringify(inspectorBlock.payload)}`, characters: editor.characters, sceneList };
+            const prev = lastInspectorSigRef.current;
+            if (!prev || prev.block !== sig.block || prev.characters !== sig.characters || prev.sceneList !== sig.sceneList) {
                 lastInspectorSigRef.current = sig;
                 publishStoryInspectorState(tabId, {
                     block: inspectorBlock,
