@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { getInterface } from "@/lib/app/bridge";
+import type { StoryEditorDensity } from "./storyEditorSessionStore";
 import {
     EDITOR_FONT_FAMILY_DEFAULT,
     EDITOR_FONT_SIZE_DEFAULT,
@@ -40,11 +41,18 @@ function resolveFontFamily(value: unknown): string {
     return FONT_FAMILY_STACKS[EDITOR_FONT_FAMILY_DEFAULT];
 }
 
-function toStyle(fontSize: number, fontFamily: string): CSSProperties {
+/** Comfortable density (WI-6) enlarges the authored text and opens up its line spacing. */
+const COMFORTABLE_FONT_SCALE = 1.15;
+const COMFORTABLE_LINE_HEIGHT = 1.7;
+
+function toStyle(fontSize: number, fontFamily: string, density: StoryEditorDensity | undefined): CSSProperties {
+    if (density === "comfortable") {
+        return { fontSize: Math.round(fontSize * COMFORTABLE_FONT_SCALE), fontFamily, lineHeight: COMFORTABLE_LINE_HEIGHT };
+    }
     return { fontSize, fontFamily };
 }
 
-const DEFAULT_STYLE = toStyle(EDITOR_FONT_SIZE_DEFAULT, resolveFontFamily(EDITOR_FONT_FAMILY_DEFAULT));
+const DEFAULT_STYLE = toStyle(EDITOR_FONT_SIZE_DEFAULT, resolveFontFamily(EDITOR_FONT_FAMILY_DEFAULT), undefined);
 
 const StoryEditorTextStyleContext = createContext<CSSProperties>(DEFAULT_STYLE);
 
@@ -61,7 +69,7 @@ export function useStoryEditorTextStyle(): CSSProperties {
  * when the workspace window regains focus, so a change made in the (separate) Settings window
  * applies as soon as the author returns to the editor — without any cross-window IPC push.
  */
-export function StoryEditorTextStyleProvider({ children }: { children: ReactNode }) {
+export function StoryEditorTextStyleProvider({ children, density }: { children: ReactNode; density?: StoryEditorDensity }) {
     const [fontSize, setFontSize] = useState(EDITOR_FONT_SIZE_DEFAULT);
     const [fontFamily, setFontFamily] = useState(() => resolveFontFamily(EDITOR_FONT_FAMILY_DEFAULT));
 
@@ -91,7 +99,7 @@ export function StoryEditorTextStyleProvider({ children }: { children: ReactNode
         };
     }, []);
 
-    const style = useMemo(() => toStyle(fontSize, fontFamily), [fontSize, fontFamily]);
+    const style = useMemo(() => toStyle(fontSize, fontFamily, density), [fontSize, fontFamily, density]);
     return (
         <StoryEditorTextStyleContext.Provider value={style}>
             {children}
