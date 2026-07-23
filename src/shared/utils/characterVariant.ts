@@ -41,31 +41,43 @@ export function selectCharacterVariantNames(
 }
 
 /**
- * The first resolvable asset id for an ordered variant selection: the earliest named variant that
- * carries an asset, else any asset in the map. Generic over how a stored entry exposes its id — the
- * compiler keys `assetId`, the editor `data.id` — so both the runtime lookup and the editor avatar
- * share one fallback rule.
+ * The first resolvable stored entry for an ordered variant selection: the earliest named variant that
+ * satisfies `hasAsset`, else any satisfying entry in the map. This is the one fallback rule shared by
+ * everything that turns a differential selection into a concrete asset — the runtime lookup, the
+ * editor avatar's id, and the editor avatar's `Asset` object all walk the map the same way.
+ */
+export function resolveVariantEntry<T>(
+    variantAssets: Record<string, T> | undefined,
+    variantNames: readonly string[],
+    hasAsset: (entry: T) => boolean,
+): T | null {
+    if (!variantAssets) {
+        return null;
+    }
+    for (const name of variantNames) {
+        const entry = variantAssets[name];
+        if (entry && hasAsset(entry)) {
+            return entry;
+        }
+    }
+    for (const entry of Object.values(variantAssets)) {
+        if (hasAsset(entry)) {
+            return entry;
+        }
+    }
+    return null;
+}
+
+/**
+ * The first resolvable asset id for an ordered variant selection. Generic over how a stored entry
+ * exposes its id — the compiler keys `assetId`, the editor `data.id` — so both the runtime lookup and
+ * the editor avatar share one fallback rule (see {@link resolveVariantEntry}).
  */
 export function resolveVariantAssetId<T>(
     variantAssets: Record<string, T> | undefined,
     variantNames: readonly string[],
     getAssetId: (entry: T) => string | null | undefined,
 ): string | null {
-    if (!variantAssets) {
-        return null;
-    }
-    for (const name of variantNames) {
-        const entry = variantAssets[name];
-        const id = entry ? getAssetId(entry) : null;
-        if (id) {
-            return id;
-        }
-    }
-    for (const entry of Object.values(variantAssets)) {
-        const id = getAssetId(entry);
-        if (id) {
-            return id;
-        }
-    }
-    return null;
+    const entry = resolveVariantEntry(variantAssets, variantNames, candidate => Boolean(getAssetId(candidate)));
+    return entry ? getAssetId(entry) ?? null : null;
 }

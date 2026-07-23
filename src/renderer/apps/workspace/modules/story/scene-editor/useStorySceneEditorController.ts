@@ -295,6 +295,32 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         visibleRows.forEach((row, index) => result.set(row.block.id, index));
         return result;
     }, [visibleRows]);
+    // While the "narrative only" filter is on, keep the selection and active row inside the visible set.
+    // Enabling the filter (or editing under it) can leave selected staging rows hidden, and a Delete
+    // must never act on a row the author cannot see — so drop any selected id that is no longer visible.
+    // Off-filter editing is untouched; navigation that needs a hidden row turns the filter off first
+    // (see revealBlock).
+    useEffect(() => {
+        if (!narrativeOnly) {
+            return;
+        }
+        setSelectedBlockIds(prev => {
+            if (prev.size === 0) {
+                return prev;
+            }
+            let changed = false;
+            const next = new Set<StoryBlockId>();
+            for (const id of prev) {
+                if (rowIndexById.has(id)) {
+                    next.add(id);
+                } else {
+                    changed = true;
+                }
+            }
+            return changed ? next : prev;
+        });
+        setActiveBlockId(prev => (prev && !rowIndexById.has(prev) ? null : prev));
+    }, [narrativeOnly, rowIndexById]);
     const shouldRenderActiveInsertSlot = editorMode.kind === "insert" && editorMode.slot.afterBlockId !== null;
     const editorFocusKey = editorMode.kind === "insert"
         ? `insert:${editorMode.slot.focusToken}`
@@ -508,14 +534,21 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     // Make a block the active/selected row (used by deep-link navigation). Scrolling the row into
     // view and moving DOM focus is handled by the tab, which owns the rendered row elements.
     const revealBlock = useCallback((blockId: StoryBlockId): boolean => {
-        if (!scene?.blocks[blockId]) {
+        const block = scene?.blocks[blockId];
+        if (!block) {
             return false;
+        }
+        // Jump wins over the filter: navigating (reveal / search) to a staging row that the "narrative
+        // only" filter would hide turns the filter off, so the target is actually visible and selected
+        // rather than an invisible selection on a hidden row.
+        if (narrativeOnly && !isNarrativeRow(block)) {
+            setNarrativeOnly(false);
         }
         setActiveBlockId(blockId);
         setSelectedBlockIds(new Set([blockId]));
         selectionAnchorRef.current = blockId;
         return true;
-    }, [scene]);
+    }, [narrativeOnly, scene, setNarrativeOnly]);
 
     const captureHistoryState = useCallback((): StorySceneHistoryState | null => {
         if (!scene) {
@@ -968,8 +1001,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             // Anchor the fresh slot to the previous sibling so it reappears at the dialogue's own level and
             // position (the continuation flow that creates these always has one). A dialogue that opens its
             // container has no sibling to anchor to - fall through to the plain delete-and-step-back.
+            // The anchor must be *visible*: under the "narrative only" filter the previous sibling can be a
+            // hidden staging row, and a slot anchored to a hidden row opens where the author cannot see it —
+            // so when that sibling is filtered out, don't demote and fall through to delete-and-step-back.
             const previousSibling = findPreviousSibling(scene, id);
-            if (previousSibling) {
+            if (previousSibling && rowIndexById.has(previousSibling.id)) {
                 recordHistory();
                 storyService.deleteBlock(storyId, sceneId, id);
                 startInsertAfter(previousSibling.id, true);
