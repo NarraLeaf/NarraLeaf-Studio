@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Music, Play, Plus
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterVariantSelection, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
-import { resolveVariantAssetId, selectCharacterVariantNames } from "@shared/utils/characterVariant";
+import { resolveVariantEntry, selectCharacterVariantNames } from "@shared/utils/characterVariant";
 import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
 import type { NormalizedCrop } from "@/lib/utils/headCrop";
 import { useWorkspace } from "@/apps/workspace/context";
@@ -15,10 +15,11 @@ import { getCommandLineDraftReason, getCommandLineReason } from "./storyCommandR
 import { isMacPlatform } from "@/lib/app/platform";
 import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
-import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { useBadgeImageUrl, type BadgeImageSource } from "./storyBadgeImageCache";
 import { resolveStoryMotionPreviewTarget } from "../../story-motion/storyMotionPreviewTarget";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import {
@@ -267,6 +268,7 @@ export function StoryBlockRow(props: {
                             characters={characters}
                             onSetDialogueCharacter={props.onSetDialogueCharacter}
                             hideSpeaker={dialogueMember}
+                            suppressSpeakerColor={selected}
                         />
                     ) : textSegment || !containerInfo ? (
                         <BlockPreview
@@ -280,6 +282,7 @@ export function StoryBlockRow(props: {
                             characters={characters}
                             onSetDialogueCharacter={props.onSetDialogueCharacter}
                             hideSpeaker={dialogueMember}
+                            suppressSpeakerColor={selected}
                         />
                     ) : null}
                     <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -355,6 +358,8 @@ function TextEditBox(props: {
     onCreateCharacter: (name: string) => void;
     /** In-group dialogue member (WI-5): drop the nametag and indent the text, matching the read row. */
     hideSpeaker?: boolean;
+    /** Row is selected: the nametag yields its accent colour to the selection highlight. */
+    suppressSpeakerColor?: boolean;
 }) {
     const { t } = useTranslation();
     const dialoguePayload = props.block.kind === "nodeAction" && props.block.payload.action === "dialogue"
@@ -460,6 +465,7 @@ function TextEditBox(props: {
                     onChoose={props.onSetSpeaker}
                     onCreateCharacter={props.onCreateCharacter}
                     style={textStyle}
+                    suppressColor={props.suppressSpeakerColor}
                 />
             ) : null}
             <RichTextInput
@@ -660,13 +666,7 @@ function GroupRail({ highlight }: { highlight: boolean }) {
  */
 function GroupExpressionMember({ block, characters }: { block: StoryBlock; characters: Character[] }) {
     const { t } = useTranslation();
-    const spec = getBadgeImageSpec(block, undefined);
-    const character = spec ? characters.find(next => next.profile.getId() === spec.characterId) : undefined;
-    const resolved = character && spec?.resolveVariant
-        ? resolveCharacterBadgeImage(character, spec.formName, spec.variants)
-        : { assetId: null as string | null, frame: undefined };
-    const imageId = resolved.assetId ?? character?.profile.getThumbnail() ?? null;
-    const imageUrl = useServiceAssetObjectUrl(imageId);
+    const { url: imageUrl, frame, showingSprite } = useCharacterBadgeImage(block, undefined, characters);
     const label = useMemo(() => {
         if (block.kind !== "action" || block.payload.action !== "character") {
             return "";
@@ -689,8 +689,8 @@ function GroupExpressionMember({ block, characters }: { block: StoryBlock; chara
             <span className="flex h-6 w-6 shrink-0 items-center justify-center">
                 <span className="relative h-4 w-4 overflow-hidden rounded-full border border-edge bg-fill-subtle">
                     {imageUrl ? (
-                        resolved.assetId ? (
-                            <HeadThumbnail url={imageUrl} alt="" frame={resolved.frame} className="h-full w-full" iconClassName="h-2.5 w-2.5" />
+                        showingSprite ? (
+                            <HeadThumbnail url={imageUrl} alt="" frame={frame} className="h-full w-full" iconClassName="h-2.5 w-2.5" />
                         ) : (
                             <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} />
                         )
@@ -1139,8 +1139,10 @@ export function InsertRow(props: {
     return (
         // The open slot is the active line: it carries the same left-accent + fill the active/editing
         // rows use, so "you are creating a row here" reads at a glance (the rows drop their own
-        // highlight while it is open — see the tab's `insertActive`).
-        <div className="relative grid min-h-[35px] grid-cols-[36px_28px_1fr] items-start border-l-2 border-primary bg-fill-subtle pr-3">
+        // highlight while it is open — see the tab's `insertActive`). The marker attribute lets the
+        // comfortable-density rule open it to the same 46px as a committed row, so narration's Enter
+        // falls into it without a vertical jump.
+        <div data-story-insert-slot="" className="relative grid min-h-[35px] grid-cols-[36px_28px_1fr] items-start border-l-2 border-primary bg-fill-subtle pr-3">
             <div aria-hidden />
             <div className="flex justify-center pt-1">
                 <Plus className="h-4 w-4 text-primary" />
@@ -1674,6 +1676,8 @@ function CharacterSelectTrigger(props: {
     onCreateCharacter: (name: string) => void;
     className?: string;
     style?: CSSProperties;
+    /** When the row is selected, drop the accent so the selection highlight owns the nametag colour. */
+    suppressColor?: boolean;
 }) {
     const { t } = useTranslation();
     const rootRef = useRef<HTMLDivElement | null>(null);
@@ -1685,8 +1689,9 @@ function CharacterSelectTrigger(props: {
     const committedName = props.characterId
         ? getCharacterName(props.characters, props.characterId)
         : props.speakerName ?? "";
-    // A real character (not a bare temp speaker) may carry an editor accent colour for its nametag.
-    const characterColor = props.characterId && !props.speakerName
+    // A real character (not a bare temp speaker) may carry an editor accent colour for its nametag —
+    // but a selected row yields it to the selection highlight (the "you are here" signal wins).
+    const characterColor = props.characterId && !props.speakerName && !props.suppressColor
         ? getCharacterColor(props.characters, props.characterId)
         : undefined;
     const candidates = useMemo(
@@ -1840,46 +1845,66 @@ function getBadgeImageSpec(
 }
 
 /**
- * The sprite asset id + portrait frame for a character's form/variants, resolved against the exact
- * selection rule the runtime uses (shared `selectCharacterVariantNames` / `resolveVariantAssetId`).
- * The frame is the form's own portrait override, else the profile default; `undefined` lets the badge
- * fall back to the automatic head crop.
+ * The sprite `Asset` + portrait frame for a character's form/variants, resolved against the exact
+ * selection rule the runtime uses (shared `selectCharacterVariantNames` / `resolveVariantEntry`). The
+ * frame is the form's own portrait override, else the profile default; `undefined` lets the badge fall
+ * back to the automatic head crop. The `Asset` object (not just its id) is returned because a
+ * differential sprite is a *project* asset and loads through the asset library, not the editor store.
  */
 function resolveCharacterBadgeImage(
     character: Character,
     formName: string | undefined,
     variants: StoryCharacterVariantSelection | undefined,
-): { assetId: string | null; frame?: NormalizedCrop } {
+): { asset: Asset<AssetType.Image> | null; frame?: NormalizedCrop } {
     const forms = character.profile.appearance.getForms();
     const form = forms.find(candidate => candidate.name === formName)
         ?? forms.find(candidate => candidate.name === character.profile.getDefaultForm())
         ?? forms[0];
     if (!form) {
-        return { assetId: null };
+        return { asset: null };
     }
     const variantNames = selectCharacterVariantNames(form, variants);
-    const assetId = resolveVariantAssetId(form.variantAssets, variantNames, entry => entry.data?.id);
-    return { assetId, frame: form.portrait ?? character.profile.getPortrait() };
+    const entry = resolveVariantEntry(form.variantAssets, variantNames, candidate => Boolean(candidate.data?.id));
+    return { asset: entry?.data ?? null, frame: form.portrait ?? character.profile.getPortrait() };
+}
+
+/**
+ * The framed avatar a character row should picture: the differential sprite when a look applies
+ * (loaded from the project asset library, framed on the face), else the character thumbnail (an editor
+ * asset, already a square crop). Both share the id-keyed object-URL cache so one sprite is read — and
+ * its head located — once no matter how many rows show it.
+ */
+function useCharacterBadgeImage(
+    block: StoryBlock,
+    appearance: CharacterAppearanceRef | undefined,
+    characters: Character[],
+): { url: string | null; frame?: NormalizedCrop; showingSprite: boolean } {
+    const spec = getBadgeImageSpec(block, appearance);
+    const character = spec ? characters.find(next => next.profile.getId() === spec.characterId) : undefined;
+    const resolved = character && spec?.resolveVariant
+        ? resolveCharacterBadgeImage(character, spec.formName, spec.variants)
+        : { asset: null as Asset<AssetType.Image> | null, frame: undefined };
+    const thumbnailId = character?.profile.getThumbnail() ?? null;
+    const source: BadgeImageSource | null = resolved.asset
+        ? { kind: "project", asset: resolved.asset }
+        : thumbnailId
+            ? { kind: "editor", fileId: thumbnailId }
+            : null;
+    const url = useBadgeImageUrl(source);
+    return { url, frame: resolved.frame, showingSprite: resolved.asset !== null };
 }
 
 function BlockBadge({ block, characters, appearance }: { block: StoryBlock; characters: Character[]; appearance?: CharacterAppearanceRef }) {
     const { label, icon: Icon, iconColor } = getBlockBadgeInfo(block);
-    const spec = getBadgeImageSpec(block, appearance);
-    const character = spec ? characters.find(next => next.profile.getId() === spec.characterId) : undefined;
     // A differential-resolved sprite (framed on the face) when a look applies; otherwise the profile
     // thumbnail (already a square crop, shown as-is); otherwise the category icon.
-    const resolved = character && spec?.resolveVariant
-        ? resolveCharacterBadgeImage(character, spec.formName, spec.variants)
-        : { assetId: null as string | null, frame: undefined };
-    const showingSprite = resolved.assetId !== null;
-    const imageId = resolved.assetId ?? character?.profile.getThumbnail() ?? null;
-    const imageUrl = useServiceAssetObjectUrl(imageId);
+    const { url: imageUrl, frame, showingSprite } = useCharacterBadgeImage(block, appearance, characters);
 
     return (
         <span className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded border border-edge bg-fill-subtle" title={label} aria-label={label}>
             {imageUrl ? (
                 showingSprite ? (
-                    <HeadThumbnail url={imageUrl} alt="" frame={resolved.frame} className="h-full w-full" iconClassName="h-3.5 w-3.5" />
+                    <HeadThumbnail url={imageUrl} alt="" frame={frame} className="h-full w-full" iconClassName="h-3.5 w-3.5" />
                 ) : (
                     <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} />
                 )
@@ -1892,61 +1917,6 @@ function BlockBadge({ block, characters, appearance }: { block: StoryBlock; char
             )}
         </span>
     );
-}
-
-function useServiceAssetObjectUrl(fileId: string | null): string | null {
-    const { context, isInitialized } = useWorkspace();
-    const serviceAssets = useMemo(
-        () => context && isInitialized ? context.services.get<ServiceAssetsService>(Services.ServiceAssets) : null,
-        [context, isInitialized],
-    );
-    const [url, setUrl] = useState<string | null>(null);
-    const urlRef = useRef<string | null>(null);
-
-    useEffect(() => {
-        if (urlRef.current) {
-            URL.revokeObjectURL(urlRef.current);
-            urlRef.current = null;
-        }
-        setUrl(null);
-
-        if (!fileId || !serviceAssets) {
-            return;
-        }
-
-        let cancelled = false;
-
-        (async () => {
-            const result = await serviceAssets.readRaw(fileId);
-            if (!result.ok || cancelled) {
-                return;
-            }
-
-            const objectUrl = URL.createObjectURL(new Blob([new Uint8Array(result.data)]));
-            if (cancelled) {
-                URL.revokeObjectURL(objectUrl);
-                return;
-            }
-
-            urlRef.current = objectUrl;
-            setUrl(objectUrl);
-        })();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [fileId, serviceAssets]);
-
-    useEffect(() => {
-        return () => {
-            if (urlRef.current) {
-                URL.revokeObjectURL(urlRef.current);
-                urlRef.current = null;
-            }
-        };
-    }, []);
-
-    return url;
 }
 
 function toSortableTransform(transform: { x: number; y: number } | null): string | undefined {
@@ -2011,6 +1981,8 @@ function BlockPreview(props: {
     onCreateCharacter: (name: string) => void;
     /** In-group dialogue member (WI-5): drop the nametag and indent the text under the group speaker. */
     hideSpeaker?: boolean;
+    /** Row is selected: the nametag yields its accent colour to the selection highlight. */
+    suppressSpeakerColor?: boolean;
 }) {
     const { t } = useTranslation();
     const block = props.block;
@@ -2030,6 +2002,7 @@ function BlockPreview(props: {
                         onChoose={props.onSetSpeaker}
                         onCreateCharacter={props.onCreateCharacter}
                         style={textStyle}
+                        suppressColor={props.suppressSpeakerColor}
                     />
                 )}
                 {hasValue && text ? (

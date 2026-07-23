@@ -65,6 +65,15 @@ function findFirstAssetVariant(form?: CharacterForm | null): string | null {
     return getFormThumbnailVariant(form);
 }
 
+/** A normalized head-square portrait rect (top-centred), seeded when a form scope starts with no rect to fork. */
+function defaultSquarePortrait(size: { width: number; height: number } | null): PortraitCrop | undefined {
+    if (!size || size.width <= 0 || size.height <= 0) {
+        return undefined;
+    }
+    const side = Math.min(size.width, size.height);
+    return { x: (size.width - side) / 2 / size.width, y: 0, w: side / size.width, h: side / size.height };
+}
+
 export function CharacterEditor({ payload }: EditorComponentProps<CharacterEditorPayload>) {
     const { t } = useTranslation();
     const appearance = payload?.character.profile.appearance;
@@ -645,6 +654,25 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         setProfileVersion(v => v + 1);
     }, [appearance, activeForm, profile]);
 
+    // Whether the active form carries its own portrait override (vs. inheriting the profile default).
+    // This is the create/clear entry the crop editor lacked: `writePortrait` only routes to the form
+    // level once an override *exists*, so without this toggle a per-form frame could never be started.
+    const formPortraitScoped = activeForm?.portrait !== undefined;
+    const toggleFormPortraitScope = useCallback(() => {
+        if (!appearance || !activeForm) return;
+        if (formPortraitScoped) {
+            // Back to inheriting the profile default; the crop editor then edits the profile rect again.
+            appearance.setFormPortrait(activeForm.name, undefined);
+        } else {
+            // Fork the current effective frame (or a head-square default) into a form-only override the
+            // author can re-crop independently.
+            const seed = effectivePortrait ?? defaultSquarePortrait(previewImageSize);
+            if (!seed) return;
+            appearance.setFormPortrait(activeForm.name, seed);
+        }
+        setProfileVersion(v => v + 1);
+    }, [appearance, activeForm, effectivePortrait, formPortraitScoped, previewImageSize]);
+
     const handlePortraitConfirm = useCallback((selection: { x: number; y: number; width: number; height: number }) => {
         if (previewImageSize) {
             writePortrait({
@@ -699,6 +727,9 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                     portraitSet={effectivePortrait !== undefined}
                     onEditPortrait={() => setPortraitCropperOpen(true)}
                     onResetPortrait={() => writePortrait(undefined)}
+                    formScopeAvailable={Boolean(activeForm) && canEditPortrait}
+                    formScoped={formPortraitScoped}
+                    onToggleFormScope={toggleFormPortraitScope}
                 />
 
                 <VariantsPanel

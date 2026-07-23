@@ -135,6 +135,8 @@ export const characters = {
         setPortrait: "Portrait framing",
         resetPortrait: "Reset portrait framing",
         portraitTitle: "Portrait framing",
+        portraitFormScopedOff: "Frame this form only",
+        portraitFormScopedOn: "Framing this form only — click to inherit the default",
     },
     variantsPanel: {
         title: "Variants",
