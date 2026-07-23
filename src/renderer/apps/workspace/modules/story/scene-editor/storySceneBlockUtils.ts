@@ -41,6 +41,50 @@ export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, C
     return result;
 }
 
+type GroupSpeaker = { characterId?: string; speakerName?: string };
+
+/** Whether two dialogue speakers are the same run: character id wins; a bare, non-empty name ties otherwise. */
+function sameGroupSpeaker(a: GroupSpeaker, b: GroupSpeaker): boolean {
+    if (a.characterId || b.characterId) {
+        return Boolean(a.characterId) && a.characterId === b.characterId;
+    }
+    return Boolean(a.speakerName) && a.speakerName === b.speakerName;
+}
+
+/**
+ * Annotate rows with their dialogue-group role (WI-5), a pure render projection over the visible
+ * sequence. A run is consecutive dialogue rows with the same speaker; a same-character `expression`
+ * row rides along without breaking it (it renders as an in-group differential note). Any other kind
+ * ends the run. Only dialogue and in-group expression rows are cloned; every other row is returned
+ * untouched, so referential identity is preserved where it can be.
+ */
+export function annotateDialogueGroups(rows: VisibleStoryRow[]): VisibleStoryRow[] {
+    let groupSpeaker: GroupSpeaker | null = null;
+    return rows.map(row => {
+        const block = row.block;
+        if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
+            const speaker: GroupSpeaker = { characterId: block.payload.characterId, speakerName: block.payload.speakerName };
+            if (groupSpeaker && sameGroupSpeaker(groupSpeaker, speaker)) {
+                return { ...row, groupRole: "member" as const };
+            }
+            groupSpeaker = speaker;
+            return { ...row, groupRole: "head" as const };
+        }
+        if (
+            block.kind === "action"
+            && block.payload.action === "character"
+            && block.payload.operation === "expression"
+            && groupSpeaker?.characterId
+            && block.payload.characterId === groupSpeaker.characterId
+        ) {
+            // An expression change for the group's speaker: an in-group note; the run continues.
+            return { ...row, groupRole: "member" as const };
+        }
+        groupSpeaker = null;
+        return row;
+    });
+}
+
 export function buildVisibleRows(scene: StoryScene, collapsedIds: Set<StoryBlockId>): VisibleStoryRow[] {
     const rows: VisibleStoryRow[] = [];
     const visit = (blockId: StoryBlockId, depth: number) => {
