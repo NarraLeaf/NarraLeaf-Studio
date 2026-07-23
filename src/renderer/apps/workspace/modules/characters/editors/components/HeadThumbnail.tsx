@@ -10,6 +10,11 @@ type HeadThumbnailProps = {
     className?: string;
     /** Size of the placeholder icon shown when there is no image. */
     iconClassName?: string;
+    /**
+     * Explicit framing rect (normalized 0–1). When provided, it is used verbatim and the automatic
+     * head-crop detection is skipped — this is how an author-chosen portrait selection frames the image.
+     */
+    frame?: NormalizedCrop;
 };
 
 /**
@@ -32,17 +37,19 @@ function readCache(url: string | null | undefined): CropState {
  * The crop is applied by positioning the original image inside the frame rather
  * than by re-encoding it, so the thumbnail stays sharp at any pixel density.
  */
-export function HeadThumbnail({ url, alt, className, iconClassName }: HeadThumbnailProps) {
+export function HeadThumbnail({ url, alt, className, iconClassName, frame }: HeadThumbnailProps) {
     const [state, setState] = React.useState<CropState>(() => readCache(url));
+    // An explicit frame is authoritative — the silhouette heuristic is only the fallback.
+    const hasFrame = frame !== undefined;
 
     // Swapping the image has to drop the old crop in the same render that swaps
     // the `src`, or the new art paints a frame wearing the old one's framing.
-    if (state.url !== url) {
+    if (!hasFrame && state.url !== url) {
         setState(readCache(url));
     }
 
     React.useEffect(() => {
-        if (!url || peekHeadCrop(url) !== undefined) return;
+        if (hasFrame || !url || peekHeadCrop(url) !== undefined) return;
 
         let cancelled = false;
         void resolveHeadCrop(url).then(crop => {
@@ -53,9 +60,9 @@ export function HeadThumbnail({ url, alt, className, iconClassName }: HeadThumbn
         return () => {
             cancelled = true;
         };
-    }, [url]);
+    }, [url, hasFrame]);
 
-    const crop = state.url === url ? state.crop : undefined;
+    const crop = hasFrame ? frame : (state.url === url ? state.crop : undefined);
     return (
         <div className={cn("relative flex items-center justify-center overflow-hidden shrink-0", className)}>
             {url ? (

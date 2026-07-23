@@ -31,6 +31,7 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import { collectTempSpeakers, promoteTempSpeaker } from "@/lib/workspace/services/story/storyModel";
 import { CHARACTERS_PANEL_ID } from "../../characters";
 import {
+    buildDialogueAppearances,
     buildVisibleRows,
     canAcceptChildren,
     describeBlock,
@@ -249,7 +250,22 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }),
         [assetsService, blueprintService, blueprintRevision, characters, document, sceneId, scene],
     );
-    const visibleRows = useMemo(() => (scene ? buildVisibleRows(scene, collapsedBlockIds) : []), [collapsedBlockIds, document, scene]);
+    // Each dialogue speaker's accumulated appearance (WI-3), so a dialogue row's avatar can follow the
+    // most recent enter/expression. Keyed on the scene's content, not on collapse.
+    const dialogueAppearances = useMemo(() => (scene ? buildDialogueAppearances(scene) : null), [document, scene]);
+    const visibleRows = useMemo(() => {
+        if (!scene) {
+            return [];
+        }
+        const rows = buildVisibleRows(scene, collapsedBlockIds);
+        if (!dialogueAppearances) {
+            return rows;
+        }
+        return rows.map(row => {
+            const appearance = dialogueAppearances.get(row.block.id);
+            return appearance ? { ...row, appearance } : row;
+        });
+    }, [collapsedBlockIds, dialogueAppearances, scene]);
     const rowIndexById = useMemo(() => {
         const result = new Map<StoryBlockId, number>();
         visibleRows.forEach((row, index) => result.set(row.block.id, index));

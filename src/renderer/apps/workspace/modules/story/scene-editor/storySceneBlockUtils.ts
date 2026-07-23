@@ -4,9 +4,42 @@ import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef
 import { storyMsToSeconds } from "@shared/utils/storyTime";
 import { richIfMeaningful } from "./richText";
 import type { Character } from "@/lib/workspace/services/character/Character";
-import type { StoryBlockTarget, VisibleStoryRow } from "./storySceneEditorTypes";
+import type { CharacterAppearanceRef, StoryBlockTarget, VisibleStoryRow } from "./storySceneEditorTypes";
 import { getActionCommandCategory, type ActionCommandCategoryId } from "./storyActionCommands";
 import { translate } from "@/lib/i18n";
+
+/**
+ * The appearance each dialogue speaker has at its line, accumulated in a single document-order pass:
+ * a character's most recent `enter`/`expression` sets it, an `exit` resets to default (absent =
+ * the character's default form + default variants). A reading aid for the row avatars, not runtime
+ * truth — it walks the tree linearly and does not model branch-specific stage state.
+ */
+export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, CharacterAppearanceRef> {
+    const current = new Map<string, CharacterAppearanceRef>();
+    const result = new Map<StoryBlockId, CharacterAppearanceRef>();
+    const visit = (blockId: StoryBlockId) => {
+        const block = scene.blocks[blockId];
+        if (!block) {
+            return;
+        }
+        if (block.kind === "action" && block.payload.action === "character" && block.payload.characterId) {
+            const characterId = block.payload.characterId;
+            if (block.payload.operation === "exit") {
+                current.delete(characterId);
+            } else if (block.payload.operation === "enter" || block.payload.operation === "expression") {
+                current.set(characterId, { formName: block.payload.formName, variants: block.payload.variants });
+            }
+        } else if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
+            const appearance = current.get(block.payload.characterId);
+            if (appearance) {
+                result.set(block.id, appearance);
+            }
+        }
+        block.childrenIds.forEach(visit);
+    };
+    scene.rootBlockIds.forEach(visit);
+    return result;
+}
 
 export function buildVisibleRows(scene: StoryScene, collapsedIds: Set<StoryBlockId>): VisibleStoryRow[] {
     const rows: VisibleStoryRow[] = [];
