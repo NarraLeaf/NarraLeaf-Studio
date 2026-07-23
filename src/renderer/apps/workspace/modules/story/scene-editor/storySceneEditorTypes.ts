@@ -1,14 +1,25 @@
-import type { StoryBlock, StoryBlockId, StoryRichRun } from "@shared/types/story";
+import type { StoryBlock, StoryBlockId, StoryCharacterVariantSelection, StoryRichRun } from "@shared/types/story";
 
 export type StoryBlockTarget = {
     parentId: StoryBlockId | null;
     beforeBlockId?: StoryBlockId | null;
 };
 
+/** The form + variants a character is showing at a given point — its "current appearance". */
+export type CharacterAppearanceRef = {
+    formName?: string;
+    variants?: StoryCharacterVariantSelection;
+};
+
 export type VisibleStoryRow = {
     block: StoryBlock;
     depth: number;
     lineNumber: number;
+    /**
+     * For a dialogue row, the speaker's accumulated appearance at this line (WI-3), so its avatar can
+     * follow the most recent enter/expression. Absent on non-dialogue rows and when nothing was shown.
+     */
+    appearance?: CharacterAppearanceRef;
 };
 
 export type InsertSlot = {
