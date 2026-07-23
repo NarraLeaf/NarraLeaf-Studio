@@ -236,6 +236,8 @@ export const story = {
         createCharacter: "Create character “{name}”",
         voiceOutdated: "Voice outdated, open voice table",
         voiceManage: "Open voice table",
+        voicePlay: "Play voice take",
+        voiceStop: "Stop",
     },
     sceneEditor: {
         defaultSceneName: "Untitled Scene",
