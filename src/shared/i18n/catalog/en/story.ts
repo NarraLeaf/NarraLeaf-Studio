@@ -210,6 +210,13 @@ export const story = {
         narrativeOnly: "Narrative only",
         comfortableDensity: "Comfortable density",
     },
+    commandManual: {
+        open: "Command reference",
+        title: "Command reference",
+        searchPlaceholder: "Search commands",
+        aliases: "Aliases",
+        empty: "No commands match",
+    },
     rows: {
         placeholderDialogue: "Dialogue…",
         placeholderNarration: "Narration…",

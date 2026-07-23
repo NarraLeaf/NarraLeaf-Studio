@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { AlignLeft, Camera, ChevronDown, ChevronRight, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, SlidersHorizontal, StretchVertical, Trash2, Variable } from "lucide-react";
+import { AlignLeft, BookOpen, Camera, ChevronDown, ChevronRight, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, SlidersHorizontal, StretchVertical, Trash2, Variable } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -31,6 +31,7 @@ import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, set
 import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { StoryInspectorPanel } from "./StoryInspectorPanel";
+import { StoryCommandManual } from "./StoryCommandManual";
 import { publishStoryInspectorState, STORY_INSPECTOR_PANEL_ID } from "./storyInspectorBridge";
 import { stopVoiceAudition } from "./voiceAudition";
 import { StoryEditorTextStyleProvider } from "./storyEditorTextStyle";
@@ -306,6 +307,9 @@ function StorySceneOverviewBlock(props: {
 export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentProps<StorySceneEditorTabPayload | undefined>) {
     const { t } = useTranslation();
     const editor = useStorySceneEditorController(tabId, payload);
+    // The command reference overlay (WI-2), opened from the header. Local state, not a panel — it is a
+    // read-only reference the author dips into, not a docked surface, so it mirrors the cheat sheet.
+    const [manualOpen, setManualOpen] = useState(false);
     const sensors = useSensors(
         useSensor(PointerSensor),
     );
@@ -1169,6 +1173,15 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     >
                         <StretchVertical className="h-4 w-4" />
                     </button>
+                    <button
+                        type="button"
+                        onClick={() => setManualOpen(true)}
+                        title={t("story.commandManual.open")}
+                        aria-label={t("story.commandManual.open")}
+                        className="rounded p-1.5 text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                    >
+                        <BookOpen className="h-4 w-4" />
+                    </button>
                 </div>
             </div>
 
@@ -1412,6 +1425,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             ) : null}
             </div>
         </div>
+        {manualOpen ? <StoryCommandManual onClose={() => setManualOpen(false)} /> : null}
         </StoryEditorTextStyleProvider>
     );
 }

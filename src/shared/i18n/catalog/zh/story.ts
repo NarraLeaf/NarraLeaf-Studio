@@ -191,6 +191,13 @@ export const story = {
         narrativeOnly: "只看叙事",
         comfortableDensity: "舒适密度",
     },
+    commandManual: {
+        open: "指令手册",
+        title: "指令手册",
+        searchPlaceholder: "搜索指令",
+        aliases: "别名",
+        empty: "没有匹配的指令",
+    },
     rows: {
         placeholderDialogue: "对话…",
         placeholderNarration: "旁白…",
