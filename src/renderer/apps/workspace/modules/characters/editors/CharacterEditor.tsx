@@ -40,6 +40,7 @@ const cloneForms = (forms: CharacterForm[]): CharacterForm[] =>
             variants: group.variants.map((variant: CharacterVariant) => ({ ...variant })),
         })),
         variantAssets: { ...form.variantAssets },
+        portrait: form.portrait,
     }));
 
 function getFormThumbnailVariant(form?: CharacterForm | null): string | null {

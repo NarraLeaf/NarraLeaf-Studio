@@ -3,7 +3,10 @@ import type { CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
 import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Music, Play, Plus, Route, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
-import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
+import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterVariantSelection, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
+import { resolveVariantAssetId, selectCharacterVariantNames } from "@shared/utils/characterVariant";
+import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
+import type { NormalizedCrop } from "@/lib/utils/headCrop";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
@@ -48,7 +51,7 @@ import { StoryVoiceIndicator } from "./StoryVoiceIndicator";
 import { PausePopover } from "./PausePopover";
 import { segmentToRuns } from "./richText";
 import { useStoryEditorTextStyle } from "./storyEditorTextStyle";
-import type { EditorMode, StoryCaretTarget, VisibleStoryRow } from "./storySceneEditorTypes";
+import type { CharacterAppearanceRef, EditorMode, StoryCaretTarget, VisibleStoryRow } from "./storySceneEditorTypes";
 import {
     canAcceptChildren,
     describeBlock,
@@ -218,7 +221,7 @@ export function StoryBlockRow(props: {
                     ) : hideBadge ? (
                         <span className="h-6 w-6 shrink-0" aria-hidden />
                     ) : (
-                        <BlockBadge block={block} characters={characters} />
+                        <BlockBadge block={block} characters={characters} appearance={row.appearance} />
                     )}
                     {containerInfo?.role === "branch" && containerInfo.hasCondition ? (
                         <ConditionChip
@@ -1739,28 +1742,71 @@ function CharacterSelectTrigger(props: {
     );
 }
 
-function BlockBadge({ block, characters }: { block: StoryBlock; characters: Character[] }) {
+/**
+ * Which character and appearance a row's badge should picture, and whether to resolve a
+ * differential-specific sprite (vs. fall straight through to the profile thumbnail).
+ *
+ * A character action row (`/show`, `/face`…) pictures its own payload's form/variants. A dialogue row
+ * pictures the speaker's accumulated appearance (WI-3) — but only when one exists; a speaker who has
+ * not been shown keeps the plain thumbnail, so a line before any `/show` does not invent a look.
+ */
+function getBadgeImageSpec(
+    block: StoryBlock,
+    appearance: CharacterAppearanceRef | undefined,
+): { characterId: string; formName?: string; variants?: StoryCharacterVariantSelection; resolveVariant: boolean } | null {
+    if (block.kind === "action" && block.payload.action === "character" && block.payload.characterId) {
+        return { characterId: block.payload.characterId, formName: block.payload.formName, variants: block.payload.variants, resolveVariant: true };
+    }
+    if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
+        return { characterId: block.payload.characterId, formName: appearance?.formName, variants: appearance?.variants, resolveVariant: appearance !== undefined };
+    }
+    return null;
+}
+
+/**
+ * The sprite asset id + portrait frame for a character's form/variants, resolved against the exact
+ * selection rule the runtime uses (shared `selectCharacterVariantNames` / `resolveVariantAssetId`).
+ * The frame is the form's own portrait override, else the profile default; `undefined` lets the badge
+ * fall back to the automatic head crop.
+ */
+function resolveCharacterBadgeImage(
+    character: Character,
+    formName: string | undefined,
+    variants: StoryCharacterVariantSelection | undefined,
+): { assetId: string | null; frame?: NormalizedCrop } {
+    const forms = character.profile.appearance.getForms();
+    const form = forms.find(candidate => candidate.name === formName)
+        ?? forms.find(candidate => candidate.name === character.profile.getDefaultForm())
+        ?? forms[0];
+    if (!form) {
+        return { assetId: null };
+    }
+    const variantNames = selectCharacterVariantNames(form, variants);
+    const assetId = resolveVariantAssetId(form.variantAssets, variantNames, entry => entry.data?.id);
+    return { assetId, frame: form.portrait ?? character.profile.getPortrait() };
+}
+
+function BlockBadge({ block, characters, appearance }: { block: StoryBlock; characters: Character[]; appearance?: CharacterAppearanceRef }) {
     const { label, icon: Icon, iconColor } = getBlockBadgeInfo(block);
-    const characterId = block.kind === "nodeAction" && block.payload.action === "dialogue"
-        ? block.payload.characterId
-        : block.kind === "action" && block.payload.action === "character"
-            ? block.payload.characterId
-            : undefined;
-    const character = characterId
-        ? characters.find(next => next.profile.getId() === characterId)
-        : undefined;
-    const thumbnailId = character?.profile.getThumbnail() ?? null;
-    const thumbnailUrl = useServiceAssetObjectUrl(thumbnailId);
+    const spec = getBadgeImageSpec(block, appearance);
+    const character = spec ? characters.find(next => next.profile.getId() === spec.characterId) : undefined;
+    // A differential-resolved sprite (framed on the face) when a look applies; otherwise the profile
+    // thumbnail (already a square crop, shown as-is); otherwise the category icon.
+    const resolved = character && spec?.resolveVariant
+        ? resolveCharacterBadgeImage(character, spec.formName, spec.variants)
+        : { assetId: null as string | null, frame: undefined };
+    const showingSprite = resolved.assetId !== null;
+    const imageId = resolved.assetId ?? character?.profile.getThumbnail() ?? null;
+    const imageUrl = useServiceAssetObjectUrl(imageId);
 
     return (
         <span className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded border border-edge bg-fill-subtle" title={label} aria-label={label}>
-            {thumbnailUrl ? (
-                <img
-                    src={thumbnailUrl}
-                    alt=""
-                    className="h-full w-full object-cover"
-                    draggable={false}
-                />
+            {imageUrl ? (
+                showingSprite ? (
+                    <HeadThumbnail url={imageUrl} alt="" frame={resolved.frame} className="h-full w-full" iconClassName="h-3.5 w-3.5" />
+                ) : (
+                    <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+                )
             ) : (
                 <>
                     {/* Badge fill carries the category colour (dimmed), so the icon reads on its own tint. */}
