@@ -336,7 +336,9 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
         if (payload.action === "setBackground") return translate("story.describe.setBackground", { value: payload.assetId || payload.color || translate("story.describe.unassigned") });
         if (payload.action === "character") {
             const name = payload.characterId ? getCharacterName(characters, payload.characterId) : (payload.objectName || translate("story.describe.characterFallback"));
-            return `${payload.operation} ${name}`;
+            // Localized verb + the target name ("Enter · Alice"), not the raw English enum ("enter Alice").
+            const operation = translate(`story.describe.charOp.${payload.operation}` as Parameters<typeof translate>[0]);
+            return `${operation} ${name}`;
         }
         if (payload.action === "audio") return `${payload.operation} ${payload.objectName || payload.assetId || translate("story.describe.unassigned")}`;
         if (payload.action === "setVariable") return describeAssignment(payload, variableRefShortLabel(payload.target, scene, scenes));

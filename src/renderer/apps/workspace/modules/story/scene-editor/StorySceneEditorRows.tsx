@@ -125,6 +125,11 @@ export function StoryBlockRow(props: {
     const textSegment = getTextSegment(block);
     // Plain narration and studio notes hide their badge icon (but keep its slot, for alignment).
     const hideBadge = (block.kind === "nodeAction" && block.payload.action === "narration") || block.kind === "note";
+    const isDialogue = block.kind === "nodeAction" && block.payload.action === "dialogue";
+    // Every non-dialogue, non-narration/note row carries a low-key category colour bar at its left
+    // edge, so scene / character / sound / flow rows read apart at a glance. Same single source as the
+    // badge (ACTION_COMMAND_CATEGORIES via getBlockBadgeInfo); narration/note keep zero chrome.
+    const categoryColor = !isDialogue && !hideBadge ? getBlockBadgeInfo(block).iconColor : null;
     const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
         id: row.block.id,
     });
@@ -161,6 +166,13 @@ export function StoryBlockRow(props: {
         >
             {block.kind === "action" && block.payload.action === "setBackground" && !inspectorOpen ? (
                 <BackgroundRowArtwork payload={block.payload} selected={selected} active={active} />
+            ) : null}
+            {categoryColor ? (
+                <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-y-0 left-0 w-0.5"
+                    style={{ backgroundColor: categoryColor, opacity: 0.55 }}
+                />
             ) : null}
             <div className="relative flex h-full items-start justify-end pt-1 text-[12px] tabular-nums text-fg-subtle">
                 <div className="flex min-h-[27px] items-center gap-1">
@@ -1741,7 +1753,7 @@ function BlockBadge({ block, characters }: { block: StoryBlock; characters: Char
     const thumbnailUrl = useServiceAssetObjectUrl(thumbnailId);
 
     return (
-        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded border border-edge bg-fill-subtle" title={label} aria-label={label}>
+        <span className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded border border-edge bg-fill-subtle" title={label} aria-label={label}>
             {thumbnailUrl ? (
                 <img
                     src={thumbnailUrl}
@@ -1750,7 +1762,11 @@ function BlockBadge({ block, characters }: { block: StoryBlock; characters: Char
                     draggable={false}
                 />
             ) : (
-                <Icon className="h-3.5 w-3.5" style={{ color: iconColor }} />
+                <>
+                    {/* Badge fill carries the category colour (dimmed), so the icon reads on its own tint. */}
+                    <span aria-hidden className="absolute inset-0" style={{ backgroundColor: iconColor, opacity: 0.14 }} />
+                    <Icon className="relative h-3.5 w-3.5" style={{ color: iconColor }} />
+                </>
             )}
         </span>
     );
