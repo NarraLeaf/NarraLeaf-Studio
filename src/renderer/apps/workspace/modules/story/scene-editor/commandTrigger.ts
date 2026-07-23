@@ -29,6 +29,28 @@ export function isActionCommandLine(value: string, aliasEnabled: boolean): boole
     return actionTrigger(value, aliasEnabled) !== null;
 }
 
+/** Which candidate menu an insert line is asking for. */
+export type InsertChooser = "none" | "action" | "character";
+
+/**
+ * The candidate menu an insert line offers, derived purely from its text: a "/" (or aliased "@") line
+ * opens the action creator, a "#" line the speaker picker, anything else is prose with no menu. The
+ * caret decides *which* part of an action line is being completed (command name vs argument), but that
+ * runs through the cursor, not this. The insert state deliberately does not store this - a stored copy
+ * drifted out of sync, which is how a reopened draft row kept a stale "none" and lost its completion
+ * (bible M3). Escape's one-shot suppression is the one thing text cannot express; it rides a separate
+ * `chooserDismissed` flag that the next keystroke clears.
+ */
+export function insertChooserType(value: string, aliasEnabled: boolean): InsertChooser {
+    if (isActionCommandLine(value, aliasEnabled)) {
+        return "action";
+    }
+    if (value.startsWith("#")) {
+        return "character";
+    }
+    return "none";
+}
+
 /**
  * Fold a displayed line onto the canonical form the parser and the document use: a leading "@" (when
  * the alias is on) becomes "/"; everything else - a "/" line, a "#" line, prose - is returned

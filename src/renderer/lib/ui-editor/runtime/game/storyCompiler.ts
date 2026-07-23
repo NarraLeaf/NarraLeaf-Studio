@@ -79,7 +79,7 @@ import {
     storyVariableRefKey,
 } from "@shared/types/story";
 import type { StoryExpressionReader } from "@shared/utils/storyExpressionEval";
-import { evaluateStoryExpression, isTruthy, toDisplayString } from "@shared/utils/storyExpressionEval";
+import { evaluateStoryExpression, isTruthy, strictEquals, toDisplayString } from "@shared/utils/storyExpressionEval";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { GameLocalizationBundle } from "@shared/types/localization";
 import { resolveLocaleChain } from "@shared/types/localization";
@@ -138,6 +138,25 @@ function collectPersistentDefaults(document: StoryDocument): Record<string, Stor
         }
     }
     return defaults;
+}
+
+/**
+ * Every declared persistent variable's storage key - the set a persistent reference is validated
+ * against (bible §3.3). Persistent variables come from two authoring surfaces until the project-level
+ * registry lands: story `//persis` declaration rows and the blueprint document's own persistent
+ * variables. Both key host persistence by `storageKey`, so the reference (also keyed by storageKey)
+ * checks membership here; a miss is an undeclared variable and gets the same diagnostic as a missing
+ * scene/saved one.
+ */
+function collectPersistentKeys(document: StoryDocument, blueprintDocument?: BlueprintDocument): Set<string> {
+    const keys = new Set<string>();
+    for (const def of Object.values(storyPersistentDefs(document))) {
+        keys.add(def.storageKey);
+    }
+    for (const variable of Object.values(blueprintDocument?.persistentVariables ?? {})) {
+        keys.add(variable.storageKey);
+    }
+    return keys;
 }
 
 /**
@@ -338,6 +357,8 @@ type SceneCompileContext = {
     savedVariables: Record<string, StorySavedVariableDefinition>;
     /** Story-declared persistent defaults (storageKey → default), the fallback for host reads. */
     persistentDefaults: Record<string, StoryLiteralValue>;
+    /** Every declared persistent storage key (story rows + blueprint), for reference validation. */
+    persistentKeys: Set<string>;
     /** App-level persistent bridge (shared with UI blueprints); absent outside Dev Mode host. */
     persistence?: StoryPersistenceBridge;
     /** Blueprint document for compiling story-action blueprints referenced by this scene. */
@@ -455,6 +476,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     }
     const savedPersistent = nlrStory.createPersistent(SAVED_PERSISTENT_NAMESPACE, savedDefaults);
     const persistentDefaults = collectPersistentDefaults(input.document);
+    const persistentKeys = collectPersistentKeys(input.document, input.blueprintDocument);
     const localization = input.localization ? createSceneLocalizationResolver(input.localization) : undefined;
 
     for (const scene of Object.values(input.document.scenes)) {
@@ -476,6 +498,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             sceneVariables: sceneVariableDefs(scene),
             savedVariables,
             persistentDefaults,
+            persistentKeys,
             persistence: input.persistence,
             blueprintDocument: input.blueprintDocument,
             localization,
@@ -523,6 +546,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             savedPersistent,
             savedVariables,
             persistentDefaults,
+            persistentKeys,
             animations,
             resolveAssetUrl,
             assetUrlCache,
@@ -564,6 +588,7 @@ async function buildLaunchEntryScene(params: {
     savedPersistent: Persistent<Record<string, StoryLiteralValue>>;
     savedVariables: Record<string, StorySavedVariableDefinition>;
     persistentDefaults: Record<string, StoryLiteralValue>;
+    persistentKeys: Set<string>;
     animations: Map<string, StoryAnimationAsset>;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
@@ -608,6 +633,7 @@ async function buildLaunchEntryScene(params: {
         sceneVariables: sceneVariableDefs(scene),
         savedVariables: params.savedVariables,
         persistentDefaults: params.persistentDefaults,
+        persistentKeys: params.persistentKeys,
         persistence: input.persistence,
         blueprintDocument: input.blueprintDocument,
         localization: params.localization,
@@ -788,6 +814,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         sceneVariables: sceneVariableDefs(scene),
         savedVariables,
         persistentDefaults: collectPersistentDefaults(input.document),
+        persistentKeys: collectPersistentKeys(input.document, input.blueprintDocument),
         persistence: input.persistence,
         blueprintDocument: input.blueprintDocument,
         sceneFnCatalog: collectSceneStoryActionFns({
@@ -1043,7 +1070,21 @@ async function createNlrScenes(input: {
 }): Promise<Record<string, Scene>> {
     const scenes: Record<string, Scene> = {};
     const voices = input.voiceIdMap && Object.keys(input.voiceIdMap).length > 0 ? input.voiceIdMap : undefined;
+    // Two scenes with the same runtime name share one `Scene.local` namespace, so their scene-local
+    // variables would silently read and write each other's values. The name keys the namespace
+    // (`DevTools.getNamespaceName`), so a collision is a real data hazard, not cosmetic (bible §3.3).
+    const namesSeen = new Set<string>();
     for (const scene of Object.values(input.document.scenes)) {
+        const runtimeName = scene.runtimeName || scene.name || scene.id;
+        if (namesSeen.has(runtimeName)) {
+            pushDiagnostic(
+                input.diagnostics,
+                "error",
+                undefined,
+                `Two scenes share the name "${runtimeName}"; their scene-local variables would collide. Rename one.`,
+            );
+        }
+        namesSeen.add(runtimeName);
         const background = await resolveSceneInitialBackground({
             scene,
             resolveAssetUrl: input.resolveAssetUrl,
@@ -1058,7 +1099,7 @@ async function createNlrScenes(input: {
             config.voices = voices;
         }
         scenes[scene.id] = new Scene(
-            scene.runtimeName || scene.name || scene.id,
+            runtimeName,
             Object.keys(config).length > 0 ? config : undefined,
         );
     }
@@ -1430,6 +1471,10 @@ function buildInterpolationWord(
     }
     // Persistent (app-level): a dynamic word reading the shared host snapshot synchronously,
     // falling back to the story-declared default while the host has never stored a value.
+    if (!ctx.persistentKeys.has(target.storageKey)) {
+        diagnostic(ctx, "warning", blockId, "Persistent variable not found; interpolation skipped.");
+        return null;
+    }
     const persistence = ctx.persistence;
     if (!persistence) {
         diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence; interpolation skipped.");
@@ -2385,6 +2430,13 @@ function resolveVariableSlot(ctx: SceneCompileContext, ref: StoryVariableRef, bl
         }
         return { kind: "storable", namespace: DevTools.getNamespaceName(ctx.savedPersistent), key: def.storageKey };
     }
+    // Existence is checked before host availability: an undeclared persistent variable is a fault the
+    // author must fix regardless of whether Dev Mode host persistence is up (bible §3.3, same diagnostic
+    // as a missing scene/saved variable).
+    if (!ctx.persistentKeys.has(ref.storageKey)) {
+        diagnostic(ctx, "warning", blockId, "Persistent variable not found; the assignment was skipped.");
+        return null;
+    }
     if (!ctx.persistence) {
         diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence and were skipped.");
         return null;
@@ -2453,7 +2505,12 @@ function setVariable(
         }
         return ctx.savedPersistent.set(def.storageKey, value as any);
     }
-    // Persistent (app-level, host-managed, shared with UI blueprints).
+    // Persistent (app-level, host-managed, shared with UI blueprints). Existence is checked first, so
+    // an undeclared persistent target faults regardless of host availability (bible §3.3).
+    if (!ctx.persistentKeys.has(target.storageKey)) {
+        diagnostic(ctx, "warning", blockId, "Persistent variable not found; the assignment was skipped.");
+        return null;
+    }
     const persistence = ctx.persistence;
     if (!persistence) {
         diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence and were skipped.");
@@ -2538,6 +2595,10 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
     }
     const target = condition.target;
     if (target.scope === "persistent") {
+        if (!ctx.persistentKeys.has(target.storageKey)) {
+            diagnostic(ctx, "warning", blockId, "Persistent variable not found; condition evaluates false.");
+            return falseCondition;
+        }
         return persistentCondition(ctx, target.storageKey, condition.operator, condition.value);
     }
     let persistent: Persistent<any>;
@@ -2587,19 +2648,25 @@ function persistentCondition(
         return falseCondition;
     }
     const persistentDefaults = ctx.persistentDefaults;
+    // Structural equality (`strictEquals`), the same rule `/if` expressions use — so a json/array
+    // persistent variable compares by shape, not by reference identity, matching scene/saved conditions
+    // which go through NLR's `persistent.equals()` (bible §3.3). The undefined guard keeps the old
+    // "both absent" behaviour: a not-yet-stored, default-less variable equals only an undefined target.
+    const equals = (a: StoryLiteralValue | undefined, b: StoryLiteralValue | undefined): boolean =>
+        a === undefined || b === undefined ? a === b : strictEquals(a, b);
     return () => {
         const stored = persistence.get(storageKey);
         // Declared persistent rows test against their default until the host first stores a value.
-        const current = stored === undefined ? persistentDefaults[storageKey] : stored;
+        const current = (stored === undefined ? persistentDefaults[storageKey] : stored) as StoryLiteralValue | undefined;
         switch (operator) {
             case "isTrue":
                 return current === true;
             case "isFalse":
                 return current === false;
             case "equals":
-                return current === value;
+                return equals(current, value);
             case "notEquals":
-                return current !== value;
+                return !equals(current, value);
             case "exists":
                 return current !== null && current !== undefined;
             default:
