@@ -217,6 +217,8 @@ export const story = {
         createCharacter: "创建角色「{name}」",
         voiceOutdated: "配音待更新，打开配音表",
         voiceManage: "打开配音表",
+        voicePlay: "试听配音",
+        voiceStop: "停止",
     },
     sceneEditor: {
         defaultSceneName: "未命名场景",
