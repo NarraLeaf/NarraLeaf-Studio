@@ -536,6 +536,10 @@ export const story = {
         savedVariable: "saved variable",
         persistent: "persistent",
     },
+    quickParam: {
+        waitLabel: "Wait",
+        jumpLabel: "Jump to",
+    },
     keybindings: {
         deleteRows: "Delete selected story rows",
         deleteRowsConfirm: "Delete selected story rows with multi-select confirmation",
