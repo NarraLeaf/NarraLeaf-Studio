@@ -10,6 +10,7 @@ import type {
     StoryVariableScope,
     StoryVariableValueType,
 } from "@shared/types/story";
+import { describeDeclaration } from "@shared/types/story";
 import { translate } from "@/lib/i18n";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
@@ -726,9 +727,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         return block.id;
     }, [recordHistory, scene, sceneId, storyId, storyService, uuidService]);
 
-    const startInsertAfter = useCallback((afterBlockId: StoryBlockId | null, focus = true) => {
+    // `confirmation` is the just-declared line's ghost receipt (bible §3.5): the slot that opens after a
+    // declaration commits carries it so `✓ Var gold: number = 0` greets the caret, then the next edit
+    // strips it. Every other caller opens a clean slot (no argument), so the receipt is scoped to exactly
+    // the one slot that earned it — no separate state, and nothing to clear when the author moves on.
+    const startInsertAfter = useCallback((afterBlockId: StoryBlockId | null, focus = true, confirmation?: string) => {
         slotDiscardedRef.current = false;
-        setEditorMode({ kind: "insert", slot: { afterBlockId, focusToken: Date.now() }, value: "" });
+        setEditorMode({ kind: "insert", slot: { afterBlockId, focusToken: Date.now() }, value: "", confirmation });
         if (afterBlockId) {
             setActiveBlockId(afterBlockId);
         }
@@ -1155,8 +1160,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             }
             // The stored value keeps the trigger the author typed ("@" or "/") - only parsing and
             // committing fold "@" onto "/" - so the slot shows the "@" they pressed. The menu the value
-            // asks for is derived at render, so nothing here has to recompute it.
-            return { ...current, value, chooserDismissed: undefined };
+            // asks for is derived at render, so nothing here has to recompute it. The declaration receipt
+            // (bible §3.5) is one-shot the same way `chooserDismissed` is: the first real edit clears it.
+            return { ...current, value, chooserDismissed: undefined, confirmation: undefined };
         });
     }, []);
 
@@ -1336,7 +1342,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
             return true;
         }
-        startInsertAfter(block.id, true);
+        // A declaration's row IS its result, but the caret has already moved on to the fresh slot below,
+        // so the receipt travels with that slot: `✓ Var gold: number = 0`, scope word off the same badge
+        // label the row shows, fading on the next keystroke (bible §3.5). No toast — the ghost zone is the
+        // quietest place to say "it worked" without stealing the line the author is about to type.
+        const confirmation = block.kind === "declaration"
+            ? `✓ ${translate(`story.badge.declare.${block.payload.scope}` as Parameters<typeof translate>[0])} ${describeDeclaration(block)}`
+            : undefined;
+        startInsertAfter(block.id, true, confirmation);
         return true;
     }, [commandContext, editorMode, insertBlock, scaffoldContainer, sceneId, startInsertAfter, storyId, storyService, uuidService]);
 

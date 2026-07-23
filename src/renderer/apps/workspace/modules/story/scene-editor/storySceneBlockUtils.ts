@@ -1,6 +1,6 @@
 import { Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video } from "lucide-react";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryExpr, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment, StoryVariableRef } from "@shared/types/story";
-import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef, storyVariableRefKey } from "@shared/types/story";
+import { describeDeclaration, layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef, storyVariableRefKey } from "@shared/types/story";
 import { storyMsToSeconds } from "@shared/utils/storyTime";
 import { richIfMeaningful } from "./richText";
 import type { Character } from "@/lib/workspace/services/character/Character";
@@ -479,10 +479,7 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
     }
     if (block.kind === "declaration") {
         // The row reads as what it declares: `gold: number = 100`. The scope arrives via the badge.
-        const declared = block.payload.defaultValue !== undefined
-            ? `${block.payload.name}: ${block.payload.valueType} = ${JSON.stringify(block.payload.defaultValue)}`
-            : `${block.payload.name}: ${block.payload.valueType}`;
-        return declared;
+        return describeDeclaration(block);
     }
     return block.payload.text.value || translate("story.describe.note");
 }

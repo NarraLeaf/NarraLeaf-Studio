@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { sceneVariableDefs, savedVariableDefs, storyPersistentDefs } from "./declarations";
-import type { StoryDeclarationBlock, StoryDocument, StoryScene, StoryVariableScope } from "./document";
+import { describeDeclaration, sceneVariableDefs, savedVariableDefs, storyPersistentDefs } from "./declarations";
+import type { StoryDeclarationBlock, StoryDocument, StoryScene, StoryVariableScope, StoryVariableValueType, StoryLiteralValue } from "./document";
 
 /**
  * A disabled declaration row must still declare its variable. Disabling is "compiled out" for
@@ -40,6 +40,30 @@ function sceneWith(blocks: StoryDeclarationBlock[]): StoryScene {
 function documentWith(scene: StoryScene): StoryDocument {
     return { scenes: { [scene.id]: scene } } as unknown as StoryDocument;
 }
+
+function typedDeclaration(name: string, valueType: StoryVariableValueType, defaultValue?: StoryLiteralValue): StoryDeclarationBlock {
+    return {
+        id: name,
+        kind: "declaration",
+        parentId: null,
+        childrenIds: [],
+        payload: { scope: "scene", name, valueType, ...(defaultValue !== undefined ? { defaultValue } : {}), storageKey: name },
+    };
+}
+
+describe("describeDeclaration", () => {
+    it("reads as `name: type = default` when a default is declared", () => {
+        expect(describeDeclaration(typedDeclaration("gold", "number", 0))).toBe("gold: number = 0");
+    });
+
+    it("JSON-encodes a string default so its quotes stay visible on the row", () => {
+        expect(describeDeclaration(typedDeclaration("title", "string", "hi"))).toBe('title: string = "hi"');
+    });
+
+    it("omits the ` = value` when no default is declared", () => {
+        expect(describeDeclaration(typedDeclaration("flag", "boolean"))).toBe("flag: boolean");
+    });
+});
 
 describe("declaration scans and the disabled flag", () => {
     it("keeps a disabled scene declaration in the scene table", () => {
