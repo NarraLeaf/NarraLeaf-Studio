@@ -16,6 +16,10 @@ export class PreviewService extends Service<PreviewService> {
     private status: PreviewStatus = "idle";
     private timer: ReturnType<typeof setInterval> | null = null;
     private refreshInFlight = false;
+    // True from the click until the launch IPC resolves. While set, the status poll is suppressed so
+    // it cannot momentarily revert the optimistic "preparing" back to "idle" before the main process
+    // has registered the launch.
+    private launchInFlight = false;
     private readonly events = new EventEmitter<PreviewServiceEvents>();
 
     protected async init(_ctx: WorkspaceContext): Promise<void> {
@@ -40,7 +44,7 @@ export class PreviewService extends Service<PreviewService> {
     }
 
     public async refreshStatus(): Promise<PreviewStatus> {
-        if (this.refreshInFlight) {
+        if (this.refreshInFlight || this.launchInFlight) {
             return this.status;
         }
         this.refreshInFlight = true;
@@ -56,22 +60,29 @@ export class PreviewService extends Service<PreviewService> {
     }
 
     public async launch(entry: GameRuntimeLaunchEntry, projectPath?: string): Promise<PreviewStatus> {
-        try {
-            await this.prepareProjectForPreview();
-        } catch (error) {
-            console.error("[Preview] failed to prepare project before launch", error);
-            this.updateStatus("error");
-            return this.status;
-        }
-        const path = projectPath ?? this.projectPath();
+        this.launchInFlight = true;
+        // Flip to a running state up front so the toolbar Run button and the status bar react the
+        // instant the user clicks — not after the flush and compile the launch entails.
         this.updateStatus("preparing");
-        const result = await getInterface().preview.launch(path, entry);
-        if (result.success) {
-            this.updateStatus(result.data.status);
-        } else {
-            this.updateStatus("error");
+        try {
+            try {
+                await this.prepareProjectForPreview();
+            } catch (error) {
+                console.error("[Preview] failed to prepare project before launch", error);
+                this.updateStatus("error");
+                return this.status;
+            }
+            const path = projectPath ?? this.projectPath();
+            const result = await getInterface().preview.launch(path, entry);
+            if (result.success) {
+                this.updateStatus(result.data.status);
+            } else {
+                this.updateStatus("error");
+            }
+            return this.status;
+        } finally {
+            this.launchInFlight = false;
         }
-        return this.status;
     }
 
     public async stop(projectPath?: string): Promise<PreviewStatus> {
