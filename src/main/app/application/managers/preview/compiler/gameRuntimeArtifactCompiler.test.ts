@@ -481,6 +481,7 @@ async function createRuntimeDist(runtimeDistDir: string): Promise<void> {
     await fs.mkdir(runtimeDistDir, { recursive: true });
     await fs.writeFile(path.join(runtimeDistDir, "main.js"), "// main", "utf-8");
     await fs.writeFile(path.join(runtimeDistDir, "native.js"), "// native", "utf-8");
+    await fs.writeFile(path.join(runtimeDistDir, "gate.js"), "// gate", "utf-8");
     await fs.writeFile(path.join(runtimeDistDir, "preload.js"), "// preload", "utf-8");
     await fs.writeFile(path.join(runtimeDistDir, "renderer.js"), "// renderer", "utf-8");
     await fs.writeFile(path.join(runtimeDistDir, "renderer.css"), "/* renderer css */", "utf-8");
