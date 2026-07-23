@@ -41,7 +41,6 @@ import { getCommandCandidates, hasCandidateSource, type StoryCommandCandidate } 
 import { parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "./storyCommandResolution";
 import { StoryCommandCandidateMenu, useStoryCandidateMenuState, type StoryCandidateItem } from "./StoryCommandCandidateMenu";
-import { ActionInspector } from "./StorySceneActionInspector";
 import { RichTextInput, type ActiveMarks, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle } from "./RichTextInput";
 import { RichTextToolbar } from "./RichTextToolbar";
 import { InterpolationPopover } from "./InterpolationPopover";
@@ -82,7 +81,6 @@ export function StoryBlockRow(props: {
     /** Where the caret lands when this row opens for editing (arrow-navigation, or a carried selection). */
     editInitialCaret?: StoryCaretTarget;
     textInputRef: RefObject<RichTextInputHandle | null>;
-    inspectorOpen: boolean;
     onSelect: (event: MouseEvent) => void;
     onMouseDown: (event: MouseEvent) => void;
     onMouseEnter: () => void;
@@ -101,15 +99,13 @@ export function StoryBlockRow(props: {
     /** Mod+Z / Mod+Shift+Z once the row's own history is spent — hand off to story history. */
     onUndoBeyondRow: () => void;
     onRedoBeyondRow: () => void;
+    /** Activate a non-text row (Enter / double-click): opens its inspector in the right panel, or runs its card-less op. */
     onOpenInspector: () => void;
-    onCloseInspector: () => void;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     tempSpeakers: TempSpeakerRef[];
     onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
     onCreateCharacter: (name: string) => void;
-    generateTextId: () => string;
-    onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
     onInsertAfter: () => void;
     /** Quick-delete this row from its hover actions. */
     onDeleteRow: () => void;
@@ -121,7 +117,7 @@ export function StoryBlockRow(props: {
     onPlayFromRow: (blockId: StoryBlockId) => void;
 }) {
     const { t } = useTranslation();
-    const { row, scene, document, characters, selected, active, collapsed, editing, textInputRef, inspectorOpen } = props;
+    const { row, scene, document, characters, selected, active, collapsed, editing, textInputRef } = props;
     const block = row.block;
     const container = isContainerBlock(block);
     const containerInfo = container ? getContainerHeaderInfo(block) : null;
@@ -174,7 +170,7 @@ export function StoryBlockRow(props: {
                 textSegment ? props.onStartTextEdit() : props.onOpenInspector();
             }}
         >
-            {block.kind === "action" && block.payload.action === "setBackground" && !inspectorOpen ? (
+            {block.kind === "action" && block.payload.action === "setBackground" ? (
                 <BackgroundRowArtwork payload={block.payload} selected={selected} active={active} />
             ) : null}
             {categoryColor ? (
@@ -303,19 +299,6 @@ export function StoryBlockRow(props: {
                         info={containerInfo}
                         onAddInside={() => props.onAddInside(block.id)}
                         onAddBranch={branch => props.onAddBranch(block.id, branch)}
-                    />
-                ) : null}
-                {inspectorOpen ? (
-                    <ActionInspector
-                        block={block}
-                        document={document}
-                        sceneId={scene.id}
-                        characters={characters}
-                        onUpdatePayload={props.onUpdatePayload}
-                        onClose={props.onCloseInspector}
-                        onSetDialogueCharacter={props.onSetDialogueCharacter}
-                        generateTextId={props.generateTextId}
-                        onCreateLayer={props.onCreateLayer}
                     />
                 ) : null}
                 </div>

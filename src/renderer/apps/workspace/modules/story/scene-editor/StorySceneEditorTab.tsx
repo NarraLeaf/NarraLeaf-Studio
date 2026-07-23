@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent } from "react";
-import { AlignLeft, Camera, ChevronDown, ChevronRight, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, StretchVertical, Trash2, Variable } from "lucide-react";
+import { AlignLeft, Camera, ChevronDown, ChevronRight, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, SlidersHorizontal, StretchVertical, Trash2, Variable } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -29,6 +29,8 @@ import { STORY_MOTION_PANEL_ID } from "../../story-motion";
 import { StoryVariablesPanel, STORY_VARIABLES_PANEL_ID } from "../../story-variables";
 import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, setSelectedSnapshotId } from "../../story-snapshots";
 import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
+import { StoryInspectorPanel } from "./StoryInspectorPanel";
+import { publishStoryInspectorState, STORY_INSPECTOR_PANEL_ID } from "./storyInspectorBridge";
 import { StoryEditorTextStyleProvider } from "./storyEditorTextStyle";
 import { getTextSegment } from "./storySceneBlockUtils";
 import {
@@ -611,6 +613,90 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         });
     }, [active, editor.activeBlockId, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId]);
 
+    // Tracks whether this tab has revealed the inspector panel for the current open session, so the
+    // reveal fires once on open rather than on every republish. Reset whenever the panel is (re)registered
+    // (a kept-alive tab re-registers hidden on re-activation), keeping it in sync with actual visibility.
+    const inspectorPanelShownRef = useRef(false);
+
+    // The right-sidebar inspector (WI-1). Registered like the other three dynamic panels; its body reads
+    // the selection from the per-tab bridge below rather than a static payload.
+    useEffect(() => {
+        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
+            return;
+        }
+        const uiService = editor.context.services.get<UIService>(Services.UI);
+        inspectorPanelShownRef.current = false;
+        const unregister = uiService.panels.register({
+            id: STORY_INSPECTOR_PANEL_ID,
+            title: t("story.sceneEditor.inspectorPanel"),
+            icon: <SlidersHorizontal className="w-4 h-4" />,
+            position: PanelPosition.Right,
+            component: StoryInspectorPanel,
+            defaultVisible: false,
+            order: 13,
+            payload: {
+                tabId,
+                storyId: payload.storyId,
+                sceneId: payload.sceneId,
+            },
+        });
+        return () => {
+            publishStoryInspectorState(tabId, null);
+            uiService.panels.hide(STORY_INSPECTOR_PANEL_ID);
+            unregister();
+        };
+    }, [active, editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId, t]);
+
+    useEffect(() => {
+        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
+            return;
+        }
+        const uiService = editor.context.services.get<UIService>(Services.UI);
+        uiService.panels.updatePayload(STORY_INSPECTOR_PANEL_ID, {
+            tabId,
+            storyId: payload.storyId,
+            sceneId: payload.sceneId,
+            storyName: editor.document?.name,
+            sceneName: editor.scene?.name,
+        });
+    }, [active, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
+
+    // Bridge the controller's inspector state to the (out-of-subtree) panel: when a row's inspector is
+    // open (editorMode "inspector") publish that block plus the edit callbacks and reveal the panel; when
+    // it closes, clear the bridge (empty state) and hide the panel — Enter opens, Escape closes, the row
+    // stays selected either way, so the interaction contract is preserved with the card relocated.
+    useEffect(() => {
+        if (!active || !editor.context) {
+            return;
+        }
+        const uiService = editor.context.services.get<UIService>(Services.UI);
+        const mode = editor.editorMode;
+        const inspectorBlock = mode.kind === "inspector" ? editor.scene?.blocks[mode.blockId] ?? null : null;
+        if (inspectorBlock && editor.document && payload?.sceneId) {
+            publishStoryInspectorState(tabId, {
+                block: inspectorBlock,
+                document: editor.document,
+                sceneId: payload.sceneId,
+                characters: editor.characters,
+                onUpdatePayload: nextPayload => editor.updateBlockPayloadFor(inspectorBlock.id, nextPayload),
+                onClose: editor.closeInspector,
+                onSetDialogueCharacter: characterId => editor.setDialogueSpeaker(inspectorBlock, characterId ? { characterId } : null),
+                generateTextId: () => editor.uuidService?.generate() ?? crypto.randomUUID(),
+                onCreateLayer: beforeBlockId => editor.createLayerBeforeBlock(beforeBlockId),
+            });
+            if (!inspectorPanelShownRef.current) {
+                uiService.panels.show(STORY_INSPECTOR_PANEL_ID);
+                inspectorPanelShownRef.current = true;
+            }
+        } else {
+            publishStoryInspectorState(tabId, null);
+            if (inspectorPanelShownRef.current) {
+                uiService.panels.hide(STORY_INSPECTOR_PANEL_ID);
+                inspectorPanelShownRef.current = false;
+            }
+        }
+    }, [active, editor.characters, editor.closeInspector, editor.context, editor.createLayerBeforeBlock, editor.document, editor.editorMode, editor.scene, editor.setDialogueSpeaker, editor.updateBlockPayloadFor, editor.uuidService, payload?.sceneId, tabId]);
+
     useEffect(() => {
         const handleCreateRequest = (event: Event) => {
             const detail = (event as CustomEvent<StoryActionCreateRequestDetail>).detail;
@@ -1056,7 +1142,6 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     editing={editor.editorMode.kind === "text" && editor.editorMode.blockId === row.block.id}
                                     editInitialCaret={editor.editorMode.kind === "text" && editor.editorMode.blockId === row.block.id ? (editor.editorMode.caret ?? "end") : undefined}
                                     textInputRef={editor.textInputRef}
-                                    inspectorOpen={editor.editorMode.kind === "inspector" && editor.editorMode.blockId === row.block.id}
                                     onSelect={event => editor.selectRow(row.block.id, event)}
                                     onMouseDown={event => editor.beginDragSelection(row.block.id, event)}
                                     onMouseEnter={() => editor.extendDragSelection(row.block.id)}
@@ -1088,14 +1173,11 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     onUndoBeyondRow={() => { editor.commitTextEdit(); editor.focusRoot(); editor.undoEdit(); }}
                                     onRedoBeyondRow={() => { editor.commitTextEdit(); editor.focusRoot(); editor.redoEdit(); }}
                                     onOpenInspector={() => editor.activateBlockForInspectorOrOp(row.block.id)}
-                                    onCloseInspector={editor.closeInspector}
                                     onUpdatePayload={payload => editor.updateBlockPayloadFor(row.block.id, payload)}
                                     onSetDialogueCharacter={characterId => editor.setDialogueSpeaker(row.block, characterId ? { characterId } : null)}
                                     tempSpeakers={editor.tempSpeakers}
                                     onSetSpeaker={speaker => editor.setDialogueSpeaker(row.block, speaker)}
                                     onCreateCharacter={name => editor.createCharacterFromSpeaker(row.block, name)}
-                                    generateTextId={() => editor.uuidService?.generate() ?? crypto.randomUUID()}
-                                    onCreateLayer={beforeBlockId => editor.createLayerBeforeBlock(beforeBlockId)}
                                     onInsertAfter={() => editor.startInsertAfter(row.block.id, true)}
                                     onDeleteRow={() => void editor.deleteRows([row.block.id])}
                                     onAddInside={parentId => editor.addInsideContainer(parentId)}
