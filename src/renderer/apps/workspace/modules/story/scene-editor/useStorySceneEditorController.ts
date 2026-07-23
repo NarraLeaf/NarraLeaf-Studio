@@ -1176,16 +1176,18 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         focusRoot();
     }, [focusRoot]);
 
-    // An open insert slot is anchored to a row (insert after it, or above it). If that row leaves the
-    // visible set while the slot is open — the author toggled the "narrative only" filter or collapsed
-    // the anchor's container — the slot has nowhere on screen to render and the editor is stranded in an
-    // invisible insert state. Close it so the surface is never stuck where the author cannot see it
-    // (WI-0 #3). A top-of-scene slot (no anchor row) is always visible and is left alone.
+    // An open insert slot is anchored to a row (insert after it, above it, or in place of it). If that
+    // row leaves the visible set while the slot is open — the author toggled the "narrative only" filter
+    // or collapsed the anchor's container — the slot has nowhere on screen to render and the editor is
+    // stranded in an invisible insert state. Close it so the surface is never stuck where the author
+    // cannot see it (WI-0 #3). A replace slot (a re-opened draft row) renders in place of `replaceBlockId`,
+    // so that row is its anchor and must be checked directly — its draft row is invalid, so the narrative
+    // filter hides it while the slot is open (WI-0 M3.1). A top-of-scene slot (no anchor row) is left alone.
     useEffect(() => {
         if (editorMode.kind !== "insert") {
             return;
         }
-        const anchorId = editorMode.slot.target?.beforeBlockId ?? editorMode.slot.afterBlockId;
+        const anchorId = editorMode.slot.replaceBlockId ?? editorMode.slot.target?.beforeBlockId ?? editorMode.slot.afterBlockId;
         if (anchorId && !rowIndexById.has(anchorId)) {
             discardInsertSlot();
         }
