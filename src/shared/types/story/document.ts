@@ -13,7 +13,11 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // are derived by scanning (see `declarations.ts`), and deleting the row deletes the variable. The
 // migration synthesizes a declaration block per registry entry, with the block id taking over the
 // old `variableId` so every stored ref keeps resolving.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 6 as const;
+// v7 adds the block-level `disabled` flag (a compiled-out, build-tolerated row — distinct from
+// `invalid` and `note`). Purely additive: a v6 document loads with every block enabled, so the
+// migration is a no-op version bump. The bump exists only so a v6 Studio refuses a v7 document
+// rather than silently compiling a row the author meant to skip.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 7 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -192,6 +196,12 @@ export type StoryBlockBase<TKind extends StoryBlockKind, TPayload> = {
     childrenIds: StoryBlockId[];
     payload: TPayload;
     diagnosticsMeta?: StoryDiagnosticsMeta;
+    /**
+     * A disabled row (schema v7) is skipped by the compiler — with its whole subtree, if it is a
+     * container — and is invisible at runtime, but the build does not reject it (unlike `invalid`) and
+     * it keeps its payload (unlike `note`). Absent means enabled; the three states are disjoint.
+     */
+    disabled?: boolean;
 };
 
 export type StoryNodeActionBlock = StoryBlockBase<"nodeAction", StoryNodeActionPayload>;

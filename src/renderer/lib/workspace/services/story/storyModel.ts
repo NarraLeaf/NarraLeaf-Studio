@@ -324,8 +324,9 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     if (version < 6) {
         migrated = migrateStoryDocumentV5toV6(migrated);
     }
-    // v4 (the `invalid` block kind and dialogue's `speakerName`) is purely additive: a v3 document is
-    // already a valid v4 one, so there is no step for it - only the stamp.
+    // v4 (the `invalid` block kind and dialogue's `speakerName`) and v7 (the block-level `disabled`
+    // flag) are purely additive: an older document is already valid at the new version, so there is no
+    // step for either - only the stamp (a v6 document falls through every step above and is stamped v7).
     //
     // The stamp is unconditional, and has to be. Each migrator above ends by writing
     // STORY_DOCUMENT_SCHEMA_VERSION rather than the version it actually produces, so the ladder only
@@ -1312,11 +1313,35 @@ export type InvalidStoryBlockRef = {
  * writing), which is exactly why the build has to be the thing that refuses them - otherwise an
  * unfinished line ships, and the whole point of making it a distinct block kind is lost.
  */
+/**
+ * Whether a block is compiled out (schema v7): disabled itself, or nested inside a disabled ancestor.
+ * A disabled container skips its whole subtree, so a child is effectively disabled when any ancestor
+ * is. Ancestor-walk (bounded by a seen-set against a malformed cycle) rather than tree-descent, so it
+ * suits callers that iterate the flat block map.
+ */
+export function isBlockDisabled(scene: StoryScene, block: StoryBlock): boolean {
+    let current: StoryBlock | undefined = block;
+    const seen = new Set<StoryBlockId>();
+    while (current) {
+        if (current.disabled) {
+            return true;
+        }
+        if (!current.parentId || seen.has(current.id)) {
+            break;
+        }
+        seen.add(current.id);
+        current = scene.blocks[current.parentId];
+    }
+    return false;
+}
+
 export function collectInvalidBlocks(document: StoryDocument): InvalidStoryBlockRef[] {
     const found: InvalidStoryBlockRef[] = [];
     for (const scene of Object.values(document.scenes)) {
         for (const block of Object.values(scene.blocks)) {
-            if (block.kind === "invalid") {
+            // A disabled invalid row (or one under a disabled container) is compiled out, so the build
+            // does not gate on it — that is exactly what disabling a half-written line is for.
+            if (block.kind === "invalid" && !isBlockDisabled(scene, block)) {
                 found.push({
                     storyId: document.id,
                     storyName: document.name,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { AlignLeft, Camera, ChevronDown, ChevronRight, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, SlidersHorizontal, StretchVertical, Trash2, Variable } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -29,6 +29,7 @@ import { STORY_MOTION_PANEL_ID } from "../../story-motion";
 import { StoryVariablesPanel, STORY_VARIABLES_PANEL_ID } from "../../story-variables";
 import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, setSelectedSnapshotId } from "../../story-snapshots";
 import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
+import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { StoryInspectorPanel } from "./StoryInspectorPanel";
 import { publishStoryInspectorState, STORY_INSPECTOR_PANEL_ID } from "./storyInspectorBridge";
 import { StoryEditorTextStyleProvider } from "./storyEditorTextStyle";
@@ -993,6 +994,19 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         });
     }, [editor.context, payload?.storyId, payload?.sceneId, panelStateService, t]);
 
+    // Row context menu (WI-3). Right-clicking a row outside the current selection selects just it first,
+    // so the menu's selection-scoped actions act on exactly what the author pointed at; inside the
+    // selection, the whole selection is kept.
+    const rowMenu = useContextMenu();
+    const [menuTargetId, setMenuTargetId] = useState<StoryBlockId | null>(null);
+    const openRowContextMenu = useCallback((event: ReactMouseEvent, blockId: StoryBlockId) => {
+        if (!editor.selectedBlockIds.has(blockId)) {
+            editor.selectRow(blockId);
+        }
+        setMenuTargetId(blockId);
+        rowMenu.showMenu(event);
+    }, [editor, rowMenu]);
+
     if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
         return (
             <div className="flex h-full items-center justify-center p-6 text-sm text-fg-muted">
@@ -1040,6 +1054,25 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         }
         editor.moveDraggedBlockToSortablePosition(activeId, overId);
     };
+
+    // Row context-menu items (WI-3). Insert / play / inspector act on the pointed-at row; duplicate /
+    // disable / delete act on the whole selection (which the right-click already normalized). The
+    // disable rung reads "Enable" when every targeted root is already disabled, so one action toggles.
+    const menuTarget = menuTargetId;
+    const menuRoots = editor.selectionRootIds();
+    const menuAllDisabled = menuRoots.length > 0 && menuRoots.every(id => scene.blocks[id]?.disabled);
+    const rowMenuItems: ContextMenuDef = menuTarget ? [
+        { id: "insert-above", label: t("story.rowMenu.insertAbove"), onClick: () => editor.startInsertBefore(menuTarget) },
+        { id: "insert-below", label: t("story.rowMenu.insertBelow"), onClick: () => editor.startInsertAfter(menuTarget, true) },
+        { id: "sep-insert", separator: true },
+        { id: "duplicate", label: t("story.rowMenu.duplicate"), onClick: () => editor.duplicateSelection() },
+        { id: "disable", label: menuAllDisabled ? t("story.rowMenu.enable") : t("story.rowMenu.disable"), onClick: () => editor.toggleDisableSelection() },
+        { id: "sep-op", separator: true },
+        { id: "play", label: t("story.rowMenu.playFromHere"), onClick: () => playFromRow(menuTarget) },
+        { id: "inspector", label: t("story.rowMenu.openInspector"), onClick: () => editor.activateBlockForInspectorOrOp(menuTarget) },
+        { id: "sep-del", separator: true },
+        { id: "delete", label: t("story.rowMenu.delete"), onClick: () => void editor.deleteRows(editor.selectedBlockIds.size > 0 ? [...editor.selectedBlockIds] : [menuTarget]) },
+    ] : [];
 
     return (
         <StoryEditorTextStyleProvider density={editor.density}>
@@ -1105,6 +1138,30 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     <SortableContext items={sortableRowIds} strategy={verticalListSortingStrategy}>
                         {editor.visibleRows.map(row => (
                             <div key={row.block.id}>
+                                {/* "Insert above" (WI-3): a before-target slot renders in front of this row at
+                                    its own depth, so the new line lands above it whether or not it has a
+                                    previous sibling. */}
+                                {editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === null && editor.editorMode.slot.target?.beforeBlockId === row.block.id ? (
+                                    <InsertRow
+                                        mode={editor.editorMode}
+                                        depth={row.depth}
+                                        characters={editor.characters}
+                                        commandContext={editor.commandContext}
+                                        inputRef={editor.insertInputRef}
+                                        onValueChange={editor.handleInsertValueChange}
+                                        onCommitNarration={focusNext => editor.commitNarrationFromInsert(focusNext)}
+                                        onDismissChooser={editor.dismissInsertChooser}
+                                        onDiscardSlot={editor.discardInsertSlot}
+                                        onResolveLine={editor.resolveInsertLine}
+                                        onCommitInvalid={editor.commitInvalidFromInsert}
+                                        onChooseCommand={editor.chooseCommand}
+                                        onChooseCharacter={editor.chooseCharacterForInsert}
+                                        onChooseTempSpeaker={editor.chooseTempSpeakerForInsert}
+                                        tempSpeakers={editor.tempSpeakers}
+                                        onBackspaceEmpty={editor.handleInsertBackspaceEmpty}
+                                        slashAtAlias={editor.slashAtAlias}
+                                    />
+                                ) : null}
                                 {/* A row being rewritten (an invalid line re-opened for editing) renders
                                     *as* the editable line, in its own place. Rendering the slot beside it
                                     instead would show the row twice — once broken, once being fixed —
@@ -1143,6 +1200,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     editInitialCaret={editor.editorMode.kind === "text" && editor.editorMode.blockId === row.block.id ? (editor.editorMode.caret ?? "end") : undefined}
                                     textInputRef={editor.textInputRef}
                                     onSelect={event => editor.selectRow(row.block.id, event)}
+                                    onContextMenu={event => openRowContextMenu(event, row.block.id)}
                                     onMouseDown={event => editor.beginDragSelection(row.block.id, event)}
                                     onMouseEnter={() => editor.extendDragSelection(row.block.id)}
                                     onToggleCollapsed={() => editor.toggleCollapsed(row.block.id)}
@@ -1212,7 +1270,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         ))}
                     </SortableContext>
                 </DndContext>
-                {editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === null ? (
+                {editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === null && !editor.editorMode.slot.target?.beforeBlockId ? (
                     <InsertRow
                         mode={editor.editorMode}
                         depth={0}
@@ -1256,6 +1314,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     needed and scroll-position restore keeps working. */}
                 <div aria-hidden style={{ height: "calc(100% - 40px)" }} />
             </div>
+            <ContextMenu
+                items={rowMenuItems}
+                position={rowMenu.menuState.position}
+                visible={rowMenu.menuState.visible}
+                onClose={rowMenu.hideMenu}
+            />
             <button
                 type="button"
                 className={`absolute bottom-3 right-3 z-[5] flex items-center gap-1.5 rounded-lg border border-edge px-2.5 py-1.5 text-xs shadow-lg transition-colors ${previewOpen ? "bg-primary/20 text-primary" : "bg-surface-overlay text-fg-muted hover:bg-fill"}`}

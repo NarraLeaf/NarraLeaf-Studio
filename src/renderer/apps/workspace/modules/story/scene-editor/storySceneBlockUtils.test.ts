@@ -202,6 +202,20 @@ describe("isNarrativeRow", () => {
     });
 });
 
+describe("buildVisibleRows disabled propagation", () => {
+    it("marks a disabled block and its whole subtree, leaving siblings enabled", () => {
+        const grp: StoryBlock = { id: "grp", kind: "control", parentId: null, childrenIds: ["c1"], disabled: true, payload: { control: "sequence", mode: "do" } };
+        const c1 = narration("c1", "grp");
+        const after = narration("after");
+        const rows = buildVisibleRows(scene([grp, c1, after], ["grp", "after"]), new Set());
+        expect(rows.map(row => [row.block.id, Boolean(row.disabled)])).toEqual([
+            ["grp", true],
+            ["c1", true],
+            ["after", false],
+        ]);
+    });
+});
+
 describe("isReadableAccentColor", () => {
     it("keeps mid-range accents that clear both themes", () => {
         expect(isReadableAccentColor("#40a8c4")).toBe(true);

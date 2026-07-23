@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { StoryBlock, StoryExpr } from "@shared/types/story";
+import type { StoryBlock, StoryDocument, StoryExpr } from "@shared/types/story";
 import { isStoryExpressionEvaluable, STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import {
     collectInvalidBlocks,
@@ -9,6 +9,8 @@ import {
     createEmptyStoryLibraryIndex,
     deleteBlockFromScene,
     insertBlockInScene,
+    isBlockDisabled,
+    migrateStoryDocumentToLatest,
     moveBlockInScene,
     normalizeStoryAnimationAsset,
     normalizeStoryAnimationIndex,
@@ -606,6 +608,21 @@ describe("collectInvalidBlocks", () => {
         const document = documentWith([invalidBlock("bad1", "/bgg"), invalidBlock("bad2", "#")]);
         expect(collectInvalidBlocks(document).map(ref => ref.blockId)).toEqual(["bad1", "bad2"]);
     });
+
+    it("does not gate the build on a disabled invalid row (schema v7)", () => {
+        const document = documentWith([{ ...invalidBlock("bad", "/bgg"), disabled: true }]);
+        expect(collectInvalidBlocks(document)).toEqual([]);
+    });
+
+    it("does not gate the build on an invalid row nested under a disabled container", () => {
+        const document = documentWith([
+            { id: "grp", kind: "control", parentId: null, childrenIds: ["bad"], disabled: true, payload: { control: "sequence", mode: "do" } },
+            { ...invalidBlock("bad", "/bgg"), parentId: "grp" },
+        ]);
+        const scene = Object.values(document.scenes)[0];
+        expect(isBlockDisabled(scene, scene.blocks.bad)).toBe(true);
+        expect(collectInvalidBlocks(document)).toEqual([]);
+    });
 });
 
 describe("temp speakers", () => {
@@ -712,9 +729,28 @@ describe("story document migration ladder", () => {
     // The regression that shipped: bumping the constant without adding a step left v3 documents
     // falling through migrateStoryDocumentToLatest untouched, so every existing project threw
     // "migration is not implemented" and its story panel would not open.
-    it.each([[1], [2], [3], [4]])("brings a v%i document to the current schema", version => {
+    it.each([[1], [2], [3], [4], [5], [6]])("brings a v%i document to the current schema", version => {
         expect(normalizeStoryDocument(docAtVersion(version), "2026-07-16T00:00:00.000Z").schemaVersion)
             .toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    });
+
+    it("migrates v6 to v7 additively — a bump only, every block untouched (no invented `disabled`)", () => {
+        const document = docAtVersion(6);
+        const sceneId = Object.keys(document.scenes)[0];
+        const scene = document.scenes[sceneId];
+        const v6 = {
+            ...document,
+            scenes: {
+                [sceneId]: {
+                    ...scene,
+                    rootBlockIds: ["n1"],
+                    blocks: { n1: { id: "n1", parentId: null, childrenIds: [], kind: "note", payload: { text: { textId: "t", role: "note", value: "hi" } } } },
+                },
+            },
+        } as StoryDocument;
+        const migrated = migrateStoryDocumentToLatest(v6);
+        expect(migrated.schemaVersion).toBe(7);
+        expect(migrated.scenes[sceneId].blocks.n1).not.toHaveProperty("disabled");
     });
 
     /** A v4 document holding one `conditionBranch` whose expression condition is the legacy raw string. */

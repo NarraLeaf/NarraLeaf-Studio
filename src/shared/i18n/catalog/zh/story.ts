@@ -661,6 +661,16 @@ export const story = {
         waitLabel: "等待",
         jumpLabel: "跳转到",
     },
+    rowMenu: {
+        insertAbove: "在上方插入",
+        insertBelow: "在下方插入",
+        duplicate: "复制行",
+        disable: "禁用",
+        enable: "启用",
+        playFromHere: "从此行播放",
+        openInspector: "打开检查器",
+        delete: "删除",
+    },
     keybindings: {
         deleteRows: "删除选中的故事行",
         deleteRowsConfirm: "删除选中的故事行（多选时需确认）",

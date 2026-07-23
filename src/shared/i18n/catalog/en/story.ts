@@ -540,6 +540,16 @@ export const story = {
         waitLabel: "Wait",
         jumpLabel: "Jump to",
     },
+    rowMenu: {
+        insertAbove: "Insert above",
+        insertBelow: "Insert below",
+        duplicate: "Duplicate",
+        disable: "Disable",
+        enable: "Enable",
+        playFromHere: "Play from here",
+        openInspector: "Open inspector",
+        delete: "Delete",
+    },
     keybindings: {
         deleteRows: "Delete selected story rows",
         deleteRowsConfirm: "Delete selected story rows with multi-select confirmation",

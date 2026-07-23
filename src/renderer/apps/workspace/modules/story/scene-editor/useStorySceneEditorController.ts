@@ -746,6 +746,30 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, []);
 
     /**
+     * Open an insert slot directly *above* a row, at that row's own depth. Modelled on `startLineEdit`'s
+     * before-target (parent + `beforeBlockId`) but without `replaceBlockId`, so the row stays and the new
+     * line lands in front of it — the "insert above" context-menu action. The tab renders it against the
+     * `beforeBlockId` target, which is why it works uniformly whether or not the row has a previous sibling.
+     */
+    const startInsertBefore = useCallback((blockId: StoryBlockId, focus = true) => {
+        const block = scene?.blocks[blockId];
+        if (!block) {
+            return;
+        }
+        slotDiscardedRef.current = false;
+        setEditorMode({
+            kind: "insert",
+            slot: { afterBlockId: null, focusToken: Date.now(), target: { parentId: block.parentId, beforeBlockId: blockId } },
+            value: "",
+            chooser: "none",
+        });
+        setActiveBlockId(blockId);
+        if (focus) {
+            window.requestAnimationFrame(() => insertInputRef.current?.focus());
+        }
+    }, [scene]);
+
+    /**
      * Re-open a row as an editable line, seeded with its source.
      *
      * The slot lands *where the row is* (after its previous sibling, inside its parent) and carries
@@ -1836,6 +1860,37 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setStatusText(`Duplicated ${insertedIds.length} row${insertedIds.length === 1 ? "" : "s"}.`);
     }, [activeBlockId, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uuidService, visibleRows]);
 
+    /**
+     * The block ids a row operation acts on: the selection (deduped to roots so a container carries its
+     * subtree), else the single active row. The one place the context-menu actions and the disable
+     * toggle agree on "the rows this applies to".
+     */
+    const selectionRootIds = useCallback((): StoryBlockId[] => {
+        if (!scene) {
+            return [];
+        }
+        const ids = selectedBlockIds.size > 0 ? [...selectedBlockIds] : activeBlockId ? [activeBlockId] : [];
+        return filterOutSelectedDescendants(scene, ids);
+    }, [activeBlockId, scene, selectedBlockIds]);
+
+    /**
+     * Toggle the compiled-out flag across the selection (schema v7). When every targeted root is already
+     * disabled it enables them, so the one menu action reads "Enable"; otherwise it disables. Undoable.
+     */
+    const toggleDisableSelection = useCallback(() => {
+        if (!storyService || !storyId || !sceneId || !scene) {
+            return;
+        }
+        const roots = selectionRootIds();
+        if (roots.length === 0) {
+            return;
+        }
+        const nextDisabled = !roots.every(id => scene.blocks[id]?.disabled);
+        recordHistory();
+        roots.forEach(id => storyService.setBlockDisabled(storyId, sceneId, id, nextDisabled));
+        setStatusText(nextDisabled ? `Disabled ${roots.length} row${roots.length === 1 ? "" : "s"}.` : `Enabled ${roots.length} row${roots.length === 1 ? "" : "s"}.`);
+    }, [recordHistory, scene, sceneId, selectionRootIds, storyId, storyService]);
+
     const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
         if (!isStoryEditorFocusActive()) {
             return;
@@ -1899,7 +1954,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         density, setDensity, narrativeOnly, setNarrativeOnly,
         rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
-        deleteRows, deleteSelection, startInsertAfter, selectRow, beginDragSelection,
+        deleteRows, deleteSelection, startInsertAfter, startInsertBefore, selectRow, beginDragSelection,
+        selectionRootIds, toggleDisableSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateSceneMetadata,
         setDialogueSpeaker, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange,
         undoEdit, redoEdit,
