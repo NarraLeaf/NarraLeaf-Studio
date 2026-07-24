@@ -41,9 +41,10 @@ import { getCommandCandidates, hasCandidateSource, type StoryCommandCandidate } 
 import { parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "./storyCommandResolution";
 import { StoryCommandCandidateMenu, useStoryCandidateMenuState, type StoryCandidateItem } from "./StoryCommandCandidateMenu";
-import { RichTextInput, type ActiveMarks, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle } from "./RichTextInput";
+import { RichTextInput, type ActiveMarks, type EventClickInfo, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle } from "./RichTextInput";
 import { RichTextToolbar } from "./RichTextToolbar";
 import { InterpolationPopover } from "./InterpolationPopover";
+import { ExpressionPopover } from "./ExpressionPopover";
 import { collectStoryVariableOptions, resolveInterpolationName, type PersistentVariableOption } from "./storyInterpolation";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { RichTextView } from "./RichTextView";
@@ -393,6 +394,12 @@ function TextEditBox(props: {
         [props.document, props.scene.id, persistentVars],
     );
     const [interpEdit, setInterpEdit] = useState<InterpolationClickInfo | null>(null);
+    const [eventEdit, setEventEdit] = useState<EventClickInfo | null>(null);
+    // The row's speaking character, resolved for the inline-expression picker (dialogue rows only).
+    const rowCharacter = useMemo(
+        () => props.characters.find(character => character.profile.getId() === dialoguePayload?.characterId) ?? null,
+        [props.characters, dialoguePayload?.characterId],
+    );
     // While a toolbar popover (color palette, pause config) is open, blur must not commit.
     const commitGuardRef = useRef(false);
     // Timestamp of the most recent pointerdown on the floating toolbar. Any blur that follows
@@ -434,6 +441,26 @@ function TextEditBox(props: {
         props.editorRef.current?.focus();
     };
 
+    const openEvent = (info: EventClickInfo) => {
+        commitGuardRef.current = true;
+        setEventEdit(info);
+    };
+    const closeEvent = () => {
+        commitGuardRef.current = false;
+        setEventEdit(null);
+        props.editorRef.current?.focus();
+    };
+    // Toolbar "expression" button: insert a default event (the character's default form) at the
+    // caret, then open the picker on it so the author refines form/differential/SE — the same
+    // insert-then-edit flow the pause and value chips use.
+    const insertEvent = () => {
+        const characterId = dialoguePayload?.characterId;
+        if (!characterId) {
+            return;
+        }
+        props.editorRef.current?.insertEvent({ expression: { characterId } });
+    };
+
     const handleBlur = () => {
         // Defer so focus can settle.
         window.setTimeout(() => {
@@ -455,7 +482,7 @@ function TextEditBox(props: {
 
     return (
         <div ref={containerRef} className="relative flex min-w-0 flex-1 items-center gap-2 overflow-visible">
-            <RichTextToolbar editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} hasVariables={variableOptions.scene.length + variableOptions.saved.length + variableOptions.persistent.length > 0} />
+            <RichTextToolbar editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} hasVariables={variableOptions.scene.length + variableOptions.saved.length + variableOptions.persistent.length > 0} canInsertEvent={Boolean(dialoguePayload?.characterId)} onInsertEvent={insertEvent} />
             {dialoguePayload && !props.hideSpeaker ? (
                 <CharacterSelectTrigger
                     characters={props.characters}
@@ -491,6 +518,7 @@ function TextEditBox(props: {
                 onRedoBeyondRow={props.onRedoBeyondRow}
                 onPauseClick={openPause}
                 onInterpolationClick={openInterp}
+                onEventClick={openEvent}
                 resolveInterpolationLabel={resolveInterpolationLabel}
                 onActiveMarksChange={setActiveMarks}
             />
@@ -524,6 +552,22 @@ function TextEditBox(props: {
                     }}
                     onClose={closeInterp}
                     onCommitTextEdit={props.onCommitTextEdit}
+                />
+            ) : null}
+            {eventEdit ? (
+                <ExpressionPopover
+                    anchor={eventEdit.anchor}
+                    value={eventEdit.value}
+                    character={rowCharacter}
+                    onChange={event => {
+                        props.editorRef.current?.updateEventAt(eventEdit.unit, event);
+                        setEventEdit(current => (current ? { ...current, value: event } : current));
+                    }}
+                    onRemove={() => {
+                        props.editorRef.current?.removeEventAt(eventEdit.unit);
+                        closeEvent();
+                    }}
+                    onClose={closeEvent}
                 />
             ) : null}
         </div>

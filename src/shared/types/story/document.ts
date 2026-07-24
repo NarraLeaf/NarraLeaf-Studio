@@ -17,7 +17,11 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // `invalid` and `note`). Purely additive: a v6 document loads with every block enabled, so the
 // migration is a no-op version bump. The bump exists only so a v6 Studio refuses a v7 document
 // rather than silently compiling a row the author meant to skip.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 7 as const;
+// v8 adds the `event` rich-text run (a zero-width inline reveal-time event — expression switch
+// and/or SE — see `StoryInlineEvent`). Purely additive: a v7 document simply has no event runs, so
+// the migration is a no-op version bump. The bump exists only so a v7 Studio refuses a v8 document
+// rather than dropping event tokens it does not understand.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 8 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -503,11 +507,29 @@ export type StoryInterpolationRef =
      */
     | { kind: "expression"; expression: StoryExpression };
 
+/**
+ * An inline reveal-time event (phase B1): a zero-width dialogue token that fires a restricted,
+ * closed set of side effects the instant the typewriter reveals it — the editor analogue of NLR's
+ * `TextEvent`. It is NOT a general action escape hatch; only an expression switch and/or a sound
+ * effect. `expression` targets the speaking character (the row's `characterId`) and reuses the
+ * `formName`/`variants` selection every `/show` `/face` action already uses.
+ */
+export type StoryInlineEvent = {
+    expression?: {
+        characterId: string;
+        formName?: string;
+        variants?: StoryCharacterVariantSelection;
+    };
+    sound?: { assetId: string };
+};
+
 export type StoryRichRun =
     | { text: string; marks?: StoryTextMarks }
     | { pause: number | true }
     /** An inline value (variable/blueprint), stylable like a word: bold/italic/color apply to its text. */
-    | { interpolation: StoryInterpolationRef; marks?: StoryTextMarks };
+    | { interpolation: StoryInterpolationRef; marks?: StoryTextMarks }
+    /** A zero-width reveal-time event (expression switch and/or SE). Projects to no plain text. */
+    | { event: StoryInlineEvent };
 
 export type StoryVariableRef =
     | { scope: "scene"; variableId: string }

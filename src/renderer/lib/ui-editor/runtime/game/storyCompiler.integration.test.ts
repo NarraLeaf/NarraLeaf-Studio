@@ -812,6 +812,105 @@ describe("compileStudioStoryToNlr", () => {
         expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("say");
     });
 
+    describe("inline expression events", () => {
+        /** A character summary whose "angry" form resolves to one differential asset. */
+        const alice = {
+            id: "char-alice",
+            name: "Alice",
+            defaultForm: "default",
+            forms: [
+                { name: "default", groups: [], variantAssets: { base: { assetId: "asset-default" } } },
+                { name: "angry", groups: [], variantAssets: { base: { assetId: "asset-angry" } } },
+            ],
+        };
+
+        function eventDialogue(event: unknown): Record<string, StoryBlock> {
+            return {
+                say: {
+                    id: "say",
+                    kind: "nodeAction",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: {
+                        action: "dialogue",
+                        characterId: "char-alice",
+                        text: {
+                            textId: "text-say",
+                            value: "AB",
+                            role: "dialogue",
+                            rich: [{ text: "A" }, event as never, { text: "B" }],
+                        },
+                    },
+                },
+            };
+        }
+
+        /** The compiled say sentence's NLR word array. */
+        function sayWords(compiled: Awaited<ReturnType<typeof compileStudioStoryToNlr>>): any[] {
+            const binding = compiled.actionIdBindings.find(entry => entry.blockId === "say");
+            const content = (binding!.action as any).contentNode?.getContent?.();
+            const sentence = Array.isArray(content) ? content.find((item: any) => item?.text) : content;
+            return sentence.text as any[];
+        }
+
+        /** Plain projection: a token word (Pause/TextEvent) contributes no glyphs. */
+        function plainText(words: any[]): string {
+            return words.map(word => (typeof word.text === "string" ? word.text : "")).join("");
+        }
+
+        it("compiles an expression event into a zero-width TextEvent token", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument(eventDialogue({ event: { expression: { characterId: "char-alice", formName: "angry" } } }), ["say"]),
+                sceneId: "scene-1",
+                characters: [alice],
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect(compiled.diagnostics).toEqual([]);
+            const words = sayWords(compiled);
+            const tokens = words.filter(word => word.isTextEvent?.());
+            expect(tokens).toHaveLength(1);
+            const event = tokens[0].text as any;
+            expect(event.config.expression?.appearance).toBe("nlr://asset-angry");
+            expect(event.config.expression?.image).toBeTruthy();
+            // The token contributes no glyphs: the plain projection is just the surrounding text.
+            expect(plainText(words)).toBe("AB");
+        });
+
+        it("compiles a sound-only event into a TextEvent carrying the SE", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument(eventDialogue({ event: { sound: { assetId: "asset-sting" } } }), ["say"]),
+                sceneId: "scene-1",
+                characters: [alice],
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect(compiled.diagnostics).toEqual([]);
+            const tokens = sayWords(compiled).filter(word => word.isTextEvent?.());
+            expect(tokens).toHaveLength(1);
+            const event = tokens[0].text as any;
+            expect(event.config.sound).toBeTruthy();
+            expect(event.config.expression).toBeUndefined();
+        });
+
+        it("warns and omits an event whose character image cannot be resolved", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument(eventDialogue({ event: { expression: { characterId: "char-ghost", formName: "angry" } } }), ["say"]),
+                sceneId: "scene-1",
+                characters: [alice],
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect(compiled.diagnostics).toEqual([
+                { level: "warning", blockId: "say", message: "Inline event: character image source not found for char-ghost." },
+            ]);
+            // The event is dropped, but the surrounding line still compiles.
+            const words = sayWords(compiled);
+            expect(words.some(word => word.isTextEvent?.())).toBe(false);
+            expect(plainText(words)).toBe("AB");
+        });
+    });
+
     it("compiles dialogue pauseAfter without diagnostics", async () => {
         const blocks: Record<string, StoryBlock> = {
             say: {

@@ -1,4 +1,4 @@
-import type { StoryInterpolationRef, StoryRichRun, StoryTextMarks, StoryTextSegment } from "@shared/types/story";
+import type { StoryInlineEvent, StoryInterpolationRef, StoryRichRun, StoryTextMarks, StoryTextSegment } from "@shared/types/story";
 import { formatStorySecondsLabel, storyMsToSeconds } from "@shared/utils/storyTime";
 
 /** Pause chip class (a literal so Tailwind's content scan can see it). */
@@ -11,6 +11,14 @@ const INTERP_CHIP_CLASS = "story-rt-interp mx-0.5 inline-flex select-none items-
 const INTERP_CHIP_INTERACTIVE_CLASS = "cursor-pointer hover:bg-success/30";
 const INTERP_ICON_SVG = '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1"></path><path d="M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"></path></svg>';
 
+/** Inline reveal-time event chip class (expression switch / SE). */
+const EVENT_CHIP_CLASS = "story-rt-event mx-0.5 inline-flex select-none items-center rounded bg-warning/20 px-1 py-0.5 align-middle text-2xs font-medium text-warning";
+const EVENT_CHIP_INTERACTIVE_CLASS = "cursor-pointer hover:bg-warning/30";
+/** lucide "smile" — the expression-switch token. */
+const EVENT_FACE_ICON_SVG = '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>';
+/** lucide "music" — the sound-only token. */
+const EVENT_SOUND_ICON_SVG = '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>';
+
 export type ResolveInterpolationLabel = (interp: StoryInterpolationRef) => string;
 
 /** Chip copy. Callers pass translated strings so this layer never hardcodes user-facing text. */
@@ -19,6 +27,10 @@ export type RichChipTitles = {
     pauseSeconds: (seconds: number) => string;
     insertedValue: (label: string) => string;
     valueFallback: string;
+    /** Title for an expression-switch event chip (optionally naming the form). */
+    expressionEvent: string;
+    /** Title for a sound-only event chip. */
+    soundEvent: string;
 };
 
 /**
@@ -45,9 +57,13 @@ export function isInterpolationRun(run: StoryRichRun): run is { interpolation: S
     return "interpolation" in run;
 }
 
-/** True for any atomic inline chip (pause or interpolation) that counts as a single unit. */
+export function isEventRun(run: StoryRichRun): run is { event: StoryInlineEvent } {
+    return "event" in run;
+}
+
+/** True for any atomic inline chip (pause, interpolation or event) that counts as a single unit. */
 function isChipElement(el: HTMLElement): boolean {
-    return el.dataset.pause !== undefined || el.dataset.interp !== undefined;
+    return el.dataset.pause !== undefined || el.dataset.interp !== undefined || el.dataset.event !== undefined;
 }
 
 function parseInterpolation(raw: string): StoryInterpolationRef | null {
@@ -60,6 +76,26 @@ function parseInterpolation(raw: string): StoryInterpolationRef | null {
         // fall through
     }
     return null;
+}
+
+/** Parse a chip's serialized event payload (`data-event`); keeps only a usable expression/sound. */
+function parseEvent(raw: string): StoryInlineEvent | null {
+    try {
+        const parsed = JSON.parse(raw) as StoryInlineEvent;
+        if (!parsed || typeof parsed !== "object") {
+            return null;
+        }
+        const event: StoryInlineEvent = {};
+        if (parsed.expression && typeof parsed.expression.characterId === "string") {
+            event.expression = parsed.expression;
+        }
+        if (parsed.sound && typeof parsed.sound.assetId === "string") {
+            event.sound = parsed.sound;
+        }
+        return event.expression || event.sound ? event : null;
+    } catch {
+        return null;
+    }
 }
 
 /** Parse a chip's serialized marks (`data-marks`), dropping anything empty. */
@@ -139,6 +175,8 @@ export function normalizeRuns(runs: StoryRichRun[]): StoryRichRun[] {
         } else if (isInterpolationRun(run)) {
             const marks = cleanMarks(run.marks);
             out.push(marks ? { interpolation: run.interpolation, marks } : { interpolation: run.interpolation });
+        } else if (isEventRun(run)) {
+            out.push({ event: run.event });
         } else {
             out.push({ pause: run.pause });
         }
@@ -258,6 +296,33 @@ function createInterpolationChip(interp: StoryInterpolationRef, label: string, m
     return span;
 }
 
+function createEventChip(event: StoryInlineEvent, options: RichRenderOptions): HTMLSpanElement {
+    const span = globalThis.document.createElement("span");
+    span.dataset.event = JSON.stringify(event);
+    span.contentEditable = "false";
+    span.className = options.interactive ? `${EVENT_CHIP_CLASS} ${EVENT_CHIP_INTERACTIVE_CLASS}` : EVENT_CHIP_CLASS;
+    if (options.interactive) {
+        span.setAttribute("role", "button");
+    }
+    // An expression switch reads as a face; a sound-only token as a note. Kept icon-compact and
+    // zero-width like the pause/value chips - the picker reopens on click.
+    if (event.expression) {
+        const form = event.expression.formName?.trim();
+        span.title = form ? `${options.titles.expressionEvent}: ${form}` : options.titles.expressionEvent;
+        span.innerHTML = EVENT_FACE_ICON_SVG;
+        if (form) {
+            const labelSpan = globalThis.document.createElement("span");
+            labelSpan.className = "ml-0.5";
+            labelSpan.textContent = form;
+            span.appendChild(labelSpan);
+        }
+    } else {
+        span.title = options.titles.soundEvent;
+        span.innerHTML = EVENT_SOUND_ICON_SVG;
+    }
+    return span;
+}
+
 /**
  * Render rich runs into a root element, replacing its content.
  *
@@ -273,6 +338,8 @@ export function renderRunsToElement(root: HTMLElement, runs: StoryRichRun[], opt
             root.appendChild(marks ? createMarkSpan(run.text, marks) : globalThis.document.createTextNode(run.text));
         } else if (isInterpolationRun(run)) {
             root.appendChild(createInterpolationChip(run.interpolation, options.resolveLabel?.(run.interpolation) ?? options.titles.valueFallback, run.marks, options));
+        } else if (isEventRun(run)) {
+            root.appendChild(createEventChip(run.event, options));
         } else {
             root.appendChild(createPauseChip(run.pause, options));
         }
@@ -297,6 +364,13 @@ export function domToRuns(root: HTMLElement): StoryRichRun[] {
             const el = child as HTMLElement;
             if (el.dataset.pause !== undefined) {
                 runs.push({ pause: parsePauseValue(el.dataset.pause) });
+                return;
+            }
+            if (el.dataset.event !== undefined) {
+                const event = parseEvent(el.dataset.event);
+                if (event) {
+                    runs.push({ event });
+                }
                 return;
             }
             if (el.dataset.interp !== undefined) {
@@ -566,7 +640,7 @@ export function unitOffsetOfElement(root: HTMLElement, el: HTMLElement): number 
  */
 export function markSelectedChips(root: HTMLElement, range: { start: number; end: number } | null): void {
     const active = Boolean(range) && (range as { start: number; end: number }).end > (range as { start: number; end: number }).start;
-    root.querySelectorAll<HTMLElement>("[data-interp],[data-pause]").forEach(chip => {
+    root.querySelectorAll<HTMLElement>("[data-interp],[data-pause],[data-event]").forEach(chip => {
         const start = unitOffsetOfElement(root, chip);
         if (active && start >= (range as { start: number; end: number }).start && start + 1 <= (range as { start: number; end: number }).end) {
             chip.dataset.selected = "true";
