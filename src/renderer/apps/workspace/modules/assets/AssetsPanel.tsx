@@ -1,6 +1,6 @@
 import { useMemo, useCallback, useState, useRef, useEffect, useLayoutEffect, ComponentType } from "react";
 import { flushSync } from "react-dom";
-import { LayoutGrid, LayoutList, RefreshCw, AlertCircle, Copy, Scissors, Clipboard, Trash, Search, X, ChevronLeft } from "lucide-react";
+import { LayoutGrid, LayoutList, RefreshCw, AlertCircle, Copy, Scissors, Clipboard, Trash, Search, X, ChevronLeft, Boxes } from "lucide-react";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { PanelComponentProps } from "../types";
@@ -33,6 +33,7 @@ import { AssetsListView } from "./views/AssetsListView";
 import { AssetsIconView } from "./views/AssetsIconView";
 import { useWorkspaceAssetDragOptional } from "@/apps/workspace/dnd/WorkspaceAssetDragProvider";
 import { useTranslation } from "@/lib/i18n";
+import { openAssetOverviewTab } from "../asset-overview/openAssetOverviewTab";
 
 export type AssetViewMode = "list" | "icons";
 
@@ -492,6 +493,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             <div className="flex items-center gap-2">
                                 <span className="text-xs text-fg-muted">{tn("assets.itemCount", Object.values(filteredAssets).flat().length)}</span>
                                 <ViewModeToggle mode={viewMode} onChange={setViewMode} />
+                                <OpenOverviewButton />
                                 <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
                             </div>
                         </div>
@@ -587,6 +589,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             >
                                 <span className="text-2xs text-fg-subtle hidden sm:inline">{tn("assets.itemCount", Object.values(filteredAssets).flat().length)}</span>
                                 <ViewModeToggle mode={viewMode} onChange={setViewMode} />
+                                <OpenOverviewButton />
                                 <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
                             </div>
                         )}
@@ -635,6 +638,28 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                 />
             </div>
         </AssetsPanelContext.Provider>
+    );
+}
+
+/**
+ * Opens the read-only overview page. The sidebar stays the place assets are dragged out of; the
+ * page is where they are read about, so this is a way *out* of the panel rather than a mode of it.
+ */
+function OpenOverviewButton() {
+    const { t } = useTranslation();
+    const { context } = useWorkspace();
+    if (!context) {
+        return null;
+    }
+    return (
+        <button
+            type="button"
+            onClick={() => openAssetOverviewTab(context)}
+            title={t("assets.overview.open")}
+            className="p-1 rounded hover:bg-fill"
+        >
+            <Boxes className="w-4 h-4" />
+        </button>
     );
 }
 
