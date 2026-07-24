@@ -468,7 +468,14 @@ IPA 经 `7za`/`plutil` 判定：`Payload/Demo.app` 已按产品名重命名、In
 
 ### 12.0.2 移动端资产加密（M4）的确切现状
 
-**结论：未实现，且无法在 Studio 侧单独实现。** 现状核对（2026-07-16）：
+> **✅ 已实现（2026-07-24）——详见 `docs/plans/2026-07-23-006-task-mobile-encryption-rollout.md` §7。** 下方 2026-07-16 的「未实现」判断已过时，保留作历史。落地摘要：
+> - 私有仓 `@narraleaf/encryption@0.4.1`（含 Android `.so` 三 ABI + iOS `NlCrypto.xcframework` 静态库）已发布 npm。
+> - 壳仓库 iOS 解码器接完（`ContentDecoder` 改按文件 open + `NativeContentDecoder.swift` 桥接 `nlc_*`，静态链接，fail-loud），Android 早已接完；`@narraleaf/studio-shell@0.2.0` 已发布（带解码器，实测 `nm`/`unzip` 验证）。
+> - Studio 移动 repack 逐文件 `encryptBuffer` + `contentKey` 写入明文 shell-config；`mobile-unprotected` 提示/i18n 撤除；`@narraleaf/studio-shell` pin 0.1.0→0.2.0（密文唯一版本闸门）。外部 `unzip` oracle 断言密文≠明文、shell-config 明文带 key；main/shared typecheck + 全套移动/构建/编译测试绿。
+> - 顺序红线全程遵守（壳先发布并 pin，Studio 再翻密文）；两公开仓 diff 零机制词汇（保密审计通过）。
+> - 遗留：iOS 模拟器实机解密属「尽可能」项，本机无 runtime 未跑；全仓 CI `yarn lint` 另被一处**既有** renderer/NLR 缺口阻塞（M5 用 narraleaf-react 0.16 API 但 pin 仍 ^0.15，与本卡无关，已开后台任务）。
+
+**结论（历史，2026-07-16）：未实现，且无法在 Studio 侧单独实现。** 现状核对：
 
 | 目标 | 保护状态 |
 | --- | --- |

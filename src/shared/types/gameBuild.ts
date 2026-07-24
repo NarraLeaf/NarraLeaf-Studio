@@ -92,7 +92,6 @@ export type BuildPreflightCode =
     | "plugins-invalid"
     | "encryption-key-unavailable"
     | "web-unprotected"
-    | "mobile-unprotected"
     | "mobile-template-missing"
     | "mobile-payload-too-large"
     | "version-uncodable"

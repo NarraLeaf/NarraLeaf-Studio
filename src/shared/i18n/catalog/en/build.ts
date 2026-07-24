@@ -104,7 +104,6 @@ export const build = {
         "plugins-invalid": "Plugin validation failed:\n{errors}",
         "encryption-key-unavailable": "Asset protection is on, but its key could not be resolved.",
         "web-unprotected": "Asset protection does not apply to the web export; its files ship unprotected.",
-        "mobile-unprotected": "Asset protection does not yet apply to mobile builds; their files ship unprotected.",
         "mobile-template-missing": "The mobile shell templates are unavailable: {reason}",
         "mobile-payload-too-large": "This project's assets ({size}) exceed what a mobile package can hold.",
         "version-uncodable": "Version {version} cannot be encoded as an Android version code (major up to 2099, minor and patch up to 999).",
