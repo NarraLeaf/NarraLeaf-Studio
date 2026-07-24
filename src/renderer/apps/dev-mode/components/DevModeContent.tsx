@@ -13,6 +13,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { BlueprintRuntimeDebugPanel } from "./BlueprintRuntimeDebugPanel";
+import { StoryRuntimeDebugPanel } from "./StoryRuntimeDebugPanel";
 import { GameApp } from "@/lib/ui-editor/runtime/app/GameApp";
 import type {
     GameAppBootAction,
@@ -20,7 +21,9 @@ import type {
     GameAppHost,
     GameAppOverlayContext,
     GameAppSaveStore,
+    GameAppStoryRuntimeBridge,
 } from "@/lib/ui-editor/runtime/app/GameAppHost";
+import { blockIdForActionId } from "./storyRuntimeDebugModel";
 import { useDevModeRuntimePlugins } from "../hooks/useDevModeRuntimePlugins";
 import { resolveDevModeViewportSize } from "./devModeViewport";
 
@@ -64,7 +67,9 @@ function SessionErrorBanner(props: {
     );
 }
 
-/** Studio-only debug tools: floating action button, tools menu, and the Blueprint DevTools panel. */
+type DevModeDebugPanelId = "none" | "blueprint" | "story";
+
+/** Studio-only debug tools: floating action button, tools menu, and the live-debug panels. */
 function DevModeDebugOverlay(props: {
     core: BlueprintRuntimeCore;
     bundle: DevModeBundle;
@@ -73,14 +78,71 @@ function DevModeDebugOverlay(props: {
     widgetRuntimeStore: WidgetRuntimeStateStore;
     projectPath: string | null;
     fastForwardToNextChoice: () => Promise<void>;
+    storyRuntime: GameAppStoryRuntimeBridge;
 }) {
-    const { core, bundle, uidoc, activeSurfaceId, widgetRuntimeStore, projectPath, fastForwardToNextChoice } = props;
+    const { core, bundle, uidoc, activeSurfaceId, widgetRuntimeStore, projectPath, fastForwardToNextChoice, storyRuntime } = props;
     const { t } = useTranslation();
     const [devtoolsMenuOpen, setDevtoolsMenuOpen] = useState(false);
-    const [blueprintPanelOpen, setBlueprintPanelOpen] = useState(false);
+    const [activePanel, setActivePanel] = useState<DevModeDebugPanelId>("none");
     const [fastForwarding, setFastForwarding] = useState(false);
     const devtoolsFabRef = useRef<HTMLButtonElement>(null);
     const devtoolsMenuRef = useRef<HTMLDivElement>(null);
+
+    // Mirror the play head to the workspace story editor (row highlight) whenever a story runs, even
+    // with the debug panels closed. Coalesced to one forward per frame; the workspace reveals the row
+    // in-place without stealing focus, and quietly ignores it when no matching editor is open.
+    useEffect(() => {
+        if (!projectPath) {
+            return;
+        }
+        let raf = 0;
+        let lastBlockId: string | null = null;
+        const flush = (): void => {
+            raf = 0;
+            const context = storyRuntime.getStoryContext();
+            if (!context) {
+                return;
+            }
+            const blockId = blockIdForActionId(storyRuntime.getActionIdBindings(), storyRuntime.getCurrentActionId());
+            if (!blockId || blockId === lastBlockId) {
+                return;
+            }
+            lastBlockId = blockId;
+            // The play head can be in a scene reached by a jump, not the launched one, so forward the
+            // scene that actually owns the block — otherwise the workspace editor could not match it.
+            let sceneId = context.sceneId;
+            const document = bundle.storyLibrary?.documents[context.storyId];
+            if (document) {
+                for (const [id, scene] of Object.entries(document.scenes)) {
+                    if (blockId in scene.blocks) {
+                        sceneId = id;
+                        break;
+                    }
+                }
+            }
+            try {
+                getInterface().devMode.forwardStoryRow({
+                    projectPath,
+                    storyId: context.storyId,
+                    sceneId,
+                    blockId,
+                });
+            } catch (error) {
+                console.warn("[DevMode] failed to forward story row", error);
+            }
+        };
+        const unsubscribe = storyRuntime.subscribeCurrentAction(() => {
+            if (!raf) {
+                raf = requestAnimationFrame(flush);
+            }
+        });
+        return () => {
+            if (raf) {
+                cancelAnimationFrame(raf);
+            }
+            unsubscribe();
+        };
+    }, [projectPath, storyRuntime, bundle]);
 
     const handleFastForward = useCallback(async () => {
         setDevtoolsMenuOpen(false);
@@ -137,39 +199,48 @@ function DevModeDebugOverlay(props: {
                 e.preventDefault();
                 return;
             }
-            if (blueprintPanelOpen) {
-                setBlueprintPanelOpen(false);
+            if (activePanel !== "none") {
+                setActivePanel("none");
                 e.preventDefault();
             }
         };
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [devtoolsMenuOpen, blueprintPanelOpen]);
+    }, [devtoolsMenuOpen, activePanel]);
 
     return (
         <>
             <AnimatePresence>
-                {blueprintPanelOpen ? (
+                {activePanel !== "none" ? (
                     <motion.div
-                        key="blueprint-devtools"
+                        key={activePanel}
                         role="complementary"
-                        aria-label={t("devMode.devtools.title")}
+                        aria-label={activePanel === "story" ? t("devMode.runtime.title") : t("devMode.devtools.title")}
                         className="pointer-events-auto absolute inset-y-0 right-0 z-30 flex w-[min(100%,380px)] max-w-full flex-col overflow-hidden border-l border-edge bg-surface-sunken shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
                         initial={{ x: "100%" }}
                         animate={{ x: 0 }}
                         exit={{ x: "100%" }}
                         transition={{ type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
                     >
-                        <BlueprintRuntimeDebugPanel
-                            debug={core.debug}
-                            blueprintDocument={bundle.ui.localBlueprints}
-                            uiDocument={uidoc}
-                            activeSurfaceId={activeSurfaceId}
-                            scopeBridge={core.scopeBridge}
-                            widgetRuntimeStore={widgetRuntimeStore}
-                            projectPath={projectPath}
-                            className="h-full min-h-0 w-full border-l-0"
-                        />
+                        {activePanel === "story" ? (
+                            <StoryRuntimeDebugPanel
+                                storyRuntime={storyRuntime}
+                                scopeBridge={core.scopeBridge}
+                                bundle={bundle}
+                                className="h-full min-h-0 w-full border-l-0"
+                            />
+                        ) : (
+                            <BlueprintRuntimeDebugPanel
+                                debug={core.debug}
+                                blueprintDocument={bundle.ui.localBlueprints}
+                                uiDocument={uidoc}
+                                activeSurfaceId={activeSurfaceId}
+                                scopeBridge={core.scopeBridge}
+                                widgetRuntimeStore={widgetRuntimeStore}
+                                projectPath={projectPath}
+                                className="h-full min-h-0 w-full border-l-0"
+                            />
+                        )}
                     </motion.div>
                 ) : null}
             </AnimatePresence>
@@ -207,30 +278,39 @@ function DevModeDebugOverlay(props: {
                                             : t("devMode.devtools.skipToNextChoice")}
                                     </span>
                                 </button>
-                                <button
-                                    type="button"
-                                    role="menuitem"
-                                    aria-pressed={blueprintPanelOpen}
-                                    className={`flex w-full cursor-default items-center gap-2 px-3 py-2 text-left text-xs transition-colors ${
-                                        blueprintPanelOpen
-                                            ? "bg-fill-strong text-fg"
-                                            : "text-fg-muted hover:bg-fill hover:text-fg"
-                                    }`}
-                                    onClick={() => {
-                                        setBlueprintPanelOpen(prev => !prev);
-                                        setDevtoolsMenuOpen(false);
-                                    }}
-                                >
-                                    <span
-                                        className="flex h-3.5 w-3.5 shrink-0 items-center justify-center"
-                                        aria-hidden
-                                    >
-                                        {blueprintPanelOpen ? (
-                                            <Check className="h-3.5 w-3.5 text-primary" />
-                                        ) : null}
-                                    </span>
-                                    <span className="min-w-0 flex-1 truncate">{t("devMode.devtools.title")}</span>
-                                </button>
+                                {(
+                                    [
+                                        ["story", t("devMode.runtime.title")],
+                                        ["blueprint", t("devMode.devtools.title")],
+                                    ] as const
+                                ).map(([id, label]) => {
+                                    const open = activePanel === id;
+                                    return (
+                                        <button
+                                            key={id}
+                                            type="button"
+                                            role="menuitem"
+                                            aria-pressed={open}
+                                            className={`flex w-full cursor-default items-center gap-2 px-3 py-2 text-left text-xs transition-colors ${
+                                                open
+                                                    ? "bg-fill-strong text-fg"
+                                                    : "text-fg-muted hover:bg-fill hover:text-fg"
+                                            }`}
+                                            onClick={() => {
+                                                setActivePanel(prev => (prev === id ? "none" : id));
+                                                setDevtoolsMenuOpen(false);
+                                            }}
+                                        >
+                                            <span
+                                                className="flex h-3.5 w-3.5 shrink-0 items-center justify-center"
+                                                aria-hidden
+                                            >
+                                                {open ? <Check className="h-3.5 w-3.5 text-primary" /> : null}
+                                            </span>
+                                            <span className="min-w-0 flex-1 truncate">{label}</span>
+                                        </button>
+                                    );
+                                })}
                             </div>
                         ) : null}
                         <button
@@ -554,6 +634,7 @@ export function DevModeContent(props: DevModeContentProps) {
                 widgetRuntimeStore={ctx.widgetRuntimeStore}
                 projectPath={projectPath}
                 fastForwardToNextChoice={ctx.fastForwardToNextChoice}
+                storyRuntime={ctx.storyRuntime}
             />
         );
     }, [bundle, projectPath]);
