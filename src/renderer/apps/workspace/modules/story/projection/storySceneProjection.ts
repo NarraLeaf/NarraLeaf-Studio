@@ -283,6 +283,13 @@ function formatAction(payload: StoryActionPayload, scene: StoryScene, document?:
     if (payload.action === "blueprint") {
         return "/blueprint";
     }
+    if (payload.action === "camera") {
+        const amount = payload.operation === "zoom" ? payload.zoom
+            : payload.operation === "rotate" ? payload.rotation
+                : payload.operation === "darken" ? payload.darkness
+                    : undefined;
+        return `/camera ${payload.operation}${amount === undefined ? "" : ` ${amount}`}`;
+    }
     return `/effect ${payload.effect}`;
 }
 
