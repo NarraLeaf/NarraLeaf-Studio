@@ -28,6 +28,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import type { UIDocument, UIElement, UIElementValueBindingValueType } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
+import type { VariableRegistry, VariableRegistryEntry } from "@shared/types/variables/registry";
 import { RendererError } from "@shared/utils/error";
 import { EventEmitter } from "../ui/EventEmitter";
 import { Service } from "../Service";
@@ -37,6 +38,7 @@ import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
 import { UIGraphService } from "./UIGraphService";
 import { UIDocumentService } from "./UIDocumentService";
+import { VariableRegistryService } from "../variables/VariableRegistryService";
 import {
     createMainBlueprint,
     createTypeScriptMainBlueprint,
@@ -96,6 +98,11 @@ export type BlueprintEditorHistorySnapshot = {
     ownerRecord: BlueprintPrivateOwnerRecord | null;
     blueprint: Blueprint | null;
     uiBehavior: UIBehaviorSnapshot;
+    /**
+     * The project-level variable registry, captured so persistent-variable CRUD (which lives in its
+     * own service/file since M-VAR) undoes with the same Ctrl+Z as the blueprint edit that made it.
+     */
+    registry: VariableRegistry;
 };
 
 type BlueprintHistoryEntry = {
@@ -247,7 +254,12 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const project = ctx.services.get<ProjectService>(Services.Project);
         const uuid = ctx.services.get<UuidService>(Services.Uuid);
         const graph = ctx.services.get<UIGraphService>(Services.UIGraph);
-        await depend([fs, project, uuid, graph]);
+        const registry = ctx.services.get<VariableRegistryService>(Services.VariableRegistry);
+        await depend([fs, project, uuid, graph, registry]);
+    }
+
+    private getVariableRegistryService(): VariableRegistryService {
+        return this.getContext().services.get<VariableRegistryService>(Services.VariableRegistry);
     }
 
     public getBlueprintDocument(): BlueprintDocument {
@@ -294,6 +306,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             ownerRecord: cloneBlueprintHistoryValue(ownerRecord),
             blueprint: cloneBlueprintHistoryValue(blueprint),
             uiBehavior: captureUIBehaviorSnapshot(uidoc.getDocument()),
+            registry: cloneBlueprintHistoryValue(this.getVariableRegistryService().getRegistry()),
         };
     }
 
@@ -662,9 +675,9 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         return getActiveBlueprintId(this.getBlueprintDocument(), storyActionOwnerKey(blueprintId));
     }
 
-    /** All project-level persistent variable definitions (shared with the Story editor). */
-    public listPersistentVariables(): BlueprintDocument["persistentVariables"][string][] {
-        return Object.values(this.getBlueprintDocument().persistentVariables ?? {});
+    /** All project-level persistent variable definitions (shared with the Story editor); M-VAR registry. */
+    public listPersistentVariables(): VariableRegistryEntry[] {
+        return this.getVariableRegistryService().listEntries();
     }
 
     public getSurfaceMainBlueprintId(surfaceId: string): string | undefined {
@@ -974,6 +987,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                     { skipAfterMutateHook: true },
                 );
             }
+            const registryService = this.getVariableRegistryService();
+            if (JSON.stringify(registryService.getRegistry()) !== JSON.stringify(snapshot.registry)) {
+                registryService.replaceRegistry(cloneBlueprintHistoryValue(snapshot.registry));
+            }
         } finally {
             this.isRestoringHistory = false;
         }
@@ -1046,36 +1063,27 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         return m ? Object.values(m) : [];
     }
 
+    /**
+     * Persistent-variable CRUD is a thin history-wrapping delegation to the M-VAR registry service
+     * (the data lives in `variables.json`, no longer in the blueprint document). Wrapping each edit in
+     * a blueprint history transaction is what keeps a persistent-variable change on the same undo stack
+     * as the blueprint edit an author is making when they touch it - the snapshot captures the registry.
+     */
     public createPersistentVariable(
         historyBlueprintId: string,
         input?: { name?: string; valueType?: string; defaultValue?: LiteralValue },
-    ): BlueprintPersistentVariable {
-        const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
-        const id = uuid.generate();
-        const valueType = input?.valueType?.trim();
-        const v: BlueprintPersistentVariable = {
-            id,
-            storageKey: id,
-            name: input?.name?.trim() || `persist_${id.slice(0, 8)}`,
-            valueType: valueType || undefined,
-            defaultValue: input?.defaultValue,
-        };
-        this.applyBlueprintEdit({ blueprintId: historyBlueprintId }, doc => {
-            doc.persistentVariables = doc.persistentVariables ?? {};
-            doc.persistentVariables[v.id] = v;
-        });
-        return v;
+    ): VariableRegistryEntry {
+        return this.runBlueprintHistoryTransaction(historyBlueprintId, () =>
+            this.getVariableRegistryService().createEntry(input),
+        );
     }
 
     public renamePersistentVariable(historyBlueprintId: string, variableId: string, name: string): void {
-        this.applyBlueprintEdit({ blueprintId: historyBlueprintId }, doc => {
-            const v = doc.persistentVariables?.[variableId];
-            if (!v) {
-                return;
-            }
-            const next = name.trim();
-            v.name = next.length > 0 ? next : v.name;
-        }, { mergeKey: `persistent-variable-name:${variableId}` });
+        this.runBlueprintHistoryTransaction(
+            historyBlueprintId,
+            () => this.getVariableRegistryService().renameEntry(variableId, name),
+            { mergeKey: `persistent-variable-name:${variableId}` },
+        );
     }
 
     public setPersistentVariableDefault(
@@ -1083,22 +1091,20 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         variableId: string,
         defaultValue: LiteralValue | undefined,
     ): void {
-        this.applyBlueprintEdit({ blueprintId: historyBlueprintId }, doc => {
-            const v = doc.persistentVariables?.[variableId];
-            if (!v) {
-                return;
-            }
-            v.defaultValue = defaultValue;
-        }, { mergeKey: `persistent-variable-default:${variableId}` });
+        this.runBlueprintHistoryTransaction(
+            historyBlueprintId,
+            () => this.getVariableRegistryService().setEntryDefault(variableId, defaultValue),
+            { mergeKey: `persistent-variable-default:${variableId}` },
+        );
     }
 
     public deletePersistentVariable(historyBlueprintId: string, variableId: string): void {
-        this.applyBlueprintEdit({ blueprintId: historyBlueprintId }, doc => {
-            if (!doc.persistentVariables?.[variableId]) {
-                return;
-            }
-            this.clearPersistentVariableNodeRefs(doc, variableId);
-            delete doc.persistentVariables[variableId];
+        this.runBlueprintHistoryTransaction(historyBlueprintId, () => {
+            // Node-ref cleanup mutates the blueprint document; the variable itself leaves the registry.
+            this.applyBlueprintMutation(doc => {
+                this.clearPersistentVariableNodeRefs(doc, variableId);
+            });
+            this.getVariableRegistryService().deleteEntry(variableId);
         });
     }
 
