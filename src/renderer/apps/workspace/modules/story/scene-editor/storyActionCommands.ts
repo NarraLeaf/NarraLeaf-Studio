@@ -1,33 +1,18 @@
-import {
-    Clock,
-    Database,
-    Eye,
-    EyeOff,
-    FileText,
-    Image,
-    Layers,
-    MessageSquare,
-    MonitorPlay,
-    Move,
-    Music,
-    Palette,
-    Puzzle,
-    Route,
-    Settings2,
-    Sparkles,
-    StickyNote,
-    Type,
-    UserRound,
-    Variable,
-    Video,
-    Volume2,
-} from "lucide-react";
+import { Puzzle, Settings2 } from "lucide-react";
 import type { StoryBlock } from "@shared/types/story";
-import type { TranslationKey } from "@shared/i18n";
 import { translate } from "@/lib/i18n";
+import type { StoryCommandGroupId } from "./storyCommandCategories";
 
-/** Minimal translate signature (from `useTranslation().t`) accepted by the label resolvers below. */
-type ActionCommandTranslate = (key: TranslationKey) => string;
+/**
+ * Block construction, and nothing else.
+ *
+ * This file used to also carry `ACTION_COMMANDS` - a 57-entry sidebar catalogue organised as an
+ * "object type × verb" matrix, which put `show`/`hide` behind ten separate entries while the slash
+ * layer had exactly two. Two menus were teaching two mutually exclusive mental models. A1 deleted it:
+ * the sidebar is now a second rendering of the spec registry (see `commands/specSidebar.ts`), so the
+ * catalogue is singular by construction and `createBlockForCommand` is an implementation detail the
+ * specs' `build` functions call - no longer a menu entry point.
+ */
 
 export type ActionCommandId =
     | "narration"
@@ -62,7 +47,6 @@ export type ActionCommandId =
     | "declareSceneVariable"
     | "declareSavedVariable"
     | "declarePersistentVariable"
-    | "conditionIf"
     | "executeScript"
     | "imageCreate"
     | "imageSetSource"
@@ -92,54 +76,28 @@ export type ActionCommandId =
     | "note"
     | "code";
 
-export type ActionCommandCategoryId =
-    | "all"
-    | "character"
-    | "scene"
-    | "control"
-    | "image"
-    | "text"
-    | "layer"
-    | "video"
-    | "data"
-    | "media"
-    | "effects"
-    | "plugin"
-    | "utils";
-
-export type ActionCommandCategory = {
-    id: ActionCommandCategoryId;
-    label: string;
-    icon: typeof Settings2;
-    iconColor: string;
-};
-
-export type ActionCommandGroupCategoryId = Exclude<ActionCommandCategoryId, "all">;
-
-export type ActionCommand = {
-    id: ActionCommandId;
-    category: ActionCommandGroupCategoryId;
+/**
+ * One entry in a command menu, from either source: a spec (see `commands/specPalette.ts`) or a
+ * plugin story action, whose id is a namespaced string rather than a member of any union.
+ */
+export type PaletteActionCommand = {
+    id: string;
+    group: StoryCommandGroupId;
     label: string;
     detail: string;
     icon: typeof Settings2;
     nlrCapability?: string;
-    status?: "ready" | "comingSoon";
-    /** Slash aliases that jump straight to this command, e.g. "//" → Note. */
+    /** Slash spellings that jump straight to this command, e.g. "//" → Note. */
     aliases?: string[];
 };
 
 /**
- * A palette command from any source: built-in ({@link ActionCommand}) or a
- * plugin story action (namespaced string id). Structurally identical to
- * ActionCommand except the id is not restricted to the built-in union.
+ * Project a plugin story action registration onto the palette command shape.
+ *
+ * Plugin actions file under 工具 (§4.1): they are tools, and a "plugin" category would have been a
+ * ninth cut by *origin* rather than by subject - exactly the mixed-criteria problem 13→8 removed.
+ * The Puzzle icon keeps them recognisable inside that group.
  */
-export type PaletteActionCommand = Omit<ActionCommand, "id"> & { id: string };
-
-export function isActionCommandId(value: string): value is ActionCommandId {
-    return ACTION_COMMANDS.some(command => command.id === value);
-}
-
-/** Project a plugin story action registration onto the palette command shape. */
 export function pluginActionToPaletteCommand(registration: {
     id: string;
     label: string;
@@ -147,132 +105,17 @@ export function pluginActionToPaletteCommand(registration: {
 }): PaletteActionCommand {
     return {
         id: registration.id,
-        category: "plugin",
+        group: "utils",
         label: registration.label,
         detail: registration.detail ?? translate("story.pluginActionFallbackDetail"),
         icon: Puzzle,
     };
 }
 
-/**
- * Display label for a palette command in the active locale. Built-in commands map by their stable
- * id to `story.actionCommand.<id>.label`; plugin commands (author-supplied ids) keep their
- * registered label. Resolve at render time - never snapshot at import.
- */
-export function translateActionCommandLabel(command: PaletteActionCommand, t: ActionCommandTranslate): string {
-    return isActionCommandId(command.id)
-        ? t(`story.actionCommand.${command.id}.label` as TranslationKey)
-        : command.label;
-}
-
-/** Display detail for a palette command in the active locale. See {@link translateActionCommandLabel}. */
-export function translateActionCommandDetail(command: PaletteActionCommand, t: ActionCommandTranslate): string {
-    return isActionCommandId(command.id)
-        ? t(`story.actionCommand.${command.id}.detail` as TranslationKey)
-        : command.detail;
-}
-
-/**
- * A palette command whose `label`/`detail` are swapped to the active locale, so both display and
- * {@link actionCommandMatchesQuery} search operate on translated text (id/capability still match).
- */
-export function localizeActionCommand(command: PaletteActionCommand, t: ActionCommandTranslate): PaletteActionCommand {
-    return {
-        ...command,
-        label: translateActionCommandLabel(command, t),
-        detail: translateActionCommandDetail(command, t),
-    };
-}
-
-/** Localized label for an action category. */
-export function translateActionCommandCategoryLabel(category: ActionCommandCategory, t: ActionCommandTranslate): string {
-    return t(`story.actionCategory.${category.id}` as TranslationKey);
-}
-
-export const ACTION_COMMAND_CATEGORIES: ActionCommandCategory[] = [
-    { id: "all", label: "All", icon: Settings2, iconColor: "#a8adb5" },
-    { id: "character", label: "Character", icon: UserRound, iconColor: "var(--narraleaf-accent, #40a8c4)" },
-    { id: "scene", label: "Scene", icon: MonitorPlay, iconColor: "#8fa9c7" },
-    { id: "control", label: "Control", icon: Settings2, iconColor: "#b2a6c9" },
-    { id: "image", label: "Image", icon: Image, iconColor: "#96b8a0" },
-    { id: "text", label: "Text", icon: Type, iconColor: "#9bb7d8" },
-    { id: "layer", label: "Layer", icon: Layers, iconColor: "#92b9b0" },
-    { id: "video", label: "Video", icon: Video, iconColor: "#b59dcc" },
-    { id: "data", label: "Data", icon: Database, iconColor: "#b8aa86" },
-    { id: "media", label: "Media", icon: Music, iconColor: "#bd97a3" },
-    { id: "effects", label: "Effects", icon: Sparkles, iconColor: "#d1a176" },
-    { id: "plugin", label: "Plugin", icon: Puzzle, iconColor: "#9aa3ad" },
-    { id: "utils", label: "Utils", icon: StickyNote, iconColor: "#a8adb5" },
-];
-
-export const ACTION_COMMANDS: ActionCommand[] = [
-    { id: "dialogue", category: "character", label: "Dialogue", detail: "Character.say line", icon: MessageSquare, nlrCapability: "Character.say" },
-    { id: "narration", category: "character", label: "Narration", detail: "Narrator.say line", icon: FileText, nlrCapability: "Narrator.say" },
-    { id: "characterEnter", category: "character", label: "Character enter", detail: "Show a character portrait image", icon: UserRound, nlrCapability: "Image.char/show" },
-    { id: "characterMove", category: "character", label: "Character move", detail: "Move an existing character image", icon: Move, nlrCapability: "Displayable.pos" },
-    { id: "characterExpression", category: "character", label: "Character expression", detail: "Change form, variant, or sprite", icon: UserRound, nlrCapability: "Image.char" },
-    { id: "characterExit", category: "character", label: "Character exit", detail: "Hide a character image", icon: EyeOff, nlrCapability: "Displayable.hide" },
-    { id: "background", category: "scene", label: "Background", detail: "Scene.setBackground asset or color", icon: Image, nlrCapability: "Scene.setBackground" },
-    { id: "jump", category: "scene", label: "Jump scene", detail: "Scene.jumpTo another scene", icon: Route, nlrCapability: "Scene.jumpTo" },
-    { id: "choice", category: "control", label: "Menu", detail: "Let the player choose between options", icon: Route, nlrCapability: "Menu.prompt" },
-    { id: "condition", category: "control", label: "Condition (if…)", detail: "Run actions only when a condition is met", icon: Settings2, nlrCapability: "Condition.If" },
-    { id: "repeat", category: "control", label: "Repeat", detail: "Run the enclosed actions a number of times", icon: Settings2, nlrCapability: "Control.repeat" },
-    { id: "parallel", category: "control", label: "Run at the same time", detail: "Run all enclosed actions together", icon: Settings2, nlrCapability: "Control.all" },
-    { id: "race", category: "control", label: "Race, first to finish", detail: "Run all, continue when the first finishes", icon: Settings2, nlrCapability: "Control.any" },
-    { id: "sequence", category: "control", label: "In order", detail: "Run the enclosed actions one after another", icon: Settings2, nlrCapability: "Control.do" },
-    { id: "waitDuration", category: "control", label: "Wait duration", detail: "Pause for a number of milliseconds", icon: Clock, nlrCapability: "Control.sleep" },
-    { id: "waitClick", category: "control", label: "Wait for click", detail: "Pause until the player clicks", icon: Clock, nlrCapability: "Control.waitForClick" },
-    { id: "setVariable", category: "data", label: "Set variable", detail: "Scene local or Story persistent value", icon: Variable, nlrCapability: "Persistent.set" },
-    { id: "incrementVariable", category: "data", label: "Increase variable", detail: "Add to a number variable", icon: Variable, nlrCapability: "Persistent.set" },
-    { id: "decrementVariable", category: "data", label: "Decrease variable", detail: "Subtract from a number variable", icon: Variable, nlrCapability: "Persistent.set" },
-    { id: "toggleVariable", category: "data", label: "Toggle variable", detail: "Flip a true/false variable", icon: Variable, nlrCapability: "Persistent.set" },
-    { id: "resetVariable", category: "data", label: "Reset variable", detail: "Restore a variable to its declared default", icon: Variable, nlrCapability: "Persistent.set" },
-    { id: "declareSceneVariable", category: "data", label: "Declare scene variable", detail: "Lives for this scene only", icon: Variable },
-    { id: "declareSavedVariable", category: "data", label: "Declare saved variable", detail: "Rides the save file", icon: Variable },
-    { id: "declarePersistentVariable", category: "data", label: "Declare global variable", detail: "Outlives saves - game-level flags", icon: Variable },
-    { id: "conditionIf", category: "control", label: "If (expression)", detail: "Branch on an expression", icon: Settings2, nlrCapability: "Condition.If" },
-    { id: "executeScript", category: "data", label: "Execute Script", detail: "Run a Story Action Blueprint", icon: Puzzle, nlrCapability: "Script.execute" },
-    { id: "imageCreate", category: "image", label: "Image", detail: "Create or update a named stage image", icon: Image, nlrCapability: "Image" },
-    { id: "imageSetSource", category: "image", label: "Image source", detail: "Change a named image source", icon: Image, nlrCapability: "Image.char" },
-    { id: "imageShow", category: "image", label: "Image show", detail: "Show a named image", icon: Eye, nlrCapability: "Displayable.show" },
-    { id: "imageHide", category: "image", label: "Image hide", detail: "Hide a named image", icon: EyeOff, nlrCapability: "Displayable.hide" },
-    { id: "displayableTransform", category: "image", label: "Transform displayable", detail: "Move, scale, rotate, opacity, or effect preset", icon: Move, nlrCapability: "Displayable.transform" },
-    { id: "displayableShow", category: "image", label: "Displayable show", detail: "Show any named displayable", icon: Eye, nlrCapability: "Displayable.show" },
-    { id: "displayableHide", category: "image", label: "Displayable hide", detail: "Hide any named displayable", icon: EyeOff, nlrCapability: "Displayable.hide" },
-    { id: "displayableEffect", category: "effects", label: "Displayable effect", detail: "Mask, filter, clip, darken, circle reveal/close, or wipe", icon: Sparkles, nlrCapability: "Displayable.mask/filter/wipe" },
-    { id: "textCreate", category: "text", label: "Text", detail: "Create or update named stage text", icon: Type, nlrCapability: "Text" },
-    { id: "textSet", category: "text", label: "Set text", detail: "Change a named text overlay", icon: Type, nlrCapability: "Text.setText" },
-    { id: "textShow", category: "text", label: "Text show", detail: "Show text overlay", icon: Eye, nlrCapability: "Text.show" },
-    { id: "textHide", category: "text", label: "Text hide", detail: "Hide text overlay", icon: EyeOff, nlrCapability: "Text.hide" },
-    { id: "textFont", category: "text", label: "Text style", detail: "Set font size or color", icon: Palette, nlrCapability: "Text.setFontSize/setFontColor" },
-    { id: "layerCreate", category: "layer", label: "Layer", detail: "Create a named render layer", icon: Layers, nlrCapability: "Layer" },
-    { id: "layerZIndex", category: "layer", label: "Layer z-index", detail: "Change layer ordering", icon: Layers, nlrCapability: "Layer.setZIndex" },
-    { id: "videoCreate", category: "video", label: "Video", detail: "Create a named video element", icon: Video, nlrCapability: "Video" },
-    { id: "videoShow", category: "video", label: "Video show", detail: "Show a video element", icon: Eye, nlrCapability: "Video.show" },
-    { id: "videoHide", category: "video", label: "Video hide", detail: "Hide a video element", icon: EyeOff, nlrCapability: "Video.hide" },
-    { id: "videoPlay", category: "video", label: "Video play", detail: "Play a video element", icon: Video, nlrCapability: "Video.play" },
-    { id: "nvl", category: "scene", label: "NVL block", detail: "Scene.nvl stacked dialog block", icon: FileText, nlrCapability: "Scene.nvl" },
-    { id: "screenBlink", category: "effects", label: "Blink", detail: "Built-in screen blink effect", icon: Sparkles, nlrCapability: "built-in.blink" },
-    { id: "screenVignette", category: "effects", label: "Vignette", detail: "Built-in vignette effect", icon: Sparkles, nlrCapability: "built-in.vignette" },
-    { id: "bgm", category: "media", label: "BGM", detail: "Scene.setBackgroundMusic", icon: Music, nlrCapability: "Scene.setBackgroundMusic" },
-    { id: "sound", category: "media", label: "Sound", detail: "Play sound effect", icon: Music, nlrCapability: "Sound.play" },
-    { id: "stopSound", category: "media", label: "Stop sound", detail: "Stop sound effect", icon: Music, nlrCapability: "Sound.stop" },
-    { id: "pauseSound", category: "media", label: "Pause sound", detail: "Pause sound effect", icon: Music, nlrCapability: "Sound.pause" },
-    { id: "resumeSound", category: "media", label: "Resume sound", detail: "Resume sound effect", icon: Music, nlrCapability: "Sound.resume" },
-    { id: "soundVolume", category: "media", label: "Sound volume", detail: "Set sound volume", icon: Volume2, nlrCapability: "Sound.setVolume" },
-    { id: "soundRate", category: "media", label: "Sound rate", detail: "Set playback rate", icon: Volume2, nlrCapability: "Sound.setRate" },
-    { id: "muteSound", category: "media", label: "Mute sound", detail: "Mute or unmute sound", icon: Volume2, nlrCapability: "Sound.mute" },
-    { id: "note", category: "utils", label: "Note", detail: "Studio-only note", icon: StickyNote, aliases: ["//"] },
-];
-
-// Command-name matching for both the inline "/" creator and the sidebar palette now lives in
+// Command-name matching for both the inline "/" creator and the sidebar palette lives in
 // `storyCommandSearch.ts` (`searchActionCommands`), which bridges the grammar's short tokens (`/bg`,
 // `/show`) that a palette command's own fields never carry, and ranks fuzzy hits. Keeping it there,
 // not here, avoids storyActionCommands depending on the grammar and keeps the two menus single-source.
-
-export function getActionCommandCategory(categoryId: ActionCommandCategoryId): ActionCommandCategory {
-    return ACTION_COMMAND_CATEGORIES.find(category => category.id === categoryId) ?? ACTION_COMMAND_CATEGORIES[0];
-}
 
 export function createBlockForCommand(commandId: ActionCommandId, generateId: () => string, initialText = "", characterId?: string): StoryBlock {
     const blockId = generateId();
@@ -332,8 +175,6 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
         case "toggleVariable":
         case "resetVariable":
             return { ...base, kind: "action", payload: { action: "setVariable", target: { scope: "scene", variableId: "" }, value: initialText || true } };
-        case "conditionIf":
-            return { ...base, kind: "control", payload: { control: "condition" } };
         // v6: a declaration IS a row - the block id doubles as the variable id and storage key.
         case "declareSceneVariable":
             return { ...base, kind: "declaration", payload: { scope: "scene", name: "variable", valueType: "boolean", storageKey: blockId } };
@@ -403,9 +244,4 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
     }
 }
 
-export function isInspectorFirstCommand(commandId: ActionCommandId): boolean {
-    // `condition` / `conditionBranch` are card-less (see `hasInspector`): creating one must not open a
-    // placeholder inspector - its logic is authored inline on the branch header.
-    return !["narration", "dialogue", "note", "choiceOption", "condition", "conditionBranch"].includes(commandId);
-}
 
