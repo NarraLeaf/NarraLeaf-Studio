@@ -6,6 +6,7 @@ import { richIfMeaningful } from "./richText";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { CharacterAppearanceRef, StoryBlockTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
 import { getActionCommandCategory, type ActionCommandCategoryId } from "./storyActionCommands";
+import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
 import { translate } from "@/lib/i18n";
 
 /**
@@ -450,8 +451,20 @@ function describeAssignment(payload: Extract<StoryActionPayload, { action: "setV
     return `${name} = ${payload.expression?.source ?? ""}`;
 }
 
-/** The three `at=` words, as camera pan lands them (see `getPresetPosition`); anything else reads as its aligns. */
-const CAMERA_PAN_PLACEMENTS: Record<number, "left" | "center" | "right"> = { 0.25: "left", 0.5: "center", 0.75: "right" };
+/**
+ * `xalign → the `at=` word that lands there`, derived from {@link getPresetPosition} — the one forward
+ * table for `left/center/right → xalign` — rather than restating its numbers, which would let the two
+ * drift and leave this summary quietly naming the wrong side. An xalign no word produces is absent
+ * from the table, and the row reads as its raw aligns instead.
+ */
+const CAMERA_PAN_PLACEMENTS: Record<number, StoryStagePlacement> = (["left", "center", "right"] as const)
+    .reduce<Record<number, StoryStagePlacement>>((table, placement) => {
+        const xalign = getPresetPosition(placement, {})?.xalign;
+        if (xalign !== undefined) {
+            table[xalign] = placement;
+        }
+        return table;
+    }, {});
 
 /**
  * How a camera row reads: the operation plus the one value it carries. The verb is NOT repeated from
@@ -703,9 +716,14 @@ export function planRowBackspaceReplacement(
 
 /**
  * Whether a plain (narration) row is a legal child of this container. Deliberately stricter than
- * {@link canAcceptChildren}: a condition holds branches and a choice holds options, and `nvl` is a
- * container to this module but not to `insertBlockInScene`, which is the rule that actually decides
- * whether the insert lands.
+ * `canAcceptChildren`, and for a *semantic* reason: a condition holds branches and a choice holds
+ * options, so a narration under either is a shape the compiler's tree contract does not admit.
+ *
+ * Nothing else enforces that. `insertBlockInScene` would happily land the row — `canAcceptChildren`
+ * says yes to every `control` (condition included) and to a `choice` — so this rule is the only thing
+ * keeping the illegal tree out; deleting it produces a scene that builds and then fails to compile.
+ * `nvl` is the single case that is also mechanically enforced: a container to this module, but not to
+ * `canAcceptChildren`, so an insert there throws.
  */
 function acceptsPlainRows(parent: StoryBlock | null | undefined): boolean {
     if (!parent) {

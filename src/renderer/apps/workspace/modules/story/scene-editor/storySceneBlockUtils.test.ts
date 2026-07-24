@@ -370,10 +370,15 @@ describe("planRowBackspaceReplacement", () => {
         expect(planRowBackspaceReplacement(scene([], []), ["missing"])).toBeNull();
     });
 
-    it("replaces rather than deletes: applying the plan keeps the row count and the position, and the pre-edit snapshot still carries the original payload (one-step undo)", () => {
+    it("replaces rather than deletes: applying the plan keeps the row count and the position, and one undo restores the whole pre-edit scene", () => {
         const blocks = [narration("n1"), showRow("a1"), narration("n2")];
         const live = scene(blocks.map(block => structuredClone(block)), ["n1", "a1", "n2"]);
-        const snapshot: StoryScene = structuredClone(live);
+        // Covers the two model mutations and the shape the undo restores. It does NOT run the real
+        // history stack (`recordHistory` / `restoreHistoryState` live in the React controller and
+        // `replaceScene` needs a live document); the clones below stand in for them, matching the
+        // JSON round-trip both `cloneScene` implementations use - so a value that does not survive
+        // serialization does not survive here either.
+        const snapshot = JSON.parse(JSON.stringify(live)) as StoryScene;
 
         const plan = planRowBackspaceReplacement(live, ["a1"]);
         expect(plan).not.toBeNull();
@@ -384,8 +389,10 @@ describe("planRowBackspaceReplacement", () => {
         expect(live.rootBlockIds).toEqual(["n1", "blank", "n2"]);
         expect(Object.keys(live.blocks)).toHaveLength(3);
         expect(live.blocks.a1).toBeUndefined();
-        // A single undo restores the action row, payload included.
-        expect(snapshot.rootBlockIds).toEqual(["n1", "a1", "n2"]);
-        expect(snapshot.blocks.a1.payload).toEqual({ action: "character", operation: "enter", characterId: "c1" });
+        // A single undo reinstates the scene entire - row order, block set and payloads - and carries
+        // no trace of the replacement: the mutations must not have reached into the recorded state.
+        const restored = JSON.parse(JSON.stringify(snapshot)) as StoryScene;
+        expect(restored.blocks.blank).toBeUndefined();
+        expect(restored).toEqual(scene(blocks, ["n1", "a1", "n2"]));
     });
 });

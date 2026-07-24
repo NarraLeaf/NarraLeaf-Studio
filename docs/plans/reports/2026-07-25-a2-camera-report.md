@@ -34,7 +34,7 @@ parent: 2026-07-24-008-task-a2-camera.md
 2. **不碰 `ACTION_COMMANDS`**（卡的要求），故 `/camera` 目前**只在 `/` 面板/手册可达，侧栏无入口**——A1 把侧栏改成 spec 自动导出后自动补上。这是本卡唯一已知的可达性缺口。
 3. **未新增 issue code**：`/camera zoom` 不写数值时取中性值（zoom 1 / rotate 0 / darken 0.5 / pan center）落块，与全仓"build 必须能从 `{}` 造出合法块"的约定一致；`/camera` 光杆则因 `op` 是核心而落草稿行。
 4. **`amount` 是 enum|number 联合 → 补全噪音**（`/camera zoom ` 会同时列出 left/center/right）。不在补全层写指令特例（bible 明令）。提案（§11 开放项 2 相关，留给后续卡）：把 `content` 那套 `dependsOn` 泛化成"取值类型随另一参数解析结果切换"的通用 param kind，`/swap` 与 `/camera` 共用；在那之前这是可接受的papercut。
-5. **舞台快照不模拟镜头**（`storyStageSnapshot` 走 `default: return`）：编辑器静态预览不表现镜头姿态。不算回归（video/audio 同样不模拟），但 A1 之后若要做值得单列。
+5. **舞台快照不模拟镜头**（`storyStageSnapshot` 走 `default: return`）：编辑器静态预览不表现镜头姿态。**本条原以"video/audio 同样不模拟"结案，该类比经复核不成立**：行级起播的编译输入正是由快照喂进去的（`storyCompiler.ts` `launch: { targetBlockId, snapshot }`），而快照本就模拟立绘/背景的落定姿态、连 `darkness` 都在 `StageSnapshotEffects` 里——镜头姿态是**已被模拟的那一类的结构性同胞**，不是"根本不进快照"的 video/audio。后果说明白：把行级起播点放在同场景内某条 `/camera` 之后，Dev Mode 起播时镜头是中性的（§验证 `-07` 的"镜头中性"正是这一现象的实拍），画面与真实通关不一致；**编译产物（作者可见的成品）不受影响**。故记为**待跟进项（tracked follow-up）**，不作为"可接受的等价"结案。
 6. §11 开放项 1（operation 够不够）：真机试用后维持 5 个，无追加提案。
 
 ## 验证
