@@ -118,10 +118,13 @@ export const storyInspector = {
         dots: "圆点",
         slide: "推移",
         throughColor: "过色",
+        darkness: "压暗",
         startX: "起始 X",
         startY: "起始 Y",
         blurPx: "模糊（像素）",
         holdPct: "保持 %",
+        darknessFrom: "起始暗度 0-1",
+        darknessTo: "结束暗度 0-1",
     },
     transitionHint: {
         dissolve: "从上一张图片渐隐过渡到新图片",
@@ -137,6 +140,7 @@ export const storyInspector = {
         fan: "风扇／风车，多片扇叶绕中心并行扫过",
         dots: "圆点，网格中的圆点逐渐扩大直至连成一片",
         slide: "推入过渡，新图片从一侧滑入，同时旧图片向外滑出",
+        darkness: "压暗过渡，直接换到新图片并把它的亮度从起始暗度动到结束暗度：1 → 0 是从黑场中浮现，0 → 1 是渐暗至黑",
         throughColor: "以纯色（按所选图案）覆盖画面，停留片刻后再显露新图片，目标图片仅在色彩停留结束后才会出现。涵盖淡入黑/白、黑场柔和擦除、百叶窗黑场停留、光圈至黑场，以及闪白（停留时长为 0）等效果",
     },
     wipeDirection: {

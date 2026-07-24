@@ -125,10 +125,13 @@ export const storyInspector = {
         dots: "Dots",
         slide: "Push",
         throughColor: "Through color",
+        darkness: "Darkness",
         startX: "Start X",
         startY: "Start Y",
         blurPx: "Blur px",
         holdPct: "Hold %",
+        darknessFrom: "From darkness 0-1",
+        darknessTo: "To darkness 0-1",
     },
 
     transitionHint: {
@@ -145,6 +148,7 @@ export const storyInspector = {
         fan: "Fan / windmill. Several blades sweep in parallel around the centre.",
         dots: "Polka dots. A grid of dots grows until the cells flood together.",
         slide: "Push. The new image slides in from one edge as the old one slides out.",
+        darkness: "Darkness. Swaps to the new image at the starting darkness and animates its brightness to the ending one - 1 → 0 emerges out of black, 0 → 1 dims into it.",
         throughColor: "Covers the frame with a solid colour (using the chosen pattern), holds, then uncovers on the new image. The target appears only after the colour hold. Covers fade-to-black/white, soft wipe through black, blinds black hold, iris to black, and flash (hold 0).",
     },
 
