@@ -1567,7 +1567,8 @@ function TransitionEditor(props: {
                     </>
                 ) : null}
                 {kind === "darkness" ? (
-                    // Left empty the compiler applies the 1 → 0 pair: the new frame emerges out of black.
+                    // Left empty, the compiler applies the 1 → 0 pair: the new frame emerges out of
+                    // black. Values outside 0-1 are clamped by the compiler, not by this field.
                     <>
                         <NumberField label={t("storyInspector.transition.darknessFrom")} value={paramNumber(value.props, "from")} onChange={from => setParam({ from })} />
                         <NumberField label={t("storyInspector.transition.darknessTo")} value={paramNumber(value.props, "to")} onChange={to => setParam({ to })} />

@@ -1471,8 +1471,22 @@ describe("compileStudioStoryToNlr", () => {
         expect([translateAt(0, 0.5), translateAt(1, 0.5)].join(" ")).not.toMatch(/vw|vh/);
     });
 
+    it("clamps the darkness pair into the 0-1 the engine's filter can express", async () => {
+        // `Darkness` renders darkness `d` as `brightness(1 - d)` and, unlike `Image.darken`, does not
+        // clamp its own inputs. An inspector value outside 0-1 would emit `brightness(-1)` - invalid
+        // CSS the browser drops entirely, turning the transition into a silent no-op instead of
+        // saturating at black. So the compiler clamps before the value ever reaches the engine.
+        const compiled = await compileBackgroundTransition("darkness", { from: 2, to: -0.5 });
+        const darkness = findTransition(compiled) as any;
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(darkness).toBeInstanceOf(Darkness);
+        expect(darkness.from).toBe(1);
+        expect(darkness.to).toBe(0);
+    });
+
     /** Compile a one-row scene whose `/bg` carries `kind`, with every custom transition's props set. */
-    async function compileBackgroundTransition(kind: StoryTransitionRef["kind"]) {
+    async function compileBackgroundTransition(kind: StoryTransitionRef["kind"], overrides: StoryTransitionRef["props"] = {}) {
         const bg: StoryBlock = {
             id: "bg",
             kind: "action",
@@ -1485,7 +1499,7 @@ describe("compileStudioStoryToNlr", () => {
                     kind,
                     durationMs: 400,
                     // Superset of every custom transition's params; each kind reads only its own.
-                    props: { pattern: "iris", color: "#000000", blur: 12, direction: "right", orientation: "vertical", slats: 6, feather: 20, hold: 40, center: "50% 50%" },
+                    props: { pattern: "iris", color: "#000000", blur: 12, direction: "right", orientation: "vertical", slats: 6, feather: 20, hold: 40, center: "50% 50%", ...overrides },
                 },
             },
         };
