@@ -66,7 +66,8 @@ function variableEntries(
     for (const entry of persistentView.entries) {
         entries.push({
             name: entry.name,
-            ref: { scope: "persistent", storageKey: entry.storageKey },
+            // v9: persistent refs address by variableId, which equals the storage key.
+            ref: { scope: "persistent", variableId: entry.storageKey },
             valueType: entry.valueType,
             defaultValue: entry.defaultValue,
         });

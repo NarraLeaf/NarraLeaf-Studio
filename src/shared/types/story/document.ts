@@ -21,7 +21,11 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // and/or SE — see `StoryInlineEvent`). Purely additive: a v7 document simply has no event runs, so
 // the migration is a no-op version bump. The bump exists only so a v7 Studio refuses a v8 document
 // rather than dropping event tokens it does not understand.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 8 as const;
+// v9 (M-VAR) symmetrizes `StoryVariableRef`: the persistent arm now addresses by `variableId` like
+// the scene/saved arms, replacing the old `storageKey`. The migration renames the field on every
+// persistent ref with the identical value (a persistent variable's id equals its storage key), so
+// old references keep resolving unchanged - `storyVariableRefKey` collapses to `scope:variableId`.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 9 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -534,7 +538,10 @@ export type StoryRichRun =
 export type StoryVariableRef =
     | { scope: "scene"; variableId: string }
     | { scope: "saved"; variableId: string }
-    | { scope: "persistent"; storageKey: string };
+    // v9 (M-VAR): symmetric with the other scopes. `variableId` is the persistent variable's identity
+    // (registry entry id, or declaration block id for a story `/persis` row) - which equals its storage
+    // key, so the resolver still hands that value to the host persistence bridge.
+    | { scope: "persistent"; variableId: string };
 
 /** Legacy (schema v1) free-form variable reference, retained for migration + picker safety-net. */
 export type StoryVariableRefLegacy = {
