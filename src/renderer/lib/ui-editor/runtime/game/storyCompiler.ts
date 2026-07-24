@@ -1747,7 +1747,58 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
         return [recordStatement(ctx, chain, block)];
     }
 
+    if (payload.action === "camera") {
+        return compileCameraAction(ctx, block, payload);
+    }
+
     return [];
+}
+
+/** Lower bound on camera zoom: 0 or a negative scale is not a shot, it is a broken transform. */
+const MIN_CAMERA_ZOOM = 0.05;
+
+/** A finite number, or the neutral fallback - a NaN reaching a Transform prop silently kills the whole animation. */
+function finiteOr(value: number | undefined, fallback: number): number {
+    return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+/**
+ * `story.camera` - the one stage camera, addressed straight off the compile context's story.
+ *
+ * Every numeric input is clamped here rather than trusted from the payload: the engine's `Darkness`
+ * does not clamp, so a `darkness` of 2 compiles to `brightness(-1)` and silently produces no visible
+ * change at all (the 0.16.1 defect that made this rule). The same reasoning covers zoom, where 0 or a
+ * negative value is not a shot the author meant.
+ */
+function compileCameraAction(
+    ctx: SceneCompileContext,
+    block: StoryBlock,
+    payload: Extract<StoryActionPayload, { action: "camera" }>,
+): NlrStatement[] {
+    const camera = ctx.nlrStory.camera;
+    const duration = Math.max(0, finiteOr(payload.durationMs, 0));
+    const easing = payload.easing as any;
+    switch (payload.operation) {
+        case "pan": {
+            const position = getPresetPosition("custom", {
+                xalign: payload.position?.xalign ?? 0.5,
+                yalign: payload.position?.yalign ?? 0.5,
+                ...(payload.position?.xoffset !== undefined ? { xoffset: payload.position.xoffset } : {}),
+                ...(payload.position?.yoffset !== undefined ? { yoffset: payload.position.yoffset } : {}),
+            });
+            return [recordStatement(ctx, camera.pan(position as any, duration, easing), block)];
+        }
+        case "zoom":
+            return [recordStatement(ctx, camera.zoom(Math.max(MIN_CAMERA_ZOOM, finiteOr(payload.zoom, 1)), duration, easing), block)];
+        case "rotate":
+            return [recordStatement(ctx, camera.rotate(finiteOr(payload.rotation, 0), duration, easing), block)];
+        case "darken":
+            return [recordStatement(ctx, camera.darken(Math.min(1, Math.max(0, finiteOr(payload.darkness, 0))), duration, easing), block)];
+        case "reset":
+            return [recordStatement(ctx, camera.reset(duration, easing), block)];
+        default:
+            return [];
+    }
 }
 
 async function compileCharacterStageAction(
