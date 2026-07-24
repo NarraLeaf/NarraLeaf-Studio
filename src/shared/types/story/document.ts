@@ -428,6 +428,32 @@ export type StoryActionPayload =
           muted?: boolean;
       }
     | {
+          /**
+           * The story's stage camera (`story.camera`) — a Displayable like any other in the engine, but
+           * its own action kind here because an author does not file "move the camera" next to "move a
+           * sprite" (plan 2026-07-24-006 §3.3).
+           *
+           * Two facts this payload cannot state but every consumer must respect: the camera is a
+           * **story-level singleton** whose pose survives a scene change (and rides the save file), and
+           * `darken` drives the same CSS `filter` channel `Displayable.filter` does — it is stage
+           * brightness, not the scene's `screenEffect` vignette layer.
+           *
+           * Additive: no document written before this carries it, so no schema bump.
+           */
+          action: "camera";
+          operation: "pan" | "zoom" | "rotate" | "darken" | "reset";
+          /** `pan` — where the view centres. The command line fills the three placements; the inspector, any align. */
+          position?: StoryAlignPositionValue;
+          /** `zoom` — 1 is neutral. Clamped away from 0/negative at compile time. */
+          zoom?: number;
+          /** `rotate` — degrees. */
+          rotation?: number;
+          /** `darken` — 0 (normal) to 1 (black). Clamped at compile time; the engine does not clamp. */
+          darkness?: number;
+          durationMs?: number;
+          easing?: string;
+      }
+    | {
           action: "nvl";
           transition?: StoryTransformRef;
       }
