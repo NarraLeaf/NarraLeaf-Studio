@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
-import { annotateDialogueGroups, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isNarrativeRow, isReadableAccentColor, nextSelectionAfterDelete } from "./storySceneBlockUtils";
+import { deleteBlockFromScene, insertBlockInScene } from "@/lib/workspace/services/story/storyModel";
+import { annotateDialogueGroups, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isNarrativeRow, isReadableAccentColor, nextSelectionAfterDelete, planRowBackspaceReplacement } from "./storySceneBlockUtils";
 
 function control(payload: Extract<StoryBlock, { kind: "control" }>["payload"]): StoryBlock {
     return { id: "b", kind: "control", parentId: null, childrenIds: [], payload };
@@ -314,5 +315,77 @@ describe("buildDialogueAppearances", () => {
         // not the row the dropdown edits.
         expect(buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).get("d1"))
             .toMatchObject({ position: "left", positionSourceId: "e" });
+    });
+});
+
+describe("planRowBackspaceReplacement", () => {
+    /** A leaf action row (`/show`-shaped) with a real parent link. */
+    function showRow(id: string, parentId: string | null = null): StoryBlock {
+        return { id, kind: "action", parentId, childrenIds: [], payload: { action: "character", operation: "enter", characterId: "c1" } };
+    }
+
+    it("plans an in-place replacement for a single selected leaf action row", () => {
+        const blocks = [narration("n1"), showRow("a1"), narration("n2")];
+        expect(planRowBackspaceReplacement(scene(blocks, ["n1", "a1", "n2"]), ["a1"]))
+            .toEqual({ replaceBlockId: "a1", target: { parentId: null, beforeBlockId: "a1" } });
+    });
+
+    it("keeps the row's parent and position, so the replacement lands where the row was", () => {
+        const container = { ...group("g", ["a1"]), childrenIds: ["a1"] };
+        const blocks = [container, showRow("a1", "g")];
+        expect(planRowBackspaceReplacement(scene(blocks, ["g"]), ["a1"]))
+            .toEqual({ replaceBlockId: "a1", target: { parentId: "g", beforeBlockId: "a1" } });
+    });
+
+    it("declines a multi-row selection - Backspace there stays a bulk delete", () => {
+        const blocks = [showRow("a1"), showRow("a2")];
+        expect(planRowBackspaceReplacement(scene(blocks, ["a1", "a2"]), ["a1", "a2"])).toBeNull();
+        expect(planRowBackspaceReplacement(scene(blocks, ["a1", "a2"]), [])).toBeNull();
+    });
+
+    it("declines a container that holds children - the subtree would go with it", () => {
+        const blocks = [group("g", ["a1"]), showRow("a1", "g")];
+        expect(planRowBackspaceReplacement(scene(blocks, ["g"]), ["g"])).toBeNull();
+    });
+
+    it("treats a childless container as a leaf", () => {
+        const blocks = [group("g", [])];
+        expect(planRowBackspaceReplacement(scene(blocks, ["g"]), ["g"]))
+            .toMatchObject({ replaceBlockId: "g" });
+    });
+
+    it("declines text rows - they already own the empty-line ladder", () => {
+        const blocks = [narration("n1"), dialogue("d1")];
+        expect(planRowBackspaceReplacement(scene(blocks, ["n1", "d1"]), ["n1"])).toBeNull();
+        expect(planRowBackspaceReplacement(scene(blocks, ["n1", "d1"]), ["d1"])).toBeNull();
+    });
+
+    it("declines structural children - a narration line inside a condition is not a legal tree", () => {
+        const condition: StoryBlock = { id: "c", kind: "control", parentId: null, childrenIds: ["b"], payload: { control: "condition" } };
+        const branch: StoryBlock = { id: "b", kind: "control", parentId: "c", childrenIds: [], payload: { control: "conditionBranch", branch: "if" } };
+        expect(planRowBackspaceReplacement(scene([condition, branch], ["c"]), ["b"])).toBeNull();
+    });
+
+    it("declines a row that is gone", () => {
+        expect(planRowBackspaceReplacement(scene([], []), ["missing"])).toBeNull();
+    });
+
+    it("replaces rather than deletes: applying the plan keeps the row count and the position, and the pre-edit snapshot still carries the original payload (one-step undo)", () => {
+        const blocks = [narration("n1"), showRow("a1"), narration("n2")];
+        const live = scene(blocks.map(block => structuredClone(block)), ["n1", "a1", "n2"]);
+        const snapshot: StoryScene = structuredClone(live);
+
+        const plan = planRowBackspaceReplacement(live, ["a1"]);
+        expect(plan).not.toBeNull();
+        // What the controller does under one history entry: insert first, then drop the original.
+        insertBlockInScene(live, narration("blank"), plan!.target);
+        deleteBlockFromScene(live, plan!.replaceBlockId);
+
+        expect(live.rootBlockIds).toEqual(["n1", "blank", "n2"]);
+        expect(Object.keys(live.blocks)).toHaveLength(3);
+        expect(live.blocks.a1).toBeUndefined();
+        // A single undo restores the action row, payload included.
+        expect(snapshot.rootBlockIds).toEqual(["n1", "a1", "n2"]);
+        expect(snapshot.blocks.a1.payload).toEqual({ action: "character", operation: "enter", characterId: "c1" });
     });
 });
