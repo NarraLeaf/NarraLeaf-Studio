@@ -196,11 +196,15 @@ app.game.story.registerCompilePass({
 - `StoryPluginActionRegistration`（`services.ts:663`）从"block 生成器"升级为"带参数 schema 的声明"：`params: ParamSchema[]`，Studio 据此渲染行内编辑 UI 并生成 `{action:"plugin"}` 块。
 - 顺带清理：`registration.group` 字段声明了但全仓无人读取（死字段）。
 
-### 4.3 插件配置烘焙通道
+### 4.3 插件配置烘焙通道 —— ⚠️ 已存在，不用新建（2026-07-23 对账）
 
-Studio 侧配置读写沿用 `app.services.storage`（已是项目级）。新增：打包/编译时把插件配置快照烘焙进 pack（参照 `pack.network` 当初解决 allowHttp 的做法），runtime 侧以只读形式暴露给 pass。
+**这块基础设施已经落地。** Studio 现在有 `contributes.runtimeData: string[]`（声明命名空间）+ runtime 侧只读 API `app.game.data.readJson(namespace)`（`runtimePluginApi.ts:62`）—— 注释原文："the data travels with the pack, so there is nothing to await … Callers must degrade gracefully"，与本节当初的设想完全一致。
 
-配置 UI 由插件自绘 —— Studio 没有声明式配置 UI，内置 gallery 插件（`src/builtin-plugins/gallery/main.tsx:375`）是现成样板。
+所以配置链路变成：Studio 侧 `app.services.storage` 写项目级配置（声明为 `runtimeData` 命名空间）→ 打包时烘焙进 pack → compile pass 通过 `app.game.data.readJson()` 只读读取。**无需再建通道**，只需让 AutoHighlight 声明一个 `runtimeData` 命名空间、pass 从 `app.game.data` 读。
+
+配置 UI 仍由插件自绘 —— Studio 没有声明式配置 UI，内置 gallery 插件（`src/builtin-plugins/gallery/main.tsx:375`）是现成样板。
+
+> **对账小结（2026-07-23）**：插件 `contributes` 现在是 `blueprintNodes / widgets / runtimeData / locales`（早期调研时只有前两个）。四块基础设施里 **§4.3 已由 `runtimeData` 覆盖**；`registerCompilePass`、`{action:"plugin"}` block、storyAction 依赖扫描（§4.4）**仍不存在**，是本计划的净新增。另注意：`story.actions.register`（早期存在的"生成 block"调色板命令）在当前分支已 grep 不到，若 §4.2 要复用它需先确认它是否被移除。
 
 ### 4.4 storyAction 依赖扫描
 
@@ -307,7 +311,7 @@ type SelectProps = SingleSelectProps | MultiSelectProps;   // multiple?: false |
 
 - ~~**N1：`darken` 传了 duration 不传 easing 会静默变瞬时。**~~ **已修**（0.13.0，见 §10）。`if (duration && easing)` → `if (duration)`。pass 仍建议显式传 easing（配置项给默认值），但不再是硬性要求。
 - ~~**N2：动画中途 undo 会泄漏 async stackModel 进存档。**~~ **已修**（0.13.0，见 §10）。注意最初的诊断（"`setDarkness` 没注册 skipController"）**是错的** —— 真正的根因在 `stackModel.roll()`，且与 skipController 无关。
-- **N3：`allAsync` 的 undo 正确性是隐式契约。** 它依赖"fork 后同步执行到第一个 await"这一实现性质（`controlAction.ts:109-111`），使 N 条 history 全部落在 `say` 之前。NLR 侧没有注释或测试锁定它。建议在 NLR 加测试把这个性质钉住，否则一次重构就会静默破坏所有依赖 `allAsync` 的编译产物。**本计划的验收标准 5 是它在 Studio 侧的唯一防线。**
+- ~~**N3：`allAsync` 的 undo 正确性是隐式契约。**~~ **已加回归测试**（2026-07-23，NLR `controlAsyncUndoOrdering.test.ts`，3 用例）。真实驱动 `Control.allAsync`/`doAsync`，只 stub 叶子 `executeAction`（= history push 的位置）：钉住"allAsync 同步跑完全部 fork（2 次）、doAsync 只跑链头（1 次）"的对照，外加 `undoUntil` 纯下标回卷。做过变异验证（把 allAsync 退化成只 fork 首支 → 测试 1 挂）。这条契约现在 NLR 侧有测试锁定，Studio 侧验收标准 5 仍是第二道防线。
 
 ## 10. 已完成的前置项：NLR `darken` 与 async undo（已修）
 
