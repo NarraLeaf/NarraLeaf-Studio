@@ -20,7 +20,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { ReferenceService } from "@/lib/workspace/services/references/ReferenceService";
 import { AssetSource, type Asset } from "@/lib/workspace/services/assets/types";
-import { entryFileName } from "@/lib/workspace/services/assets/importPathExpansion";
+import { entryFileName } from "@shared/utils/fileEntry";
 import { join } from "@shared/utils/path";
 import { buildAssetOverview, type AssetOverviewSummary } from "./assetOverviewModel";
 

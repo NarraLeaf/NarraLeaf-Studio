@@ -1,6 +1,7 @@
 import msgpack from "msgpack-lite";
 import { transliterate } from "transliteration";
 import type { ProjectDependencyTable } from "../types/pluginDependencies";
+import { entryFileName } from "./fileEntry";
 import { join } from "./path";
 
 /**
@@ -63,6 +64,11 @@ export function getLegacyProjectConfigPath(projectPath: string): string {
     return join(projectPath, LEGACY_CONFIG_FILE);
 }
 
+/**
+ * A directory entry as a listing reports it - the filename arrives split into a stem plus a
+ * separate extension (see {@link entryFileName}), which is why these finders match on `ext` and
+ * reassemble before returning a filename.
+ */
 export interface DirEntry {
     name: string;
     ext: string | null;
@@ -78,7 +84,7 @@ export function findNlprojConfigFileName(entries: DirEntry[]): string | null {
         (e) => e.type === "file" && e.ext === NLPROJ_EXT
     );
     if (nlproj) {
-        return nlproj.name + (nlproj.ext || "");
+        return entryFileName(nlproj);
     }
     return null;
 }
@@ -92,7 +98,7 @@ export function findLegacyProjectConfigFileName(entries: DirEntry[]): string | n
         (e) => e.type === "file" && e.name === "project" && e.ext === ".json"
     );
     if (legacy) {
-        return legacy.name + (legacy.ext || "");
+        return entryFileName(legacy);
     }
     return null;
 }
