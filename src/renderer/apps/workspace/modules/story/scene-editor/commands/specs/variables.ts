@@ -8,7 +8,7 @@ import { defineStoryCommand, type ResolvedArgsOf, type StoryCommandParamSpec, ty
 
 /**
  * Variables: `/set` and its sugars `/inc` `/dec` `/toggle` `/reset`, plus the three declarations
- * `/local` `/var` `/persis`.
+ * `/local` `/save` `/global`.
  *
  * The sugars all lower to the identical `setVariable` block `/set` builds - they differ only in the
  * expression they synthesize - so the compiler and inspector see one shape. The declarations build no
@@ -199,7 +199,7 @@ export function defaultForType(valueType: StoryVariableValueType): StoryLiteralV
 // ---------------------------------------------------------------------------
 
 /**
- * The params every `/local` `/var` `/persis` line takes - identical across all three, because the
+ * The params every `/local` `/save` `/global` line takes - identical across all three, because the
  * only thing that differs between them is the scope, and the scope is the command name.
  *
  * `default` is a {@link StoryCommandParamType constant}, not an expression: a declaration runs once,
@@ -322,20 +322,31 @@ export const declareLocal = defineStoryCommand({
     validate: validateDeclaration("scene"),
 });
 
+/**
+ * `/save`, not `/var` (§3.6): `var` is every programming language's word for "a variable", so an
+ * author reaches for it to declare a variable of ANY scope - the strongest intuition trap in the whole
+ * set. `/var` stays as an alias, because muscle memory and every existing note that spells it must
+ * keep resolving.
+ *
+ * The token is reserved for this and nothing else (§12.5): **`/save` declares a save-scoped variable;
+ * triggering a save is not a story command and will not become one** - saving is a runtime/UI concern,
+ * and a later `/save` meaning "write a save file" would silently re-point every line already using it.
+ */
 export const declareVar = defineStoryCommand({
     id: "declareVar",
-    token: "var",
-    aliases: ["savedvar"],
+    token: "save",
+    aliases: ["var", "savedvar"],
     category: "data",
     params: declarationParams(),
     build: buildDeclaration("saved"),
     validate: validateDeclaration("saved"),
 });
 
+/** `/global`, not `/persis` (§3.6): `persis` is a truncation, not a word - there is nothing to guess. */
 export const declarePersis = defineStoryCommand({
     id: "declarePersis",
-    token: "persis",
-    aliases: ["persistent", "global"],
+    token: "global",
+    aliases: ["persis", "persistent"],
     category: "data",
     params: declarationParams(),
     build: buildDeclaration("persistent"),

@@ -328,16 +328,16 @@ export const story = {
     actionCategory: {
         all: "全部",
         character: "角色",
-        scene: "场景",
-        control: "控制",
+        stage: "舞台",
         image: "图片",
         text: "文本",
         layer: "图层",
         video: "视频",
+        camera: "镜头",
+        scene: "场景",
+        sound: "声音",
         data: "数据",
-        media: "媒体",
-        effects: "特效",
-        plugin: "插件",
+        flow: "流程",
         utils: "工具",
     },
     pluginActionFallbackDetail: "插件故事动作",
@@ -389,212 +389,6 @@ export const story = {
         fx: { label: "特效", detail: "为对象应用特效" },
         transform: { label: "变换", detail: "移动、缩放或旋转对象" },
         note: { label: "备注", detail: "仅 Studio 可见的备注" },
-    },
-    actionCommand: {
-        dialogue: {
-            label: "对话",
-            detail: "Character.say 语句",
-        },
-        narration: {
-            label: "旁白",
-            detail: "Narrator.say 语句",
-        },
-        characterEnter: {
-            label: "角色入场",
-            detail: "显示一张角色立绘图片",
-        },
-        characterMove: {
-            label: "角色移动",
-            detail: "移动一张已有的角色图片",
-        },
-        characterExpression: {
-            label: "角色表情",
-            detail: "更改形象、变体或立绘",
-        },
-        characterExit: {
-            label: "角色退场",
-            detail: "隐藏一张角色图片",
-        },
-        background: {
-            label: "背景",
-            detail: "Scene.setBackground 资源或颜色",
-        },
-        jump: {
-            label: "跳转场景",
-            detail: "Scene.jumpTo 跳转到另一个场景",
-        },
-        choice: {
-            label: "菜单",
-            detail: "让玩家在多个选项之间进行选择",
-        },
-        condition: {
-            label: "条件（if…）",
-            detail: "仅在满足条件时才运行动作",
-        },
-        repeat: {
-            label: "重复",
-            detail: "将内部动作运行指定的次数",
-        },
-        parallel: {
-            label: "同时运行",
-            detail: "同时运行所有内部动作",
-        },
-        race: {
-            label: "竞速（最先完成者）",
-            detail: "全部运行，最先完成时继续",
-        },
-        sequence: {
-            label: "依次执行",
-            detail: "将内部动作依次逐个运行",
-        },
-        waitDuration: {
-            label: "等待时长",
-            detail: "暂停若干秒",
-        },
-        waitClick: {
-            label: "等待点击",
-            detail: "暂停直到玩家点击",
-        },
-        setVariable: {
-            label: "设置变量",
-            detail: "赋一个值或一个表达式",
-        },
-        incrementVariable: { label: "增加变量", detail: "为数值变量加上一个量" },
-        decrementVariable: { label: "减少变量", detail: "为数值变量减去一个量" },
-        toggleVariable: { label: "翻转变量", detail: "取反一个真/假变量" },
-        resetVariable: { label: "重置变量", detail: "恢复变量声明时的默认值" },
-        declareSceneVariable: { label: "声明场景变量", detail: "仅在本场景内存活" },
-        declareSavedVariable: { label: "声明存档变量", detail: "随存档一起保存" },
-        declarePersistentVariable: { label: "声明全局变量", detail: "跨存档存活--游戏级 flag" },
-        conditionIf: { label: "如果（表达式）", detail: "按表达式分支，例如 gold >= 100" },
-        executeScript: {
-            label: "执行脚本",
-            detail: "运行一个故事动作蓝图",
-        },
-        imageCreate: {
-            label: "图片",
-            detail: "创建或更新一张命名的舞台图片",
-        },
-        imageSetSource: {
-            label: "图片来源",
-            detail: "更改一张命名图片的来源",
-        },
-        imageShow: {
-            label: "显示图片",
-            detail: "显示一张命名图片",
-        },
-        imageHide: {
-            label: "隐藏图片",
-            detail: "隐藏一张命名图片",
-        },
-        displayableTransform: {
-            label: "变换可显示对象",
-            detail: "移动、缩放、旋转、不透明度或特效预设",
-        },
-        displayableShow: {
-            label: "显示可显示对象",
-            detail: "显示任意命名的可显示对象",
-        },
-        displayableHide: {
-            label: "隐藏可显示对象",
-            detail: "隐藏任意命名的可显示对象",
-        },
-        displayableEffect: {
-            label: "可显示对象特效",
-            detail: "遮罩、滤镜、裁剪、变暗、圆形展开/收拢或擦除",
-        },
-        textCreate: {
-            label: "文本",
-            detail: "创建或更新命名的舞台文本",
-        },
-        textSet: {
-            label: "设置文本",
-            detail: "更改一个命名的文本叠加层",
-        },
-        textShow: {
-            label: "显示文本",
-            detail: "显示文本叠加层",
-        },
-        textHide: {
-            label: "隐藏文本",
-            detail: "隐藏文本叠加层",
-        },
-        textFont: {
-            label: "文本样式",
-            detail: "设置字号或颜色",
-        },
-        layerCreate: {
-            label: "图层",
-            detail: "创建一个命名的渲染图层",
-        },
-        layerZIndex: {
-            label: "图层层级",
-            detail: "更改图层排序",
-        },
-        videoCreate: {
-            label: "视频",
-            detail: "创建一个命名的视频元素",
-        },
-        videoShow: {
-            label: "显示视频",
-            detail: "显示一个视频元素",
-        },
-        videoHide: {
-            label: "隐藏视频",
-            detail: "隐藏一个视频元素",
-        },
-        videoPlay: {
-            label: "播放视频",
-            detail: "播放一个视频元素",
-        },
-        nvl: {
-            label: "NVL 区块",
-            detail: "Scene.nvl 堆叠对话区块",
-        },
-        screenBlink: {
-            label: "闪烁",
-            detail: "内置屏幕闪烁特效",
-        },
-        screenVignette: {
-            label: "暗角",
-            detail: "内置暗角特效",
-        },
-        bgm: {
-            label: "背景音乐",
-            detail: "Scene.setBackgroundMusic",
-        },
-        sound: {
-            label: "音效",
-            detail: "播放音效",
-        },
-        stopSound: {
-            label: "停止音效",
-            detail: "停止音效",
-        },
-        pauseSound: {
-            label: "暂停音效",
-            detail: "暂停音效",
-        },
-        resumeSound: {
-            label: "恢复音效",
-            detail: "恢复音效",
-        },
-        soundVolume: {
-            label: "音效音量",
-            detail: "设置音效音量",
-        },
-        soundRate: {
-            label: "音效倍速",
-            detail: "设置播放倍速",
-        },
-        muteSound: {
-            label: "静音",
-            detail: "静音或取消静音",
-        },
-        note: {
-            label: "备注",
-            detail: "仅编辑器可见的备注",
-        },
     },
     containerHeader: {
         condition: "条件",
