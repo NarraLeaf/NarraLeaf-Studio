@@ -18,6 +18,7 @@ export const storyInspector = {
         transition: "转场",
         voice: "配音",
         camera: "镜头 · 跨场景保留",
+        vfx: "氛围特效 · 全屏叠加",
     },
     voice: {
         voiced: "已配音",
@@ -172,6 +173,36 @@ export const storyInspector = {
         create: "创建／更新",
         setSource: "设置来源",
     },
+    vfxOperation: {
+        pause: "冻结",
+        resume: "继续",
+        setRate: "设置速度",
+    },
+    vfxBlend: {
+        normal: "正常 —— 透明素材（alpha WebM）",
+        screen: "滤色 —— 黑底辉光素材",
+        multiply: "正片叠底 —— 白底阴影素材",
+        lighten: "变亮",
+        colorDodge: "颜色减淡",
+        overlay: "叠加",
+    },
+    vfxFit: {
+        cover: "覆盖",
+        contain: "包含",
+        fill: "拉伸",
+    },
+    vfx: {
+        name: "特效名称",
+        clip: "循环素材",
+        blendMode: "混合模式",
+        opacity: "不透明度（0-1）",
+        fit: "适配",
+        zIndex: "层级",
+        loop: "循环",
+        rate: "速度（1 = 正常）",
+        fade: "淡入淡出（秒）",
+    },
+
     cameraOperation: {
         zoom: "推拉",
         pan: "平移",

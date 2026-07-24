@@ -28,8 +28,8 @@ export type StoryCommandVariableEntry = {
     defaultValue?: StoryLiteralValue;
 };
 
-/** The five kinds of named object a command can address by `objectName`. */
-export type StoryCommandStageObjectKind = "image" | "text" | "layer" | "video" | "audio";
+/** The kinds of named object a command can address by `objectName`. */
+export type StoryCommandStageObjectKind = "image" | "text" | "layer" | "video" | "audio" | "vfx";
 
 /** What a generic verb's target may be: a character, or a stage object of some kind. */
 export type StoryCommandTargetKind = "character" | StoryCommandStageObjectKind;
@@ -38,7 +38,7 @@ export type StoryCommandTargetKind = "character" | StoryCommandStageObjectKind;
 export type StoryCommandStageObjects = Readonly<Record<StoryCommandStageObjectKind, readonly string[]>>;
 
 export const EMPTY_STORY_COMMAND_STAGE_OBJECTS: StoryCommandStageObjects = {
-    image: [], text: [], layer: [], video: [], audio: [],
+    image: [], text: [], layer: [], video: [], audio: [], vfx: [],
 };
 
 /**

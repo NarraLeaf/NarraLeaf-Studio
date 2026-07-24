@@ -1,8 +1,8 @@
-import type { StoryBlock } from "@shared/types/story";
+import type { StoryActionPayload, StoryBlock } from "@shared/types/story";
 import { createBlockForCommand, type ActionCommandId } from "../../storyActionCommands";
 import { BGM_OBJECT_NAME, type StoryCommandValue } from "../../storyCommandValues";
 import { asBoolean, asDurationMs, asNumber, asTarget, asText, defineStoryCommand, targetParam } from "../spec";
-import { deriveObjectName } from "../payloadHelpers";
+import { deriveObjectName, vfxOperationBlock } from "../payloadHelpers";
 
 /**
  * Sound: `/bgm`, `/sound`, and the control family `/vol` `/rate` `/stop` `/pause` `/resume`
@@ -34,29 +34,46 @@ function audioControlBlock(
 }
 
 /**
- * The transport verbs that reach past sound: `/stop` `/pause` `/resume` accept a video target too.
+ * The transport verbs that reach past sound: `/stop` `/pause` `/resume` `/rate` also address a video
+ * or an ambience overlay.
  *
  * Same dispatch shape as `/show`'s (bible B3): the token names the verb, the resolved target decides
  * which payload the line writes. Omitting the target still means BGM (B4) - it is only a NAMED target
- * resolving to a video that lands here, so `/pause` with nothing after it can never silently pause a
- * clip the author was not thinking about.
+ * resolving elsewhere that lands in another payload, so `/pause` with nothing after it can never
+ * silently pause a clip the author was not thinking about.
+ *
+ * A verb that a given kind does not have simply does not list that kind in `accepts` - `/stop` reaches
+ * video but not vfx (a `Vfx` has no stop), `/rate` reaches vfx but not video.
  */
 function mediaControlBlock(
     commandId: ActionCommandId,
-    videoOperation: Extract<Extract<StoryBlock, { kind: "action" }>["payload"], { action: "video" }>["operation"],
+    ops: {
+        video?: Extract<Extract<StoryBlock, { kind: "action" }>["payload"], { action: "video" }>["operation"];
+        vfx?: Exclude<Extract<Extract<StoryBlock, { kind: "action" }>["payload"], { action: "vfx" }>["operation"], "create">;
+    },
     args: { readonly target?: StoryCommandValue; readonly fade?: StoryCommandValue },
     ctx: { generateId: () => string },
     write?: (payload: Extract<Extract<StoryBlock, { kind: "action" }>["payload"], { action: "audio" }>) => void,
+    writeVfx?: (payload: Extract<StoryActionPayload, { action: "vfx" }>) => void,
 ): StoryBlock {
     const target = asTarget(args.target);
-    if (target?.type === "stageObject" && target.objectKind === "video") {
+    if (target?.type === "stageObject" && target.objectKind === "video" && ops.video) {
         return {
             id: ctx.generateId(),
             parentId: null,
             childrenIds: [],
             kind: "action",
-            payload: { action: "video", operation: videoOperation, objectName: target.name },
+            payload: { action: "video", operation: ops.video, objectName: target.name },
         };
+    }
+    if (target?.type === "stageObject" && target.objectKind === "vfx" && ops.vfx) {
+        const block = vfxOperationBlock(ops.vfx, target.name, ctx.generateId);
+        if (block.kind === "action" && block.payload.action === "vfx") {
+            const payload = { ...block.payload };
+            writeVfx?.(payload);
+            return { ...block, payload };
+        }
+        return block;
     }
     return audioControlBlock(commandId, args, ctx.generateId, write);
 }
@@ -157,12 +174,16 @@ export const rate = defineStoryCommand({
     token: "rate",
     category: "sound",
     params: {
-        target: targetParam(["audio"], { skippable: true }),
+        // An overlay's rate is how fast the petals fall, which is the same knob under a different
+        // subject - so it is the same verb (§7.3). Video has no rate, so it is not listed.
+        target: targetParam(["audio", "vfx"], { skippable: true, fallbackKind: "audio" }),
         rate: { hint: "rate", type: { kind: "number", min: 0 }, positional: true, core: true },
     },
-    build: (args, ctx) => audioControlBlock("soundRate", args, ctx.generateId, payload => {
+    build: (args, ctx) => mediaControlBlock("soundRate", { vfx: "setRate" }, args, ctx, payload => {
         const value = asNumber(args.rate);
         payload.rate = value ?? payload.rate;
+    }, payload => {
+        payload.rate = asNumber(args.rate) ?? 1;
     }),
 });
 
@@ -176,7 +197,7 @@ export const stop = defineStoryCommand({
         target: targetParam(["audio", "video"], { fallbackKind: "audio" }),
         fade: { hint: "fade", type: { kind: "number", min: 0 } },
     },
-    build: (args, ctx) => mediaControlBlock("stopSound", "stop", args, ctx),
+    build: (args, ctx) => mediaControlBlock("stopSound", { video: "stop" }, args, ctx),
 });
 
 export const pause = defineStoryCommand({
@@ -185,9 +206,9 @@ export const pause = defineStoryCommand({
     aliases: ["pausesound"],
     category: "sound",
     params: {
-        target: targetParam(["audio", "video"], { fallbackKind: "audio" }),
+        target: targetParam(["audio", "video", "vfx"], { fallbackKind: "audio" }),
     },
-    build: (args, ctx) => mediaControlBlock("pauseSound", "pause", args, ctx),
+    build: (args, ctx) => mediaControlBlock("pauseSound", { video: "pause", vfx: "pause" }, args, ctx),
 });
 
 export const resume = defineStoryCommand({
@@ -195,9 +216,9 @@ export const resume = defineStoryCommand({
     token: "resume",
     category: "sound",
     params: {
-        target: targetParam(["audio", "video"], { fallbackKind: "audio" }),
+        target: targetParam(["audio", "video", "vfx"], { fallbackKind: "audio" }),
     },
-    build: (args, ctx) => mediaControlBlock("resumeSound", "resume", args, ctx),
+    build: (args, ctx) => mediaControlBlock("resumeSound", { video: "resume", vfx: "resume" }, args, ctx),
 });
 
 /**

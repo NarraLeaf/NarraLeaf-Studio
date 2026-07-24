@@ -90,6 +90,22 @@ describe("projectStagingLens — duration derivation", () => {
         ]);
     });
 
+    it("draws a vfx fade to scale, and only its fading operations", () => {
+        // "The rain fades in while the camera pushes past" is the same canonical parallel, and the
+        // engine's Vfx.show/hide WAIT for the fade, so the bar is a real footprint (§12.7). Its instant
+        // operations carry no duration at all and must stay unknown rather than claiming a width.
+        const fadeIn = action("rain", "p", { action: "vfx", operation: "show", objectName: "rain", durationMs: 1200 });
+        const freeze = action("freeze", "p", { action: "vfx", operation: "pause", objectName: "rain" });
+        const scene = sceneWith(control("p", "parallel", ["rain", "freeze"]), fadeIn, freeze);
+
+        const lens = projectStagingLens(scene, scene.blocks.p);
+        expect(lens.scaleMs).toBe(1200);
+        expect(lens.tracks.map(t => ({ id: t.blockId, durationMs: t.durationMs, unknown: t.unknown }))).toEqual([
+            { id: "rain", durationMs: 1200, unknown: false },
+            { id: "freeze", durationMs: 0, unknown: true },
+        ]);
+    });
+
     it("treats an action with no derivable duration as unknown (equal-width stub)", () => {
         const setVar = action("set", "p", { action: "setVariable", target: { scope: "scene", variableId: "v" } as never, value: { kind: "number", value: 1 } as never });
         const scene = sceneWith(control("p", "parallel", ["set"]), setVar);

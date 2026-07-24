@@ -19,6 +19,8 @@ export const storyInspector = {
         voice: "Voice",
         // Names the scope the camera has, which no field can: the pose outlives the scene.
         camera: "Camera · story-wide",
+        // Says the scope no field can: an overlay sits above the whole stage, not inside a layer.
+        vfx: "Ambience · full-screen overlay",
     },
 
     voice: {
@@ -186,6 +188,41 @@ export const storyInspector = {
     imageOperation: {
         create: "Create / update",
         setSource: "Set source",
+    },
+
+    vfxOperation: {
+        pause: "Freeze",
+        resume: "Continue",
+        setRate: "Set speed",
+    },
+
+    // Named by the material each mode is FOR, not by the CSS keyword: the choice is a production fact
+    // about the clip, and the keyword alone only helps someone who already knows the answer.
+    vfxBlend: {
+        normal: "Normal — transparent clip (alpha WebM)",
+        screen: "Screen — glow on black",
+        multiply: "Multiply — shadow on white",
+        lighten: "Lighten",
+        colorDodge: "Color dodge",
+        overlay: "Overlay",
+    },
+
+    vfxFit: {
+        cover: "Cover",
+        contain: "Contain",
+        fill: "Fill",
+    },
+
+    vfx: {
+        name: "Effect name",
+        clip: "Looping clip",
+        blendMode: "Blend",
+        opacity: "Opacity (0-1)",
+        fit: "Fit",
+        zIndex: "Z-index",
+        loop: "Loop",
+        rate: "Speed (1 = normal)",
+        fade: "Fade (s)",
     },
 
     cameraOperation: {

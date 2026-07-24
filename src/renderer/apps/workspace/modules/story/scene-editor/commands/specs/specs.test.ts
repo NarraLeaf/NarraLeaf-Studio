@@ -25,7 +25,7 @@ const CONTEXT: StoryCommandContext = {
         { name: "boss hp", ref: { scope: "saved", variableId: "var_boss" }, valueType: "number", defaultValue: 3 },
     ],
     formsByCharacterId: { c1: ["smile", "angry"] },
-    stageObjects: { image: ["hero"], text: ["title"], layer: ["overlay"], video: ["clip"], audio: ["music"] },
+    stageObjects: { image: ["hero"], text: ["title"], layer: ["overlay"], video: ["clip"], audio: ["music"], vfx: ["petals"] },
 };
 
 let nextId = 0;
@@ -378,6 +378,45 @@ describe("logic and effects", () => {
         expect(build("/camera pan")).toMatchObject({ payload: { operation: "pan", position: { xalign: 0.5 } } });
         // The operation is the required core (B9): a bare `/camera` has nothing to commit.
         expect(getCommandSpec("camera")?.params.op.core).toBe(true);
+    });
+
+    it("/vfx places a looping overlay and names it off the clip", () => {
+        expect(build("/vfx intro")).toMatchObject({
+            kind: "action",
+            payload: { action: "vfx", operation: "create", objectName: "intro", assetId: "v1", loop: true },
+        });
+        expect(build("/vfx intro name=rain opacity=0.6 d=1.2")).toMatchObject({
+            payload: { objectName: "rain", opacity: 0.6, durationMs: 1200 },
+        });
+        // Blend mode decides whether the material reads at all, so the create row opens the inspector.
+        expect(getCommandSpec("vfx")?.inspectorAfterCommit).toBe(true);
+    });
+
+    it("the generic verbs reach a vfx with its own payload", () => {
+        // Four capabilities, one new token: everything after placing the overlay is an existing verb.
+        expect(build("/show petals d=0.8")).toMatchObject({
+            payload: { action: "vfx", operation: "show", objectName: "petals", durationMs: 800 },
+        });
+        expect(build("/hide petals")).toMatchObject({ payload: { action: "vfx", operation: "hide", objectName: "petals" } });
+        expect(build("/pause petals")).toMatchObject({ payload: { action: "vfx", operation: "pause" } });
+        expect(build("/resume petals")).toMatchObject({ payload: { action: "vfx", operation: "resume" } });
+        expect(build("/rate petals 0.5")).toMatchObject({ payload: { action: "vfx", operation: "setRate", rate: 0.5 } });
+        // A verb the element does not have does not list it: a Vfx has no stop, so `/stop petals` is
+        // not a vfx line - and with nothing on stage answering, it falls to the audio fallback kind.
+        expect(build("/stop petals")).toMatchObject({ payload: { action: "audio", operation: "stopSound", objectName: "petals" } });
+    });
+
+    it("keeps a vfx out of every displayable slot - it is not a Displayable", () => {
+        // §7.2's hard rule. Enforced twice over: `accepts` never lists vfx, so the line cannot even
+        // resolve, and `StoryDisplayableTargetKind` excludes it, so no payload could hold it either.
+        for (const id of ["transform", "fx"]) {
+            const target = getCommandSpec(id)?.params.target.type;
+            const accepts = (Array.isArray(target) ? target : [target]).flatMap(type =>
+                type && type.kind === "target" ? [...type.accepts] : []);
+            expect(accepts).not.toContain("vfx");
+        }
+        expect(issuesOf("/transform petals")).toEqual(["unknownTarget"]);
+        expect(issuesOf("/fx petals")).toEqual(["unknownTarget"]);
     });
 
     it("/fx and /transform bind their displayable target and defer the rest to the inspector", () => {
