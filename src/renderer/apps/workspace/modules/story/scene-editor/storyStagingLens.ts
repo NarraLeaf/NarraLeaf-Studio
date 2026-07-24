@@ -1,4 +1,5 @@
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryScene } from "@shared/types/story";
+import { getTextSegment } from "./storySceneBlockUtils";
 
 /**
  * Staging lens (M7): a bar-timeline projection of a `parallel` / `race` control container. Each direct
@@ -7,6 +8,9 @@ import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryScene } from "@
  * derived from the payload. This is a PURE projection over the existing document: it reads durations
  * that already live on payloads (transition/transform `durationMs`, wait/displayable/screen-effect
  * timings, audio fade) and invents no new document fields.
+ *
+ * A text-carrying child is the one exception to "a track is a bar": it is prose, not staging, and it
+ * keeps its ordinary row inside the lens (see `LensTrackKind["text"]`).
  *
  * Two engine facts shape the visuals and are honoured here, not editorialised away:
  *  - A `parallel` (`Control.all` / `allAsync`) runs every direct child from t=0 simultaneously, so a
@@ -18,8 +22,14 @@ import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryScene } from "@
  *    the lens never implies "winner cuts the rest off".
  */
 
-/** The kind of footprint a track shows — a plain animated action, a pure wait (delay), or a nested container. */
-export type LensTrackKind = "action" | "wait" | "subgroup";
+/**
+ * The kind of footprint a track shows — a plain animated action, a pure wait (delay), a nested
+ * container, or `text` for a prose child (narration / dialogue / note). A `text` track draws no bar at
+ * all: the row keeps its ordinary rendering, which is where the in-place text editor, the voice
+ * indicator and the row actions live. The lens must not swallow that arm — a row that opens for
+ * editing has to show an editor (`docs/story-editor-interaction-model.md`, "Editing in place").
+ */
+export type LensTrackKind = "action" | "wait" | "subgroup" | "text";
 
 /** One track's derived timing. `finishMs` is `delayMs + durationMs`; meaningless when `unknown`. */
 export type LensTrackSegment = {
@@ -61,6 +71,16 @@ export type StoryLensRowTrack = {
     mode: "parallel" | "race";
     winnerFinishMs: number | null;
 };
+
+/**
+ * Whether a track swaps the row's content column for a bar. False for a prose track: that row keeps
+ * the ordinary content — badge, preview, in-place text editor, voice indicator, row actions — so the
+ * lens never leaves an editable row without an editor. The row still belongs to the lens (it keeps its
+ * `isLast` tail "+"), it just is not drawn as a bar.
+ */
+export function lensTrackRendersBar(track: StoryLensRowTrack): boolean {
+    return track.segment.kind !== "text";
+}
 
 /** True for the two container flavours the lens renders (the others keep their normal list rendering). */
 export function isLensContainer(block: StoryBlock): block is Extract<StoryBlock, { kind: "control" }> {
@@ -169,6 +189,13 @@ function blockFinishMs(scene: StoryScene, block: StoryBlock, seen: Set<StoryBloc
 /** The track segment for one direct child of a lens container. */
 function deriveTrackSegment(scene: StoryScene, child: StoryBlock, isLast: boolean): LensTrackSegment {
     const disabled = Boolean(child.disabled);
+    // Prose first: a narration / dialogue / note child (reachable through the lens's own tail "+")
+    // renders as an ordinary editable row, not a bar. It therefore contributes no footprint either —
+    // an invisible track must never set the scale nor decide a race, which is why a dialogue's
+    // `pauseAfter` is read only when it sits deeper, inside a subgroup's aggregate.
+    if (getTextSegment(child)) {
+        return { blockId: child.id, kind: "text", delayMs: 0, durationMs: 0, unknown: true, finishMs: 0, disabled, isLast };
+    }
     if (child.kind === "control"
         && (child.payload.control === "sequence" || child.payload.control === "parallel"
             || child.payload.control === "race" || child.payload.control === "repeat")) {
