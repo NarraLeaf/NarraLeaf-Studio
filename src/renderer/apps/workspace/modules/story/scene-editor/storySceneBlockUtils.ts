@@ -4,7 +4,7 @@ import { describeDeclaration, layerActionTargetRef, resolveDisplayableTargetRef,
 import { storyMsToSeconds } from "@shared/utils/storyTime";
 import { richIfMeaningful } from "./richText";
 import type { Character } from "@/lib/workspace/services/character/Character";
-import type { CharacterAppearanceRef, StoryBlockTarget, VisibleStoryRow } from "./storySceneEditorTypes";
+import type { CharacterAppearanceRef, StoryBlockTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
 import { getActionCommandCategory, type ActionCommandCategoryId } from "./storyActionCommands";
 import { translate } from "@/lib/i18n";
 
@@ -14,6 +14,11 @@ import { translate } from "@/lib/i18n";
  * the character's default form + default variants). A reading aid for the row avatars, not runtime
  * truth — it walks the tree linearly and does not model branch-specific stage state.
  */
+/** The `at=` placement a character block carries, or undefined when its transform is not a placement. */
+function placementOf(preset: string | undefined): StoryStagePlacement | undefined {
+    return preset === "left" || preset === "center" || preset === "right" ? preset : undefined;
+}
+
 export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, CharacterAppearanceRef> {
     const current = new Map<string, CharacterAppearanceRef>();
     const result = new Map<StoryBlockId, CharacterAppearanceRef>();
@@ -24,10 +29,25 @@ export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, C
         }
         if (block.kind === "action" && block.payload.action === "character" && block.payload.characterId) {
             const characterId = block.payload.characterId;
+            const position = placementOf(block.payload.transform?.preset);
             if (block.payload.operation === "exit") {
                 current.delete(characterId);
-            } else if (block.payload.operation === "enter" || block.payload.operation === "expression") {
-                current.set(characterId, { formName: block.payload.formName, variants: block.payload.variants });
+            } else if (block.payload.operation === "enter") {
+                // An entrance sets the whole appearance, placement included — its own block is the row
+                // the group-header dropdown rewrites (WI-3, M3.1).
+                current.set(characterId, { formName: block.payload.formName, variants: block.payload.variants, position, positionSourceId: block.id });
+            } else if (block.payload.operation === "expression") {
+                // An expression changes the form/variant but not where the character stands, so the
+                // accumulated placement (and the row that owns it) is preserved.
+                const previous = current.get(characterId);
+                current.set(characterId, { ...previous, formName: block.payload.formName, variants: block.payload.variants });
+            } else if (block.payload.operation === "move") {
+                // A move relocates a character already on stage: update the placement and make this row
+                // the one the dropdown edits, but leave the form/variant untouched.
+                const previous = current.get(characterId);
+                if (previous) {
+                    current.set(characterId, { ...previous, position, positionSourceId: block.id });
+                }
             }
         } else if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
             const appearance = current.get(block.payload.characterId);

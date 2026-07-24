@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
-import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Music, Play, Plus, Route, UserRoundPlus, Variable, Video } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GripVertical, Hash, Image, Music, Play, Plus, Route, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterVariantSelection, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
@@ -51,7 +51,7 @@ import { StoryVoiceIndicator } from "./StoryVoiceIndicator";
 import { PausePopover } from "./PausePopover";
 import { segmentToRuns } from "./richText";
 import { useStoryEditorTextStyle } from "./storyEditorTextStyle";
-import type { CharacterAppearanceRef, EditorMode, StoryCaretTarget, VisibleStoryRow } from "./storySceneEditorTypes";
+import type { CharacterAppearanceRef, EditorMode, StoryCaretTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
 import {
     canAcceptChildren,
     describeBlock,
@@ -105,6 +105,8 @@ export function StoryBlockRow(props: {
     onOpenInspector: () => void;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
+    /** Set the dialogue group's speaker placement (WI-3): rewrites the enter/move `at=`, via history. */
+    onSetPosition: (position: StoryStagePlacement) => void;
     tempSpeakers: TempSpeakerRef[];
     onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
     onCreateCharacter: (name: string) => void;
@@ -131,6 +133,11 @@ export function StoryBlockRow(props: {
     // Dialogue-group continuation rows (WI-5): a later same-speaker dialogue, or a same-character
     // expression line folded into the run. Members drop their badge + nametag for a group rail.
     const dialogueMember = row.groupRole === "member" && isDialogue;
+    // A dialogue group head backed by a real character carries the hover-reveal placement dropdown
+    // (WI-3): a standalone line is a run of one, so it counts too. A bare-name speaker has no character
+    // to place, so it gets none.
+    const dialogueHead = isDialogue && row.groupRole !== "member"
+        && block.kind === "nodeAction" && block.payload.action === "dialogue" && Boolean(block.payload.characterId);
     const expressionMember = row.groupRole === "member"
         && block.kind === "action" && block.payload.action === "character" && block.payload.operation === "expression";
     // Every non-dialogue, non-narration/note row carries a low-key category colour bar at its left
@@ -293,6 +300,9 @@ export function StoryBlockRow(props: {
                             <ContainerHeaderAdd info={containerInfo} onAdd={() => props.onAddInside(block.id)} />
                         ) : (
                             <>
+                                {dialogueHead ? (
+                                    <GroupHeadPositionControl position={row.appearance?.position} active={active} onSetPosition={props.onSetPosition} />
+                                ) : null}
                                 <StoryVoiceIndicator block={block} />
                                 <RowActions onInsertAfter={props.onInsertAfter} onDelete={props.onDeleteRow} active={active} />
                             </>
@@ -567,6 +577,94 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
             >
                 {t("story.rows.delete")}
             </button>
+        </div>
+    );
+}
+
+const STAGE_PLACEMENTS: { value: StoryStagePlacement; icon: typeof AlignLeft }[] = [
+    { value: "left", icon: AlignLeft },
+    { value: "center", icon: AlignCenter },
+    { value: "right", icon: AlignRight },
+];
+
+/**
+ * The dialogue group head's placement control (WI-3, M3.1): a hover-reveal dropdown that reads the
+ * speaker's current `at=` and writes it back. It is a declarative shell — the controller keeps the
+ * document as command lines (rewrites the enter/move `at=`, or inserts a `/move`), so this only ever
+ * shows and picks left/center/right. Absent placement reads as the runtime default, center.
+ */
+function GroupHeadPositionControl(props: { position: StoryStagePlacement | undefined; active: boolean; onSetPosition: (position: StoryStagePlacement) => void }) {
+    const { t } = useTranslation();
+    const [open, setOpen] = useState(false);
+    const anchorRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        if (!open) {
+            return;
+        }
+        const onPointerDown = (event: Event) => {
+            if (!anchorRef.current?.contains(event.target as Node)) {
+                setOpen(false);
+            }
+        };
+        window.addEventListener("mousedown", onPointerDown, true);
+        return () => window.removeEventListener("mousedown", onPointerDown, true);
+    }, [open]);
+
+    const currentValue = props.position ?? "center";
+    const CurrentIcon = (STAGE_PLACEMENTS.find(placement => placement.value === currentValue) ?? STAGE_PLACEMENTS[1]).icon;
+
+    return (
+        <div ref={anchorRef} className="relative">
+            <button
+                type="button"
+                tabIndex={-1}
+                title={t("story.position.label")}
+                aria-label={t("story.position.label")}
+                className={[
+                    "rounded p-1 transition-colors hover:bg-fill hover:text-primary",
+                    open || props.active ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                    open ? "bg-fill text-primary" : "text-fg-muted",
+                ].join(" ")}
+                onClick={event => {
+                    event.stopPropagation();
+                    setOpen(value => !value);
+                }}
+            >
+                <CurrentIcon className="h-4 w-4" />
+            </button>
+            {open ? (
+                <div
+                    className="absolute right-0 top-full z-50 mt-1 flex gap-0.5 rounded-lg border border-edge bg-surface-raised p-1 shadow-xl"
+                    onMouseDown={event => event.stopPropagation()}
+                >
+                    {STAGE_PLACEMENTS.map(placement => {
+                        const Icon = placement.icon;
+                        const selected = placement.value === currentValue;
+                        return (
+                            <button
+                                key={placement.value}
+                                type="button"
+                                tabIndex={-1}
+                                title={t(`story.position.${placement.value}` as TranslationKey)}
+                                aria-label={t(`story.position.${placement.value}` as TranslationKey)}
+                                aria-pressed={selected}
+                                className={[
+                                    "rounded p-1.5 transition-colors",
+                                    selected ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg",
+                                ].join(" ")}
+                                onClick={event => {
+                                    event.stopPropagation();
+                                    props.onSetPosition(placement.value);
+                                    setOpen(false);
+                                }}
+                            >
+                                <Icon className="h-4 w-4" />
+                            </button>
+                        );
+                    })}
+                </div>
+            ) : null}
         </div>
     );
 }

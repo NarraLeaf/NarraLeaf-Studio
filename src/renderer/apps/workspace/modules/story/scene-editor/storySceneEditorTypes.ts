@@ -5,10 +5,25 @@ export type StoryBlockTarget = {
     beforeBlockId?: StoryBlockId | null;
 };
 
+/** The three stage placements `at=` accepts (bible §1.2). */
+export type StoryStagePlacement = "left" | "center" | "right";
+
 /** The form + variants a character is showing at a given point — its "current appearance". */
 export type CharacterAppearanceRef = {
     formName?: string;
     variants?: StoryCharacterVariantSelection;
+    /**
+     * The character's placement (`at=`) at this point, accumulated from its most recent enter/move
+     * (WI-3, M3.1). Drives the group-header position dropdown's current value; absent means the
+     * placement was never set explicitly, so it reads as the runtime default (center).
+     */
+    position?: StoryStagePlacement;
+    /**
+     * The block id of that most-recent enter/move — the row whose `at=` the group-header dropdown
+     * rewrites in place. Absent when the character has no enter/move yet (the dropdown inserts a
+     * `/move` above the group head instead).
+     */
+    positionSourceId?: StoryBlockId;
 };
 
 export type VisibleStoryRow = {
