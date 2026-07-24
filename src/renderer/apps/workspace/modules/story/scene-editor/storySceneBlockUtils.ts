@@ -33,21 +33,21 @@ export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, C
             if (block.payload.operation === "exit") {
                 current.delete(characterId);
             } else if (block.payload.operation === "enter") {
-                // An entrance sets the whole appearance, placement included — its own block is the row
-                // the group-header dropdown rewrites (WI-3, M3.1).
-                current.set(characterId, { formName: block.payload.formName, variants: block.payload.variants, position, positionSourceId: block.id });
+                // An entrance shows the character and sets the whole appearance, placement included — its
+                // own block is the row the group-header dropdown rewrites (WI-3, M3.1).
+                current.set(characterId, { formName: block.payload.formName, variants: block.payload.variants, position, positionSourceId: block.id, shown: true });
             } else if (block.payload.operation === "expression") {
                 // An expression changes the form/variant but not where the character stands, so the
                 // accumulated placement (and the row that owns it) is preserved.
                 const previous = current.get(characterId);
-                current.set(characterId, { ...previous, formName: block.payload.formName, variants: block.payload.variants });
-            } else if (block.payload.operation === "move") {
-                // A move relocates a character already on stage: update the placement and make this row
-                // the one the dropdown edits, but leave the form/variant untouched.
-                const previous = current.get(characterId);
-                if (previous) {
-                    current.set(characterId, { ...previous, position, positionSourceId: block.id });
-                }
+                current.set(characterId, { ...previous, formName: block.payload.formName, variants: block.payload.variants, shown: true });
+            } else if (block.payload.operation === "move" && position) {
+                // A placement move relocates the character and becomes the row the dropdown rewrites —
+                // including the case where the group-header dropdown authored this `/move` for a speaker
+                // with no prior enter (so the round-trip reads its own write back). It does not "show" the
+                // character (a move on a hidden one is a runtime no-op), so it never invents an avatar; a
+                // coordinate/scale-only move carries no placement and leaves the accumulated one untouched.
+                current.set(characterId, { ...current.get(characterId), position, positionSourceId: block.id });
             }
         } else if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
             const appearance = current.get(block.payload.characterId);

@@ -1965,7 +1965,9 @@ function getBadgeImageSpec(
         return { characterId: block.payload.characterId, formName: block.payload.formName, variants: block.payload.variants, resolveVariant: true };
     }
     if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
-        return { characterId: block.payload.characterId, formName: appearance?.formName, variants: appearance?.variants, resolveVariant: appearance !== undefined };
+        // Only a *shown* appearance pictures an avatar — a placement-only appearance (a `/move` on a
+        // never-shown speaker, used by the group-header dropdown) must not invent a look (WI-3, M3.1).
+        return { characterId: block.payload.characterId, formName: appearance?.formName, variants: appearance?.variants, resolveVariant: appearance?.shown === true };
     }
     return null;
 }
