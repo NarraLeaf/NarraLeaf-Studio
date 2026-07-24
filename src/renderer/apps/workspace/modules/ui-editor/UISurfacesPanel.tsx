@@ -25,6 +25,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { DEFAULT_APP_SURFACE_NAME, DEFAULT_UI_SURFACE_SIZE, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { SurfaceActions } from "./panel/SurfaceActions";
+import { UITemplateStoreModal } from "./panel/templates/UITemplateStoreModal";
 import { SurfaceFilters } from "./panel/SurfaceFilters";
 import { SurfaceList, type SurfaceListGlobalBlueprintCard } from "./panel/SurfaceList";
 import { ComponentLibraryPanel } from "./panel/ComponentLibraryPanel";
@@ -132,6 +133,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
     const [hasEnsuredAppSurface, setHasEnsuredAppSurface] = useState(false);
+    const [templateStoreOpen, setTemplateStoreOpen] = useState(false);
     const blueprintRevision = useBlueprintDocumentRevision();
 
     const documentService = useMemo<UIDocumentService | null>(() => {
@@ -549,6 +551,9 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 onCreate={handleCreateSurface}
                 createLabel={kind === "appSurface" ? t("uiEditor.panel.createPage") : t("uiEditor.panel.createGameUi")}
                 createDisabled={!documentService || !currentKindOption}
+                onOpenTemplateStore={() => setTemplateStoreOpen(true)}
+                templateLabel={t("uiEditor.templateStore.open")}
+                templateDisabled={!documentService}
             />
             <SurfaceList
                 surfaces={filteredSurfaces}
@@ -569,6 +574,13 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 position={menuState.position}
                 visible={menuState.visible}
                 onClose={hideMenu}
+            />
+            <UITemplateStoreModal
+                isOpen={templateStoreOpen}
+                onClose={() => setTemplateStoreOpen(false)}
+                documentService={documentService}
+                onApplied={handleOpenSurface}
+                onNotify={(message, level) => uiService?.showNotification(message, level)}
             />
         </div>
     );

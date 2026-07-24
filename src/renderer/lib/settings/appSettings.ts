@@ -467,4 +467,18 @@ export const AppSettings: AppSettingDefinition[] = [
         descriptionKey: "settings.items.pluginRegistryUrl.description",
         defaultValue: "",
     },
+    {
+        // Read by the main process (uiTemplateRegistryClient.resolveTemplateRegistryUrl)
+        // when the UI editor's template store fetches the index or a template bundle.
+        // Empty = the official NarraLeaf/UI-Templates registry index.
+        key: "uiTemplates.registryUrl",
+        category: "plugins",
+        scope: SettingScope.Global,
+        type: SettingValueType.String,
+        label: "UI template registry URL",
+        labelKey: "settings.items.uiTemplateRegistryUrl.label",
+        description: "Registry index URL for the UI template store. Leave empty to use the official NarraLeaf registry.",
+        descriptionKey: "settings.items.uiTemplateRegistryUrl.description",
+        defaultValue: "",
+    },
 ];

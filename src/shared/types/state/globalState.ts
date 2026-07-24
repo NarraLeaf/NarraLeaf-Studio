@@ -114,6 +114,12 @@ export interface GlobalStateType extends Record<string, any> {
      * launcher's Plugins store fetches or installs.
      */
     "plugins.registryUrl": string;
+    /**
+     * UI template store registry index URL; "" = the official NarraLeaf/UI-Templates
+     * index (see @shared/constants/uiTemplateRegistry). Read by the main process when
+     * the UI editor's template store fetches the index or a template bundle.
+     */
+    "uiTemplates.registryUrl": string;
 }
 
 export type GlobalStateKeys = string;
@@ -162,4 +168,5 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "advanced.experimentalFeatures": false,
     "build.electronMirror": "",
     "plugins.registryUrl": "",
+    "uiTemplates.registryUrl": "",
 };

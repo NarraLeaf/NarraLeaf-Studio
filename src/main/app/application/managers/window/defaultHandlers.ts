@@ -64,6 +64,10 @@ import {
     PluginWorkspaceListHandler,
 } from "./handlers/pluginManagerAction";
 import {
+    UITemplateFetchBundleHandler,
+    UITemplateRegistryFetchHandler,
+} from "./handlers/uiTemplateAction";
+import {
     BlueprintPersistenceGetAllHandler,
     BlueprintPersistenceGetValueHandler,
     BlueprintPersistenceRemoveValueHandler,
@@ -178,6 +182,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new PluginLocaleListHandler(),
         new PluginRegistryFetchHandler(),
         new PluginInstallFromRegistryHandler(),
+        new UITemplateRegistryFetchHandler(),
+        new UITemplateFetchBundleHandler(),
 
         // Actor-aware privileged facade handlers
         new PrivilegedFsCallHandler(),

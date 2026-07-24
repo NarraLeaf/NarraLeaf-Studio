@@ -117,6 +117,11 @@ export const settings = {
             description:
                 "Registry index URL for the plugin store. Leave empty to use the official NarraLeaf registry.",
         },
+        uiTemplateRegistryUrl: {
+            label: "UI template registry URL",
+            description:
+                "Registry index URL for the UI template store. Leave empty to use the official NarraLeaf registry.",
+        },
         confirmBeforeClose: {
             label: "Confirm before closing a workspace",
             description: "Ask for confirmation when you close a workspace window.",
