@@ -1,12 +1,13 @@
 import type { TranslationKey } from "@shared/i18n";
-import { getActionCommandCategory, type PaletteActionCommand } from "../storyActionCommands";
+import type { PaletteActionCommand } from "../storyActionCommands";
+import { getCommandGroup } from "../storyCommandCategories";
 import { commandDetailKey, commandLabelKey, listCommandSpecs } from "./registry";
 
 /**
- * The command specs projected onto the palette-command shape the slash menu renders.
+ * The command specs projected onto the palette-command shape every menu renders.
  *
- * The menu lists LINE commands - one entry per spec, labelled from `story.command.<id>.*` - while
- * the sidebar palette keeps listing block types (`ACTION_COMMANDS`). The `/`-spelled aliases feed
+ * Since A1 this is the ONLY catalogue: the `/` menu lists these entries one per spec, and the sidebar
+ * lists the same entries re-filed by subject (see `specSidebar.ts`). The `/`-spelled aliases feed
  * `searchActionCommands`' exact tier, so typing a token finds its command by name too.
  */
 
@@ -14,10 +15,10 @@ type SpecCommandTranslate = (key: TranslationKey) => string;
 
 const SPEC_PALETTE: readonly PaletteActionCommand[] = listCommandSpecs().map(spec => ({
     id: spec.id,
-    category: spec.category,
+    group: spec.category,
     label: spec.id,
     detail: "",
-    icon: getActionCommandCategory(spec.category).icon,
+    icon: getCommandGroup(spec.category).icon,
     aliases: [spec.token, ...(spec.aliases ?? [])].map(alias => `/${alias}`),
 }));
 

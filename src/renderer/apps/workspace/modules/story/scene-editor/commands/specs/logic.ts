@@ -6,7 +6,7 @@ import { asEnum, asNumber, defineStoryCommand } from "../spec";
 export const ifCommand = defineStoryCommand({
     id: "if",
     token: "if",
-    category: "control",
+    category: "flow",
     params: {
         test: { hint: "condition", type: { kind: "expression", expects: "boolean" }, positional: true, greedy: true, core: true },
     },
@@ -21,7 +21,7 @@ export const menu = defineStoryCommand({
     id: "menu",
     token: "menu",
     aliases: ["choice"],
-    category: "control",
+    category: "flow",
     params: {
         text: { hint: "content", type: { kind: "text" }, positional: true, greedy: true },
     },
@@ -43,7 +43,7 @@ export const repeat = defineStoryCommand({
     id: "repeat",
     token: "repeat",
     aliases: ["loop"],
-    category: "control",
+    category: "flow",
     params: {
         times: { hint: "times", type: { kind: "number", min: 1, integer: true }, positional: true, core: true },
     },
@@ -60,7 +60,7 @@ export const repeat = defineStoryCommand({
 export const parallel = defineStoryCommand({
     id: "parallel",
     token: "parallel",
-    category: "control",
+    category: "flow",
     params: {},
     build: (_args, ctx) => createBlockForCommand("parallel", ctx.generateId),
 });
@@ -68,7 +68,7 @@ export const parallel = defineStoryCommand({
 export const race = defineStoryCommand({
     id: "race",
     token: "race",
-    category: "control",
+    category: "flow",
     params: {},
     build: (_args, ctx) => createBlockForCommand("race", ctx.generateId),
 });
@@ -77,7 +77,7 @@ export const sequence = defineStoryCommand({
     id: "sequence",
     token: "sequence",
     aliases: ["seq"],
-    category: "control",
+    category: "flow",
     params: {},
     build: (_args, ctx) => createBlockForCommand("sequence", ctx.generateId),
 });
@@ -86,7 +86,7 @@ export const code = defineStoryCommand({
     id: "code",
     token: "code",
     aliases: ["script"],
-    category: "data",
+    category: "utils",
     params: {
         language: {
             hint: "valueType",
@@ -116,7 +116,7 @@ export const blueprint = defineStoryCommand({
     id: "blueprint",
     token: "blueprint",
     aliases: ["executescript", "bp"],
-    category: "data",
+    category: "utils",
     params: {},
     build: (_args, ctx) => createBlockForCommand("executeScript", ctx.generateId),
     inspectorAfterCommit: true,
