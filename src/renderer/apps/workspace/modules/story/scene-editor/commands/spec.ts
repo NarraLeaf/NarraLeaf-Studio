@@ -158,12 +158,15 @@ export function secondsParam(hint = "duration"): StoryCommandParamSpec {
     return { aliases: ["duration"], hint, type: { kind: "number", min: 0 } };
 }
 
+/** The `at=` word list (bible §1.2). Exported so a positional placement slot spells the same three words. */
+export const PLACEMENT_OPTIONS = [{ value: "left" }, { value: "center" }, { value: "right" }] as const;
+
 /** `at=` - a placement. */
 export function placementParam(): StoryCommandParamSpec {
     return {
         aliases: ["pos"],
         hint: "placement",
-        type: { kind: "enum", options: [{ value: "left" }, { value: "center" }, { value: "right" }] },
+        type: { kind: "enum", options: PLACEMENT_OPTIONS },
     };
 }
 

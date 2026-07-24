@@ -1867,6 +1867,47 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(sentence.config?.voiceId ?? null).toBeNull();
     });
 
+    it("compiles /camera onto story.camera and clamps every numeric input", async () => {
+        // The clamp is the point: the engine's Darkness does not clamp, so an out-of-range darkness
+        // compiles to an invalid filter and fails SILENTLY. Same reasoning for a zero/negative zoom.
+        const cameraBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "camera" }>): StoryBlock => ({
+            id,
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload,
+        });
+        const blocks: Record<string, StoryBlock> = {
+            zoom: cameraBlock("zoom", { action: "camera", operation: "zoom", zoom: 0, durationMs: 800 }),
+            pan: cameraBlock("pan", { action: "camera", operation: "pan", position: { xalign: 0.25, yalign: 0.5 }, durationMs: 600 }),
+            rotate: cameraBlock("rotate", { action: "camera", operation: "rotate", rotation: 15, durationMs: 400 }),
+            dark: cameraBlock("dark", { action: "camera", operation: "darken", darkness: 2, durationMs: 500 }),
+            reset: cameraBlock("reset", { action: "camera", operation: "reset", durationMs: 600 }),
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["zoom", "pan", "rotate", "dark", "reset"]),
+            sceneId: "scene-1",
+        });
+
+        const propsOf = (blockId: string) => getDisplayableTransformProps(
+            compiled.actionIdBindings
+                .filter(binding => binding.blockId === blockId)
+                .flatMap(binding => collectActionTree(binding.action, compiled.story)),
+        );
+
+        expect(compiled.diagnostics).toEqual([]);
+        // Every camera row produced a statement bound back to its block.
+        for (const blockId of Object.keys(blocks)) {
+            expect(compiled.actionIdBindings.some(binding => binding.blockId === blockId)).toBe(true);
+        }
+        // zoom 0 would be a degenerate transform; it lands on the floor instead.
+        expect(propsOf("zoom")).toEqual([expect.objectContaining({ zoom: 0.05 })]);
+        expect(propsOf("pan")).toEqual([expect.objectContaining({ position: expect.objectContaining({ xalign: 0.25, yalign: 0.5 }) })]);
+        expect(propsOf("rotate")).toEqual([expect.objectContaining({ rotation: 15 })]);
+        // darkness 2 → brightness(-1), which renders as nothing at all. Clamped to 1 → brightness(0).
+        expect(propsOf("dark")).toEqual([expect.objectContaining({ filter: "brightness(0)" })]);
+    });
+
     it("warns when a persistent name is declared in both the registry and a story row (M-VAR merged view)", async () => {
         // Story `/persis Score` row and a blueprint-registry entry also named "Score" - ambiguous.
         const scoreRow: StoryBlock = {
