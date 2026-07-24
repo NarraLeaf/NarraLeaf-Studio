@@ -146,7 +146,7 @@
 - **撤「暂不适用」**：console + preflight finding + `mobile-unprotected` union + i18n(en/zh) 全删，无残留引用。**web+key 硬 throw 未动**（未碰 compiler）。
 - **验证**：新增密文测试（Studio `isProtectedPayload` + 外部 `unzip` oracle）；main/shared typecheck OK；mobile+build+compiler **21 文件 183 passed / 7 skipped**；`yarn build:main` 绿。
 
-### P4 · 端到端验证 + 保密审计 — ✅ 基本完成（仅 iOS 模拟器实跑延后）
+### P4 · 端到端验证 + 保密审计 — ✅ 完成（含 iOS 模拟器实机解密）
 
 1. **加密产物**：`runMobileRepack` 用**真实 0.2.0 模板** + 真 key 产 APK → **外部 `unzip`** 读回 www 载荷**非明文**（不含明文串）、`isProtectedPayload`=真、shell-config 明文 JSON 含 `contentKey`、schema 1、APK v2 签名验证通过。✅
 2. **非加密**：无 key `unzip` 读回**逐字节明文**、`isProtectedPayload`=假、shell-config 无 contentKey。✅
@@ -154,7 +154,11 @@
 4. **Android CI oracle**：壳 build-shells CI 全绿；Studio `androidSdkOracle` 需 SDK，本机跳过、CI 覆盖。
 5. **保密审计**：两公开仓全 diff **零机制词汇**（逐行扫描通过）。✅
 6. **外部 oracle**：系统 `unzip`（非 Studio 自家解析器）。✅
-7. **遗留**：iOS 模拟器实机解密——本机无 runtime（`simctl list runtimes` 空），需 `xcodebuild -downloadPlatform iOS`（~7GB），属「尽可能」项未跑；正确性已由 P1 构建+符号、`test:mobile` 19/19（同源解码器）、Android on-device 先例、0.4.0↔0.4.1 格式一致、外部 oracle 多重佐证。
+7. **iOS 模拟器实机解密 — ✅ 已跑（2026-07-24，iOS 18.3.1 iPhone 16 模拟器）**：装 runtime，为 simulator slice 构建壳（fat x86_64+arm64，`nm` 见 5 符号），注入加密 www + 明文 shell-config，三变体实机截图：
+   - **正确 key + 全加密载荷** → WebView 渲染出**解码后**的绿屏 "DECODED PAYLOAD"（明文只在正确解码时出现）→ Swift `NativeContentDecoder`+`WwwSchemeHandler` 运行时解码正确。
+   - **错误但格式合法 key** → 白底**乱码**（非明文、非绿）→ 解码真实依赖 key（符合 CTR 无 MAC「wrong key 不可检测但不产明文」+ Android 先例）。
+   - **明文文件 + config 带 key** → **空白**（`headerLen==0` → Swift 抛 `notEncoded` → `didFailWithError`）→ **fail-loud**，不静默服务明文/乱码，与 Android（404）语义一致。
+   - **顺带验证跨版本栈**：壳二进制含 **0.4.0** 解码器（pull-decoder pin），载荷用 **0.4.1** `encryptBuffer` 加密 → 绿屏成功，运行时证实 0.4.1 加密↔0.4.0 解码兼容。测试用模拟器已删除。
 
 **Studio 侧未提交**：10 文件（package.json / build-main.js / GameBuildManager.ts / runMobileRepack.ts(.test) / protocol.ts / mobileShellManifest.ts / gameBuild.ts / en·zh build.ts），待用户定夺提交方式。
 
