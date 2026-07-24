@@ -1,5 +1,5 @@
 import type { UIHostAdapter } from "../runtime/types";
-import type { BlueprintPersistentVariable } from "@shared/types/blueprint/document";
+import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import type { UIGraph, UIGraphEntry } from "@shared/types/ui-editor/graph";
 import { registerCoreBlueprintNodes } from "../blueprint-nodes/registerCoreBlueprintNodes";
 import { behaviorNodeRegistry } from "./BehaviorNodeRegistry";
@@ -31,7 +31,7 @@ export type ExecuteGraphOptions = {
     listItemScope?: BehaviorNodeExecutionContext["listItemScope"];
     instanceKey?: string;
     executionOwner?: BehaviorNodeExecutionContext["executionOwner"];
-    persistentVariables?: Record<string, BlueprintPersistentVariable>;
+    persistentVariables?: PersistentVariableRuntimeTable;
     valueExecution?: Pick<NonNullable<BehaviorNodeExecutionContext["valueExecution"]>, "trackDependency">;
     signal?: AbortSignal;
     fnCallDepth?: number;

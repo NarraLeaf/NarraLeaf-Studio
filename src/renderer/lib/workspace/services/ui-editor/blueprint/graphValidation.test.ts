@@ -204,7 +204,6 @@ describe("blueprint graph validation", () => {
         registerCoreBlueprintNodes();
         const doc: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 widget: {
                     id: "widget",
@@ -256,7 +255,6 @@ describe("blueprint graph validation", () => {
         registerCoreBlueprintNodes();
         const doc: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 widget: {
                     id: "widget",
@@ -547,7 +545,6 @@ describe("blueprint fn validation", () => {
         }
         return {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: docBlueprints,
             ownerRecords,
         };

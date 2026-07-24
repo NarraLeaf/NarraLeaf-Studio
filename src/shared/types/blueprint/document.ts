@@ -63,8 +63,6 @@ export type BlueprintDocument = {
     schemaVersion: BlueprintDocumentSchemaVersion;
     blueprints: Record<string, Blueprint>;
     ownerRecords: Record<string, BlueprintPrivateOwnerRecord>;
-    /** Project-level persistent variables; definitions are authored assets, values live in host-managed storage. */
-    persistentVariables: Record<string, BlueprintPersistentVariable>;
     meta?: {
         createdAt?: string;
         updatedAt?: string;
@@ -110,6 +108,11 @@ export type BlueprintVariable = {
     meta?: Record<string, unknown>;
 };
 
+/**
+ * Legacy shape, retained only as migration input. Project-level persistent variables left the
+ * blueprint document for the project-level variable registry (M-VAR); the v8→v9 migration reads this
+ * off the raw document and seeds `editor/variables.json`.
+ */
 export type BlueprintPersistentVariable = BlueprintVariable & {
     /** Stable storage key used for host persistence. Defaults to id and is not changed by rename. */
     storageKey: string;

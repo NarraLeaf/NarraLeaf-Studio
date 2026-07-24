@@ -73,7 +73,6 @@ describe("collectSurfaceFlushElementIds", () => {
         };
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 "flush-bp": {
                     id: "flush-bp",

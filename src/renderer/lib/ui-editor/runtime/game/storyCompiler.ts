@@ -84,6 +84,12 @@ import {
 import type { StoryExpressionReader } from "@shared/utils/storyExpressionEval";
 import { evaluateStoryExpression, isTruthy, strictEquals, toDisplayString } from "@shared/utils/storyExpressionEval";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
+import {
+    buildMergedPersistentView,
+    mergedPersistentStorageKeys,
+    type MergedPersistentView,
+} from "@shared/variables/mergedPersistentView";
 import type { GameLocalizationBundle } from "@shared/types/localization";
 import { resolveLocaleChain } from "@shared/types/localization";
 import type { GameVoiceBundle } from "@shared/types/voice";
@@ -151,15 +157,27 @@ function collectPersistentDefaults(document: StoryDocument): Record<string, Stor
  * checks membership here; a miss is an undeclared variable and gets the same diagnostic as a missing
  * scene/saved one.
  */
-function collectPersistentKeys(document: StoryDocument, blueprintDocument?: BlueprintDocument): Set<string> {
-    const keys = new Set<string>();
-    for (const def of Object.values(storyPersistentDefs(document))) {
-        keys.add(def.storageKey);
+/**
+ * The merged persistent view for a compile: the registry (blueprint-declared, baked into the bundle)
+ * unioned with the story `/persis` declaration rows (WI-3). Reference validation reads its storage
+ * keys; a display name declared in both surfaces is reported as a collision diagnostic.
+ */
+function collectPersistentView(document: StoryDocument, persistentVariables?: PersistentVariableRuntimeTable): MergedPersistentView {
+    return buildMergedPersistentView(
+        Object.values(persistentVariables ?? {}),
+        Object.values(storyPersistentDefs(document)),
+    );
+}
+
+function pushPersistentNameCollisionDiagnostics(diagnostics: NlrStoryCompileDiagnostic[], view: MergedPersistentView): void {
+    for (const collision of view.nameCollisions) {
+        pushDiagnostic(
+            diagnostics,
+            "warning",
+            undefined,
+            `Persistent variable "${collision.name}" is declared in both the variable registry and a story row; references are ambiguous.`,
+        );
     }
-    for (const variable of Object.values(blueprintDocument?.persistentVariables ?? {})) {
-        keys.add(variable.storageKey);
-    }
-    return keys;
 }
 
 /**
@@ -324,6 +342,8 @@ export type StagePreviewCompileInput = {
     animations?: Record<string, StoryAnimationAsset>;
     resolveAssetUrl?: CompileInput["resolveAssetUrl"];
     blueprintDocument?: BlueprintDocument;
+    /** M-VAR: persistent variable registry table, baked into the bundle; replaces the old blueprint-doc field. */
+    persistentVariables?: PersistentVariableRuntimeTable;
     persistence?: StoryPersistenceBridge;
     /**
      * Fires synchronously once the pre-posed stage state has been fully applied (elements
@@ -372,8 +392,10 @@ type SceneCompileContext = {
     savedVariables: Record<string, StorySavedVariableDefinition>;
     /** Story-declared persistent defaults (storageKey → default), the fallback for host reads. */
     persistentDefaults: Record<string, StoryLiteralValue>;
-    /** Every declared persistent storage key (story rows + blueprint), for reference validation. */
+    /** Every declared persistent storage key (story rows + registry), for reference validation. */
     persistentKeys: Set<string>;
+    /** M-VAR registry table (id → def), baked into the bundle; used to compile blueprint persistent GET/SET. */
+    persistentVariables: PersistentVariableRuntimeTable;
     /** App-level persistent bridge (shared with UI blueprints); absent outside Dev Mode host. */
     persistence?: StoryPersistenceBridge;
     /** Blueprint document for compiling story-action blueprints referenced by this scene. */
@@ -405,6 +427,8 @@ type CompileInput = {
     resolveAssetUrl?: (assetId: string, assetType?: StoryAssetKind) => Promise<string | null | undefined> | string | null | undefined;
     /** Blueprint document; enables Story Action Blueprints and shared Persistent resolution. */
     blueprintDocument?: BlueprintDocument;
+    /** M-VAR: persistent variable registry table, baked into the bundle; replaces the old blueprint-doc field. */
+    persistentVariables?: PersistentVariableRuntimeTable;
     /** App-level persistent bridge (shared with UI blueprints); from the Dev Mode scope-store bridge. */
     persistence?: StoryPersistenceBridge;
     /** Game localization (bundle payload + current-locale getter); see {@link StoryLocalizationRuntime}. */
@@ -493,7 +517,10 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     }
     const savedPersistent = nlrStory.createPersistent(SAVED_PERSISTENT_NAMESPACE, savedDefaults);
     const persistentDefaults = collectPersistentDefaults(input.document);
-    const persistentKeys = collectPersistentKeys(input.document, input.blueprintDocument);
+    const persistentVariables = input.persistentVariables ?? {};
+    const persistentView = collectPersistentView(input.document, persistentVariables);
+    const persistentKeys = mergedPersistentStorageKeys(persistentView);
+    pushPersistentNameCollisionDiagnostics(diagnostics, persistentView);
     const localization = input.localization ? createSceneLocalizationResolver(input.localization) : undefined;
 
     for (const scene of Object.values(input.document.scenes)) {
@@ -516,6 +543,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             savedVariables,
             persistentDefaults,
             persistentKeys,
+            persistentVariables,
             persistence: input.persistence,
             blueprintDocument: input.blueprintDocument,
             localization,
@@ -564,6 +592,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             savedVariables,
             persistentDefaults,
             persistentKeys,
+            persistentVariables,
             animations,
             resolveAssetUrl,
             assetUrlCache,
@@ -613,6 +642,7 @@ async function buildLaunchEntryScene(params: {
     savedVariables: Record<string, StorySavedVariableDefinition>;
     persistentDefaults: Record<string, StoryLiteralValue>;
     persistentKeys: Set<string>;
+    persistentVariables: PersistentVariableRuntimeTable;
     animations: Map<string, StoryAnimationAsset>;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
@@ -658,6 +688,7 @@ async function buildLaunchEntryScene(params: {
         savedVariables: params.savedVariables,
         persistentDefaults: params.persistentDefaults,
         persistentKeys: params.persistentKeys,
+        persistentVariables: params.persistentVariables,
         persistence: input.persistence,
         blueprintDocument: input.blueprintDocument,
         localization: params.localization,
@@ -825,6 +856,8 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         backgroundSrc ? { background: backgroundSrc } : undefined,
     );
 
+    const previewPersistentView = collectPersistentView(input.document, input.persistentVariables);
+    pushPersistentNameCollisionDiagnostics(diagnostics, previewPersistentView);
     const ctx: SceneCompileContext = {
         document: input.document,
         nlrStory,
@@ -838,7 +871,8 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         sceneVariables: sceneVariableDefs(scene),
         savedVariables,
         persistentDefaults: collectPersistentDefaults(input.document),
-        persistentKeys: collectPersistentKeys(input.document, input.blueprintDocument),
+        persistentKeys: mergedPersistentStorageKeys(previewPersistentView),
+        persistentVariables: input.persistentVariables ?? {},
         persistence: input.persistence,
         blueprintDocument: input.blueprintDocument,
         sceneFnCatalog: collectSceneStoryActionFns({
@@ -1495,6 +1529,7 @@ function buildStoryActionScriptInput(
 ): CompileStoryActionScriptInput {
     return {
         blueprintDocument: ctx.blueprintDocument as BlueprintDocument,
+        persistentVariables: ctx.persistentVariables,
         blueprintId,
         nlrScene: ctx.nlrScene,
         sceneFnCatalog: ctx.sceneFnCatalog,
@@ -1580,7 +1615,7 @@ function buildInterpolationWord(
     }
     // Persistent (app-level): a dynamic word reading the shared host snapshot synchronously,
     // falling back to the story-declared default while the host has never stored a value.
-    if (!ctx.persistentKeys.has(target.storageKey)) {
+    if (!ctx.persistentKeys.has(target.variableId)) {
         diagnostic(ctx, "warning", blockId, "Persistent variable not found; interpolation skipped.");
         return null;
     }
@@ -1589,7 +1624,7 @@ function buildInterpolationWord(
         diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence; interpolation skipped.");
         return null;
     }
-    const storageKey = target.storageKey;
+    const storageKey = target.variableId;
     const persistentDefaults = ctx.persistentDefaults;
     return applyInterpolationWordMarks(new Word(((() => {
         const stored = persistence.get(storageKey);
@@ -2542,7 +2577,7 @@ function resolveVariableSlot(ctx: SceneCompileContext, ref: StoryVariableRef, bl
     // Existence is checked before host availability: an undeclared persistent variable is a fault the
     // author must fix regardless of whether Dev Mode host persistence is up (bible §3.3, same diagnostic
     // as a missing scene/saved variable).
-    if (!ctx.persistentKeys.has(ref.storageKey)) {
+    if (!ctx.persistentKeys.has(ref.variableId)) {
         diagnostic(ctx, "warning", blockId, "Persistent variable not found; the assignment was skipped.");
         return null;
     }
@@ -2550,7 +2585,7 @@ function resolveVariableSlot(ctx: SceneCompileContext, ref: StoryVariableRef, bl
         diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence and were skipped.");
         return null;
     }
-    return { kind: "host", key: ref.storageKey };
+    return { kind: "host", key: ref.variableId };
 }
 
 /**
@@ -2616,7 +2651,7 @@ function setVariable(
     }
     // Persistent (app-level, host-managed, shared with UI blueprints). Existence is checked first, so
     // an undeclared persistent target faults regardless of host availability (bible §3.3).
-    if (!ctx.persistentKeys.has(target.storageKey)) {
+    if (!ctx.persistentKeys.has(target.variableId)) {
         diagnostic(ctx, "warning", blockId, "Persistent variable not found; the assignment was skipped.");
         return null;
     }
@@ -2625,7 +2660,7 @@ function setVariable(
         diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence and were skipped.");
         return null;
     }
-    const storageKey = target.storageKey;
+    const storageKey = target.variableId;
     return Script.execute(() => {
         void persistence.set(storageKey, value);
     });
@@ -2704,11 +2739,11 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
     }
     const target = condition.target;
     if (target.scope === "persistent") {
-        if (!ctx.persistentKeys.has(target.storageKey)) {
+        if (!ctx.persistentKeys.has(target.variableId)) {
             diagnostic(ctx, "warning", blockId, "Persistent variable not found; condition evaluates false.");
             return falseCondition;
         }
-        return persistentCondition(ctx, target.storageKey, condition.operator, condition.value);
+        return persistentCondition(ctx, target.variableId, condition.operator, condition.value);
     }
     let persistent: Persistent<any>;
     let storageKey: string;

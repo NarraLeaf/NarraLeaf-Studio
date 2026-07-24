@@ -73,9 +73,6 @@ function blueprintDoc(): BlueprintDocument {
             globalMain: { activeBlueprintId: "bp-global", privateBlueprintIds: ["bp-global"] },
             "surfaceMain:surf-1": { activeBlueprintId: "bp-1", privateBlueprintIds: ["bp-1"] },
         },
-        persistentVariables: {
-            pv1: { id: "pv1", name: "Total Playtime" } as never,
-        },
         blueprints: {
             "bp-global": {
                 id: "bp-global",
@@ -162,8 +159,10 @@ describe("extractStoryEntries", () => {
 });
 
 describe("extractBlueprintEntries", () => {
-    const entries = extractBlueprintEntries(blueprintDoc(), type =>
-        type === "flow.branch" ? "Branch" : undefined,
+    const entries = extractBlueprintEntries(
+        blueprintDoc(),
+        type => (type === "flow.branch" ? "Branch" : undefined),
+        [{ id: "pv1", name: "Total Playtime", valueType: "json", storageKey: "pv1" }],
     );
 
     it("indexes member variables with the owner key for jumping", () => {
