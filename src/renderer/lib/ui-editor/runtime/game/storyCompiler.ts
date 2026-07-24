@@ -18,6 +18,7 @@ import {
     Sound,
     Story,
     Text,
+    TextEvent,
     Transform,
     Video,
     Word,
@@ -53,8 +54,10 @@ import type {
     StoryDocument,
     StoryExpr,
     StoryExpression,
+    StoryInlineEvent,
     StoryInterpolationRef,
     StoryLayerRef,
+    StoryRichRun,
     StoryLiteralValue,
     StoryScene,
     StorySceneId,
@@ -1286,16 +1289,17 @@ async function compilePreviewTargetOwnStatements(ctx: SceneCompileContext, block
 async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "nodeAction" }>): Promise<NlrStatement[]> {
     if (block.payload.action === "narration") {
         const segment = block.payload.text;
-        if (!segment.value.trim() && !segmentHasInterpolation(segment)) {
+        if (!segment.value.trim() && !segmentHasInterpolation(segment) && !segmentHasEvent(segment)) {
             return [];
         }
         const voiceConfig = voiceConfigForLine(ctx, segment.textId);
-        return [recordStatement(ctx, Narrator.say(buildLocalizedSentencePrompt(ctx, segment, block.id) as any, voiceConfig as any), block, segment.textId)];
+        const eventMap = await resolveSegmentEvents(ctx, segment, block.id);
+        return [recordStatement(ctx, Narrator.say(buildLocalizedSentencePrompt(ctx, segment, block.id, eventMap) as any, voiceConfig as any), block, segment.textId)];
     }
 
     if (block.payload.action === "dialogue") {
         const text = block.payload.text.value;
-        if (!text.trim() && !segmentHasInterpolation(block.payload.text)) {
+        if (!text.trim() && !segmentHasInterpolation(block.payload.text) && !segmentHasEvent(block.payload.text)) {
             return [];
         }
         const character = getCharacter(ctx, block.payload.characterId, block.payload.speakerName);
@@ -1317,15 +1321,16 @@ async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryB
             config.pause = block.payload.pauseAfter;
         }
         const sayConfig = Object.keys(config).length > 0 ? (config as any) : undefined;
-        return [recordStatement(ctx, character.say(buildLocalizedSentencePrompt(ctx, block.payload.text, block.id) as any, sayConfig), block, block.payload.text.textId)];
+        const eventMap = await resolveSegmentEvents(ctx, block.payload.text, block.id);
+        return [recordStatement(ctx, character.say(buildLocalizedSentencePrompt(ctx, block.payload.text, block.id, eventMap) as any, sayConfig), block, block.payload.text.textId)];
     }
 
     return [];
 }
 
 /** Build an NLR sentence prompt from a text segment: a plain string, or Word/Pause tokens. */
-function buildSentencePrompt(segment: StoryTextSegment, ctx: SceneCompileContext, blockId: string): string | unknown[] {
-    return buildSentenceParts(segment, ctx, blockId).prompt;
+function buildSentencePrompt(segment: StoryTextSegment, ctx: SceneCompileContext, blockId: string, eventMap?: Map<StoryRichRun, TextEvent>): string | unknown[] {
+    return buildSentenceParts(segment, ctx, blockId, eventMap).prompt;
 }
 
 /**
@@ -1336,6 +1341,7 @@ function buildSentenceParts(
     segment: StoryTextSegment,
     ctx: SceneCompileContext,
     blockId: string,
+    eventMap?: Map<StoryRichRun, TextEvent>,
 ): { prompt: string | unknown[]; interpolationWords: unknown[] } {
     if (!segment.rich || segment.rich.length === 0) {
         return { prompt: segment.value, interpolationWords: [] };
@@ -1345,6 +1351,17 @@ function buildSentenceParts(
     for (const run of segment.rich) {
         if ("pause" in run) {
             prompt.push(run.pause === true ? new Pause() : Pause.wait(run.pause));
+            continue;
+        }
+        if ("event" in run) {
+            // Reveal-time event token (zero-width, like Pause). It was resolved asynchronously by the
+            // caller (asset URLs) into a TextEvent; an unresolvable event was already diagnosed and is
+            // simply omitted here. It contributes no `{n}` placeholder, so interpolation indices stay
+            // aligned.
+            const event = eventMap?.get(run);
+            if (event) {
+                prompt.push(event);
+            }
             continue;
         }
         if ("interpolation" in run) {
@@ -1373,8 +1390,8 @@ function buildSentenceParts(
  * source-language prompt when no translation applies. Untranslated segments keep
  * their plain compiled form - zero overhead.
  */
-function buildLocalizedSentencePrompt(ctx: SceneCompileContext, segment: StoryTextSegment, blockId: string): string | unknown[] {
-    const { prompt, interpolationWords } = buildSentenceParts(segment, ctx, blockId);
+function buildLocalizedSentencePrompt(ctx: SceneCompileContext, segment: StoryTextSegment, blockId: string, eventMap?: Map<StoryRichRun, TextEvent>): string | unknown[] {
+    const { prompt, interpolationWords } = buildSentenceParts(segment, ctx, blockId, eventMap);
     const localization = ctx.localization;
     if (!localization || !localization.hasTranslation(segment.textId)) {
         return prompt;
@@ -1395,6 +1412,75 @@ function buildLocalizedSentencePrompt(ctx: SceneCompileContext, segment: StoryTe
 /** True when a segment carries an inline interpolation run (so an empty plain value is intentional). */
 function segmentHasInterpolation(segment: StoryTextSegment): boolean {
     return Boolean(segment.rich?.some(run => "interpolation" in run));
+}
+
+/** True when a segment carries an inline reveal-time event run (so an empty plain value is intentional). */
+function segmentHasEvent(segment: StoryTextSegment): boolean {
+    return Boolean(segment.rich?.some(run => "event" in run));
+}
+
+/**
+ * Pre-resolve every inline event run in a segment into an engine `TextEvent`. Asset URLs (the
+ * expression's character image and the optional SE) resolve asynchronously, so this runs before the
+ * synchronous {@link buildSentenceParts}. An event that cannot be resolved is diagnosed and omitted
+ * (its run maps to nothing), leaving the surrounding text intact.
+ */
+async function resolveSegmentEvents(
+    ctx: SceneCompileContext,
+    segment: StoryTextSegment,
+    blockId: string,
+): Promise<Map<StoryRichRun, TextEvent>> {
+    const map = new Map<StoryRichRun, TextEvent>();
+    if (!segment.rich) {
+        return map;
+    }
+    for (const run of segment.rich) {
+        if (!("event" in run)) {
+            continue;
+        }
+        const event = await compileEventRun(ctx, run.event, blockId);
+        if (event) {
+            map.set(run, event);
+        }
+    }
+    return map;
+}
+
+/** Compile one inline event descriptor into a `TextEvent`, or null when nothing usable resolves. */
+async function compileEventRun(
+    ctx: SceneCompileContext,
+    event: StoryInlineEvent,
+    blockId: string,
+): Promise<TextEvent | null> {
+    let sound: Sound | undefined;
+    if (event.sound?.assetId) {
+        const url = await resolveAsset(ctx, event.sound.assetId, "audio", blockId);
+        if (url) {
+            sound = Sound.sound(url);
+        } else {
+            diagnostic(ctx, "warning", blockId, "Inline event: sound asset not found; sound skipped.");
+        }
+    }
+
+    if (event.expression) {
+        const { characterId, formName, variants } = event.expression;
+        if (!characterId) {
+            diagnostic(ctx, "warning", blockId, "Inline event: expression has no character; expression skipped.");
+        } else {
+            const src = await resolveCharacterImageUrl(ctx, characterId, formName, variants, blockId);
+            if (src) {
+                // Target the same stage image the character's `/show` registers (keyed on
+                // characterId), so the swap lands on the visible portrait. Do NOT seed a src: the
+                // appearance only switches when the token is revealed, not at line start.
+                const image = getImage(ctx, normalizeObjectName(characterId), { autoFit: true });
+                return TextEvent.expression(image, src, sound ? { sound } : undefined);
+            }
+            diagnostic(ctx, "warning", blockId, `Inline event: character image source not found for ${characterId}.`);
+        }
+    }
+
+    // No (usable) expression: fall back to a sound-only event when an SE resolved.
+    return sound ? TextEvent.sound(sound) : null;
 }
 
 /**
