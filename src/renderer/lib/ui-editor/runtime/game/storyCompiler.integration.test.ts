@@ -859,8 +859,20 @@ describe("compileStudioStoryToNlr", () => {
         }
 
         it("compiles an expression event into a zero-width TextEvent token", async () => {
+            // The expression swaps the character's *on-stage* portrait, so the character must be shown
+            // first - otherwise the swap has no target and the compiler warns (see `compileEventRun`).
+            const enter: StoryBlock = {
+                id: "enter",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "character", operation: "enter", characterId: "char-alice" },
+            };
             const compiled = await compileStudioStoryToNlr({
-                document: baseDocument(eventDialogue({ event: { expression: { characterId: "char-alice", formName: "angry" } } }), ["say"]),
+                document: baseDocument(
+                    { enter, ...eventDialogue({ event: { expression: { characterId: "char-alice", formName: "angry" } } }) },
+                    ["enter", "say"],
+                ),
                 sceneId: "scene-1",
                 characters: [alice],
                 resolveAssetUrl: async assetId => `nlr://${assetId}`,
@@ -905,6 +917,24 @@ describe("compileStudioStoryToNlr", () => {
                 { level: "warning", blockId: "say", message: "Inline event: character image source not found for char-ghost." },
             ]);
             // The event is dropped, but the surrounding line still compiles.
+            const words = sayWords(compiled);
+            expect(words.some(word => word.isTextEvent?.())).toBe(false);
+            expect(plainText(words)).toBe("AB");
+        });
+
+        it("warns and omits an expression whose character is not on stage", async () => {
+            // The image resolves, but char-alice was never shown, so there is no on-stage portrait to
+            // swap - the token would be a silent no-op. WI-0.1: surface it instead of dropping it quietly.
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument(eventDialogue({ event: { expression: { characterId: "char-alice", formName: "angry" } } }), ["say"]),
+                sceneId: "scene-1",
+                characters: [alice],
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect(compiled.diagnostics).toHaveLength(1);
+            expect(compiled.diagnostics[0]).toMatchObject({ level: "warning", blockId: "say" });
+            expect(compiled.diagnostics[0].message).toContain("not on stage");
             const words = sayWords(compiled);
             expect(words.some(word => word.isTextEvent?.())).toBe(false);
             expect(plainText(words)).toBe("AB");

@@ -170,7 +170,9 @@ describe("getCommandCandidates", () => {
 
     it("offers transitions by the alias an author would type", () => {
         expect(values("/bg forest_day t=|")).toContain("fade");
-        expect(values("/bg forest_day t=fa|")).toEqual(["fade"]);
+        // "fa" prefixes both `fade` and the 0.16.0 `fan` transition; a longer prefix narrows to one.
+        expect(values("/bg forest_day t=fa|")).toEqual(["fade", "fan"]);
+        expect(values("/bg forest_day t=fad|")).toEqual(["fade"]);
     });
 
     it("offers the remaining param names", () => {

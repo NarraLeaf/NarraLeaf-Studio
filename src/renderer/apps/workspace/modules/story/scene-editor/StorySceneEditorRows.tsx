@@ -451,14 +451,16 @@ function TextEditBox(props: {
         props.editorRef.current?.focus();
     };
     // Toolbar "expression" button: insert a default event (the character's default form) at the
-    // caret, then open the picker on it so the author refines form/differential/SE — the same
-    // insert-then-edit flow the pause and value chips use.
+    // caret, then open the picker on it so the author refines form/differential/SE in one motion.
     const insertEvent = () => {
         const characterId = dialoguePayload?.characterId;
         if (!characterId) {
             return;
         }
-        props.editorRef.current?.insertEvent({ expression: { characterId } });
+        const info = props.editorRef.current?.insertEvent({ expression: { characterId } });
+        if (info) {
+            openEvent(info);
+        }
     };
 
     const handleBlur = () => {
