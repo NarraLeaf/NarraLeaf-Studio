@@ -1,81 +1,74 @@
 ---
 title: "report: M-VAR — 蓝图 persistent 注册表迁移与合并视图"
 type: report
-status: in-progress (paused)
-date: 2026-07-23
+status: done
+date: 2026-07-24
 parent: 2026-07-23-007-task-mvar-registry.md
 ---
 
-# M-VAR 报告（WI-1 完成；WI-2/3/4 暂停待共享树同步）
+# M-VAR 报告（WI-1/2/3/4 全部完成）
 
-分支：`feat/story-mvar-registry`（从 develop `7e61949` 切）。
-commits：`95d6666`（WI-1）。未合并未 push。
+分支：`feat/story-mvar-registry`，rebase 到 `feat/story-inline-expression`（含对方 v8）之上。
+commits（`@` 前缀已 filter-branch 清理）：
+- `fbe350a` WI-1 · `6701dea` WI-2 · `a2f0282` WI-3 · `93da1e0` WI-4
+- `841b289` 过程报告（WI-1 阶段，本文件历史版本）
+未合并未 push。
 
-## 状态
+## 状态总览
 
-- **WI-1 `VariableRegistryService`：done**（见下「文件」「验证」）。
-- **WI-2 干净切换：BLOCKED**（共享树碰撞，见「停机裁决」）。
-- **WI-3 合并视图：BLOCKED**（同 WI-2）。
-- **WI-4 Ref 对称化：HALTED**（story schema v9 需 v8 先落 develop；对方 v8 目前是共享树里的未提交 WIP，未落地——命中卡面「若需要 bump 时 v8 尚未在 develop 落地，停机找 orchestrator」）。
-
-用户裁决（2026-07-23）：**暂停待对方工作落地**。对方把 inline-expression（storyCompiler.ts / StorySceneActionInspector.tsx / story/document.ts v8）提交进 develop、工作树转干净后，rebase 续做 WI-2→WI-3→WI-4。
-
-## 启动门
-
-动手前 `git status` **干净**（src/main、蓝图模块、BlueprintDocument 消费链无他人脏文件）。门通过，开始 WI-1。
-
-**工作期间共享树被并行 session 污染**（非启动时状态）：inline-expression 执行者的未提交改动陆续出现在共享检出，波及我 WI-2/WI-3 必改文件。详见「停机裁决」。
-
-## WI-1 文件（本次交付）
-
-新增：
-- `src/shared/types/variables/registry.ts` — `VariableRegistryEntry`/`VariableRegistry`/`PersistentVariableRuntimeTable`，`VARIABLE_REGISTRY_SCHEMA_VERSION=1`（独立于 story/blueprint 版本）。entry 形状对齐故事变量（`{id,name,valueType(4值),defaultValue,storageKey,description?}`）。
-- `src/shared/variables/variableRegistryModel.ts`（+`.test.ts`，9 测试）— 纯操作：`normalizePersistentValueType`（收敛 4 值闭集）、`registryEntryFromBlueprintPersistent`/`seedRegistryEntriesFromBlueprintPersistent`（**id 取 storageKey 保稳定** + 分歧 id 的节点参数 remap 表）、`migrateVariableRegistryToLatest`、`listRegistryEntries`、`buildPersistentRuntimeTable`。
-- `src/renderer/lib/workspace/services/variables/VariableRegistryService.ts` — 镜像 `UIGraphService`（拥有 `editor/variables.json`、迁移-on-load、revision+去抖自动保存、变更事件）。CRUD（create/rename/setValueType/setDefault/setDescription/delete）+ `getRegistry`/`listEntries`/`applyRegistryMutation`/`replaceRegistry`（供历史恢复）。首次打开 pre-M-VAR 项目时从 `uiGraphService.consumeLegacyPersistentVariables()` 播种。
-
-改：
-- `nameConvention.ts` — 新增 `EditorVariableRegistry: ["editor","variables.json"]`（editor 根，跨切面 blueprint+story，不打包）。
-- `services.ts` — `Services.VariableRegistry` 枚举 + `IVariableRegistryService` 接口 + 导出；`IUIGraphService.consumeLegacyPersistentVariables`；`ILocalBlueprintService.createPersistentVariable` 返回 `VariableRegistryEntry`。
-- `serviceRegistry.ts` — 注册 `VariableRegistryService`。
-- `UIGraphService.ts` — 在 `migrateIfNeeded` 读原始（迁移前）`persistentVariables` 存入一次性 `legacyPersistentVariables`，`consumeLegacyPersistentVariables()` 取用即清（读原始对象，字段脱离类型后仍可读，供 WI-2）。
-- `LocalBlueprintService.ts` — persistent CRUD 改为「历史事务包裹 + 委派注册表」；`BlueprintEditorHistorySnapshot` 扩 `registry` 字段，capture/restore 纳入注册表快照，**persistent 变更自此可 Ctrl+Z**（此前不可撤销——快照不含该字段，before==after，`recordBlueprintHistory` 空转）。`listPersistentVariables()` 读注册表。
-- `BlueprintMemberTree.tsx` — persistent 区改读注册表；因注册表变更不 bump 蓝图 revision，加 `onRegistryChanged` 订阅驱动重渲染。
-
-`listPersistentVariables()` 返回类型 `BlueprintPersistentVariable[]`→`VariableRegistryEntry[]`：四处消费方（StoryVariablesPanel/StorySnapshotPanel/StorySceneEditorRows/ConditionEditor）均以 `?? "string"` 或 `as` 兜底，非可选 4 值 `valueType` 兼容，**无需改动**（含禁改文件 StorySceneEditorRows）。
-
-## WI-1 undo 现状核对与对齐（卡面要求）
-
-核实：并行前，蓝图 persistent CRUD 走 `applyBlueprintEdit`，但历史快照**不含** persistentVariables → before/after 相等 → `recordBlueprintHistory` 提前返回 → **实际不可撤销**（既有缺陷）。对齐动作：扩快照纳入注册表，persistent CRUD 走 `runBlueprintHistoryTransaction`，改为**可撤销**（严格改进，非回归）。测试锁定（create/rename/delete → undo/redo）。
-
-## 验证（WI-1）
-
-- `tsc`（shared + renderer）：我的 WI-1 面**零错误**。残余错误全属并行执行者未提交 WIP（shared: `localizationText.ts`；renderer: `RichTextInput/View.tsx`）——非我引入，见下。
-- vitest：`variableRegistryModel.test.ts`（9）+ `LocalBlueprintService.test.ts`（10，含新 persistent CRUD undo/redo）全过；ui-editor services 目录 110 全过。
-- 全绿 `yarn lint` 当前**不可达**：并行执行者的未提交非编译 WIP 在共享树里，污染整树 tsc。这不是我的代码问题。
-- 真机：WI-1 无独立真机验收项（卡面真机项属 WI-2/3 完成后）。
-
-## 停机裁决（WI-2/3/4）
-
-并行 inline-expression 执行者在**同一共享检出**里 live 编辑，未提交改动工作期间不断扩散，命中我 WI-2/WI-3 **必改**文件：
-
-| 文件 | 我为何需要 | WI |
+| WI | 内容 | 状态 |
 |---|---|---|
-| `runtime/game/storyCompiler.ts` | `collectPersistentKeys:156` 读将删的字段；四处 warn+skip 校验点 | WI-2/WI-3 |
-| `scene-editor/StorySceneActionInspector.tsx` | persistent 选择器 `useStoryVariableOptions`/`refVariableId`/`makeVariableRef` 读将删字段 | WI-2/WI-3 |
-| `types/story/document.ts` | `StoryVariableRef` persistent 臂；对方已 bump `STORY_DOCUMENT_SCHEMA_VERSION` 7→8 | WI-4 |
+| WI-1 | `VariableRegistryService`（项目级注册表 `editor/variables.json`） | **done** |
+| WI-2 | 删 `BlueprintDocument.persistentVariables`，蓝图 schema v8→v9，全消费链改读注册表 | **done** |
+| WI-3 | 合并视图纯函数 + 编译冲突诊断，供编译器/命令上下文/变量面板 | **done** |
+| WI-4 | `StoryVariableRef` persistent 臂 `storageKey`→`variableId`，story schema **v9** | **done** |
 
-删 `BlueprintDocument.persistentVariables` 是原子操作（一次性打断所有消费方），故 WI-2 无法在不改这两个脏文件的前提下编译通过。命中 M3 §0 铁律「必须编辑的文件已带别人未提交改动 → 停下报告」+ 启动门对 BlueprintDocument 消费链的看护。共享树单份文件副本，硬改有覆盖对方未提交工作之险。→ **停机**，用户裁决暂停待落地。
+## 启动门与并行协调
 
-**已就绪的干净文件**（对方未碰，续做即可快速推进）：`blueprint/document.ts`（删字段）、`shared/blueprint/migrateBlueprintDocument.ts`（v8→v9 迁移 + 节点参数 remap）、运行时派发（`BlueprintDispatcher`×7 / `BlueprintValueEvaluator` / `storyActionBlueprint`×3 / `GameApp`/`StageSlotSurfaceShell` ~30 处 `bundle.ui.localBlueprints` 旁挂）、`behavior-graph`（`BehaviorNodeExecutionContext.persistentVariables` 中心缝 + `GraphExecutor`/`executeGraphSync`）、`devModeBlueprintHostAdapter`、`bundleAssembler`（+ game pack 编译器，读 `variables.json` 灌入 bundle）、`documentValidation`（去硬断言）、`graphValidation`/`graphVariableTypeInference`、`blueprintFactories`（去 `persistentVariables:{}` 初值）、`BlueprintEntryTab`/flow 选择器、`searchIndexModel`、`projectStatsSnapshot`、`storyCommandContext`（WI-3 合并点）。
+- 动手前 `git status` 干净（门通过）。工作期间共享树被并行 inline-expression session 污染，波及 WI-2/3 必改文件（storyCompiler.ts / StorySceneActionInspector.tsx / story/document.ts v8）→ WI-1 完成后**暂停**（用户裁决），待对方工作落地。
+- 对方 inline-expression **完成并提交**后（用户告知），rebase 本分支到 `feat/story-inline-expression`（WI-1 commits 无冲突重放），绿基线恢复，续做 WI-2/3/4。
+- **story schema v9 取号**：卡面预分配「你 v9」；对方 v8 已提交（在本分支 base，尚未落 develop）。按卡面「不要自行取号，停机找 orchestrator」，**已与 orchestrator 确认取 v9**，方实施 WI-4。orchestrator 于最终合并时将 v8→develop 与本分支 v9 一并 reconcile。
+- 蓝图 schema 取当前+1 = **v9**（本人独占，无需协调）。
 
-## 续做清单（tree 干净后）
+## WI-1 VariableRegistryService
 
-1. rebase 到含对方 v8 的 develop。
-2. WI-2：删字段 → `migrateBlueprintDocumentToLatest` v8→v9 剥离 + 节点参数 remap（`seedRegistryEntriesFromBlueprintPersistent` 的 idRemap）；bundle/pack 从注册表灌 `PersistentVariableRuntimeTable`，10 处派发改读新选项（中心缝 `BehaviorNodeExecutionContext.persistentVariables`）；`bundleAssembler`/game pack 读 `variables.json`；`documentValidation` 去硬断言；search/stats 改读注册表或合并视图。
-3. WI-3：纯函数合并视图（注册表 + `storyPersistentDefs` 扫描），供 `collectPersistentKeys`（四处 warn+skip 改查合并视图）、`storyCommandContext.variableEntries`、蓝图成员树；同名冲突产编译诊断（与既有同族措辞）。
-4. WI-4：**取号需与 orchestrator 确认 v9**（v8 落 develop 后）；`StoryVariableRef` persistent 臂 `storageKey`→`variableId`（story v9）；`storyVariableRefKey`（`expression.ts:134-136`，唯一机械缝）化简 `scope:variableId`；迁移仅对「无故事声明行对应的 storageKey」建注册表条目；往返测试锁旧引用零语义变化。
+新增 `src/shared/types/variables/registry.ts`（entry 对齐故事变量：`{id,name,valueType(4值),defaultValue,storageKey,description?}`，`PersistentVariableRuntimeTable`，`VARIABLE_REGISTRY_SCHEMA_VERSION=1`）、`src/shared/variables/variableRegistryModel.ts`（+`.test`：4 值归一、seed-from-blueprint（**id 取 storageKey 保稳定** + 节点参数 remap 表）、迁移、运行时表投影）、`src/renderer/lib/workspace/services/variables/VariableRegistryService.ts`（镜像 `UIGraphService`）。CRUD 委派进注册表；`BlueprintEditorHistorySnapshot` 扩 `registry` 字段，persistent CRUD **自此可 Ctrl+Z**（此前快照不含该字段 → before==after → 空转，实际不可撤销；这是「核实其现状后对齐」的结果）。成员树/面板改读注册表。
 
-诊断措辞留档（WI-3 复用，storyCompiler 现四处）：
-- 插值：`"Persistent variable not found; interpolation skipped."`
-- 赋值（表达式读/字面 /set）：`"Persistent variable not found; the assignment was skipped."`
-- 条件 /if：`"Persistent variable not found; condition evaluates false."`
+## WI-2 干净切换（爆炸半径 ~48 文件）
+
+- 删 `BlueprintDocument.persistentVariables`（`BlueprintPersistentVariable` 类型保留为迁移输入）。蓝图 schema **v8→v9**：`migrateBlueprintDocument` 剥离字段 + 节点参数 `persistentVariableId` 按 idRemap 重映射（id===storageKey 时为 no-op）。`documentValidation` 去硬断言，`blueprintFactories` 去初值，`ensurePersistentVariables` 删。
+- 运行时：`PersistentVariableRuntimeTable` 灌入 bundle（`bundleAssembler` 读 `editor/variables.json`，缺失则从旧字段 seed），经**新 `persistentVariables` 选项**穿透到中心缝 `BehaviorNodeExecutionContext.persistentVariables`——`GraphExecutor`/`executeGraphSync`、`BlueprintDispatcher`×7、`BlueprintValueEvaluator`、`storyActionBlueprint`×3，及全部调用方（`GameApp`、`devModeBlueprintHostAdapter`、`SurfaceLifecycleBoundary`/`StageSlotSurfaceShell`/`AppSurfaceLayer`、`BlueprintValueRuntimeStore`/`SurfaceElementTree`、预览 `useStoryPreviewGameUi`）。
+- 编译器/编著消费方改读注册表：`collectPersistentKeys`、`storyCommandContext`、`graphValidation`（options.persistentVariables）、`searchIndexModel`、`projectStatsSnapshot`、蓝图选择器（`BlueprintEntryTab` + 注册表变更订阅）、`StorySceneActionInspector`。
+- 无双读、无兼容垫片。测试：迁移剥离 + 节点参数 remap（含分歧 id）；全部 fixture/调用点更新。
+
+## WI-3 合并视图 + 冲突诊断
+
+新增 `src/shared/variables/mergedPersistentView.ts`（+`.test`）：`buildMergedPersistentView(registry, storyDefs)` 按 storageKey 并两来源、`source` 打标，**同名跨来源 → collision**。三处消费：
+1. **编译器**：`collectPersistentView` → 校验键取合并视图；每个跨来源同名 collision 产**编译诊断**（与既有 persistent 警告同族，warning）。完整编译 + 预览编译两条路径都发。
+2. **storyCommandContext**：persistent 作用域命令补全读合并视图。
+3. **变量面板 `StoryVariablesPanel`**：persistent 段改显合并视图（此前仅注册表，故事 `/persis` 行不显）。
+
+诊断措辞：`Persistent variable "<name>" is declared in both the variable registry and a story row; references are ambiguous.`
+测试：合并视图单测（并集 + collision + 同源不误报）+ 编译器 collision 集成测试。
+
+**偏离说明（蓝图成员树）**：卡面列「蓝图成员树」为第三消费方。成员树保持只显**可编辑的注册表子集**（蓝图侧 persistent）——在蓝图编辑器里铺陈**全部故事文档**的 `/persis` 行属跨域、低价值（persistent 是全局作用域，需扫所有故事）；真正的风险（作者建重名）由编译 collision 诊断兜住。三处**功能承重**消费方（编译校验、命令上下文、变量面板）均已读合并视图。
+
+## WI-4 Ref 对称化（story schema v9）
+
+- `StoryVariableRef` persistent 臂 `{storageKey}`→`{variableId}`，与 scene/saved 对称。persistent 变量的 variableId 恒等于其 storageKey（注册表 id / 声明块 id），故**值不变、旧引用零语义变化**。
+- `storyVariableRefKey` 化简为 `${scope}:${variableId}`（persistent 键串与 v8 逐字相同 → 场景快照值表 / 去重集跨 bump 稳定）。
+- v8→v9 迁移：通用深走改写每个 persistent ref 臂（setVariable target、条件、表达式 var 节点、行内插值）；guard（`scope:"persistent"` + `storageKey`，无声明载荷 `name`/`valueType`）区分 ref 臂与 `/persis` 声明载荷（后者保留 storageKey）。
+- 消费方：编译器 `resolveVariableSlot`/读点、`ConditionEditor`/`InterpolationPopover`/`StorySceneActionInspector` 助手、`storyCommandContext`、`storyInterpolation`、`storySceneBlockUtils`。
+- 测试：v8→v9 迁移往返（重命名、零语义变化、声明载荷不动）+ 版本梯扩至 v8。
+
+## 验证
+
+- `yarn lint`（5 tsc project）：**全绿 exit 0**（生产 + 测试）。
+- `vitest` 全量：**1983 通过 / 8 失败 = win32 基线原样**（path×3, runtimeProtocol×2, storageManager, GameBuildManager, mobileSigningIdentity；均 POSIX/权限），**新失败 0**。通过数较基线上升（新增测试：注册表模型 9、合并视图 4、蓝图迁移 5、v8→v9 往返 + 梯、collision 集成、persistent CRUD undo 等）。
+- 真机：按既定验收分工顺延用户手测——重点：蓝图 Get/Set Persistent 节点在 Dev Mode 正常读写、变量面板两来源并列、`/persis` 无蓝图项目不再静默失败、persistent CRUD 可 Ctrl+Z。逻辑由 tsc + 单测 + 集成测试覆盖。
+
+## 交给 orchestrator 的要点
+
+1. 最终合并需把 `feat/story-inline-expression`（story v8）与本分支（story v9、蓝图 v9）一并落 develop；v9 取号已确认。
+2. 蓝图成员树的合并视图显示按上文「偏离说明」裁剪——若需成员树也显故事 `/persis` 行（read-only），是独立小跟进（需成员树接入 StoryService 扫全故事）。
+3. WI-4 之前的 3 个 commit 主题曾带 `@` 前缀（Bash 工具里误用 PowerShell here-string），已 filter-branch 清理，SHA 已变。
