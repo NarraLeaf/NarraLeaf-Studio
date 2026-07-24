@@ -170,7 +170,7 @@ preset / NVL），`name` 有四种含义，`mute on` 用 on/off 枚举而 `loop`
 | `/text` | txt | `/text <内容…> [name=] [at=]` | text create |
 | `/video` | vid | `/video <asset> [name=] [muted]` | video create |
 | `/layer` | | `/layer <name> [z=]` | layer create |
-| `/swap` | src, setimg, settext | `/swap <对象> <新内容…>`（image/video → asset；text → 文本） | image setSource / video src / text setText |
+| `/swap` | src | `/swap <对象> <新内容…>`（image/video → asset；text → 文本） | image setSource / video src / text setText |
 | `/play` | | `/play <video 对象>` | video play |
 | `/font` | | `/font <text 对象> [size] [color=]`（至少其一；允许同时） | text 字体（payload 扩展为组合 op） |
 
@@ -198,8 +198,8 @@ preset / NVL），`name` 有四种含义，`mute on` 用 on/off 枚举而 `loop`
 | `/toggle` | flip | `/toggle <变量>` | setVariable 糖 |
 | `/reset` | | `/reset <变量>` | setVariable 糖 |
 | `/local` | scenevar | `/local <名> [默认值] [type=] [desc=]` | 场景变量声明（无块） |
-| `/var` | savedvar | `/var <名> [默认值] [type=] [desc=]` | 存档变量声明（无块） |
-| `/persis` | persistent, global | `/persis <名> [默认值] [type=] [desc=]` | 全局变量声明（无块） |
+| `/save` | var, savedvar | `/save <名> [默认值] [type=] [desc=]` | 存档变量声明（无块） |
+| `/global` | persis, persistent | `/global <名> [默认值] [type=] [desc=]` | 全局变量声明（无块） |
 | `/if` | | `/if <布尔表达式…>` | condition 容器 + if 分支 |
 | `/menu` | choice | `/menu [提示…]` | choice 容器 |
 | `/repeat` | loop | `/repeat <次数>` | repeat 容器 |
@@ -214,14 +214,24 @@ preset / NVL），`name` 有四种含义，`mute on` 用 on/off 枚举而 `loop`
 |---|---|---|---|
 | `/blink` | | `/blink [d=] [hold=] [color=]` | screenEffect blink |
 | `/vignette` | vig | `/vignette [d=] [hold=] [color=] [opacity=]` | screenEffect vignette |
+| `/transform` | displayabletransform | `/transform <对象> [d=]` → 落块即开 inspector | displayable transform（inspectorAfterCommit） |
 | `/fx` | effect | `/fx <对象>` → 落块即开 inspector | displayable effect（inspectorAfterCommit） |
+| `/camera` | cam | `/camera <op> [值] [d=]`（op = zoom\|pan\|rotate\|darken\|reset） | camera |
 | `/note` | `//` | `/note [文本…]` | note |
 
 **被移除的 token**（全部变为上表的别名或被泛型动词覆盖）：`imgsrc` `imgshow`
-`imghide` `settext` `txtshow` `txthide` `vidshow` `vidhide` `vidplay` `pausesound`
-`waitclick` `displayabletransform` `displayableshow` `displayablehide`
+`imghide` `txtshow` `txthide` `vidshow` `vidhide` `vidplay` `pausesound`
+`waitclick` `displayableshow` `displayablehide`
 `displayableeffect` `layerzindex` `narration` `condition`。palette 穿透路径整体删除
 ——**每条指令都有 grammar（哪怕无参），只走一条提交路径**。
+
+`/swap` 的别名 `setimg` / `settext` **连别名一起删除**（2026-07-25 / A1）：它们教的是"对象类型 ×
+动词"，与 B3 的泛型动词直接矛盾——目标说明换的是什么，token 永远不说。
+
+**`/save` 的 token 保留裁定（2026-07-25 / A1）**：`/save` **只用于声明存档作用域变量**；触发存档
+不是故事指令，将来也不会是（存档是运行时 / UI 关注点）。`/local` `/save` `/global` 三条并列时可读性
+成立，这条保留声明是它的护栏——后来者不得把 `/save` 占作"写入存档"这个动词，那会让每一条已经写下的
+`/save` 行改变含义。
 
 ## 3. 变量架构：Persistent / Var / Local
 
