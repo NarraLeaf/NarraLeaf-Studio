@@ -94,7 +94,7 @@ import { waitForAnimationFrame } from "./frameTiming";
 import { NavigationController } from "./navigation/NavigationController";
 import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
 import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
-import type { GameAppFrameContext, GameAppHost, GameAppOverlayContext } from "./GameAppHost";
+import type { GameAppFrameContext, GameAppHost, GameAppOverlayContext, GameAppStoryRuntimeBridge } from "./GameAppHost";
 
 const NLR_BOOT_PRELOAD_TIMEOUT_MS = 15_000;
 
@@ -253,6 +253,14 @@ export function GameApp(props: GameAppProps): ReactNode {
     const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
     const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
     const nlrPreferenceTokenRef = useRef<{ cancel(): void } | null>(null);
+    // Play head + call-stack introspection (Dev Mode story-runtime panel). The current-action token
+    // is re-bound to whichever LiveGame is live; `currentActionListenersRef` is a stable fan-out so
+    // panel subscriptions survive relaunches. `nlrCompiledRef` mirrors the mounted session's compiled
+    // story (action bindings + variable namespace names) for the bridge to read at call time.
+    const nlrCurrentActionTokenRef = useRef<{ cancel(): void } | null>(null);
+    const currentActionIdRef = useRef<string | null>(null);
+    const currentActionListenersRef = useRef<Set<(actionId: string | null) => void>>(new Set());
+    const nlrCompiledRef = useRef<CompiledNlrStory | null>(null);
     const textReadTrackerRef = useRef<TextReadTracker | null>(null);
     const preferenceSnapshotRef = useRef<Record<string, unknown>>({});
     const dispatchPreferenceChangeRef = useRef<
@@ -321,6 +329,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
+        nlrCurrentActionTokenRef.current?.cancel();
+        nlrCurrentActionTokenRef.current = null;
+        currentActionIdRef.current = null;
+        nlrCompiledRef.current = null;
         gameEnteredRef.current = false;
         setNlrPreloadDone(false);
         setNlrSession(null);
@@ -566,6 +578,103 @@ export function GameApp(props: GameAppProps): ReactNode {
         await fastForwardToNextChoice(liveGame, choiceRuntimeRef);
     }, [requireActiveLiveGame]);
 
+    // Read/write bridge over the running story runtime for the Dev Mode story-runtime panel. Fully
+    // ref-backed so its identity is stable across renders and relaunches; every method degrades to
+    // null / no-op / reject when no game is running.
+    const storyRuntime = useMemo<GameAppStoryRuntimeBridge>(() => ({
+        getStoryContext: () => {
+            const request = activeStoryRequestRef.current;
+            return request
+                ? {
+                    storyId: request.storyId,
+                    sceneId: request.sceneId,
+                    startBlockId: request.startBlockId,
+                    snapshotId: request.snapshotId,
+                }
+                : null;
+        },
+        getActionIdBindings: () => nlrCompiledRef.current?.actionIdBindings ?? [],
+        getVariableNamespaces: () => ({
+            saved: nlrCompiledRef.current?.savedNamespaceName || null,
+            sceneLocal: nlrCompiledRef.current?.sceneLocalNamespaceNames ?? {},
+        }),
+        getCurrentActionId: () => currentActionIdRef.current,
+        subscribeCurrentAction: listener => {
+            currentActionListenersRef.current.add(listener);
+            return () => {
+                currentActionListenersRef.current.delete(listener);
+            };
+        },
+        getStackSnapshot: () => {
+            const liveGame = nlrLiveGameRef.current;
+            if (!liveGame) {
+                return null;
+            }
+            try {
+                return liveGame.getStackSnapshot();
+            } catch {
+                return null;
+            }
+        },
+        readStorableNamespace: name => {
+            const liveGame = nlrLiveGameRef.current;
+            if (!liveGame || !name) {
+                return null;
+            }
+            try {
+                const storable = liveGame.getStorable();
+                if (!storable.hasNamespace(name)) {
+                    return null;
+                }
+                const namespace = storable.getNamespace(name);
+                const values: Record<string, unknown> = {};
+                for (const [key, value] of namespace.entries()) {
+                    values[String(key)] = value;
+                }
+                return values;
+            } catch {
+                return null;
+            }
+        },
+        writeStorableValue: (name, key, value) => {
+            const liveGame = nlrLiveGameRef.current;
+            if (!liveGame || !name) {
+                return false;
+            }
+            try {
+                const storable = liveGame.getStorable();
+                if (!storable.hasNamespace(name)) {
+                    return false;
+                }
+                storable.getNamespace(name).set(key, value as never);
+                return true;
+            } catch {
+                return false;
+            }
+        },
+        fastForwardToActionId: async actionId => {
+            const liveGame = nlrLiveGameRef.current;
+            if (!liveGame) {
+                throw new Error("Fast Forward: game runtime is not available");
+            }
+            return liveGame.fastForward({ until: { actionId } });
+        },
+        relaunch: async ({ sceneId, startBlockId, snapshotId }) => {
+            const request = activeStoryRequestRef.current;
+            if (!request) {
+                throw new Error("Relaunch: no active story");
+            }
+            const start = startStoryInGameRef.current;
+            if (!start) {
+                throw new Error("Relaunch: runtime is not ready");
+            }
+            await start(
+                { storyId: request.storyId, sceneId: sceneId ?? request.sceneId, startBlockId, snapshotId },
+                { forceReinit: true },
+            );
+        },
+    }), []);
+
     const quitGame = useCallback(async (surfaceId: string): Promise<void> => {
         const targetSurfaceId = String(surfaceId ?? "").trim();
         if (!targetSurfaceId) {
@@ -579,6 +688,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
         nlrPreferenceTokenRef.current = null;
+        nlrCurrentActionTokenRef.current?.cancel();
+        nlrCurrentActionTokenRef.current = null;
+        currentActionIdRef.current = null;
+        nlrCompiledRef.current = null;
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
@@ -851,6 +964,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         clearGameHiddenStudioPages();
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
+        nlrCurrentActionTokenRef.current?.cancel();
+        nlrCurrentActionTokenRef.current = null;
+        currentActionIdRef.current = null;
+        nlrCompiledRef.current = compiled;
         choiceRuntimeRef.current = null;
         setNlrSession({
             id: sessionId,
@@ -1408,6 +1525,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
         nlrPreferenceTokenRef.current = null;
+        nlrCurrentActionTokenRef.current?.cancel();
+        nlrCurrentActionTokenRef.current = null;
+        currentActionIdRef.current = null;
+        nlrCompiledRef.current = null;
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
@@ -1436,6 +1557,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
         nlrPreferenceTokenRef.current = null;
+        // Not nlrCompiledRef: mountNlrSession sets it for the new session before this fires.
+        nlrCurrentActionTokenRef.current?.cancel();
+        nlrCurrentActionTokenRef.current = null;
+        currentActionIdRef.current = null;
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
@@ -1671,7 +1796,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         return (
             <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
                 {renderFrame({ activeSurface, gameViewport, children: null })}
-                {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame })}
+                {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame, storyRuntime })}
             </GameLocalizationContext.Provider>
         );
     }
@@ -1727,6 +1852,20 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
                 nlrLiveGameRef.current = liveGame;
                 nlrLiveGameSessionIdRef.current = sessionId;
+                // Play-head stream for the Dev Mode story-runtime panel: mirror the current action id
+                // and fan it out to panel subscribers. Re-bound per session; the fan-out set is stable.
+                nlrCurrentActionTokenRef.current?.cancel();
+                currentActionIdRef.current = liveGame.getCurrentActionId();
+                nlrCurrentActionTokenRef.current = liveGame.onCurrentActionChange(({ actionId }) => {
+                    currentActionIdRef.current = actionId;
+                    currentActionListenersRef.current.forEach(listener => {
+                        try {
+                            listener(actionId);
+                        } catch (error) {
+                            host.log("warning", `[${host.id}] current-action listener failed: ${normalizeError(error)}`);
+                        }
+                    });
+                });
                 try {
                     // Environment ready: LiveGame exists. Dispatch gameReady so global blueprints can
                     // load game settings — BEFORE the game is ever entered (no newGame yet).
@@ -1829,7 +1968,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     return (
         <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
             {renderFrame({ activeSurface, gameViewport, children: content })}
-            {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame })}
+            {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame, storyRuntime })}
         </GameLocalizationContext.Provider>
     );
 }

@@ -287,6 +287,18 @@ export type CompiledNlrStory = {
     storyId: string;
     sceneId: string;
     actionIdBindings: NlrActionIdBinding[];
+    /**
+     * Storable namespace holding every "saved" (editor: Var) variable, resolved via
+     * {@link DevTools.getNamespaceName} so hosts read live values without depending on the engine's
+     * namespace-prefix convention. Empty when the compiled story has no saved namespace.
+     */
+    savedNamespaceName: string;
+    /**
+     * Per-scene Storable namespace holding that scene's "scene" (editor: Local) variables, keyed by
+     * Studio scene id. A scene-local namespace only exists while its scene is the active one at
+     * runtime (it is re-seeded on entry and removed on exit).
+     */
+    sceneLocalNamespaceNames: Record<string, string>;
     diagnostics: NlrStoryCompileDiagnostic[];
     /** Per-scene element registries, keyed by scene id (normalized object name → element). */
     sceneElements?: Record<string, CompiledSceneElements>;
@@ -432,6 +444,8 @@ export function createEmptyCompiledNlrStory(): CompiledNlrStory {
         storyId: EMPTY_STORY_ID,
         sceneId: EMPTY_SCENE_ID,
         actionIdBindings: [],
+        savedNamespaceName: "",
+        sceneLocalNamespaceNames: {},
         diagnostics: [],
     };
 }
@@ -557,6 +571,11 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         : allScenes[input.sceneId];
     nlrStory.entry(nlrEntryScene);
 
+    const sceneLocalNamespaceNames: Record<string, string> = {};
+    for (const [sceneId, nlrScene] of Object.entries(allScenes)) {
+        sceneLocalNamespaceNames[sceneId] = DevTools.getNamespaceName(nlrScene.local);
+    }
+
     return {
         story: nlrStory,
         scene: nlrEntryScene,
@@ -564,6 +583,8 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         storyId: input.document.id,
         sceneId: entryScene.id,
         actionIdBindings,
+        savedNamespaceName: DevTools.getNamespaceName(savedPersistent),
+        sceneLocalNamespaceNames,
         diagnostics,
         sceneElements,
     };
@@ -964,6 +985,8 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         storyId: input.document.id,
         sceneId: scene.id,
         actionIdBindings,
+        savedNamespaceName: DevTools.getNamespaceName(savedPersistent),
+        sceneLocalNamespaceNames: { [scene.id]: DevTools.getNamespaceName(previewScene.local) },
         diagnostics,
         sceneElements: { [scene.id]: { images: ctx.images, texts: ctx.texts, layers: ctx.layers } },
         playbackStop,
