@@ -26,6 +26,11 @@ export type StoryTransitionWord =
     | "iris"
     | "blur"
     | "blinds"
+    // 0.16.0 Mask-vocabulary additions (whole-screen only): engine `Reveal` + `Mask.*`.
+    | "barn-door"
+    | "clock"
+    | "fan"
+    | "dots"
     | "black"
     | "darkness"
     | "zoom"
@@ -53,11 +58,16 @@ const WORD_ALIASES: Partial<Record<StoryTransitionWord, readonly string[]>> = {
     wipe: ["softwipe", "maskwipe"],
     iris: ["softiris"],
     blur: ["blurdissolve"],
+    "barn-door": ["barndoor", "doors"],
+    fan: ["windmill"],
+    dots: ["polka"],
     black: ["throughcolor"],
 };
 
 const SUPPORTED: Record<StoryTransitionContext, readonly StoryTransitionWord[]> = {
-    scene: ["fade", "slide", "circle", "wipe", "iris", "blur", "blinds", "black", "darkness", "none"],
+    // The Mask-vocabulary additions (barn-door / clock / fan / dots) are whole-screen transitions:
+    // offered on `/bg` `/jump` alongside the classics, but not on portrait swaps or stage objects.
+    scene: ["fade", "slide", "circle", "wipe", "iris", "blinds", "barn-door", "clock", "fan", "dots", "blur", "black", "darkness", "none"],
     character: ["fade", "slide", "circle", "wipe", "blur", "none"],
     reveal: ["fade", "slide-left", "slide-right", "slide-up", "slide-down", "zoom", "circle", "wipe", "none"],
     conceal: ["fade", "slide-left", "slide-right", "slide-up", "slide-down", "zoom", "circle", "wipe", "none"],
@@ -101,6 +111,10 @@ const SCENE_KINDS: Partial<Record<StoryTransitionWord, StoryTransitionRef["kind"
     iris: "softIris",
     blur: "blurDissolve",
     blinds: "blinds",
+    "barn-door": "barnDoor",
+    clock: "clock",
+    fan: "fan",
+    dots: "dots",
     black: "throughColor",
     darkness: "darkness",
     none: "none",

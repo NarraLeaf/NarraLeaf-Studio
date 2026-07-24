@@ -54,7 +54,8 @@ export type RichTextInputHandle = {
     insertInterpolation: (interp: StoryInterpolationRef) => void;
     updateInterpolationAt: (unit: number, interp: StoryInterpolationRef) => void;
     removeInterpolationAt: (unit: number) => void;
-    insertEvent: (event: StoryInlineEvent) => void;
+    /** Insert an event chip; returns the click-info to open its editor right away, or null if it did not land. */
+    insertEvent: (event: StoryInlineEvent) => EventClickInfo | null;
     updateEventAt: (unit: number, event: StoryInlineEvent) => void;
     removeEventAt: (unit: number) => void;
     /**
@@ -488,15 +489,15 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         emitChange();
     }, [emitChange, recordStructural]);
 
-    const insertRun = useCallback((run: StoryRichRun) => {
+    const insertRun = useCallback((run: StoryRichRun): number | null => {
         const el = editorRef.current;
         if (!el) {
-            return;
+            return null;
         }
         el.focus();
         const range = getSelectionUnitRange(el) ?? savedRange.current;
         if (!range) {
-            return;
+            return null;
         }
         recordStructural();
         const runs = spliceRuns(domToRuns(el), range.start, range.end, [run]);
@@ -504,11 +505,33 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         setSelectionUnitRange(el, range.start + 1, range.start + 1);
         savedRange.current = { start: range.start + 1, end: range.start + 1 };
         emitChange();
+        // The unit the run was spliced in at - callers auto-opening its editor need it.
+        return range.start;
     }, [emitChange, recordStructural]);
 
-    const insertPause = useCallback((pause: number | true) => insertRun({ pause }), [insertRun]);
-    const insertInterpolation = useCallback((interp: StoryInterpolationRef) => insertRun({ interpolation: interp }), [insertRun]);
-    const insertEvent = useCallback((event: StoryInlineEvent) => insertRun({ event }), [insertRun]);
+    const insertPause = useCallback((pause: number | true) => { insertRun({ pause }); }, [insertRun]);
+    const insertInterpolation = useCallback((interp: StoryInterpolationRef) => { insertRun({ interpolation: interp }); }, [insertRun]);
+    /**
+     * Insert an event chip and return the info needed to open its editor immediately (unit + the fresh
+     * chip's screen anchor), so the toolbar's insert-then-edit flow is one motion. Returns null when
+     * the insert did not land (no editor / no caret) or the rendered chip cannot be located.
+     */
+    const insertEvent = useCallback((event: StoryInlineEvent): EventClickInfo | null => {
+        const unit = insertRun({ event });
+        const el = editorRef.current;
+        if (unit === null || !el) {
+            return null;
+        }
+        // The just-rendered chip is the [data-event] at this unit offset; measure it for the anchor
+        // the popover positions against, mirroring the click path.
+        const chip = Array.from(el.querySelectorAll<HTMLElement>("[data-event]"))
+            .find(candidate => unitOffsetOfElement(el, candidate) === unit);
+        if (!chip) {
+            return null;
+        }
+        const rect = chip.getBoundingClientRect();
+        return { unit, value: event, anchor: { top: rect.top, left: rect.left, bottom: rect.bottom } };
+    }, [insertRun]);
 
     useImperativeHandle(ref, () => ({
         focus: () => {
