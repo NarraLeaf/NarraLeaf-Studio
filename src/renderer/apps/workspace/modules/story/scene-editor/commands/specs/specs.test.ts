@@ -297,6 +297,30 @@ describe("logic and effects", () => {
         expect(build("/vignette opacity=0.5")).toMatchObject({ payload: { effect: "vignette", opacity: 0.5 } });
     });
 
+    it("/camera reads its operation as the first positional and the knob as the second", () => {
+        expect(build("/camera zoom 1.5 d=0.8")).toMatchObject({
+            kind: "action",
+            payload: { action: "camera", operation: "zoom", zoom: 1.5, durationMs: 800 },
+        });
+        expect(build("/camera pan left d=0.6")).toMatchObject({
+            payload: { action: "camera", operation: "pan", position: { xalign: 0.25, yalign: 0.5 }, durationMs: 600 },
+        });
+        expect(build("/camera darken 0.6")).toMatchObject({ payload: { operation: "darken", darkness: 0.6 } });
+        expect(build("/camera rotate -15")).toMatchObject({ payload: { operation: "rotate", rotation: -15 } });
+        expect(build("/camera reset d=0.6")).toMatchObject({ payload: { operation: "reset", durationMs: 600 } });
+        // `/cam` is the same command, and an alias resolves to the canonical operation (bible B6).
+        expect(build("/cam dim 0.4")).toMatchObject({ payload: { action: "camera", operation: "darken", darkness: 0.4 } });
+    });
+
+    it("/camera leaves a knob it was not given at its neutral value", () => {
+        // A knob named without a value still has to build a coherent block - `zoom 1` IS "no zoom",
+        // so the row says what it will do rather than carrying an undefined the compiler guesses at.
+        expect(build("/camera zoom")).toMatchObject({ payload: { operation: "zoom", zoom: 1 } });
+        expect(build("/camera pan")).toMatchObject({ payload: { operation: "pan", position: { xalign: 0.5 } } });
+        // The operation is the required core (B9): a bare `/camera` has nothing to commit.
+        expect(getCommandSpec("camera")?.params.op.core).toBe(true);
+    });
+
     it("/fx and /transform bind their displayable target and defer the rest to the inspector", () => {
         expect(getCommandSpec("fx")?.inspectorAfterCommit).toBe(true);
         expect(build("/fx hero")).toMatchObject({ payload: { action: "displayable", target: { kind: "image", name: "hero" } } });
