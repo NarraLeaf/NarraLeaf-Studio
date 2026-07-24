@@ -105,12 +105,10 @@ preset / NVL），`name` 有四种含义，`mute on` 用 on/off 枚举而 `loop`
 
 下表"规范值 → kind"列出词表规范值折叠到的 `StoryTransitionRef.kind`（整屏 / 角色源切换）
 或 `StoryTransformRef.preset`（舞台对象 reveal/conceal）。**引擎基座（2026-07-24 起，narraleaf-react
-0.16.0）**：整屏 kind 在编译期实例化为引擎的转场"引擎 + 几何词表"——`Reveal` 承载遮罩几何
+0.16.1）**：整屏 kind 在编译期实例化为引擎的转场"引擎 + 几何词表"——`Reveal` 承载遮罩几何
 （`Mask.wipe / iris / blinds / barnDoor / clock / fan / dots`），`ThroughColor` 承载"过色"，
-`Dissolve` / `FadeIn` / `BlurDissolve` 各自成引擎；`slide` 例外，仍用 Studio 自带的 `Slide`
-（引擎原生 `Push` 用视口单位平移，在信箱化舞台上会溢出——详见迁移报告
-`reports/2026-07-24-nlr-0-16-report.md`）。舞台对象的 reveal/conceal 走 Transform 预设，不属于
-遮罩词表，故新几何转场（barn-door / clock / fan / dots）**仅**整屏可用。
+`Dissolve` / `FadeIn` / `BlurDissolve` / `Push` / `Darkness` 各自成引擎。舞台对象的 reveal/conceal
+走 Transform 预设，不属于遮罩词表，故新几何转场（barn-door / clock / fan / dots）**仅**整屏可用。
 
 | 规范值 | `/bg` `/jump` | `/show`（角色/对象） | `/hide` |
 |---|---|---|---|
@@ -126,7 +124,7 @@ preset / NVL），`name` 有四种含义，`mute on` 用 on/off 枚举而 `loop`
 | `fan` | fan | — | — |
 | `dots` | dots | — | — |
 | `black` | throughColor | — | — |
-| `darkness` | darkness ⚠️ | — | — |
+| `darkness` | darkness | — | — |
 | `zoom` | — | zoom | zoom |
 | `none` | none | none | none |
 
@@ -134,9 +132,9 @@ preset / NVL），`name` 有四种含义，`mute on` 用 on/off 枚举而 `loop`
 `fan`（风扇/风车，别名 `windmill`）、`dots`（圆点，别名 `polka`）——均为整屏转场，`Reveal` +
 对应 `Mask.*` 几何，参数（方向/羽化/中心/叶片数/行列/错位等）在检查器预设中可调。
 
-⚠️ `darkness`：引擎的 `Darkness` 转场在 0.16.0 未导出，无公开等价物（本次迁移前它也一直是
-未处理的 no-op + 警告）。保留为规范值但编译期给出显式诊断，待产品裁决（引擎导出 `Darkness`，
-或重新指派该词）——见迁移报告。
+`darkness`：整屏压暗转场，编译期实例化引擎的 `Darkness`（0.16.1 起进入公开导出面）——直接换到
+新图片并把它的亮度从"起始暗度"动到"结束暗度"，两者均 0–1，默认 `1 → 0`（从黑场中浮现），
+在检查器可调。
 
 ## 2. 完整签名表（每一条指令）
 
