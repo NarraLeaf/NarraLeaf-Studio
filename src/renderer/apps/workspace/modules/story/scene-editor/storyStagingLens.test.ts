@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryBlockId, StoryScene } from "@shared/types/story";
-import { applyStagingLensToRows, isLensContainer, projectStagingLens, resolveEffectiveLensContainers, type StoryLensRowTrack } from "./storyStagingLens";
+import { applyStagingLensToRows, isLensContainer, lensTrackRendersBar, projectStagingLens, resolveEffectiveLensContainers, type StoryLensRowTrack } from "./storyStagingLens";
 
 /**
  * Build a one-container scene: the container holds `children` (already carrying ids), and every block
@@ -29,6 +29,20 @@ function control(id: string, control: "parallel" | "race" | "sequence" | "repeat
 
 function action(id: string, parentId: string | null, payload: Extract<StoryBlock, { kind: "action" }>["payload"], disabled?: boolean): StoryBlock {
     return { id, kind: "action", parentId, childrenIds: [], payload, ...(disabled ? { disabled } : {}) };
+}
+
+function narration(id: string, parentId: string | null, value = "prose"): StoryBlock {
+    return { id, kind: "nodeAction", parentId, childrenIds: [], payload: { action: "narration", text: { textId: `t-${id}`, value, role: "narration" } } };
+}
+
+function dialogue(id: string, parentId: string | null, pauseAfter?: number): StoryBlock {
+    return {
+        id,
+        kind: "nodeAction",
+        parentId,
+        childrenIds: [],
+        payload: { action: "dialogue", speakerName: "Ana", text: { textId: `t-${id}`, value: "line", role: "dialogue" }, ...(pauseAfter === undefined ? {} : { pauseAfter }) },
+    };
 }
 
 describe("isLensContainer", () => {
@@ -78,6 +92,55 @@ describe("projectStagingLens — duration derivation", () => {
         expect(lens.tracks[1]).toMatchObject({ kind: "wait", unknown: true });
         expect(lens.scaleMs).toBe(800);
     });
+});
+
+describe("projectStagingLens — text children keep their ordinary row", () => {
+    /**
+     * A prose child is reachable inside a lens today (the tail "+" commits typed prose as a narration
+     * child of the container). It must NOT become a bar-only track: the renderer keys off `kind` to
+     * keep it on the ordinary row path, which is the only path that carries the in-place text editor,
+     * the voice indicator and the row actions. A bar-only track there renders an inert row that
+     * swallows every keystroke once click / double-click / Enter opens it for editing.
+     */
+    it("classifies a narration child as a text track with no footprint", () => {
+        const prose = narration("n", "p");
+        const move = action("move", "p", { action: "displayable", operation: "transform", target: { name: "hero" }, durationMs: 600 });
+        const scene = sceneWith(control("p", "parallel", ["n", "move"]), prose, move);
+        const lens = projectStagingLens(scene, scene.blocks.p);
+        expect(lens.tracks.map(t => ({ id: t.blockId, kind: t.kind }))).toEqual([
+            { id: "n", kind: "text" },
+            { id: "move", kind: "action" },
+        ]);
+        expect(lens.tracks[0]).toMatchObject({ delayMs: 0, durationMs: 0, finishMs: 0, unknown: true });
+        // The prose track is invisible on the timeline, so it must not shrink the bars around it.
+        expect(lens.scaleMs).toBe(600);
+    });
+
+    it("tells the row renderer to keep the ordinary content column for a text track only", () => {
+        // The seam the row renderer branches on: everything else swaps its content column for a bar,
+        // prose keeps the ordinary one (and with it the editor / voice indicator / row actions).
+        const prose = narration("n", "p");
+        const wait = action("w", "p", { action: "wait", mode: "duration", durationMs: 300 });
+        const inner = control("inner", "sequence", []);
+        inner.parentId = "p";
+        const scene = sceneWith(control("p", "parallel", ["n", "w", "inner"]), prose, wait, inner);
+        const bars = projectStagingLens(scene, scene.blocks.p).tracks
+            .map(segment => lensTrackRendersBar({ segment, scaleMs: 1, mode: "parallel", winnerFinishMs: null }));
+        expect(bars).toEqual([false, true, true]);
+    });
+
+    it("keeps a dialogue child out of the scale and the race decision", () => {
+        // `pauseAfter` is a real dwell, but a track that draws no bar must not set the scale nor place
+        // the race marker where no visible bar explains it. It still counts inside a subgroup aggregate.
+        const line = dialogue("d", "r", 2000);
+        const fast = action("fast", "r", { action: "displayable", operation: "transform", target: { name: "x" }, durationMs: 400 });
+        const scene = sceneWith(control("r", "race", ["d", "fast"]), line, fast);
+        const lens = projectStagingLens(scene, scene.blocks.r);
+        expect(lens.tracks[0]).toMatchObject({ kind: "text", unknown: true, finishMs: 0 });
+        expect(lens.scaleMs).toBe(400);
+        expect(lens.winnerFinishMs).toBe(400);
+    });
+
 });
 
 describe("projectStagingLens — race semantics", () => {
@@ -176,6 +239,18 @@ describe("applyStagingLensToRows", () => {
         expect(result[3].lensTrack).toBeUndefined();
         expect(result[1].lensTrack).toMatchObject({ mode: "parallel", scaleMs: 1000, segment: { blockId: "a", delayMs: 500 } });
         expect(result[2].lensTrack).toMatchObject({ segment: { blockId: "b", isLast: true } });
+    });
+
+    it("still annotates a text child as a track, so the lens keeps its tail + on the last row", () => {
+        // The prose row renders on the ordinary path (no bar), but it is a direct child like any other:
+        // it stays in the row list and keeps `isLast`, which is what hangs the lens's tail "+" off it.
+        const move = action("move", "p", { action: "displayable", operation: "transform", target: { name: "hero" }, durationMs: 600 });
+        const prose = narration("n", "p");
+        const par = control("p", "parallel", ["move", "n"]);
+        const scene = sceneWith(par, move, prose);
+        const result = applyStagingLensToRows(scene, [{ block: par }, { block: move }, { block: prose }] as Row[], new Set(["p"]));
+        expect(result.map(r => r.block.id)).toEqual(["p", "move", "n"]);
+        expect(result[2].lensTrack).toMatchObject({ segment: { blockId: "n", kind: "text", isLast: true } });
     });
 
     it("prunes a nested container's own descendants, keeping the container as one subgroup track", () => {

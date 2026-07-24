@@ -67,7 +67,7 @@ import {
 } from "./storySceneBlockUtils";
 import { ConditionPopover } from "./ConditionPopover";
 import { BlockOverview, getQuickParams, QuickParamsInline, type QuickParam } from "./storyQuickParams";
-import type { StoryLensRowTrack } from "./storyStagingLens";
+import { lensTrackRendersBar, type StoryLensRowTrack } from "./storyStagingLens";
 import { actionTrigger, ACTION_TRIGGER, insertChooserType, toCanonicalCommandLine } from "./commandTrigger";
 
 export function StoryBlockRow(props: {
@@ -135,6 +135,12 @@ export function StoryBlockRow(props: {
     // bar-timeline track. `lensMode` marks a parallel/race container header itself (all/allAsync/any),
     // which carries the mode badge (WI-3) and the list⇄lens toggle.
     const lensTrack = row.lensTrack;
+    // Only a staging track swaps its content column for a bar. A prose child (narration / dialogue /
+    // note — reachable through the lens's own tail "+") stays on the ordinary row path, because that is
+    // where the in-place text editor, the voice indicator and the row actions live: swapping the whole
+    // column would leave a row that click / double-click / Enter put into text-edit mode with no editor
+    // to type into (interaction model §"Editing in place"; WI-2 "Enter/Escape 照常").
+    const lensBarTrack = lensTrack && lensTrackRendersBar(lensTrack) ? lensTrack : null;
     const lensMode: "all" | "allAsync" | "any" | null = block.kind === "control" && block.payload.control === "race"
         ? "any"
         : block.kind === "control" && block.payload.control === "parallel"
@@ -248,7 +254,7 @@ export function StoryBlockRow(props: {
             <div className="relative min-w-0 py-1">
                 <RailGuides depth={row.depth} highlight={selected || active} />
                 <div style={{ paddingLeft: row.depth * RAIL_STEP }}>
-                {lensTrack ? (
+                {lensBarTrack ? (
                     <LensTrackContent
                         row={row}
                         scene={scene}
@@ -261,6 +267,9 @@ export function StoryBlockRow(props: {
                         onSetDialogueCharacter={props.onSetDialogueCharacter}
                         onUpdatePayload={props.onUpdatePayload}
                         onAddInside={props.onAddInside}
+                        onInsertAfter={props.onInsertAfter}
+                        onDeleteRow={props.onDeleteRow}
+                        active={active}
                     />
                 ) : (
                 <>
@@ -356,6 +365,11 @@ export function StoryBlockRow(props: {
                         onAddInside={() => props.onAddInside(block.id)}
                         onAddBranch={branch => props.onAddBranch(block.id, branch)}
                     />
+                ) : null}
+                {/* A prose track on the ordinary path still carries the lens's tail "+" when it is the
+                    container's last child — the affordance belongs to the lens, not to the bar. */}
+                {lensTrack?.segment.isLast && block.parentId ? (
+                    <LensTailAdd onAdd={() => props.onAddInside(block.parentId as StoryBlockId)} />
                 ) : null}
                 </>
                 )}
@@ -1186,10 +1200,14 @@ function LensBar({ track, color }: { track: StoryLensRowTrack; color: string }) 
 
 /**
  * A lensed container's direct child, rendered as a bar-timeline track: the block's badge and overview
- * on the left (its `d=` token stays in-place editable), the duration bar on the right. It is still a
- * full row — selection, drag, inspector, context menu and playhead all live on the row around this —
- * so only the read chrome changes. A nested container shows as one compact subgroup track; the last
- * track carries the tail "+" that inserts a new child into the container (reusing the InsertRow path).
+ * on the left (its `d=` token stays in-place editable), the duration bar on the right, and the row's
+ * own insert/delete actions past it. It is still a full row — selection, drag, inspector, context menu
+ * and playhead all live on the row around this — so only the read chrome changes. A nested container
+ * shows as one compact subgroup track; the last track carries the tail "+" that inserts a new child
+ * into the container (reusing the InsertRow path). Only `RowPlayAction` yields its hover slot to the
+ * bar (a declared M7 concession — "play from here" stays reachable from the context menu); prose
+ * children never reach here at all, they keep the ordinary row (see `LensTrackKind["text"]`), which is
+ * also the only row kind `StoryVoiceIndicator` can ever render on.
  */
 function LensTrackContent(props: {
     row: VisibleStoryRow;
@@ -1203,6 +1221,9 @@ function LensTrackContent(props: {
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
     onAddInside: (parentId: StoryBlockId) => void;
+    onInsertAfter: () => void;
+    onDeleteRow: () => void;
+    active: boolean;
 }) {
     const { row, scene, document, characters } = props;
     const block = row.block;
@@ -1236,6 +1257,7 @@ function LensTrackContent(props: {
                     )}
                 </div>
                 <LensBar track={track} color={barColor} />
+                <RowActions onInsertAfter={props.onInsertAfter} onDelete={props.onDeleteRow} active={props.active} />
             </div>
             {track.segment.isLast && block.parentId ? (
                 <LensTailAdd onAdd={() => props.onAddInside(block.parentId as StoryBlockId)} />
