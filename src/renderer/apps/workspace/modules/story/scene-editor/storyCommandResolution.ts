@@ -235,6 +235,13 @@ function resolveAgainstType(
             }
             return found ? { value: { kind: "scene", sceneId: found.id } } : { issue: { code: "unknownScene", span, value } };
         }
+        case "label": {
+            // Matched case-insensitively but STORED as declared, so the payload always spells the
+            // name the engine will match - the compiler compares the same way.
+            const needle = value.trim().toLowerCase();
+            const found = context.labels.find(name => name.trim().toLowerCase() === needle);
+            return found ? { value: { kind: "label", name: found } } : { issue: { code: "unknownLabel", span, value } };
+        }
         case "variable": {
             const needle = value.trim().toLowerCase();
             const matches = context.variables.filter(entry => entry.name.trim().toLowerCase() === needle);
@@ -425,6 +432,8 @@ function issueForUnresolvable(type: StoryCommandParamType, value: string, span: 
             return { code: "unknownAsset", span, value, assetType: type.assetType };
         case "scene":
             return { code: "unknownScene", span, value };
+        case "label":
+            return { code: "unknownLabel", span, value };
         case "variable":
             return { code: "unknownVariable", span, value };
         case "target":

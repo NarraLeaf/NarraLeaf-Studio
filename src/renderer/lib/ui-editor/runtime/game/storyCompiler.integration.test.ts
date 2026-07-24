@@ -1908,6 +1908,35 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(propsOf("dark")).toEqual([expect.objectContaining({ filter: "brightness(0)" })]);
     });
 
+    it("compiles /label and /goto, and refuses the two shapes the engine would refuse", async () => {
+        const control = (id: string, payload: Extract<StoryBlock["payload"], { control: string }>): StoryBlock => ({
+            id, kind: "control", parentId: null, childrenIds: [], payload,
+        });
+        const blocks: Record<string, StoryBlock> = {
+            start: control("start", { control: "label", name: "start" }),
+            back: control("back", { control: "goto", targetLabel: "start" }),
+            // Both faults make the engine's own Story.build throw, with no row to blame - which is
+            // why the compiler diagnoses them first, and at `error` so a production build refuses.
+            dupe: control("dupe", { control: "label", name: "start" }),
+            nowhere: control("nowhere", { control: "goto", targetLabel: "elsewhere" }),
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["start", "back", "dupe", "nowhere"]),
+            sceneId: "scene-1",
+        });
+
+        const typeOf = (blockId: string) => compiled.actionIdBindings.find(binding => binding.blockId === blockId)?.action as { type?: string } | undefined;
+        expect(typeOf("start")?.type).toBe("control:label");
+        expect(typeOf("back")?.type).toBe("control:jump");
+        // The faulted rows emit nothing at all - a half-built jump is worse than an absent one.
+        expect(typeOf("dupe")).toBeUndefined();
+        expect(typeOf("nowhere")).toBeUndefined();
+        expect(compiled.diagnostics).toEqual([
+            { level: "error", blockId: "dupe", message: 'Label "start" is declared more than once in this scene.' },
+            { level: "error", blockId: "nowhere", message: "Go to target label not found in this scene: elsewhere" },
+        ]);
+    });
+
     it("compiles /vfx onto one Vfx, showing on create and clamping its knobs", async () => {
         const vfxBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "vfx" }>): StoryBlock => ({
             id, kind: "action", parentId: null, childrenIds: [], payload,

@@ -180,6 +180,12 @@ function projectBlockLine(
             const label = block.payload.branch === "else" ? "else" : `${block.payload.branch} ${formatCondition(block.payload.condition, scene, document)}`;
             return { text: `${indent}/${label}`, editable: false, prefix: "" };
         }
+        if (block.payload.control === "label") {
+            return { text: `${indent}/label ${block.payload.name}`.trimEnd(), editable: false, prefix: "" };
+        }
+        if (block.payload.control === "goto") {
+            return { text: `${indent}/goto ${block.payload.targetLabel}`.trimEnd(), editable: false, prefix: "" };
+        }
         return { text: `${indent}/condition`, editable: false, prefix: "" };
     }
     if (block.kind === "jump") {

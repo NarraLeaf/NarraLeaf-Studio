@@ -1,5 +1,6 @@
 import type { StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
 import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
+import { sceneLabelNames } from "@shared/types/story/labels";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedPersistentView } from "@shared/variables/mergedPersistentView";
 import { collectTempSpeakers } from "@/lib/workspace/services/story/storyModel";
@@ -143,6 +144,9 @@ export function buildStoryCommandContext(input: {
         tempSpeakers: input.document ? collectTempSpeakers(input.document).map(speaker => speaker.name) : [],
         // A scene is addressed by the name the author sees in the panel, not its runtimeName.
         scenes: Object.values(input.document?.scenes ?? {}).map(entry => ({ id: entry.id, name: entry.name })),
+        // The one scan, shared with the compiler's `goto` validation (§12.9) - not a completion-layer
+        // special case, just another table this projection carries.
+        labels: sceneLabelNames(input.scene),
         variables: variableEntries(input.document, input.scene, input.persistentVariables ?? []),
         formsByCharacterId,
         stageObjects: collectStageObjects(input.document, input.sceneId, input.scene),
