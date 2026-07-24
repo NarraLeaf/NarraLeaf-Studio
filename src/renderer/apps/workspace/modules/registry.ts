@@ -5,6 +5,7 @@
  */
 
 import { assetsModule, assetsBottomModule } from "./assets";
+import { assetOverviewModule } from "./asset-overview";
 import { propertiesModule } from "./properties";
 import { consoleModule } from "./console";
 import { welcomeModule } from "./welcome";
@@ -55,6 +56,7 @@ export const builtInPanels: PanelModule[] = [
 export const builtInEditors: EditorModule[] = [
     welcomeModule,
     aboutModule,
+    assetOverviewModule,
     imagePreviewModule,
     audioPreviewModule,
     videoPreviewModule,
@@ -78,6 +80,7 @@ export const builtInActionGroups: ModuleActionGroup[] = globalActionGroups;
  * Export individual modules for direct access if needed
  */
 export { assetsModule, assetsBottomModule } from "./assets";
+export { assetOverviewModule, openAssetOverviewTab, AssetOverviewCommand } from "./asset-overview";
 export { charactersModule } from "./characters";
 export { propertiesModule } from "./properties";
 export { consoleModule } from "./console";
