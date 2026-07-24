@@ -21,7 +21,7 @@ import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { StorySceneEditorTabPayload } from "./storySceneEditorTabId";
-import { createBlockForCommand, isActionCommandId, isInspectorFirstCommand, type ActionCommandId } from "./storyActionCommands";
+import { createBlockForCommand, type ActionCommandId } from "./storyActionCommands";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { buildStoryCommandContext } from "./storyCommandContext";
 import { canCommit, parseCommandLine } from "./storyCommandParser";
@@ -1467,23 +1467,33 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
     }, [createBlock, editorMode, insertBlock]);
 
+    /**
+     * A pick from the sidebar. Since A1 the sidebar lists SPECS, so this is the same build the typed
+     * line runs - only with no args at all: `build({})` returns the command's default block (the bible
+     * requires every spec to survive empty args), and whatever the line would have said, including the
+     * target, is bound in the inspector. That is what lets one `/show` entry stand under five subjects
+     * instead of ten catalogue entries standing for one verb.
+     */
     const createActionFromSidebar = useCallback((commandId: string) => {
-        if (!isActionCommandId(commandId)) {
+        const spec = getCommandSpec(commandId);
+        if (!spec?.build || !uuidService) {
             const block = createPluginActionBlock(commandId);
             if (block) {
                 insertBlock(block, activeBlockId, true);
             }
             return;
         }
-        const block = createBlock(commandId, "");
-        if (!block) {
-            return;
-        }
-        insertBlock(block, activeBlockId, isInspectorFirstCommand(commandId));
-        if (!isInspectorFirstCommand(commandId) && isTextEditableBlock(block)) {
+        const block = spec.build({}, { generateId: () => uuidService.generate(), context: commandContext });
+        // Derived from the block, not from a list of command ids: a row the author types into opens for
+        // typing, a card-less container (condition / its branches) opens nothing, everything else opens
+        // the inspector - which is where an unbound target gets picked.
+        const openInspector = !isTextEditableBlock(block) && hasInspector(block);
+        insertBlock(block, activeBlockId, openInspector);
+        scaffoldContainer(block);
+        if (!openInspector && isTextEditableBlock(block)) {
             setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
         }
-    }, [activeBlockId, createBlock, createPluginActionBlock, insertBlock]);
+    }, [activeBlockId, commandContext, createPluginActionBlock, insertBlock, scaffoldContainer, uuidService]);
 
     /**
      * Point a dialogue row at a speaker: a real character, a bare name, or nobody.
