@@ -84,7 +84,6 @@ function gameNametagGraph(): BlueprintGraphIr {
 function blueprintDocument(graph: BlueprintGraphIr = initGraph()): BlueprintDocument {
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-        persistentVariables: {},
         blueprints: {
             "bp-value": {
                 id: "bp-value",
@@ -124,7 +123,6 @@ function singleValueBlueprintDocument(input: {
     const ownerKey = `widgetValue:surface:${input.elementId}:${input.propPath}`;
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-        persistentVariables: {},
         blueprints: {
             [input.blueprintId]: {
                 id: input.blueprintId,
@@ -298,6 +296,7 @@ describe("BlueprintValueRuntimeStore", () => {
             document,
             surface,
             blueprintDocument: bpDoc,
+            persistentVariables: {},
             hostAdapter,
         });
 
@@ -315,6 +314,7 @@ describe("BlueprintValueRuntimeStore", () => {
             document,
             surface,
             blueprintDocument: bpDoc,
+            persistentVariables: {},
             hostAdapter,
         });
         await new Promise(resolve => setTimeout(resolve, 0));
@@ -330,6 +330,7 @@ describe("BlueprintValueRuntimeStore", () => {
             document,
             surface,
             blueprintDocument: bpDoc,
+            persistentVariables: {},
             hostAdapter,
         });
 
@@ -354,18 +355,21 @@ describe("BlueprintValueRuntimeStore", () => {
         store.sync({
             document,
             surface,
+            persistentVariables: {},
             blueprintDocument: blueprintDocument(literalInitGraph(BLUEPRINT_NODE_TYPE_LITERAL_STRING, "first")),
             hostAdapter,
         });
         store.sync({
             document,
             surface,
+            persistentVariables: {},
             blueprintDocument: blueprintDocument(literalInitGraph(BLUEPRINT_NODE_TYPE_LITERAL_STRING, "second")),
             hostAdapter,
         });
         store.sync({
             document,
             surface,
+            persistentVariables: {},
             blueprintDocument: blueprintDocument(literalInitGraph(BLUEPRINT_NODE_TYPE_LITERAL_STRING, "third")),
             hostAdapter,
         });
@@ -395,6 +399,7 @@ describe("BlueprintValueRuntimeStore", () => {
             document,
             surface,
             blueprintDocument: bpDoc,
+            persistentVariables: {},
             hostAdapter,
         });
 
@@ -473,6 +478,7 @@ describe("BlueprintValueRuntimeStore", () => {
         store.sync({
             document,
             surface,
+            persistentVariables: {},
             blueprintDocument: singleValueBlueprintDocument({
                 blueprintId: "bp-button",
                 elementId: "button",
@@ -529,6 +535,7 @@ describe("BlueprintValueRuntimeStore", () => {
         store.sync({
             document,
             surface,
+            persistentVariables: {},
             blueprintDocument: singleValueBlueprintDocument({
                 blueprintId: "bp-frame",
                 elementId: "frame",
@@ -591,6 +598,7 @@ describe("BlueprintValueRuntimeStore", () => {
         store.sync({
             document,
             surface,
+            persistentVariables: {},
             blueprintDocument: singleValueBlueprintDocument({
                 blueprintId: "bp-slider",
                 elementId: "slider",

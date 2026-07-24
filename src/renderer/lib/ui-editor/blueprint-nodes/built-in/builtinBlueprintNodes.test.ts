@@ -237,7 +237,7 @@ import { blueprintNodeRegistry } from "../BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "../registerCoreBlueprintNodes";
 import { isValidBlueprintPinConnection } from "../connectionPolicy";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
-import type { BlueprintPersistentVariable } from "@shared/types/blueprint/document";
+import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import { resolveSliderRuntimeValue, type UISliderRuntimeValue } from "@shared/types/ui-editor/slider";
 import { executeGraph } from "../../behavior-graph/GraphExecutor";
 import { listBlueprintNodePaletteEntries } from "../../behavior-graph/nodeEditorCatalog";
@@ -995,7 +995,7 @@ describe("built-in blueprint nodes", () => {
     it("executes persistent variable get/set through the host store", async () => {
         registerCoreBlueprintNodes();
 
-        const persistentVariables: Record<string, BlueprintPersistentVariable> = {
+        const persistentVariables: PersistentVariableRuntimeTable = {
             volume: {
                 id: "volume",
                 name: "Volume",

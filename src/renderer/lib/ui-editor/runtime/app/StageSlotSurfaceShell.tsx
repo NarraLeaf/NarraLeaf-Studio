@@ -321,6 +321,7 @@ export function StageSlotSurfaceBody(props: {
         }
         return {
             blueprintDocument: bundle.ui.localBlueprints,
+            persistentVariables: bundle.ui.persistentVariables,
             surfaceState: core.scopeBridge.getSurfaceStore(runtimeScopeId),
             debug: core.debug,
             coalescer: core.bindingDebugCoalescer,
@@ -332,6 +333,7 @@ export function StageSlotSurfaceBody(props: {
         <SurfaceLifecycleBoundary
             core={subscriptionsReady ? core : null}
             blueprintDocument={bundle.ui.localBlueprints}
+            persistentVariables={bundle.ui.persistentVariables}
             surface={surface}
             runtimeScopeId={runtimeScopeId}
             hostAdapter={hostAdapter}

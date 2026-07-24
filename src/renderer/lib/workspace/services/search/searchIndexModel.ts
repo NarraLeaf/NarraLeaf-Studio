@@ -1,6 +1,7 @@
 import type { StoryDocument } from "@shared/types/story";
 import { isStoryDeclarationBlock } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { LocalizationKeysDocument } from "@shared/types/localization";
 import { getTextSegment } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
 import { richRunsToPlain, segmentToRuns } from "@/apps/workspace/modules/story/scene-editor/richText";
@@ -202,6 +203,7 @@ export function extractStoryEntries(document: StoryDocument): SearchIndexEntry[]
 export function extractBlueprintEntries(
     document: BlueprintDocument,
     resolveNodeLabel: (nodeType: string) => string | undefined,
+    persistentVariables: VariableRegistryEntry[] = [],
 ): SearchIndexEntry[] {
     const entries: SearchIndexEntry[] = [];
 
@@ -215,15 +217,15 @@ export function extractBlueprintEntries(
         }
     }
 
-    // Persistent variables are project-level, authored on the global blueprint when one exists.
+    // Persistent variables are project-level (M-VAR registry), surfaced against the global blueprint when one exists.
     const globalRecord = document.ownerRecords["globalMain"];
     if (globalRecord) {
-        for (const [variableId, definition] of Object.entries(document.persistentVariables)) {
+        for (const definition of persistentVariables) {
             if (!definition.name) {
                 continue;
             }
             entries.push({
-                id: `bpvar:persistent:${variableId}`,
+                id: `bpvar:persistent:${definition.id}`,
                 group: "variable",
                 text: definition.name,
                 target: {

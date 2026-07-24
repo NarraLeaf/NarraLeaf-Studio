@@ -29,7 +29,6 @@ describe("createDevModeBlueprintHostAdapter", () => {
 
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [childBlueprintId]: {
                     id: childBlueprintId,
@@ -174,6 +173,7 @@ describe("createDevModeBlueprintHostAdapter", () => {
                 },
                 localBlueprints: blueprintDocument,
                 sharedBlueprints: [],
+                persistentVariables: {},
             },
         };
         const debug = new DebugBridge();

@@ -1,5 +1,6 @@
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
+import type { PersistentVariableRuntimeTable } from "./variables/registry";
 import type { GameLocalizationBundle } from "./localization";
 import type { GameVoiceBundle } from "./voice";
 import type { UIDocument } from "./ui-editor/document";
@@ -118,6 +119,13 @@ export type DevModeBundle = {
         localBlueprints: BlueprintDocument;
         /** Shared blueprint assets loaded from project asset metadata + content files. */
         sharedBlueprints: SharedBlueprintAsset[];
+        /**
+         * Project-level persistent variables (M-VAR registry), baked from `editor/variables.json`.
+         * The runtime reads persistent definitions from here, not from `localBlueprints` - the field
+         * left the blueprint document when the registry landed. Keyed by variable id (= the node
+         * `persistentVariableId`).
+         */
+        persistentVariables: PersistentVariableRuntimeTable;
     };
     story?: StoryDocument;
     storyLibrary?: DevModeStoryLibrary;

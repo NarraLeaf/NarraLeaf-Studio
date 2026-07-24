@@ -1,5 +1,6 @@
 import { useEffect, useRef, type MutableRefObject, type ReactNode } from "react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
@@ -18,10 +19,11 @@ function executeScopeCommands(input: {
     commands: readonly LifecycleCommand[];
     core: BlueprintRuntimeCore;
     blueprintDocument: BlueprintDocument;
+    persistentVariables: PersistentVariableRuntimeTable;
     hostAdapter: UIHostAdapter | null;
     makeStateAccessors: (runtimeScopeId: string) => SurfaceStateAccessors | null;
 }): void {
-    const { commands, core, blueprintDocument, hostAdapter, makeStateAccessors } = input;
+    const { commands, core, blueprintDocument, persistentVariables, hostAdapter, makeStateAccessors } = input;
     executeLifecycleCommands(commands, {
         openScope: scopeId => core.executionManager.openScope(scopeId),
         closeScope: (scopeId, reason) => core.executionManager.closeScope(scopeId, reason),
@@ -32,6 +34,7 @@ function executeScopeCommands(input: {
             }
             void dispatchSurfaceBlueprintEvent({
                 blueprintDocument,
+                persistentVariables,
                 surfaceId: command.surfaceId,
                 runtimeScopeId: command.scopeId,
                 eventName: command.eventName,
@@ -62,6 +65,7 @@ function executeScopeCommands(input: {
 export function SurfaceLifecycleBoundary(props: {
     core: BlueprintRuntimeCore | null;
     blueprintDocument: BlueprintDocument;
+    persistentVariables: PersistentVariableRuntimeTable;
     surface: UISurface;
     runtimeScopeId: string;
     hostAdapter: UIHostAdapter;
@@ -69,7 +73,7 @@ export function SurfaceLifecycleBoundary(props: {
     makeStateAccessors: (runtimeScopeId: string) => SurfaceStateAccessors | null;
     children: ReactNode;
 }) {
-    const { core, blueprintDocument, surface, runtimeScopeId, hostAdapter, lifecycleRef, makeStateAccessors, children } = props;
+    const { core, blueprintDocument, persistentVariables, surface, runtimeScopeId, hostAdapter, lifecycleRef, makeStateAccessors, children } = props;
     const latestRuntimeHostAdapterRef = useRef<UIHostAdapter | null>(
         hostAdapter.blueprintRuntime ? hostAdapter : null,
     );
@@ -96,6 +100,7 @@ export function SurfaceLifecycleBoundary(props: {
                 commands: lifecycleRef.current.surfaceReady(runtimeScopeId, surface.id),
                 core,
                 blueprintDocument,
+                persistentVariables,
                 hostAdapter: currentHostAdapter,
                 makeStateAccessors,
             });
@@ -116,6 +121,7 @@ export function SurfaceLifecycleBoundary(props: {
                 commands: lifecycleRef.current.surfaceUnmounted(scopeToUnmount, surfaceToUnmount),
                 core,
                 blueprintDocument,
+                persistentVariables,
                 hostAdapter: latestRuntimeHostAdapterRef.current,
                 makeStateAccessors,
             });

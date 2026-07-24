@@ -1,5 +1,5 @@
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
-import type { BlueprintPersistentVariable } from "@shared/types/blueprint/document";
+import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import type { UIGraph, UIGraphEntry, UIGraphId, UIGraphNode } from "@shared/types/ui-editor/graph";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "../runtime/types";
@@ -66,7 +66,7 @@ export type BehaviorNodeExecutionContext = {
         blueprintId?: string;
         componentId?: string;
     };
-    persistentVariables?: Record<string, BlueprintPersistentVariable>;
+    persistentVariables?: PersistentVariableRuntimeTable;
     valueExecution?: BehaviorGraphValueExecution;
     /** Nesting depth of blueprint fn invocations; guards runaway recursion in the dispatcher. */
     fnCallDepth?: number;

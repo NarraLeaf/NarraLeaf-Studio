@@ -27,6 +27,8 @@ import { CharacterService } from "@/lib/workspace/services/core/CharacterService
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
+import { buildPersistentRuntimeTable } from "@shared/variables/variableRegistryModel";
 
 const PREVIEW_BUNDLE_ID = "workspace-story-preview";
 
@@ -124,6 +126,9 @@ export function useStoryPreviewGameUi(input: {
                 uigraphs: uiGraphService.getDocument(),
                 localBlueprints: localBlueprintService.getBlueprintDocument(),
                 sharedBlueprints: [],
+                persistentVariables: buildPersistentRuntimeTable(
+                    context.services.get<VariableRegistryService>(Services.VariableRegistry).getRegistry(),
+                ),
             },
         };
     }, [context, enabled]);

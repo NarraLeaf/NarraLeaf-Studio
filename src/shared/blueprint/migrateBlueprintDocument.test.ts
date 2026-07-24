@@ -7,9 +7,10 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED,
 } from "../types/blueprint/graph";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "../types/blueprint/schema";
+import { BLUEPRINT_NODE_TYPE_PERSISTENT_GET } from "../types/blueprint/graph";
 
 describe("migrateBlueprintDocumentToLatest", () => {
-    it("upgrades schema 6 documents with empty persistent variables", () => {
+    it("upgrades schema 6 documents and no longer carries persistentVariables (M-VAR)", () => {
         const migrated = migrateBlueprintDocumentToLatest({
             schemaVersion: 6,
             blueprints: {},
@@ -17,7 +18,101 @@ describe("migrateBlueprintDocumentToLatest", () => {
         });
 
         expect(migrated.schemaVersion).toBe(BLUEPRINT_DOCUMENT_SCHEMA_VERSION);
-        expect(migrated.persistentVariables).toEqual({});
+        expect("persistentVariables" in migrated).toBe(false);
+    });
+
+    it("strips persistentVariables on the v8→v9 (M-VAR) migration and keeps matching node params", () => {
+        const migrated = migrateBlueprintDocumentToLatest({
+            schemaVersion: 8,
+            ownerRecords: {},
+            persistentVariables: {
+                gold: { id: "gold", name: "Gold", valueType: "number", storageKey: "gold" },
+            },
+            blueprints: {
+                bp: {
+                    id: "bp",
+                    name: "Main",
+                    owner: { kind: "globalMain" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                onCall: {
+                                    id: "onCall",
+                                    graph: {
+                                        nodes: {
+                                            get: {
+                                                id: "get",
+                                                type: BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+                                                params: { persistentVariableId: "gold" },
+                                            },
+                                        },
+                                        edges: [],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+        });
+
+        expect(migrated.schemaVersion).toBe(BLUEPRINT_DOCUMENT_SCHEMA_VERSION);
+        expect("persistentVariables" in migrated).toBe(false);
+        // id === storageKey, so the node param resolves to the registry entry unchanged.
+        const graph = migrated.blueprints.bp?.program.kind === "graph"
+            ? migrated.blueprints.bp.program.graphs.events.onCall?.graph
+            : undefined;
+        expect(graph?.nodes?.get.params?.persistentVariableId).toBe("gold");
+    });
+
+    it("remaps persistentVariableId when the old blueprint id differs from the storage key", () => {
+        const migrated = migrateBlueprintDocumentToLatest({
+            schemaVersion: 8,
+            ownerRecords: {},
+            persistentVariables: {
+                bp_old_id: { id: "bp_old_id", name: "Gold", valueType: "number", storageKey: "storage_gold" },
+            },
+            blueprints: {
+                bp: {
+                    id: "bp",
+                    name: "Main",
+                    owner: { kind: "globalMain" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                onCall: {
+                                    id: "onCall",
+                                    graph: {
+                                        nodes: {
+                                            get: {
+                                                id: "get",
+                                                type: BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+                                                params: { persistentVariableId: "bp_old_id" },
+                                            },
+                                        },
+                                        edges: [],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+        });
+
+        const graph = migrated.blueprints.bp?.program.kind === "graph"
+            ? migrated.blueprints.bp.program.graphs.events.onCall?.graph
+            : undefined;
+        // The registry keys the entry by storageKey; the node param is remapped to match.
+        expect(graph?.nodes?.get.params?.persistentVariableId).toBe("storage_gold");
     });
 
     it("converts legacy blueprint timing node params from milliseconds to seconds", () => {

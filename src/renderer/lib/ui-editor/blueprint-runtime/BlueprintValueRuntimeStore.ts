@@ -1,4 +1,5 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 import type {
     UIDocument,
@@ -22,6 +23,7 @@ type ActiveBindingInput = {
     blueprintId: string;
     valueType: UIElementValueBindingValueType;
     blueprintDocument: BlueprintDocument;
+    persistentVariables: PersistentVariableRuntimeTable;
     hostAdapter: UIHostAdapter;
     listItemScope?: UIListItemScope | null;
     instanceKey?: string;
@@ -49,6 +51,7 @@ type ValueRuntimeSyncContext = {
     document: UIDocument;
     surface: UISurface;
     blueprintDocument: BlueprintDocument;
+    persistentVariables: PersistentVariableRuntimeTable;
     hostAdapter: UIHostAdapter;
     runtimeScopeId: string;
 };
@@ -190,6 +193,7 @@ export class BlueprintValueRuntimeStore {
         document: UIDocument;
         surface: UISurface;
         blueprintDocument: BlueprintDocument;
+        persistentVariables: PersistentVariableRuntimeTable;
         hostAdapter: UIHostAdapter;
     }): void {
         if (this.disposed) {
@@ -215,6 +219,7 @@ export class BlueprintValueRuntimeStore {
                     blueprintId: binding.blueprintId,
                     valueType: binding.valueType,
                     blueprintDocument: input.blueprintDocument,
+                    persistentVariables: input.persistentVariables,
                     hostAdapter: input.hostAdapter,
                     listItemScope: null,
                     instanceKey: undefined,
@@ -278,6 +283,7 @@ export class BlueprintValueRuntimeStore {
             blueprintId: input.blueprintId,
             valueType: input.valueType,
             blueprintDocument: this.lastSyncContext.blueprintDocument,
+            persistentVariables: this.lastSyncContext.persistentVariables,
             hostAdapter: this.lastSyncContext.hostAdapter,
             listItemScope: input.listItemScope ?? null,
             instanceKey: input.instanceKey,
@@ -371,6 +377,7 @@ export class BlueprintValueRuntimeStore {
         try {
             const result = await evaluateBlueprintValue({
                 blueprintDocument: entry.input.blueprintDocument,
+                persistentVariables: entry.input.persistentVariables,
                 blueprintId: entry.input.blueprintId,
                 surfaceId: entry.input.surfaceId,
                 runtimeScopeId: entry.input.runtimeScopeId,

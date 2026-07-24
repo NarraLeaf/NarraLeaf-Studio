@@ -10,6 +10,7 @@
  * Comments in English per project convention.
  */
 
+import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import { Script } from "narraleaf-react";
 import type { Scene, ScriptCtx } from "narraleaf-react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
@@ -44,6 +45,8 @@ export type StoryPersistenceBridgeLike = {
 
 export type CompileStoryActionScriptInput = {
     blueprintDocument: BlueprintDocument;
+    /** M-VAR: persistent variable definitions (baked from the registry), replacing the old blueprint-doc field. */
+    persistentVariables: PersistentVariableRuntimeTable;
     blueprintId: string;
     nlrScene: Scene;
     sceneFnCatalog: StoryActionFnCatalog;
@@ -144,7 +147,7 @@ export function evaluateStoryActionBlueprintValueSync(input: CompileStoryActionS
                 blueprintLocals: {},
                 eventName: "onCall",
                 executionOwner: { blueprintId: bp.id },
-                persistentVariables: input.blueprintDocument.persistentVariables,
+                persistentVariables: input.persistentVariables,
             });
             if (result.returnValueSet) lastReturn = result.returnValue;
         }
@@ -245,7 +248,7 @@ async function runStoryActionOnCall(env: StoryActionExecutionEnv): Promise<unkno
                 blueprintLocals: {},
                 eventName: "onCall",
                 executionOwner: { blueprintId: bp.id },
-                persistentVariables: env.input.blueprintDocument.persistentVariables,
+                persistentVariables: env.input.persistentVariables,
                 signal: env.signal,
             });
             if (result.returnValueSet) lastReturn = result.returnValue;
@@ -289,7 +292,7 @@ async function invokeStoryActionFn(options: {
         hostAdapter: options.buildHostAdapter(),
         blueprintLocals,
         executionOwner: { blueprintId: decl.blueprintId },
-        persistentVariables: input.blueprintDocument.persistentVariables,
+        persistentVariables: input.persistentVariables,
         signal: options.signal,
         fnCallDepth: depth + 1,
     });

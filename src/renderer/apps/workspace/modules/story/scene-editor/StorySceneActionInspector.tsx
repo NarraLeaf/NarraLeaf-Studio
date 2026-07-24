@@ -84,12 +84,11 @@ function useStoryVariableOptions(document: StoryDocument, sceneId: StorySceneId)
         if (!context || !isInitialized) return;
         const service = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
         const read = () => {
-            const bpDoc = service.getBlueprintDocument();
             setPersistent(
-                Object.values(bpDoc.persistentVariables ?? {}).map(variable => ({
+                service.listPersistentVariables().map(variable => ({
                     id: variable.storageKey,
                     name: variable.name,
-                    valueType: (variable.valueType as StoryVariableValueType) ?? "string",
+                    valueType: variable.valueType,
                 })),
             );
         };

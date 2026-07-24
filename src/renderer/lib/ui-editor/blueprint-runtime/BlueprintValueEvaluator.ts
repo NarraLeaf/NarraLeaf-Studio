@@ -1,4 +1,5 @@
 import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
+import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -52,6 +53,7 @@ function collectValueHeadNodeIds(ir: BlueprintGraphIr | undefined): string[] {
 
 export async function evaluateBlueprintValue(input: {
     blueprintDocument: BlueprintDocument;
+    persistentVariables: PersistentVariableRuntimeTable;
     blueprintId: string;
     surfaceId: string;
     runtimeScopeId?: string;
@@ -109,7 +111,7 @@ export async function evaluateBlueprintValue(input: {
                     elementId: input.elementId,
                     blueprintId: input.blueprintId,
                 },
-                persistentVariables: input.blueprintDocument.persistentVariables,
+                persistentVariables: input.persistentVariables,
                 maxSteps: input.maxSteps ?? DEFAULT_VALUE_MAX_STEPS,
                 valueExecution: {
                     trackDependency: dependency => {

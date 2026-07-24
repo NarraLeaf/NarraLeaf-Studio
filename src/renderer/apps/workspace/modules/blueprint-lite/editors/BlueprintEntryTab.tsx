@@ -8,6 +8,7 @@ import { useKeybindings, whenEditorFocused } from "@/apps/workspace/hooks";
 import { useRegistry } from "@/apps/workspace/registry";
 import type { EditorLayout } from "@/apps/workspace/registry/types";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
 import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
@@ -499,6 +500,10 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const nodeCatalog = context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     const runtimeBridge = context.services.get<UIRuntimeBridgeService>(Services.RuntimeBridge);
     const storyService = context.services.get<StoryService>(Services.Story);
+    const variableRegistry = context.services.get<VariableRegistryService>(Services.VariableRegistry);
+    // Persistent variables live in the M-VAR registry; its edits do not bump the blueprint revision.
+    const [registryRevision, setRegistryRevision] = useState(0);
+    useEffect(() => variableRegistry.onRegistryChanged(() => setRegistryRevision(r => r + 1)), [variableRegistry]);
     const [uiDocumentRevision, setUiDocumentRevision] = useState(() => uidoc.getRevision());
     const [storyDocumentsById, setStoryDocumentsById] = useState<Record<string, StoryDocument>>({});
     const [storyLibraryRevision, setStoryLibraryRevision] = useState(0);
@@ -577,11 +582,12 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     );
 
     const editor = useBlueprintEditorState(payload, { eventIds, functionIds });
-    const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision, {
+    const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision + registryRevision, {
         widgetElement,
         widgetSurfaceId: payload.surfaceId,
         widgetBlueprintEvents: widgetLogicEvents,
         isComponentDefinitionGraph,
+        persistentVariables: localBp.listPersistentVariables(),
     });
     const openBlueprint = useOpenBlueprintTarget();
     const dragConnectCreate = useBlueprintDragConnectSettings();
@@ -1360,15 +1366,14 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     }, [doc, revision, payload.blueprintId, payload.surfaceId]);
 
     const blueprintPersistentVariables = useMemo(() => {
-        return Object.values(doc.persistentVariables ?? {})
-            .sort((a, b) => a.name.localeCompare(b.name))
+        return localBp.listPersistentVariables()
             .map(variable => ({
                 id: variable.id,
                 name: variable.name,
                 value: variable.id,
                 valueType: variable.valueType,
             }));
-    }, [doc, revision]);
+    }, [localBp, registryRevision]);
 
     const blueprintMembersSig = useMemo(
         () =>

@@ -36,7 +36,6 @@ function returnGraph(value: string): BlueprintGraphIr {
 function valueDocument(graph: BlueprintGraphIr): BlueprintDocument {
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-        persistentVariables: {},
         blueprints: {
             "bp-value": {
                 id: "bp-value",
@@ -118,6 +117,7 @@ function hostAdapter(text = "Bound text", onSetText?: () => void, sliderValue = 
 async function evalValue(doc: BlueprintDocument, adapter = hostAdapter()) {
     return evaluateBlueprintValue({
         blueprintDocument: doc,
+        persistentVariables: {},
         blueprintId: "bp-value",
         surfaceId: "surface",
         elementId: "text-a",
