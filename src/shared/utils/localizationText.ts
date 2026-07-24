@@ -25,7 +25,7 @@ export function serializeSegmentSourceText(segment: StoryTextSegment): string {
     let out = "";
     let interpolationIndex = 0;
     for (const run of segment.rich) {
-        if ("pause" in run) {
+        if ("pause" in run || "event" in run) {
             continue;
         }
         if ("interpolation" in run) {

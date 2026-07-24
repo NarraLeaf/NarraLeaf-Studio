@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import type { StoryInterpolationRef, StoryRichRun } from "@shared/types/story";
+import type { StoryInlineEvent, StoryInterpolationRef, StoryRichRun } from "@shared/types/story";
 import type { StoryCaretTarget } from "./storySceneEditorTypes";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useTranslation } from "@/lib/i18n";
@@ -38,6 +38,12 @@ export type InterpolationClickInfo = {
     anchor: { top: number; left: number; bottom: number };
 };
 
+export type EventClickInfo = {
+    unit: number;
+    value: StoryInlineEvent;
+    anchor: { top: number; left: number; bottom: number };
+};
+
 export type RichTextInputHandle = {
     focus: () => void;
     toggleMark: (mark: "bold" | "italic") => void;
@@ -48,6 +54,9 @@ export type RichTextInputHandle = {
     insertInterpolation: (interp: StoryInterpolationRef) => void;
     updateInterpolationAt: (unit: number, interp: StoryInterpolationRef) => void;
     removeInterpolationAt: (unit: number) => void;
+    insertEvent: (event: StoryInlineEvent) => void;
+    updateEventAt: (unit: number, event: StoryInlineEvent) => void;
+    removeEventAt: (unit: number) => void;
     /**
      * Current rich runs read straight from the live editor DOM (bypasses any not-yet-flushed draft).
      * Returns `null` when the editor is not mounted so callers fall back to their own state instead of
@@ -99,6 +108,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     onGoalColumnInvalidated?: () => void;
     onPauseClick?: (info: PauseClickInfo) => void;
     onInterpolationClick?: (info: InterpolationClickInfo) => void;
+    onEventClick?: (info: EventClickInfo) => void;
     resolveInterpolationLabel?: ResolveInterpolationLabel;
     onActiveMarksChange?: (marks: ActiveMarks) => void;
 }>(function RichTextInput(props, ref) {
@@ -125,6 +135,8 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             pauseSeconds: seconds => t("story.richText.pauseSeconds", { seconds }),
             insertedValue: name => t("story.richText.insertedValue", { name }),
             valueFallback: t("story.richText.valueFallback"),
+            expressionEvent: t("story.richText.expressionEvent"),
+            soundEvent: t("story.richText.soundEvent"),
         },
     };
     const renderOptionsRef = useRef(renderOptions);
@@ -496,6 +508,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
 
     const insertPause = useCallback((pause: number | true) => insertRun({ pause }), [insertRun]);
     const insertInterpolation = useCallback((interp: StoryInterpolationRef) => insertRun({ interpolation: interp }), [insertRun]);
+    const insertEvent = useCallback((event: StoryInlineEvent) => insertRun({ event }), [insertRun]);
 
     useImperativeHandle(ref, () => ({
         focus: () => {
@@ -520,8 +533,11 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         insertInterpolation,
         updateInterpolationAt: (unit, interp) => spliceUnits(unit, 1, [{ interpolation: interp }], true),
         removeInterpolationAt: (unit) => spliceUnits(unit, 1, [], false),
+        insertEvent,
+        updateEventAt: (unit, event) => spliceUnits(unit, 1, [{ event }], true),
+        removeEventAt: (unit) => spliceUnits(unit, 1, [], false),
         getRuns: () => (editorRef.current ? domToRuns(editorRef.current) : null),
-    }), [applyMark, insertPause, insertInterpolation, spliceUnits]);
+    }), [applyMark, insertPause, insertInterpolation, insertEvent, spliceUnits]);
 
     return (
         <div
@@ -557,6 +573,23 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                         const rect = interpChip.getBoundingClientRect();
                         props.onInterpolationClick({
                             unit: unitOffsetOfElement(el, interpChip),
+                            value,
+                            anchor: { top: rect.top, left: rect.left, bottom: rect.bottom },
+                        });
+                    }
+                }
+                const eventChip = (event.target as HTMLElement).closest?.("[data-event]") as HTMLElement | null;
+                if (el && eventChip && el.contains(eventChip) && props.onEventClick) {
+                    let value: StoryInlineEvent | null = null;
+                    try {
+                        value = JSON.parse(eventChip.dataset.event ?? "") as StoryInlineEvent;
+                    } catch {
+                        value = null;
+                    }
+                    if (value) {
+                        const rect = eventChip.getBoundingClientRect();
+                        props.onEventClick({
+                            unit: unitOffsetOfElement(el, eventChip),
                             value,
                             anchor: { top: rect.top, left: rect.left, bottom: rect.bottom },
                         });

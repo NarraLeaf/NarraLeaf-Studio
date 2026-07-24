@@ -729,12 +729,12 @@ describe("story document migration ladder", () => {
     // The regression that shipped: bumping the constant without adding a step left v3 documents
     // falling through migrateStoryDocumentToLatest untouched, so every existing project threw
     // "migration is not implemented" and its story panel would not open.
-    it.each([[1], [2], [3], [4], [5], [6]])("brings a v%i document to the current schema", version => {
+    it.each([[1], [2], [3], [4], [5], [6], [7]])("brings a v%i document to the current schema", version => {
         expect(normalizeStoryDocument(docAtVersion(version), "2026-07-16T00:00:00.000Z").schemaVersion)
             .toBe(STORY_DOCUMENT_SCHEMA_VERSION);
     });
 
-    it("migrates v6 to v7 additively — a bump only, every block untouched (no invented `disabled`)", () => {
+    it("migrates v6 forward additively — a bump only, every block untouched (no invented `disabled`)", () => {
         const document = docAtVersion(6);
         const sceneId = Object.keys(document.scenes)[0];
         const scene = document.scenes[sceneId];
@@ -749,8 +749,36 @@ describe("story document migration ladder", () => {
             },
         } as StoryDocument;
         const migrated = migrateStoryDocumentToLatest(v6);
-        expect(migrated.schemaVersion).toBe(7);
+        expect(migrated.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
         expect(migrated.scenes[sceneId].blocks.n1).not.toHaveProperty("disabled");
+    });
+
+    it("migrates v7 to v8 additively — a bump only, no invented `event` runs", () => {
+        const document = docAtVersion(7);
+        const sceneId = Object.keys(document.scenes)[0];
+        const scene = document.scenes[sceneId];
+        const v7 = {
+            ...document,
+            scenes: {
+                [sceneId]: {
+                    ...scene,
+                    rootBlockIds: ["d1"],
+                    blocks: {
+                        d1: {
+                            id: "d1", parentId: null, childrenIds: [], kind: "nodeAction",
+                            payload: {
+                                action: "dialogue", characterId: "c1",
+                                text: { textId: "t", role: "dialogue", value: "hi", rich: [{ text: "hi" }] },
+                            },
+                        },
+                    },
+                },
+            },
+        } as unknown as StoryDocument;
+        const migrated = migrateStoryDocumentToLatest(v7);
+        expect(migrated.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+        const rich = (migrated.scenes[sceneId].blocks.d1 as { payload: { text: { rich: unknown[] } } }).payload.text.rich;
+        expect(rich).toEqual([{ text: "hi" }]);
     });
 
     /** A v4 document holding one `conditionBranch` whose expression condition is the legacy raw string. */

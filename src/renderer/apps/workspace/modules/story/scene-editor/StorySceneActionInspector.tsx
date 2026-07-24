@@ -1152,7 +1152,7 @@ function setTransformNumberProp(
     };
 }
 
-function AssetField(props: {
+export function AssetField(props: {
     label: string;
     assetType: AssetType;
     assetId: string | undefined;
