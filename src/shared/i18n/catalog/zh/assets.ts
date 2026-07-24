@@ -38,6 +38,38 @@ export const assets = {
         one: "{count} 项",
         other: "{count} 项",
     },
+    overview: {
+        tabTitle: "资源总览",
+        open: "打开资源总览",
+        loading: "正在读取资源库…",
+        failed: "无法读取资源库。",
+        retry: "重试",
+        empty: "此项目还没有资源。",
+        section: {
+            library: "资源库",
+            packaging: "打包",
+            byType: "按类型",
+            largest: "体积最大",
+            unreferenced: "未被引用",
+        },
+        stat: {
+            total: "总计",
+            referenced: "已引用",
+            unreferenced: "未被引用",
+            actual: "实际",
+            ifTrimmed: "若裁剪",
+            difference: "差额",
+        },
+        files: {
+            other: "{count} 个文件",
+        },
+        uses: {
+            other: "{count} 处引用",
+        },
+        detail: {
+            path: "路径",
+        },
+    },
     view: {
         list: "列表视图",
         icons: "图标视图",

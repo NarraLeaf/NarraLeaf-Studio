@@ -40,6 +40,46 @@ export const assets = {
         one: "{count} item",
         other: "{count} items",
     },
+    /**
+     * The read-only asset overview page. "Actual" and "If trimmed" are load-bearing: a build still
+     * packages the whole assets directory, and nothing on this page changes that - so no string
+     * here may read as though reference-based trimming were in effect, or as though the second
+     * number were a forecast of what the next build will produce.
+     */
+    overview: {
+        tabTitle: "Asset Overview",
+        open: "Open asset overview",
+        loading: "Reading the asset library…",
+        failed: "Could not read the asset library.",
+        retry: "Try again",
+        empty: "This project has no assets yet.",
+        section: {
+            library: "Library",
+            packaging: "Packaging",
+            byType: "By type",
+            largest: "Largest",
+            unreferenced: "Unreferenced",
+        },
+        stat: {
+            total: "Total",
+            referenced: "Referenced",
+            unreferenced: "Unreferenced",
+            actual: "Actual",
+            ifTrimmed: "If trimmed",
+            difference: "Difference",
+        },
+        files: {
+            one: "{count} file",
+            other: "{count} files",
+        },
+        uses: {
+            one: "{count} use",
+            other: "{count} uses",
+        },
+        detail: {
+            path: "Path",
+        },
+    },
     view: {
         list: "List view",
         icons: "Icon view",

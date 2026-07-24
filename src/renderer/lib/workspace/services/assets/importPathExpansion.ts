@@ -36,8 +36,14 @@ export function assetTypeMatchesExtension(type: AssetType, fileName: string): bo
     return ext.length > 0 && allowed.includes(ext);
 }
 
-/** Reconstruct a directory entry's full filename from the split {@link FileStat} shape. */
-function entryFileName(entry: FileStat): string {
+/**
+ * Reconstruct a directory entry's full filename from the split {@link FileStat} shape.
+ *
+ * The `fsList` IPC handler splits every entry into an extension-stripped `name` plus a separate
+ * `ext`, so anything that joins a child path must put the two back together first - joining `name`
+ * alone silently addresses a file that does not exist.
+ */
+export function entryFileName(entry: FileStat): string {
     return entry.ext ? `${entry.name}${entry.ext}` : entry.name;
 }
 
