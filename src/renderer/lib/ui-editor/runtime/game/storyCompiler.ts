@@ -1,4 +1,5 @@
 import {
+    BlurDissolve,
     Character,
     Condition,
     Control,
@@ -8,33 +9,26 @@ import {
     Image,
     Lambda,
     Layer,
-    MaskTransition,
+    Mask,
     Menu,
     Narrator,
     Pause,
     Persistent,
+    Reveal,
     Scene,
     Script,
     Sound,
     Story,
     Text,
     TextEvent,
+    ThroughColor,
     Transform,
     Video,
     Word,
 } from "narraleaf-react";
+import type { MaskPattern } from "narraleaf-react";
 import { blink, vignette } from "narraleaf-react/built-in";
-import {
-    Blinds,
-    BlurDissolve,
-    Slide,
-    SoftIris,
-    SoftWipe,
-    ThroughColor,
-    type BlindsOrientation,
-    type ThroughColorPattern,
-    type WipeDirection,
-} from "./transitions/customImageTransitions";
+import { Slide, type WipeDirection } from "./transitions/customImageTransitions";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import { resolveVariantAssetId, selectCharacterVariantNames } from "@shared/utils/characterVariant";
 import type {
@@ -96,6 +90,7 @@ import type { GameVoiceBundle } from "@shared/types/voice";
 import { parseTranslatedText } from "@shared/utils/localizationText";
 import {
     boolProp,
+    characterStageName,
     getCharacterStageObjectName,
     getInlineTransformProps as getInlineTransformPropsShared,
     getPresetPosition,
@@ -1431,6 +1426,11 @@ function buildLocalizedSentencePrompt(ctx: SceneCompileContext, segment: StoryTe
         return prompt;
     }
     const textId = segment.textId;
+    // KNOWN LIMITATION (Pause family): a translated line is rebuilt from the translation string, which
+    // carries only text and `{n}` interpolation placeholders. Zero-width reveal-time tokens - inline
+    // `Pause`s and inline events (`TextEvent`) - have no placeholder in the translation, so they are
+    // dropped from the translated rendering and survive only in the source-language prompt above. Not
+    // fixed here: recovering them needs a token-preserving translation format. See the migration report.
     const resolveDynamic = () => {
         const target = localization.resolve(textId);
         if (target === null) {
@@ -1503,13 +1503,22 @@ async function compileEventRun(
         } else {
             const src = await resolveCharacterImageUrl(ctx, characterId, formName, variants, blockId);
             if (src) {
-                // Target the same stage image the character's `/show` registers (keyed on
-                // characterId), so the swap lands on the visible portrait. Do NOT seed a src: the
-                // appearance only switches when the token is revealed, not at line start.
-                const image = getImage(ctx, normalizeObjectName(characterId), { autoFit: true });
-                return TextEvent.expression(image, src, sound ? { sound } : undefined);
+                // Address the portrait through the shared stage-name rule, exactly as the character's
+                // `/show` does (see `characterStageName`). An expression run carries only a characterId,
+                // so a character shown under a custom stage `objectName` is not reachable from here - and
+                // must not silently swap a phantom off-stage image. Require the target to already be on
+                // stage (a prior `/show` registered it) and warn with the family message otherwise, so a
+                // missed swap is diagnosed rather than lost. Do NOT seed a src: the appearance only
+                // switches when the token is revealed, not at line start.
+                const name = characterStageName(characterId);
+                const image = ctx.images.get(normalizeObjectName(name));
+                if (image) {
+                    return TextEvent.expression(image, src, sound ? { sound } : undefined);
+                }
+                diagnostic(ctx, "warning", blockId, `Inline event: character "${characterId}" is not on stage (show it before this line; a character shown under a custom stage name cannot be targeted by an inline expression); expression skipped.`);
+            } else {
+                diagnostic(ctx, "warning", blockId, `Inline event: character image source not found for ${characterId}.`);
             }
-            diagnostic(ctx, "warning", blockId, `Inline event: character image source not found for ${characterId}.`);
         }
     }
 
@@ -2456,84 +2465,72 @@ function createTransition(transition: StoryTransitionRef | undefined, ctx: Scene
     }
     const duration = Math.max(0, transition.durationMs ?? 300);
     const easing = transition.easing as any;
-    if (transition.kind === "dissolve") {
-        return new Dissolve(duration, easing);
+    const props = transition.props ?? {};
+
+    switch (transition.kind) {
+        case "dissolve":
+            return new Dissolve({ duration, easing });
+        case "fadeIn":
+            return new FadeIn({ duration, offset: [numberProp(props, "x", 0), numberProp(props, "y", 0)], easing });
+        case "slide":
+            // Retained custom Slide (percentage travel), NOT native Push - see customImageTransitions.ts.
+            return new Slide(duration, stringProp(props, "direction", "left") as WipeDirection, easing);
+        case "maskCircle":
+            // Hard-edged iris (feather 0) is the 0.16.0 equivalent of the removed `MaskTransition.circle`.
+            // The old partial from/to radii have no built-in equivalent; the `circle` word never set them.
+            return new Reveal({ duration, easing, pattern: Mask.iris({ center: stringProp(props, "center", "50% 50%"), feather: 0 }) });
+        case "maskWipe":
+            return new Reveal({ duration, easing, pattern: Mask.wipe({ direction: stringProp(props, "direction", "left") as any, feather: 0 }) });
+        case "softWipe":
+            return new Reveal({ duration, easing, pattern: Mask.wipe({ direction: stringProp(props, "direction", "left") as any, feather: numberProp(props, "feather", 12) }) });
+        case "blinds":
+            return new Reveal({ duration, easing, pattern: Mask.blinds({ orientation: stringProp(props, "orientation", "horizontal") as any, slats: numberProp(props, "slats", 8), feather: numberProp(props, "feather", 0) }) });
+        case "softIris":
+            return new Reveal({ duration, easing, pattern: Mask.iris({ center: stringProp(props, "center", "50% 50%"), feather: numberProp(props, "feather", 12), shape: stringProp(props, "shape", "circle") as any }) });
+        case "barnDoor":
+            return new Reveal({ duration, easing, pattern: Mask.barnDoor({ axis: stringProp(props, "axis", "horizontal") as any, feather: numberProp(props, "feather", 12) }) });
+        case "clock":
+            return new Reveal({ duration, easing, pattern: Mask.clock({ center: stringProp(props, "center", "50% 50%"), from: numberProp(props, "from", 0), feather: numberProp(props, "feather", 24), direction: stringProp(props, "direction", "clockwise") as any }) });
+        case "fan":
+            return new Reveal({ duration, easing, pattern: Mask.fan({ blades: numberProp(props, "blades", 4), center: stringProp(props, "center", "50% 50%"), from: numberProp(props, "from", 0), feather: numberProp(props, "feather", 10) }) });
+        case "dots":
+            return new Reveal({ duration, easing, pattern: Mask.dots({ rows: numberProp(props, "rows", 6), cols: numberProp(props, "cols", 10), feather: numberProp(props, "feather", 20), stagger: numberProp(props, "stagger", 0) }) });
+        case "blurDissolve":
+            return new BlurDissolve({ duration, blur: numberProp(props, "blur", 16), easing });
+        case "throughColor":
+            return new ThroughColor({
+                duration,
+                easing,
+                color: stringProp(props, "color", "#000"),
+                hold: numberProp(props, "hold", 30) / 100,
+                ...throughColorPattern(props),
+            });
+        case "darkness":
+            // The engine's `Darkness` is not part of the public 0.16.0 surface, so `darkness` has no
+            // faithful mapping (it was an unhandled no-op warning before this migration too). Flagged for
+            // product arbitration in the 0.16.0 migration report.
+            diagnostic(ctx, "warning", blockId, `Transition "darkness" has no public equivalent in narraleaf-react 0.16.0 (the engine's Darkness is unexported); transition skipped.`);
+            return undefined;
+        default:
+            diagnostic(ctx, "warning", blockId, `Transition "${transition.kind}" is not supported by public NLR imports.`);
+            return undefined;
     }
-    if (transition.kind === "fadeIn") {
-        const props = transition.props ?? {};
-        return new FadeIn(duration, [numberProp(props, "x", 0), numberProp(props, "y", 0)], easing);
+}
+
+/** Map a stored `throughColor` pattern prop to the native `ThroughColor` `pattern`/`inverted` pair. */
+function throughColorPattern(props: Record<string, StoryLiteralValue>): { pattern?: MaskPattern; inverted?: boolean } {
+    switch (stringProp(props, "pattern", "plain")) {
+        case "linear":
+            return { pattern: Mask.wipe({ direction: stringProp(props, "direction", "left") as any, feather: numberProp(props, "feather", 12) }) };
+        case "blinds":
+            return { pattern: Mask.blinds({ orientation: stringProp(props, "orientation", "horizontal") as any, slats: numberProp(props, "slats", 8), feather: numberProp(props, "feather", 0) }) };
+        case "iris":
+            // The old iris pattern covered rim-in - the pattern's inverted orientation.
+            return { pattern: Mask.iris({ center: stringProp(props, "center", "50% 50%"), feather: numberProp(props, "feather", 12) }), inverted: true };
+        default:
+            // "plain" → no pattern: the colour simply fades in and out (flash with hold 0).
+            return {};
     }
-    if (transition.kind === "maskCircle") {
-        const props = transition.props ?? {};
-        return MaskTransition.circle({
-            duration,
-            easing,
-            center: stringProp(props, "center", "50% 50%"),
-            from: numberProp(props, "from", 0),
-            to: numberProp(props, "to", 150),
-        });
-    }
-    if (transition.kind === "maskWipe") {
-        const props = transition.props ?? {};
-        // NOTE: NLR's MaskTransition.wipe `reverse` does not flip the wipe
-        // direction - it wipes the *new* background out to nothing, which (since
-        // setBackground discards the old background) ends on a black frame. It is
-        // never a valid "reveal", so we always reveal (no reverse) here.
-        return MaskTransition.wipe({
-            duration,
-            easing,
-            direction: stringProp(props, "direction", "left") as any,
-        });
-    }
-    if (transition.kind === "softWipe") {
-        const props = transition.props ?? {};
-        return new SoftWipe(
-            duration,
-            stringProp(props, "direction", "left") as WipeDirection,
-            numberProp(props, "feather", 12),
-            easing,
-        );
-    }
-    if (transition.kind === "blinds") {
-        const props = transition.props ?? {};
-        return new Blinds(
-            duration,
-            stringProp(props, "orientation", "horizontal") as BlindsOrientation,
-            numberProp(props, "slats", 8),
-            easing,
-        );
-    }
-    if (transition.kind === "slide") {
-        const props = transition.props ?? {};
-        return new Slide(duration, stringProp(props, "direction", "left") as WipeDirection, easing);
-    }
-    if (transition.kind === "softIris") {
-        const props = transition.props ?? {};
-        return new SoftIris(duration, stringProp(props, "center", "50% 50%"), numberProp(props, "feather", 12), easing);
-    }
-    if (transition.kind === "blurDissolve") {
-        const props = transition.props ?? {};
-        return new BlurDissolve(duration, numberProp(props, "blur", 16), easing);
-    }
-    if (transition.kind === "throughColor") {
-        const props = transition.props ?? {};
-        return new ThroughColor(
-            duration,
-            stringProp(props, "pattern", "plain") as ThroughColorPattern,
-            stringProp(props, "color", "#000"),
-            numberProp(props, "hold", 30) / 100,
-            {
-                direction: stringProp(props, "direction", "left") as WipeDirection,
-                feather: numberProp(props, "feather", 12),
-                orientation: stringProp(props, "orientation", "horizontal") as BlindsOrientation,
-                slats: numberProp(props, "slats", 8),
-                center: stringProp(props, "center", "50% 50%"),
-            },
-            easing,
-        );
-    }
-    diagnostic(ctx, "warning", blockId, `Transition "${transition.kind}" is not supported by public NLR imports yet.`);
-    return undefined;
 }
 
 /**
