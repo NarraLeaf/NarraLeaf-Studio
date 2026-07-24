@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
 import {
-    ACTION_COMMAND_CATEGORIES,
-    getActionCommandCategory,
-    translateActionCommandCategoryLabel,
-} from "./storyActionCommands";
+    commandCategoryLabelKey,
+    getCommandGroup,
+    STORY_COMMAND_GROUPS,
+} from "./storyCommandCategories";
 import {
     buildStoryCommandManual,
     filterStoryCommandManual,
@@ -34,16 +34,15 @@ export function StoryCommandManual(props: { onClose: () => void }) {
         return () => document.removeEventListener("keydown", handleKeyDown, true);
     }, [props]);
 
-    // Grouped by category, in category order, dropping empty groups. Rebuilt on locale (t) and query.
+    // Grouped by command group, in table order, dropping empty groups. Rebuilt on locale (t) and query.
     const groups = useMemo(() => {
         const entries = filterStoryCommandManual(buildStoryCommandManual(t), query);
-        return ACTION_COMMAND_CATEGORIES
-            .filter(category => category.id !== "all")
-            .map(category => ({
-                category,
-                entries: entries.filter(entry => entry.category === category.id),
+        return STORY_COMMAND_GROUPS
+            .map(group => ({
+                group,
+                entries: entries.filter(entry => entry.group === group.id),
             }))
-            .filter(group => group.entries.length > 0);
+            .filter(section => section.entries.length > 0);
     }, [query, t]);
 
     return (
@@ -65,15 +64,15 @@ export function StoryCommandManual(props: { onClose: () => void }) {
                     {groups.length === 0 ? (
                         <div className="px-1 py-6 text-center text-sm text-fg-subtle">{t("story.commandManual.empty")}</div>
                     ) : (
-                        groups.map(group => {
-                            const Icon = group.category.icon;
+                        groups.map(section => {
+                            const Icon = section.group.icon;
                             return (
-                                <div key={group.category.id}>
+                                <div key={section.group.id}>
                                     <div className="flex items-center gap-1.5 pb-1 pt-3 text-2xs font-medium uppercase tracking-wide text-fg-subtle">
-                                        <Icon className="h-3 w-3 shrink-0" style={{ color: group.category.iconColor }} />
-                                        <span>{translateActionCommandCategoryLabel(group.category, t)}</span>
+                                        <Icon className="h-3 w-3 shrink-0" style={{ color: section.group.iconColor }} />
+                                        <span>{t(commandCategoryLabelKey(section.group.id))}</span>
                                     </div>
-                                    {group.entries.map(entry => (
+                                    {section.entries.map(entry => (
                                         <ManualRow key={entry.id} entry={entry} aliasesLabel={t("story.commandManual.aliases")} />
                                     ))}
                                 </div>
@@ -88,11 +87,11 @@ export function StoryCommandManual(props: { onClose: () => void }) {
 
 function ManualRow(props: { entry: StoryCommandManualEntry; aliasesLabel: string }) {
     const { entry } = props;
-    const category = getActionCommandCategory(entry.category);
-    const Icon = category.icon;
+    const group = getCommandGroup(entry.group);
+    const Icon = group.icon;
     return (
         <div className="flex items-start gap-2 rounded px-2 py-1.5">
-            <Icon className="mt-0.5 h-4 w-4 shrink-0" style={{ color: category.iconColor }} />
+            <Icon className="mt-0.5 h-4 w-4 shrink-0" style={{ color: group.iconColor }} />
             <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                     <code className="font-mono text-sm text-fg">{entry.signature}</code>

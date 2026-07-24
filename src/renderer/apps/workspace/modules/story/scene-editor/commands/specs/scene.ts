@@ -70,7 +70,7 @@ export const jump = defineStoryCommand({
 export const wait = defineStoryCommand({
     id: "wait",
     token: "wait",
-    category: "control",
+    category: "flow",
     quickParams: ["seconds"],
     params: {
         // `/wait 2` pauses two seconds, `/wait click` (or a bare `/wait`) waits for the player.

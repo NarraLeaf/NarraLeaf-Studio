@@ -1,5 +1,5 @@
 import type { TranslationKey } from "@shared/i18n";
-import type { ActionCommandGroupCategoryId } from "./storyActionCommands";
+import type { StoryCommandGroupId } from "./storyCommandCategories";
 import { commandDetailKey, commandLabelKey, listCommandSpecs } from "./commands/registry";
 import type { AnyStoryCommandSpec } from "./commands/registry";
 import type { StoryCommandParamSpec } from "./commands/spec";
@@ -15,7 +15,7 @@ type ManualTranslate = (key: TranslationKey) => string;
 
 export type StoryCommandManualEntry = {
     id: string;
-    category: ActionCommandGroupCategoryId;
+    group: StoryCommandGroupId;
     /** The canonical `/token`. */
     token: string;
     /** The bible-notation signature, e.g. `/bg <Image or Color> [t=] [d=]`. */
@@ -52,7 +52,7 @@ function signatureOf(spec: AnyStoryCommandSpec, t: ManualTranslate): string {
 export function buildStoryCommandManual(t: ManualTranslate): StoryCommandManualEntry[] {
     return listCommandSpecs().map(spec => ({
         id: spec.id,
-        category: spec.category,
+        group: spec.category,
         token: `/${spec.token}`,
         signature: signatureOf(spec, t),
         aliases: (spec.aliases ?? []).map(alias => `/${alias}`),
