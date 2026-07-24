@@ -46,6 +46,8 @@ export function RichTextView(props: {
                 pauseSeconds: seconds => t("story.richText.pauseSeconds", { seconds }),
                 insertedValue: name => t("story.richText.insertedValue", { name }),
                 valueFallback: t("story.richText.valueFallback"),
+                expressionEvent: t("story.richText.expressionEvent"),
+                soundEvent: t("story.richText.soundEvent"),
             },
         });
     }, [segment, resolveLabel, t]);
