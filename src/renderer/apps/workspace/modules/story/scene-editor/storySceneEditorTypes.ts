@@ -13,6 +13,12 @@ export type CharacterAppearanceRef = {
     formName?: string;
     variants?: StoryCharacterVariantSelection;
     /**
+     * Whether the character was actually shown (an enter/expression), as opposed to only positioned by
+     * a move on a character that was never shown. Only a shown character pictures an avatar; a
+     * position-only appearance exists purely so the group-header dropdown can read/edit its placement.
+     */
+    shown?: boolean;
+    /**
      * The character's placement (`at=`) at this point, accumulated from its most recent enter/move
      * (WI-3, M3.1). Drives the group-header position dropdown's current value; absent means the
      * placement was never set explicitly, so it reads as the runtime default (center).
