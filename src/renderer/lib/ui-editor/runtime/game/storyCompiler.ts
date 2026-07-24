@@ -85,6 +85,11 @@ import type { StoryExpressionReader } from "@shared/utils/storyExpressionEval";
 import { evaluateStoryExpression, isTruthy, strictEquals, toDisplayString } from "@shared/utils/storyExpressionEval";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
+import {
+    buildMergedPersistentView,
+    mergedPersistentStorageKeys,
+    type MergedPersistentView,
+} from "@shared/variables/mergedPersistentView";
 import type { GameLocalizationBundle } from "@shared/types/localization";
 import { resolveLocaleChain } from "@shared/types/localization";
 import type { GameVoiceBundle } from "@shared/types/voice";
@@ -152,17 +157,27 @@ function collectPersistentDefaults(document: StoryDocument): Record<string, Stor
  * checks membership here; a miss is an undeclared variable and gets the same diagnostic as a missing
  * scene/saved one.
  */
-function collectPersistentKeys(document: StoryDocument, persistentVariables?: PersistentVariableRuntimeTable): Set<string> {
-    const keys = new Set<string>();
-    for (const def of Object.values(storyPersistentDefs(document))) {
-        keys.add(def.storageKey);
+/**
+ * The merged persistent view for a compile: the registry (blueprint-declared, baked into the bundle)
+ * unioned with the story `/persis` declaration rows (WI-3). Reference validation reads its storage
+ * keys; a display name declared in both surfaces is reported as a collision diagnostic.
+ */
+function collectPersistentView(document: StoryDocument, persistentVariables?: PersistentVariableRuntimeTable): MergedPersistentView {
+    return buildMergedPersistentView(
+        Object.values(persistentVariables ?? {}),
+        Object.values(storyPersistentDefs(document)),
+    );
+}
+
+function pushPersistentNameCollisionDiagnostics(diagnostics: NlrStoryCompileDiagnostic[], view: MergedPersistentView): void {
+    for (const collision of view.nameCollisions) {
+        pushDiagnostic(
+            diagnostics,
+            "warning",
+            undefined,
+            `Persistent variable "${collision.name}" is declared in both the variable registry and a story row; references are ambiguous.`,
+        );
     }
-    // M-VAR: the blueprint-declared persistent variables now come from the registry (baked into the
-    // bundle), not the blueprint document. The union of the two authoring surfaces is unchanged.
-    for (const variable of Object.values(persistentVariables ?? {})) {
-        keys.add(variable.storageKey);
-    }
-    return keys;
 }
 
 /**
@@ -503,7 +518,9 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const savedPersistent = nlrStory.createPersistent(SAVED_PERSISTENT_NAMESPACE, savedDefaults);
     const persistentDefaults = collectPersistentDefaults(input.document);
     const persistentVariables = input.persistentVariables ?? {};
-    const persistentKeys = collectPersistentKeys(input.document, persistentVariables);
+    const persistentView = collectPersistentView(input.document, persistentVariables);
+    const persistentKeys = mergedPersistentStorageKeys(persistentView);
+    pushPersistentNameCollisionDiagnostics(diagnostics, persistentView);
     const localization = input.localization ? createSceneLocalizationResolver(input.localization) : undefined;
 
     for (const scene of Object.values(input.document.scenes)) {
@@ -839,6 +856,8 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         backgroundSrc ? { background: backgroundSrc } : undefined,
     );
 
+    const previewPersistentView = collectPersistentView(input.document, input.persistentVariables);
+    pushPersistentNameCollisionDiagnostics(diagnostics, previewPersistentView);
     const ctx: SceneCompileContext = {
         document: input.document,
         nlrStory,
@@ -852,7 +871,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         sceneVariables: sceneVariableDefs(scene),
         savedVariables,
         persistentDefaults: collectPersistentDefaults(input.document),
-        persistentKeys: collectPersistentKeys(input.document, input.persistentVariables),
+        persistentKeys: mergedPersistentStorageKeys(previewPersistentView),
         persistentVariables: input.persistentVariables ?? {},
         persistence: input.persistence,
         blueprintDocument: input.blueprintDocument,

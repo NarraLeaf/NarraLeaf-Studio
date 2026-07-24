@@ -18,7 +18,9 @@ import type {
     StoryLiteralValue,
     StoryVariableValueType,
 } from "@shared/types/story";
-import { savedVariableDefs, sceneVariableDefs } from "@shared/types/story";
+import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
+import { buildMergedPersistentView } from "@shared/variables/mergedPersistentView";
 import type { StoryVariablesPanelPayload } from "./storyVariablesPanelId";
 
 const INPUT_CLASS =
@@ -148,7 +150,7 @@ export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariab
     );
 
     const [document, setDocument] = useState<StoryDocument | null>(null);
-    const [persistent, setPersistent] = useState<{ name: string; valueType: string }[]>([]);
+    const [registryPersistent, setRegistryPersistent] = useState<VariableRegistryEntry[]>([]);
 
     useEffect(() => {
         if (!storyService || !storyId) {
@@ -170,16 +172,16 @@ export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariab
 
     useEffect(() => {
         if (!blueprintService) return;
-        const read = () =>
-            setPersistent(
-                blueprintService.listPersistentVariables().map(variable => ({
-                    name: variable.name,
-                    valueType: variable.valueType ?? "string",
-                })),
-            );
+        const read = () => setRegistryPersistent(blueprintService.listPersistentVariables());
         read();
         return blueprintService.onBlueprintHistoryChanged(read);
     }, [blueprintService]);
+
+    // The persistent scope is the merged view: blueprint-registry entries + story `/persis` rows (WI-3).
+    const persistent = useMemo(
+        () => buildMergedPersistentView(registryPersistent, document ? Object.values(storyPersistentDefs(document)) : []).entries,
+        [registryPersistent, document],
+    );
 
     const sceneRows: VariableRow[] = useMemo(() => {
         if (!document || !sceneId) return [];
@@ -265,7 +267,7 @@ export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariab
                         <div className="text-2xs text-fg-subtle">{t("storyVars.persistent.empty")}</div>
                     ) : (
                         persistent.map(variable => (
-                            <div key={variable.name} className="flex items-center justify-between rounded border border-edge-subtle px-2 py-1 text-xs text-fg-muted">
+                            <div key={variable.storageKey} className="flex items-center justify-between rounded border border-edge-subtle px-2 py-1 text-xs text-fg-muted">
                                 <span className="truncate">{variable.name}</span>
                                 <span className="text-2xs text-fg-subtle">{variable.valueType}</span>
                             </div>

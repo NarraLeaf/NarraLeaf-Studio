@@ -1,6 +1,7 @@
 import type { StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
 import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
+import { buildMergedPersistentView } from "@shared/variables/mergedPersistentView";
 import { collectTempSpeakers } from "@/lib/workspace/services/story/storyModel";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -55,24 +56,19 @@ function variableEntries(
             defaultValue: definition.defaultValue,
         });
     }
-    // Persistent variables: the story-declared rows, then the blueprint-declared ones from the M-VAR
-    // registry - one scope, two authoring surfaces (the WI-3 merged view formalizes this union).
-    for (const definition of Object.values(document ? storyPersistentDefs(document) : {})) {
+    // Persistent variables: the merged view of the registry (blueprint-declared) and story `/persis`
+    // rows - one scope, two authoring surfaces (WI-3). Addressed by `storageKey`, the rename-stable key
+    // the compiler hands the host persistence bridge.
+    const persistentView = buildMergedPersistentView(
+        persistentVariables,
+        document ? Object.values(storyPersistentDefs(document)) : [],
+    );
+    for (const entry of persistentView.entries) {
         entries.push({
-            name: definition.name,
-            ref: { scope: "persistent", storageKey: definition.storageKey },
-            valueType: definition.valueType,
-            defaultValue: definition.defaultValue,
-        });
-    }
-    for (const definition of persistentVariables) {
-        entries.push({
-            name: definition.name,
-            // Addressed by `storageKey`, not id: the key is what survives a rename, and what the
-            // compiler hands the host persistence bridge.
-            ref: { scope: "persistent", storageKey: definition.storageKey },
-            valueType: definition.valueType,
-            defaultValue: definition.defaultValue,
+            name: entry.name,
+            ref: { scope: "persistent", storageKey: entry.storageKey },
+            valueType: entry.valueType,
+            defaultValue: entry.defaultValue,
         });
     }
     return entries;
