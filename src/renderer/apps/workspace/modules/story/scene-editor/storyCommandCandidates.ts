@@ -1,5 +1,5 @@
 import { STORY_EXPR_FUNCTIONS } from "@shared/types/story";
-import { matchEnumOption, paramTypes, type StoryCommandParam, type StoryCommandParamType } from "./storyCommandGrammar";
+import { freeTargetKind, matchEnumOption, paramTypes, type StoryCommandParam, type StoryCommandParamType } from "./storyCommandGrammar";
 import { listCommandDefs } from "./commands/registry";
 import type { StoryCommandCursor } from "./storyCommandCursor";
 import { BGM_OBJECT_NAME, type StoryCommandContext, type StoryCommandNamedRef, type StoryCommandStageObjectKind, type StoryCommandValue } from "./storyCommandValues";
@@ -60,13 +60,20 @@ function ownerCharacterId(owner: StoryCommandValue | undefined): string | null {
     return null;
 }
 
-function stageObjectCandidates(context: StoryCommandContext, kind: StoryCommandStageObjectKind, query: string): StoryCommandCandidate[] {
+function stageObjectCandidates(
+    context: StoryCommandContext,
+    kind: StoryCommandStageObjectKind,
+    query: string,
+    /** Say which world a name lives in, when the slot spans more than one. */
+    labelKind: boolean,
+): StoryCommandCandidate[] {
     const names = kind === "audio"
         // The background-music channel answers to its reserved name, offered first: `/vol bgm 0.5`
         // is the explicit spelling of what an omitted target means.
         ? [BGM_OBJECT_NAME, ...(context.stageObjects.audio ?? [])]
         : context.stageObjects[kind] ?? [];
-    return refCandidates(names.map(name => ({ id: name, name })), query);
+    return refCandidates(names.map(name => ({ id: name, name })), query)
+        .map(candidate => (labelKind ? { ...candidate, detail: kind } : candidate));
 }
 
 function targetCandidates(
@@ -78,16 +85,21 @@ function targetCandidates(
     if (type.accepts.includes("character")) {
         candidates.push(...refCandidates(context.characters, query));
     }
+    // A verb that reaches several worlds dispatches on WHICH one the name turns out to be, and the
+    // author has to be able to see that before picking: `/pause intro` pausing a video rather than the
+    // music is right only if "intro" was visibly a video. With one possible kind there is nothing to
+    // disambiguate and the label would be noise. Read off `accepts`, so no command is special-cased.
+    const labelKind = type.accepts.filter(kind => kind !== "character").length > 1;
     for (const kind of type.accepts) {
         if (kind !== "character") {
-            candidates.push(...stageObjectCandidates(context, kind, query));
+            candidates.push(...stageObjectCandidates(context, kind, query, labelKind));
         }
     }
-    // Offer the typed name back only where a free name is legal - one possible kind, so resolution
-    // can still dispatch. A never-empty list keeps Tab and Enter single-meaning there.
-    const stageKinds = type.accepts.filter(kind => kind !== "character");
+    // Offer the typed name back only where a free name is legal - the same rule resolution applies,
+    // so the list never offers a name that then fails. A never-empty list keeps Tab and Enter
+    // single-meaning there.
     const typed = query.trim();
-    if (stageKinds.length === 1 && typed && !candidates.some(candidate => candidate.value.trim().toLowerCase() === typed.toLowerCase())) {
+    if (freeTargetKind(type) && typed && !candidates.some(candidate => candidate.value.trim().toLowerCase() === typed.toLowerCase())) {
         candidates.push({ value: typed, label: typed, free: true });
     }
     return candidates;

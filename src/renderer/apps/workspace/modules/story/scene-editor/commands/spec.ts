@@ -5,6 +5,7 @@ import type {
     StoryCommandContext,
     StoryCommandResolutionIssue,
     StoryCommandSpan,
+    StoryCommandStageObjectKind,
     StoryCommandTargetKind,
     StoryCommandValue,
 } from "../storyCommandValues";
@@ -187,11 +188,11 @@ export function placementParam(): StoryCommandParamSpec {
  */
 export function targetParam(
     accepts: readonly StoryCommandTargetKind[],
-    options?: { core?: boolean; skippable?: boolean },
+    options?: { core?: boolean; skippable?: boolean; fallbackKind?: StoryCommandStageObjectKind },
 ): StoryCommandParamSpec {
     return {
         hint: "target",
-        type: { kind: "target", accepts },
+        type: { kind: "target", accepts, ...(options?.fallbackKind ? { fallbackKind: options.fallbackKind } : {}) },
         positional: true,
         ...(options?.core ? { core: true } : {}),
         ...(options?.skippable ? { skippable: true } : {}),

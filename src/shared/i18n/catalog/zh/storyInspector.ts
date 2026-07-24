@@ -223,7 +223,11 @@ export const storyInspector = {
         setZIndex: "设置层级",
     },
     videoOperation: {
-        play: "播放",
+        play: "播放（等待结束）",
+        pause: "暂停",
+        resume: "继续",
+        stop: "停止",
+        seek: "跳到",
     },
     audioOperation: {
         setBgm: "设置背景音乐",
@@ -300,6 +304,7 @@ export const storyInspector = {
     video: {
         videoName: "视频名称",
         videoAsset: "视频资源",
+        seekTime: "跳到",
     },
     nvl: {
         hint: "子行在 NLR NVL 模式下运行，下方的变换效果会在 NVL 图层进入时对其进行动画处理",
@@ -307,6 +312,7 @@ export const storyInspector = {
     },
     character: {
         stageName: "舞台名称",
+        displayName: "显示为",
         chooseHint: "先选择一个角色，再选择其外观",
         overrideImage: "覆盖图片",
     },

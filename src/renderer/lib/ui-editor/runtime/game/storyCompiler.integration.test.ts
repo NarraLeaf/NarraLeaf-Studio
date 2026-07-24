@@ -1908,6 +1908,77 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(propsOf("dark")).toEqual([expect.objectContaining({ filter: "brightness(0)" })]);
     });
 
+    it("compiles the video transport operations, converting seek to seconds", async () => {
+        const videoBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "video" }>): StoryBlock => ({
+            id, kind: "action", parentId: null, childrenIds: [], payload,
+        });
+        const blocks: Record<string, StoryBlock> = {
+            create: videoBlock("create", { action: "video", operation: "create", objectName: "clip", assetId: "asset-clip" }),
+            pause: videoBlock("pause", { action: "video", operation: "pause", objectName: "clip" }),
+            resume: videoBlock("resume", { action: "video", operation: "resume", objectName: "clip" }),
+            stop: videoBlock("stop", { action: "video", operation: "stop", objectName: "clip" }),
+            // Negative is not a frame; it floors at the start of the clip.
+            seek: videoBlock("seek", { action: "video", operation: "seek", objectName: "clip", timeMs: 3500 }),
+            rewind: videoBlock("rewind", { action: "video", operation: "seek", objectName: "clip", timeMs: -1000 }),
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["create", "pause", "resume", "stop", "seek", "rewind"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        const typeOf = (blockId: string) => compiled.actionIdBindings
+            .filter(binding => binding.blockId === blockId)
+            .map(binding => (binding.action as { type?: string }).type);
+        const contentOf = (blockId: string) => compiled.actionIdBindings
+            .filter(binding => binding.blockId === blockId)
+            .flatMap(binding => (binding.action as any).contentNode?.getContent?.() ?? []);
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(typeOf("pause")).toEqual(["video:pause"]);
+        expect(typeOf("resume")).toEqual(["video:resume"]);
+        expect(typeOf("stop")).toEqual(["video:stop"]);
+        // Milliseconds in the payload, seconds at the engine boundary.
+        expect(contentOf("seek")).toEqual([3.5]);
+        expect(contentOf("rewind")).toEqual([0]);
+    });
+
+    it("compiles /rename onto the same Character the dialogue rows speak through", async () => {
+        // The point of setName is that the NEXT line by that character reads differently, so the
+        // rename and the dialogue must resolve to one Character instance, not two.
+        const blocks: Record<string, StoryBlock> = {
+            rename: {
+                id: "rename",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "character", operation: "setName", characterId: "char-alice", displayName: "Alice" },
+            },
+            line: {
+                id: "line",
+                kind: "nodeAction",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "dialogue", characterId: "char-alice", text: { textId: "t1", role: "dialogue", value: "Hello." } },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["rename", "line"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "？？？" }],
+        });
+
+        const actionsOf = (blockId: string) => compiled.actionIdBindings
+            .filter(binding => binding.blockId === blockId)
+            .flatMap(binding => collectActionTree(binding.action, compiled.story));
+        const setName = actionsOf("rename").find(action => action?.type === "character:setName");
+        const say = actionsOf("line").find(action => action?.type === "character:say");
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(setName?.contentNode?.getContent?.()).toEqual(["Alice"]);
+        expect(setName?.callee).toBe(say?.callee);
+    });
+
     it("warns when a persistent name is declared in both the registry and a story row (M-VAR merged view)", async () => {
         // Story `/persis Score` row and a blueprint-registry entry also named "Score" - ambiguous.
         const scoreRow: StoryBlock = {
