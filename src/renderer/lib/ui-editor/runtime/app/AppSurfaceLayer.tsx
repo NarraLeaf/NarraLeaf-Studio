@@ -8,6 +8,7 @@ import {
     type ReactNode,
 } from "react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { NestedSurfaceRuntime } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
@@ -42,6 +43,7 @@ export type AppSurfaceLayerNavEntry = SurfaceNavigationEntry<PageProps, SurfaceN
 type AppSurfaceLayerCommonProps = {
     uidoc: UIDocument;
     blueprintDocument: BlueprintDocument;
+    persistentVariables: PersistentVariableRuntimeTable;
     entry: AppSurfaceLayerNavEntry;
     layerIndex: number;
     surface: UISurface;
@@ -67,6 +69,7 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
     const {
         uidoc,
         blueprintDocument,
+        persistentVariables,
         core,
         entry,
         layerIndex,
@@ -247,6 +250,7 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
             <SurfaceLifecycleBoundary
                 core={surfaceBlueprintLifecycleReady ? core : null}
                 blueprintDocument={blueprintDocument}
+                persistentVariables={persistentVariables}
                 surface={surface}
                 runtimeScopeId={hostAdapterBundle.runtimeScopeId}
                 hostAdapter={hostAdapterBundle.hostAdapter}

@@ -1,6 +1,6 @@
-import type { StoryDocument, StoryLiteralValue, StoryScene, StorySceneId, StoryVariableValueType } from "@shared/types/story";
+import type { StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
 import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
-import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { collectTempSpeakers } from "@/lib/workspace/services/story/storyModel";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -35,7 +35,7 @@ function assetRefs(assets: AssetsMap | undefined, type: AssetType): StoryCommand
 function variableEntries(
     document: StoryDocument | null,
     scene: StoryScene | null,
-    blueprintDocument: BlueprintDocument | null,
+    persistentVariables: readonly VariableRegistryEntry[],
 ): StoryCommandVariableEntry[] {
     const entries: StoryCommandVariableEntry[] = [];
     // v6: the tables are scans over declaration rows - the row is the variable.
@@ -55,8 +55,8 @@ function variableEntries(
             defaultValue: definition.defaultValue,
         });
     }
-    // Persistent variables declared as story rows, then the blueprint-declared ones - one scope,
-    // two authoring surfaces until the project-level registry lands.
+    // Persistent variables: the story-declared rows, then the blueprint-declared ones from the M-VAR
+    // registry - one scope, two authoring surfaces (the WI-3 merged view formalizes this union).
     for (const definition of Object.values(document ? storyPersistentDefs(document) : {})) {
         entries.push({
             name: definition.name,
@@ -65,24 +65,17 @@ function variableEntries(
             defaultValue: definition.defaultValue,
         });
     }
-    for (const definition of Object.values(blueprintDocument?.persistentVariables ?? {})) {
+    for (const definition of persistentVariables) {
         entries.push({
             name: definition.name,
             // Addressed by `storageKey`, not id: the key is what survives a rename, and what the
             // compiler hands the host persistence bridge.
             ref: { scope: "persistent", storageKey: definition.storageKey },
-            // Blueprint variables carry a free-form `valueType`; anything outside the story system's
-            // four types is treated as `json`, which type-checks as "assignable from anything" rather
-            // than blocking the author over a distinction the story document cannot represent.
-            valueType: asStoryValueType(definition.valueType),
-            defaultValue: definition.defaultValue as StoryLiteralValue | undefined,
+            valueType: definition.valueType,
+            defaultValue: definition.defaultValue,
         });
     }
     return entries;
-}
-
-function asStoryValueType(valueType: string | undefined): StoryVariableValueType {
-    return valueType === "boolean" || valueType === "number" || valueType === "string" ? valueType : "json";
 }
 
 /**
@@ -130,8 +123,8 @@ export function buildStoryCommandContext(input: {
     document: StoryDocument | null;
     sceneId: StorySceneId | null | undefined;
     scene: StoryScene | null;
-    /** Source of the persistent (game-level) variables; absent when the project has no blueprint document yet. */
-    blueprintDocument?: BlueprintDocument | null;
+    /** Blueprint-declared persistent (game-level) variables from the M-VAR registry; empty when none. */
+    persistentVariables?: readonly VariableRegistryEntry[];
 }): StoryCommandContext {
     const formsByCharacterId: Record<string, string[]> = {};
     const characters: StoryCommandNamedRef[] = input.characters.map(character => {
@@ -150,7 +143,7 @@ export function buildStoryCommandContext(input: {
         tempSpeakers: input.document ? collectTempSpeakers(input.document).map(speaker => speaker.name) : [],
         // A scene is addressed by the name the author sees in the panel, not its runtimeName.
         scenes: Object.values(input.document?.scenes ?? {}).map(entry => ({ id: entry.id, name: entry.name })),
-        variables: variableEntries(input.document, input.scene, input.blueprintDocument ?? null),
+        variables: variableEntries(input.document, input.scene, input.persistentVariables ?? []),
         formsByCharacterId,
         stageObjects: collectStageObjects(input.document, input.sceneId, input.scene),
     };

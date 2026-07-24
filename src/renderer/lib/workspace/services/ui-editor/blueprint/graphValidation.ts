@@ -6,6 +6,7 @@ import type {
     BlueprintOwnerRef,
 } from "@shared/types/blueprint/document";
 import { isStorySyncValueOwner } from "@shared/types/blueprint/document";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import { translate } from "@/lib/i18n";
 import {
@@ -77,6 +78,8 @@ export type ValidateBlueprintDocumentGraphsOptions = {
     widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
     /** Component definition graphs use Element references scoped to the component editor surface. */
     isComponentDefinitionGraph?: boolean;
+    /** M-VAR: persistent variable definitions from the project-level registry (no longer on the blueprint doc). */
+    persistentVariables?: readonly VariableRegistryEntry[];
 };
 
 type BlueprintEventHook = {
@@ -872,8 +875,9 @@ export function validateBlueprintDocumentGraphs(
         valueType: option.valueType,
     }));
     const validVariableIds = buildValidVariableRefSetFromOptions(accessibleVariables);
-    const validPersistentVariableIds = new Set(Object.keys(doc.persistentVariables ?? {}));
-    const persistentVariableValueTypes = Object.values(doc.persistentVariables ?? {}).map(variable => ({
+    const registryPersistentVariables = options?.persistentVariables ?? [];
+    const validPersistentVariableIds = new Set(registryPersistentVariables.map(variable => variable.id));
+    const persistentVariableValueTypes = registryPersistentVariables.map(variable => ({
         value: variable.id,
         valueType: variable.valueType,
     }));
