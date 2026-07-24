@@ -563,6 +563,10 @@ export const story = {
         waitLabel: "Wait",
         jumpLabel: "Jump to",
     },
+    lens: {
+        toLens: "Timeline view",
+        toList: "List view",
+    },
     rowMenu: {
         insertAbove: "Insert above",
         insertBelow: "Insert below",
