@@ -12,6 +12,7 @@ import {
     getCommandGroup,
     STORY_COMMAND_CATEGORIES,
     type StoryCommandCategoryId,
+    type StoryCommandGroup,
 } from "./storyCommandCategories";
 import { localizeSpecCommand } from "./commands/specPalette";
 import { buildSpecSidebarGroups, filterSidebarGroups, type StoryCommandSidebarGroup } from "./commands/specSidebar";
@@ -185,7 +186,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                         <ActionCreatorRow
                             key={command.id}
                             command={command}
-                            iconColor={getCommandGroup(command.group).iconColor}
+                            group={getCommandGroup(command.group)}
                             starred
                             onToggleStarred={toggleStarred}
                             onCreate={createAction}
@@ -205,7 +206,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                                     <ActionCreatorRow
                                         key={`${entry.group.id}:${command.id}`}
                                         command={command}
-                                        iconColor={entry.group.iconColor}
+                                        group={entry.group}
                                         starred={starredIds.has(command.id)}
                                         onToggleStarred={toggleStarred}
                                         onCreate={createAction}
@@ -247,13 +248,15 @@ function CategoryChip(props: {
 
 function ActionCreatorRow(props: {
     command: PaletteActionCommand;
-    iconColor: string;
+    group: StoryCommandGroup;
     starred: boolean;
     onToggleStarred: (commandId: string) => void;
     onCreate: (commandId: string) => void;
 }) {
     const { t } = useTranslation();
-    const Icon = props.command.icon;
+    // The icon follows the SECTION, not the command's own filing: `/show` listed under 图片 must not
+    // wear a person glyph just because its `category` says 角色.
+    const Icon = props.group.icon;
     return (
         <div className="group flex items-center rounded-md transition-colors hover:bg-fill">
             <button
@@ -262,7 +265,7 @@ function ActionCreatorRow(props: {
                 onClick={() => props.onCreate(props.command.id)}
             >
                 <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle">
-                    <Icon className="h-4 w-4" style={{ color: props.iconColor }} />
+                    <Icon className="h-4 w-4" style={{ color: props.group.iconColor }} />
                 </span>
                 <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm text-fg">{props.command.label}</span>
