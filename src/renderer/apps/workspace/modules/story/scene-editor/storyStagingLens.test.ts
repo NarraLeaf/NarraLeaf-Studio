@@ -74,6 +74,22 @@ describe("projectStagingLens — duration derivation", () => {
         expect(lens.winnerFinishMs).toBeNull();
     });
 
+    it("draws a camera move to scale against the sprite move it runs with", () => {
+        // The canonical `/parallel`: push the camera in while a portrait slides. If the camera track
+        // came out `unknown` it would render as an equal-width dashed stub next to a real bar, which
+        // is exactly the composition the lens exists to show (plan 2026-07-24-006 §12.7).
+        const zoom = action("cam", "p", { action: "camera", operation: "zoom", zoom: 1.4, durationMs: 800 });
+        const move = action("move", "p", { action: "displayable", operation: "transform", target: { name: "hero" }, durationMs: 400 });
+        const scene = sceneWith(control("p", "parallel", ["cam", "move"]), zoom, move);
+
+        const lens = projectStagingLens(scene, scene.blocks.p);
+        expect(lens.scaleMs).toBe(800);
+        expect(lens.tracks.map(t => ({ id: t.blockId, kind: t.kind, durationMs: t.durationMs, unknown: t.unknown }))).toEqual([
+            { id: "cam", kind: "action", durationMs: 800, unknown: false },
+            { id: "move", kind: "action", durationMs: 400, unknown: false },
+        ]);
+    });
+
     it("treats an action with no derivable duration as unknown (equal-width stub)", () => {
         const setVar = action("set", "p", { action: "setVariable", target: { scope: "scene", variableId: "v" } as never, value: { kind: "number", value: 1 } as never });
         const scene = sceneWith(control("p", "parallel", ["set"]), setVar);

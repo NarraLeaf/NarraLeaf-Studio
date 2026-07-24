@@ -17,6 +17,7 @@ export const storyInspector = {
         transform: "变换",
         transition: "转场",
         voice: "配音",
+        camera: "镜头 · 跨场景保留",
     },
     voice: {
         voiced: "已配音",
@@ -171,6 +172,22 @@ export const storyInspector = {
         create: "创建／更新",
         setSource: "设置来源",
     },
+    cameraOperation: {
+        zoom: "推拉",
+        pan: "平移",
+        rotate: "旋转",
+        darken: "压暗舞台",
+        reset: "复位镜头",
+    },
+
+    camera: {
+        zoom: "缩放（1 为原始）",
+        rotation: "旋转角度 °",
+        darkness: "舞台压暗（0-1）",
+        xalign: "X 对齐（0-1）",
+        yalign: "Y 对齐（0-1）",
+    },
+
     displayableOperation: {
         transform: "变换",
         mask: "遮罩",
