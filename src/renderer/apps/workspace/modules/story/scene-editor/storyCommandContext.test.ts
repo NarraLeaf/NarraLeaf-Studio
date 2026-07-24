@@ -38,8 +38,8 @@ describe("buildStoryCommandContext - stage objects", () => {
             scene: document.scenes["scene-1"],
         });
 
-        // This is what makes `/imgshow`, `/settext`, `/vidshow`, `/stop` a pick rather than a guess -
-        // image/text/layer via the shared displayable collector, video/audio scanned off the scene.
+        // This is what makes `/show`, `/swap`, `/stop` a pick rather than a guess - image/text/layer
+        // via the shared displayable collector, video/audio scanned off the scene.
         expect(context.stageObjects.image).toEqual(["hero"]);
         expect(context.stageObjects.text).toEqual(["title"]);
         expect(context.stageObjects.layer).toEqual(["fx"]);

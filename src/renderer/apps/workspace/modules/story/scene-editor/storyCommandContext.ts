@@ -76,8 +76,8 @@ function variableEntries(
 }
 
 /**
- * The named objects on stage in this scene, per kind - the picker `/imgshow`, `/settext`, `/stop`
- * lead with instead of a blind name field.
+ * The named objects on stage in this scene, per kind - the picker `/show`, `/swap`, `/stop` lead with
+ * instead of a blind name field.
  *
  * image / text / layer come from {@link listSceneDisplayableTargets}, the same collector the
  * inspector's target picker reads, so the command line can never offer a name the inspector wouldn't.
