@@ -52,11 +52,19 @@ function clampLabel(text: string): string {
  * branch on one line — is unreadable at any zoom the map is actually used at. With no fork at all
  * the only thing worth saying is how many jumps collapsed into the line, and only when it is more
  * than one.
+ *
+ * An `else if` arm is prefixed with the container's own "Else if" wording: its condition summary
+ * reads exactly like an `if`, and an unqualified one would say this path is taken whenever the
+ * condition holds rather than only when the arms above it did not.
  */
 function edgeLabel(edge: SceneFlowEdgeModel, t: Translator["t"]): string | undefined {
     const named = edge.branches.map(branch => {
         if (branch.kind === "conditionElse") {
             return t("story.containerHeader.else");
+        }
+        if (branch.kind === "conditionElseIf") {
+            const elseIf = t("story.containerHeader.elseIf");
+            return branch.label ? `${elseIf} ${branch.label}` : elseIf;
         }
         return branch.label || t("story.containerHeader.option");
     });

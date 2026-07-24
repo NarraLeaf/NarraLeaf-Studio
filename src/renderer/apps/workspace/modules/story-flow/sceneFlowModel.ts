@@ -32,13 +32,19 @@ const MAX_ROWS_PER_COLUMN = 6;
  *
  * `conditionElse` carries no text of its own — the branch is defined by the ones it is not — so the
  * renderer supplies the existing "otherwise" wording rather than the model inventing a second one.
+ * `conditionElseIf` carries a condition like an `if` does, but reaching it also means every earlier
+ * arm failed; without its own kind the two render as the same bare condition text and the map claims
+ * a path is taken whenever the condition holds, which is not what an `else if` means.
  */
-export type SceneFlowBranchKind = "choice" | "condition" | "conditionElse";
+export type SceneFlowBranchKind = "choice" | "condition" | "conditionElseIf" | "conditionElse";
 
 /** The nearest branching ancestor of a jump, as the edge label renders it. */
 export type SceneFlowBranchLabel = {
     kind: SceneFlowBranchKind;
-    /** Option text, or the condition summary. Empty for `conditionElse` and for an unnamed option. */
+    /**
+     * Option text, or the condition summary (both `condition` and `conditionElseIf` carry one).
+     * Empty for `conditionElse` and for an unnamed option.
+     */
     label: string;
 };
 
@@ -141,7 +147,10 @@ function resolveJumpBranch(scene: StoryScene, block: StoryBlock, document: Story
             if (parent.payload.branch === "else") {
                 return { kind: "conditionElse", label: "" };
             }
-            return { kind: "condition", label: formatStoryConditionSummary(parent.payload.condition, scene, document) };
+            return {
+                kind: parent.payload.branch === "elseIf" ? "conditionElseIf" : "condition",
+                label: formatStoryConditionSummary(parent.payload.condition, scene, document),
+            };
         }
         parentId = parent.parentId;
     }
