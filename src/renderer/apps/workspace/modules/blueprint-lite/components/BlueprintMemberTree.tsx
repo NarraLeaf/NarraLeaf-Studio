@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type {
     Blueprint,
-    BlueprintPersistentVariable,
     BlueprintVariable,
     LiteralValue,
 } from "@shared/types/blueprint/document";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import type { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
 import type { BlueprintEditorGraphView } from "../state/useBlueprintEditorState";
 import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
@@ -223,7 +224,7 @@ function BlueprintPersistentVariableRow({
     localBp,
     uiService,
 }: {
-    v: BlueprintPersistentVariable;
+    v: VariableRegistryEntry;
     historyBlueprintId: string;
     localBp: LocalBlueprintService;
     uiService: UIService | null;
@@ -315,9 +316,6 @@ function sortedVariables(blueprint: Blueprint): BlueprintVariable[] {
     return Object.values(blueprint.members?.variables ?? {}).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function sortedPersistentVariables(variables: Record<string, BlueprintPersistentVariable> | undefined): BlueprintPersistentVariable[] {
-    return Object.values(variables ?? {}).sort((a, b) => a.name.localeCompare(b.name));
-}
 
 function buildVariableGroups(
     input: {
@@ -397,6 +395,22 @@ export function BlueprintMemberTree({
         }
         return context.services.get<UIService>(Services.UI);
     }, [context, isInitialized]);
+
+    // Persistent variables live in the M-VAR registry (its own service/file), so a persistent edit
+    // does not bump `blueprintDocumentRevision`; subscribe to the registry to re-render on its changes.
+    const variableRegistry = useMemo(() => {
+        if (!isInitialized || !context) {
+            return null;
+        }
+        return context.services.get<VariableRegistryService>(Services.VariableRegistry);
+    }, [context, isInitialized]);
+    const [registryRevision, setRegistryRevision] = useState(0);
+    useEffect(() => {
+        if (!variableRegistry) {
+            return;
+        }
+        return variableRegistry.onRegistryChanged(() => setRegistryRevision(r => r + 1));
+    }, [variableRegistry]);
 
     const inputDialog = useMemo(() => {
         if (!uiService) {
@@ -583,7 +597,7 @@ export function BlueprintMemberTree({
     );
 
     const handleCreatePersistentVariable = useCallback(async () => {
-        const existingNames = sortedPersistentVariables(localBp.getBlueprintDocument().persistentVariables).map(v => v.name);
+        const existingNames = localBp.listPersistentVariables().map(v => v.name);
         const selection = await promptCreatePersistentVariable(existingNames);
         if (!selection) {
             return;
@@ -612,7 +626,6 @@ export function BlueprintMemberTree({
     const pageBlueprint = pageBlueprintId ? blueprintDocument.blueprints[pageBlueprintId] : undefined;
 
     const events = blueprint.program.graphs.events ?? {};
-    const persistentVariables = blueprintDocument.persistentVariables ?? {};
 
     const variableGroups = useMemo(
         () =>
@@ -637,8 +650,8 @@ export function BlueprintMemberTree({
         ],
     );
     const sortedPersistentList = useMemo(
-        () => sortedPersistentVariables(persistentVariables),
-        [persistentVariables, blueprintDocumentRevision],
+        () => localBp.listPersistentVariables(),
+        [localBp, registryRevision],
     );
 
     const layerActive = (id: string) => graphView?.kind === "event" && graphView.graphId === id;

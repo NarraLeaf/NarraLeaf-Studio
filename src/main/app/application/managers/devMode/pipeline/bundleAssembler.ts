@@ -1,7 +1,13 @@
 import path from "path";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import { parseSharedBlueprintAssetJson } from "@shared/blueprint/parseSharedBlueprintAsset";
-import type { SharedBlueprintAsset } from "@shared/types/blueprint/document";
+import type { BlueprintPersistentVariable, SharedBlueprintAsset } from "@shared/types/blueprint/document";
+import type { PersistentVariableRuntimeTable, VariableRegistry } from "@shared/types/variables/registry";
+import {
+    buildPersistentRuntimeTable,
+    migrateVariableRegistryToLatest,
+    seedRegistryEntriesFromBlueprintPersistent,
+} from "@shared/variables/variableRegistryModel";
 import type { DevModeBundle, DevModeCharacterSummary, DevModeStoryLibrary } from "@shared/types/devMode";
 import type { GameLocalizationBundle } from "@shared/types/localization";
 import {
@@ -34,6 +40,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         blueprintDocument: migrateBlueprintDocumentToLatest(uigraphsRaw.blueprintDocument),
     };
     const localBlueprints = uigraphs.blueprintDocument;
+    const persistentVariables = await loadPersistentVariableTable(context.projectPath, uigraphsRaw.blueprintDocument);
     const sharedBlueprints = await loadSharedBlueprints(context.projectPath);
     const projectIdentifier = await readProjectIdentifier(context.projectPath);
     const storyLibrary = await loadStoryLibrary(context.projectPath);
@@ -48,6 +55,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
             uigraphs,
             localBlueprints,
             sharedBlueprints,
+            persistentVariables,
         },
         storyLibrary,
         localization,
@@ -89,6 +97,38 @@ async function readJsonFile<T>(filePath: string): Promise<T> {
 /**
  * Load blueprint-type assets from metadata shard + content shards (same layout as renderer Assets pipeline).
  */
+/**
+ * Load the project-level persistent variable registry (M-VAR) and project it to the runtime table the
+ * bundle carries. Prefers `editor/variables.json`; if that file is absent (a project opened only in a
+ * pre-M-VAR Studio, or a Dev Mode start before the renderer migrated), it seeds from the legacy
+ * `persistentVariables` still on the raw blueprint document, so Dev Mode never loses persistent vars.
+ */
+async function loadPersistentVariableTable(
+    projectPath: string,
+    rawBlueprintDocument: unknown,
+): Promise<PersistentVariableRuntimeTable> {
+    const registryPath = path.join(projectPath, "editor", "variables.json");
+    const raw = await readOptionalJsonFile<unknown>(registryPath);
+    if (raw) {
+        return buildPersistentRuntimeTable(migrateVariableRegistryToLatest(raw));
+    }
+    const legacy = readRawPersistentVariables(rawBlueprintDocument);
+    const { entries } = seedRegistryEntriesFromBlueprintPersistent(legacy);
+    const registry: VariableRegistry = { schemaVersion: 1, entries };
+    return buildPersistentRuntimeTable(registry);
+}
+
+function readRawPersistentVariables(blueprintDocument: unknown): Record<string, BlueprintPersistentVariable> | undefined {
+    if (typeof blueprintDocument !== "object" || blueprintDocument === null) {
+        return undefined;
+    }
+    const raw = (blueprintDocument as { persistentVariables?: unknown }).persistentVariables;
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        return undefined;
+    }
+    return raw as Record<string, BlueprintPersistentVariable>;
+}
+
 async function loadSharedBlueprints(projectPath: string): Promise<SharedBlueprintAsset[]> {
     const shardPath = path.join(projectPath, "assets", "assets.metadata.blueprint.json");
     const shardResult = await Fs.read(shardPath, "utf-8");

@@ -67,7 +67,6 @@ function documentWithPositions(aX: number, bX: number): UIDocument {
 function emptyBlueprintDocument(): BlueprintDocument {
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-        persistentVariables: {},
         blueprints: {},
         ownerRecords: {},
     };

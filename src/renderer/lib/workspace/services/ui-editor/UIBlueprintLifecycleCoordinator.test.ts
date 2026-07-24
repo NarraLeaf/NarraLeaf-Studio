@@ -47,7 +47,6 @@ function createHarness(document: UIDocument) {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         blueprints: {},
         ownerRecords: {},
-        persistentVariables: {},
         meta: {},
     };
     const ensuredWidgets: Array<{

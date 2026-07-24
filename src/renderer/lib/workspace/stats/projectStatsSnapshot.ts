@@ -12,6 +12,7 @@ import { CharacterService } from "@/lib/workspace/services/core/CharacterService
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import {
     extractCharacterTranslationRows,
@@ -208,7 +209,8 @@ function countBlueprints(ctx: WorkspaceContext): {
     return {
         blueprints,
         nodes,
-        persistentVariables: Object.keys(document.persistentVariables ?? {}).length,
+        // M-VAR: persistent variables live in the project-level registry now, not the blueprint document.
+        persistentVariables: ctx.services.get<VariableRegistryService>(Services.VariableRegistry).listEntries().length,
     };
 }
 
