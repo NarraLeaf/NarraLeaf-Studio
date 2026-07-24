@@ -39,9 +39,11 @@ import type {
     BlueprintFieldValueSource,
     BlueprintFrontendKind,
     BlueprintGraphIr,
+    BlueprintPersistentVariable,
     BlueprintPrivateOwnerRecord,
     Blueprint,
 } from "@shared/types/blueprint/document";
+import type { VariableRegistry, VariableRegistryEntry } from "@shared/types/variables/registry";
 import type {
     ReadonlyBlueprintSurfaceSummary,
     ReadonlyBlueprintWidgetSummary,
@@ -83,9 +85,11 @@ import type {
     StoryId,
     StoryLibraryEntry,
     StoryLibraryIndex,
+    StoryLiteralValue,
     StoryScene,
     StorySceneId,
     StorySceneUpdate,
+    StoryVariableValueType,
 } from "@shared/types/story";
 import type {
     BlueprintNodeDef,
@@ -144,6 +148,8 @@ enum Services {
     ProjectDependency = "projectDependency",
     /** Accumulated authoring activity (writing curve, active time, build history) */
     ProjectStats = "projectStats",
+    /** Project-level persistent variable registry (blueprint-declared persistent vars); M-VAR */
+    VariableRegistry = "variableRegistry",
     // Texture = "texture",
     // Audio = "audio",
     // Video = "video",
@@ -384,6 +390,28 @@ interface IUIGraphService extends IService {
     }): UIGraph;
     updateGraph(graphId: string, updater: (graph: UIGraph) => void): void;
     deleteGraph(graphId: string): void;
+    /** One-shot: the raw persistent variables read at load before the M-VAR migration relocated them. */
+    consumeLegacyPersistentVariables(): Record<string, BlueprintPersistentVariable> | null;
+}
+
+interface IVariableRegistryService extends IService {
+    load(): Promise<VariableRegistry>;
+    save(registry: VariableRegistry): Promise<void>;
+    getRegistry(): VariableRegistry;
+    listEntries(): VariableRegistryEntry[];
+    getEntry(id: string): VariableRegistryEntry | undefined;
+    onRegistryChanged(handler: (registry: VariableRegistry) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    applyRegistryMutation(mutator: (registry: VariableRegistry) => void): void;
+    createEntry(input?: { name?: string; valueType?: string; defaultValue?: StoryLiteralValue; description?: string }): VariableRegistryEntry;
+    renameEntry(id: string, name: string): void;
+    setEntryValueType(id: string, valueType: StoryVariableValueType): void;
+    setEntryDefault(id: string, defaultValue: StoryLiteralValue | undefined): void;
+    setEntryDescription(id: string, description: string | undefined): void;
+    deleteEntry(id: string): void;
+    replaceRegistry(registry: VariableRegistry): void;
 }
 
 interface ILocalBlueprintService extends IService {
@@ -472,7 +500,7 @@ interface ILocalBlueprintService extends IService {
             valueType?: string;
             defaultValue?: import("@shared/types/blueprint/document").LiteralValue;
         },
-    ): import("@shared/types/blueprint/document").BlueprintPersistentVariable;
+    ): VariableRegistryEntry;
     renamePersistentVariable(historyBlueprintId: string, variableId: string, name: string): void;
     setPersistentVariableDefault(
         historyBlueprintId: string,
@@ -909,7 +937,7 @@ export {
     ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
     ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
-    IProjectDependencyService, IVoiceService,
+    IProjectDependencyService, IVoiceService, IVariableRegistryService,
     Services, WorkspaceContext
 };
 
