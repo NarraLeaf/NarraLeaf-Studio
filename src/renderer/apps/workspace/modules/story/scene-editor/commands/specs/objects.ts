@@ -143,7 +143,9 @@ export const layer = defineStoryCommand({
 export const swap = defineStoryCommand({
     id: "swap",
     token: "swap",
-    aliases: ["src", "setimg", "settext"],
+    // `setimg` / `settext` are gone (§3.6): they spelled "object type × verb", which is the exact
+    // model B3's generic verbs replace - the target says what is being swapped, the token never does.
+    aliases: ["src"],
     category: "image",
     params: {
         target: targetParam(["image", "text"], { core: true }),

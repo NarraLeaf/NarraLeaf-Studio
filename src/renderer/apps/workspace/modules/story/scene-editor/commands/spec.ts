@@ -5,9 +5,10 @@ import type {
     StoryCommandContext,
     StoryCommandResolutionIssue,
     StoryCommandSpan,
+    StoryCommandTargetKind,
     StoryCommandValue,
 } from "../storyCommandValues";
-import type { ActionCommandGroupCategoryId } from "../storyActionCommands";
+import type { StoryCommandGroupId } from "../storyCommandCategories";
 
 /**
  * The single source of truth for one slash command.
@@ -57,7 +58,15 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
     /** The canonical keyword. English, never translated (bible B11). */
     token: string;
     aliases?: readonly string[];
-    category: ActionCommandGroupCategoryId;
+    /**
+     * Where this command files itself when it has NO target param.
+     *
+     * A1 narrowed the meaning: a command that DOES take a target is filed by that param's `accepts`,
+     * under every subject it accepts at once (`/show` under all five), so a single `category` slot
+     * could never have expressed it. For those commands this field only decides which single section
+     * the flat surfaces - the `/` browse menu and the command reference - print them under.
+     */
+    category: StoryCommandGroupId;
     params: P;
     /**
      * Build the finished block from the resolved args - declarations included, since v6 made a
@@ -170,9 +179,14 @@ export function placementParam(): StoryCommandParamSpec {
     };
 }
 
-/** A positional reference to something already on stage, or a character - the generic verbs' subject. */
+/**
+ * A positional reference to something already on stage, or a character - the generic verbs' subject.
+ *
+ * `accepts` is load-bearing twice over: resolution dispatches on it, and the sidebar files the command
+ * under every subject it names (§4.2). Widening it therefore adds menu entries as well as legal lines.
+ */
 export function targetParam(
-    accepts: readonly ("character" | "image" | "text" | "layer" | "video" | "audio")[],
+    accepts: readonly StoryCommandTargetKind[],
     options?: { core?: boolean; skippable?: boolean },
 ): StoryCommandParamSpec {
     return {
