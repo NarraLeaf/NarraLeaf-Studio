@@ -246,6 +246,7 @@ const transitionOptions = (t: TFunc): SelectOption[] => [
     { value: "dots", label: t("storyInspector.transition.dots") },
     { value: "slide", label: t("storyInspector.transition.slide") },
     { value: "throughColor", label: t("storyInspector.transition.throughColor") },
+    { value: "darkness", label: t("storyInspector.transition.darkness") },
 ];
 
 const wipeDirectionOptions = (t: TFunc): SelectOption[] => [
@@ -292,6 +293,7 @@ const transitionHints = (t: TFunc): Record<string, string> => ({
     dots: t("storyInspector.transitionHint.dots"),
     slide: t("storyInspector.transitionHint.slide"),
     throughColor: t("storyInspector.transitionHint.throughColor"),
+    darkness: t("storyInspector.transitionHint.darkness"),
 });
 
 const imageOperationOptions = (t: TFunc): SelectOption[] => [
@@ -1562,6 +1564,13 @@ function TransitionEditor(props: {
                     <>
                         <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
                         <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                    </>
+                ) : null}
+                {kind === "darkness" ? (
+                    // Left empty the compiler applies the 1 → 0 pair: the new frame emerges out of black.
+                    <>
+                        <NumberField label={t("storyInspector.transition.darknessFrom")} value={paramNumber(value.props, "from")} onChange={from => setParam({ from })} />
+                        <NumberField label={t("storyInspector.transition.darknessTo")} value={paramNumber(value.props, "to")} onChange={to => setParam({ to })} />
                     </>
                 ) : null}
             </FieldGrid>
