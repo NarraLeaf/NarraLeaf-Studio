@@ -3,6 +3,7 @@ import {
     Character,
     Condition,
     Control,
+    Darkness,
     DevTools,
     Dissolve,
     FadeIn,
@@ -14,6 +15,7 @@ import {
     Narrator,
     Pause,
     Persistent,
+    Push,
     Reveal,
     Scene,
     Script,
@@ -28,7 +30,6 @@ import {
 } from "narraleaf-react";
 import type { MaskPattern } from "narraleaf-react";
 import { blink, vignette } from "narraleaf-react/built-in";
-import { Slide, type WipeDirection } from "./transitions/customImageTransitions";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import { resolveVariantAssetId, selectCharacterVariantNames } from "@shared/utils/characterVariant";
 import type {
@@ -2473,8 +2474,7 @@ function createTransition(transition: StoryTransitionRef | undefined, ctx: Scene
         case "fadeIn":
             return new FadeIn({ duration, offset: [numberProp(props, "x", 0), numberProp(props, "y", 0)], easing });
         case "slide":
-            // Retained custom Slide (percentage travel), NOT native Push - see customImageTransitions.ts.
-            return new Slide(duration, stringProp(props, "direction", "left") as WipeDirection, easing);
+            return new Push({ duration, direction: stringProp(props, "direction", "left") as any, easing });
         case "maskCircle":
             // Hard-edged iris (feather 0) is the 0.16.0 equivalent of the removed `MaskTransition.circle`.
             // The old partial from/to radii have no built-in equivalent; the `circle` word never set them.
@@ -2506,11 +2506,9 @@ function createTransition(transition: StoryTransitionRef | undefined, ctx: Scene
                 ...throughColorPattern(props),
             });
         case "darkness":
-            // The engine's `Darkness` is not part of the public 0.16.0 surface, so `darkness` has no
-            // faithful mapping (it was an unhandled no-op warning before this migration too). Flagged for
-            // product arbitration in the 0.16.0 migration report.
-            diagnostic(ctx, "warning", blockId, `Transition "darkness" has no public equivalent in narraleaf-react 0.16.0 (the engine's Darkness is unexported); transition skipped.`);
-            return undefined;
+            // The incoming image is swapped in at `from` darkness and lifted to `to` - so the default
+            // pair (1 → 0) reads as "the new frame emerges out of black".
+            return new Darkness({ duration, easing, from: numberProp(props, "from", 1), to: numberProp(props, "to", 0) });
         default:
             diagnostic(ctx, "warning", blockId, `Transition "${transition.kind}" is not supported by public NLR imports.`);
             return undefined;
