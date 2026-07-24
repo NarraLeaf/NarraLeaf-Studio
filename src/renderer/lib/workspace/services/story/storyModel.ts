@@ -324,9 +324,10 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     if (version < 6) {
         migrated = migrateStoryDocumentV5toV6(migrated);
     }
-    // v4 (the `invalid` block kind and dialogue's `speakerName`) and v7 (the block-level `disabled`
-    // flag) are purely additive: an older document is already valid at the new version, so there is no
-    // step for either - only the stamp (a v6 document falls through every step above and is stamped v7).
+    // v4 (the `invalid` block kind and dialogue's `speakerName`), v7 (the block-level `disabled`
+    // flag) and v8 (the `event` rich-text run) are purely additive: an older document is already
+    // valid at the new version, so there is no step for any of them - only the stamp (a v7 document
+    // falls through every step above and is stamped v8).
     //
     // The stamp is unconditional, and has to be. Each migrator above ends by writing
     // STORY_DOCUMENT_SCHEMA_VERSION rather than the version it actually produces, so the ladder only
