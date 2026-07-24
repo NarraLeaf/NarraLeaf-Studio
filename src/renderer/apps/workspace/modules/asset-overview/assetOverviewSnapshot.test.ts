@@ -2,9 +2,16 @@ import { describe, expect, it } from "vitest";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetSource, type Asset } from "@/lib/workspace/services/assets/types";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
+import { extname, parse } from "@shared/utils/path";
 import { assetContentRelativePath, walkDirectoryBytes } from "./assetOverviewSnapshot";
 
-/** A tiny in-memory tree, keyed the way the real service keys paths (either separator). */
+/**
+ * A tiny in-memory tree, keyed the way the real service keys paths (either separator).
+ *
+ * The tree is authored with whole filenames, but `list` hands them back split the way the IPC
+ * handler does (`FsListHandler` returns `path.parse(name).name` plus a separate `ext`), because a
+ * walk that forgets to reassemble the two silently misses every file that has an extension.
+ */
 function fakeFileSystem(tree: Record<string, Array<{ name: string; type: "file" | "directory"; size?: number }>>) {
     const normalize = (path: string) => path.replace(/\\/g, "/").replace(/\/+$/, "");
     const sizes = new Map<string, number>();
@@ -19,7 +26,14 @@ function fakeFileSystem(tree: Record<string, Array<{ name: string; type: "file" 
         list: async (path: string) => {
             const entries = tree[normalize(path)];
             return entries
-                ? { ok: true as const, data: entries.map(entry => ({ name: entry.name, ext: null, type: entry.type })) }
+                ? {
+                    ok: true as const,
+                    data: entries.map(entry => ({
+                        name: parse(entry.name).name,
+                        ext: extname(entry.name) || null,
+                        type: entry.type,
+                    })),
+                }
                 : { ok: false as const, error: { code: "ENOENT", message: "no such directory" } };
         },
         details: async (path: string) => {

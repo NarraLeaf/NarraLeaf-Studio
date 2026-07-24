@@ -143,6 +143,24 @@ describe("buildSceneFlowGraph", () => {
         expect(toC?.branches).toEqual([{ kind: "conditionElse", label: "" }]);
     });
 
+    it("distinguishes an else-if arm from an if with the same condition", () => {
+        const graph = buildSceneFlowGraph(document([
+            scene("a", "Opening", [
+                conditionBranchBlock("if1", ["j1"], "if", "gold >= 100"),
+                jumpBlock("j1", "b", "if1"),
+                conditionBranchBlock("elif1", ["j2"], "elseIf", "gold >= 10"),
+                jumpBlock("j2", "c", "elif1"),
+            ]),
+            scene("b", "Vault", []),
+            scene("c", "Stall", []),
+        ], "a"));
+
+        expect(graph.edges.find(edge => edge.target === "b")?.branches)
+            .toEqual([{ kind: "condition", label: "gold >= 100" }]);
+        expect(graph.edges.find(edge => edge.target === "c")?.branches)
+            .toEqual([{ kind: "conditionElseIf", label: "gold >= 10" }]);
+    });
+
     it("takes the nearest fork when a branch is nested inside another", () => {
         const graph = buildSceneFlowGraph(document([
             scene("a", "Opening", [

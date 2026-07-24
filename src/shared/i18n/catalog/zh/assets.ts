@@ -57,7 +57,7 @@ export const assets = {
             referenced: "已引用",
             unreferenced: "未被引用",
             actual: "实际",
-            predicted: "预测",
+            ifTrimmed: "若裁剪",
             difference: "差额",
         },
         files: {
