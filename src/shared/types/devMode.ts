@@ -55,6 +55,21 @@ export type DevModeBlueprintDebugEventPayload = {
     event: BlueprintDebugEvent;
 };
 
+/** Play-head row forwarded from a Dev Mode window to its project's workspace (WI-2 editor sync). */
+export type DevModeStoryRowPayload = {
+    projectPath: string;
+    storyId: string;
+    sceneId: string;
+    blockId: string;
+};
+
+/** The workspace-side story-row highlight, forwarded from Dev Mode (no projectPath on delivery). */
+export type DevModeStoryRowHighlight = {
+    storyId: string;
+    sceneId: string;
+    blockId: string;
+};
+
 export type DevModeCharacterSummary = {
     id: string;
     /** Author-facing display name. Empty when the character is unnamed - never falls back to `id`, which is a UUID. */
