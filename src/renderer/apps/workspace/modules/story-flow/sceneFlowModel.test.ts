@@ -11,6 +11,45 @@ function controlBlock(id: string, childrenIds: string[]): StoryBlock {
     return { id, kind: "control", parentId: null, childrenIds, payload: { control: "conditionBranch", branch: "if" } };
 }
 
+function conditionBranchBlock(
+    id: string,
+    childrenIds: string[],
+    branch: "if" | "elseIf" | "else",
+    source?: string,
+    parentId: string | null = null,
+): StoryBlock {
+    return {
+        id,
+        kind: "control",
+        parentId,
+        childrenIds,
+        payload: {
+            control: "conditionBranch",
+            branch,
+            ...(source
+                ? { condition: { kind: "expression" as const, expression: { source, expr: { kind: "literal" as const, value: true } } } }
+                : {}),
+        },
+    } as StoryBlock;
+}
+
+function sequenceBlock(id: string, childrenIds: string[], parentId: string | null = null): StoryBlock {
+    return { id, kind: "control", parentId, childrenIds, payload: { control: "sequence" } };
+}
+
+function choiceOptionBlock(id: string, childrenIds: string[], text: string, parentId: string | null = null): StoryBlock {
+    return {
+        id,
+        kind: "nodeAction",
+        parentId,
+        childrenIds,
+        payload: {
+            action: "choiceOption",
+            text: { textId: `${id}-text`, value: text, role: "choiceText" },
+        },
+    } as StoryBlock;
+}
+
 function scene(id: string, name: string, blocks: StoryBlock[]): StoryScene {
     return {
         id,
@@ -64,6 +103,93 @@ describe("buildSceneFlowGraph", () => {
         expect(graph.edges).toHaveLength(1);
         expect(graph.edges[0].conditional).toBe(true);
         expect(graph.edges[0].jumps[0].conditional).toBe(true);
+    });
+
+    it("does not treat ordering containers as branches", () => {
+        const graph = buildSceneFlowGraph(document([
+            scene("a", "Opening", [sequenceBlock("s1", ["j1"]), jumpBlock("j1", "b", "s1")]),
+            scene("b", "Hallway", []),
+        ], "a"));
+
+        expect(graph.edges[0].conditional).toBe(false);
+        expect(graph.edges[0].branches).toEqual([]);
+    });
+
+    it("labels a jump under a choice option with the option text", () => {
+        const graph = buildSceneFlowGraph(document([
+            scene("a", "Opening", [choiceOptionBlock("o1", ["j1"], "Open the door"), jumpBlock("j1", "b", "o1")]),
+            scene("b", "Hallway", []),
+        ], "a"));
+
+        expect(graph.edges[0].conditional).toBe(true);
+        expect(graph.edges[0].branches).toEqual([{ kind: "choice", label: "Open the door" }]);
+    });
+
+    it("labels a jump under a condition branch with the expression source, and else without one", () => {
+        const graph = buildSceneFlowGraph(document([
+            scene("a", "Opening", [
+                conditionBranchBlock("if1", ["j1"], "if", "gold >= 100"),
+                jumpBlock("j1", "b", "if1"),
+                conditionBranchBlock("else1", ["j2"], "else"),
+                jumpBlock("j2", "c", "else1"),
+            ]),
+            scene("b", "Vault", []),
+            scene("c", "Street", []),
+        ], "a"));
+
+        const toB = graph.edges.find(edge => edge.target === "b");
+        const toC = graph.edges.find(edge => edge.target === "c");
+        expect(toB?.branches).toEqual([{ kind: "condition", label: "gold >= 100" }]);
+        expect(toC?.branches).toEqual([{ kind: "conditionElse", label: "" }]);
+    });
+
+    it("takes the nearest fork when a branch is nested inside another", () => {
+        const graph = buildSceneFlowGraph(document([
+            scene("a", "Opening", [
+                conditionBranchBlock("if1", ["o1"], "if", "gold >= 100"),
+                choiceOptionBlock("o1", ["s1"], "Buy it", "if1"),
+                sequenceBlock("s1", ["j1"], "o1"),
+                jumpBlock("j1", "b", "s1"),
+            ]),
+            scene("b", "Shop", []),
+        ], "a"));
+
+        expect(graph.edges[0].branches).toEqual([{ kind: "choice", label: "Buy it" }]);
+    });
+
+    it("aggregates several branch paths onto one edge and drops duplicates", () => {
+        const graph = buildSceneFlowGraph(document([
+            scene("a", "Opening", [
+                choiceOptionBlock("o1", ["j1"], "Left"),
+                jumpBlock("j1", "b", "o1"),
+                choiceOptionBlock("o2", ["j2"], "Right"),
+                jumpBlock("j2", "b", "o2"),
+                choiceOptionBlock("o3", ["j3"], "Left"),
+                jumpBlock("j3", "b", "o3"),
+            ]),
+            scene("b", "Hallway", []),
+        ], "a"));
+
+        expect(graph.edges).toHaveLength(1);
+        expect(graph.edges[0].jumps).toHaveLength(3);
+        expect(graph.edges[0].branches).toEqual([
+            { kind: "choice", label: "Left" },
+            { kind: "choice", label: "Right" },
+        ]);
+    });
+
+    it("keeps an edge unconditional when any one of its jumps is unbranched", () => {
+        const graph = buildSceneFlowGraph(document([
+            scene("a", "Opening", [
+                choiceOptionBlock("o1", ["j1"], "Left"),
+                jumpBlock("j1", "b", "o1"),
+                jumpBlock("j2", "b"),
+            ]),
+            scene("b", "Hallway", []),
+        ], "a"));
+
+        expect(graph.edges[0].conditional).toBe(false);
+        expect(graph.edges[0].branches).toEqual([{ kind: "choice", label: "Left" }]);
     });
 
     it("counts jumps with a missing or deleted target as dangling instead of dropping them", () => {
