@@ -1809,6 +1809,13 @@ async function compileCharacterStageAction(
     const name = getCharacterStageObjectName(payload);
     const statements: NlrStatement[] = [];
 
+    // The only operation that addresses the Character record rather than its portrait: it renames the
+    // speaker label from this row on ("？？？" → the real name), so it needs no image and no transform.
+    if (payload.operation === "setName") {
+        const character = getCharacter(ctx, payload.characterId);
+        return [recordStatement(ctx, character.setName(payload.displayName ?? ""), block)];
+    }
+
     if (payload.operation === "exit") {
         const image = getImage(ctx, name, { autoFit: true });
         const chain = compileDisplayableOperation(image, "hide", payload.transform ?? { preset: "fadeOut", durationMs: 250 }, ctx, block.id);
@@ -1992,6 +1999,20 @@ async function compileVideoAction(
     }
     if (payload.operation === "play") {
         return [recordStatement(ctx, video.play(), block)];
+    }
+    if (payload.operation === "pause") {
+        return [recordStatement(ctx, video.pause(), block)];
+    }
+    if (payload.operation === "resume") {
+        return [recordStatement(ctx, video.resume(), block)];
+    }
+    if (payload.operation === "stop") {
+        return [recordStatement(ctx, video.stop(), block)];
+    }
+    if (payload.operation === "seek") {
+        // The engine seeks in SECONDS; the payload stores milliseconds like every other time in this
+        // document. A negative position is not a frame, so it floors at the start of the clip.
+        return [recordStatement(ctx, video.seek(Math.max(0, finiteOr(payload.timeMs, 0)) / 1000), block)];
     }
     return [];
 }

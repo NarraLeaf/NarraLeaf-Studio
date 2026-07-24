@@ -64,7 +64,15 @@ describe("accepts-driven classification (§4.2)", () => {
     });
 
     it("routes the audio target kind to the sound group, the one name that is not its own", () => {
-        expect(groupIds("stop")).toEqual(["sound"]);
+        // `/stop` also reaches video (A3), so it files under both - which is exactly what widening
+        // `accepts` is supposed to buy: four video capabilities for one new token, and the transport
+        // verbs visible where an author browsing 视频 will look for them.
+        expect(groupIds("stop")).toEqual(["sound", "video"]);
+        for (const id of ["stop", "pause", "resume"]) {
+            expect(commandsIn("video")).toContain(id);
+            expect(commandsIn("sound")).toContain(id);
+        }
+        expect(commandsIn("video")).toContain("seek");
     });
 
     it("leaves no spec unreachable from the sidebar", () => {

@@ -149,6 +149,20 @@ describe("dialogue", () => {
             payload: { characterId: undefined, speakerName: "Zoe" },
         });
     });
+
+    it("/rename writes the new speaker label and nothing else", () => {
+        // Greedy, because the reveal a rename exists for is often a phrase ("the man in grey"), and
+        // no portrait state comes along: a rename row carries no transform and no transition.
+        expect(build("/rename Alice the man in grey")).toMatchObject({
+            kind: "action",
+            payload: { action: "character", operation: "setName", characterId: "c1", displayName: "the man in grey" },
+        });
+        expect(build("/rename Alice ？？？")).toMatchObject({ payload: { displayName: "？？？" } });
+        expect(build("/setname Alice X")).toMatchObject({ payload: { operation: "setName", displayName: "X" } });
+        // Both halves are core (B9): a rename with no name to show would commit nothing meaningful.
+        expect(getCommandSpec("rename")?.params.character.core).toBe(true);
+        expect(getCommandSpec("rename")?.params.name.core).toBe(true);
+    });
 });
 
 describe("media objects", () => {
@@ -202,6 +216,26 @@ describe("sound (bible B4: target defaults to bgm)", () => {
         expect(build("/mute")).toMatchObject({ payload: { operation: "muteSound", muted: true, objectName: "bgm" } });
         expect(build("/unmute")).toMatchObject({ payload: { operation: "muteSound", muted: false, objectName: "bgm" } });
         expect(build("/rate 1.5")).toMatchObject({ payload: { operation: "setRate", rate: 1.5, objectName: "bgm" } });
+    });
+
+    it("/stop /pause /resume dispatch on what the target turned out to be", () => {
+        // The B4 default and the B3 dispatch have to coexist: nothing after the token still means the
+        // music channel, and only a NAMED target that resolves to a video reaches the video payload.
+        expect(build("/pause")).toMatchObject({ payload: { action: "audio", operation: "pauseSound", objectName: "bgm" } });
+        expect(build("/pause music")).toMatchObject({ payload: { action: "audio", operation: "pauseSound", objectName: "music" } });
+        expect(build("/pause clip")).toMatchObject({ payload: { action: "video", operation: "pause", objectName: "clip" } });
+        expect(build("/resume clip")).toMatchObject({ payload: { action: "video", operation: "resume", objectName: "clip" } });
+        expect(build("/stop clip")).toMatchObject({ payload: { action: "video", operation: "stop", objectName: "clip" } });
+    });
+
+    it("/seek names its clip and stores seconds as milliseconds", () => {
+        expect(build("/seek clip 3")).toMatchObject({
+            kind: "action",
+            payload: { action: "video", operation: "seek", objectName: "clip", timeMs: 3000 },
+        });
+        // Not omissible, unlike the sound family: an implied BGM has no seek to perform.
+        expect(getCommandSpec("seek")?.params.target.core).toBe(true);
+        expect(getCommandSpec("seek")?.params.target.skippable).toBeUndefined();
     });
 });
 

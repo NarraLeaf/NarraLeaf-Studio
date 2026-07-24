@@ -5,6 +5,7 @@ import type { StoryExpressionScope } from "@shared/utils/storyExpressionParser";
 import { createStoryExpressionScope, formatStoryExpressionName, parseStoryExpression } from "@shared/utils/storyExpressionParser";
 import {
     allowsFreeValue,
+    freeTargetKind,
     paramTypes,
     matchEnumOption,
     type StoryCommandParam,
@@ -141,12 +142,11 @@ function resolveTarget(
         return { value: { kind: "target", target: matches[0] } };
     }
 
-    // Nothing on stage answers. A free-typed name can stand only where exactly one object kind is
-    // possible (made dynamically, or in another scene); with several kinds there is nothing to
-    // dispatch the block type on.
-    const stageKinds = type.accepts.filter((kind): kind is StoryCommandStageObjectKind => kind !== "character");
-    if (stageKinds.length === 1 && value.trim() !== "") {
-        return { value: { kind: "target", target: { type: "stageObject", objectKind: stageKinds[0], name: value.trim(), known: false } } };
+    // Nothing on stage answers. A free-typed name can stand only where its kind is knowable anyway
+    // (made dynamically, or in another scene) - one possible kind, or a declared fallback.
+    const freeKind = freeTargetKind(type);
+    if (freeKind && value.trim() !== "") {
+        return { value: { kind: "target", target: { type: "stageObject", objectKind: freeKind, name: value.trim(), known: false } } };
     }
     return { issue: { code: "unknownTarget", span, value } };
 }

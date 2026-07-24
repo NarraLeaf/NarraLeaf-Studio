@@ -248,7 +248,10 @@ function formatAction(payload: StoryActionPayload, scene: StoryScene, document?:
         return `/background ${payload.assetId ?? payload.color ?? ""}`.trimEnd();
     }
     if (payload.action === "character") {
-        return `/character ${payload.operation}${payload.characterId ? ` ${payload.characterId}` : payload.objectName ? ` ${payload.objectName}` : ""}`;
+        const subject = payload.characterId ? ` ${payload.characterId}` : payload.objectName ? ` ${payload.objectName}` : "";
+        // The new label is the whole of a rename, so it rides the projected line like a text's content.
+        const suffix = payload.operation === "setName" && payload.displayName ? ` ${payload.displayName}` : "";
+        return `/character ${payload.operation}${subject}${suffix}`;
     }
     if (payload.action === "audio") {
         return `/audio ${payload.operation}${payload.objectName ? ` ${payload.objectName}` : payload.assetId ? ` ${payload.assetId}` : ""}`;

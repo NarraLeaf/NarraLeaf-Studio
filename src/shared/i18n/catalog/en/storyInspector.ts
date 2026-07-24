@@ -244,7 +244,12 @@ export const storyInspector = {
     },
 
     videoOperation: {
-        play: "Play",
+        // "Play" waits for the clip to finish before the story continues; "Resume" does not.
+        play: "Play (wait for end)",
+        pause: "Pause",
+        resume: "Resume",
+        stop: "Stop",
+        seek: "Seek to",
     },
 
     audioOperation: {
@@ -337,6 +342,7 @@ export const storyInspector = {
     video: {
         videoName: "Video name",
         videoAsset: "Video asset",
+        seekTime: "Seek to",
     },
 
     nvl: {
@@ -346,6 +352,9 @@ export const storyInspector = {
 
     character: {
         stageName: "Stage name",
+        // Named for what the player reads, not for the field it writes: this is the speaker label from
+        // this row on, which is what makes "？？？" become a name.
+        displayName: "Speaks as",
         chooseHint: "Choose a character to pick its appearance.",
         overrideImage: "Override image",
     },

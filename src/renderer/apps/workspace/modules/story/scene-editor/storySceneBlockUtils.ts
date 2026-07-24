@@ -516,6 +516,11 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
             const name = payload.characterId ? getCharacterName(characters, payload.characterId) : (payload.objectName || translate("story.describe.characterFallback"));
             // Localized verb + the target name ("Enter · Alice"), not the raw English enum ("enter Alice").
             const operation = translate(`story.describe.charOp.${payload.operation}` as Parameters<typeof translate>[0]);
+            // A rename's whole content is the new label, so the row shows it - "Rename Stranger" would
+            // say nothing about what the player is about to read.
+            if (payload.operation === "setName") {
+                return `${operation} ${name} → ${payload.displayName || translate("story.describe.unnamed")}`;
+            }
             return `${operation} ${name}`;
         }
         if (payload.action === "audio") return `${payload.operation} ${payload.objectName || payload.assetId || translate("story.describe.unassigned")}`;

@@ -360,7 +360,13 @@ const videoOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "create", label: t("common.create") },
     { value: "show", label: t("common.show") },
     { value: "hide", label: t("common.hide") },
+    // `play` waits for the clip to end, `resume` does not - the labels have to carry that, since the
+    // two are otherwise indistinguishable in a list.
     { value: "play", label: t("storyInspector.videoOperation.play") },
+    { value: "pause", label: t("storyInspector.videoOperation.pause") },
+    { value: "resume", label: t("storyInspector.videoOperation.resume") },
+    { value: "stop", label: t("storyInspector.videoOperation.stop") },
+    { value: "seek", label: t("storyInspector.videoOperation.seek") },
 ];
 
 const audioOperationOptions = (t: TFunc): SelectOption[] => [
@@ -993,6 +999,13 @@ function ActionPayloadFields(props: {
                     onChange={assetId => props.onChange({ ...payload, assetId })}
                 />
                 <CheckboxField label={t("storyInspector.field.muted")} checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
+                {payload.operation === "seek" ? (
+                    <SecondsField
+                        label={t("storyInspector.video.seekTime")}
+                        value={payload.timeMs}
+                        onChange={timeMs => props.onChange({ ...payload, timeMs: timeMs === undefined ? undefined : Math.max(0, timeMs) })}
+                    />
+                ) : null}
             </div>
         );
     }
@@ -1167,6 +1180,26 @@ function CharacterActionEditor(props: {
         const objectName = autofill ? nextCharacter?.profile.getName() ?? payload.objectName : payload.objectName;
         onChange({ ...payload, characterId, objectName, formName: undefined, variants: undefined });
     }, [onChange, payload, props.characters]);
+
+    // A rename touches the speaker label and nothing else - no portrait, so no stage name, appearance,
+    // transform or transition. Offering those would be offering to edit fields the compile never reads.
+    if (payload.operation === "setName") {
+        return (
+            <FieldGrid cols={2}>
+                <SelectField
+                    label={t("storyInspector.field.character")}
+                    options={characterOptions}
+                    value={payload.characterId ?? ""}
+                    onChange={updateCharacter}
+                />
+                <TextField
+                    label={t("storyInspector.character.displayName")}
+                    value={payload.displayName ?? ""}
+                    onChange={displayName => onChange({ ...payload, displayName })}
+                />
+            </FieldGrid>
+        );
+    }
 
     return (
         <div className="grid grid-cols-1 gap-3">
