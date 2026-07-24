@@ -843,7 +843,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.mutateDocument(storyId, document => {
             const found = findDeclarationBlock(document, variableId);
             if (!found) return;
-            mutate(found.block.payload);
+            // Reassign the payload rather than mutating it in place, so a fresh reference marks the edit:
+            // `updateBlockPayload` (the other write path) already reassigns, and the inspector bridge's
+            // republish gate (WI-0) compares payload identity — an in-place mutation would slip past it,
+            // leaving an open declaration inspector stale after a rename/retype from the Variables panel.
+            const nextPayload = { ...found.block.payload };
+            mutate(nextPayload);
+            found.block.payload = nextPayload;
             changed = true;
         });
         return changed;
