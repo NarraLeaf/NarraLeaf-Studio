@@ -1,4 +1,5 @@
 import type { Blueprint, BlueprintDocument, BlueprintEventGraph, BlueprintGraphIr } from "@shared/types/blueprint/document";
+import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
@@ -323,6 +324,7 @@ function getMountedBlueprintModule(blueprintId: string): BlueprintModuleSink | u
 export async function dispatchBlueprintUiEvent(options: {
     document: UIDocument;
     blueprintDocument: BlueprintDocument;
+    persistentVariables: PersistentVariableRuntimeTable;
     surfaceId: string;
     runtimeScopeId?: string;
     elementId: string;
@@ -501,7 +503,7 @@ export async function dispatchBlueprintUiEvent(options: {
                     listItemScope,
                     instanceKey,
                     executionOwner: { surfaceId, elementId, blueprintId, componentId },
-                    persistentVariables: blueprintDocument.persistentVariables,
+                    persistentVariables: options.persistentVariables,
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
                     signal: execution?.signal,
                     trace: {
@@ -668,6 +670,7 @@ function collectElementEventTargets(input: {
 type ElementEventDispatchOptions = {
     document: UIDocument;
     blueprintDocument: BlueprintDocument;
+    persistentVariables: PersistentVariableRuntimeTable;
     surfaceId: string;
     runtimeScopeId?: string;
     target: BlueprintElementRef;
@@ -735,7 +738,7 @@ async function dispatchBlueprintElementEvent(options: ElementEventDispatchOption
                     eventName: eventId,
                     eventPayload: payload,
                     executionOwner: { surfaceId, elementId: listener.elementId, blueprintId: listener.blueprintId },
-                    persistentVariables: blueprintDocument.persistentVariables,
+                    persistentVariables: options.persistentVariables,
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
                     signal: execution?.signal,
                     trace: {
@@ -782,6 +785,7 @@ async function dispatchBlueprintElementEvent(options: ElementEventDispatchOption
 export async function dispatchBlueprintElementFlushEvent(options: {
     document: UIDocument;
     blueprintDocument: BlueprintDocument;
+    persistentVariables: PersistentVariableRuntimeTable;
     surfaceId: string;
     runtimeScopeId?: string;
     target: BlueprintElementRef;
@@ -803,6 +807,7 @@ export async function dispatchBlueprintElementFlushEvent(options: {
 export async function dispatchBlueprintElementClickEvent(options: {
     document: UIDocument;
     blueprintDocument: BlueprintDocument;
+    persistentVariables: PersistentVariableRuntimeTable;
     surfaceId: string;
     runtimeScopeId?: string;
     target: BlueprintElementRef;
@@ -928,6 +933,7 @@ export function countBlueprintBroadcastListeners(options: {
 export async function dispatchWidgetsBlueprintEvent(options: {
     document: UIDocument;
     blueprintDocument: BlueprintDocument;
+    persistentVariables: PersistentVariableRuntimeTable;
     surfaceId: string;
     runtimeScopeId?: string;
     eventName: string;
@@ -1003,7 +1009,7 @@ export async function dispatchWidgetsBlueprintEvent(options: {
                         eventName,
                         eventPayload,
                         executionOwner: { surfaceId, elementId, blueprintId },
-                        persistentVariables: blueprintDocument.persistentVariables,
+                        persistentVariables: options.persistentVariables,
                         maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
                         signal: execution?.signal,
                         trace: {
@@ -1051,6 +1057,7 @@ export async function dispatchWidgetsBlueprintEvent(options: {
 export async function dispatchBlueprintBroadcastEvent(options: {
     document: UIDocument;
     blueprintDocument: BlueprintDocument;
+    persistentVariables: PersistentVariableRuntimeTable;
     surfaceId: string;
     runtimeScopeId?: string;
     eventName: string;
@@ -1114,7 +1121,7 @@ export async function dispatchBlueprintBroadcastEvent(options: {
                     eventName,
                     eventPayload,
                     executionOwner: { surfaceId, elementId: target.elementId, blueprintId: target.blueprintId },
-                    persistentVariables: blueprintDocument.persistentVariables,
+                    persistentVariables: options.persistentVariables,
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
                     signal: execution?.signal,
                     trace: {
@@ -1173,6 +1180,7 @@ export const MAX_BLUEPRINT_FN_CALL_DEPTH = 32;
  */
 export async function invokeBlueprintFnCall(options: {
     blueprintDocument: BlueprintDocument;
+    persistentVariables: PersistentVariableRuntimeTable;
     surfaceId?: string;
     runtimeScopeId?: string;
     fnRef: string;
@@ -1235,7 +1243,7 @@ export async function invokeBlueprintFnCall(options: {
         hostAdapter,
         blueprintLocals,
         executionOwner,
-        persistentVariables: blueprintDocument.persistentVariables,
+        persistentVariables: options.persistentVariables,
         maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
         signal: options.signal,
         fnCallDepth: depth + 1,
@@ -1266,6 +1274,7 @@ export async function invokeBlueprintFnCall(options: {
  */
 export async function dispatchSurfaceBlueprintEvent(options: {
     blueprintDocument: BlueprintDocument;
+    persistentVariables: PersistentVariableRuntimeTable;
     surfaceId: string;
     runtimeScopeId?: string;
     eventName: string;
@@ -1414,7 +1423,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
                     eventPayload: eventPayload ?? {},
                     eventControl,
                     executionOwner: { surfaceId, blueprintId },
-                    persistentVariables: blueprintDocument.persistentVariables,
+                    persistentVariables: options.persistentVariables,
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
                     signal: execution?.signal,
                     trace: {
@@ -1474,6 +1483,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
  */
 export async function dispatchGlobalBlueprintEvent(options: {
     blueprintDocument: BlueprintDocument;
+    persistentVariables: PersistentVariableRuntimeTable;
     eventName: string;
     eventPayload?: Record<string, unknown>;
     eventControl?: BehaviorGraphEventControl;
@@ -1613,7 +1623,7 @@ export async function dispatchGlobalBlueprintEvent(options: {
                     eventPayload: eventPayload ?? {},
                     eventControl,
                     executionOwner: { blueprintId },
-                    persistentVariables: blueprintDocument.persistentVariables,
+                    persistentVariables: options.persistentVariables,
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
                     signal: execution?.signal,
                     trace: {

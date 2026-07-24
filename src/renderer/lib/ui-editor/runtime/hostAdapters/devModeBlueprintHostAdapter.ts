@@ -36,6 +36,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
     const effectiveRuntimeScopeId = runtimeScopeId ?? surface.id;
     const document = bundle.ui.uidoc;
     const blueprintDocument = bundle.ui.localBlueprints;
+    const persistentVariables = bundle.ui.persistentVariables;
     const surfaceStore = scopeBridge.getSurfaceStore(effectiveRuntimeScopeId);
     type PendingFlush = {
         payload?: Record<string, unknown>;
@@ -89,6 +90,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
         await dispatchBlueprintUiEvent({
             document,
             blueprintDocument,
+            persistentVariables,
             surfaceId: surface.id,
             runtimeScopeId: effectiveRuntimeScopeId,
             elementId,
@@ -119,6 +121,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             await dispatchBlueprintElementFlushEvent({
                 document,
                 blueprintDocument,
+                persistentVariables,
                 surfaceId: surface.id,
                 runtimeScopeId: effectiveRuntimeScopeId,
                 target,
@@ -141,6 +144,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             await dispatchBlueprintElementClickEvent({
                 document,
                 blueprintDocument,
+                persistentVariables,
                 surfaceId: surface.id,
                 runtimeScopeId: effectiveRuntimeScopeId,
                 target,
@@ -280,6 +284,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
     blueprintRuntime.dispatchSurfaceBlueprintEvent = async (eventName, eventPayload) => {
         await dispatchSurfaceBlueprintEvent({
             blueprintDocument,
+            persistentVariables,
             surfaceId: surface.id,
             runtimeScopeId: effectiveRuntimeScopeId,
             eventName,
@@ -298,6 +303,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
         await dispatchBlueprintBroadcastEvent({
             document,
             blueprintDocument,
+            persistentVariables,
             surfaceId: surface.id,
             runtimeScopeId: effectiveRuntimeScopeId,
             eventName,
@@ -324,6 +330,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
     blueprintRuntime.invokeBlueprintFn = async input =>
         invokeBlueprintFnCall({
             blueprintDocument,
+            persistentVariables,
             // Visibility follows the calling execution, not this adapter's surface
             // (global callers pass no surface and only see global fns).
             surfaceId: input.callerSurfaceId,

@@ -59,7 +59,6 @@ function blueprintDocument(): BlueprintDocument {
         blueprints: {
             [bp.id]: bp,
         },
-        persistentVariables: {},
         ownerRecords: {
             "surfaceMain:surface-a": {
                 activeBlueprintId: bp.id,

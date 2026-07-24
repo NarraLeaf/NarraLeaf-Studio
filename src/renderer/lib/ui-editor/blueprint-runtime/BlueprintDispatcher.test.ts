@@ -67,7 +67,6 @@ describe("BlueprintDispatcher", () => {
         const blueprintId = "bp-container";
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [blueprintId]: {
                     id: blueprintId,
@@ -159,6 +158,7 @@ describe("BlueprintDispatcher", () => {
             await dispatchBlueprintUiEvent({
                 document,
                 blueprintDocument,
+                persistentVariables: {},
                 surfaceId: "surface",
                 elementId: "container",
                 eventName: "init",
@@ -185,7 +185,6 @@ describe("BlueprintDispatcher", () => {
         const blueprintId = "bp-component-container";
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [blueprintId]: {
                     id: blueprintId,
@@ -272,6 +271,7 @@ describe("BlueprintDispatcher", () => {
         await dispatchBlueprintUiEvent({
             document,
             blueprintDocument,
+            persistentVariables: {},
             surfaceId: "surface",
             elementId: "component-container",
             componentId: "component",
@@ -294,7 +294,6 @@ describe("BlueprintDispatcher", () => {
         const blueprintId = "bp-widget";
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [blueprintId]: {
                     id: blueprintId,
@@ -359,6 +358,7 @@ describe("BlueprintDispatcher", () => {
         await dispatchBlueprintUiEvent({
             document,
             blueprintDocument,
+            persistentVariables: {},
             surfaceId: "surface",
             elementId: "button",
             eventName: "init",
@@ -375,7 +375,6 @@ describe("BlueprintDispatcher", () => {
         const blueprintId = "bp-container";
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [blueprintId]: {
                     id: blueprintId,
@@ -453,6 +452,7 @@ describe("BlueprintDispatcher", () => {
         await dispatchBlueprintUiEvent({
             document,
             blueprintDocument,
+            persistentVariables: {},
             surfaceId: "surface",
             elementId: "container",
             eventName: "mouseEnter",
@@ -474,7 +474,6 @@ describe("BlueprintDispatcher", () => {
         const blueprintId = "bp-panel";
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [blueprintId]: {
                     id: blueprintId,
@@ -564,6 +563,7 @@ describe("BlueprintDispatcher", () => {
         await dispatchBlueprintElementClickEvent({
             document,
             blueprintDocument,
+            persistentVariables: {},
             surfaceId: "surface",
             target: { surfaceId: "surface", elementId: "interaction", elementType: "nl.container" },
             eventPayload: { x: 12, y: 34, button: 0 },
@@ -586,7 +586,6 @@ describe("BlueprintDispatcher", () => {
         releaseBlueprintWidgetLocals("surface", "button", blueprintId);
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [blueprintId]: {
                     id: blueprintId,
@@ -675,6 +674,7 @@ describe("BlueprintDispatcher", () => {
         await dispatchBlueprintUiEvent({
             document,
             blueprintDocument,
+            persistentVariables: {},
             surfaceId: "surface",
             elementId: "button",
             eventName: "mouseClick",
@@ -700,7 +700,6 @@ describe("BlueprintDispatcher", () => {
         releaseBlueprintWidgetLocals("surface", "button", blueprintId);
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [blueprintId]: {
                     id: blueprintId,
@@ -789,6 +788,7 @@ describe("BlueprintDispatcher", () => {
         await dispatchBlueprintUiEvent({
             document,
             blueprintDocument,
+            persistentVariables: {},
             surfaceId: "surface",
             elementId: "button",
             eventName: "keyDown",
@@ -822,7 +822,6 @@ describe("BlueprintDispatcher", () => {
         releaseBlueprintWidgetLocals("surface", "list", blueprintId);
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [blueprintId]: {
                     id: blueprintId,
@@ -911,6 +910,7 @@ describe("BlueprintDispatcher", () => {
         await dispatchBlueprintUiEvent({
             document,
             blueprintDocument,
+            persistentVariables: {},
             surfaceId: "surface",
             elementId: "list",
             eventName: "itemClick",
@@ -936,7 +936,6 @@ describe("BlueprintDispatcher", () => {
         const surfaceBlueprintId = "bp-surface";
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [globalBlueprintId]: {
                     id: globalBlueprintId,
@@ -1057,6 +1056,7 @@ describe("BlueprintDispatcher", () => {
 
         await dispatchGlobalBlueprintEvent({
             blueprintDocument,
+            persistentVariables: {},
             eventName: "appBoot",
             hostAdapter,
             debug,
@@ -1065,6 +1065,7 @@ describe("BlueprintDispatcher", () => {
         });
         await dispatchGlobalBlueprintEvent({
             blueprintDocument,
+            persistentVariables: {},
             eventName: "gameReady",
             hostAdapter,
             debug,
@@ -1073,6 +1074,7 @@ describe("BlueprintDispatcher", () => {
         });
         await dispatchSurfaceBlueprintEvent({
             blueprintDocument,
+            persistentVariables: {},
             surfaceId: "surface",
             eventName: "surfaceInit",
             hostAdapter,
@@ -1106,7 +1108,6 @@ describe("BlueprintDispatcher", () => {
         const surfaceBlueprintId = "bp-surface-click";
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [surfaceBlueprintId]: {
                     id: surfaceBlueprintId,
@@ -1170,6 +1171,7 @@ describe("BlueprintDispatcher", () => {
 
         await dispatchSurfaceBlueprintEvent({
             blueprintDocument,
+            persistentVariables: {},
             surfaceId: "surface",
             eventName: "mouseClick",
             eventPayload: { x: 42, y: 9 },
@@ -1195,7 +1197,6 @@ describe("BlueprintDispatcher", () => {
             const runtimeScopeId = "surface:cancel-test";
             const blueprintDocument: BlueprintDocument = {
                 schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-                persistentVariables: {},
                 blueprints: {
                     [surfaceBlueprintId]: {
                         id: surfaceBlueprintId,
@@ -1263,6 +1264,7 @@ describe("BlueprintDispatcher", () => {
 
             const dispatch = dispatchSurfaceBlueprintEvent({
                 blueprintDocument,
+                persistentVariables: {},
                 surfaceId: "surface",
                 runtimeScopeId,
                 eventName: "surfaceInit",
@@ -1298,7 +1300,6 @@ describe("BlueprintDispatcher", () => {
         const surfaceBlueprintId = "bp-surface-keyboard";
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [globalBlueprintId]: {
                     id: globalBlueprintId,
@@ -1399,6 +1400,7 @@ describe("BlueprintDispatcher", () => {
 
         await dispatchGlobalBlueprintEvent({
             blueprintDocument,
+            persistentVariables: {},
             eventName: "keyDown",
             eventPayload: {
                 key: "Escape",
@@ -1416,6 +1418,7 @@ describe("BlueprintDispatcher", () => {
         });
         await dispatchSurfaceBlueprintEvent({
             blueprintDocument,
+            persistentVariables: {},
             surfaceId: "surface",
             eventName: "keyUp",
             eventPayload: {
@@ -1453,7 +1456,6 @@ describe("BlueprintDispatcher", () => {
         const surfaceBlueprintId = "bp-surface-after-stop";
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [globalBlueprintId]: {
                     id: globalBlueprintId,
@@ -1559,6 +1561,7 @@ describe("BlueprintDispatcher", () => {
 
         await dispatchGlobalBlueprintEvent({
             blueprintDocument,
+            persistentVariables: {},
             eventName: "keyDown",
             eventPayload,
             eventControl,
@@ -1569,6 +1572,7 @@ describe("BlueprintDispatcher", () => {
         });
         await dispatchSurfaceBlueprintEvent({
             blueprintDocument,
+            persistentVariables: {},
             surfaceId: "surface",
             eventName: "keyDown",
             eventPayload,
@@ -1593,7 +1597,6 @@ describe("BlueprintDispatcher", () => {
         const blueprintId = "bp-global-on-key-filter";
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [blueprintId]: {
                     id: blueprintId,
@@ -1674,6 +1677,7 @@ describe("BlueprintDispatcher", () => {
 
         await dispatchGlobalBlueprintEvent({
             blueprintDocument,
+            persistentVariables: {},
             eventName: "keyDown",
             eventPayload: { key: "Enter", ctrlKey: true },
             hostAdapter,
@@ -1687,6 +1691,7 @@ describe("BlueprintDispatcher", () => {
 
         await dispatchGlobalBlueprintEvent({
             blueprintDocument,
+            persistentVariables: {},
             eventName: "keyDown",
             eventPayload: { key: "ESCAPE", ctrlKey: true },
             hostAdapter,
@@ -1704,7 +1709,6 @@ describe("BlueprintDispatcher", () => {
         releaseBlueprintWidgetLocals("surface", "frame", blueprintId);
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [blueprintId]: {
                     id: blueprintId,
@@ -1800,6 +1804,7 @@ describe("BlueprintDispatcher", () => {
         await dispatchBlueprintUiEvent({
             document,
             blueprintDocument,
+            persistentVariables: {},
             surfaceId: "surface",
             elementId: "frame",
             eventName: "pageEvent",
@@ -1826,7 +1831,6 @@ describe("BlueprintDispatcher", () => {
         releaseBlueprintWidgetLocals("surface", "receiver", blueprintId);
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [blueprintId]: {
                     id: blueprintId,
@@ -1941,6 +1945,7 @@ describe("BlueprintDispatcher", () => {
         await dispatchBlueprintBroadcastEvent({
             document,
             blueprintDocument,
+            persistentVariables: {},
             surfaceId: "surface",
             eventName: "score",
             data: { value: 7 },
@@ -1966,7 +1971,6 @@ describe("BlueprintDispatcher", () => {
         const payloadVarId = "payload";
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [surfaceBlueprintId]: {
                     id: surfaceBlueprintId,
@@ -2072,6 +2076,7 @@ describe("BlueprintDispatcher", () => {
         await dispatchBlueprintBroadcastEvent({
             document,
             blueprintDocument,
+            persistentVariables: {},
             surfaceId: "surface",
             eventName: "score",
             data: { value: 11 },
@@ -2100,7 +2105,6 @@ describe("BlueprintDispatcher", () => {
         const globalVarRef = createExplicitBlueprintVariableRef(globalBlueprintId, globalVarId);
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [globalBlueprintId]: {
                     id: globalBlueprintId,
@@ -2246,6 +2250,7 @@ describe("BlueprintDispatcher", () => {
         await dispatchBlueprintUiEvent({
             document,
             blueprintDocument,
+            persistentVariables: {},
             surfaceId: "surface",
             elementId: "button",
             eventName: "mouseClick",
@@ -2307,7 +2312,6 @@ describe("invokeBlueprintFnCall", () => {
     function fnDocument(): BlueprintDocument {
         return {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 "bp-widget": {
                     id: "bp-widget",
@@ -2363,6 +2367,7 @@ describe("invokeBlueprintFnCall", () => {
     it("seeds args into head param pins and returns Fn Return values", async () => {
         const result = await invokeBlueprintFnCall({
             blueprintDocument: fnDocument(),
+            persistentVariables: {},
             surfaceId: "s1",
             fnRef: createBlueprintFnRef("bp-widget", "w-head"),
             args: { param_1_value: "hello" },
@@ -2376,6 +2381,7 @@ describe("invokeBlueprintFnCall", () => {
     it("allows global fns from any surface caller", async () => {
         const result = await invokeBlueprintFnCall({
             blueprintDocument: fnDocument(),
+            persistentVariables: {},
             surfaceId: "s2",
             fnRef: createBlueprintFnRef("bp-global", "g-head"),
             args: { param_1_value: "global" },
@@ -2390,6 +2396,7 @@ describe("invokeBlueprintFnCall", () => {
         await expect(
             invokeBlueprintFnCall({
                 blueprintDocument: fnDocument(),
+                persistentVariables: {},
                 surfaceId: "s2",
                 fnRef: createBlueprintFnRef("bp-widget", "w-head"),
                 args: {},
@@ -2404,6 +2411,7 @@ describe("invokeBlueprintFnCall", () => {
         await expect(
             invokeBlueprintFnCall({
                 blueprintDocument: fnDocument(),
+                persistentVariables: {},
                 surfaceId: "s1",
                 fnRef: createBlueprintFnRef("bp-widget", "missing-head"),
                 args: {},
@@ -2418,6 +2426,7 @@ describe("invokeBlueprintFnCall", () => {
         await expect(
             invokeBlueprintFnCall({
                 blueprintDocument: fnDocument(),
+                persistentVariables: {},
                 surfaceId: "s1",
                 fnRef: createBlueprintFnRef("bp-widget", "w-head"),
                 args: {},
@@ -2434,6 +2443,7 @@ describe("invokeBlueprintFnCall", () => {
             let resolved = false;
             const pending = invokeBlueprintFnCall({
                 blueprintDocument: fnDocument(),
+                persistentVariables: {},
                 surfaceId: "s1",
                 fnRef: createBlueprintFnRef("bp-widget", "w-slow-head"),
                 args: { param_1_value: "later" },
@@ -2463,6 +2473,7 @@ describe("invokeBlueprintFnCall", () => {
         await expect(
             invokeBlueprintFnCall({
                 blueprintDocument: fnDocument(),
+                persistentVariables: {},
                 surfaceId: "s1",
                 fnRef: createBlueprintFnRef("bp-widget", "w-head"),
                 args: {},
@@ -2482,7 +2493,6 @@ describe("ambient window event dispatch", () => {
     function fullscreenWidgetDocuments(): { blueprintDocument: BlueprintDocument; document: UIDocument } {
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            persistentVariables: {},
             blueprints: {
                 [listenerBlueprintId]: {
                     id: listenerBlueprintId,
@@ -2581,6 +2591,7 @@ describe("ambient window event dispatch", () => {
         await dispatchWidgetsBlueprintEvent({
             document,
             blueprintDocument,
+            persistentVariables: {},
             surfaceId: "surface",
             eventName: "windowFullscreenChanged",
             eventPayload: { isFullscreen },
@@ -2612,6 +2623,7 @@ describe("ambient window event dispatch", () => {
         await dispatchWidgetsBlueprintEvent({
             document,
             blueprintDocument,
+            persistentVariables: {},
             surfaceId: "surface",
             eventName: "someOtherEvent",
             eventPayload: { isFullscreen: true },

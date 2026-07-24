@@ -8,6 +8,7 @@ import type {
     BlueprintGraphIr,
     BlueprintGraphNode,
     BlueprintMemberIndex,
+    BlueprintPersistentVariable,
     BlueprintPrivateOwnerRecord,
 } from "@shared/types/blueprint/document";
 import {
@@ -15,8 +16,11 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
 } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import { seedRegistryEntriesFromBlueprintPersistent } from "@shared/variables/variableRegistryModel";
 import {
     ensureBlueprintEventGraphIrStructure,
     ensureBlueprintFunctionGraphIrStructure,
@@ -81,11 +85,49 @@ export function migrateLegacyDeclarationsToFields(doc: BlueprintDocument): Bluep
     return { ...doc, blueprints };
 }
 
-function ensurePersistentVariables(doc: BlueprintDocument): BlueprintDocument {
-    return {
-        ...doc,
-        persistentVariables: isRecord(doc.persistentVariables) ? doc.persistentVariables : {},
-    };
+/**
+ * v9 (M-VAR): `persistentVariables` left the blueprint document for the project-level variable
+ * registry. Strip the field, and remap every `persistentVariableId` node param whose old key differed
+ * from its storage key (in practice they match - the factory set `storageKey: id` - so the remap is
+ * usually empty). The registry is SEEDED elsewhere (UIGraphService / bundleAssembler read the raw
+ * pre-migration field); this function only cleans the document so it stops carrying the variables.
+ */
+function stripPersistentVariables(doc: BlueprintDocument): BlueprintDocument {
+    const raw = doc as BlueprintDocument & { persistentVariables?: Record<string, BlueprintPersistentVariable> };
+    const persistentVariables = isRecord(raw.persistentVariables) ? raw.persistentVariables : undefined;
+    const { entries: _entries, idRemap } = seedRegistryEntriesFromBlueprintPersistent(persistentVariables);
+    void _entries;
+    if (Object.keys(idRemap).length > 0) {
+        remapPersistentVariableIdParams(doc, idRemap);
+    }
+    const { persistentVariables: _drop, ...rest } = raw;
+    void _drop;
+    return rest;
+}
+
+function remapPersistentVariableIdParams(doc: BlueprintDocument, idRemap: Record<string, string>): void {
+    for (const bp of Object.values(doc.blueprints)) {
+        if (bp.program.kind !== "graph") {
+            continue;
+        }
+        const graphs = bp.program.graphs;
+        const allGraphs = [
+            ...Object.values(graphs.events ?? {}),
+            ...Object.values(graphs.functions ?? {}),
+            ...Object.values(graphs.macros ?? {}),
+        ];
+        for (const g of allGraphs) {
+            for (const node of Object.values(g.graph?.nodes ?? {})) {
+                if (node.type !== BLUEPRINT_NODE_TYPE_PERSISTENT_GET && node.type !== BLUEPRINT_NODE_TYPE_PERSISTENT_SET) {
+                    continue;
+                }
+                const current = node.params?.persistentVariableId;
+                if (typeof current === "string" && idRemap[current]) {
+                    node.params!.persistentVariableId = idRemap[current];
+                }
+            }
+        }
+    }
 }
 
 function millisecondsToSeconds(value: unknown): number | undefined {
@@ -211,7 +253,7 @@ function migrateBlueprintSentenceSpeedToCps(doc: BlueprintDocument): BlueprintDo
 
 function finalizeLegacyBlueprintDocument(doc: BlueprintDocument): BlueprintDocument {
     return migrateBlueprintSentenceSpeedToCps(
-        migrateBlueprintTimingUnitsToSeconds(ensurePersistentVariables(migrateLegacyDeclarationsToFields(doc))),
+        migrateBlueprintTimingUnitsToSeconds(stripPersistentVariables(migrateLegacyDeclarationsToFields(doc))),
     );
 }
 
@@ -225,10 +267,10 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
     const sv = raw.schemaVersion;
     if (sv === BLUEPRINT_DOCUMENT_SCHEMA_VERSION) {
         return migrateBlueprintSentenceSpeedToCps(
-            ensurePersistentVariables(migrateLegacyDeclarationsToFields(raw as BlueprintDocument)),
+            stripPersistentVariables(migrateLegacyDeclarationsToFields(raw as BlueprintDocument)),
         );
     }
-    if ((sv === 5 || sv === 6 || sv === 7) && isRecord(raw.blueprints)) {
+    if ((sv === 5 || sv === 6 || sv === 7 || sv === 8) && isRecord(raw.blueprints)) {
         const migrated = finalizeLegacyBlueprintDocument(raw as BlueprintDocument);
         return { ...migrated, schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION };
     }

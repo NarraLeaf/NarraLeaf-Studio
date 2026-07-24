@@ -836,7 +836,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             characters: bundle.storyLibrary?.characters,
             animations: bundle.storyLibrary?.animations,
             resolveAssetUrl: host.resolveStoryAssetUrl,
-            blueprintDocument: bundle.ui.localBlueprints,
+            blueprintDocument: bundle.ui.localBlueprints,            persistentVariables: bundle.ui.persistentVariables,
             persistence: core
                 ? {
                       get: key => core.scopeBridge.persistenceGet(key),
@@ -1165,7 +1165,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             executionManager: core.executionManager,
         });
         const bindingContext: SurfaceBlueprintBindingContext = {
-            blueprintDocument: bundle.ui.localBlueprints,
+            blueprintDocument: bundle.ui.localBlueprints,            persistentVariables: bundle.ui.persistentVariables,
             surfaceState: core.scopeBridge.getSurfaceStore(runtimeScopeId),
             debug: core.debug,
             coalescer: core.bindingDebugCoalescer,
@@ -1395,7 +1395,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 return nestedHostAdapter;
             },
             createBindingContext: input => ({
-                blueprintDocument: bundle.ui.localBlueprints,
+                blueprintDocument: bundle.ui.localBlueprints,                persistentVariables: bundle.ui.persistentVariables,
                 surfaceState: core.scopeBridge.getSurfaceStore(input.runtimeScopeId),
                 debug: core.debug,
                 coalescer: core.bindingDebugCoalescer,
@@ -1408,7 +1408,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     closeScope: (scopeId: string, reason: string) => core.executionManager.closeScope(scopeId, reason),
                     dispatchSurfaceEvent: (command: { eventName: "surfaceInit" | "surfaceUnmount" | "beforeSurfaceExit" | "afterSurfaceEnter"; scopeId: string; surfaceId: string; allowClosedScopeExecution?: boolean }) => {
                         void dispatchSurfaceBlueprintEvent({
-                            blueprintDocument: bundle.ui.localBlueprints,
+                            blueprintDocument: bundle.ui.localBlueprints,                            persistentVariables: bundle.ui.persistentVariables,
                             surfaceId: command.surfaceId,
                             runtimeScopeId: command.scopeId,
                             eventName: command.eventName,
@@ -1587,7 +1587,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         appBootFiredRef.current = sig;
         const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
         void dispatchGlobalBlueprintEvent({
-            blueprintDocument: bundle.ui.localBlueprints,
+            blueprintDocument: bundle.ui.localBlueprints,            persistentVariables: bundle.ui.persistentVariables,
             eventName: "appBoot",
             hostAdapter: hostAdapterBundle.hostAdapter,
             debug: core.debug,
@@ -1617,7 +1617,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             }
             const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
             void dispatchGlobalBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
+                blueprintDocument: bundle.ui.localBlueprints,                persistentVariables: bundle.ui.persistentVariables,
                 eventName,
                 eventPayload: payload,
                 eventControl,
@@ -1631,7 +1631,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     return;
                 }
                 return dispatchSurfaceBlueprintEvent({
-                    blueprintDocument: bundle.ui.localBlueprints,
+                    blueprintDocument: bundle.ui.localBlueprints,                    persistentVariables: bundle.ui.persistentVariables,
                     surfaceId: activeSurface.id,
                     runtimeScopeId: hostAdapterBundle.runtimeScopeId,
                     eventName,
@@ -1666,7 +1666,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             const eventPayload = { key, value: value ?? null, previousValue: previousValue ?? null };
             const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
             void dispatchGlobalBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
+                blueprintDocument: bundle.ui.localBlueprints,                persistentVariables: bundle.ui.persistentVariables,
                 eventName: "gamePreferenceChanged",
                 eventPayload,
                 hostAdapter: hostAdapterBundle.hostAdapter,
@@ -1675,7 +1675,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
                 executionManager: core.executionManager,
             }).then(() => dispatchSurfaceBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
+                blueprintDocument: bundle.ui.localBlueprints,                persistentVariables: bundle.ui.persistentVariables,
                 surfaceId: activeSurface.id,
                 runtimeScopeId: hostAdapterBundle.runtimeScopeId,
                 eventName: "gamePreferenceChanged",
@@ -1703,7 +1703,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             const eventPayload = { isFullscreen };
             const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
             void dispatchGlobalBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
+                blueprintDocument: bundle.ui.localBlueprints,                persistentVariables: bundle.ui.persistentVariables,
                 eventName: "windowFullscreenChanged",
                 eventPayload,
                 hostAdapter: hostAdapterBundle.hostAdapter,
@@ -1712,7 +1712,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
                 executionManager: core.executionManager,
             }).then(() => dispatchSurfaceBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
+                blueprintDocument: bundle.ui.localBlueprints,                persistentVariables: bundle.ui.persistentVariables,
                 surfaceId: activeSurface.id,
                 runtimeScopeId: hostAdapterBundle.runtimeScopeId,
                 eventName: "windowFullscreenChanged",
@@ -1724,7 +1724,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 executionManager: core.executionManager,
             })).then(() => dispatchWidgetsBlueprintEvent({
                 document: bundle.ui.uidoc,
-                blueprintDocument: bundle.ui.localBlueprints,
+                blueprintDocument: bundle.ui.localBlueprints,                persistentVariables: bundle.ui.persistentVariables,
                 surfaceId: activeSurface.id,
                 runtimeScopeId: hostAdapterBundle.runtimeScopeId,
                 eventName: "windowFullscreenChanged",
@@ -1752,7 +1752,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
             try {
                 await dispatchGlobalBlueprintEvent({
-                    blueprintDocument: bundle.ui.localBlueprints,
+                    blueprintDocument: bundle.ui.localBlueprints,                    persistentVariables: bundle.ui.persistentVariables,
                     eventName: "windowCloseRequested",
                     eventControl,
                     hostAdapter: hostAdapterBundle.hostAdapter,
@@ -1763,7 +1763,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 });
                 if (!eventControl.isPropagationStopped()) {
                     await dispatchSurfaceBlueprintEvent({
-                        blueprintDocument: bundle.ui.localBlueprints,
+                        blueprintDocument: bundle.ui.localBlueprints,                        persistentVariables: bundle.ui.persistentVariables,
                         surfaceId: activeSurface.id,
                         runtimeScopeId: hostAdapterBundle.runtimeScopeId,
                         eventName: "windowCloseRequested",
@@ -1873,7 +1873,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                         gameReadyFiredRef.current = sessionId;
                         const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
                         await dispatchGlobalBlueprintEvent({
-                            blueprintDocument: bundle.ui.localBlueprints,
+                            blueprintDocument: bundle.ui.localBlueprints,                            persistentVariables: bundle.ui.persistentVariables,
                             eventName: "gameReady",
                             hostAdapter: hostAdapterBundle.hostAdapter,
                             debug: core.debug,
@@ -1938,6 +1938,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                                     key={entry.key}
                                     uidoc={bundle.ui.uidoc}
                                     blueprintDocument={bundle.ui.localBlueprints}
+                                    persistentVariables={bundle.ui.persistentVariables}
                                     core={core}
                                     entry={entry}
                                     layerIndex={layerIndex}
