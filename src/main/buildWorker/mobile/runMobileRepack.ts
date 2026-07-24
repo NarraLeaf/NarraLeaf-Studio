@@ -2,6 +2,7 @@ import { constants as bufferConstants } from "buffer";
 import fs from "fs/promises";
 import { createReadStream } from "fs";
 import path from "path";
+import { encryptBuffer } from "@narraleaf/encryption";
 import { repackApk } from "./repackApk";
 import { repackIpa } from "./repackIpa";
 import type { ZipEntrySource } from "./zipWriter";
@@ -70,20 +71,40 @@ async function collectSiteFiles(sourceDir: string): Promise<SiteFile[]> {
     return files;
 }
 
-function siteEntries(files: SiteFile[], indexHtmlOverride: string): SiteEntry[] {
-    const entries: SiteEntry[] = files.map(file => ({
-        relativePath: file.relativePath,
-        source: {
-            kind: "stream",
-            size: file.size,
-            open: () => createReadStream(file.absolutePath),
-        },
-    }));
+/**
+ * Turn the collected site files into repack entries. With a `contentKey`, every
+ * payload file is protected as it is read (all-or-nothing: the shell assumes the
+ * whole payload under wwwRoot is protected, so the index override below is
+ * protected too). Without one, files stream through untouched. `shell-config.json`
+ * is written outside wwwRoot by the repackers and stays plain either way — the
+ * shell needs it to bootstrap.
+ */
+async function siteEntries(
+    files: SiteFile[],
+    indexHtmlOverride: string,
+    contentKey: string | undefined,
+): Promise<SiteEntry[]> {
+    const entries: SiteEntry[] = [];
+    for (const file of files) {
+        if (contentKey) {
+            // Read and protect one file at a time. The package is assembled in
+            // memory anyway (see MAX_PAYLOAD_BYTES), so this holds one plaintext
+            // file beyond that, not the whole payload at once.
+            const data = encryptBuffer(await fs.readFile(file.absolutePath), contentKey);
+            entries.push({ relativePath: file.relativePath, source: { kind: "buffer", data } });
+        } else {
+            entries.push({
+                relativePath: file.relativePath,
+                source: { kind: "stream", size: file.size, open: () => createReadStream(file.absolutePath) },
+            });
+        }
+    }
     // The mobile entry document replaces the web one in the payload only; the
     // shared staging-web dir on disk stays exactly what the web target ships.
+    const overrideBytes = Buffer.from(indexHtmlOverride, "utf8");
     const overrideEntry: SiteEntry = {
         relativePath: "index.html",
-        source: { kind: "buffer", data: Buffer.from(indexHtmlOverride, "utf8") },
+        source: { kind: "buffer", data: contentKey ? encryptBuffer(overrideBytes, contentKey) : overrideBytes },
     };
     const index = entries.findIndex(entry => entry.relativePath === "index.html");
     if (index >= 0) {
@@ -119,6 +140,9 @@ export async function runMobileRepack(
     const artifacts: string[] = [];
     const files = await collectSiteFiles(job.sourceDir);
     await fs.mkdir(outputDir, { recursive: true });
+    // Built once and shared by both platforms: with a key, protecting the
+    // payload twice would be wasted work, and the bytes are identical anyway.
+    const www = await siteEntries(files, job.indexHtmlOverride, job.contentKey);
 
     if (job.android) {
         const { android } = job;
@@ -131,7 +155,7 @@ export async function runMobileRepack(
             label: job.productName,
             versionName: android.versionName,
             versionCode: android.versionCode,
-            www: siteEntries(files, job.indexHtmlOverride),
+            www,
             shellConfigJson: job.shellConfigJson,
             iconPngBySlot: await readIconSlots(android.iconPngBySlot),
             signingIdentity: android.signingIdentity,
@@ -158,7 +182,7 @@ export async function runMobileRepack(
                 bundleVersion: ios.bundleVersion,
             },
             orientation: job.orientation,
-            www: siteEntries(files, job.indexHtmlOverride),
+            www,
             shellConfigJson: job.shellConfigJson,
             iconPngBySlot: await readIconSlots(ios.iconPngBySlot),
             mtime,

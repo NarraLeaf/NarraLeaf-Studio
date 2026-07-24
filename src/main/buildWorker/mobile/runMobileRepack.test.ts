@@ -1,8 +1,10 @@
 import { constants as bufferConstants } from "buffer";
+import { execFileSync } from "child_process";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
+import { derivePackEncryptionKey, isProtectedPayload } from "@narraleaf/encryption";
 import { parseBinaryManifest } from "./axml";
 import { parseArscPackageNames } from "./arsc";
 import { verifyApkV2 } from "./apkSigningV2";
@@ -128,6 +130,105 @@ describe("runMobileRepack against the real shell templates", () => {
         // The mobile entry document replaces the web one.
         const indexEntry = index.entries.find(entry => entry.name === `${wwwRoot}index.html`)!;
         expect(readEntryBytes(apk, indexEntry).toString("utf8")).toContain("mobile variant");
+
+        // Without a content key, the payload is plain: a known file's bytes come
+        // back verbatim and the package's own detector agrees.
+        const bgm = readEntryBytes(apk, index.entries.find(entry => entry.name === `${wwwRoot}assets/bgm.ogg`)!);
+        expect(Buffer.compare(bgm, Buffer.alloc(4096, 7))).toBe(0);
+        expect(isProtectedPayload(bgm)).toBe(false);
+    });
+
+    it("protects every payload file under a content key, and leaves shell-config plain", async () => {
+        // A real key of the kind the packer hands the repack; the exact value
+        // does not matter here, only that the repack protects under it.
+        const contentKey = derivePackEncryptionKey(Buffer.alloc(32, 1), Buffer.alloc(16, 2));
+        const job = await makeJob({
+            contentKey,
+            // The manager writes the key into shell-config; mirror that here so
+            // the worker-level test reflects the real job it is handed.
+            shellConfigJson: JSON.stringify({
+                schemaVersion: 1,
+                orientation: "landscape",
+                backgroundColor: "#000000",
+                contentKey,
+            }),
+        });
+        const outputDir = await tempDir("nls-out-");
+        await runMobileRepack(job, outputDir, log, MTIME);
+        const apk = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+
+        const index = parseZipIndex(apk);
+        const { wwwRoot, shellConfigPath } = job.templateManifest.android;
+
+        // Every payload file under wwwRoot is protected (all-or-nothing): the
+        // package's own detector says so, checked with an independent parser
+        // reading the real entry bytes back out of the APK.
+        const wwwEntries = index.entries.filter(entry => entry.name.startsWith(wwwRoot) && !entry.name.endsWith("/"));
+        expect(wwwEntries.length).toBeGreaterThan(0);
+        for (const entry of wwwEntries) {
+            expect(isProtectedPayload(readEntryBytes(apk, entry))).toBe(true);
+        }
+
+        // A known plaintext file is not shipped as its plaintext.
+        const bgm = readEntryBytes(apk, index.entries.find(entry => entry.name === `${wwwRoot}assets/bgm.ogg`)!);
+        expect(Buffer.compare(bgm, Buffer.alloc(4096, 7))).not.toBe(0);
+
+        // The entry-document override is protected too, not served as HTML.
+        const indexBytes = readEntryBytes(apk, index.entries.find(entry => entry.name === `${wwwRoot}index.html`)!);
+        expect(isProtectedPayload(indexBytes)).toBe(true);
+        expect(indexBytes.toString("utf8")).not.toContain("mobile variant");
+
+        // shell-config.json stays plain: it is the bootstrap the decoder reads,
+        // and it carries the key the shell hands to that decoder.
+        const cfgBytes = readEntryBytes(apk, index.entries.find(entry => entry.name === shellConfigPath)!);
+        expect(isProtectedPayload(cfgBytes)).toBe(false);
+        expect(JSON.parse(cfgBytes.toString("utf8")).contentKey).toBe(contentKey);
+
+        // Still a valid, installable package.
+        expect(verifyApkV2(apk)).toEqual(expect.objectContaining({ verified: true }));
+    });
+
+    it("an external unzip confirms the payload is ciphertext under a key, plaintext without one", async () => {
+        // The judge is the system `unzip`, not Studio's own zip parser or its
+        // protected-payload detector: a bug that made both the writer and the
+        // reader agree on plaintext would still be caught here.
+        const contentKey = derivePackEncryptionKey(Buffer.alloc(32, 3), Buffer.alloc(16, 4));
+        const marker = Buffer.alloc(4096, 7); // the bgm.ogg bytes makeSiteDir writes
+        const wwwRoot = (await readManifest()).android.wwwRoot;
+        const bgmEntry = `${wwwRoot}assets/bgm.ogg`;
+
+        const buildApk = async (key: string | undefined): Promise<string> => {
+            const job = await makeJob({
+                ...(key ? { contentKey: key } : {}),
+                shellConfigJson: JSON.stringify({
+                    schemaVersion: 1,
+                    orientation: "landscape",
+                    backgroundColor: "#000000",
+                    ...(key ? { contentKey: key } : {}),
+                }),
+            });
+            const outputDir = await tempDir("nls-out-");
+            await runMobileRepack(job, outputDir, log, MTIME);
+            return path.join(outputDir, "MyGame-1.2.3-android.apk");
+        };
+
+        const unzipEntry = (apkPath: string, entry: string): Buffer =>
+            execFileSync("unzip", ["-p", apkPath, entry], { maxBuffer: 64 * 1024 * 1024 });
+
+        // Without a key: the external tool reads back the exact plaintext.
+        const plainApk = await buildApk(undefined);
+        expect(Buffer.compare(unzipEntry(plainApk, bgmEntry), marker)).toBe(0);
+
+        // With a key: the external tool reads back bytes that are NOT the
+        // plaintext, while shell-config.json stays plain JSON carrying the key.
+        const protectedApk = await buildApk(contentKey);
+        const protectedBgm = unzipEntry(protectedApk, bgmEntry);
+        expect(protectedBgm.length).toBeGreaterThan(0);
+        expect(Buffer.compare(protectedBgm, marker)).not.toBe(0);
+        expect(protectedBgm.includes(marker)).toBe(false);
+
+        const cfg = JSON.parse(unzipEntry(protectedApk, (await readManifest()).android.shellConfigPath).toString("utf8"));
+        expect(cfg.contentKey).toBe(contentKey);
     });
 
     it("produces an IPA laid out as iOS expects, with the executable still executable", async () => {
