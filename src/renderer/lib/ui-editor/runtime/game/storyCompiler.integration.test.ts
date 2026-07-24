@@ -1719,4 +1719,29 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(sentence.config?.voice).toBeTruthy();
         expect(sentence.config?.voiceId ?? null).toBeNull();
     });
+
+    it("warns when a persistent name is declared in both the registry and a story row (M-VAR merged view)", async () => {
+        // Story `/persis Score` row and a blueprint-registry entry also named "Score" - ambiguous.
+        const scoreRow: StoryBlock = {
+            id: "score-decl",
+            kind: "declaration",
+            parentId: null,
+            childrenIds: [],
+            payload: { scope: "persistent", name: "Score", valueType: "number", storageKey: "story_score" },
+        };
+        const document = baseDocument({ "score-decl": scoreRow }, ["score-decl"]);
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            characters: [],
+            persistentVariables: {
+                bp_score: { id: "bp_score", name: "Score", valueType: "number", storageKey: "bp_score" },
+            },
+        });
+        expect(compiled.diagnostics).toContainEqual({
+            level: "warning",
+            blockId: undefined,
+            message: 'Persistent variable "Score" is declared in both the variable registry and a story row; references are ambiguous.',
+        });
+    });
 });
