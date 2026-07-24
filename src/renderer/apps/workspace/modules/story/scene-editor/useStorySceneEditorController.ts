@@ -10,6 +10,7 @@ import type {
     StoryVariableScope,
     StoryVariableValueType,
 } from "@shared/types/story";
+import { describeDeclaration } from "@shared/types/story";
 import { translate } from "@/lib/i18n";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
@@ -53,7 +54,7 @@ import { getStoryEditorViewPrefs, getStoryEditorViewState, patchStoryEditorViewP
 import { cloneSerializedBlock, insertSerializedClone, serializeBlockSubtree } from "./storySceneClipboard";
 import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
-import type { EditorMode, StoryBlockTarget, StoryCaretTarget } from "./storySceneEditorTypes";
+import type { EditorMode, StoryBlockTarget, StoryCaretTarget, StoryStagePlacement } from "./storySceneEditorTypes";
 import { useStorySceneClipboardHandlers } from "./useStorySceneClipboardHandlers";
 import { useSlashAtAlias } from "@/apps/workspace/hooks/useSlashAtAlias";
 import { isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
@@ -726,9 +727,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         return block.id;
     }, [recordHistory, scene, sceneId, storyId, storyService, uuidService]);
 
-    const startInsertAfter = useCallback((afterBlockId: StoryBlockId | null, focus = true) => {
+    // `confirmation` is the just-declared line's ghost receipt (bible §3.5): the slot that opens after a
+    // declaration commits carries it so `✓ Var gold: number = 0` greets the caret, then the next edit
+    // strips it. Every other caller opens a clean slot (no argument), so the receipt is scoped to exactly
+    // the one slot that earned it — no separate state, and nothing to clear when the author moves on.
+    const startInsertAfter = useCallback((afterBlockId: StoryBlockId | null, focus = true, confirmation?: string) => {
         slotDiscardedRef.current = false;
-        setEditorMode({ kind: "insert", slot: { afterBlockId, focusToken: Date.now() }, value: "" });
+        setEditorMode({ kind: "insert", slot: { afterBlockId, focusToken: Date.now() }, value: "", confirmation });
         if (afterBlockId) {
             setActiveBlockId(afterBlockId);
         }
@@ -1155,8 +1160,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             }
             // The stored value keeps the trigger the author typed ("@" or "/") - only parsing and
             // committing fold "@" onto "/" - so the slot shows the "@" they pressed. The menu the value
-            // asks for is derived at render, so nothing here has to recompute it.
-            return { ...current, value, chooserDismissed: undefined };
+            // asks for is derived at render, so nothing here has to recompute it. The declaration receipt
+            // (bible §3.5) is one-shot the same way `chooserDismissed` is: the first real edit clears it.
+            return { ...current, value, chooserDismissed: undefined, confirmation: undefined };
         });
     }, []);
 
@@ -1176,16 +1182,18 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         focusRoot();
     }, [focusRoot]);
 
-    // An open insert slot is anchored to a row (insert after it, or above it). If that row leaves the
-    // visible set while the slot is open — the author toggled the "narrative only" filter or collapsed
-    // the anchor's container — the slot has nowhere on screen to render and the editor is stranded in an
-    // invisible insert state. Close it so the surface is never stuck where the author cannot see it
-    // (WI-0 #3). A top-of-scene slot (no anchor row) is always visible and is left alone.
+    // An open insert slot is anchored to a row (insert after it, above it, or in place of it). If that
+    // row leaves the visible set while the slot is open — the author toggled the "narrative only" filter
+    // or collapsed the anchor's container — the slot has nowhere on screen to render and the editor is
+    // stranded in an invisible insert state. Close it so the surface is never stuck where the author
+    // cannot see it (WI-0 #3). A replace slot (a re-opened draft row) renders in place of `replaceBlockId`,
+    // so that row is its anchor and must be checked directly — its draft row is invalid, so the narrative
+    // filter hides it while the slot is open (WI-0 M3.1). A top-of-scene slot (no anchor row) is left alone.
     useEffect(() => {
         if (editorMode.kind !== "insert") {
             return;
         }
-        const anchorId = editorMode.slot.target?.beforeBlockId ?? editorMode.slot.afterBlockId;
+        const anchorId = editorMode.slot.replaceBlockId ?? editorMode.slot.target?.beforeBlockId ?? editorMode.slot.afterBlockId;
         if (anchorId && !rowIndexById.has(anchorId)) {
             discardInsertSlot();
         }
@@ -1334,7 +1342,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
             return true;
         }
-        startInsertAfter(block.id, true);
+        // A declaration's row IS its result, but the caret has already moved on to the fresh slot below,
+        // so the receipt travels with that slot: `✓ Var gold: number = 0`, scope word off the same badge
+        // label the row shows, fading on the next keystroke (bible §3.5). No toast — the ghost zone is the
+        // quietest place to say "it worked" without stealing the line the author is about to type.
+        const confirmation = block.kind === "declaration"
+            ? `✓ ${translate(`story.badge.declare.${block.payload.scope}` as Parameters<typeof translate>[0])} ${describeDeclaration(block)}`
+            : undefined;
+        startInsertAfter(block.id, true, confirmation);
         return true;
     }, [commandContext, editorMode, insertBlock, scaffoldContainer, sceneId, startInsertAfter, storyId, storyService, uuidService]);
 
@@ -1452,6 +1467,38 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             ? { ...rest, characterId: speaker.characterId }
             : { ...rest, speakerName: speaker.speakerName });
     }, [updateBlockPayloadFor]);
+
+    /**
+     * Set where a dialogue group's speaker stands (WI-3, M3.1). The document always stays command lines
+     * (P3): the dropdown is a declarative shell over `/show … at=` and `/move … at=`. Reading is the
+     * appearance scan's job (`buildDialogueAppearances` tracks the placement + the block that set it);
+     * writing rewrites that block's `at=` in place, or — when the character has no enter/move to edit —
+     * authors a `/move <character> at=<pos>` above the group head. Both go through history like any edit.
+     */
+    const setDialogueGroupPosition = useCallback((head: StoryBlock, position: StoryStagePlacement, positionSourceId: StoryBlockId | null) => {
+        if (!storyService || !storyId || !sceneId || !scene || !uuidService) {
+            return;
+        }
+        if (head.kind !== "nodeAction" || head.payload.action !== "dialogue" || !head.payload.characterId) {
+            return;
+        }
+        const characterId = head.payload.characterId;
+        const source = positionSourceId ? scene.blocks[positionSourceId] : undefined;
+        if (source && source.kind === "action" && source.payload.action === "character") {
+            // Rewrite the enter/move in place; updateBlockPayloadFor no-ops when the placement is unchanged.
+            updateBlockPayloadFor(source.id, {
+                ...source.payload,
+                transform: { ...(source.payload.transform ?? {}), preset: position },
+            });
+            return;
+        }
+        const move = createBlockForCommand("characterMove", () => uuidService.generate());
+        if (move.kind === "action" && move.payload.action === "character") {
+            move.payload.characterId = characterId;
+            move.payload.transform = { ...(move.payload.transform ?? {}), preset: position };
+        }
+        insertBlock(move, null, false, { target: { parentId: head.parentId, beforeBlockId: head.id } });
+    }, [insertBlock, scene, sceneId, storyId, storyService, updateBlockPayloadFor, uuidService]);
 
     /**
      * Promote the name on a dialogue row to a real character: create it, rebind every line that used
@@ -1948,7 +1995,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         deleteRows, deleteSelection, startInsertAfter, startInsertBefore, selectRow, beginDragSelection,
         selectionRootIds, toggleDisableSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateSceneMetadata,
-        setDialogueSpeaker, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange,
+        setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange,
         undoEdit, redoEdit,
         startInsertAfterSelection, indentSelection, selectAllRows, moveActiveRowSelection,
         insertContinuationAfterCurrentTextEdit, commitNarrationFromInsert, handleInsertBackspaceEmpty, chooseCommand, chooseCharacterForInsert,

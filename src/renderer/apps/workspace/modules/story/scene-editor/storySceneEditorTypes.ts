@@ -5,10 +5,31 @@ export type StoryBlockTarget = {
     beforeBlockId?: StoryBlockId | null;
 };
 
+/** The three stage placements `at=` accepts (bible §1.2). */
+export type StoryStagePlacement = "left" | "center" | "right";
+
 /** The form + variants a character is showing at a given point — its "current appearance". */
 export type CharacterAppearanceRef = {
     formName?: string;
     variants?: StoryCharacterVariantSelection;
+    /**
+     * Whether the character was actually shown (an enter/expression), as opposed to only positioned by
+     * a move on a character that was never shown. Only a shown character pictures an avatar; a
+     * position-only appearance exists purely so the group-header dropdown can read/edit its placement.
+     */
+    shown?: boolean;
+    /**
+     * The character's placement (`at=`) at this point, accumulated from its most recent enter/move
+     * (WI-3, M3.1). Drives the group-header position dropdown's current value; absent means the
+     * placement was never set explicitly, so it reads as the runtime default (center).
+     */
+    position?: StoryStagePlacement;
+    /**
+     * The block id of that most-recent enter/move — the row whose `at=` the group-header dropdown
+     * rewrites in place. Absent when the character has no enter/move yet (the dropdown inserts a
+     * `/move` above the group head instead).
+     */
+    positionSourceId?: StoryBlockId;
 };
 
 export type VisibleStoryRow = {
@@ -78,8 +99,13 @@ export type EditorMode =
      * statement about this line ("I know what I'm typing"). It is one-shot - the next keystroke clears it
      * (see `handleInsertValueChange`), so the menu comes back the moment the author edits, rather than
      * staying shut for the slot's whole life.
+     *
+     * `confirmation` is the just-declared line's ghost receipt (`✓ Var gold: number = 0`, bible §3.5),
+     * carried on the fresh slot that opens after a declaration commits. Like `chooserDismissed` it is
+     * one-shot — the next edit strips it (see `handleInsertValueChange`) — and it lives on the slot, not
+     * in separate state, so navigating to any other slot leaves it behind without anyone clearing it.
      */
-    | { kind: "insert"; slot: InsertSlot; value: string; chooserDismissed?: boolean }
+    | { kind: "insert"; slot: InsertSlot; value: string; chooserDismissed?: boolean; confirmation?: string }
     | { kind: "inspector"; blockId: StoryBlockId };
 
 export type SerializedStoryBlock = {

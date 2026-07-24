@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
-import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Music, Play, Plus, Route, UserRoundPlus, Variable, Video } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GripVertical, Hash, Image, Music, Play, Plus, Route, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterVariantSelection, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
@@ -27,8 +27,8 @@ import {
     ACTION_COMMANDS,
     getActionCommandCategory,
     localizeActionCommand,
+    translateActionCommandCategoryLabel,
     type ActionCommandCategory,
-    type ActionCommandCategoryId,
     type PaletteActionCommand,
 } from "./storyActionCommands";
 import { searchActionCommands } from "./storyCommandSearch";
@@ -51,7 +51,7 @@ import { StoryVoiceIndicator } from "./StoryVoiceIndicator";
 import { PausePopover } from "./PausePopover";
 import { segmentToRuns } from "./richText";
 import { useStoryEditorTextStyle } from "./storyEditorTextStyle";
-import type { CharacterAppearanceRef, EditorMode, StoryCaretTarget, VisibleStoryRow } from "./storySceneEditorTypes";
+import type { CharacterAppearanceRef, EditorMode, StoryCaretTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
 import {
     canAcceptChildren,
     describeBlock,
@@ -105,6 +105,8 @@ export function StoryBlockRow(props: {
     onOpenInspector: () => void;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
+    /** Set the dialogue group's speaker placement (WI-3): rewrites the enter/move `at=`, via history. */
+    onSetPosition: (position: StoryStagePlacement) => void;
     tempSpeakers: TempSpeakerRef[];
     onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
     onCreateCharacter: (name: string) => void;
@@ -131,6 +133,11 @@ export function StoryBlockRow(props: {
     // Dialogue-group continuation rows (WI-5): a later same-speaker dialogue, or a same-character
     // expression line folded into the run. Members drop their badge + nametag for a group rail.
     const dialogueMember = row.groupRole === "member" && isDialogue;
+    // A dialogue group head backed by a real character carries the hover-reveal placement dropdown
+    // (WI-3): a standalone line is a run of one, so it counts too. A bare-name speaker has no character
+    // to place, so it gets none.
+    const dialogueHead = isDialogue && row.groupRole !== "member"
+        && block.kind === "nodeAction" && block.payload.action === "dialogue" && Boolean(block.payload.characterId);
     const expressionMember = row.groupRole === "member"
         && block.kind === "action" && block.payload.action === "character" && block.payload.operation === "expression";
     // Every non-dialogue, non-narration/note row carries a low-key category colour bar at its left
@@ -293,6 +300,9 @@ export function StoryBlockRow(props: {
                             <ContainerHeaderAdd info={containerInfo} onAdd={() => props.onAddInside(block.id)} />
                         ) : (
                             <>
+                                {dialogueHead ? (
+                                    <GroupHeadPositionControl position={row.appearance?.position} active={active} onSetPosition={props.onSetPosition} />
+                                ) : null}
                                 <StoryVoiceIndicator block={block} />
                                 <RowActions onInsertAfter={props.onInsertAfter} onDelete={props.onDeleteRow} active={active} />
                             </>
@@ -567,6 +577,94 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
             >
                 {t("story.rows.delete")}
             </button>
+        </div>
+    );
+}
+
+const STAGE_PLACEMENTS: { value: StoryStagePlacement; icon: typeof AlignLeft }[] = [
+    { value: "left", icon: AlignLeft },
+    { value: "center", icon: AlignCenter },
+    { value: "right", icon: AlignRight },
+];
+
+/**
+ * The dialogue group head's placement control (WI-3, M3.1): a hover-reveal dropdown that reads the
+ * speaker's current `at=` and writes it back. It is a declarative shell — the controller keeps the
+ * document as command lines (rewrites the enter/move `at=`, or inserts a `/move`), so this only ever
+ * shows and picks left/center/right. Absent placement reads as the runtime default, center.
+ */
+function GroupHeadPositionControl(props: { position: StoryStagePlacement | undefined; active: boolean; onSetPosition: (position: StoryStagePlacement) => void }) {
+    const { t } = useTranslation();
+    const [open, setOpen] = useState(false);
+    const anchorRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        if (!open) {
+            return;
+        }
+        const onPointerDown = (event: Event) => {
+            if (!anchorRef.current?.contains(event.target as Node)) {
+                setOpen(false);
+            }
+        };
+        window.addEventListener("mousedown", onPointerDown, true);
+        return () => window.removeEventListener("mousedown", onPointerDown, true);
+    }, [open]);
+
+    const currentValue = props.position ?? "center";
+    const CurrentIcon = (STAGE_PLACEMENTS.find(placement => placement.value === currentValue) ?? STAGE_PLACEMENTS[1]).icon;
+
+    return (
+        <div ref={anchorRef} className="relative">
+            <button
+                type="button"
+                tabIndex={-1}
+                title={t("story.position.label")}
+                aria-label={t("story.position.label")}
+                className={[
+                    "rounded p-1 transition-colors hover:bg-fill hover:text-primary",
+                    open || props.active ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                    open ? "bg-fill text-primary" : "text-fg-muted",
+                ].join(" ")}
+                onClick={event => {
+                    event.stopPropagation();
+                    setOpen(value => !value);
+                }}
+            >
+                <CurrentIcon className="h-4 w-4" />
+            </button>
+            {open ? (
+                <div
+                    className="absolute right-0 top-full z-50 mt-1 flex gap-0.5 rounded-lg border border-edge bg-surface-raised p-1 shadow-xl"
+                    onMouseDown={event => event.stopPropagation()}
+                >
+                    {STAGE_PLACEMENTS.map(placement => {
+                        const Icon = placement.icon;
+                        const selected = placement.value === currentValue;
+                        return (
+                            <button
+                                key={placement.value}
+                                type="button"
+                                tabIndex={-1}
+                                title={t(`story.position.${placement.value}` as TranslationKey)}
+                                aria-label={t(`story.position.${placement.value}` as TranslationKey)}
+                                aria-pressed={selected}
+                                className={[
+                                    "rounded p-1.5 transition-colors",
+                                    selected ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg",
+                                ].join(" ")}
+                                onClick={event => {
+                                    event.stopPropagation();
+                                    props.onSetPosition(placement.value);
+                                    setOpen(false);
+                                }}
+                            >
+                                <Icon className="h-4 w-4" />
+                            </button>
+                        );
+                    })}
+                </div>
+            ) : null}
         </div>
     );
 }
@@ -956,7 +1054,7 @@ function candidateIcon(cursor: StoryCommandCursor, candidate: StoryCommandCandid
  * padding, `whitespace-pre` so runs of spaces measure as typed, and `pointer-events-none` so a click
  * anywhere still lands in the field beneath.
  */
-function CommandGhostHint(props: { value: string; source: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext }) {
+function CommandGhostHint(props: { value: string; source: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext; confirmation?: string }) {
     const { t } = useTranslation();
     // The ghost and reason parse the canonical "/" line (`source`); the invisible spacer below uses the
     // displayed `value` so it occupies the exact width the author sees ("@" and "/" render differently).
@@ -967,7 +1065,7 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
         () => getCommandLineReason(props.source, props.commandContext),
         [props.commandContext, props.source],
     );
-    if (!ghost && !reason) {
+    if (!ghost && !reason && !props.confirmation) {
         return null;
     }
     return (
@@ -979,7 +1077,11 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
             {/* Invisible, not `opacity-0` on the whole span: only the copy of the typed text should be
                 hidden, and it still has to occupy its exact width to push what follows into place. */}
             <span className="invisible">{props.value}</span>
-            {reason ? (
+            {props.confirmation ? (
+                // The just-declared line's receipt (bible §3.5). It only ever rides an empty slot (the
+                // commit clears the value and the next edit strips it), so it renders flush at the start.
+                <span className="not-italic text-success/80">{props.confirmation}</span>
+            ) : reason ? (
                 <span className="text-danger/80">{`  ${t(reason.key, reason.params)}`}</span>
             ) : (
                 <span className="italic text-fg-subtle">{`<${t(`story.paramHint.${ghost!.hintKey}` as TranslationKey)}>`}</span>
@@ -1042,7 +1144,7 @@ export function InsertRow(props: {
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, chooserQuery),
         [chooserQuery, props.characters, props.tempSpeakers],
     );
-    const actionMenu = useActionCommandMenuState(actionOptions);
+    const actionMenu = useActionCommandMenuState(actionOptions, chooserQuery);
     const characterMenu = useCharacterPickerState(characterOptions);
     const textStyle = useStoryEditorTextStyle();
 
@@ -1153,7 +1255,7 @@ export function InsertRow(props: {
                     anchor, so it is positioned against the field's box and inherits its exact metrics.
                     `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
                 <div className="relative flex min-w-0 flex-1">
-                <CommandGhostHint value={props.mode.value} source={source} caret={caret} textStyle={textStyle} commandContext={props.commandContext} />
+                <CommandGhostHint value={props.mode.value} source={source} caret={caret} textStyle={textStyle} commandContext={props.commandContext} confirmation={props.mode.confirmation} />
                 <textarea
                     ref={props.inputRef}
                     // Same in-place surface as an editing row (see TextEditBox): the new line reads as a
@@ -1163,8 +1265,10 @@ export function InsertRow(props: {
                     style={textStyle}
                     rows={1}
                     value={props.mode.value}
-                    // The hint advertises whichever trigger this author actually uses.
-                    placeholder={t("story.rows.insertPlaceholder", { trigger: props.slashAtAlias ? "@" : "/" })}
+                    // The hint advertises whichever trigger this author actually uses. Suppressed while a
+                    // declaration receipt occupies the ghost zone, so the two do not overprint on the
+                    // empty slot; the next keystroke clears the receipt and the placeholder is moot anyway.
+                    placeholder={props.mode.confirmation ? "" : t("story.rows.insertPlaceholder", { trigger: props.slashAtAlias ? "@" : "/" })}
                     onChange={event => {
                         setCaret(event.target.selectionStart ?? event.target.value.length);
                         props.onValueChange(event.target.value);
@@ -1274,8 +1378,9 @@ export function InsertRow(props: {
                 </div>
                 {actionMenuOpen ? (
                     <ActionCommandMenu
-                        categories={actionMenu.visibleCategories}
-                        activeCategoryId={actionMenu.activeCategoryId}
+                        browse={actionMenu.browse}
+                        groups={actionMenu.groups}
+                        commands={actionMenu.flatCommands}
                         activeCommandId={actionMenu.activeCommand?.id ?? null}
                         onHighlightCommand={actionMenu.selectCommand}
                         onChoose={chooseCommandCandidate}
@@ -1400,72 +1505,96 @@ function getPopupPlacementClass(placement: PopupPlacement): string {
     return placement === "above" ? "bottom-full mb-1" : "top-full mt-1";
 }
 
-function useActionCommandMenuState(options: PaletteActionCommand[]) {
-    const visibleCategories = useMemo<VisibleActionCommandCategory[]>(() => {
-        return ACTION_COMMAND_CATEGORIES.map(category => ({
-            ...category,
-            commands: category.id === "all"
-                ? options
-                : options.filter(command => command.category === category.id),
-        }));
+/**
+ * State for the inline `/` command menu, in two display modes decided by whether the author has typed
+ * a query yet (WI-2):
+ *  - **browse** (empty query): the whole command set laid out under category headers, in category
+ *    order — a "here is everything you can write" map rather than a wall of names. `flatCommands`
+ *    concatenates the groups so the highlight walks the sections top-to-bottom.
+ *  - **filter** (a query): the matcher's ranked hits, flat across categories, best match first — the
+ *    ranking is the point, so headers would only get in its way.
+ * `options` arrives already filtered/ranked for the query, so the empty-query case is the full set.
+ */
+function useActionCommandMenuState(options: PaletteActionCommand[], query: string) {
+    const browse = query.trim() === "";
+    // Only non-empty categories, "all" excluded (it is every command, not a section). Category order
+    // is the layout order.
+    const groups = useMemo<VisibleActionCommandCategory[]>(() => {
+        return ACTION_COMMAND_CATEGORIES
+            .filter(category => category.id !== "all")
+            .map(category => ({ ...category, commands: options.filter(command => command.category === category.id) }))
+            .filter(group => group.commands.length > 0);
     }, [options]);
-    const [activeCategoryId, setActiveCategoryId] = useState<ActionCommandCategoryId>("all");
+    // The order the highlight walks and Enter commits from: grouped sections while browsing, the raw
+    // ranked list while filtering.
+    const flatCommands = useMemo(
+        () => (browse ? groups.flatMap(group => group.commands) : options),
+        [browse, groups, options],
+    );
     const [activeCommandId, setActiveCommandId] = useState<string | null>(null);
-
-    const activeCategory = visibleCategories.find(category => category.id === activeCategoryId) ?? visibleCategories[0] ?? null;
-    const activeCommand = activeCategory?.commands.find(command => command.id === activeCommandId) ?? activeCategory?.commands[0] ?? null;
+    const activeCommand = flatCommands.find(command => command.id === activeCommandId) ?? flatCommands[0] ?? null;
 
     useEffect(() => {
-        if (visibleCategories.length === 0) {
-            setActiveCommandId(null);
-            return;
-        }
-        setActiveCategoryId(current => visibleCategories.some(category => category.id === current) ? current : visibleCategories[0].id);
-    }, [visibleCategories]);
-
-    useEffect(() => {
-        if (!activeCategory) {
-            setActiveCommandId(null);
-            return;
-        }
-        setActiveCommandId(current => activeCategory.commands.some(command => command.id === current) ? current : activeCategory.commands[0]?.id ?? null);
-    }, [activeCategory]);
-
-    const selectCategory = (categoryId: ActionCommandCategoryId) => {
-        const category = visibleCategories.find(next => next.id === categoryId);
-        if (!category) {
-            return;
-        }
-        setActiveCategoryId(category.id);
-        setActiveCommandId(category.commands[0]?.id ?? null);
-    };
+        setActiveCommandId(current => flatCommands.some(command => command.id === current) ? current : flatCommands[0]?.id ?? null);
+    }, [flatCommands]);
 
     const selectCommand = (commandId: string) => {
         setActiveCommandId(commandId);
     };
 
     const moveCommand = (direction: -1 | 1) => {
-        if (!activeCategory || activeCategory.commands.length === 0) {
+        if (flatCommands.length === 0) {
             return;
         }
-        const currentIndex = Math.max(0, activeCategory.commands.findIndex(command => command.id === activeCommand?.id));
-        const nextIndex = (currentIndex + direction + activeCategory.commands.length) % activeCategory.commands.length;
-        setActiveCommandId(activeCategory.commands[nextIndex].id);
+        const currentIndex = Math.max(0, flatCommands.findIndex(command => command.id === activeCommand?.id));
+        const nextIndex = (currentIndex + direction + flatCommands.length) % flatCommands.length;
+        setActiveCommandId(flatCommands[nextIndex].id);
     };
 
     return {
-        visibleCategories,
-        activeCategoryId: activeCategory?.id ?? activeCategoryId,
+        browse,
+        groups,
+        flatCommands,
         activeCommand,
-        selectCategory,
         selectCommand,
         moveCommand,
     };
 }
 
+function ActionCommandMenuRow(props: {
+    command: PaletteActionCommand;
+    active: boolean;
+    onHighlight: (commandId: string) => void;
+    onChoose: (commandId: string) => void;
+}) {
+    const Icon = props.command.icon;
+    const category = getActionCommandCategory(props.command.category);
+    return (
+        <button
+            type="button"
+            role="option"
+            aria-selected={props.active}
+            data-action-command-id={props.command.id}
+            className={[
+                "flex w-full items-center gap-2 rounded px-2 py-2 text-left transition-colors",
+                props.active ? "bg-primary/15 text-fg" : "hover:bg-fill",
+            ].join(" ")}
+            onMouseDown={() => props.onChoose(props.command.id)}
+            onMouseEnter={() => props.onHighlight(props.command.id)}
+        >
+            <Icon className="h-4 w-4 shrink-0" style={{ color: category.iconColor }} />
+            <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-fg">{props.command.label}</span>
+                {props.command.detail ? <span className="block truncate text-2xs text-fg-subtle">{props.command.detail}</span> : null}
+            </span>
+        </button>
+    );
+}
+
 function ActionCommandMenu(props: {
-    categories: VisibleActionCommandCategory[];
-    activeCategoryId: ActionCommandCategoryId;
+    browse: boolean;
+    groups: VisibleActionCommandCategory[];
+    commands: PaletteActionCommand[];
     activeCommandId: string | null;
     onHighlightCommand: (commandId: string) => void;
     onChoose: (commandId: string) => void;
@@ -1473,7 +1602,6 @@ function ActionCommandMenu(props: {
     placement: PopupPlacement;
 }) {
     const { t } = useTranslation();
-    const activeCategory = props.categories.find(category => category.id === props.activeCategoryId) ?? props.categories[0] ?? null;
     const listRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -1481,11 +1609,10 @@ function ActionCommandMenu(props: {
             return;
         }
         window.requestAnimationFrame(() => {
-            const root = listRef.current;
-            const activeItem = root?.querySelector(`[data-action-command-id="${props.activeCommandId}"]`);
+            const activeItem = listRef.current?.querySelector(`[data-action-command-id="${props.activeCommandId}"]`);
             activeItem?.scrollIntoView({ block: "nearest" });
         });
-    }, [activeCategory?.id, props.activeCommandId]);
+    }, [props.activeCommandId]);
 
     return (
         <div
@@ -1495,43 +1622,48 @@ function ActionCommandMenu(props: {
                 event.stopPropagation();
             }}
         >
-            {props.categories.length === 0 ? (
+            {props.commands.length === 0 ? (
                 <button type="button" className="w-full px-3 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
                     {t("story.actionCreator.noActions")}
                 </button>
             ) : (
-                    <div ref={listRef} className="nl-no-scrollbar max-h-64 overflow-auto p-1">
-                        {activeCategory && activeCategory.commands.length === 0 ? (
-                            <button type="button" className="w-full rounded px-2 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
-                                {t("story.actionCreator.noActions")}
-                            </button>
-                        ) : activeCategory?.commands.map(command => {
-                            const Icon = command.icon;
-                            const active = command.id === props.activeCommandId;
-                            const category = getActionCommandCategory(command.category);
+                <div ref={listRef} className="nl-no-scrollbar max-h-64 overflow-auto p-1">
+                    {props.browse ? (
+                        // Empty query: the full set as a browsable map, one section per category so the
+                        // author sees what is available rather than a flat wall of names (WI-2).
+                        props.groups.map(group => {
+                            const Icon = group.icon;
                             return (
-                                <button
-                                    key={command.id}
-                                    type="button"
-                                    role="option"
-                                    aria-selected={active}
-                                    data-action-command-id={command.id}
-                                    className={[
-                                        "flex w-full items-center gap-2 rounded px-2 py-2 text-left transition-colors",
-                                        active ? "bg-primary/15 text-fg" : "hover:bg-fill",
-                                    ].join(" ")}
-                                    onMouseDown={() => props.onChoose(command.id)}
-                                    onMouseEnter={() => props.onHighlightCommand(command.id)}
-                                >
-                                    <Icon className="h-4 w-4 shrink-0" style={{ color: category.iconColor }} />
-                                    <span className="min-w-0 flex-1">
-                                        <span className="block truncate text-sm text-fg">{command.label}</span>
-                                        <span className="block truncate text-2xs text-fg-subtle">{command.detail}</span>
-                                    </span>
-                                </button>
+                                <div key={group.id}>
+                                    <div className="flex items-center gap-1.5 px-2 pb-1 pt-2 text-2xs font-medium uppercase tracking-wide text-fg-subtle">
+                                        <Icon className="h-3 w-3 shrink-0" style={{ color: group.iconColor }} />
+                                        <span>{translateActionCommandCategoryLabel(group, t)}</span>
+                                    </div>
+                                    {group.commands.map(command => (
+                                        <ActionCommandMenuRow
+                                            key={command.id}
+                                            command={command}
+                                            active={command.id === props.activeCommandId}
+                                            onHighlight={props.onHighlightCommand}
+                                            onChoose={props.onChoose}
+                                        />
+                                    ))}
+                                </div>
                             );
-                        })}
-                    </div>
+                        })
+                    ) : (
+                        // A query: the matcher's ranking, flat and best-first — headers would fight it.
+                        props.commands.map(command => (
+                            <ActionCommandMenuRow
+                                key={command.id}
+                                command={command}
+                                active={command.id === props.activeCommandId}
+                                onHighlight={props.onHighlightCommand}
+                                onChoose={props.onChoose}
+                            />
+                        ))
+                    )}
+                </div>
             )}
         </div>
     );
@@ -1833,7 +1965,9 @@ function getBadgeImageSpec(
         return { characterId: block.payload.characterId, formName: block.payload.formName, variants: block.payload.variants, resolveVariant: true };
     }
     if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
-        return { characterId: block.payload.characterId, formName: appearance?.formName, variants: appearance?.variants, resolveVariant: appearance !== undefined };
+        // Only a *shown* appearance pictures an avatar — a placement-only appearance (a `/move` on a
+        // never-shown speaker, used by the group-header dropdown) must not invent a look (WI-3, M3.1).
+        return { characterId: block.payload.characterId, formName: appearance?.formName, variants: appearance?.variants, resolveVariant: appearance?.shown === true };
     }
     return null;
 }

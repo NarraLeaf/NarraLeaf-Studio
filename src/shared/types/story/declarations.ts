@@ -34,6 +34,18 @@ export function isStoryDeclarationBlock(block: StoryBlock): block is StoryDeclar
     return block.kind === "declaration";
 }
 
+/**
+ * The row text a declaration reads as — `gold: number = 100`, or `gold: number` when it declares no
+ * default. The scope (Local / Var / Global) is deliberately absent: it rides the row's badge, and the
+ * one caller that wants it inline (the commit confirmation, bible §3.5) prepends the localized scope
+ * word itself. Kept here, next to the projection, so the row label and the confirmation never drift.
+ */
+export function describeDeclaration(block: StoryDeclarationBlock): string {
+    return block.payload.defaultValue !== undefined
+        ? `${block.payload.name}: ${block.payload.valueType} = ${JSON.stringify(block.payload.defaultValue)}`
+        : `${block.payload.name}: ${block.payload.valueType}`;
+}
+
 function defOf(block: StoryDeclarationBlock): StorySceneVariableDefinition {
     return {
         id: block.id,

@@ -1,10 +1,10 @@
 import { Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video } from "lucide-react";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryExpr, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment, StoryVariableRef } from "@shared/types/story";
-import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef, storyVariableRefKey } from "@shared/types/story";
+import { describeDeclaration, layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef, storyVariableRefKey } from "@shared/types/story";
 import { storyMsToSeconds } from "@shared/utils/storyTime";
 import { richIfMeaningful } from "./richText";
 import type { Character } from "@/lib/workspace/services/character/Character";
-import type { CharacterAppearanceRef, StoryBlockTarget, VisibleStoryRow } from "./storySceneEditorTypes";
+import type { CharacterAppearanceRef, StoryBlockTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
 import { getActionCommandCategory, type ActionCommandCategoryId } from "./storyActionCommands";
 import { translate } from "@/lib/i18n";
 
@@ -14,6 +14,11 @@ import { translate } from "@/lib/i18n";
  * the character's default form + default variants). A reading aid for the row avatars, not runtime
  * truth — it walks the tree linearly and does not model branch-specific stage state.
  */
+/** The `at=` placement a character block carries, or undefined when its transform is not a placement. */
+function placementOf(preset: string | undefined): StoryStagePlacement | undefined {
+    return preset === "left" || preset === "center" || preset === "right" ? preset : undefined;
+}
+
 export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, CharacterAppearanceRef> {
     const current = new Map<string, CharacterAppearanceRef>();
     const result = new Map<StoryBlockId, CharacterAppearanceRef>();
@@ -24,10 +29,25 @@ export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, C
         }
         if (block.kind === "action" && block.payload.action === "character" && block.payload.characterId) {
             const characterId = block.payload.characterId;
+            const position = placementOf(block.payload.transform?.preset);
             if (block.payload.operation === "exit") {
                 current.delete(characterId);
-            } else if (block.payload.operation === "enter" || block.payload.operation === "expression") {
-                current.set(characterId, { formName: block.payload.formName, variants: block.payload.variants });
+            } else if (block.payload.operation === "enter") {
+                // An entrance shows the character and sets the whole appearance, placement included — its
+                // own block is the row the group-header dropdown rewrites (WI-3, M3.1).
+                current.set(characterId, { formName: block.payload.formName, variants: block.payload.variants, position, positionSourceId: block.id, shown: true });
+            } else if (block.payload.operation === "expression") {
+                // An expression changes the form/variant but not where the character stands, so the
+                // accumulated placement (and the row that owns it) is preserved.
+                const previous = current.get(characterId);
+                current.set(characterId, { ...previous, formName: block.payload.formName, variants: block.payload.variants, shown: true });
+            } else if (block.payload.operation === "move" && position) {
+                // A placement move relocates the character and becomes the row the dropdown rewrites —
+                // including the case where the group-header dropdown authored this `/move` for a speaker
+                // with no prior enter (so the round-trip reads its own write back). It does not "show" the
+                // character (a move on a hidden one is a runtime no-op), so it never invents an avatar; a
+                // coordinate/scale-only move carries no placement and leaves the accumulated one untouched.
+                current.set(characterId, { ...current.get(characterId), position, positionSourceId: block.id });
             }
         } else if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
             const appearance = current.get(block.payload.characterId);
@@ -479,10 +499,7 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
     }
     if (block.kind === "declaration") {
         // The row reads as what it declares: `gold: number = 100`. The scope arrives via the badge.
-        const declared = block.payload.defaultValue !== undefined
-            ? `${block.payload.name}: ${block.payload.valueType} = ${JSON.stringify(block.payload.defaultValue)}`
-            : `${block.payload.name}: ${block.payload.valueType}`;
-        return declared;
+        return describeDeclaration(block);
     }
     return block.payload.text.value || translate("story.describe.note");
 }
