@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
-import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GripVertical, Hash, Image, Music, Play, Plus, Route, UserRoundPlus, Variable, Video } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Hash, Image, List, Music, Play, Plus, Route, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterVariantSelection, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
@@ -67,6 +67,7 @@ import {
 } from "./storySceneBlockUtils";
 import { ConditionPopover } from "./ConditionPopover";
 import { BlockOverview, getQuickParams, QuickParamsInline, type QuickParam } from "./storyQuickParams";
+import { lensTrackRendersBar, type StoryLensRowTrack } from "./storyStagingLens";
 import { actionTrigger, ACTION_TRIGGER, insertChooserType, toCanonicalCommandLine } from "./commandTrigger";
 
 export function StoryBlockRow(props: {
@@ -120,13 +121,34 @@ export function StoryBlockRow(props: {
     onAddBranch: (conditionId: StoryBlockId, branch: "if" | "elseIf" | "else") => void;
     /** Run the live preview forward from this row (on an option row: enter that branch). */
     onPlayFromRow: (blockId: StoryBlockId) => void;
+    /** This row is a parallel/race container currently showing its staging lens (M7). */
+    lensActive: boolean;
+    /** Toggle this container's staging lens between the bar-timeline view and the plain list. */
+    onToggleLens: () => void;
 }) {
     const { t } = useTranslation();
     const { row, scene, document, characters, selected, active, collapsed, editing, textInputRef } = props;
     const block = row.block;
     const container = isContainerBlock(block);
     const containerInfo = container ? getContainerHeaderInfo(block) : null;
-    const canFold = block.childrenIds.length > 0 && canAcceptChildren(block);
+    // Staging lens (M7). `lensTrack` marks a direct child of a lensed container — it renders as a
+    // bar-timeline track. `lensMode` marks a parallel/race container header itself (all/allAsync/any),
+    // which carries the mode badge (WI-3) and the list⇄lens toggle.
+    const lensTrack = row.lensTrack;
+    // Only a staging track swaps its content column for a bar. A prose child (narration / dialogue /
+    // note — reachable through the lens's own tail "+") stays on the ordinary row path, because that is
+    // where the in-place text editor, the voice indicator and the row actions live: swapping the whole
+    // column would leave a row that click / double-click / Enter put into text-edit mode with no editor
+    // to type into (interaction model §"Editing in place"; WI-2 "Enter/Escape 照常").
+    const lensBarTrack = lensTrack && lensTrackRendersBar(lensTrack) ? lensTrack : null;
+    const lensMode: "all" | "allAsync" | "any" | null = block.kind === "control" && block.payload.control === "race"
+        ? "any"
+        : block.kind === "control" && block.payload.control === "parallel"
+            ? (block.payload.mode === "allAsync" ? "allAsync" : "all")
+            : null;
+    // A lensed container is inherently expanded (its children are the tracks), so its collapse chevron
+    // would be a no-op — hide it while the lens is on.
+    const canFold = block.childrenIds.length > 0 && canAcceptChildren(block) && !(lensMode && props.lensActive);
     const textSegment = getTextSegment(block);
     // Plain narration and studio notes hide their badge icon (but keep its slot, for alignment).
     const hideBadge = (block.kind === "nodeAction" && block.payload.action === "narration") || block.kind === "note";
@@ -232,9 +254,31 @@ export function StoryBlockRow(props: {
             <div className="relative min-w-0 py-1">
                 <RailGuides depth={row.depth} highlight={selected || active} />
                 <div style={{ paddingLeft: row.depth * RAIL_STEP }}>
+                {lensBarTrack ? (
+                    <LensTrackContent
+                        row={row}
+                        scene={scene}
+                        document={document}
+                        characters={characters}
+                        commandContext={props.commandContext}
+                        tempSpeakers={props.tempSpeakers}
+                        onSetSpeaker={props.onSetSpeaker}
+                        onCreateCharacter={props.onCreateCharacter}
+                        onSetDialogueCharacter={props.onSetDialogueCharacter}
+                        onUpdatePayload={props.onUpdatePayload}
+                        onAddInside={props.onAddInside}
+                        onInsertAfter={props.onInsertAfter}
+                        onDeleteRow={props.onDeleteRow}
+                        active={active}
+                    />
+                ) : (
+                <>
                 <div className="flex min-h-[27px] min-w-0 items-center gap-2">
                     {containerInfo ? (
-                        <ContainerPill info={containerInfo} />
+                        <>
+                            <ContainerPill info={containerInfo} />
+                            {lensMode ? <ContainerModeBadge mode={lensMode} /> : null}
+                        </>
                     ) : dialogueMember ? (
                         <GroupRail highlight={selected || active} />
                     ) : expressionMember ? null : hideBadge ? (
@@ -298,7 +342,10 @@ export function StoryBlockRow(props: {
                     ) : null}
                     <div className="ml-auto flex shrink-0 items-center gap-1">
                         {containerInfo ? (
-                            <ContainerHeaderAdd info={containerInfo} onAdd={() => props.onAddInside(block.id)} />
+                            <>
+                                {lensMode ? <LensToggle active={props.lensActive} onToggle={props.onToggleLens} /> : null}
+                                <ContainerHeaderAdd info={containerInfo} onAdd={() => props.onAddInside(block.id)} />
+                            </>
                         ) : (
                             <>
                                 {dialogueHead ? (
@@ -319,6 +366,13 @@ export function StoryBlockRow(props: {
                         onAddBranch={branch => props.onAddBranch(block.id, branch)}
                     />
                 ) : null}
+                {/* A prose track on the ordinary path still carries the lens's tail "+" when it is the
+                    container's last child — the affordance belongs to the lens, not to the bar. */}
+                {lensTrack?.segment.isLast && block.parentId ? (
+                    <LensTailAdd onAdd={() => props.onAddInside(block.parentId as StoryBlockId)} />
+                ) : null}
+                </>
+                )}
                 </div>
             </div>
         </div>
@@ -1061,6 +1115,176 @@ function ContainerFooter(props: {
             <Plus className="h-3 w-3" />
             {label}
         </button>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Staging lens (M7): the bar-timeline rendering of a parallel/race container.
+// ---------------------------------------------------------------------------
+
+/** Hatch fill for a track's leading dead time (a wait) — reads as "not an animation", theme-aware. */
+const LENS_DELAY_HATCH = "repeating-linear-gradient(45deg, rgb(var(--nl-fg-subtle) / 0.28) 0, rgb(var(--nl-fg-subtle) / 0.28) 2px, transparent 2px, transparent 5px)";
+/** Share of the content column the time lane occupies; fixed so every track's bars align left-to-right. */
+const LENS_LANE_FLEX = "0 0 44%";
+
+/** The list⇄lens toggle on a parallel/race container header. Pinned while on so the way back is visible. */
+function LensToggle(props: { active: boolean; onToggle: () => void }) {
+    const { t } = useTranslation();
+    const Icon = props.active ? List : GanttChart;
+    return (
+        <button
+            type="button"
+            tabIndex={-1}
+            title={props.active ? t("story.lens.toList") : t("story.lens.toLens")}
+            className={[
+                "shrink-0 rounded p-1 transition-colors hover:bg-fill hover:text-primary",
+                props.active ? "text-primary" : "text-fg-subtle opacity-0 group-hover:opacity-100",
+            ].join(" ")}
+            onClick={event => {
+                event.stopPropagation();
+                props.onToggle();
+            }}
+        >
+            <Icon className="h-3.5 w-3.5" />
+        </button>
+    );
+}
+
+/** The engine-mode badge on a parallel/race header (WI-3): `all` / `allAsync` / `any`, in control colour. */
+function ContainerModeBadge({ mode }: { mode: "all" | "allAsync" | "any" }) {
+    const color = getActionCommandCategory("control").iconColor;
+    return (
+        <span
+            className="shrink-0 rounded border px-1 py-px font-mono text-[10px] leading-none"
+            style={{ color, borderColor: color }}
+        >
+            {mode}
+        </span>
+    );
+}
+
+/**
+ * One track's bar. A known duration draws a proportional bar (in the block's category colour), a
+ * leading wait draws a hatched dead-time region, and an undeterminable duration draws an equal-width
+ * dashed stub. For a race, a thin marker sits at the earliest known finish — and every bar still runs
+ * its full length past it, because the engine does NOT abort a race's losers (2026-07-23 裁决).
+ */
+function LensBar({ track, color }: { track: StoryLensRowTrack; color: string }) {
+    const { segment, scaleMs, mode, winnerFinishMs } = track;
+    const pct = (ms: number) => `${Math.min(100, Math.max(0, (ms / scaleMs) * 100))}%`;
+    return (
+        <div className="relative h-3.5 self-center rounded bg-fill-subtle/70" style={{ flex: LENS_LANE_FLEX }} aria-hidden>
+            {segment.unknown || segment.disabled ? (
+                // A disabled track is compiled out — it does not set the scale, so a proportional bar
+                // would clamp to a misleading full width. Both it and an undeterminable duration show the
+                // same equal-width dashed stub: "no footprint on this timeline".
+                <div className="absolute inset-y-0 left-0 w-[30%] rounded border border-dashed border-fg-subtle/50" />
+            ) : (
+                <>
+                    {segment.delayMs > 0 ? (
+                        <div className="absolute inset-y-0 rounded-l" style={{ left: 0, width: pct(segment.delayMs), backgroundImage: LENS_DELAY_HATCH }} />
+                    ) : null}
+                    {segment.durationMs > 0 ? (
+                        <div className="absolute inset-y-0 min-w-[3px] rounded" style={{ left: pct(segment.delayMs), width: pct(segment.durationMs), backgroundColor: color, opacity: 0.6 }} />
+                    ) : null}
+                </>
+            )}
+            {mode === "race" && winnerFinishMs !== null ? (
+                <div className="absolute inset-y-0 w-px bg-primary/70" style={{ left: pct(winnerFinishMs) }}>
+                    <span className="absolute -top-1 h-1.5 w-1.5 rounded-full bg-primary" style={{ left: 0, marginLeft: -2.5 }} />
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
+/**
+ * A lensed container's direct child, rendered as a bar-timeline track: the block's badge and overview
+ * on the left (its `d=` token stays in-place editable), the duration bar on the right, and the row's
+ * own insert/delete actions past it. It is still a full row — selection, drag, inspector, context menu
+ * and playhead all live on the row around this — so only the read chrome changes. A nested container
+ * shows as one compact subgroup track; the last track carries the tail "+" that inserts a new child
+ * into the container (reusing the InsertRow path). Only `RowPlayAction` yields its hover slot to the
+ * bar (a declared M7 concession — "play from here" stays reachable from the context menu); prose
+ * children never reach here at all, they keep the ordinary row (see `LensTrackKind["text"]`), which is
+ * also the only row kind `StoryVoiceIndicator` can ever render on.
+ */
+function LensTrackContent(props: {
+    row: VisibleStoryRow;
+    scene: StoryScene;
+    document: StoryDocument;
+    characters: Character[];
+    commandContext: StoryCommandContext;
+    tempSpeakers: TempSpeakerRef[];
+    onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
+    onCreateCharacter: (name: string) => void;
+    onSetDialogueCharacter: (characterId: string | undefined) => void;
+    onUpdatePayload: (payload: StoryBlock["payload"]) => void;
+    onAddInside: (parentId: StoryBlockId) => void;
+    onInsertAfter: () => void;
+    onDeleteRow: () => void;
+    active: boolean;
+}) {
+    const { row, scene, document, characters } = props;
+    const block = row.block;
+    const track = row.lensTrack!;
+    const containerInfo = isContainerBlock(block) ? getContainerHeaderInfo(block) : null;
+    const barColor = getBlockBadgeInfo(block).iconColor;
+    return (
+        <>
+            <div className="flex min-h-[27px] min-w-0 items-center gap-2">
+                {containerInfo ? (
+                    <ContainerPill info={containerInfo} />
+                ) : (
+                    <BlockBadge block={block} characters={characters} appearance={row.appearance} />
+                )}
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                    {containerInfo ? (
+                        <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">{block.childrenIds.length > 0 ? `· ${block.childrenIds.length}` : ""}</span>
+                    ) : (
+                        <BlockPreview
+                            block={block}
+                            scene={scene}
+                            commandContext={props.commandContext}
+                            tempSpeakers={props.tempSpeakers}
+                            onSetSpeaker={props.onSetSpeaker}
+                            onCreateCharacter={props.onCreateCharacter}
+                            document={document}
+                            characters={characters}
+                            onSetDialogueCharacter={props.onSetDialogueCharacter}
+                            onUpdatePayload={props.onUpdatePayload}
+                        />
+                    )}
+                </div>
+                <LensBar track={track} color={barColor} />
+                <RowActions onInsertAfter={props.onInsertAfter} onDelete={props.onDeleteRow} active={props.active} />
+            </div>
+            {track.segment.isLast && block.parentId ? (
+                <LensTailAdd onAdd={() => props.onAddInside(block.parentId as StoryBlockId)} />
+            ) : null}
+        </>
+    );
+}
+
+/** The tail "+" under a lens's last track — reuses the container's inside-insert (InsertRow) path. */
+function LensTailAdd(props: { onAdd: () => void }) {
+    const { t } = useTranslation();
+    return (
+        <div className="mt-1 flex opacity-0 transition-opacity group-hover:opacity-100">
+            <button
+                type="button"
+                tabIndex={-1}
+                title={t("story.container.addAction")}
+                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs text-fg-subtle hover:bg-fill hover:text-primary"
+                onClick={event => {
+                    event.stopPropagation();
+                    props.onAdd();
+                }}
+            >
+                <Plus className="h-3 w-3" />
+                {t("story.container.addAction")}
+            </button>
+        </div>
     );
 }
 
