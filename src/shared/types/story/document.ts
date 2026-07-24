@@ -545,6 +545,27 @@ export type StoryControlPayload =
           control: "sequence" | "parallel" | "race" | "repeat";
           mode?: "do" | "doAsync" | "all" | "allAsync" | "any";
           times?: number;
+      }
+    | {
+          /**
+           * A named point inside a scene (`Control.label`). Invisible at runtime — it passes straight
+           * through to the next row — and it is the only thing `goto` can address.
+           *
+           * Names are scoped to their scene, so the same name may recur in another one; declaring it
+           * twice within a scene is an error the engine's build rejects, which is why the compiler
+           * diagnoses it here first.
+           */
+          control: "label";
+          name: string;
+      }
+    | {
+          /**
+           * Move the play head to a `label` in the SAME scene (`Control.jump`). Distinct from a
+           * `jump` block, which changes scene and therefore unloads and re-initializes one — this
+           * unloads nothing, so it is the loop and the retry, not the transition.
+           */
+          control: "goto";
+          targetLabel: string;
       };
 
 export type StoryJumpPayload = {

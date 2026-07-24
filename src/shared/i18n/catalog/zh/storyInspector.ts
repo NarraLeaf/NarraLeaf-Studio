@@ -380,6 +380,9 @@ export const storyInspector = {
         selectImageTitle: "选择背景图片",
     },
     control: {
+        labelName: "标签名称",
+        gotoTarget: "跳到标签",
+        noLabels: "本场景没有标签",
         conditionContainer: "条件容器，在其下添加条件分支作为子项",
         control: "控制",
         sequence: "顺序",

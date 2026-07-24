@@ -192,6 +192,7 @@ export const story = {
         content: "Content",
         target: "Target",
         lineText: "Text",
+        labelName: "Label",
         scene: "Scene",
         displayName: "Display Name",
         seekTime: "Seconds",
@@ -371,7 +372,7 @@ export const story = {
      */
     command: {
         background: { label: "Background", detail: "Set the scene background image or color" },
-        jump: { label: "Jump", detail: "Go to another scene" },
+        jump: { label: "Jump", detail: "Go to another scene — unloads it and starts it over, unlike /goto" },
         wait: { label: "Wait", detail: "Pause for seconds, or for a click" },
         nvl: { label: "NVL", detail: "Toggle the stacked dialogue panel" },
         show: { label: "Show", detail: "Show a character or a stage object" },
@@ -412,6 +413,10 @@ export const story = {
         parallel: { label: "Parallel", detail: "Run the enclosed actions together" },
         race: { label: "Race", detail: "Run all, continue when the first finishes" },
         sequence: { label: "Sequence", detail: "Run the enclosed actions in order" },
+        // The two details name each other: the whole difference is that /jump unloads the scene
+        // and /goto does not, and no author can guess which from the token alone.
+        label: { label: "Label", detail: "Mark a place in this scene for /goto to reach" },
+        goto: { label: "Go to", detail: "Move the play head to a label in this scene — unlike /jump, the scene keeps running" },
         code: { label: "Code", detail: "A script block" },
         blueprint: { label: "Blueprint", detail: "Run a Story Action Blueprint" },
         blink: { label: "Blink", detail: "Screen blink effect" },
@@ -459,6 +464,8 @@ export const story = {
         effect: "Effect",
         camera: "Camera",
         control: "Control",
+        label: "Label",
+        goto: "Go to",
         jump: "Jump",
         code: "Code",
         note: "Note",
@@ -513,6 +520,8 @@ export const story = {
         },
         condition: "Condition",
         branch: "{branch} branch",
+        label: "Label {name}",
+        goto: "Go to {name}",
         jump: "Jump {scene}",
         code: "{language} code",
         note: "Note",

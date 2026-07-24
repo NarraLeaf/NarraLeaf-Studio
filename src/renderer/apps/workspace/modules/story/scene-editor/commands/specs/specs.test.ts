@@ -18,6 +18,7 @@ const CONTEXT: StoryCommandContext = {
     characters: [{ id: "c1", name: "Alice" }],
     tempSpeakers: ["Zoe"],
     scenes: [{ id: "s1", name: "Chapter 2" }],
+    labels: ["intro", "after refusal"],
     variables: [
         { name: "gold", ref: { scope: "scene", variableId: "var_gold" }, valueType: "number", defaultValue: 10 },
         { name: "met", ref: { scope: "saved", variableId: "var_met" }, valueType: "boolean" },
@@ -347,6 +348,19 @@ describe("logic and effects", () => {
     it("/if builds the bare condition container - the expression rides to the scaffolded branch", () => {
         expect(build("/if gold >= 100")).toMatchObject({ kind: "control", payload: { control: "condition" } });
         expect(issuesOf("/if gold + 1")).toEqual(["expressionNotBoolean"]);
+    });
+
+    it("/label marks a place and /goto only accepts one that exists", () => {
+        expect(build("/label after refusal")).toMatchObject({
+            kind: "control",
+            payload: { control: "label", name: "after refusal" },
+        });
+        expect(build("/goto intro")).toMatchObject({ kind: "control", payload: { control: "goto", targetLabel: "intro" } });
+        // Case-insensitive to type, but stored as declared - the compiler matches the same way.
+        expect(build("/goto INTRO")).toMatchObject({ payload: { targetLabel: "intro" } });
+        // The whole point of the label slot: a name that is not a label in this scene cannot commit,
+        // so the author never gets a document whose engine build fails.
+        expect(issuesOf("/goto nowhere")).toEqual(["unknownLabel"]);
     });
 
     it("/blink and /vignette read their knobs in seconds", () => {

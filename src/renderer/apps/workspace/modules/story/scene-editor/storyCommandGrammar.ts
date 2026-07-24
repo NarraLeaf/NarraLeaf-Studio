@@ -45,6 +45,12 @@ export type StoryCommandParamType =
      */
     | { kind: "characterForm"; dependsOn: string }
     | { kind: "scene" }
+    /**
+     * A `label` row declared in the CURRENT scene - what `/goto` addresses. Scene-scoped by
+     * construction (the engine matches within a scene), so the candidates come from the same scan
+     * the compiler validates against, and a name the menu offered can never be one the build rejects.
+     */
+    | { kind: "label" }
     | { kind: "variable" }
     /**
      * The subject of a generic verb (`/show poster`, `/hide Alice`, `/vol piano`): a character or a
@@ -244,6 +250,7 @@ export function allowsFreeValue(type: StoryCommandParamType): boolean {
         case "asset":
         case "scene":
         case "variable":
+        case "label":
         case "characterForm":
         // Content is typed by its target: an image target's content is an asset that must resolve.
         // Resolution owns the per-target answer; the static answer is the strict one.

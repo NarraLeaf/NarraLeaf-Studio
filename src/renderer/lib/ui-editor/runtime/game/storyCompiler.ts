@@ -68,8 +68,10 @@ import type {
 } from "@shared/types/story";
 import {
     collectStoryExpressionVariables,
+    duplicateSceneLabels,
     isStoryExpressionEvaluable,
     layerActionTargetRef,
+    sceneLabelNames,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
     savedVariableDefs,
@@ -1237,6 +1239,9 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
             diagnostic(ctx, "warning", block.id, "Condition branch is outside of a condition container.");
             return compileBlockList(ctx, block.childrenIds);
         }
+        if (block.payload.control === "label" || block.payload.control === "goto") {
+            return compileLabelControl(ctx, block, block.payload);
+        }
         return compileControlGroup(ctx, block);
     }
 
@@ -2163,6 +2168,49 @@ async function compileCondition(ctx: SceneCompileContext, block: Extract<StoryBl
     }
 
     return [recordStatement(ctx, chain, block)];
+}
+
+/**
+ * `label` and `goto` - the in-scene play head, and the two ways an author can break it.
+ *
+ * Both faults are diagnosed HERE rather than left to the engine, because both make the engine's own
+ * `Story.build` throw: the author would get a build failure with no row to blame. `error` (not
+ * `warning`) is deliberate - a production build refuses on error diagnostics, which is exactly the
+ * outcome wanted, only reported against the row that caused it.
+ *
+ * Labels are matched by NAME, scene-scoped, so the same name may recur in another scene; the checks
+ * read the one shared scan (`listSceneLabels`) the command line's completion reads, so a name the
+ * editor offered can never be a name the compile then rejects.
+ */
+function compileLabelControl(
+    ctx: SceneCompileContext,
+    block: Extract<StoryBlock, { kind: "control" }>,
+    payload: Extract<StoryControlPayload, { control: "label" | "goto" }>,
+): NlrStatement[] {
+    if (payload.control === "label") {
+        const name = payload.name.trim();
+        if (!name) {
+            diagnostic(ctx, "error", block.id, "Label has no name.");
+            return [];
+        }
+        // The first declaration is the one that stands, so only the later rows are faulted.
+        if (duplicateSceneLabels(ctx.scene).some(duplicate => duplicate.blockId === block.id)) {
+            diagnostic(ctx, "error", block.id, `Label "${name}" is declared more than once in this scene.`);
+            return [];
+        }
+        return [recordStatement(ctx, Control.label(name), block)];
+    }
+
+    const target = payload.targetLabel.trim();
+    if (!target) {
+        diagnostic(ctx, "error", block.id, "Go to has no target label.");
+        return [];
+    }
+    if (!sceneLabelNames(ctx.scene).some(name => name.toLowerCase() === target.toLowerCase())) {
+        diagnostic(ctx, "error", block.id, `Go to target label not found in this scene: ${target}`);
+        return [];
+    }
+    return [recordStatement(ctx, Control.jump(target), block)];
 }
 
 async function compileControlGroup(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "control" }>): Promise<NlrStatement[]> {
