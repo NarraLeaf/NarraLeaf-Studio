@@ -198,6 +198,12 @@ export const story = {
         aliases: "别名",
         empty: "没有匹配的指令",
     },
+    position: {
+        label: "站位",
+        left: "左",
+        center: "中",
+        right: "右",
+    },
     rows: {
         placeholderDialogue: "对话…",
         placeholderNarration: "旁白…",

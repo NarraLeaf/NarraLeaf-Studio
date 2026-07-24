@@ -1299,6 +1299,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     onOpenInspector={() => editor.activateBlockForInspectorOrOp(row.block.id)}
                                     onUpdatePayload={payload => editor.updateBlockPayloadFor(row.block.id, payload)}
                                     onSetDialogueCharacter={characterId => editor.setDialogueSpeaker(row.block, characterId ? { characterId } : null)}
+                                    onSetPosition={position => editor.setDialogueGroupPosition(row.block, position, row.appearance?.positionSourceId ?? null)}
                                     tempSpeakers={editor.tempSpeakers}
                                     onSetSpeaker={speaker => editor.setDialogueSpeaker(row.block, speaker)}
                                     onCreateCharacter={name => editor.createCharacterFromSpeaker(row.block, name)}

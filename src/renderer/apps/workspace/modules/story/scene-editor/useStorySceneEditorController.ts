@@ -54,7 +54,7 @@ import { getStoryEditorViewPrefs, getStoryEditorViewState, patchStoryEditorViewP
 import { cloneSerializedBlock, insertSerializedClone, serializeBlockSubtree } from "./storySceneClipboard";
 import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
-import type { EditorMode, StoryBlockTarget, StoryCaretTarget } from "./storySceneEditorTypes";
+import type { EditorMode, StoryBlockTarget, StoryCaretTarget, StoryStagePlacement } from "./storySceneEditorTypes";
 import { useStorySceneClipboardHandlers } from "./useStorySceneClipboardHandlers";
 import { useSlashAtAlias } from "@/apps/workspace/hooks/useSlashAtAlias";
 import { isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
@@ -1469,6 +1469,38 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [updateBlockPayloadFor]);
 
     /**
+     * Set where a dialogue group's speaker stands (WI-3, M3.1). The document always stays command lines
+     * (P3): the dropdown is a declarative shell over `/show … at=` and `/move … at=`. Reading is the
+     * appearance scan's job (`buildDialogueAppearances` tracks the placement + the block that set it);
+     * writing rewrites that block's `at=` in place, or — when the character has no enter/move to edit —
+     * authors a `/move <character> at=<pos>` above the group head. Both go through history like any edit.
+     */
+    const setDialogueGroupPosition = useCallback((head: StoryBlock, position: StoryStagePlacement, positionSourceId: StoryBlockId | null) => {
+        if (!storyService || !storyId || !sceneId || !scene || !uuidService) {
+            return;
+        }
+        if (head.kind !== "nodeAction" || head.payload.action !== "dialogue" || !head.payload.characterId) {
+            return;
+        }
+        const characterId = head.payload.characterId;
+        const source = positionSourceId ? scene.blocks[positionSourceId] : undefined;
+        if (source && source.kind === "action" && source.payload.action === "character") {
+            // Rewrite the enter/move in place; updateBlockPayloadFor no-ops when the placement is unchanged.
+            updateBlockPayloadFor(source.id, {
+                ...source.payload,
+                transform: { ...(source.payload.transform ?? {}), preset: position },
+            });
+            return;
+        }
+        const move = createBlockForCommand("characterMove", () => uuidService.generate());
+        if (move.kind === "action" && move.payload.action === "character") {
+            move.payload.characterId = characterId;
+            move.payload.transform = { ...(move.payload.transform ?? {}), preset: position };
+        }
+        insertBlock(move, null, false, { target: { parentId: head.parentId, beforeBlockId: head.id } });
+    }, [insertBlock, scene, sceneId, storyId, storyService, updateBlockPayloadFor, uuidService]);
+
+    /**
      * Promote the name on a dialogue row to a real character: create it, rebind every line that used
      * the bare name, and reveal the character manager so the author can give it a face - but leave the
      * caret in the line they were writing. The manager is the destination for later, not for now.
@@ -1963,7 +1995,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         deleteRows, deleteSelection, startInsertAfter, startInsertBefore, selectRow, beginDragSelection,
         selectionRootIds, toggleDisableSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateSceneMetadata,
-        setDialogueSpeaker, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange,
+        setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange,
         undoEdit, redoEdit,
         startInsertAfterSelection, indentSelection, selectAllRows, moveActiveRowSelection,
         insertContinuationAfterCurrentTextEdit, commitNarrationFromInsert, handleInsertBackspaceEmpty, chooseCommand, chooseCharacterForInsert,

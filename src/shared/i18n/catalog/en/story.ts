@@ -217,6 +217,12 @@ export const story = {
         aliases: "Aliases",
         empty: "No commands match",
     },
+    position: {
+        label: "Position",
+        left: "Left",
+        center: "Center",
+        right: "Right",
+    },
     rows: {
         placeholderDialogue: "Dialogue…",
         placeholderNarration: "Narration…",
