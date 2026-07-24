@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
+import type { LiveGame } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
-import type { StoryAssetKind } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import type { NlrActionIdBinding, StoryAssetKind } from "@/lib/ui-editor/runtime/game/storyCompiler";
 
 export type GameAppLogLevel = "info" | "warning" | "error";
 
@@ -83,6 +84,56 @@ export type GameAppHost = {
     subscribeCloseRequested?: (listener: () => Promise<boolean> | boolean) => () => void;
 };
 
+/** A read-only view of the current execution stacks (root + in-flight async branches). */
+export type StoryRuntimeStackView = ReturnType<LiveGame["getStackSnapshot"]>;
+
+export type StoryRuntimeFastForwardResult = {
+    reason: "menu" | "end" | "maxSteps" | "action";
+    reachedTarget?: boolean;
+};
+
+/**
+ * Read/write bridge over the running story's live runtime, handed to host debug overlays (the Dev
+ * Mode story-runtime panel). Modeled on the blueprint `scopeBridge`: the overlay reads snapshots and
+ * subscribes rather than touching the engine directly. All methods degrade to null / no-op when no
+ * story game is currently running, and stay valid across in-window relaunches (the bridge follows
+ * whichever LiveGame is live).
+ */
+export type GameAppStoryRuntimeBridge = {
+    /** The running story's launch request (id, scene, and the row/snapshot it entered at), or null. */
+    getStoryContext: () => {
+        storyId: string;
+        sceneId: string;
+        startBlockId?: string;
+        snapshotId?: string;
+    } | null;
+    /** action↔block bindings of the running compiled story (empty when none). */
+    getActionIdBindings: () => readonly NlrActionIdBinding[];
+    /** Resolved Storable namespace names for the running story's variable scopes. */
+    getVariableNamespaces: () => { saved: string | null; sceneLocal: Record<string, string> };
+    /** Most recently executed action id (engine play head), or null before the first action. */
+    getCurrentActionId: () => string | null;
+    /**
+     * Subscribe to the play head (`event:action.current`). Fires for every action, branch actions
+     * included; filter by your own id set. Returns an unsubscribe function. Stable across relaunches.
+     */
+    subscribeCurrentAction: (listener: (actionId: string | null) => void) => () => void;
+    /** Read-only execution-stack snapshot, or null when no game is running. */
+    getStackSnapshot: () => StoryRuntimeStackView | null;
+    /** Read a Storable namespace as a plain record of raw values, or null if absent / no game. */
+    readStorableNamespace: (namespaceName: string) => Record<string, unknown> | null;
+    /** Write a raw value into a Storable namespace (scene/saved scopes). No-op if the ns is absent. */
+    writeStorableValue: (namespaceName: string, key: string, value: unknown) => boolean;
+    /** Fast-forward the running game until an action surfaces (hot jump). Rejects if no game runs. */
+    fastForwardToActionId: (actionId: string) => Promise<StoryRuntimeFastForwardResult>;
+    /**
+     * Relaunch the current story in-window (cold jump, snapshot switch, scene launch). `sceneId`
+     * defaults to the running scene; omitted `startBlockId` enters at the scene top; omitted
+     * `snapshotId` uses declared defaults.
+     */
+    relaunch: (options: { sceneId?: string; startBlockId?: string; snapshotId?: string }) => Promise<void>;
+};
+
 /** Context handed to host-rendered overlays (e.g. the Dev Mode debug panel). */
 export type GameAppOverlayContext = {
     core: BlueprintRuntimeCore | null;
@@ -93,6 +144,8 @@ export type GameAppOverlayContext = {
      * currently running (see `requireActiveLiveGame`).
      */
     fastForwardToNextChoice: () => Promise<void>;
+    /** Read/write bridge over the running story runtime for the story-runtime debug panel. */
+    storyRuntime: GameAppStoryRuntimeBridge;
 };
 
 /** Context handed to the host frame around the game content. */

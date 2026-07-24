@@ -39,6 +39,8 @@ export interface SceneFlowCanvasProps {
     /** Scenes the author dragged; anything absent falls back to the auto-layout. */
     positionOverrides: Record<StorySceneId, { x: number; y: number }>;
     initialViewport?: SceneFlowViewport;
+    /** Highlight one scene as the running / active one (Dev Mode play head). */
+    currentSceneId?: StorySceneId | null;
     onOpenScene: (sceneId: StorySceneId) => void;
     onMoveScene: (sceneId: StorySceneId, position: { x: number; y: number }) => void;
     onViewportChange?: (viewport: SceneFlowViewport) => void;
@@ -56,6 +58,7 @@ function SceneFlowCanvasInner({
     graph,
     positionOverrides,
     initialViewport,
+    currentSceneId,
     onOpenScene,
     onMoveScene,
     onViewportChange,
@@ -81,9 +84,9 @@ function SceneFlowCanvasInner({
             deletable: false,
             // Projected without `selected`: selection has to flow through `applyNodeChanges`, or
             // React Flow raises error #015.
-            data: node as SceneFlowNodeData,
+            data: { ...node, current: currentSceneId != null && node.sceneId === currentSceneId } as SceneFlowNodeData,
         })),
-        [graph, positionOverrides],
+        [graph, positionOverrides, currentSceneId],
     );
 
     const projectedEdges = useMemo<Edge[]>(

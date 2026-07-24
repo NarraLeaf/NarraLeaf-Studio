@@ -19,14 +19,18 @@ const HANDLE_CLASS = "!h-2 !w-2 !border-0 !bg-transparent !opacity-0";
 export function SceneFlowNode({ data, selected }: NodeProps) {
     const { t, tn } = useTranslation();
     const scene = data as SceneFlowNodeData;
+    // The running scene when embedded read-only in Dev Mode (SceneFlowCanvas `currentSceneId`).
+    const current = (scene as { current?: boolean }).current === true;
 
     return (
         <div
             style={{ width: SCENE_FLOW_NODE_WIDTH, height: SCENE_FLOW_NODE_HEIGHT }}
             className={cn(
                 "flex flex-col justify-center gap-1 rounded-md border bg-surface-raised px-3 py-2 shadow-sm transition-colors",
-                selected ? "border-primary ring-1 ring-primary/40" : "border-edge hover:border-edge-strong",
-                scene.isEntry && !selected && "border-l-2 border-l-primary",
+                current
+                    ? "border-primary ring-2 ring-primary/60"
+                    : selected ? "border-primary ring-1 ring-primary/40" : "border-edge hover:border-edge-strong",
+                scene.isEntry && !selected && !current && "border-l-2 border-l-primary",
                 !scene.reachable && "opacity-70",
             )}
             title={scene.name}

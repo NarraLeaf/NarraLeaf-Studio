@@ -43,6 +43,7 @@ import {
     resolveStoryEditorRestoreScrollTop,
 } from "./storyEditorSessionStore";
 import { useStorySceneEditorController } from "./useStorySceneEditorController";
+import { subscribeStoryRowHighlight } from "./storyRowHighlightBus";
 import { ResizableHandle } from "@/apps/workspace/components/ui/ResizableHandle";
 import { StoryScenePreviewPane } from "./preview/StoryScenePreviewPane";
 import { StoryScenePreviewFloat } from "./preview/StoryScenePreviewFloat";
@@ -911,6 +912,33 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         row.scrollIntoView({ block: "center" });
         editor.focusRoot();
     }, [active, deepLinkBlockId, rowCount, scrollContainerRef, editor.revealBlock, editor.focusRoot]);
+
+    // Dev Mode play head (WI-2): follow the running row in place when this editor owns the scene.
+    // Uses the plain row-select visual — never `revealBlock` (which would flip the author's
+    // "narrative only" filter) and never `focusRoot` — so watching the game neither reshapes the
+    // author's view nor pulls keyboard focus. Only rows the author is currently showing react: a row
+    // hidden by the filter or a collapsed parent is not in the DOM, so it is silently skipped.
+    const lastPlayHeadBlockRef = useRef<StoryBlockId | null>(null);
+    useEffect(() => {
+        lastPlayHeadBlockRef.current = null;
+        return subscribeStoryRowHighlight(highlight => {
+            if (!active || highlight.storyId !== payload?.storyId || highlight.sceneId !== payload?.sceneId) {
+                return;
+            }
+            if (lastPlayHeadBlockRef.current === highlight.blockId) {
+                return;
+            }
+            const row = scrollContainerRef.current?.querySelector<HTMLElement>(
+                `[data-story-row-block-id="${CSS.escape(highlight.blockId)}"]`,
+            );
+            if (!row) {
+                return;
+            }
+            lastPlayHeadBlockRef.current = highlight.blockId;
+            editorRef.current.selectRow(highlight.blockId);
+            row.scrollIntoView({ block: "nearest" });
+        });
+    }, [active, payload?.storyId, payload?.sceneId, scrollContainerRef]);
 
     // Live preview pane: layout state persists globally (one workbench preference, not per-scene).
     const [previewPane, setPreviewPane] = useState<StoryScenePreviewPaneState | null>(null);
