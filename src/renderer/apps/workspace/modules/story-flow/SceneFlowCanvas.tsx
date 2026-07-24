@@ -16,10 +16,13 @@ import {
     type Viewport,
 } from "@xyflow/react";
 import type { StorySceneId } from "@shared/types/story";
+import type { Translator } from "@shared/i18n";
+import { useTranslation } from "@/lib/i18n";
 import { SceneFlowNode, type SceneFlowNodeData } from "./SceneFlowNode";
 import {
     SCENE_FLOW_NODE_HEIGHT,
     SCENE_FLOW_NODE_WIDTH,
+    type SceneFlowEdgeModel,
     type SceneFlowGraph,
 } from "./sceneFlowModel";
 import { SceneFlowZoomControls } from "./SceneFlowZoomControls";
@@ -33,6 +36,46 @@ const sceneFlowNodeTypes = { scene: SceneFlowNode } satisfies NodeTypes;
  * couple of dozen scenes, not the hundreds of nodes a blueprint graph reaches.
  */
 const MINIMAP_MIN_NODES = 12;
+
+/** Option texts and conditions are arbitrarily long; an edge label is a hint, not the line itself. */
+const EDGE_LABEL_MAX_CHARS = 22;
+
+function clampLabel(text: string): string {
+    return text.length > EDGE_LABEL_MAX_CHARS ? `${text.slice(0, EDGE_LABEL_MAX_CHARS - 1)}…` : text;
+}
+
+/**
+ * What a collapsed edge says about itself.
+ *
+ * One fork prints its own words (the option the player picks, the condition that has to hold);
+ * several print the first plus how many more there are, because the alternative — stacking every
+ * branch on one line — is unreadable at any zoom the map is actually used at. With no fork at all
+ * the only thing worth saying is how many jumps collapsed into the line, and only when it is more
+ * than one.
+ *
+ * An `else if` arm is prefixed with the container's own "Else if" wording: its condition summary
+ * reads exactly like an `if`, and an unqualified one would say this path is taken whenever the
+ * condition holds rather than only when the arms above it did not.
+ */
+function edgeLabel(edge: SceneFlowEdgeModel, t: Translator["t"]): string | undefined {
+    const named = edge.branches.map(branch => {
+        if (branch.kind === "conditionElse") {
+            return t("story.containerHeader.else");
+        }
+        if (branch.kind === "conditionElseIf") {
+            const elseIf = t("story.containerHeader.elseIf");
+            return branch.label ? `${elseIf} ${branch.label}` : elseIf;
+        }
+        return branch.label || t("story.containerHeader.option");
+    });
+    if (named.length === 0) {
+        return edge.jumps.length > 1 ? `×${edge.jumps.length}` : undefined;
+    }
+    if (named.length === 1) {
+        return clampLabel(named[0]);
+    }
+    return `${clampLabel(named[0])} +${named.length - 1}`;
+}
 
 export interface SceneFlowCanvasProps {
     graph: SceneFlowGraph;
@@ -67,6 +110,7 @@ function SceneFlowCanvasInner({
     // element ids) and falls back to a literal "1" when unset, so two canvases on one page collide.
     // The colons `useId` emits break its internal `querySelector` lookups.
     const flowId = useId().replace(/:/g, "");
+    const { t } = useTranslation();
 
     const { fitView } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<SceneFlowNodeData>>([]);
@@ -95,8 +139,8 @@ function SceneFlowCanvasInner({
             source: edge.source,
             target: edge.target,
             type: "smoothstep",
-            // Two jumps A->B collapse into one line; the count is what tells them apart.
-            label: edge.jumps.length > 1 ? `×${edge.jumps.length}` : undefined,
+            // Two jumps A->B collapse into one line; the label is what tells the paths apart.
+            label: edgeLabel(edge, t),
             labelShowBg: false,
             labelStyle: { fill: "rgb(var(--nl-fg-subtle))", fontSize: 10 },
             markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: "rgb(var(--nl-fg-muted))" },
@@ -108,7 +152,7 @@ function SceneFlowCanvasInner({
             },
             interactionWidth: 20,
         })),
-        [graph],
+        [graph, t],
     );
 
     useEffect(() => {

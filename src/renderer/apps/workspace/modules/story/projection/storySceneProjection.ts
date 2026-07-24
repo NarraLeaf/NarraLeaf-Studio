@@ -286,6 +286,21 @@ function formatAction(payload: StoryActionPayload, scene: StoryScene, document?:
     return `/effect ${payload.effect}`;
 }
 
+/**
+ * One-line rendering of a branch condition, as the text projection shows it.
+ *
+ * Exported because the scene-flow map labels its branch edges with the same string: two surfaces
+ * describing the same `if` must not word it two ways, and the alternative (a second formatter next
+ * to the graph) drifts the moment a condition kind is added.
+ */
+export function formatStoryConditionSummary(
+    condition: StoryConditionRef | undefined,
+    scene: StoryScene,
+    document?: StoryDocument,
+): string {
+    return formatCondition(condition, scene, document);
+}
+
 function formatCondition(condition: StoryConditionRef | undefined, scene: StoryScene, document?: StoryDocument): string {
     if (!condition) {
         return "<condition>";
