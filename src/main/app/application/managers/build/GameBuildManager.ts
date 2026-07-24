@@ -271,9 +271,6 @@ export class GameBuildManager {
             findings.push({ code: "web-unprotected", severity: "warning", section: "content" });
         }
         if (mobileTargets.length > 0) {
-            if (this.encryptAssetsEnabled(projectConfig)) {
-                findings.push({ code: "mobile-unprotected", severity: "warning", section: "content" });
-            }
             findings.push(...await this.mobilePreflight(normalizedProjectPath, mobileTargets));
         }
         if (desktopTargets.length > 0) {
@@ -386,27 +383,23 @@ export class GameBuildManager {
         if (pluginSelection.errors.length > 0) {
             throw new Error(`Plugin validation failed:\n${pluginSelection.errors.join("\n")}`);
         }
-        const encryptionKey = desktopTargets.length > 0
+        // Desktop and mobile both protect their assets on the same key; the web
+        // export never does (its files are served over HTTP by nature). Resolving
+        // once here keeps the desktop and mobile paths on one key.
+        const encryptionKey = (desktopTargets.length > 0 || mobileTargets.length > 0)
             ? await this.resolveEncryptionKey(projectPath, projectConfig)
             : undefined;
-        if (encryptionKey) {
+        if (encryptionKey && desktopTargets.length > 0) {
             this.emit(session, { level: "info", source: "Build", message: "asset protection enabled; sealing pack" });
+        }
+        if (encryptionKey && mobileTargets.length > 0) {
+            this.emit(session, { level: "info", source: "Build", message: "asset protection enabled; protecting the mobile payload" });
         }
         if (webTarget && this.encryptAssetsEnabled(projectConfig)) {
             this.emit(session, {
                 level: "info",
                 source: "Build",
                 message: "asset protection does not apply to the web export; its files ship unprotected",
-            });
-        }
-        if (mobileTargets.length > 0 && this.encryptAssetsEnabled(projectConfig)) {
-            // "does not yet": unlike the web export, mobile protection is a
-            // planned milestone - the shells carry the interception point
-            // already. This branch becomes the protected path then.
-            this.emit(session, {
-                level: "info",
-                source: "Build",
-                message: "asset protection does not yet apply to mobile exports; their files ship unprotected",
             });
         }
         this.ensureNotCancelled(session);
@@ -527,6 +520,9 @@ export class GameBuildManager {
                     identity,
                     platforms: mobileTargets.map(target => target.platform),
                     site: webArtifact,
+                    // When set, the repack protects every payload file with this
+                    // key and writes it into shell-config for the shell's decoder.
+                    contentKey: encryptionKey,
                 }),
             } : {}),
         };
@@ -654,6 +650,8 @@ export class GameBuildManager {
             identity: { appId: string; productName: string; artifactBaseName: string; version: string };
             platforms: GameBuildMobilePlatform[];
             site: GameRuntimeArtifactCompileResult;
+            /** Opaque protection key, or undefined for a plain (unprotected) build. */
+            contentKey?: string;
         },
     ): Promise<GameBuildWorkerMobileJob> {
         const template = await loadMobileShellTemplateForApp(this.app);
@@ -670,11 +668,15 @@ export class GameBuildManager {
             // Same pre-boot background the entry document paints, so the native
             // window and the document agree on the first frame.
             backgroundColor: resolveGameRuntimeInitialBackgroundColor(site.pack),
+            // Present only when the payload is protected; the shell reads it to
+            // decode, and it stays plain in shell-config (the bootstrap file).
+            ...(input.contentKey ? { contentKey: input.contentKey } : {}),
         };
         const hasFavicon = await fileExists(path.join(site.appDir, WEB_FAVICON_FILENAME));
 
         const job: GameBuildWorkerMobileJob = {
             sourceDir: site.appDir,
+            ...(input.contentKey ? { contentKey: input.contentKey } : {}),
             templateManifest: template.manifest,
             productName: identity.productName,
             appDirBaseName: identity.artifactBaseName,

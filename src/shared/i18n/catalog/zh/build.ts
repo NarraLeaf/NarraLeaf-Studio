@@ -102,7 +102,6 @@ export const build = {
         "plugins-invalid": "插件校验失败：\n{errors}",
         "encryption-key-unavailable": "资源保护已开启，但无法取得密钥",
         "web-unprotected": "资源保护对 Web 导出不生效，其文件以明文发布",
-        "mobile-unprotected": "资源保护暂不适用于移动端构建，其文件以明文发布",
         "mobile-template-missing": "移动端外壳模板不可用：{reason}",
         "mobile-payload-too-large": "项目素材体积（{size}）超出移动端安装包能容纳的上限",
         "version-uncodable": "版本号 {version} 无法编码为 Android 版本号（主版本最大 2099，次版本与修订号最大 999）",
