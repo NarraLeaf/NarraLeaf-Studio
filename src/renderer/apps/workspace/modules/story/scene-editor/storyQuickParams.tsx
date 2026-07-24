@@ -84,6 +84,10 @@ export function getQuickParams(block: StoryBlock): QuickParam[] {
         }
         return [durationParam("d", "d", transition.durationMs ?? 0, undefined, ms => ({ ...payload, transition: { ...transition, durationMs: ms } }))];
     }
+    if (payload.action === "camera") {
+        // The camera's `d=` is the whole feel of the move — the one knob worth a token on the row.
+        return [durationParam("d", "d", payload.durationMs ?? 0, undefined, ms => ({ ...payload, durationMs: ms }))];
+    }
     if (payload.action === "audio") {
         const params: QuickParam[] = [];
         if (VOLUME_OPS.has(payload.operation)) {

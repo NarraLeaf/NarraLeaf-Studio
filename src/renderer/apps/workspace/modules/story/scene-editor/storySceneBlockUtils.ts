@@ -1,4 +1,4 @@
-import { Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video } from "lucide-react";
+import { Aperture, Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video } from "lucide-react";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryExpr, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment, StoryVariableRef } from "@shared/types/story";
 import { describeDeclaration, layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef, storyVariableRefKey } from "@shared/types/story";
 import { storyMsToSeconds } from "@shared/utils/storyTime";
@@ -365,6 +365,9 @@ export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typ
         if (block.payload.action === "video") return withCategory(translate("story.badge.video"), Video, "video");
         if (block.payload.action === "nvl") return withCategory(translate("story.badge.nvl"), FileText, "scene");
         if (block.payload.action === "blueprint") return withCategory(translate("story.badge.blueprint"), Puzzle, "data");
+        // Its own badge, not "Effect": `/camera darken` dims the whole stage and outlives the scene,
+        // while `/vignette` is a mask layer inside it. The row has to say which one it is at a glance.
+        if (block.payload.action === "camera") return withCategory(translate("story.badge.camera"), Aperture, "effects");
         return withCategory(translate("story.badge.effect"), Sparkles, "effects");
     }
     if (block.kind === "control") return withCategory(translate("story.badge.control"), Settings2, "control");
@@ -447,6 +450,35 @@ function describeAssignment(payload: Extract<StoryActionPayload, { action: "setV
     return `${name} = ${payload.expression?.source ?? ""}`;
 }
 
+/** The three `at=` words, as camera pan lands them (see `getPresetPosition`); anything else reads as its aligns. */
+const CAMERA_PAN_PLACEMENTS: Record<number, "left" | "center" | "right"> = { 0.25: "left", 0.5: "center", 0.75: "right" };
+
+/**
+ * How a camera row reads: the operation plus the one value it carries. The verb is NOT repeated from
+ * the badge, but the knob is named ("Zoom ×1.5", not "×1.5"), because five operations share one badge.
+ */
+function describeCamera(payload: Extract<StoryActionPayload, { action: "camera" }>): string {
+    const operation = translate(`story.describe.cameraOp.${payload.operation}` as Parameters<typeof translate>[0]);
+    if (payload.operation === "zoom") {
+        return `${operation} ×${payload.zoom ?? 1}`;
+    }
+    if (payload.operation === "rotate") {
+        return `${operation} ${payload.rotation ?? 0}°`;
+    }
+    if (payload.operation === "darken") {
+        return `${operation} ${Math.round(Math.min(1, Math.max(0, payload.darkness ?? 0)) * 100)}%`;
+    }
+    if (payload.operation === "pan") {
+        const xalign = payload.position?.xalign ?? 0.5;
+        const yalign = payload.position?.yalign ?? 0.5;
+        const placement = yalign === 0.5 && !payload.position?.xoffset && !payload.position?.yoffset
+            ? CAMERA_PAN_PLACEMENTS[xalign]
+            : undefined;
+        return `${operation} ${placement ? translate(`story.position.${placement}`) : `${Math.round(xalign * 100)}% · ${Math.round(yalign * 100)}%`}`;
+    }
+    return operation;
+}
+
 export function describeBlock(block: StoryBlock, characters: Character[], scene?: StoryScene, scenes?: Record<StorySceneId, StoryScene>): string {
     if (block.kind === "nodeAction") {
         const payload = block.payload;
@@ -479,6 +511,7 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
         if (payload.action === "video") return translate("story.describe.video", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
         if (payload.action === "nvl") return translate("story.describe.nvl");
         if (payload.action === "blueprint") return translate("story.describe.blueprint");
+        if (payload.action === "camera") return describeCamera(payload);
         return translate("story.describe.effect", { effect: payload.effect });
     }
     if (block.kind === "control") {

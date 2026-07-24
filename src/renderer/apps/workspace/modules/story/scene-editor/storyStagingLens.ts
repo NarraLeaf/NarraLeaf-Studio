@@ -102,6 +102,10 @@ function actionDurationMs(payload: StoryActionPayload): number | undefined {
     switch (payload.action) {
         case "displayable":
             return payload.durationMs;
+        // The camera's whole point in a `parallel` is running against a sprite move, so its bar has to
+        // be drawn to scale rather than as an unknown-width stub (2026-07-24-006 §12.7).
+        case "camera":
+            return payload.durationMs;
         case "screenEffect":
             return payload.durationMs === undefined && payload.holdMs === undefined
                 ? undefined
