@@ -63,9 +63,9 @@ export const camera = defineStoryCommand({
     id: "camera",
     token: "camera",
     aliases: ["cam"],
-    // Filed under `effects` until A1 (2026-07-24-006 §4.1) gives the camera its own top-level category;
-    // `effects` carries no scope claim, which `scene` would have (wrongly - the pose outlives the scene).
-    category: "effects",
+    // Its own top-level category (§3.3): the pose outlives the scene, so `scene` would have claimed a
+    // lifetime the camera does not have, and no other subject is a camera.
+    category: "camera",
     quickParams: ["d"],
     params: {
         op: {

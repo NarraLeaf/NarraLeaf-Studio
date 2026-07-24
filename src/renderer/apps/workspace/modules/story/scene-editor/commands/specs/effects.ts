@@ -3,7 +3,14 @@ import { createBlockForCommand } from "../../storyActionCommands";
 import type { StoryCommandValue } from "../../storyCommandValues";
 import { asColor, asDurationMs, asNumber, asTarget, defineStoryCommand, secondsParam, targetParam } from "../spec";
 
-/** Screen and displayable effects: `/blink`, `/vignette`, `/fx`, `/transform`. */
+/**
+ * Screen and displayable effects: `/blink`, `/vignette`, `/fx`, `/transform`.
+ *
+ * The `effects` category these four shared is gone (§4.1): it cut by material domain while every other
+ * category cut by subject, so "fade the portrait out" could argue for three different sections. They
+ * split by what they act on - the screen-wide pair is a property of the SCENE, the displayable pair
+ * acts on stage objects and reaches every subject its `accepts` lists.
+ */
 
 function screenEffectBuild(commandId: "screenBlink" | "screenVignette") {
     return (
@@ -43,7 +50,7 @@ function screenEffectBuild(commandId: "screenBlink" | "screenVignette") {
 export const blink = defineStoryCommand({
     id: "blink",
     token: "blink",
-    category: "effects",
+    category: "scene",
     params: {
         d: secondsParam(),
         hold: { hint: "hold", type: { kind: "number", min: 0 } },
@@ -56,7 +63,7 @@ export const vignette = defineStoryCommand({
     id: "vignette",
     token: "vignette",
     aliases: ["vig"],
-    category: "effects",
+    category: "scene",
     params: {
         d: secondsParam(),
         hold: { hint: "hold", type: { kind: "number", min: 0 } },
@@ -85,7 +92,8 @@ export const fx = defineStoryCommand({
     id: "fx",
     token: "fx",
     aliases: ["effect"],
-    category: "effects",
+    // Only the flat surfaces read this; the sidebar files `/fx` under all four subjects it accepts.
+    category: "image",
     params: {
         target: targetParam(["image", "text", "layer", "character"], { core: true }),
     },

@@ -266,6 +266,31 @@ describe("variables", () => {
         expect(issuesOf("/local gold")).toEqual(["duplicateVariable"]);
     });
 
+    it("the renamed declarations keep their old tokens working, and rename nothing in a document", () => {
+        // §3.6 renamed the tokens, not the payloads: a document stores blocks, never a command id, so
+        // an existing scene cannot notice. Proven rather than reasoned - build the same declaration
+        // through the new token and the old one and compare everything but the freshly minted ids.
+        const declaration = (source: string) => {
+            const block = build(source);
+            if (block.kind !== "declaration") {
+                throw new Error(`expected a declaration from ${source}`);
+            }
+            return { ...block.payload, storageKey: "<id>" };
+        };
+        expect(declaration("/save gold 10 type=number")).toEqual(declaration("/var gold 10 type=number"));
+        expect(declaration("/global nickname type=string")).toEqual(declaration("/persis nickname type=string"));
+        expect(declaration("/save gold 10 type=number").scope).toBe("saved");
+        expect(declaration("/global nickname type=string").scope).toBe("persistent");
+        // No payload carries the token that produced it - the structural reason the rename is free.
+        for (const source of ["/save gold", "/var gold", "/global nickname", "/persis nickname"]) {
+            expect(Object.keys(build(source).payload).sort())
+                .toEqual(["defaultValue", "description", "name", "scope", "storageKey", "valueType"]);
+        }
+        // `/swap` lost its two type-shaped aliases (§3.6) without losing a spelling of itself.
+        expect(getCommandSpec("swap")?.aliases).toEqual(["src"]);
+        expect(build("/src hero night")).toMatchObject({ payload: { operation: "setSource", assetId: "i2" } });
+    });
+
     it("a declaration builds a ROW whose id is the variable and whose key is its own id (v6)", () => {
         const block = build("/local hp 100");
         expect(block.kind).toBe("declaration");

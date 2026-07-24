@@ -5,7 +5,7 @@ import { storyMsToSeconds } from "@shared/utils/storyTime";
 import { richIfMeaningful } from "./richText";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { CharacterAppearanceRef, StoryBlockTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
-import { getActionCommandCategory, type ActionCommandCategoryId } from "./storyActionCommands";
+import { getCommandGroup, type StoryCommandGroupId } from "./storyCommandCategories";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
 import { translate } from "@/lib/i18n";
 
@@ -338,24 +338,31 @@ export function getContainerHeaderInfo(block: StoryBlock): StoryContainerHeaderI
     return null;
 }
 
+/**
+ * The row's badge and its left-edge colour bar. `iconColor` comes from the command GROUP (see
+ * `storyCommandCategories.ts`), which is why the 13→8 rearrangement changed almost nothing here: the
+ * four stage subjects stayed separate colour units precisely so this surface would not lose the
+ * distinctions it earns. The two rows that did change category changed on purpose - a screen effect
+ * belongs to the scene, a blueprint call is a tool.
+ */
 export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typeof FileText; iconColor: string } {
-    const withCategory = (label: string, icon: typeof FileText, categoryId: ActionCommandCategoryId) => ({
+    const withCategory = (label: string, icon: typeof FileText, groupId: StoryCommandGroupId) => ({
         label,
         icon,
-        iconColor: getActionCommandCategory(categoryId).iconColor,
+        iconColor: getCommandGroup(groupId).iconColor,
     });
     if (block.kind === "nodeAction") {
         if (block.payload.action === "narration") return withCategory(translate("story.badge.narration"), FileText, "character");
         if (block.payload.action === "dialogue") return withCategory(translate("story.badge.dialogue"), MessageSquare, "character");
-        if (block.payload.action === "choice") return withCategory(translate("story.badge.choice"), GitBranch, "control");
-        return withCategory(translate("story.badge.choiceOption"), Route, "control");
+        if (block.payload.action === "choice") return withCategory(translate("story.badge.choice"), GitBranch, "flow");
+        return withCategory(translate("story.badge.choiceOption"), Route, "flow");
     }
     if (block.kind === "action") {
         if (block.payload.action === "setBackground") return withCategory(translate("story.badge.background"), Image, "scene");
         if (block.payload.action === "character") return withCategory(translate("story.badge.character"), UserRound, "character");
-        if (block.payload.action === "audio") return withCategory(translate("story.badge.audio"), Music, "media");
+        if (block.payload.action === "audio") return withCategory(translate("story.badge.audio"), Music, "sound");
         if (block.payload.action === "setVariable") return withCategory(translate("story.badge.variable"), Variable, "data");
-        if (block.payload.action === "wait") return withCategory(translate("story.badge.wait"), Clock, "control");
+        if (block.payload.action === "wait") return withCategory(translate("story.badge.wait"), Clock, "flow");
         if (block.payload.action === "image") return withCategory(translate("story.badge.image"), Image, "image");
         if (block.payload.action === "displayable") {
             if (block.payload.operation === "transform") return withCategory(translate("story.badge.transform"), Move, "image");
@@ -365,13 +372,15 @@ export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typ
         if (block.payload.action === "layer") return withCategory(translate("story.badge.layer"), Layers, "layer");
         if (block.payload.action === "video") return withCategory(translate("story.badge.video"), Video, "video");
         if (block.payload.action === "nvl") return withCategory(translate("story.badge.nvl"), FileText, "scene");
-        if (block.payload.action === "blueprint") return withCategory(translate("story.badge.blueprint"), Puzzle, "data");
+        if (block.payload.action === "blueprint") return withCategory(translate("story.badge.blueprint"), Puzzle, "utils");
         // Its own badge, not "Effect": `/camera darken` dims the whole stage and outlives the scene,
         // while `/vignette` is a mask layer inside it. The row has to say which one it is at a glance.
-        if (block.payload.action === "camera") return withCategory(translate("story.badge.camera"), Aperture, "effects");
-        return withCategory(translate("story.badge.effect"), Sparkles, "effects");
+        if (block.payload.action === "camera") return withCategory(translate("story.badge.camera"), Aperture, "camera");
+        // A screen effect is a property of the scene it happens in (§4.1), so it wears the scene hue;
+        // the Sparkles badge is what still tells a `/blink` row apart from a `/bg` row at a glance.
+        return withCategory(translate("story.badge.effect"), Sparkles, "scene");
     }
-    if (block.kind === "control") return withCategory(translate("story.badge.control"), Settings2, "control");
+    if (block.kind === "control") return withCategory(translate("story.badge.control"), Settings2, "flow");
     if (block.kind === "jump") return withCategory(translate("story.badge.jump"), Route, "scene");
     if (block.kind === "code") return withCategory(translate("story.badge.code"), Code, "utils");
     if (block.kind === "invalid") {

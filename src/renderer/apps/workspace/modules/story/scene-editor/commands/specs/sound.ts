@@ -36,7 +36,7 @@ function audioControlBlock(
 export const bgm = defineStoryCommand({
     id: "bgm",
     token: "bgm",
-    category: "media",
+    category: "sound",
     quickParams: ["vol", "loop"],
     params: {
         audio: { aliases: ["src"], hint: "audioAsset", type: { kind: "asset", assetType: "audio" }, positional: true, core: true },
@@ -73,7 +73,7 @@ export const sound = defineStoryCommand({
     id: "sound",
     token: "sound",
     aliases: ["se"],
-    category: "media",
+    category: "sound",
     quickParams: ["vol", "loop"],
     params: {
         audio: { aliases: ["src"], hint: "audioAsset", type: { kind: "asset", assetType: "audio" }, positional: true, core: true },
@@ -112,7 +112,7 @@ export const vol = defineStoryCommand({
     id: "volume",
     token: "vol",
     aliases: ["volume"],
-    category: "media",
+    category: "sound",
     params: {
         target: targetParam(["audio"], { skippable: true }),
         volume: { aliases: ["vol"], hint: "volume", type: { kind: "number", min: 0, max: 1 }, positional: true, core: true },
@@ -127,7 +127,7 @@ export const vol = defineStoryCommand({
 export const rate = defineStoryCommand({
     id: "rate",
     token: "rate",
-    category: "media",
+    category: "sound",
     params: {
         target: targetParam(["audio"], { skippable: true }),
         rate: { hint: "rate", type: { kind: "number", min: 0 }, positional: true, core: true },
@@ -141,7 +141,7 @@ export const rate = defineStoryCommand({
 export const stop = defineStoryCommand({
     id: "stop",
     token: "stop",
-    category: "media",
+    category: "sound",
     params: {
         target: targetParam(["audio"]),
         fade: { hint: "fade", type: { kind: "number", min: 0 } },
@@ -153,7 +153,7 @@ export const pause = defineStoryCommand({
     id: "pause",
     token: "pause",
     aliases: ["pausesound"],
-    category: "media",
+    category: "sound",
     params: {
         target: targetParam(["audio"]),
     },
@@ -163,7 +163,7 @@ export const pause = defineStoryCommand({
 export const resume = defineStoryCommand({
     id: "resume",
     token: "resume",
-    category: "media",
+    category: "sound",
     params: {
         target: targetParam(["audio"]),
     },
@@ -173,7 +173,7 @@ export const resume = defineStoryCommand({
 export const mute = defineStoryCommand({
     id: "mute",
     token: "mute",
-    category: "media",
+    category: "sound",
     params: {
         target: targetParam(["audio"]),
     },
@@ -185,7 +185,7 @@ export const mute = defineStoryCommand({
 export const unmute = defineStoryCommand({
     id: "unmute",
     token: "unmute",
-    category: "media",
+    category: "sound",
     params: {
         target: targetParam(["audio"]),
     },

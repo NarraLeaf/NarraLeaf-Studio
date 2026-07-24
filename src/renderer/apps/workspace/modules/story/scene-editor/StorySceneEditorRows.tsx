@@ -22,15 +22,14 @@ import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useBadgeImageUrl, type BadgeImageSource } from "./storyBadgeImageCache";
 import { resolveStoryMotionPreviewTarget } from "../../story-motion/storyMotionPreviewTarget";
 import type { Character } from "@/lib/workspace/services/character/Character";
+import type { PaletteActionCommand } from "./storyActionCommands";
 import {
-    ACTION_COMMAND_CATEGORIES,
-    ACTION_COMMANDS,
-    getActionCommandCategory,
-    localizeActionCommand,
-    translateActionCommandCategoryLabel,
-    type ActionCommandCategory,
-    type PaletteActionCommand,
-} from "./storyActionCommands";
+    commandCategoryLabelKey,
+    getCommandCategory,
+    getCommandGroup,
+    STORY_COMMAND_GROUPS,
+    type StoryCommandGroup,
+} from "./storyCommandCategories";
 import { searchActionCommands } from "./storyCommandSearch";
 import { localizeSpecCommand, specPaletteCommands } from "./commands/specPalette";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
@@ -1152,7 +1151,7 @@ function LensToggle(props: { active: boolean; onToggle: () => void }) {
 
 /** The engine-mode badge on a parallel/race header (WI-3): `all` / `allAsync` / `any`, in control colour. */
 function ContainerModeBadge({ mode }: { mode: "all" | "allAsync" | "any" }) {
-    const color = getActionCommandCategory("control").iconColor;
+    const color = getCommandCategory("flow").iconColor;
     return (
         <span
             className="shrink-0 rounded border px-1 py-px font-mono text-[10px] leading-none"
@@ -1402,9 +1401,11 @@ export function InsertRow(props: {
     const actionOptions = useMemo<PaletteActionCommand[]>(
         () => searchActionCommands(
             [
-                // The slash menu lists LINE commands (one per spec); plugin actions ride along as before.
+                // The slash menu lists LINE commands, one per spec — one entry each, unlike the sidebar,
+                // because the highlight walks this list by command id and a repeat would break it.
                 ...specPaletteCommands().map(command => localizeSpecCommand(command, t)),
-                ...pluginCommands.map(command => localizeActionCommand(command, t)),
+                // A plugin action carries the label its own language pack already resolved.
+                ...pluginCommands,
             ],
             chooserQuery,
         ),
@@ -1734,7 +1735,7 @@ export function getSpeakerCandidates(characters: Character[], tempSpeakers: Temp
     return candidates;
 }
 
-type VisibleActionCommandCategory = ActionCommandCategory & {
+type VisibleActionCommandGroup = StoryCommandGroup & {
     commands: PaletteActionCommand[];
 };
 
@@ -1789,10 +1790,9 @@ function useActionCommandMenuState(options: PaletteActionCommand[], query: strin
     const browse = query.trim() === "";
     // Only non-empty categories, "all" excluded (it is every command, not a section). Category order
     // is the layout order.
-    const groups = useMemo<VisibleActionCommandCategory[]>(() => {
-        return ACTION_COMMAND_CATEGORIES
-            .filter(category => category.id !== "all")
-            .map(category => ({ ...category, commands: options.filter(command => command.category === category.id) }))
+    const groups = useMemo<VisibleActionCommandGroup[]>(() => {
+        return STORY_COMMAND_GROUPS
+            .map(group => ({ ...group, commands: options.filter(command => command.group === group.id) }))
             .filter(group => group.commands.length > 0);
     }, [options]);
     // The order the highlight walks and Enter commits from: grouped sections while browsing, the raw
@@ -1838,7 +1838,7 @@ function ActionCommandMenuRow(props: {
     onChoose: (commandId: string) => void;
 }) {
     const Icon = props.command.icon;
-    const category = getActionCommandCategory(props.command.category);
+    const group = getCommandGroup(props.command.group);
     return (
         <button
             type="button"
@@ -1852,7 +1852,7 @@ function ActionCommandMenuRow(props: {
             onMouseDown={() => props.onChoose(props.command.id)}
             onMouseEnter={() => props.onHighlight(props.command.id)}
         >
-            <Icon className="h-4 w-4 shrink-0" style={{ color: category.iconColor }} />
+            <Icon className="h-4 w-4 shrink-0" style={{ color: group.iconColor }} />
             <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm text-fg">{props.command.label}</span>
                 {props.command.detail ? <span className="block truncate text-2xs text-fg-subtle">{props.command.detail}</span> : null}
@@ -1863,7 +1863,7 @@ function ActionCommandMenuRow(props: {
 
 function ActionCommandMenu(props: {
     browse: boolean;
-    groups: VisibleActionCommandCategory[];
+    groups: VisibleActionCommandGroup[];
     commands: PaletteActionCommand[];
     activeCommandId: string | null;
     onHighlightCommand: (commandId: string) => void;
@@ -1907,7 +1907,7 @@ function ActionCommandMenu(props: {
                                 <div key={group.id}>
                                     <div className="flex items-center gap-1.5 px-2 pb-1 pt-2 text-2xs font-medium uppercase tracking-wide text-fg-subtle">
                                         <Icon className="h-3 w-3 shrink-0" style={{ color: group.iconColor }} />
-                                        <span>{translateActionCommandCategoryLabel(group, t)}</span>
+                                        <span>{t(commandCategoryLabelKey(group.id))}</span>
                                     </div>
                                     {group.commands.map(command => (
                                         <ActionCommandMenuRow
