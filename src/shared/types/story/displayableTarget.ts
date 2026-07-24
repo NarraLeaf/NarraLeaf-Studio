@@ -29,11 +29,21 @@ export function normalizeStageObjectName(value: string | undefined): string {
  * reference resolve through it, so they cannot drift apart. See `displayableSourceIdentity`.
  */
 export function characterStageObjectName(payload: Extract<StoryActionPayload, { action: "character" }>): string {
-    const explicitName = payload.objectName?.trim();
+    return characterStageName(payload.characterId, payload.objectName);
+}
+
+/**
+ * The stage name rule itself, keyed on the two fields it actually needs. Extracted so callers that
+ * hold a bare `characterId` (an inline expression run carries only that - see the compiler's
+ * `compileEventRun`) resolve through the exact same rule as {@link characterStageObjectName}, rather
+ * than hand-rolling `normalizeStageObjectName(characterId)` and drifting the moment the rule changes.
+ */
+export function characterStageName(characterId: string | undefined, objectName?: string): string {
+    const explicitName = objectName?.trim();
     if (explicitName && explicitName !== "character") {
         return normalizeStageObjectName(explicitName);
     }
-    return normalizeStageObjectName(payload.characterId || explicitName || "character");
+    return normalizeStageObjectName(characterId || explicitName || "character");
 }
 
 /**

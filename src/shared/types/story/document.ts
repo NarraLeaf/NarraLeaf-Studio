@@ -130,8 +130,11 @@ export type StorySceneUpdate = {
  * Story-declarable variable classes:
  *  - "scene": per-scene, backed by NLR `Scene.local` (survives save/load); declared on `StoryScene`.
  *  - "saved": per save-file, backed by NLR `Storable`; declared on `StoryDocument`; serializable-only.
- *  - "persistent": app-level, shared with UI blueprints (`BlueprintDocument.persistentVariables`),
- *     referenced by stable `storageKey`; serializable-only. Not stored in the story document.
+ *  - "persistent": app-level, shared with UI blueprints via the project variable registry
+ *     (`VariableRegistry`, `@shared/types/variables/registry`), referenced by stable `storageKey`;
+ *     serializable-only. Not stored in the story document. (The former
+ *     `BlueprintDocument.persistentVariables` map was deleted in the M-VAR registry migration; it now
+ *     survives only as a legacy migration seed - see `variableRegistryModel.ts`.)
  * The blueprint-local "var" class is a Blueprint concern (`Blueprint.members.variables`), not a story scope.
  */
 export type StoryVariableScope = "scene" | "saved" | "persistent";
@@ -664,6 +667,12 @@ export type StoryTransitionRef = {
         | "blinds"
         | "slide"
         | "softIris"
+        // 0.16.0 Mask-vocabulary additions (engine `Reveal` + `Mask.*`). Additive: existing documents
+        // never carry these, so no schema bump is needed.
+        | "barnDoor"
+        | "clock"
+        | "fan"
+        | "dots"
         | "blurDissolve"
         | "throughColor"
         | "darkness"

@@ -46,6 +46,13 @@ export const storyInspector = {
         feather: "Feather %",
         orientation: "Orientation",
         slats: "Slats",
+        axis: "Axis",
+        blades: "Blades",
+        fromAngle: "From angle °",
+        rows: "Rows",
+        cols: "Columns",
+        stagger: "Stagger",
+        shape: "Shape",
         pattern: "Pattern",
         kind: "Kind",
         effect: "Effect",
@@ -112,6 +119,10 @@ export const storyInspector = {
         maskWipe: "Slide reveal",
         softWipe: "Soft wipe",
         blinds: "Blinds",
+        barnDoor: "Barn door",
+        clock: "Clock",
+        fan: "Fan",
+        dots: "Dots",
         slide: "Push",
         throughColor: "Through color",
         startX: "Start X",
@@ -129,6 +140,10 @@ export const storyInspector = {
         maskWipe: "Hard-edged directional reveal. The new image is uncovered by a sweeping straight edge (no feather).",
         softWipe: "Feathered directional wipe. The new image erases in with a soft gradient edge.",
         blinds: "Venetian blinds reveal. Slats widen to uncover the new image.",
+        barnDoor: "Barn doors. Two soft edges close from opposite sides toward the centre.",
+        clock: "Clock wipe. A radial edge sweeps a full turn around the centre.",
+        fan: "Fan / windmill. Several blades sweep in parallel around the centre.",
+        dots: "Polka dots. A grid of dots grows until the cells flood together.",
         slide: "Push. The new image slides in from one edge as the old one slides out.",
         throughColor: "Covers the frame with a solid colour (using the chosen pattern), holds, then uncovers on the new image. The target appears only after the colour hold. Covers fade-to-black/white, soft wipe through black, blinds black hold, iris to black, and flash (hold 0).",
     },
@@ -143,6 +158,16 @@ export const storyInspector = {
     blindsOrientation: {
         horizontal: "Horizontal",
         vertical: "Vertical",
+    },
+
+    clockDirection: {
+        clockwise: "Clockwise",
+        counterclockwise: "Counter-clockwise",
+    },
+
+    irisShape: {
+        circle: "Circle",
+        ellipse: "Ellipse",
     },
 
     throughColorPattern: {
