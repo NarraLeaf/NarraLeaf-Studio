@@ -84,6 +84,22 @@ describe("buildSceneFlowGraph", () => {
         expect(graph.nodes[0].isEntry).toBe(true);
     });
 
+    it("leaves an in-scene goto out of the map entirely (§12.6)", () => {
+        // The map is about scene-to-scene structure. A `goto` moves the play head WITHIN a scene and
+        // unloads nothing, so it is neither an edge, a self-jump, nor a dangling one - drawing it
+        // would put line-level control flow on a map whose whole value is that it is not that.
+        const gotoBlock = { id: "g1", kind: "control", parentId: null, childrenIds: [], payload: { control: "goto", targetLabel: "start" } } as unknown as StoryBlock;
+        const labelBlock = { id: "l1", kind: "control", parentId: null, childrenIds: [], payload: { control: "label", name: "start" } } as unknown as StoryBlock;
+        const graph = buildSceneFlowGraph(document([
+            scene("a", "Opening", [labelBlock, gotoBlock]),
+            scene("b", "Hallway", []),
+        ], "a"));
+
+        expect(graph.edges).toHaveLength(0);
+        expect(graph.nodes.map(node => ({ id: node.sceneId, self: node.selfJumpCount, dangling: node.danglingJumpCount })))
+            .toEqual([{ id: "a", self: 0, dangling: 0 }, { id: "b", self: 0, dangling: 0 }]);
+    });
+
     it("collapses repeated jumps between the same pair into one edge", () => {
         const graph = buildSceneFlowGraph(document([
             scene("a", "Opening", [jumpBlock("j1", "b"), jumpBlock("j2", "b")]),

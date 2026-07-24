@@ -130,6 +130,7 @@ function resolutionReason(issue: StoryCommandResolutionIssue): StoryCommandReaso
             return { key: reasonKey(issue.code), params: { value: issue.value, assetType: issue.assetType } };
         case "unknownCharacter":
         case "unknownScene":
+        case "unknownLabel":
         case "unknownVariable":
         case "duplicateVariable":
             return { key: reasonKey(issue.code), params: { value: issue.value } };

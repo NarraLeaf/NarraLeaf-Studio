@@ -433,6 +433,9 @@ export const storyInspector = {
     },
 
     control: {
+        labelName: "Label name",
+        gotoTarget: "Go to label",
+        noLabels: "No labels in this scene",
         conditionContainer: "Condition container. Add condition branches as children.",
         control: "Control",
         sequence: "Sequence",

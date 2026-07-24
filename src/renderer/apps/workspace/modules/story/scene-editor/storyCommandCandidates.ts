@@ -172,6 +172,8 @@ function candidatesForType(
         }
         case "scene":
             return refCandidates(context.scenes, query);
+        case "label":
+            return refCandidates(context.labels.map(name => ({ id: name, name })), query);
         case "variable":
             return context.variables
                 .filter(entry => !query || containsFold(entry.name, query))
@@ -250,6 +252,7 @@ export function hasCandidateSource(param: StoryCommandParam): boolean {
             case "characterForm":
             case "scene":
             case "variable":
+            case "label":
             case "target":
             case "content":
             case "enum":

@@ -24,6 +24,7 @@ import {
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
     savedVariableDefs,
+    sceneLabelNames,
     sceneVariableDefs,
 } from "@shared/types/story";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
@@ -2113,6 +2114,39 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
     const { t } = useTranslation();
     if (props.payload.control === "condition") {
         return <div className="text-sm text-fg-muted">{t("storyInspector.control.conditionContainer")}</div>;
+    }
+    if (props.payload.control === "label") {
+        const labelPayload = props.payload;
+        return (
+            <div className="max-w-sm">
+                <TextField
+                    label={t("storyInspector.control.labelName")}
+                    value={labelPayload.name}
+                    onChange={name => props.onChange({ ...labelPayload, name })}
+                />
+            </div>
+        );
+    }
+    if (props.payload.control === "goto") {
+        const gotoPayload = props.payload;
+        // A picker, not a free field: the target must be a label declared in THIS scene or the build
+        // fails, so offering the scene's own labels is the difference between a choice and a guess.
+        // Any dangling value already stored stays selectable, or switching rows would silently rewrite it.
+        const names = sceneLabelNames(props.document.scenes[props.sceneId]);
+        const options: SelectOption[] = names.map(name => ({ value: name, label: name }));
+        if (gotoPayload.targetLabel && !names.includes(gotoPayload.targetLabel)) {
+            options.unshift({ value: gotoPayload.targetLabel, label: gotoPayload.targetLabel });
+        }
+        return (
+            <div className="max-w-sm">
+                <SelectField
+                    label={t("storyInspector.control.gotoTarget")}
+                    options={options.length > 0 ? options : [{ value: "", label: t("storyInspector.control.noLabels") }]}
+                    value={gotoPayload.targetLabel}
+                    onChange={targetLabel => props.onChange({ ...gotoPayload, targetLabel: String(targetLabel) })}
+                />
+            </div>
+        );
     }
     if (props.payload.control !== "conditionBranch") {
         const groupPayload = props.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
