@@ -1013,6 +1013,9 @@ function ActionPayloadFields(props: {
             </div>
         );
     }
+    if (payload.action === "camera") {
+        return <CameraActionEditor payload={payload} onChange={props.onChange} />;
+    }
     if (payload.action === "screenEffect") {
         return (
             <div className="nl-field-grid">
@@ -1036,6 +1039,100 @@ function ActionPayloadFields(props: {
         );
     }
     return null;
+}
+
+type CameraActionPayload = Extract<StoryActionPayload, { action: "camera" }>;
+
+/** Mirrors the compiler's floor - the inspector must not be able to store a shot the compile then rewrites. */
+const MIN_CAMERA_ZOOM = 0.05;
+
+const cameraOperationOptions = (t: TFunc): SelectOption[] => [
+    { value: "zoom", label: t("storyInspector.cameraOperation.zoom") },
+    { value: "pan", label: t("storyInspector.cameraOperation.pan") },
+    { value: "rotate", label: t("storyInspector.cameraOperation.rotate") },
+    { value: "darken", label: t("storyInspector.cameraOperation.darken") },
+    { value: "reset", label: t("storyInspector.cameraOperation.reset") },
+];
+
+/**
+ * The camera's knobs. Three things the *naming* has to carry, because a paragraph of explanation is
+ * not the house style (M3 卡 §1):
+ *  - the section title says the pose is story-wide, so an author does not expect a scene change to
+ *    put the camera back;
+ *  - `darken` is labelled as STAGE brightness, which is what tells it apart from `/vignette`'s
+ *    in-scene mask layer;
+ *  - `reset` sits in the same operation list, one pick away, rather than being a separate command an
+ *    author has to know exists.
+ *
+ * Each operation shows only its own value: a `zoom` row carrying a stale `rotation` field would be
+ * offering to edit a number the compile never reads.
+ */
+function CameraActionEditor(props: { payload: CameraActionPayload; onChange: (payload: StoryBlock["payload"]) => void }) {
+    const { t } = useTranslation();
+    const payload = props.payload;
+    return (
+        <Section title={t("storyInspector.section.camera")}>
+            <FieldGrid cols={2}>
+                <SelectField
+                    label={t("storyInspector.field.operation")}
+                    options={cameraOperationOptions(t)}
+                    value={payload.operation}
+                    onChange={operation => props.onChange({ ...payload, operation: operation as CameraActionPayload["operation"] })}
+                />
+                {payload.operation === "zoom" ? (
+                    <NumberField
+                        label={t("storyInspector.camera.zoom")}
+                        value={payload.zoom}
+                        onChange={zoom => props.onChange({ ...payload, zoom: zoom === undefined ? undefined : Math.max(MIN_CAMERA_ZOOM, zoom) })}
+                    />
+                ) : null}
+                {payload.operation === "rotate" ? (
+                    <NumberField
+                        label={t("storyInspector.camera.rotation")}
+                        value={payload.rotation}
+                        onChange={rotation => props.onChange({ ...payload, rotation })}
+                    />
+                ) : null}
+                {payload.operation === "darken" ? (
+                    <NumberField
+                        label={t("storyInspector.camera.darkness")}
+                        value={payload.darkness}
+                        onChange={darkness => props.onChange({ ...payload, darkness: darkness === undefined ? undefined : Math.min(1, Math.max(0, darkness)) })}
+                    />
+                ) : null}
+                {payload.operation === "pan" ? (
+                    <>
+                        <NumberField
+                            label={t("storyInspector.camera.xalign")}
+                            value={payload.position?.xalign}
+                            onChange={xalign => props.onChange({ ...payload, position: { ...payload.position, xalign: clampAlign(xalign) } })}
+                        />
+                        <NumberField
+                            label={t("storyInspector.camera.yalign")}
+                            value={payload.position?.yalign}
+                            onChange={yalign => props.onChange({ ...payload, position: { ...payload.position, yalign: clampAlign(yalign) } })}
+                        />
+                    </>
+                ) : null}
+                <SecondsField
+                    label={t("storyInspector.field.duration")}
+                    value={payload.durationMs}
+                    onChange={durationMs => props.onChange({ ...payload, durationMs: durationMs === undefined ? undefined : Math.max(0, durationMs) })}
+                />
+                <SelectField
+                    label={t("storyInspector.field.easing")}
+                    options={easingOptions(t)}
+                    value={payload.easing ?? ""}
+                    onChange={easing => props.onChange({ ...payload, easing: String(easing) || undefined })}
+                />
+            </FieldGrid>
+        </Section>
+    );
+}
+
+/** An align is a 0–1 fraction of the stage; outside that the camera is aimed off the world. */
+function clampAlign(value: number | undefined): number | undefined {
+    return value === undefined ? undefined : Math.min(1, Math.max(0, value));
 }
 
 type CharacterActionPayload = Extract<StoryActionPayload, { action: "character" }>;
