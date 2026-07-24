@@ -8,7 +8,7 @@ import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbilit
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
 import type { MissingRecentProject } from "./state/appStateTypes";
-import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "./devMode";
+import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
@@ -242,6 +242,8 @@ export interface RendererPreloadedInterface {
         onConsoleLog(handler: (payload: DevModeConsoleLogPayload) => void): AppEventToken;
         onBlueprintDebugEvent(handler: (event: BlueprintDebugEvent) => void): AppEventToken;
         forwardBlueprintDebugEvent(payload: DevModeBlueprintDebugEventPayload): void;
+        forwardStoryRow(payload: DevModeStoryRowPayload): void;
+        onStoryRowHighlight(handler: (payload: DevModeStoryRowHighlight) => void): AppEventToken;
         resolveAssetUrl(assetId: string, assetType?: string): Promise<RequestStatus<{ url: string }>>;
         resolveImageAssetUrl(assetId: string): Promise<RequestStatus<{ url: string }>>;
         openBlueprintInWorkspace(
