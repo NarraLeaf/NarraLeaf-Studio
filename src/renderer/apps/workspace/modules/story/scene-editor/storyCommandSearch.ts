@@ -1,5 +1,6 @@
 import { listCommandDefs } from "./commands/registry";
 import type { PaletteActionCommand } from "./storyActionCommands";
+import { STORY_COMMAND_PINYIN } from "./storyCommandPinyin.generated";
 
 /**
  * Fuzzy, multilingual matching for the command-name menu - shared by the `/` inline creator and the
@@ -39,11 +40,18 @@ function isSubsequence(needle: string, haystack: string): boolean {
  *
  * The `/`-spelled forms sit in the exact tier only, on purpose: a bare `/` must not substring-match
  * every `/token` and drag the whole palette in behind Note.
+ *
+ * A zh-labelled command also carries its toneless pinyin as keywords (full syllables + first-letter
+ * initials, from the checked-in static table), so a Latin-alphabet author reaches "背景" by typing
+ * "beijing" or "bj". They ride the same keyword tiers as the English tokens; the Chinese label itself
+ * is matched separately by the parser's localized-token table, so both spellings resolve.
  */
 function scoreCommand(command: PaletteActionCommand, query: string): number | null {
+    const pinyin = STORY_COMMAND_PINYIN[command.id];
     const keywords = new Set<string>([
         ...(KEYWORDS_BY_COMMAND_ID.get(command.id.toLowerCase()) ?? []),
         ...(command.aliases ?? []).map(alias => alias.toLowerCase()),
+        ...(pinyin ? [pinyin.full, pinyin.initials] : []),
     ]);
     const slashed = new Set([...keywords].map(keyword => (keyword.startsWith("/") ? keyword : `/${keyword}`)));
     const texts = [command.label, command.id, command.detail, command.nlrCapability ?? ""].map(text => text.toLowerCase());

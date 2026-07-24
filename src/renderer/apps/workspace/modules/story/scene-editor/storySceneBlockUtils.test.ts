@@ -252,4 +252,67 @@ describe("buildDialogueAppearances", () => {
         const blocks = [dialogue("d1", { characterId: "c1" })];
         expect(buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).has("d1")).toBe(false);
     });
+
+    it("tracks the placement (WI-3): an enter sets it and names its own block as the source", () => {
+        const blocks = [
+            characterAction("e", { action: "character", operation: "enter", characterId: "c1", transform: { preset: "left" } }),
+            dialogue("d1", { characterId: "c1" }),
+        ];
+        expect(buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).get("d1"))
+            .toMatchObject({ position: "left", positionSourceId: "e" });
+    });
+
+    it("a move relocates the placement and becomes the new source, keeping the form", () => {
+        const blocks = [
+            characterAction("e", { action: "character", operation: "enter", characterId: "c1", formName: "casual", transform: { preset: "left" } }),
+            dialogue("d1", { characterId: "c1" }),
+            characterAction("m", { action: "character", operation: "move", characterId: "c1", transform: { preset: "right" } }),
+            dialogue("d2", { characterId: "c1" }),
+        ];
+        const map = buildDialogueAppearances(scene(blocks, blocks.map(b => b.id)));
+        expect(map.get("d1")).toMatchObject({ position: "left", positionSourceId: "e" });
+        expect(map.get("d2")).toMatchObject({ position: "right", positionSourceId: "m", formName: "casual" });
+    });
+
+    it("an expression keeps the placement and its source untouched", () => {
+        const blocks = [
+            characterAction("e", { action: "character", operation: "enter", characterId: "c1", transform: { preset: "right" } }),
+            characterAction("f", { action: "character", operation: "expression", characterId: "c1", variants: ["angry"] }),
+            dialogue("d1", { characterId: "c1" }),
+        ];
+        expect(buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).get("d1"))
+            .toMatchObject({ position: "right", positionSourceId: "e", variants: ["angry"] });
+    });
+
+    it("marks an entered speaker shown, so its avatar still resolves", () => {
+        const blocks = [
+            characterAction("e", { action: "character", operation: "enter", characterId: "c1" }),
+            dialogue("d1", { characterId: "c1" }),
+        ];
+        expect(buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).get("d1")?.shown).toBe(true);
+    });
+
+    it("reads back a placement move on a never-shown speaker without inventing a shown avatar (WI-3 round-trip)", () => {
+        // The group-header dropdown authors this /move for a speaker with no /show; the scan must read it
+        // back so a second pick rewrites it rather than stacking a duplicate — but must not mark it shown.
+        const blocks = [
+            characterAction("m", { action: "character", operation: "move", characterId: "c1", transform: { preset: "left" } }),
+            dialogue("d1", { characterId: "c1" }),
+        ];
+        const appearance = buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).get("d1");
+        expect(appearance).toMatchObject({ position: "left", positionSourceId: "m" });
+        expect(appearance?.shown).toBeUndefined();
+    });
+
+    it("leaves the accumulated placement untouched for a move that carries no placement preset", () => {
+        const blocks = [
+            characterAction("e", { action: "character", operation: "enter", characterId: "c1", transform: { preset: "left" } }),
+            characterAction("m", { action: "character", operation: "move", characterId: "c1", transform: { durationMs: 300 } }),
+            dialogue("d1", { characterId: "c1" }),
+        ];
+        // The placement stays left (the enter's), and the enter stays its source — a coord-only move is
+        // not the row the dropdown edits.
+        expect(buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).get("d1"))
+            .toMatchObject({ position: "left", positionSourceId: "e" });
+    });
 });

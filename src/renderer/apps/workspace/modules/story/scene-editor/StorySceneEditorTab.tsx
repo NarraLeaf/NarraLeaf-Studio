@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { AlignLeft, Camera, ChevronDown, ChevronRight, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, SlidersHorizontal, StretchVertical, Trash2, Variable } from "lucide-react";
+import { AlignLeft, BookOpen, Camera, ChevronDown, ChevronRight, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, SlidersHorizontal, StretchVertical, Trash2, Variable } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -31,6 +31,7 @@ import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, set
 import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { StoryInspectorPanel } from "./StoryInspectorPanel";
+import { StoryCommandManual } from "./StoryCommandManual";
 import { publishStoryInspectorState, STORY_INSPECTOR_PANEL_ID } from "./storyInspectorBridge";
 import { stopVoiceAudition } from "./voiceAudition";
 import { StoryEditorTextStyleProvider } from "./storyEditorTextStyle";
@@ -306,6 +307,9 @@ function StorySceneOverviewBlock(props: {
 export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentProps<StorySceneEditorTabPayload | undefined>) {
     const { t } = useTranslation();
     const editor = useStorySceneEditorController(tabId, payload);
+    // The command reference overlay (WI-2), opened from the header. Local state, not a panel — it is a
+    // read-only reference the author dips into, not a docked surface, so it mirrors the cheat sheet.
+    const [manualOpen, setManualOpen] = useState(false);
     const sensors = useSensors(
         useSensor(PointerSensor),
     );
@@ -624,7 +628,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // gates the republish to real changes of the inspected block, so typing in another row — which
     // rewrites the whole scene snapshot every keystroke — no longer re-renders the panel (WI-0 #7).
     const shownInspectorBlockRef = useRef<string | null>(null);
-    const lastInspectorSigRef = useRef<{ block: string; characters: unknown; sceneList: string } | null>(null);
+    const lastInspectorSigRef = useRef<{ blockId: string; payload: unknown; characters: unknown; sceneList: string } | null>(null);
+    // Latest controller handle, read by the bridge's published callbacks so they never edit through a
+    // stale scene snapshot. The republish gate below fires only when the inspected block changes, so
+    // between republishes an untracked scene change (a quickParam click or a drag on another row) would
+    // otherwise leave the panel's callbacks closed over the pre-change scene — the next panel edit would
+    // then record that stale scene as its undo snapshot, so one Ctrl+Z silently reverts two edits (WI-0).
+    const editorRef = useRef(editor);
+    editorRef.current = editor;
 
     // The right-sidebar inspector (WI-1). Registered like the other three dynamic panels; its body reads
     // the selection from the per-tab bridge below rather than a static payload.
@@ -690,20 +701,32 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             // too. `characters` re-identifies only on a character edit (not on typing), and the scene-list
             // signature reads just ids+names, so both stay stable under row typing while catching real edits.
             const sceneList = Object.values(editor.document.scenes).map(scene => `${scene.id}:${scene.name}`).join("|");
-            const sig = { block: `${inspectorBlock.id}:${JSON.stringify(inspectorBlock.payload)}`, characters: editor.characters, sceneList };
+            // A block's payload is a fresh object on every edit to it (updateBlockPayload reassigns) and is
+            // untouched by edits to other rows, so its reference is a cheap version token — a payload compare
+            // replaces the per-keystroke JSON.stringify of the payload while keeping the same gate (WI-0 #7).
+            const sig = { blockId: inspectorBlock.id, payload: inspectorBlock.payload, characters: editor.characters, sceneList };
             const prev = lastInspectorSigRef.current;
-            if (!prev || prev.block !== sig.block || prev.characters !== sig.characters || prev.sceneList !== sig.sceneList) {
+            if (!prev || prev.blockId !== sig.blockId || prev.payload !== sig.payload || prev.characters !== sig.characters || prev.sceneList !== sig.sceneList) {
                 lastInspectorSigRef.current = sig;
+                const blockId = inspectorBlock.id;
                 publishStoryInspectorState(tabId, {
                     block: inspectorBlock,
                     document: editor.document,
                     sceneId: payload.sceneId,
                     characters: editor.characters,
-                    onUpdatePayload: nextPayload => editor.updateBlockPayloadFor(inspectorBlock.id, nextPayload),
-                    onClose: editor.closeInspector,
-                    onSetDialogueCharacter: characterId => editor.setDialogueSpeaker(inspectorBlock, characterId ? { characterId } : null),
-                    generateTextId: () => editor.uuidService?.generate() ?? crypto.randomUUID(),
-                    onCreateLayer: beforeBlockId => editor.createLayerBeforeBlock(beforeBlockId),
+                    // Route through editorRef (the latest controller), not the render-time `editor`, so an
+                    // edit made after an untracked scene change still records the current scene as its undo
+                    // snapshot rather than the one captured at the last republish (WI-0).
+                    onUpdatePayload: nextPayload => editorRef.current.updateBlockPayloadFor(blockId, nextPayload),
+                    onClose: () => editorRef.current.closeInspector(),
+                    onSetDialogueCharacter: characterId => {
+                        const block = editorRef.current.scene?.blocks[blockId];
+                        if (block) {
+                            editorRef.current.setDialogueSpeaker(block, characterId ? { characterId } : null);
+                        }
+                    },
+                    generateTextId: () => editorRef.current.uuidService?.generate() ?? crypto.randomUUID(),
+                    onCreateLayer: nextBeforeBlockId => editorRef.current.createLayerBeforeBlock(nextBeforeBlockId),
                 });
             }
             // Show on a fresh open — a different row than the panel is showing. An inspector→inspector
@@ -721,7 +744,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 shownInspectorBlockRef.current = null;
             }
         }
-    }, [active, editor.characters, editor.closeInspector, editor.context, editor.createLayerBeforeBlock, editor.document, editor.editorMode, editor.scene, editor.setDialogueSpeaker, editor.updateBlockPayloadFor, editor.uuidService, payload?.sceneId, tabId]);
+    }, [active, editor.characters, editor.context, editor.document, editor.editorMode, editor.scene, payload?.sceneId, tabId]);
 
     useEffect(() => {
         const handleCreateRequest = (event: Event) => {
@@ -1150,6 +1173,15 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     >
                         <StretchVertical className="h-4 w-4" />
                     </button>
+                    <button
+                        type="button"
+                        onClick={() => setManualOpen(true)}
+                        title={t("story.commandManual.open")}
+                        aria-label={t("story.commandManual.open")}
+                        className="rounded p-1.5 text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                    >
+                        <BookOpen className="h-4 w-4" />
+                    </button>
                 </div>
             </div>
 
@@ -1267,6 +1299,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     onOpenInspector={() => editor.activateBlockForInspectorOrOp(row.block.id)}
                                     onUpdatePayload={payload => editor.updateBlockPayloadFor(row.block.id, payload)}
                                     onSetDialogueCharacter={characterId => editor.setDialogueSpeaker(row.block, characterId ? { characterId } : null)}
+                                    onSetPosition={position => editor.setDialogueGroupPosition(row.block, position, row.appearance?.positionSourceId ?? null)}
                                     tempSpeakers={editor.tempSpeakers}
                                     onSetSpeaker={speaker => editor.setDialogueSpeaker(row.block, speaker)}
                                     onCreateCharacter={name => editor.createCharacterFromSpeaker(row.block, name)}
@@ -1393,6 +1426,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             ) : null}
             </div>
         </div>
+        {manualOpen ? <StoryCommandManual onClose={() => setManualOpen(false)} /> : null}
         </StoryEditorTextStyleProvider>
     );
 }
