@@ -3,10 +3,11 @@
  *
  * Three sources, none of them new: the asset records (`AssetsService`), the reverse-lookup index
  * (`ReferenceService`, flushed first so a jump written a moment ago is counted), and a walk of the
- * project's `assets/` directory for bytes. The walk is what the build measures too - the
- * "actual vs reachable" comparison is only worth reading if its left-hand side is the same number
+ * project's `assets/` directory for bytes. The walk measures what the build measures - the
+ * "actual vs reachable" comparison is only worth reading if its left-hand side is the number
  * `GameBuildManager` would arrive at, so it counts every file under the directory rather than only
- * the ones the asset records claim.
+ * the ones the asset records claim. See {@link walkDirectoryBytes} for the one case where the two
+ * walks disagree.
  *
  * Deliberately a one-shot snapshot rather than a live projection: it costs one `stat` per file, and
  * the page reads it, it does not depend on it being current to the keystroke. The tab re-runs it
@@ -19,6 +20,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { ReferenceService } from "@/lib/workspace/services/references/ReferenceService";
 import { AssetSource, type Asset } from "@/lib/workspace/services/assets/types";
+import { entryFileName } from "@/lib/workspace/services/assets/importPathExpansion";
 import { join } from "@shared/utils/path";
 import { buildAssetOverview, type AssetOverviewSummary } from "./assetOverviewModel";
 
@@ -55,10 +57,17 @@ async function mapWithLimit<T, R>(items: readonly T[], limit: number, fn: (item:
 /**
  * Total the bytes of a directory tree, breadth-first.
  *
- * Mirrors `GameBuildManager.directorySize`: a directory that cannot be read counts as empty, and a
- * file whose size cannot be read counts as zero, because a build that would still ship those bytes
- * must not be reported as smaller than it is - and refusing to produce a number at all would take
- * the whole page down over one unreadable file.
+ * Failure handling matches `GameBuildManager.directorySize`: a directory that cannot be read counts
+ * as empty, and a file whose size cannot be read counts as zero, because a build that would still
+ * ship those bytes must not be reported as smaller than it is - and refusing to produce a number at
+ * all would take the whole page down over one unreadable file.
+ *
+ * It is not byte-identical to that walk, and the divergence is symlinks: `directorySize` classifies
+ * with `Dirent.isFile()`, so a symlink is neither a file nor a directory to it - it contributes zero
+ * and a symlinked directory is not recursed into. This walk sees the IPC's two-way `type`, so a
+ * symlink arrives as a file and `fs.details` follows it to the target's size. An `assets/` tree with
+ * symlinks in it therefore reads larger here than in the build. Nothing the editor writes creates
+ * one, so this is a note about hand-made trees rather than a discrepancy anyone should hit.
  */
 export async function walkDirectoryBytes(fs: FileSystemService, root: string): Promise<DirectoryWalk> {
     const walk: DirectoryWalk = { totalBytes: 0, fileCount: 0, bytesByRelativePath: new Map() };
@@ -74,9 +83,13 @@ export async function walkDirectoryBytes(fs: FileSystemService, root: string): P
         const files: Array<{ path: string; relative: string }> = [];
         for (const { directory, entries } of listings) {
             for (const entry of entries) {
+                // `fs.list` hands back the extension split off into `entry.ext`, so the name alone
+                // addresses nothing on disk - every `.json` under `assets/` would stat as missing
+                // and be counted as a zero-byte file.
+                const fileName = entryFileName(entry);
                 const child = {
-                    path: join(directory.path, entry.name),
-                    relative: directory.relative ? `${directory.relative}/${entry.name}` : entry.name,
+                    path: join(directory.path, fileName),
+                    relative: directory.relative ? `${directory.relative}/${fileName}` : fileName,
                 };
                 if (entry.type === "directory") {
                     nextLevel.push(child);

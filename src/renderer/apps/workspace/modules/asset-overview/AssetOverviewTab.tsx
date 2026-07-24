@@ -259,11 +259,12 @@ export function AssetOverviewTab({ active }: EditorTabComponentProps) {
 }
 
 /**
- * Actual against predicted, as two numbers and the bar between them.
+ * What ships today against what a trimmed build would ship, as two numbers and the bar between them.
  *
- * The wording is deliberately "actual" / "predicted": nothing here has taken effect, and the page
- * must not be readable as though trimming were already on. The bar shows the reachable set filling
- * part of what ships today; what is left is the difference, printed next to it.
+ * The second number is worded as a hypothetical ("if trimmed"), not a forecast: builds still pack
+ * the whole `assets/` directory, so this is the size of the referenced subset and not a prediction
+ * of the next build. The page must not be readable as though trimming were already on. The bar shows
+ * the reachable set filling part of what ships today; what is left is the difference, next to it.
  */
 function PackagingSection({ packaging }: { packaging: AssetOverviewSummary["packaging"] }) {
     const { t, tn } = useTranslation();
@@ -277,7 +278,7 @@ function PackagingSection({ packaging }: { packaging: AssetOverviewSummary["pack
                     hint={tn("assets.overview.files", packaging.fileCount)}
                 />
                 <StatTile
-                    label={t("assets.overview.stat.predicted")}
+                    label={t("assets.overview.stat.ifTrimmed")}
                     value={formatByteSize(packaging.reachableBytes)}
                 />
                 <StatTile

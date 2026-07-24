@@ -41,9 +41,10 @@ export const assets = {
         other: "{count} items",
     },
     /**
-     * The read-only asset overview page. "Actual" and "Predicted" are load-bearing: a build still
+     * The read-only asset overview page. "Actual" and "If trimmed" are load-bearing: a build still
      * packages the whole assets directory, and nothing on this page changes that - so no string
-     * here may read as though reference-based trimming were in effect.
+     * here may read as though reference-based trimming were in effect, or as though the second
+     * number were a forecast of what the next build will produce.
      */
     overview: {
         tabTitle: "Asset Overview",
@@ -64,7 +65,7 @@ export const assets = {
             referenced: "Referenced",
             unreferenced: "Unreferenced",
             actual: "Actual",
-            predicted: "Predicted",
+            ifTrimmed: "If trimmed",
             difference: "Difference",
         },
         files: {
