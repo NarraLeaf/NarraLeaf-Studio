@@ -240,6 +240,10 @@ const transitionOptions = (t: TFunc): SelectOption[] => [
     { value: "maskWipe", label: t("storyInspector.transition.maskWipe") },
     { value: "softWipe", label: t("storyInspector.transition.softWipe") },
     { value: "blinds", label: t("storyInspector.transition.blinds") },
+    { value: "barnDoor", label: t("storyInspector.transition.barnDoor") },
+    { value: "clock", label: t("storyInspector.transition.clock") },
+    { value: "fan", label: t("storyInspector.transition.fan") },
+    { value: "dots", label: t("storyInspector.transition.dots") },
     { value: "slide", label: t("storyInspector.transition.slide") },
     { value: "throughColor", label: t("storyInspector.transition.throughColor") },
 ];
@@ -254,6 +258,16 @@ const wipeDirectionOptions = (t: TFunc): SelectOption[] => [
 const blindsOrientationOptions = (t: TFunc): SelectOption[] => [
     { value: "horizontal", label: t("storyInspector.blindsOrientation.horizontal") },
     { value: "vertical", label: t("storyInspector.blindsOrientation.vertical") },
+];
+
+const clockDirectionOptions = (t: TFunc): SelectOption[] => [
+    { value: "clockwise", label: t("storyInspector.clockDirection.clockwise") },
+    { value: "counterclockwise", label: t("storyInspector.clockDirection.counterclockwise") },
+];
+
+const irisShapeOptions = (t: TFunc): SelectOption[] => [
+    { value: "circle", label: t("storyInspector.irisShape.circle") },
+    { value: "ellipse", label: t("storyInspector.irisShape.ellipse") },
 ];
 
 const throughColorPatternOptions = (t: TFunc): SelectOption[] => [
@@ -272,6 +286,10 @@ const transitionHints = (t: TFunc): Record<string, string> => ({
     maskWipe: t("storyInspector.transitionHint.maskWipe"),
     softWipe: t("storyInspector.transitionHint.softWipe"),
     blinds: t("storyInspector.transitionHint.blinds"),
+    barnDoor: t("storyInspector.transitionHint.barnDoor"),
+    clock: t("storyInspector.transitionHint.clock"),
+    fan: t("storyInspector.transitionHint.fan"),
+    dots: t("storyInspector.transitionHint.dots"),
     slide: t("storyInspector.transitionHint.slide"),
     throughColor: t("storyInspector.transitionHint.throughColor"),
 });
@@ -1409,11 +1427,9 @@ function TransitionEditor(props: {
                     </>
                 ) : null}
                 {kind === "maskCircle" ? (
-                    <>
-                        <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
-                        <NumberField label={t("storyInspector.field.fromRadius")} value={paramNumber(value.props, "from")} onChange={from => setParam({ from })} />
-                        <NumberField label={t("storyInspector.field.toRadius")} value={paramNumber(value.props, "to")} onChange={to => setParam({ to })} />
-                    </>
+                    // 0.16.0: a hard iris (Mask.iris feather 0). The old partial from/to radii have no
+                    // engine equivalent and are no longer offered - only the centre is adjustable.
+                    <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
                 ) : null}
                 {kind === "maskWipe" ? (
                     <SelectField
@@ -1457,6 +1473,52 @@ function TransitionEditor(props: {
                     <>
                         <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
                         <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                        <SelectField
+                            label={t("storyInspector.field.shape")}
+                            options={irisShapeOptions(t)}
+                            value={paramString(value.props, "shape", "circle")}
+                            onChange={shape => setParam({ shape: String(shape) })}
+                        />
+                    </>
+                ) : null}
+                {kind === "barnDoor" ? (
+                    <>
+                        <SelectField
+                            label={t("storyInspector.field.axis")}
+                            options={blindsOrientationOptions(t)}
+                            value={paramString(value.props, "axis", "horizontal")}
+                            onChange={axis => setParam({ axis: String(axis) })}
+                        />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                    </>
+                ) : null}
+                {kind === "clock" ? (
+                    <>
+                        <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
+                        <NumberField label={t("storyInspector.field.fromAngle")} value={paramNumber(value.props, "from")} onChange={from => setParam({ from })} />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                        <SelectField
+                            label={t("storyInspector.field.direction")}
+                            options={clockDirectionOptions(t)}
+                            value={paramString(value.props, "direction", "clockwise")}
+                            onChange={direction => setParam({ direction: String(direction) })}
+                        />
+                    </>
+                ) : null}
+                {kind === "fan" ? (
+                    <>
+                        <NumberField label={t("storyInspector.field.blades")} value={paramNumber(value.props, "blades")} onChange={blades => setParam({ blades })} />
+                        <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
+                        <NumberField label={t("storyInspector.field.fromAngle")} value={paramNumber(value.props, "from")} onChange={from => setParam({ from })} />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                    </>
+                ) : null}
+                {kind === "dots" ? (
+                    <>
+                        <NumberField label={t("storyInspector.field.rows")} value={paramNumber(value.props, "rows")} onChange={rows => setParam({ rows })} />
+                        <NumberField label={t("storyInspector.field.cols")} value={paramNumber(value.props, "cols")} onChange={cols => setParam({ cols })} />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                        <NumberField label={t("storyInspector.field.stagger")} value={paramNumber(value.props, "stagger")} onChange={stagger => setParam({ stagger })} />
                     </>
                 ) : null}
                 {kind === "blurDissolve" ? (

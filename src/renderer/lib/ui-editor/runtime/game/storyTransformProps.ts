@@ -291,7 +291,7 @@ export function mergeTransformProps(
 
 // Stage naming lives in @shared so the compiler and every target reference resolve through one rule;
 // re-exported here under the runtime's existing names.
-export { normalizeStageObjectName as normalizeObjectName, characterStageObjectName as getCharacterStageObjectName } from "@shared/types/story";
+export { normalizeStageObjectName as normalizeObjectName, characterStageObjectName as getCharacterStageObjectName, characterStageName } from "@shared/types/story";
 
 export function cleanObject(input: Record<string, unknown>): Record<string, unknown> {
     return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
