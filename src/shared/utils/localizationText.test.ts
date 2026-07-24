@@ -33,7 +33,7 @@ describe("serializeSegmentSourceText", () => {
             value: "ignored projection",
             rich: [
                 { text: "Hi, " },
-                { interpolation: { kind: "variable", target: { scope: "persistent", storageKey: "name" } } },
+                { interpolation: { kind: "variable", target: { scope: "persistent", variableId: "name" } } },
                 { pause: true },
                 { text: "! Score: ", marks: { bold: true } },
                 { interpolation: { kind: "blueprint", blueprintId: "bp-1" } },

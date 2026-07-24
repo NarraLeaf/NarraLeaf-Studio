@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { StoryBlock, StoryDocument, StoryExpr } from "@shared/types/story";
-import { isStoryExpressionEvaluable, STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
+import type { StoryBlock, StoryDocument, StoryExpr, StoryVariableRef } from "@shared/types/story";
+import { isStoryExpressionEvaluable, storyVariableRefKey, STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import {
     collectInvalidBlocks,
     collectTempSpeakers,
@@ -729,9 +729,46 @@ describe("story document migration ladder", () => {
     // The regression that shipped: bumping the constant without adding a step left v3 documents
     // falling through migrateStoryDocumentToLatest untouched, so every existing project threw
     // "migration is not implemented" and its story panel would not open.
-    it.each([[1], [2], [3], [4], [5], [6], [7]])("brings a v%i document to the current schema", version => {
+    it.each([[1], [2], [3], [4], [5], [6], [7], [8]])("brings a v%i document to the current schema", version => {
         expect(normalizeStoryDocument(docAtVersion(version), "2026-07-16T00:00:00.000Z").schemaVersion)
             .toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    });
+
+    it("v8→v9 renames the persistent StoryVariableRef arm storageKey→variableId with zero semantic change", () => {
+        const document = docAtVersion(8);
+        const sceneId = Object.keys(document.scenes)[0];
+        const scene = document.scenes[sceneId];
+        const v8 = {
+            ...document,
+            scenes: {
+                [sceneId]: {
+                    ...scene,
+                    rootBlockIds: ["persis-decl", "set-gold"],
+                    blocks: {
+                        // A `/persis` declaration row keeps its storageKey - it is not a ref.
+                        "persis-decl": {
+                            id: "persis-decl", parentId: null, childrenIds: [], kind: "declaration",
+                            payload: { scope: "persistent", name: "Gold", valueType: "number", storageKey: "persis-decl" },
+                        },
+                        // A setVariable targeting a persistent variable - its ref carries storageKey (v8).
+                        "set-gold": {
+                            id: "set-gold", parentId: null, childrenIds: [], kind: "action",
+                            payload: { action: "setVariable", target: { scope: "persistent", storageKey: "persis-decl" }, value: 5 },
+                        },
+                    },
+                },
+            },
+        } as unknown as StoryDocument;
+
+        const migrated = migrateStoryDocumentToLatest(v8);
+        expect(migrated.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+        const setBlock = migrated.scenes[sceneId].blocks["set-gold"] as { payload: { target: StoryVariableRef } };
+        // The ref arm is renamed, same value - old references resolve unchanged.
+        expect(setBlock.payload.target).toEqual({ scope: "persistent", variableId: "persis-decl" });
+        expect(storyVariableRefKey(setBlock.payload.target)).toBe("persistent:persis-decl");
+        // The declaration payload is untouched (it is a variable, not a ref).
+        const decl = migrated.scenes[sceneId].blocks["persis-decl"] as { payload: { storageKey: string; name: string } };
+        expect(decl.payload).toMatchObject({ storageKey: "persis-decl", name: "Gold" });
     });
 
     it("migrates v6 forward additively — a bump only, every block untouched (no invented `disabled`)", () => {

@@ -132,7 +132,10 @@ export function collectStoryExpressionVariables(expr: StoryExpr): StoryVariableR
 
 /** A stable string identity for a variable ref, for deduping and map keys. */
 export function storyVariableRefKey(ref: StoryVariableRef): string {
-    return ref.scope === "persistent" ? `persistent:${ref.storageKey}` : `${ref.scope}:${ref.variableId}`;
+    // v9 (M-VAR): all three scopes address by `variableId`, so the key is uniform. The persistent key
+    // string is unchanged from v8 (`persistent:<value>`) because a persistent variable's `variableId`
+    // equals its old `storageKey`, keeping scene-snapshot value maps and dedup sets stable across the bump.
+    return `${ref.scope}:${ref.variableId}`;
 }
 
 /** A literal-only expression, the shape `/set gold 100` produces and every legacy value migrates to. */

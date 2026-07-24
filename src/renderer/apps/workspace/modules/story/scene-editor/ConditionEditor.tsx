@@ -112,11 +112,11 @@ function flattenVariables(options: {
 }
 
 function variableRefKey(ref: StoryVariableRef): string {
-    return ref.scope === "persistent" ? `persistent:${ref.storageKey}` : `${ref.scope}:${ref.variableId}`;
+    return `${ref.scope}:${ref.variableId}`;
 }
 
 function makeVariableRef(scope: "scene" | "saved" | "persistent", id: string): StoryVariableRef {
-    return scope === "persistent" ? { scope: "persistent", storageKey: id } : { scope, variableId: id };
+    return { scope, variableId: id };
 }
 
 export function ConditionEditor(props: {
