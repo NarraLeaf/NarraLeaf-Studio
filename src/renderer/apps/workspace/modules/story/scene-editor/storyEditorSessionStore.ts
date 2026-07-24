@@ -109,6 +109,34 @@ export function patchStoryEditorViewPrefs(panelState: PanelStateService, patch: 
     panelState.setPanelState<StoryEditorViewPrefs>(STORY_EDITOR_VIEW_PREFS_KEY, patch);
 }
 
+/**
+ * Which control containers are showing their staging lens (M7), persisted per-project via
+ * {@link PanelStateService} so the choice survives tab switches and restarts — the same storage the
+ * density preference uses. Keyed by the container's block id; a stale id for a since-deleted container
+ * is inert (nothing matches it). Stored as an id→true map so the shallow-merge `setPanelState` can flip
+ * one container without rewriting the rest (a `false`/absent entry both mean "list view").
+ */
+const STORY_EDITOR_LENS_STATE_KEY = "story:editor:lens-state";
+type StoryEditorLensStore = Record<StoryBlockId, boolean>;
+
+export function getStoryEditorLensContainerIds(panelState: PanelStateService): Set<StoryBlockId> {
+    const store = panelState.getPanelState<StoryEditorLensStore>(STORY_EDITOR_LENS_STATE_KEY);
+    const ids = new Set<StoryBlockId>();
+    if (store) {
+        for (const [id, on] of Object.entries(store)) {
+            if (on) {
+                ids.add(id);
+            }
+        }
+    }
+    return ids;
+}
+
+/** Flip one container's lens view on or off, touching only its own entry in the store. */
+export function setStoryEditorLensContainer(panelState: PanelStateService, containerId: StoryBlockId, on: boolean): void {
+    panelState.setPanelState<StoryEditorLensStore>(STORY_EDITOR_LENS_STATE_KEY, { [containerId]: on });
+}
+
 const ROW_SELECTOR = "[data-story-row-block-id]";
 
 // One PanelStateService entry holds every scene's view state as a `sceneId -> state` map.

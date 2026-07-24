@@ -1336,6 +1336,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     onAddInside={parentId => editor.addInsideContainer(parentId)}
                                     onAddBranch={(conditionId, branch) => editor.addConditionBranch(conditionId, branch)}
                                     onPlayFromRow={playFromRow}
+                                    lensActive={editor.lensContainerIds.has(row.block.id)}
+                                    onToggleLens={() => editor.toggleContainerLens(row.block.id)}
                                 />
                                 )}
                                 {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === row.block.id ? (
