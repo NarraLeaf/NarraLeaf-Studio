@@ -193,6 +193,9 @@ export const story = {
         target: "Target",
         lineText: "Text",
         scene: "Scene",
+        // Camera
+        cameraOperation: "Pan / Zoom / Rotate / Darken / Reset",
+        cameraAmount: "Amount or Position",
         // Modifiers
         duration: "Seconds",
         transition: "Transition",
@@ -407,6 +410,9 @@ export const story = {
         blueprint: { label: "Blueprint", detail: "Run a Story Action Blueprint" },
         blink: { label: "Blink", detail: "Screen blink effect" },
         vignette: { label: "Vignette", detail: "Screen vignette effect" },
+        // The detail line is where "kept across scenes" belongs — every command has one, and it is the
+        // first thing an author reads about the camera in the slash menu and the command reference.
+        camera: { label: "Camera", detail: "Pan, zoom, rotate or darken the stage camera — kept across scenes" },
         fx: { label: "Effect", detail: "Apply an effect to an object" },
         transform: { label: "Transform", detail: "Move, scale or rotate an object" },
         note: { label: "Note", detail: "A Studio-only note" },
@@ -503,6 +509,7 @@ export const story = {
         nvl: "NVL",
         blueprint: "Blueprint",
         effect: "Effect",
+        camera: "Camera",
         control: "Control",
         jump: "Jump",
         code: "Code",
@@ -547,6 +554,13 @@ export const story = {
         nvl: "NVL block",
         blueprint: "Blueprint",
         effect: "{effect} screen effect",
+        cameraOp: {
+            pan: "Pan",
+            zoom: "Zoom",
+            rotate: "Rotate",
+            darken: "Darken stage",
+            reset: "Reset camera",
+        },
         condition: "Condition",
         branch: "{branch} branch",
         jump: "Jump {scene}",

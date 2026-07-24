@@ -17,6 +17,8 @@ export const storyInspector = {
         transform: "Transform",
         transition: "Transition",
         voice: "Voice",
+        // Names the scope the camera has, which no field can: the pose outlives the scene.
+        camera: "Camera · story-wide",
     },
 
     voice: {
@@ -184,6 +186,23 @@ export const storyInspector = {
     imageOperation: {
         create: "Create / update",
         setSource: "Set source",
+    },
+
+    cameraOperation: {
+        zoom: "Zoom",
+        pan: "Pan",
+        rotate: "Rotate",
+        // "stage", not "screen": this is the camera's brightness, not `/vignette`'s in-scene mask.
+        darken: "Darken stage",
+        reset: "Reset camera",
+    },
+
+    camera: {
+        zoom: "Zoom (1 = neutral)",
+        rotation: "Rotation °",
+        darkness: "Stage darkness (0-1)",
+        xalign: "X align (0-1)",
+        yalign: "Y align (0-1)",
     },
 
     displayableOperation: {
