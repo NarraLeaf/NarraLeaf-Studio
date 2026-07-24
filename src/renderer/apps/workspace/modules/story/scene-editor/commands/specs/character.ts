@@ -4,6 +4,7 @@ import type { StoryCommandResolutionIssue, StoryCommandTargetValue, StoryCommand
 import {
     asEnum,
     asTarget,
+    asText,
     defineStoryCommand,
     placementParam,
     secondsParam,
@@ -224,6 +225,42 @@ export const face = defineStoryCommand({
     },
 });
 
+/**
+ * `/rename` - the speaker label, not the portrait.
+ *
+ * It exists for one narrative move: the "？？？" speaker who becomes a name. That is why the new name
+ * is a greedy positional rather than a `name=` modifier - it is the point of the line, and a label may
+ * well contain spaces ("the man in grey").
+ */
+export const rename = defineStoryCommand({
+    id: "rename",
+    token: "rename",
+    aliases: ["setname"],
+    category: "character",
+    params: {
+        character: { hint: "character", type: { kind: "character" }, positional: true, core: true },
+        name: { hint: "displayName", type: { kind: "text" }, positional: true, greedy: true, core: true },
+    },
+    // Built here rather than through `createBlockForCommand`: the block carries no transform, no
+    // transition and no stage name, so there is nothing for the shared constructor to seed. This
+    // follows `/camera` (A2), which did the same for the same reason - `ActionCommandId` is the
+    // retired catalogue's residue and does not need to grow for every new command.
+    build(args, ctx): StoryBlock {
+        return {
+            id: ctx.generateId(),
+            parentId: null,
+            childrenIds: [],
+            kind: "action",
+            payload: {
+                action: "character",
+                operation: "setName",
+                ...(args.character?.kind === "character" ? { characterId: args.character.characterId } : {}),
+                displayName: asText(args.name) ?? "",
+            },
+        };
+    },
+});
+
 export const say = defineStoryCommand({
     id: "say",
     token: "say",
@@ -257,4 +294,4 @@ export const say = defineStoryCommand({
     },
 });
 
-export const CHARACTER_COMMANDS = [show, hide, move, face, say];
+export const CHARACTER_COMMANDS = [show, hide, move, face, rename, say];

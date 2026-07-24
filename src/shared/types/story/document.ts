@@ -306,12 +306,19 @@ export type StoryActionPayload =
       }
     | {
           action: "character";
-          operation: "enter" | "move" | "exit" | "expression";
+          /**
+           * `setName` is the one operation that touches no portrait: it renames the *speaker label*
+           * (NLR `Character.setName`), which is how "？？？" becomes a real name mid-scene. Every other
+           * operation acts on the character's stage image.
+           */
+          operation: "enter" | "move" | "exit" | "expression" | "setName";
           characterId?: string;
           assetId?: string;
           objectName?: string;
           formName?: string;
           variants?: StoryCharacterVariantSelection;
+          /** `setName` — the label shown from this row on. Empty is legal: some reveals hide the name again. */
+          displayName?: string;
           transition?: StoryTransitionRef;
           transform?: StoryTransformRef;
       }
@@ -421,11 +428,20 @@ export type StoryActionPayload =
           transform?: StoryTransformRef;
       }
     | {
+          /**
+           * A `Video` — an Actionable, not a Displayable, which is why it has its own verb set rather
+           * than sharing `displayable`'s. `play` waits for the clip to finish; `resume` does not.
+           *
+           * Additive: the four transport operations and `timeMs` are new in A3, and no document
+           * written before them carries either, so no schema bump.
+           */
           action: "video";
-          operation: "create" | "show" | "hide" | "play";
+          operation: "create" | "show" | "hide" | "play" | "pause" | "resume" | "stop" | "seek";
           objectName: string;
           assetId?: string;
           muted?: boolean;
+          /** `seek` — where to jump to, in milliseconds. The engine's `seek` takes seconds; the compiler converts. */
+          timeMs?: number;
       }
     | {
           /**
