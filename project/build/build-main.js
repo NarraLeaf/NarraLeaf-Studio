@@ -42,7 +42,10 @@ const { rootDir, isDev } = require('./utils');
         // reads template/resource files relative to itself at runtime. 7zip-bin
         // (already in electron-builder's closure) resolves its bundled 7za.exe
         // relative to its own __dirname, so it must not be inlined either.
-        external: ['electron', 'electron-builder', '7zip-bin'],
+        // @narraleaf/encryption is a native addon: it loads a platform-specific
+        // binary by path, so it must resolve from node_modules, not be bundled
+        // (same reason the artifact compile worker keeps it external).
+        external: ['electron', 'electron-builder', '7zip-bin', '@narraleaf/encryption'],
         sourcemap: isDev(),
         minify: !isDev(),
         target: ['node18'],

@@ -74,6 +74,15 @@ export type GameBuildWorkerWebJob = {
 export type GameBuildWorkerMobileJob = {
     /** Compiled static-site dir - the same web compile the web target uses. */
     sourceDir: string;
+    /**
+     * When set, every payload file is protected with this key at repack time,
+     * and the same key is written into shell-config.json for the shell's
+     * decoder. Absent for a plain build. It is all-or-nothing: the shell assumes
+     * every file under wwwRoot is protected, so a partial layout is not allowed.
+     * The compiled site on disk (`sourceDir`, shared with the web target) is
+     * never touched — the protection happens as bytes are read into the package.
+     */
+    contentKey?: string;
     /** The shell template contract, already validated by the manager. */
     templateManifest: MobileShellManifest;
     /** Home-screen name (Android label / CFBundleDisplayName) and .app dir name. */
