@@ -64,11 +64,15 @@ import {
 } from "./blueprint/ownerKeys";
 import type {
     Blueprint,
+    BlueprintDocument,
     BlueprintGraphIr,
     BlueprintGraphNode,
     BlueprintOwnerRef,
     BlueprintPrivateOwnerRecord,
 } from "@shared/types/blueprint/document";
+import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
+import type { UITemplateSurfacePlacement } from "@shared/types/uiTemplateRegistry";
+import { assertValidBlueprintDocument } from "./blueprint/documentValidation";
 import {
     BLUEPRINT_GRAPH_IR_META_KIND,
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
@@ -250,6 +254,9 @@ type SurfaceDuplicateRemapContext = {
     newSurfaceId: string;
     elementIdMap: Record<string, string>;
     blueprintIdMap: Record<string, string>;
+    /** Optional source-assetId -> project-assetId map, set only when importing a
+     * template that ships resources; absent (and inert) for in-document duplicate. */
+    assetIdMap?: Record<string, string>;
 };
 
 function remapSurfaceDuplicateReferenceValue<T>(value: T, ctx: SurfaceDuplicateRemapContext, key?: string): T {
@@ -262,6 +269,9 @@ function remapSurfaceDuplicateReferenceValue<T>(value: T, ctx: SurfaceDuplicateR
         }
         if (key && isReferenceKey(key, "blueprintId") && ctx.blueprintIdMap[value]) {
             return ctx.blueprintIdMap[value] as T;
+        }
+        if (key && ctx.assetIdMap && isReferenceKey(key, "assetId") && ctx.assetIdMap[value]) {
+            return ctx.assetIdMap[value] as T;
         }
         return value;
     }
@@ -434,6 +444,23 @@ function calculateElementsBounds(elements: UIElement[]): UISurfaceDesignSize & {
         height: Math.max(1, Number.isFinite(maxY - minY) ? maxY - minY : DEFAULT_COMPONENT_SIZE.height),
     };
 }
+
+/** What a template import touched: the surfaces added, and any stage slots that
+ * were already occupied so their surface was skipped (surfaced to the user). */
+export type ImportTemplateResult = {
+    importedSurfaces: UISurface[];
+    skippedSlots: UIStageSlotId[];
+};
+
+/** One template's fetched documents plus a resolved placement, ready to import.
+ * `assetIdMap` maps the template's original asset ids to the ids they were
+ * ingested under in this project; empty/undefined for asset-free templates. */
+export type ImportTemplateBundleInput = {
+    document: unknown;
+    graphs: unknown;
+    placement: UITemplateSurfacePlacement;
+    assetIdMap?: Record<string, string>;
+};
 
 export class UIDocumentService extends Service<UIDocumentService> implements IUIDocumentService {
     private document: UIDocument | null = null;
@@ -1594,6 +1621,289 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
 
         return duplicatedSurface;
+    }
+
+    /**
+     * Import a downloaded UI template into the open project.
+     *
+     * A template is a `UIDocument` + `UIGraphDocument` pair (possibly on an older
+     * schema). Both are migrated to the current schema, every surface / element /
+     * blueprint id is regenerated, and cross-references are remapped together — the
+     * same discipline as {@link duplicateSurface}, but sourcing from external docs
+     * and building the surface envelope from the caller's `placement` rather than
+     * cloning the source surface's own kind/mount. Nothing in the user's existing
+     * work is replaced; the template's surfaces are appended.
+     *
+     * A stage template whose target slot is already occupied is skipped and its
+     * slot reported back, so the caller can tell the user rather than silently
+     * dropping or clobbering a surface.
+     */
+    public importTemplateBundle(input: ImportTemplateBundleInput): ImportTemplateResult {
+        // migrateIfNeeded is pure (does not touch this.document) and, unlike load(),
+        // does not inject a main surface — so only the template's own surfaces come
+        // through and the current document is untouched until the final mutate.
+        const sourceDocument = this.migrateIfNeeded(this.coerceIncomingUIDocument(input.document));
+
+        let sourceBlueprintDocument: BlueprintDocument | null = null;
+        try {
+            const rawBlueprint = input.graphs && typeof input.graphs === "object"
+                ? (input.graphs as { blueprintDocument?: unknown }).blueprintDocument
+                : undefined;
+            if (rawBlueprint) {
+                const migrated = migrateBlueprintDocumentToLatest(rawBlueprint);
+                assertValidBlueprintDocument(migrated);
+                sourceBlueprintDocument = migrated;
+            }
+        } catch (error) {
+            // A logic graph that fails to migrate/validate must not block importing
+            // the visual layout; drop the blueprints and keep the surface.
+            console.warn("[UIDocumentService] template blueprints skipped (invalid)", error);
+            sourceBlueprintDocument = null;
+        }
+
+        const importable = sourceDocument.surfaces.filter(surface => surface.id !== MAIN_APP_SURFACE_ID);
+        const occupiedStageSlots = new Set<UIStageSlotId>(
+            this.getDocument().surfaces
+                .filter((surface): surface is UISurface & { kind: "stageSurface"; mount: UIStageSurfaceMount } =>
+                    surface.kind === "stageSurface")
+                .map(surface => surface.mount.slotId),
+        );
+
+        const importedSurfaces: UISurface[] = [];
+        const skippedSlots: UIStageSlotId[] = [];
+
+        for (const sourceSurface of importable) {
+            let placement = input.placement;
+            if (placement.kind === "stageSurface") {
+                const slotId = placement.slotId ?? DEFAULT_UI_STAGE_SLOT_ID;
+                if (occupiedStageSlots.has(slotId)) {
+                    skippedSlots.push(slotId);
+                    continue;
+                }
+                occupiedStageSlots.add(slotId);
+                placement = { kind: "stageSurface", slotId };
+            }
+            const imported = this.importSingleSurface(
+                sourceSurface,
+                sourceDocument,
+                sourceBlueprintDocument,
+                placement,
+                input.assetIdMap,
+            );
+            if (imported) {
+                importedSurfaces.push(imported);
+            }
+        }
+
+        return { importedSurfaces, skippedSlots };
+    }
+
+    private coerceIncomingUIDocument(raw: unknown): UIDocument {
+        if (!raw || typeof raw !== "object") {
+            throw new RendererError("Template document is not an object");
+        }
+        const record = raw as Record<string, unknown>;
+        if (
+            typeof record.schemaVersion !== "number"
+            || !Array.isArray(record.surfaces)
+            || typeof record.elements !== "object"
+            || record.elements === null
+        ) {
+            throw new RendererError("Template document is missing required fields");
+        }
+        return raw as UIDocument;
+    }
+
+    private importSingleSurface(
+        sourceSurface: UISurface,
+        sourceDocument: UIDocument,
+        sourceBlueprintDocument: BlueprintDocument | null,
+        placement: UITemplateSurfacePlacement,
+        assetIdMap?: Record<string, string>,
+    ): UISurface | null {
+        const sourceRootId = sourceSurface.rootElementId;
+        if (!sourceDocument.elements[sourceRootId]) {
+            return null;
+        }
+
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const newSurfaceId = uuidService.generate();
+        const sourceElementIds = Array.from(collectSubtreeElementIds(sourceDocument, sourceRootId))
+            .filter(elementId => Boolean(sourceDocument.elements[elementId]));
+        const elementIdMap: Record<string, string> = {};
+        for (const elementId of sourceElementIds) {
+            elementIdMap[elementId] = uuidService.generate();
+        }
+        const newRootElementId = elementIdMap[sourceRootId];
+        if (!newRootElementId) {
+            return null;
+        }
+
+        let localBp: LocalBlueprintService | null = null;
+        try {
+            localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        } catch {
+            localBp = null;
+        }
+
+        const blueprintIdMap: Record<string, string> = {};
+        const ownerRecordsToClone: Record<string, BlueprintPrivateOwnerRecord> = {};
+        if (sourceBlueprintDocument) {
+            for (const [ownerKey, ownerRecord] of Object.entries(sourceBlueprintDocument.ownerRecords)) {
+                const firstBlueprint = ownerRecord.privateBlueprintIds
+                    .map(blueprintId => sourceBlueprintDocument.blueprints[blueprintId])
+                    .find((blueprint): blueprint is Blueprint => Boolean(blueprint));
+                const owner = firstBlueprint?.owner;
+                // Only clone blueprints owned by this surface / its widgets. Global
+                // blueprints (globalMain) remap to null and are left behind.
+                if (!owner || !remapDuplicatedBlueprintOwner(owner, {
+                    oldSurfaceId: sourceSurface.id,
+                    newSurfaceId,
+                    elementIdMap,
+                    blueprintIdMap: {},
+                })) {
+                    continue;
+                }
+                ownerRecordsToClone[ownerKey] = cloneJson(ownerRecord);
+                for (const blueprintId of ownerRecord.privateBlueprintIds) {
+                    if (sourceBlueprintDocument.blueprints[blueprintId] && !blueprintIdMap[blueprintId]) {
+                        blueprintIdMap[blueprintId] = uuidService.generate();
+                    }
+                }
+            }
+        }
+
+        const remapContext: SurfaceDuplicateRemapContext = {
+            oldSurfaceId: sourceSurface.id,
+            newSurfaceId,
+            elementIdMap,
+            blueprintIdMap,
+            assetIdMap,
+        };
+
+        const existingNames = new Set(this.getDocument().surfaces.map(surface => surface.name));
+        const nextName = createDuplicateName(sourceSurface.name, existingNames);
+        const designSize = sourceSurface.designSize ?? DEFAULT_UI_SURFACE_SIZE;
+        const remappedSettings = sourceSurface.settings
+            ? remapSurfaceDuplicateReferenceValue(cloneJson(sourceSurface.settings), remapContext)
+            : undefined;
+
+        const newSurface: UISurface = placement.kind === "stageSurface"
+            ? {
+                id: newSurfaceId,
+                name: nextName,
+                host: "player",
+                kind: "stageSurface",
+                designSize,
+                rootElementId: newRootElementId,
+                settings: { backgroundColor: "transparent", ...(remappedSettings ?? {}) },
+                mount: { kind: "slot", slotId: placement.slotId ?? DEFAULT_UI_STAGE_SLOT_ID },
+            }
+            : {
+                id: newSurfaceId,
+                name: nextName,
+                host: "app",
+                kind: "appSurface",
+                designSize,
+                rootElementId: newRootElementId,
+                settings: createDefaultPageSurfaceSettings(remappedSettings),
+            };
+
+        localBp?.applyBlueprintMutation(bpDoc => {
+            for (const sourceOwnerRecord of Object.values(ownerRecordsToClone)) {
+                const clonedBlueprintIds = sourceOwnerRecord.privateBlueprintIds
+                    .map(oldBlueprintId => blueprintIdMap[oldBlueprintId])
+                    .filter((blueprintId): blueprintId is string => Boolean(blueprintId));
+                const activeBlueprintId = blueprintIdMap[sourceOwnerRecord.activeBlueprintId];
+                if (!activeBlueprintId || clonedBlueprintIds.length === 0) {
+                    continue;
+                }
+                const firstSourceBlueprint = sourceOwnerRecord.privateBlueprintIds
+                    .map(oldBlueprintId => sourceBlueprintDocument?.blueprints[oldBlueprintId])
+                    .find((blueprint): blueprint is Blueprint => Boolean(blueprint));
+                const newOwner = firstSourceBlueprint
+                    ? remapDuplicatedBlueprintOwner(firstSourceBlueprint.owner, remapContext)
+                    : null;
+                if (!newOwner) {
+                    continue;
+                }
+                let newOwnerKey: string;
+                if (newOwner.kind === "surfaceMain") {
+                    newOwnerKey = surfaceMainOwnerKey(newOwner.surfaceId);
+                } else if (newOwner.kind === "widgetMain") {
+                    newOwnerKey = widgetMainOwnerKey(newOwner.surfaceId, newOwner.elementId);
+                } else if (newOwner.kind === "widgetValue") {
+                    newOwnerKey = widgetValueOwnerKey(newOwner.surfaceId, newOwner.elementId, newOwner.propPath);
+                } else {
+                    continue;
+                }
+                for (const oldBlueprintId of sourceOwnerRecord.privateBlueprintIds) {
+                    const sourceBlueprint = sourceBlueprintDocument?.blueprints[oldBlueprintId];
+                    const newBlueprintId = blueprintIdMap[oldBlueprintId];
+                    if (!sourceBlueprint || !newBlueprintId) {
+                        continue;
+                    }
+                    const clonedBlueprint = cloneBlueprintForSurfaceDuplicate(sourceBlueprint, newBlueprintId, remapContext);
+                    if (clonedBlueprint) {
+                        bpDoc.blueprints[newBlueprintId] = clonedBlueprint;
+                    }
+                }
+                bpDoc.ownerRecords[newOwnerKey] = {
+                    ...cloneJson(sourceOwnerRecord),
+                    activeBlueprintId,
+                    privateBlueprintIds: clonedBlueprintIds,
+                };
+            }
+        });
+
+        const importedElements: Record<string, UIElement> = {};
+        for (const oldElementId of sourceElementIds) {
+            const sourceElement = sourceDocument.elements[oldElementId];
+            const newElementId = elementIdMap[oldElementId];
+            if (!sourceElement || !newElementId) {
+                continue;
+            }
+            const copy = cloneJson(sourceElement);
+            copy.id = newElementId;
+            copy.parentId = sourceElement.parentId ? elementIdMap[sourceElement.parentId] ?? null : null;
+            copy.childrenIds = sourceElement.childrenIds
+                .filter(childId => Boolean(elementIdMap[childId]))
+                .map(childId => elementIdMap[childId]);
+            copy.props = copy.props
+                ? remapSurfaceDuplicateReferenceValue(copy.props, remapContext)
+                : undefined;
+            copy.style = copy.style
+                ? remapSurfaceDuplicateReferenceValue(copy.style, remapContext)
+                : undefined;
+            copy.extra = copy.extra
+                ? remapSurfaceDuplicateReferenceValue(copy.extra, remapContext)
+                : undefined;
+            if (copy.behavior?.events) {
+                copy.behavior = {
+                    ...copy.behavior,
+                    events: remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap),
+                };
+            }
+            if (copy.valueBindings) {
+                copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
+            }
+            importedElements[newElementId] = copy;
+        }
+
+        // The imported root becomes the new surface's root: no parent, whatever the
+        // source tree said.
+        const newRoot = importedElements[newRootElementId];
+        if (newRoot) {
+            newRoot.parentId = null;
+        }
+
+        this.mutateDocument(document => {
+            Object.assign(document.elements, importedElements);
+            document.surfaces.push(newSurface);
+            normalizeFlowChildLayouts(document, Object.keys(importedElements));
+        });
+
+        return newSurface;
     }
 
     public getComponent(componentId: string): UIComponentDefinition | undefined {

@@ -28,6 +28,7 @@ import type {
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
+import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
 import type {
     PrivilegedActor,
     PrivilegedBashExecuteResult,
@@ -334,6 +335,11 @@ export interface RendererPreloadedInterface {
         onLocalesChanged(handler: (change: { version: number }) => void): AppEventToken;
         registryFetch(): Promise<RequestStatus<PluginRegistryFetchResult>>;
         installFromRegistry(pluginId: string): Promise<RequestStatus<PluginInstallResult>>;
+    };
+
+    uiTemplates: {
+        registryFetch(): Promise<RequestStatus<UITemplateFetchResult>>;
+        fetchBundle(templateId: string): Promise<RequestStatus<UITemplateBundle>>;
     };
 
     privileged: RendererPrivilegedBootstrapInterface;

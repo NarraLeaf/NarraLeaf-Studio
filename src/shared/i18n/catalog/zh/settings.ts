@@ -109,6 +109,10 @@ export const settings = {
             label: "注册表地址",
             description: "插件商店的注册表索引地址，留空则使用 NarraLeaf 官方注册表",
         },
+        uiTemplateRegistryUrl: {
+            label: "界面模板注册表地址",
+            description: "界面模板商店的注册表索引地址，留空则使用 NarraLeaf 官方注册表",
+        },
         confirmBeforeClose: {
             label: "关闭工作区时弹出提示",
             description: "关闭工作区窗口时先询问确认",
