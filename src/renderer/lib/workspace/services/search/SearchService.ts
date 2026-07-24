@@ -281,7 +281,7 @@ export class SearchService extends Service<SearchService> {
                 } catch {
                     return undefined;
                 }
-            }));
+            }, blueprintService.listPersistentVariables()));
         } catch (error) {
             console.warn("[SearchService] Failed to index blueprints:", error);
             this.blueprintEntries = [];

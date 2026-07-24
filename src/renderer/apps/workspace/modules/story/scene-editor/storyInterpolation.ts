@@ -74,7 +74,7 @@ export function resolveVariableRefName(
     if (ref.scope === "saved") {
         return savedVariableDefs(document)[ref.variableId]?.name ?? "variable";
     }
-    return persistent.find(option => option.storageKey === ref.storageKey)?.name ?? "persistent";
+    return persistent.find(option => option.storageKey === ref.variableId)?.name ?? "persistent";
 }
 
 export function resolveInterpolationName(

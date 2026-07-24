@@ -52,7 +52,6 @@ describe("blueprintFactories", () => {
                 schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
                 blueprints: {},
                 ownerRecords: {},
-                persistentVariables: {},
                 meta: {},
             },
             () => "repaired",

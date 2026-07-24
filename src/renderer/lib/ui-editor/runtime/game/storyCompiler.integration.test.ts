@@ -1212,14 +1212,14 @@ describe("compileStudioStoryToNlr", () => {
             kind: "action",
             parentId: null,
             childrenIds: [],
-            payload: { action: "setVariable", target: { scope: "persistent", storageKey: "flag" }, value: true },
+            payload: { action: "setVariable", target: { scope: "persistent", variableId: "flag" }, value: true },
         };
         const setGhost: StoryBlock = {
             id: "set-ghost",
             kind: "action",
             parentId: null,
             childrenIds: [],
-            payload: { action: "setVariable", target: { scope: "persistent", storageKey: "ghost" }, value: true },
+            payload: { action: "setVariable", target: { scope: "persistent", variableId: "ghost" }, value: true },
         };
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({ "flag-decl": persistentDecl, "set-declared": setDeclared, "set-ghost": setGhost }, ["flag-decl", "set-declared", "set-ghost"]),
@@ -1490,7 +1490,7 @@ describe("compileStudioStoryToNlr localization", () => {
                     role: "narration",
                     rich: [
                         { text: "你好，" },
-                        { interpolation: { kind: "variable", target: { scope: "persistent", storageKey: "playerName" } } },
+                        { interpolation: { kind: "variable", target: { scope: "persistent", variableId: "playerName" } } },
                         { text: "！" },
                     ],
                 },
@@ -1718,5 +1718,30 @@ describe("compileStudioStoryToNlr voice", () => {
         // Inline voice remains for back-compat; no id-keyed take overrides it.
         expect(sentence.config?.voice).toBeTruthy();
         expect(sentence.config?.voiceId ?? null).toBeNull();
+    });
+
+    it("warns when a persistent name is declared in both the registry and a story row (M-VAR merged view)", async () => {
+        // Story `/persis Score` row and a blueprint-registry entry also named "Score" - ambiguous.
+        const scoreRow: StoryBlock = {
+            id: "score-decl",
+            kind: "declaration",
+            parentId: null,
+            childrenIds: [],
+            payload: { scope: "persistent", name: "Score", valueType: "number", storageKey: "story_score" },
+        };
+        const document = baseDocument({ "score-decl": scoreRow }, ["score-decl"]);
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            characters: [],
+            persistentVariables: {
+                bp_score: { id: "bp_score", name: "Score", valueType: "number", storageKey: "bp_score" },
+            },
+        });
+        expect(compiled.diagnostics).toContainEqual({
+            level: "warning",
+            blockId: undefined,
+            message: 'Persistent variable "Score" is declared in both the variable registry and a story row; references are ambiguous.',
+        });
     });
 });

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import {
     type UIDocument,
     type UISurface,
@@ -40,6 +41,8 @@ import { shouldHoldCurrentSurfaceUntilEnterComplete } from "@/lib/ui-editor/runt
 
 export type SurfaceBlueprintBindingContext = {
     blueprintDocument: BlueprintDocument;
+    /** M-VAR: persistent variable registry table, baked into the bundle (for blueprint value graphs that read persistent vars). */
+    persistentVariables: PersistentVariableRuntimeTable;
     surfaceState: SurfaceStateStore;
     debug: DebugBridge;
     coalescer: BindingDebugCoalescer;
@@ -127,6 +130,7 @@ function SurfaceValueRuntimeBoundary(props: SurfaceElementTreeProps) {
             document,
             surface,
             blueprintDocument: blueprintBindingContext.blueprintDocument,
+            persistentVariables: blueprintBindingContext.persistentVariables,
             hostAdapter,
         });
     }, [blueprintBindingContext, document, hostAdapter, surface, valueRuntime]);

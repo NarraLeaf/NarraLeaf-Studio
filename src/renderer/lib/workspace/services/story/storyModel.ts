@@ -324,10 +324,14 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     if (version < 6) {
         migrated = migrateStoryDocumentV5toV6(migrated);
     }
+    if (version < 9) {
+        migrated = migrateStoryDocumentV8toV9(migrated);
+    }
     // v4 (the `invalid` block kind and dialogue's `speakerName`), v7 (the block-level `disabled`
     // flag) and v8 (the `event` rich-text run) are purely additive: an older document is already
     // valid at the new version, so there is no step for any of them - only the stamp (a v7 document
-    // falls through every step above and is stamped v8).
+    // falls through every step above and is stamped v8). v9 (M-VAR) is NOT additive - it renames the
+    // persistent `StoryVariableRef` arm - so it has a real step above.
     //
     // The stamp is unconditional, and has to be. Each migrator above ends by writing
     // STORY_DOCUMENT_SCHEMA_VERSION rather than the version it actually produces, so the ladder only
@@ -336,6 +340,43 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     // v2 tests kept passing because V2toV3 stamps whatever the constant currently says. Landing the
     // stamp here means the next additive bump cannot reopen that hole.
     return { ...migrated, schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION };
+}
+
+/**
+ * v8→v9 (M-VAR): the persistent `StoryVariableRef` arm changes from `{ storageKey }` to
+ * `{ variableId }`, symmetric with the scene/saved arms. The value is unchanged - a persistent
+ * variable's `variableId` equals its `storageKey` - so this is a pure field rename with zero semantic
+ * change. Refs are nested everywhere (setVariable targets, conditions, expression `var` nodes, inline
+ * interpolations, snapshot keys are already `persistent:<value>`), so a generic deep walk rewrites
+ * every one; the guard (`scope:"persistent"` + `storageKey`, no declaration-payload `name`/`valueType`)
+ * distinguishes a ref arm from a `/persis` declaration payload, which keeps its `storageKey`.
+ */
+function migrateStoryDocumentV8toV9(document: StoryDocument): StoryDocument {
+    return migratePersistentRefsToVariableId(document) as StoryDocument;
+}
+
+function migratePersistentRefsToVariableId(node: unknown): unknown {
+    if (Array.isArray(node)) {
+        return node.map(migratePersistentRefsToVariableId);
+    }
+    if (node !== null && typeof node === "object") {
+        const obj = node as Record<string, unknown>;
+        if (
+            obj.scope === "persistent" &&
+            typeof obj.storageKey === "string" &&
+            !("variableId" in obj) &&
+            !("valueType" in obj) &&
+            !("name" in obj)
+        ) {
+            return { scope: "persistent", variableId: obj.storageKey };
+        }
+        const out: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(obj)) {
+            out[key] = migratePersistentRefsToVariableId(value);
+        }
+        return out;
+    }
+    return node;
 }
 
 function migrateStoryDocumentV1toV2(document: StoryDocument): StoryDocument {

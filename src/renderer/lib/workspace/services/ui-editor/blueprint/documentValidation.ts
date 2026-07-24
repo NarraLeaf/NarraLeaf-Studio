@@ -24,23 +24,7 @@ export function assertValidBlueprintDocument(doc: BlueprintDocument): void {
     if (!doc.ownerRecords || typeof doc.ownerRecords !== "object") {
         throw new BlueprintDocumentValidationError("BlueprintDocument.ownerRecords is missing or invalid");
     }
-    if (!doc.persistentVariables || typeof doc.persistentVariables !== "object") {
-        throw new BlueprintDocumentValidationError("BlueprintDocument.persistentVariables is missing or invalid");
-    }
-
-    for (const [id, variable] of Object.entries(doc.persistentVariables)) {
-        if (!variable || typeof variable !== "object") {
-            throw new BlueprintDocumentValidationError(`persistentVariables["${id}"] is invalid`);
-        }
-        if (variable.id !== id) {
-            throw new BlueprintDocumentValidationError(
-                `persistentVariables key "${id}" does not match variable id "${String(variable.id)}"`,
-            );
-        }
-        if (typeof variable.storageKey !== "string" || variable.storageKey.trim().length === 0) {
-            throw new BlueprintDocumentValidationError(`persistentVariables["${id}"].storageKey is missing`);
-        }
-    }
+    // Persistent variables left the blueprint document for the M-VAR registry; nothing to validate here.
 
     for (const [key, rec] of Object.entries(doc.ownerRecords)) {
         if (!rec || typeof rec !== "object") {

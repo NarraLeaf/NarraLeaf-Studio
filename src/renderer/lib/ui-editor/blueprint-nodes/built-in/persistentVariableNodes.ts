@@ -3,7 +3,8 @@
  * Comments in English per project convention.
  */
 
-import type { BlueprintPersistentVariable, LiteralValue } from "@shared/types/blueprint/document";
+import type { LiteralValue } from "@shared/types/blueprint/document";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import {
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
@@ -25,7 +26,7 @@ function cloneLiteralValue(value: LiteralValue | undefined): unknown {
 
 function resolvePersistentVariable(
     ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0],
-): BlueprintPersistentVariable {
+): VariableRegistryEntry {
     const id = String(ctx.params.persistentVariableId ?? "").trim();
     if (!id) {
         throw new BlueprintGraphExecutionError("Pick a persistent variable", ctx.node.id);

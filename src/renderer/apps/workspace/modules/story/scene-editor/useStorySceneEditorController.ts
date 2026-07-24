@@ -262,7 +262,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             document,
             sceneId,
             scene,
-            blueprintDocument: blueprintService?.getBlueprintDocument() ?? null,
+            persistentVariables: blueprintService?.listPersistentVariables() ?? [],
         }),
         [assetsService, blueprintService, blueprintRevision, characters, document, sceneId, scene],
     );

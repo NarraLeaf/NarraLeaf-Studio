@@ -42,6 +42,9 @@ export const ProjectNameConvention = {
     EditorUI: ["editor", "ui/"],
     EditorUIDocument: ["editor", "ui", "uidoc.json"],
     EditorUIGraphs: ["editor", "ui", "uigraphs.json"],
+    // Project-level persistent variable registry (M-VAR). Cross-cutting (blueprint + story), so it
+    // sits at editor root rather than under ui/ or story/. Not packaged into the product.
+    EditorVariableRegistry: ["editor", "variables.json"],
     EditorStory: ["editor", "story/"],
     EditorStoryStories: ["editor", "story", "stories/"],
     EditorStoryIndex: ["editor", "story", "index.json"],

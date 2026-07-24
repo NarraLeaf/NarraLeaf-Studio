@@ -160,7 +160,6 @@ export function createInitialBlueprintDocument(generateId: () => string): Bluepr
                 initializedFrontend: "visual",
             },
         },
-        persistentVariables: {},
         meta: {},
     };
 }
