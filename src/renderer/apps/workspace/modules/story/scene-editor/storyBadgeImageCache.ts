@@ -144,8 +144,11 @@ function invalidate(key: string, gone: boolean): void {
 /**
  * Subscribe the cache to project-asset changes exactly once per `AssetsService`. Differential sprites
  * are project assets (see `BadgeImageSource`), so a content replacement fires `updated`/`deleted` here
- * and the matching `project:<id>` entry refreshes. Never unsubscribed: the service and this module are
- * both window-lifetime singletons (one project = one window), and a new project mounts a new service.
+ * and the matching `project:<id>` entry refreshes. Never unsubscribed *by design*: the service and this
+ * module are both window-lifetime singletons (one project = one window — see the multi-project window
+ * model), and a new project mounts a new window with a fresh module and service. Should a different
+ * service instance ever appear within one window, re-wiring here leaks at most one bounded listener set
+ * that dies with the discarded service, so an explicit teardown would add lifecycle risk for no real gain.
  */
 let wiredAssets: AssetsService | null = null;
 function ensureAssetInvalidationWired(assets: AssetsService): void {
