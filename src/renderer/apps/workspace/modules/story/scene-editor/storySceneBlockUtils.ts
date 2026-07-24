@@ -636,6 +636,54 @@ export function nextSelectionAfterDelete(scene: StoryScene, visibleRows: Visible
     return visibleRows.find((row, index) => index > firstDeletedIndex && !isDeleted(row.block.id))?.block.id ?? null;
 }
 
+/**
+ * `Backspace` on selected rows that are not being edited: which row, if any, becomes a blank line in
+ * place instead of being deleted. Returns where the replacement goes and which row it replaces, or
+ * null when the plain delete should run.
+ *
+ * The rule is deliberately narrow - it only holds where a text editor's Backspace would obviously do
+ * the same thing:
+ * - **one row only.** A multi-row Backspace stays a bulk delete; turning a selection into a column of
+ *   blank lines is nobody's muscle memory.
+ * - **a non-text row.** Text rows already own the rest of the ladder (empty line → previous row).
+ * - **no children.** Replacing a container that holds a subtree would silently destroy it.
+ * - **not a structural child.** A condition holds branches and a choice holds options - a narration
+ *   line in either is not a legal tree, so those rows keep the plain delete.
+ */
+export function planRowBackspaceReplacement(
+    scene: StoryScene,
+    ids: StoryBlockId[],
+): { replaceBlockId: StoryBlockId; target: StoryBlockTarget } | null {
+    if (ids.length !== 1) {
+        return null;
+    }
+    const block = scene.blocks[ids[0]];
+    if (!block || isTextEditableBlock(block) || block.childrenIds.length > 0) {
+        return null;
+    }
+    const parent = block.parentId ? scene.blocks[block.parentId] : null;
+    if (block.parentId && !acceptsPlainRows(parent)) {
+        return null;
+    }
+    return { replaceBlockId: block.id, target: { parentId: block.parentId, beforeBlockId: block.id } };
+}
+
+/**
+ * Whether a plain (narration) row is a legal child of this container. Deliberately stricter than
+ * {@link canAcceptChildren}: a condition holds branches and a choice holds options, and `nvl` is a
+ * container to this module but not to `insertBlockInScene`, which is the rule that actually decides
+ * whether the insert lands.
+ */
+function acceptsPlainRows(parent: StoryBlock | null | undefined): boolean {
+    if (!parent) {
+        return false;
+    }
+    if (parent.kind === "control") {
+        return parent.payload.control !== "condition";
+    }
+    return parent.kind === "nodeAction" && parent.payload.action === "choiceOption";
+}
+
 export function findPreviousSibling(scene: StoryScene, blockId: StoryBlockId): StoryBlock | null {
     const block = scene.blocks[blockId];
     if (!block) {
