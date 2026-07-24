@@ -280,6 +280,9 @@ function formatAction(payload: StoryActionPayload, scene: StoryScene, document?:
     if (payload.action === "video") {
         return `/video ${payload.operation} ${payload.objectName}`.trimEnd();
     }
+    if (payload.action === "vfx") {
+        return `/vfx ${payload.operation} ${payload.objectName}`.trimEnd();
+    }
     if (payload.action === "nvl") {
         return "/nvl";
     }

@@ -81,8 +81,10 @@ function displayableTargetRef(target: ReturnType<typeof asTarget>): StoryDisplay
     if (target.type === "character") {
         return { kind: "character", name: target.name };
     }
-    // Audio and video objects are not displayables; the target param never accepts them here.
-    if (target.objectKind === "audio" || target.objectKind === "video") {
+    // Audio, video and vfx are not displayables; the target param never accepts them here. (The
+    // payload type says so too - `StoryDisplayableTargetKind` excludes them - so this arm exists only
+    // to keep the function total, not because a line can reach it.)
+    if (target.objectKind === "audio" || target.objectKind === "video" || target.objectKind === "vfx") {
         return { name: target.name };
     }
     return { kind: target.objectKind, name: target.name };

@@ -91,6 +91,7 @@ function collectStageObjects(document: StoryDocument | null, sceneId: StoryScene
     const layer = new Set<string>();
     const video = new Set<string>();
     const audio = new Set<string>();
+    const vfx = new Set<string>();
 
     for (const ref of listSceneDisplayableTargets(document, sceneId ?? undefined, undefined)) {
         if (ref.kind === "image") {
@@ -109,9 +110,11 @@ function collectStageObjects(document: StoryDocument | null, sceneId: StoryScene
             video.add(block.payload.objectName);
         } else if (block.payload.action === "audio" && block.payload.objectName) {
             audio.add(block.payload.objectName);
+        } else if (block.payload.action === "vfx" && block.payload.objectName) {
+            vfx.add(block.payload.objectName);
         }
     }
-    return { image: [...image], text: [...text], layer: [...layer], video: [...video], audio: [...audio] };
+    return { image: [...image], text: [...text], layer: [...layer], video: [...video], audio: [...audio], vfx: [...vfx] };
 }
 
 export function buildStoryCommandContext(input: {

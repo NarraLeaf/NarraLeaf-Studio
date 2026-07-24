@@ -1908,6 +1908,40 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(propsOf("dark")).toEqual([expect.objectContaining({ filter: "brightness(0)" })]);
     });
 
+    it("compiles /vfx onto one Vfx, showing on create and clamping its knobs", async () => {
+        const vfxBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "vfx" }>): StoryBlock => ({
+            id, kind: "action", parentId: null, childrenIds: [], payload,
+        });
+        const blocks: Record<string, StoryBlock> = {
+            create: vfxBlock("create", {
+                action: "vfx", operation: "create", objectName: "rain", assetId: "asset-rain",
+                blendMode: "screen", opacity: 2, loop: true, fit: "cover", zIndex: 3, durationMs: 600,
+            }),
+            rate: vfxBlock("rate", { action: "vfx", operation: "setRate", objectName: "rain", rate: -1 }),
+            freeze: vfxBlock("freeze", { action: "vfx", operation: "pause", objectName: "rain" }),
+            hide: vfxBlock("hide", { action: "vfx", operation: "hide", objectName: "rain", durationMs: 400 }),
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["create", "rate", "freeze", "hide"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        const actionOf = (blockId: string) => compiled.actionIdBindings.find(binding => binding.blockId === blockId)?.action as any;
+
+        expect(compiled.diagnostics).toEqual([]);
+        // A create puts the overlay on screen - the row an author writes to "start the rain" must.
+        expect(actionOf("create")?.type).toBe("vfx:show");
+        expect(actionOf("freeze")?.type).toBe("vfx:pause");
+        expect(actionOf("hide")?.type).toBe("vfx:hide");
+        expect(actionOf("hide")?.contentNode?.getContent?.()[0]).toMatchObject({ duration: 400 });
+        // Out-of-range knobs are clamped here, not trusted: a negative rate is not a speed.
+        expect(actionOf("rate")?.contentNode?.getContent?.()).toEqual([0]);
+        // Every row addresses the SAME overlay - `create` is what registers the name.
+        expect(actionOf("hide")?.callee).toBe(actionOf("create")?.callee);
+        expect(actionOf("create")?.callee?.config).toMatchObject({ blendMode: "screen", opacity: 1, zIndex: 3, fit: "cover" });
+    });
+
     it("compiles the video transport operations, converting seek to seconds", async () => {
         const videoBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "video" }>): StoryBlock => ({
             id, kind: "action", parentId: null, childrenIds: [], payload,

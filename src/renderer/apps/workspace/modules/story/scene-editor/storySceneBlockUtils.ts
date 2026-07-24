@@ -1,4 +1,4 @@
-import { Aperture, Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video } from "lucide-react";
+import { Aperture, Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryExpr, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment, StoryVariableRef } from "@shared/types/story";
 import { describeDeclaration, layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef, storyVariableRefKey } from "@shared/types/story";
 import { storyMsToSeconds } from "@shared/utils/storyTime";
@@ -371,6 +371,9 @@ export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typ
         if (block.payload.action === "text") return withCategory(translate("story.badge.text"), Type, "text");
         if (block.payload.action === "layer") return withCategory(translate("story.badge.layer"), Layers, "layer");
         if (block.payload.action === "video") return withCategory(translate("story.badge.video"), Video, "video");
+        // Its own badge and hue, not the screen-effect one: a vfx is a stage object with a name and a
+        // lifetime, while `/blink` is a one-shot the scene plays.
+        if (block.payload.action === "vfx") return withCategory(translate("story.badge.vfx"), Wind, "vfx");
         if (block.payload.action === "nvl") return withCategory(translate("story.badge.nvl"), FileText, "scene");
         if (block.payload.action === "blueprint") return withCategory(translate("story.badge.blueprint"), Puzzle, "utils");
         // Its own badge, not "Effect": `/camera darken` dims the whole stage and outlives the scene,
@@ -536,6 +539,7 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
             return translate("story.describe.layer", { operation: payload.operation, name: layerName });
         }
         if (payload.action === "video") return translate("story.describe.video", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
+        if (payload.action === "vfx") return translate("story.describe.vfx", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
         if (payload.action === "nvl") return translate("story.describe.nvl");
         if (payload.action === "blueprint") return translate("story.describe.blueprint");
         if (payload.action === "camera") return describeCamera(payload);

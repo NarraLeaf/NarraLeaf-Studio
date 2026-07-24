@@ -34,20 +34,24 @@ const commandsIn = (groupId: StoryCommandGroupId): string[] =>
     sidebar().find(entry => entry.group.id === groupId)?.commands.map(command => command.id) ?? [];
 
 describe("accepts-driven classification (§4.2)", () => {
-    it("files a generic verb under every subject it accepts - /show reaches all five", () => {
-        expect(groupIds("show")).toEqual(["character", "image", "text", "video", "layer"]);
-        expect(groupIds("hide")).toEqual(["character", "image", "text", "video", "layer"]);
-        for (const group of ["character", "image", "text", "video", "layer"] as const) {
+    it("files a generic verb under every subject it accepts - /show reaches all six", () => {
+        expect(groupIds("show")).toEqual(["character", "image", "text", "video", "layer", "vfx"]);
+        expect(groupIds("hide")).toEqual(["character", "image", "text", "video", "layer", "vfx"]);
+        for (const group of ["character", "image", "text", "video", "layer", "vfx"] as const) {
             expect(commandsIn(group)).toContain("show");
         }
     });
 
     it("does not file a verb under a subject it cannot act on", () => {
-        // `/transform` writes a displayable payload: video and audio are not displayables, and the
-        // sidebar must not offer it under them just because they are stage objects.
+        // `/transform` writes a displayable payload: video, vfx and audio are not displayables, and
+        // the sidebar must not offer it under them just because they are stage objects.
         expect(groupIds("transform")).toEqual(["image", "text", "layer", "character"]);
         expect(commandsIn("video")).not.toContain("transform");
         expect(commandsIn("sound")).not.toContain("transform");
+        expect(commandsIn("vfx")).not.toContain("transform");
+        expect(commandsIn("vfx")).not.toContain("fx");
+        // ...and the mirror: an overlay's own verbs ARE there, because `accepts` lists it.
+        expect(commandsIn("vfx")).toEqual(expect.arrayContaining(["vfx", "show", "hide", "pause", "resume", "rate"]));
         // The sound control family is the mirror case: audio only.
         expect(groupIds("volume")).toEqual(["sound"]);
         expect(commandsIn("image")).not.toContain("volume");
@@ -146,6 +150,8 @@ const GROUP_COLORS: Record<StoryCommandGroupId, string> = {
     text: "#9bb7d8",
     layer: "#92b9b0",
     video: "#b59dcc",
+    // A3's addition, and the only hue no group already wore - the palette's remaining gap.
+    vfx: "#d3c07c",
     camera: "#d1a176",
     scene: "#8fa9c7",
     sound: "#bd97a3",
