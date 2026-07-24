@@ -40,6 +40,7 @@ import {
     filterOutSelectedDescendants,
     findPreviousSibling,
     nextSelectionAfterDelete,
+    planRowBackspaceReplacement,
     getInsertionTargetAfter,
     getMoveTargetBefore,
     getMoveTargetAfter,
@@ -1717,6 +1718,42 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         await deleteRows(ids, options);
     }, [activeBlockId, deleteRows, selectedBlockIds]);
 
+    /**
+     * `Backspace` on a selected row that is not being edited: the row is replaced by a blank narration
+     * line with the caret in it, rather than deleted. Pressing Backspace again is then the *existing*
+     * empty-line rung ({@link handleBackspaceAtEmptyStart}), so an action row degrades to "blank line
+     * → gone" over two presses - the closure a text editor trained the author to expect. `Delete` is
+     * untouched and still removes the row outright: the two keys stay two paths.
+     *
+     * The insert and the delete run under one `recordHistory` (`insertBlock`'s own), so a single
+     * `Mod+Z` brings the original row back with its payload - the point of the whole closure, since
+     * two-step undo would hand the author a blank line and call it a restore.
+     *
+     * Returns false when the rule does not apply (see {@link planRowBackspaceReplacement}), leaving
+     * the caller to run the plain delete.
+     */
+    const replaceRowWithBlankLine = useCallback((): boolean => {
+        if (!scene || editorMode.kind === "text" || editorMode.kind === "insert") {
+            return false;
+        }
+        const ids = selectedBlockIds.size > 0 ? [...selectedBlockIds] : activeBlockId ? [activeBlockId] : [];
+        const plan = planRowBackspaceReplacement(scene, ids);
+        if (!plan) {
+            return false;
+        }
+        const block = createBlock("narration");
+        if (!block) {
+            return false;
+        }
+        insertBlock(block, null, false, { target: plan.target, replaceBlockId: plan.replaceBlockId });
+        selectionAnchorRef.current = block.id;
+        // Overrides the idle mode `insertBlock` leaves behind: the row is a text row now and the author
+        // is inside it. It also drops any inspector that was open on the row being replaced, so the
+        // panel cannot go on showing a block that no longer exists.
+        setEditorMode({ kind: "text", blockId: block.id, value: "", caret: "end" });
+        return true;
+    }, [activeBlockId, createBlock, editorMode, insertBlock, scene, selectedBlockIds]);
+
     const indentSelection = useCallback((direction: "in" | "out") => {
         if (!storyService || !storyId || !sceneId || !scene) {
             return;
@@ -2029,7 +2066,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         lensContainerIds, toggleContainerLens,
         rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
-        deleteRows, deleteSelection, startInsertAfter, startInsertBefore, selectRow, beginDragSelection,
+        deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, selectRow, beginDragSelection,
         selectionRootIds, toggleDisableSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateSceneMetadata,
         setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange,
