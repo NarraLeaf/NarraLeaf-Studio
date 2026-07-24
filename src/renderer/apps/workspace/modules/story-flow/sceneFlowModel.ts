@@ -13,6 +13,7 @@ import type {
     StoryScene,
     StorySceneId,
 } from "@shared/types/story";
+import { formatStoryConditionSummary } from "../story/projection/storySceneProjection";
 
 /** Node box size. The layout and the node component must agree on these. */
 export const SCENE_FLOW_NODE_WIDTH = 216;
@@ -26,10 +27,27 @@ const ROW_GAP = 28;
  */
 const MAX_ROWS_PER_COLUMN = 6;
 
+/**
+ * What kind of fork put a jump on one path rather than another.
+ *
+ * `conditionElse` carries no text of its own — the branch is defined by the ones it is not — so the
+ * renderer supplies the existing "otherwise" wording rather than the model inventing a second one.
+ */
+export type SceneFlowBranchKind = "choice" | "condition" | "conditionElse";
+
+/** The nearest branching ancestor of a jump, as the edge label renders it. */
+export type SceneFlowBranchLabel = {
+    kind: SceneFlowBranchKind;
+    /** Option text, or the condition summary. Empty for `conditionElse` and for an unnamed option. */
+    label: string;
+};
+
 export type SceneFlowJumpRef = {
     blockId: StoryBlockId;
-    /** The jump sits under an if/loop, so it only fires on some runs. */
+    /** The jump sits under a choice option or a condition branch, so it only fires on some runs. */
     conditional: boolean;
+    /** The fork it hangs off, when there is one. Absent exactly when `conditional` is false. */
+    branch?: SceneFlowBranchLabel;
 };
 
 export type SceneFlowNodeModel = {
@@ -54,6 +72,12 @@ export type SceneFlowEdgeModel = {
     jumps: SceneFlowJumpRef[];
     /** Every jump on this edge is conditional, so the branch is not guaranteed. Drawn dashed. */
     conditional: boolean;
+    /**
+     * The distinct forks that reach this target, in document order — what the collapsed line hides.
+     * Deduplicated, so two options worded the same read as one path (they are, to a reader of the
+     * map). Empty when nothing on the edge is branched.
+     */
+    branches: SceneFlowBranchLabel[];
 };
 
 export type SceneFlowGraph = {
@@ -90,10 +114,17 @@ function orderSceneIds(document: StoryDocument): StorySceneId[] {
 }
 
 /**
- * Whether a jump is nested under control flow (a condition or a loop), which makes it a branch
- * rather than an unconditional hand-off.
+ * The nearest fork above a jump — the thing that decides whether this jump is the one that runs.
+ *
+ * Only two ancestors fork: a choice option (the player picks) and a condition branch (the state
+ * decides). `sequence` / `parallel` / `race` / `repeat` are *ordering*, not choosing: every jump
+ * inside them runs, so a jump under a `sequence` is as certain as one at the top of the scene. The
+ * previous rule stopped at any `control` ancestor and so drew half the maps dashed for no reason.
+ *
+ * Nearest wins: an option nested inside an `if` is reached by picking that option, and the option is
+ * what a reader of the map needs to see.
  */
-function isUnderControlFlow(scene: StoryScene, block: StoryBlock): boolean {
+function resolveJumpBranch(scene: StoryScene, block: StoryBlock, document: StoryDocument): SceneFlowBranchLabel | null {
     const seen = new Set<StoryBlockId>();
     let parentId = block.parentId;
     // A corrupted document must not hang the editor, hence the visited set.
@@ -101,14 +132,25 @@ function isUnderControlFlow(scene: StoryScene, block: StoryBlock): boolean {
         seen.add(parentId);
         const parent = scene.blocks[parentId];
         if (!parent) {
-            return false;
+            return null;
         }
-        if (parent.kind === "control") {
-            return true;
+        if (parent.kind === "nodeAction" && parent.payload.action === "choiceOption") {
+            return { kind: "choice", label: parent.payload.text.value.trim() };
+        }
+        if (parent.kind === "control" && parent.payload.control === "conditionBranch") {
+            if (parent.payload.branch === "else") {
+                return { kind: "conditionElse", label: "" };
+            }
+            return { kind: "condition", label: formatStoryConditionSummary(parent.payload.condition, scene, document) };
         }
         parentId = parent.parentId;
     }
-    return false;
+    return null;
+}
+
+/** Same fork, worded the same way — the dedupe key for an edge's branch list. */
+function branchKey(branch: SceneFlowBranchLabel): string {
+    return `${branch.kind}:${branch.label}`;
 }
 
 /**
@@ -260,7 +302,12 @@ export function buildSceneFlowGraph(document: StoryDocument): SceneFlowGraph {
                 continue;
             }
             const key = `${sceneId}->${target}`;
-            const jump: SceneFlowJumpRef = { blockId: block.id, conditional: isUnderControlFlow(scene, block) };
+            const branch = resolveJumpBranch(scene, block, document);
+            const jump: SceneFlowJumpRef = {
+                blockId: block.id,
+                conditional: branch !== null,
+                ...(branch ? { branch } : {}),
+            };
             const existing = edgeByKey.get(key);
             if (existing) {
                 existing.jumps.push(jump);
@@ -271,15 +318,31 @@ export function buildSceneFlowGraph(document: StoryDocument): SceneFlowGraph {
                     target,
                     jumps: [jump],
                     conditional: false,
+                    branches: [],
                 });
             }
         }
     }
 
-    const edges = Array.from(edgeByKey.values()).map(edge => ({
-        ...edge,
-        conditional: edge.jumps.every(jump => jump.conditional),
-    }));
+    const edges = Array.from(edgeByKey.values()).map(edge => {
+        const seenBranches = new Set<string>();
+        const branches: SceneFlowBranchLabel[] = [];
+        for (const jump of edge.jumps) {
+            if (!jump.branch) {
+                continue;
+            }
+            const key = branchKey(jump.branch);
+            if (!seenBranches.has(key)) {
+                seenBranches.add(key);
+                branches.push(jump.branch);
+            }
+        }
+        return {
+            ...edge,
+            conditional: edge.jumps.every(jump => jump.conditional),
+            branches,
+        };
+    });
 
     const layers = assignLayers(sceneIds, edges, entrySceneId);
     const reachable = findReachable(edges, entrySceneId);
