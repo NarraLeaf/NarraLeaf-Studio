@@ -139,8 +139,15 @@ export type StorySceneUpdate = {
  */
 export type StoryVariableScope = "scene" | "saved" | "persistent";
 export type StoryVariableValueType = "boolean" | "number" | "string" | "json";
-export type StoryStageObjectKind = "image" | "text" | "layer" | "video";
-export type StoryDisplayableTargetKind = Exclude<StoryStageObjectKind, "video"> | "character";
+export type StoryStageObjectKind = "image" | "text" | "layer" | "video" | "vfx";
+/**
+ * The stage objects that ARE Displayables, and so answer `/transform` and `/fx`.
+ *
+ * Video and Vfx are `Actionable`s in the engine, not Displayables: they carry no transform pipeline
+ * at all. Excluding them here is what makes "a vfx cannot be transformed" a fact of the type system
+ * rather than a rule every target picker has to remember.
+ */
+export type StoryDisplayableTargetKind = Exclude<StoryStageObjectKind, "video" | "vfx"> | "character";
 
 /** Declaration for a scene variable (backed by NLR `Scene.local`). */
 export type StorySceneVariableDefinition = {
@@ -470,6 +477,40 @@ export type StoryActionPayload =
           easing?: string;
       }
     | {
+          /**
+           * A `Vfx` (NLR 0.16.0) — a full-screen looping video overlay for ambience: falling petals,
+           * rain, dust, light flares. An `Actionable`, **not** a Displayable: it has no transform
+           * pipeline, which is why `StoryDisplayableTargetKind` excludes it and `/transform` `/fx`
+           * never offer it as a target.
+           *
+           * `create` is what puts it on stage AND registers the name the later verbs address, the
+           * same shape `video` uses. Additive: no document before A3 carries it, so no schema bump.
+           */
+          action: "vfx";
+          operation: "create" | "show" | "hide" | "pause" | "resume" | "setRate";
+          objectName: string;
+          /** The looping clip — a video asset, the same pipeline `/video` uses. */
+          assetId?: string;
+          /**
+           * How the overlay composites. The choice IS the material route: `normal` for a true-alpha
+           * WebM, `screen` for glow rendered on black, `multiply` for shadow rendered on white.
+           */
+          blendMode?: StoryVfxBlendMode;
+          opacity?: number;
+          loop?: boolean;
+          fit?: "cover" | "contain" | "fill";
+          zIndex?: number;
+          /**
+           * Playback speed; 0.5 drifts slowly, 2 falls twice as fast. On `setRate` it is the change;
+           * on `create` it is the loop's resting speed — and only the latter survives a save, since
+           * the engine does not persist a runtime rate change.
+           */
+          rate?: number;
+          /** `show` / `hide` — the fade the action waits out. */
+          durationMs?: number;
+          easing?: string;
+      }
+    | {
           action: "nvl";
           transition?: StoryTransformRef;
       }
@@ -487,6 +528,9 @@ export type StoryActionPayload =
           /** Owner blueprint id of the implicit Story Action Blueprint bound 1:1 to this action. */
           blueprintId: string;
       };
+
+/** Mirrors NLR's `VfxBlendMode`; the compiler passes it straight through to the overlay's CSS. */
+export type StoryVfxBlendMode = "normal" | "screen" | "multiply" | "lighten" | "color-dodge" | "overlay";
 
 export type StoryControlPayload =
     | {

@@ -10,6 +10,7 @@ import { VARIABLE_COMMANDS } from "./specs/variables";
 import { LOGIC_COMMANDS } from "./specs/logic";
 import { EFFECT_COMMANDS } from "./specs/effects";
 import { CAMERA_COMMANDS } from "./specs/camera";
+import { VFX_COMMANDS } from "./specs/vfx";
 import { MISC_COMMANDS } from "./specs/misc";
 
 /**
@@ -33,6 +34,7 @@ const ALL_SPECS: readonly AnyStoryCommandSpec[] = [
     ...LOGIC_COMMANDS,
     ...EFFECT_COMMANDS,
     ...CAMERA_COMMANDS,
+    ...VFX_COMMANDS,
     ...MISC_COMMANDS,
 ] as readonly AnyStoryCommandSpec[];
 

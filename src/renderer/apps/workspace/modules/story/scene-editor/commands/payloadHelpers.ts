@@ -1,4 +1,4 @@
-import type { StoryTransformRef, StoryTransitionRef } from "@shared/types/story";
+import type { StoryActionPayload, StoryBlock, StoryTransformRef, StoryTransitionRef } from "@shared/types/story";
 import type { StoryCommandContext, StoryCommandStageObjectKind, StoryCommandValue } from "../storyCommandValues";
 import { asDurationMs, asEnum } from "./spec";
 import { transformPresetFor, transitionKindFor } from "./transitions";
@@ -55,6 +55,28 @@ export function withPlacementTransform(
 }
 
 /**
+ * A non-create `vfx` row, built wherever a generic verb resolved its target to an ambience overlay.
+ *
+ * Shared because three files reach it - `/show` `/hide` from the character family, `/pause` `/resume`
+ * `/rate` from the sound family - and a Vfx's verbs are its own: it is an `Actionable`, so none of the
+ * displayable or audio payloads can carry them.
+ */
+export function vfxOperationBlock(
+    operation: Exclude<Extract<StoryActionPayload, { action: "vfx" }>["operation"], "create">,
+    objectName: string,
+    generateId: () => string,
+    extra?: Partial<Extract<StoryActionPayload, { action: "vfx" }>>,
+): StoryBlock {
+    return {
+        id: generateId(),
+        parentId: null,
+        childrenIds: [],
+        kind: "action",
+        payload: { action: "vfx", operation, objectName, ...extra },
+    };
+}
+
+/**
  * The auto-name pass for a `create` command (`deriveArgs`): fill in the object name the author left
  * blank, so `/image forest.png` lands an image called `forest` - the same "no name needed" feel as
  * `/bg`. Derived from the asset's filename when `assetParam` names one, else a deduped `base`, so two
@@ -74,7 +96,10 @@ export function deriveObjectName(stageKind: StoryCommandStageObjectKind, assetPa
 
 /** The asset's display name without its extension - `forest.png` → `forest` - or null when unknown. */
 function assetBaseName(context: StoryCommandContext, stageKind: StoryCommandStageObjectKind, assetId: string): string | null {
-    const list = stageKind === "video" ? context.videos : stageKind === "audio" ? context.audio : context.images;
+    // An ambience overlay's clip comes out of the video library, so it names itself off the same list.
+    const list = stageKind === "video" || stageKind === "vfx"
+        ? context.videos
+        : stageKind === "audio" ? context.audio : context.images;
     const found = list.find(entry => entry.id === assetId);
     const stripped = found?.name.replace(/\.[^./\\]+$/, "").trim();
     return stripped ? stripped : null;

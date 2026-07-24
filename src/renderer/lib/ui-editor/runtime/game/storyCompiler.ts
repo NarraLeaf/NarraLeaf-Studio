@@ -25,6 +25,7 @@ import {
     TextEvent,
     ThroughColor,
     Transform,
+    Vfx,
     Video,
     Word,
 } from "narraleaf-react";
@@ -406,6 +407,7 @@ type SceneCompileContext = {
     texts: Map<string, Text>;
     layers: Map<string, Layer>;
     videos: Map<string, Video>;
+    vfx: Map<string, Vfx>;
     sounds: Map<string, Sound>;
     animations: Map<string, StoryAnimationAsset>;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
@@ -549,6 +551,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             texts: new Map(),
             layers: new Map(),
             videos: new Map(),
+            vfx: new Map(),
             sounds: new Map(),
             animations,
             resolveAssetUrl,
@@ -698,6 +701,7 @@ async function buildLaunchEntryScene(params: {
         texts: new Map(),
         layers: new Map(),
         videos: new Map(),
+        vfx: new Map(),
         sounds: new Map(),
         animations: params.animations,
         resolveAssetUrl,
@@ -880,6 +884,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         texts: new Map(),
         layers: new Map(),
         videos: new Map(),
+        vfx: new Map(),
         sounds: new Map(),
         animations,
         resolveAssetUrl,
@@ -1731,6 +1736,10 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
         return compileVideoAction(ctx, block, payload);
     }
 
+    if (payload.action === "vfx") {
+        return compileVfxAction(ctx, block, payload);
+    }
+
     if (payload.action === "screenEffect") {
         const options = {
             duration: payload.durationMs,
@@ -2015,6 +2024,74 @@ async function compileVideoAction(
         return [recordStatement(ctx, video.seek(Math.max(0, finiteOr(payload.timeMs, 0)) / 1000), block)];
     }
     return [];
+}
+
+/**
+ * `vfx` - the full-screen ambience overlay. Shaped like `compileVideoAction`, not like the displayable
+ * ops, because a `Vfx` is an `Actionable`: it has `show`/`hide`/`pause`/`resume`/`setPlaybackRate` and
+ * nothing else. `create` both constructs it and registers the name the later rows address.
+ */
+async function compileVfxAction(
+    ctx: SceneCompileContext,
+    block: StoryBlock,
+    payload: Extract<StoryActionPayload, { action: "vfx" }>,
+): Promise<NlrStatement[]> {
+    const vfx = await getVfx(ctx, payload, block.id);
+    if (!vfx) {
+        return [];
+    }
+    // A create shows the overlay: the row an author writes to "put petals on screen" must put them on
+    // screen, exactly as `/image` and `/video` do.
+    const fade = { duration: Math.max(0, finiteOr(payload.durationMs, 0)), ease: payload.easing as any };
+    switch (payload.operation) {
+        case "create":
+        case "show":
+            return [recordStatement(ctx, vfx.show(fade as any), block)];
+        case "hide":
+            return [recordStatement(ctx, vfx.hide(fade as any), block)];
+        case "pause":
+            return [recordStatement(ctx, vfx.pause(), block)];
+        case "resume":
+            return [recordStatement(ctx, vfx.resume(), block)];
+        case "setRate":
+            // A rate of 0 freezes the loop, which is what `pause` is for; a negative one is not a speed.
+            return [recordStatement(ctx, vfx.setPlaybackRate(Math.max(0, finiteOr(payload.rate, 1))), block)];
+        default:
+            return [];
+    }
+}
+
+async function getVfx(
+    ctx: SceneCompileContext,
+    payload: Extract<StoryActionPayload, { action: "vfx" }>,
+    blockId: string,
+): Promise<Vfx | null> {
+    const name = normalizeObjectName(payload.objectName);
+    const existing = ctx.vfx.get(name);
+    if (existing) {
+        return existing;
+    }
+    if (!payload.assetId) {
+        diagnostic(ctx, "warning", blockId, `Ambience effect "${name}" has no clip.`);
+        return null;
+    }
+    const url = await resolveAsset(ctx, payload.assetId, "video", blockId);
+    if (!url) {
+        return null;
+    }
+    const vfx = new Vfx({
+        src: url,
+        ...(payload.blendMode ? { blendMode: payload.blendMode } : {}),
+        ...(payload.opacity !== undefined ? { opacity: Math.min(1, Math.max(0, finiteOr(payload.opacity, 1))) } : {}),
+        ...(payload.loop !== undefined ? { loop: payload.loop } : {}),
+        ...(payload.fit ? { fit: payload.fit } : {}),
+        ...(payload.zIndex !== undefined ? { zIndex: payload.zIndex } : {}),
+        // A rate on the CREATE row is the loop's resting speed - and the only one that survives a save,
+        // since the engine does not persist a runtime `setPlaybackRate`.
+        ...(payload.rate !== undefined ? { playbackRate: Math.max(0, finiteOr(payload.rate, 1)) } : {}),
+    });
+    ctx.vfx.set(name, vfx);
+    return vfx;
 }
 
 async function compileChoice(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "nodeAction" }>): Promise<NlrStatement[]> {
