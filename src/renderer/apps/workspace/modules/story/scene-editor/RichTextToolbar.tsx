@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { createPortal } from "react-dom";
-import { Bold, Braces, ChevronDown, ChevronRight, Italic, Palette, Pause as PauseIcon, Type } from "lucide-react";
+import { Bold, Braces, ChevronDown, ChevronRight, Italic, Palette, Pause as PauseIcon, Smile, Type } from "lucide-react";
 import { ProjectPalette } from "@/apps/workspace/modules/properties/framework/fields/ProjectPalette";
 import { addRecentColor, useRecentColors } from "@/apps/workspace/modules/properties/framework/fields/recentColors";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
@@ -58,6 +58,10 @@ export function RichTextToolbar(props: {
     active?: ActiveMarks;
     /** Whether any story variable is declared; the interpolation button hints when none exist. */
     hasVariables?: boolean;
+    /** True on a dialogue row with a speaking character — the only place an expression token applies. */
+    canInsertEvent?: boolean;
+    /** Insert a reveal-time expression event for the row's character. */
+    onInsertEvent?: () => void;
 }) {
     const { t } = useTranslation();
     const [expanded, setExpanded] = useRichToolbarExpanded();
@@ -233,6 +237,11 @@ export function RichTextToolbar(props: {
             >
                 <Braces className="h-3.5 w-3.5" />
             </button>
+            {props.canInsertEvent ? (
+                <button type="button" className={BTN} onClick={() => props.onInsertEvent?.()} title={t("story.richText.insertExpression")}>
+                    <Smile className="h-3.5 w-3.5" />
+                </button>
+            ) : null}
         </div>
     ) : (
         <button
