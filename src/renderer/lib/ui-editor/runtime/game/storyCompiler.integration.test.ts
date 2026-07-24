@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DevTools } from "narraleaf-react";
+import { BlurDissolve, Darkness, DevTools, Push, Reveal, ThroughColor, Transition } from "narraleaf-react";
 import type { StoryAnimationAsset, StoryBlock, StoryDocument, StoryTransitionRef } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
@@ -1393,32 +1393,135 @@ describe("compileStudioStoryToNlr", () => {
     it("maps the custom transition kinds onto real NLR transitions without diagnostics", async () => {
         // Each new kind must be handled by createTransition; an unmapped kind
         // falls through to a "not supported" diagnostic, which this guards against.
-        const kinds: StoryTransitionRef["kind"][] = ["softWipe", "blinds", "slide", "softIris", "blurDissolve", "throughColor"];
+        const kinds: StoryTransitionRef["kind"][] = ["softWipe", "blinds", "slide", "softIris", "blurDissolve", "throughColor", "darkness"];
         for (const kind of kinds) {
-            const bg: StoryBlock = {
-                id: "bg",
-                kind: "action",
-                parentId: null,
-                childrenIds: [],
-                payload: {
-                    action: "setBackground",
-                    assetId: "asset-bg",
-                    transition: {
-                        kind,
-                        durationMs: 400,
-                        // Superset of every custom transition's params; each kind reads only its own.
-                        props: { pattern: "iris", color: "#000000", blur: 12, direction: "right", orientation: "vertical", slats: 6, feather: 20, hold: 40, center: "50% 50%" },
-                    },
-                },
-            };
-            const compiled = await compileStudioStoryToNlr({
-                document: baseDocument({ bg }, ["bg"]),
-                sceneId: "scene-1",
-                resolveAssetUrl: async assetId => `nlr://${assetId}`,
-            });
+            const compiled = await compileBackgroundTransition(kind);
             expect(compiled.diagnostics, `kind=${kind}`).toEqual([]);
         }
     });
+
+    it("builds each whole-screen kind out of the engine's own transitions", async () => {
+        // 0.16.1 adoption: `slide` is native `Push` (no Studio-side Slide any more) and `darkness` is
+        // the now-exported `Darkness`. Both are engine classes, so a future engine rename breaks here
+        // rather than silently downgrading a transition to a no-op.
+        const expected: Partial<Record<NonNullable<StoryTransitionRef["kind"]>, unknown>> = {
+            slide: Push,
+            darkness: Darkness,
+            softWipe: Reveal,
+            softIris: Reveal,
+            blinds: Reveal,
+            blurDissolve: BlurDissolve,
+            throughColor: ThroughColor,
+        };
+        for (const [kind, ctor] of Object.entries(expected)) {
+            const compiled = await compileBackgroundTransition(kind as StoryTransitionRef["kind"]);
+            expect(findTransition(compiled), `kind=${kind}`).toBeInstanceOf(ctor as never);
+        }
+    });
+
+    it("keeps the stored shape of `slide` untouched by the native-Push switch", async () => {
+        // Hard requirement of the 0.16.1 adoption: existing projects migrate by doing nothing. The
+        // stored ref keeps `kind: "slide"` with a `direction` prop, and the compiler still honours it.
+        const stored: StoryTransitionRef = { kind: "slide", durationMs: 400, props: { direction: "right" } };
+        const bg: StoryBlock = {
+            id: "bg",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: { action: "setBackground", assetId: "asset-bg", transition: stored },
+        };
+        const document = baseDocument({ bg }, ["bg"]);
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect((document.scenes["scene-1"].blocks.bg.payload as any).transition).toEqual(stored);
+        const transition = findTransition(compiled) as any;
+        expect(transition).toBeInstanceOf(Push);
+        expect(transition.direction).toBe("right");
+        expect(transition.duration).toBe(400);
+    });
+
+    it("slides in stage-relative %, never viewport units", async () => {
+        // The whole reason Studio shipped its own `Slide` until 0.16.1: a `100vw`/`100vh` travel is
+        // measured against the *window*, so on any non-design aspect ratio the slide overshoots the
+        // letterboxed stage and exposes the backdrop mid-transition. This is the seam test that used
+        // to live beside the custom class - it now guards the engine's `Push` in its place.
+        const compiled = await compileBackgroundTransition("slide");
+        const push = findTransition(compiled) as any;
+        // The asPrev/asTarget resolvers merge the transition's srcs in and throw when unset.
+        push._setPrevSrc("#000000");
+        push._setTargetSrc("#000000");
+        const task = push.createTask();
+        const translateAt = (index: number, t: number) => {
+            const entry = task.resolve[index];
+            return (typeof entry === "function" ? entry(t) : entry.resolver(t)).style.translate as string;
+        };
+
+        expect(task.resolve).toHaveLength(2);
+        // Outgoing rests at offset 0 (no jump) and travels one full stage width toward `direction`.
+        expect(translateAt(0, 0)).toBe("0% 0px");
+        expect(translateAt(0, 1)).toBe("100% 0px");
+        // Incoming starts one stage width away on the opposite edge and lands at rest.
+        expect(translateAt(1, 0)).toBe("-100% 0px");
+        expect(translateAt(1, 1)).toBe("0% 0px");
+        expect([translateAt(0, 0.5), translateAt(1, 0.5)].join(" ")).not.toMatch(/vw|vh/);
+    });
+
+    /** Compile a one-row scene whose `/bg` carries `kind`, with every custom transition's props set. */
+    async function compileBackgroundTransition(kind: StoryTransitionRef["kind"]) {
+        const bg: StoryBlock = {
+            id: "bg",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "setBackground",
+                assetId: "asset-bg",
+                transition: {
+                    kind,
+                    durationMs: 400,
+                    // Superset of every custom transition's params; each kind reads only its own.
+                    props: { pattern: "iris", color: "#000000", blur: 12, direction: "right", orientation: "vertical", slats: 6, feather: 20, hold: 40, center: "50% 50%" },
+                },
+            },
+        };
+        return compileStudioStoryToNlr({
+            document: baseDocument({ bg }, ["bg"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+    }
+
+    /**
+     * The engine transition a compiled scene carries, found by walking the recorded actions.
+     *
+     * Where exactly NLR parks the instance inside an action is an engine implementation detail, so the
+     * walk looks for the base class rather than for a path that an engine bump could move.
+     */
+    function findTransition(compiled: Awaited<ReturnType<typeof compileStudioStoryToNlr>>): Transition | undefined {
+        const seen = new Set<unknown>();
+        const visit = (node: unknown, depth: number): Transition | undefined => {
+            if (!node || typeof node !== "object" || depth > 24 || seen.has(node)) {
+                return undefined;
+            }
+            seen.add(node);
+            if (node instanceof Transition) {
+                return node;
+            }
+            for (const value of Object.values(node as Record<string, unknown>)) {
+                const found = visit(value, depth + 1);
+                if (found) {
+                    return found;
+                }
+            }
+            return undefined;
+        };
+        return visit(compiled.actionIdBindings.map(binding => binding.action), 0);
+    }
 });
 
 describe("compileStudioStoryToNlr localization", () => {
