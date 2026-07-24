@@ -684,6 +684,10 @@ export const story = {
         waitLabel: "等待",
         jumpLabel: "跳转到",
     },
+    lens: {
+        toLens: "时间线视图",
+        toList: "列表视图",
+    },
     rowMenu: {
         insertAbove: "在上方插入",
         insertBelow: "在下方插入",
