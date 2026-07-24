@@ -1212,14 +1212,14 @@ describe("compileStudioStoryToNlr", () => {
             kind: "action",
             parentId: null,
             childrenIds: [],
-            payload: { action: "setVariable", target: { scope: "persistent", storageKey: "flag" }, value: true },
+            payload: { action: "setVariable", target: { scope: "persistent", variableId: "flag" }, value: true },
         };
         const setGhost: StoryBlock = {
             id: "set-ghost",
             kind: "action",
             parentId: null,
             childrenIds: [],
-            payload: { action: "setVariable", target: { scope: "persistent", storageKey: "ghost" }, value: true },
+            payload: { action: "setVariable", target: { scope: "persistent", variableId: "ghost" }, value: true },
         };
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({ "flag-decl": persistentDecl, "set-declared": setDeclared, "set-ghost": setGhost }, ["flag-decl", "set-declared", "set-ghost"]),
@@ -1490,7 +1490,7 @@ describe("compileStudioStoryToNlr localization", () => {
                     role: "narration",
                     rich: [
                         { text: "你好，" },
-                        { interpolation: { kind: "variable", target: { scope: "persistent", storageKey: "playerName" } } },
+                        { interpolation: { kind: "variable", target: { scope: "persistent", variableId: "playerName" } } },
                         { text: "！" },
                     ],
                 },

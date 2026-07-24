@@ -77,9 +77,7 @@ export function InterpolationPopover(props: {
         [props.options],
     );
     const currentVariableKey = props.value.kind === "variable"
-        ? props.value.target.scope === "persistent"
-            ? `persistent:${props.value.target.storageKey}`
-            : `${props.value.target.scope}:${props.value.target.variableId}`
+        ? `${props.value.target.scope}:${props.value.target.variableId}`
         : "";
 
     const setKind = (nextKind: string) => {
@@ -101,7 +99,7 @@ export function InterpolationPopover(props: {
         if (!opt) return;
         props.onChange({
             kind: "variable",
-            target: opt.scope === "persistent" ? { scope: "persistent", storageKey: opt.id } : { scope: opt.scope, variableId: opt.id },
+            target: { scope: opt.scope, variableId: opt.id },
         });
     };
     const openEditor = () => {

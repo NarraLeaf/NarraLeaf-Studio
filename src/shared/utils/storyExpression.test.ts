@@ -17,8 +17,8 @@ const VARIABLES = [
     // Deliberately shadowed: a `chapter` in every scope, to pin the scope-chain order.
     { name: "chapter", ref: { scope: "scene", variableId: "v_chapter_scene" } as StoryVariableRef },
     { name: "chapter", ref: { scope: "saved", variableId: "v_chapter_saved" } as StoryVariableRef },
-    { name: "chapter", ref: { scope: "persistent", storageKey: "chapter_global" } as StoryVariableRef },
-    { name: "endings", ref: { scope: "persistent", storageKey: "endings_seen" } as StoryVariableRef },
+    { name: "chapter", ref: { scope: "persistent", variableId: "chapter_global" } as StoryVariableRef },
+    { name: "endings", ref: { scope: "persistent", variableId: "endings_seen" } as StoryVariableRef },
 ];
 
 const SCOPE = createStoryExpressionScope(VARIABLES);
@@ -44,7 +44,7 @@ const TYPES: Record<string, "boolean" | "number" | "string" | "json"> = {
 };
 
 function keyOf(ref: StoryVariableRef): string {
-    return ref.scope === "persistent" ? ref.storageKey : ref.variableId;
+    return ref.variableId;
 }
 
 function evaluate(source: string): StoryLiteralValue {
@@ -115,7 +115,7 @@ describe("quoted identifiers", () => {
 
     it("resolves a name with spaces - the whole reason quoting exists", () => {
         const scope = createStoryExpressionScope([
-            { name: "Complex Var Name", ref: { scope: "persistent", storageKey: "complex" } },
+            { name: "Complex Var Name", ref: { scope: "persistent", variableId: "complex" } },
         ]);
         const { expression, issues } = parseStoryExpression("'Complex Var Name' + 1", scope);
         expect(issues).toEqual([]);

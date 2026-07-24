@@ -1615,7 +1615,7 @@ function buildInterpolationWord(
     }
     // Persistent (app-level): a dynamic word reading the shared host snapshot synchronously,
     // falling back to the story-declared default while the host has never stored a value.
-    if (!ctx.persistentKeys.has(target.storageKey)) {
+    if (!ctx.persistentKeys.has(target.variableId)) {
         diagnostic(ctx, "warning", blockId, "Persistent variable not found; interpolation skipped.");
         return null;
     }
@@ -1624,7 +1624,7 @@ function buildInterpolationWord(
         diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence; interpolation skipped.");
         return null;
     }
-    const storageKey = target.storageKey;
+    const storageKey = target.variableId;
     const persistentDefaults = ctx.persistentDefaults;
     return applyInterpolationWordMarks(new Word(((() => {
         const stored = persistence.get(storageKey);
@@ -2577,7 +2577,7 @@ function resolveVariableSlot(ctx: SceneCompileContext, ref: StoryVariableRef, bl
     // Existence is checked before host availability: an undeclared persistent variable is a fault the
     // author must fix regardless of whether Dev Mode host persistence is up (bible §3.3, same diagnostic
     // as a missing scene/saved variable).
-    if (!ctx.persistentKeys.has(ref.storageKey)) {
+    if (!ctx.persistentKeys.has(ref.variableId)) {
         diagnostic(ctx, "warning", blockId, "Persistent variable not found; the assignment was skipped.");
         return null;
     }
@@ -2585,7 +2585,7 @@ function resolveVariableSlot(ctx: SceneCompileContext, ref: StoryVariableRef, bl
         diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence and were skipped.");
         return null;
     }
-    return { kind: "host", key: ref.storageKey };
+    return { kind: "host", key: ref.variableId };
 }
 
 /**
@@ -2651,7 +2651,7 @@ function setVariable(
     }
     // Persistent (app-level, host-managed, shared with UI blueprints). Existence is checked first, so
     // an undeclared persistent target faults regardless of host availability (bible §3.3).
-    if (!ctx.persistentKeys.has(target.storageKey)) {
+    if (!ctx.persistentKeys.has(target.variableId)) {
         diagnostic(ctx, "warning", blockId, "Persistent variable not found; the assignment was skipped.");
         return null;
     }
@@ -2660,7 +2660,7 @@ function setVariable(
         diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence and were skipped.");
         return null;
     }
-    const storageKey = target.storageKey;
+    const storageKey = target.variableId;
     return Script.execute(() => {
         void persistence.set(storageKey, value);
     });
@@ -2739,11 +2739,11 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
     }
     const target = condition.target;
     if (target.scope === "persistent") {
-        if (!ctx.persistentKeys.has(target.storageKey)) {
+        if (!ctx.persistentKeys.has(target.variableId)) {
             diagnostic(ctx, "warning", blockId, "Persistent variable not found; condition evaluates false.");
             return falseCondition;
         }
-        return persistentCondition(ctx, target.storageKey, condition.operator, condition.value);
+        return persistentCondition(ctx, target.variableId, condition.operator, condition.value);
     }
     let persistent: Persistent<any>;
     let storageKey: string;

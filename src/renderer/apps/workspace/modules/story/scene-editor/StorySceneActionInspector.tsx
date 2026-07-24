@@ -112,11 +112,11 @@ function useStoryVariableOptions(document: StoryDocument, sceneId: StorySceneId)
 }
 
 function refVariableId(ref: StoryVariableRef): string {
-    return ref.scope === "persistent" ? ref.storageKey : ref.variableId;
+    return ref.variableId;
 }
 
 function makeVariableRef(scope: StoryVariableScope, id: string): StoryVariableRef {
-    return scope === "persistent" ? { scope: "persistent", storageKey: id } : { scope, variableId: id };
+    return { scope, variableId: id };
 }
 
 function resolveRefValueType(ref: StoryVariableRef, options: StoryVariableOptions): StoryVariableValueType {

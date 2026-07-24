@@ -393,7 +393,7 @@ function variableRefShortLabel(ref: StoryVariableRef, scene?: StoryScene, scenes
     if (ref.scope === "persistent") {
         for (const candidate of Object.values(scenes ?? {})) {
             for (const block of Object.values(candidate.blocks)) {
-                if (block.kind === "declaration" && block.payload.storageKey === ref.storageKey) {
+                if (block.kind === "declaration" && block.payload.storageKey === ref.variableId) {
                     return block.payload.name;
                 }
             }
