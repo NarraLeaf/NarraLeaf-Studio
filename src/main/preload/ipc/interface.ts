@@ -6,7 +6,7 @@ import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
-import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload } from "@shared/types/devMode";
+import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "@shared/types/gameBuild";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
@@ -262,6 +262,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.workspaceBlueprintDebugEvent, handler),
         forwardBlueprintDebugEvent: (payload: DevModeBlueprintDebugEventPayload) =>
             ipcClient.send(IPCEventType.devModeForwardBlueprintDebugEvent, payload),
+        forwardStoryRow: (payload: DevModeStoryRowPayload) =>
+            ipcClient.send(IPCEventType.devModeForwardStoryRow, payload),
+        onStoryRowHighlight: (handler: (payload: DevModeStoryRowHighlight) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceStoryRowHighlight, handler),
         resolveAssetUrl: (assetId: string, assetType?: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveAssetUrl, { assetId, assetType }) as Promise<RequestStatus<{ url: string }>>,
         resolveImageAssetUrl: (assetId: string) =>

@@ -11,6 +11,7 @@ import { useWorkspacePlugins } from "./hooks/useWorkspacePlugins";
 import { RegistryProvider } from "./registry";
 import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
 import { PreviewBlueprintNavigateBridge } from "./modules/blueprint-lite/PreviewBlueprintNavigateBridge";
+import { StoryRowHighlightBridge } from "./modules/story/scene-editor/StoryRowHighlightBridge";
 import { isWorkspaceStartupError, WorkspaceStartupErrorKind } from "@/lib/workspace/startup/workspaceProjectPreflight";
 
 /**
@@ -29,6 +30,7 @@ function WorkspaceContent() {
     return (
         <>
             <PreviewBlueprintNavigateBridge />
+            <StoryRowHighlightBridge />
             <WorkspaceLayout title="NarraLeaf Studio" iconSrc="/favicon.ico" />
         </>
     );
