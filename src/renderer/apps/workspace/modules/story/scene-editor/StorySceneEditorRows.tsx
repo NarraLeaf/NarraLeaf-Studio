@@ -162,10 +162,11 @@ export function StoryBlockRow(props: {
         && block.kind === "nodeAction" && block.payload.action === "dialogue" && Boolean(block.payload.characterId);
     const expressionMember = row.groupRole === "member"
         && block.kind === "action" && block.payload.action === "character" && block.payload.operation === "expression";
-    // Every non-dialogue, non-narration/note row carries a low-key category colour bar at its left
-    // edge, so scene / character / sound / flow rows read apart at a glance. Same single source as the
-    // badge (ACTION_COMMAND_CATEGORIES via getBlockBadgeInfo); narration/note and in-group expression
-    // members keep zero chrome.
+    // Every non-dialogue, non-narration/note row carries a low-key colour bar at its left edge, so
+    // scene / character / sound / flow rows read apart at a glance. Same single source as the badge
+    // (STORY_COMMAND_GROUPS in storyCommandCategories.ts, read through getBlockBadgeInfo - the group,
+    // not the category, is the colour unit); narration/note and in-group expression members keep zero
+    // chrome.
     const categoryColor = !isDialogue && !hideBadge && row.groupRole !== "member" ? getBlockBadgeInfo(block).iconColor : null;
     const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
         id: row.block.id,
