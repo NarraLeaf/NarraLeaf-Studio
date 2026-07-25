@@ -1,9 +1,14 @@
 import { getInterface } from "@/lib/app/bridge";
 import { normalizeAccentColor } from "@shared/constants/accent";
+import {
+    EDITOR_SURFACE_OPACITY_KEY,
+    EDITOR_SURFACE_OPACITY_VAR,
+    editorSurfaceAlpha,
+} from "@/lib/settings/editorSurfaceOptions";
 
 /**
- * Apply the two appearance preferences CSS cannot resolve on its own:
- * `ui.accentColor` and `ui.reduceMotion`.
+ * Apply the appearance preferences CSS cannot resolve on its own: `ui.accentColor`,
+ * `ui.reduceMotion` and `editor.surfaceOpacity`.
  *
  * Unlike the theme — which is pure CSS, because Electron's nativeTheme drives
  * `prefers-color-scheme` in every renderer — neither of these has a media query
@@ -29,6 +34,18 @@ function applyAccentColor(value: unknown): void {
     // The ink that sits on the accent. Derived rather than fixed white: the user can pick any
     // color, and a pale one would otherwise make every primary button unreadable.
     document.documentElement.style.setProperty("--nl-on-primary", accent.foregroundChannels);
+}
+
+/**
+ * Publish `editor.surfaceOpacity` as one custom property on the root element.
+ *
+ * One variable rather than three setting readers: the story editor's prose area, the inspector's
+ * field area and the Dev Mode debug panel are three components in two windows, and each reading
+ * the preference for itself is three chances to disagree. They all carry `.nl-editor-surface`
+ * instead, whose single rule resolves the sunken paint's alpha through this property.
+ */
+function applyEditorSurfaceOpacity(value: unknown): void {
+    document.documentElement.style.setProperty(EDITOR_SURFACE_OPACITY_VAR, editorSurfaceAlpha(value));
 }
 
 function applyReduceMotion(value: unknown): void {
@@ -74,15 +91,19 @@ export async function initAppearance(): Promise<void> {
     const state = getInterface().app.state;
 
     try {
-        const [accent, motion] = await Promise.all([
+        const [accent, motion, surfaceOpacity] = await Promise.all([
             state.getGlobalState("ui.accentColor"),
             state.getGlobalState("ui.reduceMotion"),
+            state.getGlobalState(EDITOR_SURFACE_OPACITY_KEY),
         ]);
         if (accent.success) {
             applyAccentColor(accent.data.value);
         }
         if (motion.success) {
             applyReduceMotion(motion.data.value);
+        }
+        if (surfaceOpacity.success) {
+            applyEditorSurfaceOpacity(surfaceOpacity.data.value);
         }
     } catch (error) {
         console.warn("[appearance] Failed to load appearance preferences; using defaults.", error);
@@ -95,6 +116,8 @@ export async function initAppearance(): Promise<void> {
                 applyAccentColor(change.value);
             } else if (change.key === "ui.reduceMotion") {
                 applyReduceMotion(change.value);
+            } else if (change.key === EDITOR_SURFACE_OPACITY_KEY) {
+                applyEditorSurfaceOpacity(change.value);
             }
         });
     }

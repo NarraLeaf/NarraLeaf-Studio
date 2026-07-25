@@ -83,6 +83,11 @@ export const settings = {
             label: "Story editor font",
             description: "Typeface used for story text in the scene editor.",
         },
+        editorSurfaceOpacity: {
+            label: "Editor surface opacity",
+            description:
+                "Opacity of the reading surfaces behind story text, inspector fields, and the Dev Mode debug panel.",
+        },
         maxActiveEditors: {
             label: "Maximum active editors",
             description:

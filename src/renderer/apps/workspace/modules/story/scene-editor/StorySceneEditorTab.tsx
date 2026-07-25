@@ -1664,13 +1664,13 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
 
             <div ref={editorBodyRef} className="relative flex min-h-0 flex-1 flex-row">
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-            {/* The prose surface is opaque on purpose. A custom workspace background clears every
-                base `bg-surface` fill (see styles.css), which is right for chrome and wrong for the
-                text you are reading — `bg-surface-sunken` is not cleared, so the wallpaper stays
-                behind the editor instead of competing with the lines inside it. */}
+            {/* The prose surface. A custom workspace background clears every base `bg-surface` fill
+                (see styles.css), which is right for chrome and wrong for the text you are reading,
+                so this one paints its own — at the `editor.surfaceOpacity` the author chose. Opaque
+                by default; `.nl-editor-surface` is the one rule the three reading surfaces share. */}
             <div
                 ref={editor.scrollContainerRef}
-                className="min-h-0 flex-1 overflow-auto bg-surface-sunken py-2"
+                className="nl-editor-surface min-h-0 flex-1 overflow-auto py-2"
                 onMouseDown={editor.focusRoot}
                 onScroll={handleScroll}
             >
