@@ -1,105 +1,26 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
 import { AssetType } from '@/lib/workspace/services/assets/assetTypes';
 
-export interface SearchResult {
-    id: string;
-    name: string;
-    type: AssetType;
-    isGroup: boolean;
-    groupPath?: string[];
-    matchReason: 'name' | 'tag' | 'description';
-    matchText: string;
-}
-
-export interface UseAssetSearchParams {
-    assets: Record<AssetType, Asset[]>;
-    groups: Record<AssetType, AssetGroup[]>;
-}
-
-export function useAssetSearch({ assets, groups }: UseAssetSearchParams) {
+/**
+ * Search text, debounced into the shape the filter pass consumes.
+ *
+ * Searching used to open a popup listing hits over the tree. The tree underneath kept showing the
+ * library unfiltered, with every group collapsed by default — so dismissing the popup dismissed the
+ * result, and an asset filed two groups down was findable only through an overlay. The query is now
+ * a filter like any other: it narrows what the views draw, and the views open themselves around
+ * what survives. This hook is what remains of the old one: the text, and the predicate that decides
+ * what the text matches.
+ */
+export function useAssetSearch() {
     const [searchQuery, setSearchQuery] = useState("");
-    const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-    const [isSearchResultsVisible, setSearchResultsVisible] = useState(false);
-    const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const [activeQuery, setActiveQuery] = useState("");
 
-    const performSearch = useCallback((query: string) => {
-        if (!query.trim()) {
-            setSearchResults([]);
-            setSearchResultsVisible(false);
-            return;
-        }
-
-        const results: SearchResult[] = [];
-        const lowerQuery = query.toLowerCase();
-
-        Object.values(AssetType).forEach(assetType => {
-            const typeAssets = assets[assetType];
-            const typeGroups = groups[assetType];
-
-            const groupPathMap = new Map<string, string[]>();
-            const buildGroupPath = (group: AssetGroup, path: string[] = []): void => {
-                groupPathMap.set(group.id, [...path, group.name]);
-                const childGroups = typeGroups.filter(g => g.parentGroupId === group.id);
-                childGroups.forEach(child => buildGroupPath(child, [...path, group.name]));
-            };
-            typeGroups.filter(g => !g.parentGroupId).forEach(group => buildGroupPath(group));
-
-            typeAssets.forEach(asset => {
-                if (asset.name.toLowerCase().includes(lowerQuery)) {
-                    results.push({
-                        id: asset.id, name: asset.name, type: asset.type, isGroup: false,
-                        groupPath: asset.groupId ? groupPathMap.get(asset.groupId) : undefined,
-                        matchReason: 'name', matchText: asset.name,
-                    });
-                } else if (asset.tags.some(tag => tag.toLowerCase().includes(lowerQuery))) {
-                    const matchingTag = asset.tags.find(tag => tag.toLowerCase().includes(lowerQuery));
-                    results.push({
-                        id: asset.id, name: asset.name, type: asset.type, isGroup: false,
-                        groupPath: asset.groupId ? groupPathMap.get(asset.groupId) : undefined,
-                        matchReason: 'tag', matchText: matchingTag || '',
-                    });
-                } else if (asset.description.toLowerCase().includes(lowerQuery)) {
-                    results.push({
-                        id: asset.id, name: asset.name, type: asset.type, isGroup: false,
-                        groupPath: asset.groupId ? groupPathMap.get(asset.groupId) : undefined,
-                        matchReason: 'description', matchText: asset.description,
-                    });
-                }
-            });
-
-            typeGroups.forEach(group => {
-                if (group.name.toLowerCase().includes(lowerQuery)) {
-                    const parentPath = group.parentGroupId ? groupPathMap.get(group.parentGroupId) : [];
-                    results.push({
-                        id: group.id, name: group.name, type: group.type, isGroup: true,
-                        groupPath: parentPath?.length ? parentPath : undefined,
-                        matchReason: 'name', matchText: group.name,
-                    });
-                }
-            });
-        });
-
-        setSearchResults(results);
-        setSearchResultsVisible(query.trim().length > 0);
-    }, [assets, groups]);
-
-    // Search debounced to prevent excessive re-renders
+    // Debounced so a filter pass over the whole library does not run per keystroke.
     useEffect(() => {
-        if (debounceTimeoutRef.current) {
-            clearTimeout(debounceTimeoutRef.current);
-        }
-
-        debounceTimeoutRef.current = setTimeout(() => {
-            performSearch(searchQuery);
-        }, 300);
-
-        return () => {
-            if (debounceTimeoutRef.current) {
-                clearTimeout(debounceTimeoutRef.current);
-            }
-        };
-    }, [searchQuery, performSearch]);
+        const timer = setTimeout(() => setActiveQuery(searchQuery.trim().toLowerCase()), 200);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
 
     const handleSearchQueryChange = useCallback((query: string) => {
         setSearchQuery(query);
@@ -107,9 +28,59 @@ export function useAssetSearch({ assets, groups }: UseAssetSearchParams) {
 
     return {
         searchQuery,
-        searchResults,
-        isSearchResultsVisible,
+        /** Trimmed and lower-cased; empty when nothing is being searched for. */
+        activeQuery,
         setSearchQuery: handleSearchQueryChange,
-        setSearchResultsVisible,
     };
 }
+
+/**
+ * `groupId -> its own name plus every ancestor's, lower-cased`.
+ *
+ * A hit on a group name has to carry its contents: someone searching `UI` means the folder, and a
+ * result set that showed the folder but none of the twelve things in it would be a worse answer
+ * than the popup this replaced.
+ */
+export function buildGroupSearchPaths(groups: readonly AssetGroup[]): Map<string, string> {
+    const byId = new Map<string, AssetGroup>();
+    groups.forEach(group => byId.set(group.id, group));
+
+    const paths = new Map<string, string>();
+    const resolve = (group: AssetGroup, seen: Set<string>): string => {
+        const cached = paths.get(group.id);
+        if (cached !== undefined) {
+            return cached;
+        }
+        // A parent chain is written by the editor and should never cycle; guard anyway, because the
+        // one thing a browser must not do to a hand-edited project file is hang on it.
+        seen.add(group.id);
+        const parent = group.parentGroupId ? byId.get(group.parentGroupId) : undefined;
+        const prefix = parent && !seen.has(parent.id) ? `${resolve(parent, seen)} ` : "";
+        const path = `${prefix}${group.name}`.toLowerCase();
+        paths.set(group.id, path);
+        return path;
+    };
+
+    groups.forEach(group => resolve(group, new Set()));
+    return paths;
+}
+
+/** Name, tag, description, or the name of any group it is filed under. `query` is already lower-cased. */
+export function assetMatchesQuery(asset: Asset, query: string, groupPaths: ReadonlyMap<string, string>): boolean {
+    if (!query) {
+        return true;
+    }
+    if (asset.name.toLowerCase().includes(query)) {
+        return true;
+    }
+    if (asset.tags.some(tag => tag.toLowerCase().includes(query))) {
+        return true;
+    }
+    if (asset.description.toLowerCase().includes(query)) {
+        return true;
+    }
+    return !!asset.groupId && (groupPaths.get(asset.groupId)?.includes(query) ?? false);
+}
+
+export type AssetsByType = Record<AssetType, Asset[]>;
+export type GroupsByType = Record<AssetType, AssetGroup[]>;

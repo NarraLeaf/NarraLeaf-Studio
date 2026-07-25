@@ -25,7 +25,6 @@ export const assets = {
         },
         confirmMessage: "Everything inside a selected group is deleted too. This cannot be undone.",
     },
-    emptyType: "No {label} yet",
     /** Asset category labels, keyed by the `AssetType` enum value. */
     types: {
         image: "Images",
@@ -47,12 +46,9 @@ export const assets = {
      * number were a forecast of what the next build will produce.
      */
     overview: {
-        tabTitle: "Asset Overview",
-        open: "Open asset overview",
         loading: "Reading the asset library…",
         failed: "Could not read the asset library.",
         retry: "Try again",
-        empty: "This project has no assets yet.",
         section: {
             library: "Library",
             packaging: "Packaging",
@@ -77,29 +73,32 @@ export const assets = {
             other: "{count} uses",
         },
         detail: {
+            // The heading over the two addresses this editor invented for its own storage. It is a
+            // noun, not a sentence: the rows under it are a hash and a path, and nothing captions them.
+            storage: "Storage",
             path: "Path",
         },
     },
     view: {
         list: "List view",
         icons: "Icon view",
+        overview: "Overview",
     },
     filter: {
         label: "Filters",
+        // Headings for the filter groups. "Category" is the asset kind (image, audio); "Format" is
+        // the file extension — two different questions that both used to read as "type".
+        category: "Category",
+        usage: "Usage",
+        size: "Size",
+        tags: "Tags",
+        format: "Format",
     },
     actions: {
         copyTooltip: "Copy selected assets or groups",
         cutTooltip: "Cut selected assets or groups",
         pasteTooltip: "Paste assets or groups",
         deleteTooltip: "Delete selected assets or groups",
-    },
-    search: {
-        noResults: "No matching assets found",
-        matchTag: "Tag: {tag}",
-        resultCount: {
-            one: "{count} result",
-            other: "{count} results",
-        },
     },
     list: {
         emptyFiltered: "No assets matched the current filters.",
