@@ -265,7 +265,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                                                 <button
                                                     type="button"
                                                     disabled={!canStudio}
-                                                    className="shrink-0 rounded border border-edge px-1.5 py-0.5 text-2xs text-fg-muted hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
+                                                    className="shrink-0 rounded-md border border-edge px-1.5 py-0.5 text-2xs text-fg-muted hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
                                                     onClick={() => void openInStudio(bp)}
                                                 >
                                                     {t("devMode.blueprints.openWorkspace")}
@@ -293,7 +293,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                             <div ref={logLevelMenuRef} className="relative">
                                 <button
                                     type="button"
-                                    className="inline-flex items-center gap-1 rounded border border-edge px-2 py-0.5 text-2xs text-fg-muted hover:bg-fill"
+                                    className="inline-flex items-center gap-1 rounded-md border border-edge px-2 py-0.5 text-2xs text-fg-muted hover:bg-fill"
                                     aria-haspopup="menu"
                                     aria-expanded={logLevelMenuOpen}
                                     onClick={() => setLogLevelMenuOpen(prev => !prev)}
@@ -304,18 +304,18 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                                 {logLevelMenuOpen ? (
                                     <div
                                         role="menu"
-                                        className="absolute left-0 top-full z-20 mt-1 w-32 rounded border border-edge bg-surface-overlay p-1 shadow-xl"
+                                        className="absolute left-0 top-full z-20 mt-1 w-32 rounded-lg border border-edge bg-surface-overlay p-1 shadow-xl"
                                     >
                                         {OUTPUT_LOG_LEVELS.map(level => (
                                             <label
                                                 key={level}
-                                                className="flex cursor-default items-center gap-2 rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill"
+                                                className="flex cursor-default items-center gap-2 rounded-md px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill"
                                             >
                                                 <input
                                                     type="checkbox"
                                                     checked={outputLogLevels.has(level)}
                                                     onChange={() => toggleOutputLogLevel(level)}
-                                                    className="h-3 w-3 rounded border-edge-strong bg-surface-sunken"
+                                                    className="h-3 w-3 rounded-sm border-edge-strong bg-surface-sunken"
                                                 />
                                                 {outputLogLevelLabel[level]}
                                             </label>
@@ -325,7 +325,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                             </div>
                             <button
                                 type="button"
-                                className="rounded border border-edge px-2 py-0.5 text-2xs text-fg-muted hover:bg-fill"
+                                className="rounded-md border border-edge px-2 py-0.5 text-2xs text-fg-muted hover:bg-fill"
                                 onClick={() => debug.clear()}
                             >
                                 {t("common.clear")}

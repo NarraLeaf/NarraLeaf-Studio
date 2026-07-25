@@ -82,7 +82,7 @@ export function ConditionalAppearanceOverrides({
                                 return (
                                     <div
                                         key={`${groupKey}-${rowIndex}`}
-                                        className="rounded border border-edge-subtle bg-fill-subtle p-2 space-y-2"
+                                        className="rounded-md border border-edge-subtle bg-fill-subtle p-2 space-y-2"
                                     >
                                         <ConditionRowToggles
                                             conditions={row.conditions}

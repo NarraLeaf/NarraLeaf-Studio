@@ -202,7 +202,7 @@ export function resolveFirstBlueprintLayerPreview(
 
 function miniNodeClass(role: MiniPreviewRole): string {
     if (role === "event") {
-        return "border-cyan-200/80 bg-cyan-500/80";
+        return "border-primary/90 bg-primary/70";
     }
     if (role === "function") {
         return "border-violet-200/75 bg-violet-500/75";
@@ -210,12 +210,12 @@ function miniNodeClass(role: MiniPreviewRole): string {
     if (role === "data") {
         return "border-amber-200/75 bg-amber-500/75";
     }
-    return "border-slate-200/70 bg-slate-500/80";
+    return "border-fg-subtle/70 bg-fg-muted/80";
 }
 
 function detailedHeaderClass(role: MiniPreviewRole): string {
     if (role === "event") {
-        return "bg-cyan-500/85 text-cyan-50";
+        return "bg-primary/85 text-on-primary";
     }
     if (role === "function") {
         return "bg-violet-500/80 text-violet-50";
@@ -223,7 +223,7 @@ function detailedHeaderClass(role: MiniPreviewRole): string {
     if (role === "data") {
         return "bg-amber-500/80 text-amber-950";
     }
-    return "bg-slate-500/85 text-slate-50";
+    return "bg-fg-muted/85 text-fg";
 }
 
 const MiniBlueprintNode = memo(function MiniBlueprintNode({ data }: NodeProps<Node<MiniPreviewNodeData>>) {
@@ -257,14 +257,14 @@ const MiniBlueprintNode = memo(function MiniBlueprintNode({ data }: NodeProps<No
                 style={{ width: data.width, height: data.height }}
             >
                 {handles}
-                <div className={`truncate px-2 py-1 text-[13px] font-medium ${detailedHeaderClass(data.role)}`}>
+                <div className={`truncate px-2 py-1 text-xs font-medium ${detailedHeaderClass(data.role)}`}>
                     {data.title ?? t("widgetChrome.blueprint.node")}
                 </div>
                 {rows > 0 ? (
                     <div className="flex flex-1 justify-between gap-2 px-2 py-1.5">
                         <div className="flex min-w-0 flex-col gap-1">
                             {inputs.map((label, index) => (
-                                <span key={`in-${index}`} className="flex items-center gap-1 truncate text-[11px] text-fg-muted">
+                                <span key={`in-${index}`} className="flex items-center gap-1 truncate text-2xs text-fg-muted">
                                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-fg-muted" />
                                     {label}
                                 </span>
@@ -272,7 +272,7 @@ const MiniBlueprintNode = memo(function MiniBlueprintNode({ data }: NodeProps<No
                         </div>
                         <div className="flex min-w-0 flex-col items-end gap-1">
                             {outputs.map((label, index) => (
-                                <span key={`out-${index}`} className="flex items-center gap-1 truncate text-[11px] text-fg-muted">
+                                <span key={`out-${index}`} className="flex items-center gap-1 truncate text-2xs text-fg-muted">
                                     {label}
                                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />
                                 </span>
@@ -286,7 +286,7 @@ const MiniBlueprintNode = memo(function MiniBlueprintNode({ data }: NodeProps<No
 
     return (
         <div
-            className={`rounded-[5px] border shadow-sm ${miniNodeClass(data.role)}`}
+            className={`rounded-md border shadow-sm ${miniNodeClass(data.role)}`}
             style={{ width: data.width, height: data.height }}
         >
             {handles}

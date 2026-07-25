@@ -501,7 +501,7 @@ function Segmented<T extends string>({
                     type="button"
                     onClick={() => onChange(option.value)}
                     className={cn(
-                        "no-drag cursor-default rounded px-3 py-1 text-xs font-medium transition-colors",
+                        "no-drag cursor-default rounded-md px-3 py-1 text-xs font-medium transition-colors",
                         value === option.value
                             ? "bg-fill-strong text-fg shadow-sm"
                             : "text-fg-muted hover:text-fg",

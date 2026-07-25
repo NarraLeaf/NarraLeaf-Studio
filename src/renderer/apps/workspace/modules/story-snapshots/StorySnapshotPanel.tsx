@@ -27,7 +27,7 @@ import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shar
 import type { StorySnapshotPanelPayload } from "./storySnapshotPanelId";
 
 const INPUT_CLASS =
-    "h-7 min-w-0 flex-1 rounded border border-edge bg-surface-raised px-2 text-xs text-fg outline-none focus:border-primary/50";
+    "h-7 min-w-0 flex-1 rounded-md border border-edge bg-surface-raised px-2 text-xs text-fg outline-none focus:border-primary/50";
 
 function asStoryValueType(valueType: string | undefined): StoryVariableValueType {
     return valueType === "boolean" || valueType === "number" || valueType === "string" ? valueType : "json";
@@ -96,7 +96,7 @@ function SnapshotValueRow(props: {
             )}
             <button
                 type="button"
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-subtle transition ${overridden ? "hover:bg-fill hover:text-danger" : "pointer-events-none opacity-0"}`}
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle transition ${overridden ? "hover:bg-fill hover:text-danger" : "pointer-events-none opacity-0"}`}
                 onClick={props.onClear}
                 title={props.entry.name}
                 aria-label="clear"
@@ -260,7 +260,7 @@ export function StorySnapshotPanel({ payload }: PanelComponentProps<StorySnapsho
                 {selected ? (
                     <button
                         type="button"
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-edge text-fg-subtle hover:border-danger/50 hover:text-danger"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-edge text-fg-subtle hover:border-danger/50 hover:text-danger"
                         onClick={() => storyService?.deleteSceneSnapshot(storyId, sceneId, selected.id)}
                         title={t("storySnapshot.delete")}
                     >
@@ -269,7 +269,7 @@ export function StorySnapshotPanel({ payload }: PanelComponentProps<StorySnapsho
                 ) : null}
                 <button
                     type="button"
-                    className="flex h-7 shrink-0 items-center gap-1 rounded border border-edge px-2 text-2xs text-fg-muted hover:border-primary/50 hover:text-fg"
+                    className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-edge px-2 text-2xs text-fg-muted hover:border-primary/50 hover:text-fg"
                     onClick={addSnapshot}
                     title={t("storySnapshot.add")}
                 >

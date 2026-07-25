@@ -2412,7 +2412,7 @@ function VoiceInspectorSection({ block }: { block: StoryBlock }) {
             right={
                 <button
                     type="button"
-                    className="grid h-6 w-6 place-items-center rounded text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                    className="grid h-6 w-6 place-items-center rounded-md text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                     title={t("storyInspector.voice.openTable")}
                     onClick={voice.openVoiceTable}
                 >

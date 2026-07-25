@@ -34,7 +34,7 @@ export function TypeScriptBlueprintEditorPane({ code, onChange, debounceMs = 400
     return (
         <div className="flex h-full min-h-0 flex-col border border-edge bg-surface-sunken">
             <textarea
-                className="min-h-0 flex-1 resize-none bg-surface-sunken p-3 font-mono text-[12px] leading-relaxed text-fg outline-none focus:ring-1 focus:ring-primary/40"
+                className="min-h-0 flex-1 resize-none bg-surface-sunken p-3 font-mono text-xs leading-relaxed text-fg outline-none focus:ring-1 focus:ring-primary/40"
                 spellCheck={false}
                 value={draft}
                 onChange={onInput}

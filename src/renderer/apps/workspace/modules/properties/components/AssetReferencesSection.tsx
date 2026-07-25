@@ -122,7 +122,7 @@ export function AssetReferencesSection({ assetId }: { assetId: string }) {
                                                     onClick={() => handleJump(reference)}
                                                     disabled={!clickable}
                                                     title={reference.field}
-                                                    className={`w-full text-left px-2 py-1 rounded text-xs transition-colors cursor-default ${
+                                                    className={`w-full text-left px-2 py-1 rounded-md text-xs transition-colors cursor-default ${
                                                         clickable
                                                             ? "hover:bg-surface-raised text-fg-muted"
                                                             : "text-fg-subtle"
@@ -132,7 +132,7 @@ export function AssetReferencesSection({ assetId }: { assetId: string }) {
                                                         <span className="truncate">{reference.label}</span>
                                                         {reference.dormant && (
                                                             <span
-                                                                className="shrink-0 px-1 rounded bg-surface-raised text-fg-subtle"
+                                                                className="shrink-0 px-1 rounded-md bg-surface-raised text-fg-subtle"
                                                                 title={t("properties.references.dormantHint")}
                                                             >
                                                                 {t("properties.references.dormant")}

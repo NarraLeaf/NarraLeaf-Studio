@@ -27,7 +27,7 @@ import {
 } from "./storyMotionTimeline";
 
 const ICON_BUTTON_CLASS = controlButtonClass();
-const TOOL_BUTTON_CLASS = "inline-flex h-8 items-center gap-1.5 rounded border border-edge bg-fill-subtle px-2 text-xs text-fg hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
+const TOOL_BUTTON_CLASS = "inline-flex h-8 items-center gap-1.5 rounded-md border border-edge bg-fill-subtle px-2 text-xs text-fg hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
 
 const STORY_MOTION_TEMPLATE_KEYS = {
     "Fade in + slide": "fadeInSlide",
@@ -153,8 +153,8 @@ export function StoryMotionPicker(props: {
             </div>
 
             {animationId ? (
-                <div className="flex min-w-0 items-center gap-2 rounded border border-primary/25 bg-primary/10 p-2">
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded border border-primary/25 bg-primary/15 text-primary">
+                <div className="flex min-w-0 items-center gap-2 rounded-md border border-primary/25 bg-primary/10 p-2">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-primary/25 bg-primary/15 text-primary">
                         <Spline className="h-4 w-4" />
                     </span>
                     <div className="min-w-0 flex-1">
@@ -176,7 +176,7 @@ export function StoryMotionPicker(props: {
                     </button>
                 </div>
             ) : (
-                <div className="rounded border border-dashed border-edge bg-fill-subtle p-3 text-xs text-fg-subtle">
+                <div className="rounded-md border border-dashed border-edge bg-fill-subtle p-3 text-xs text-fg-subtle">
                     {t("motion.picker.noMotionBound")}
                 </div>
             )}
@@ -205,7 +205,7 @@ export function StoryMotionPicker(props: {
                             {t("common.create")}
                         </button>
                     </div>
-                    <div className="mt-2 max-h-56 overflow-auto rounded border border-edge-subtle">
+                    <div className="mt-2 max-h-56 overflow-auto rounded-md border border-edge-subtle">
                         {filteredAssets.length === 0 ? (
                             <div className="p-4 text-xs text-fg-subtle">{t("motion.picker.noMatches")}</div>
                         ) : filteredAssets.map(asset => (
@@ -218,7 +218,7 @@ export function StoryMotionPicker(props: {
                                 ].join(" ")}
                                 onClick={() => bindAsset(asset.id)}
                             >
-                                <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-edge bg-fill-subtle text-primary">
+                                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-primary">
                                     <Spline className="h-3.5 w-3.5" />
                                 </span>
                                 <span className="min-w-0 flex-1">

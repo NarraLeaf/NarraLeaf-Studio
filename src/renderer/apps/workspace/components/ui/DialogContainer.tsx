@@ -85,7 +85,7 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
                     {dialog.closable && (
                         <button
                             onClick={onClose}
-                            className="p-1 rounded hover:bg-fill transition-colors"
+                            className="p-1 rounded-md hover:bg-fill transition-colors"
                             aria-label={t("common.close")}
                         >
                             <svg className="w-5 h-5 text-fg-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -119,7 +119,7 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
                                 }}
                                 disabled={button.disabled}
                                 className={`
-                                    px-4 py-2 text-sm rounded transition-colors
+                                    px-4 py-2 text-sm rounded-md transition-colors
                                     ${button.disabled
                                         ? "bg-fill text-fg-subtle cursor-not-allowed"
                                         : button.primary

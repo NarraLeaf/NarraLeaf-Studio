@@ -493,7 +493,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                             type="button"
                                             onClick={(e) => handleCloseTab(tab.id, e)}
                                             className={`
-                                                w-4 h-4 rounded flex items-center justify-center transition-colors
+                                                w-4 h-4 rounded-md flex items-center justify-center transition-colors
                                                 ${
                                                     isActive
                                                         ? "hover:bg-fill-strong"

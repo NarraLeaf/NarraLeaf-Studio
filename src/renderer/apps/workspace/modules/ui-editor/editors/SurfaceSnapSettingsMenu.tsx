@@ -150,7 +150,7 @@ export function SurfaceSnapSettingsTrigger({ stateService, detail }: Props) {
                     <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-fg hover:bg-fill-subtle">
                         <input
                             type="checkbox"
-                            className="h-3.5 w-3.5 rounded border border-edge-strong bg-surface-sunken text-primary focus:ring-primary/40"
+                            className="h-3.5 w-3.5 rounded-sm border border-edge-strong bg-surface-sunken text-primary focus:ring-primary/40"
                             checked={detail.snapCanvasLayout}
                             onChange={() => patch({ snapCanvasLayout: !stateService.getSmartSnapDetailSettings().snapCanvasLayout })}
                         />
@@ -159,7 +159,7 @@ export function SurfaceSnapSettingsTrigger({ stateService, detail }: Props) {
                     <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-fg hover:bg-fill-subtle">
                         <input
                             type="checkbox"
-                            className="h-3.5 w-3.5 rounded border border-edge-strong bg-surface-sunken text-primary focus:ring-primary/40"
+                            className="h-3.5 w-3.5 rounded-sm border border-edge-strong bg-surface-sunken text-primary focus:ring-primary/40"
                             checked={detail.snapElementBorder}
                             onChange={() => patch({ snapElementBorder: !stateService.getSmartSnapDetailSettings().snapElementBorder })}
                         />
@@ -168,7 +168,7 @@ export function SurfaceSnapSettingsTrigger({ stateService, detail }: Props) {
                     <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-fg hover:bg-fill-subtle">
                         <input
                             type="checkbox"
-                            className="h-3.5 w-3.5 rounded border border-edge-strong bg-surface-sunken text-primary focus:ring-primary/40"
+                            className="h-3.5 w-3.5 rounded-sm border border-edge-strong bg-surface-sunken text-primary focus:ring-primary/40"
                             checked={detail.snapElementLayout}
                             onChange={() => patch({ snapElementLayout: !stateService.getSmartSnapDetailSettings().snapElementLayout })}
                         />

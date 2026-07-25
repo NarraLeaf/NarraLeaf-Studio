@@ -220,12 +220,12 @@ export function StoryBlockRow(props: {
                     style={{ backgroundColor: categoryColor, opacity: 0.55 }}
                 />
             ) : null}
-            <div className="relative flex h-full items-start justify-end pt-1 text-[12px] tabular-nums text-fg-subtle">
+            <div className="relative flex h-full items-start justify-end pt-1 text-xs tabular-nums text-fg-subtle">
                 <div className="flex min-h-[27px] items-center gap-1">
                     {canFold ? (
                         <button
                             type="button"
-                            className="rounded text-fg-subtle hover:bg-fill hover:text-primary"
+                            className="rounded-md text-fg-subtle hover:bg-fill hover:text-primary"
                             onClick={event => {
                                 event.stopPropagation();
                                 props.onToggleCollapsed();
@@ -248,7 +248,7 @@ export function StoryBlockRow(props: {
                     tabIndex={0}
                     aria-label={t("story.rows.dragRow")}
                     title={t("story.rows.dragRow")}
-                    className="flex h-7 w-7 touch-none select-none items-center justify-center rounded text-fg-subtle opacity-0 transition-colors hover:cursor-grab hover:text-primary hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 group-hover:opacity-100"
+                    className="flex h-7 w-7 touch-none select-none items-center justify-center rounded-md text-fg-subtle opacity-0 transition-colors hover:cursor-grab hover:text-primary hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 group-hover:opacity-100"
                     onMouseDown={event => event.stopPropagation()}
                     onClick={event => event.stopPropagation()}
                 >
@@ -661,7 +661,7 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
                 type="button"
                 tabIndex={-1}
                 title={t("story.rows.insertTitle", { keys: insertKeys })}
-                className="rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill hover:text-primary"
+                className="rounded-md px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill hover:text-primary"
                 onClick={event => {
                     event.stopPropagation();
                     props.onInsertAfter();
@@ -673,7 +673,7 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
                 type="button"
                 tabIndex={-1}
                 title={t("story.rows.deleteTitle", { keys: deleteKeys })}
-                className="rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-danger/10 hover:text-danger"
+                className="rounded-md px-1.5 py-1 text-2xs text-fg-muted hover:bg-danger/10 hover:text-danger"
                 onClick={event => {
                     event.stopPropagation();
                     props.onDelete();
@@ -726,7 +726,7 @@ function GroupHeadPositionControl(props: { position: StoryStagePlacement | undef
                 title={t("story.position.label")}
                 aria-label={t("story.position.label")}
                 className={[
-                    "rounded p-1 transition-colors hover:bg-fill hover:text-primary",
+                    "rounded-md p-1 transition-colors hover:bg-fill hover:text-primary",
                     open || props.active ? "opacity-100" : "opacity-0 group-hover:opacity-100",
                     open ? "bg-fill text-primary" : "text-fg-muted",
                 ].join(" ")}
@@ -754,7 +754,7 @@ function GroupHeadPositionControl(props: { position: StoryStagePlacement | undef
                                 aria-label={t(`story.position.${placement.value}` as TranslationKey)}
                                 aria-pressed={selected}
                                 className={[
-                                    "rounded p-1.5 transition-colors",
+                                    "rounded-md p-1.5 transition-colors",
                                     selected ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg",
                                 ].join(" ")}
                                 onClick={event => {
@@ -798,7 +798,7 @@ function RowPlayAction(props: { block: StoryBlock; active: boolean; onPlay: () =
             title={label}
             aria-label={label}
             className={[
-                "flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-2xs text-fg-muted transition-opacity hover:bg-fill hover:text-primary group-hover:pointer-events-auto group-hover:opacity-100",
+                "flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-2xs text-fg-muted transition-opacity hover:bg-fill hover:text-primary group-hover:pointer-events-auto group-hover:opacity-100",
                 props.active ? "opacity-100" : "pointer-events-none opacity-0",
             ].join(" ")}
             onClick={event => {
@@ -912,7 +912,7 @@ function ContainerPill({ info }: { info: StoryContainerHeaderInfo }) {
                 CONTAINER_PILL_TONE[info.role],
             ].join(" ")}
         >
-            {info.role === "option" ? <span aria-hidden className="text-[10px] leading-none">○</span> : null}
+            {info.role === "option" ? <span aria-hidden className="text-2xs leading-none">○</span> : null}
             {info.pill}
         </span>
     );
@@ -990,7 +990,7 @@ function ConditionChip(props: {
         <>
             <button
                 type="button"
-                className="min-w-0 max-w-[240px] truncate rounded border border-edge bg-fill-subtle px-2 py-0.5 text-xs text-fg-muted transition-colors hover:border-primary/50 hover:text-fg"
+                className="min-w-0 max-w-[240px] truncate rounded-md border border-edge bg-fill-subtle px-2 py-0.5 text-xs text-fg-muted transition-colors hover:border-primary/50 hover:text-fg"
                 onClick={openPopover}
                 onMouseDown={event => event.stopPropagation()}
             >
@@ -1035,7 +1035,7 @@ function RepeatTimesField(props: { block: StoryBlock; onUpdatePayload: (payload:
                 onChange={event =>
                     props.onUpdatePayload({ ...payload, times: Math.max(0, Math.floor(Number(event.target.value) || 0)) })
                 }
-                className="w-14 rounded border border-edge bg-fill-subtle px-1.5 py-0.5 text-fg outline-none focus:border-primary/50"
+                className="w-14 rounded-md border border-edge bg-fill-subtle px-1.5 py-0.5 text-fg outline-none focus:border-primary/50"
             />
             <span>{t("story.repeat.times")}</span>
         </label>
@@ -1055,7 +1055,7 @@ function ContainerHeaderAdd(props: { info: StoryContainerHeaderInfo; onAdd: () =
                 type="button"
                 tabIndex={-1}
                 title={label}
-                className="rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill hover:text-primary"
+                className="rounded-md px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill hover:text-primary"
                 onClick={event => {
                     event.stopPropagation();
                     props.onAdd();
@@ -1081,7 +1081,7 @@ function ContainerFooter(props: {
             <div className="mt-1 flex items-center gap-3 text-2xs text-fg-subtle" style={{ paddingLeft: RAIL_STEP }}>
                 <button
                     type="button"
-                    className="rounded px-1.5 py-0.5 hover:bg-fill hover:text-primary"
+                    className="rounded-md px-1.5 py-0.5 hover:bg-fill hover:text-primary"
                     onClick={event => {
                         event.stopPropagation();
                         props.onAddBranch("elseIf");
@@ -1091,7 +1091,7 @@ function ContainerFooter(props: {
                 </button>
                 <button
                     type="button"
-                    className="rounded px-1.5 py-0.5 hover:bg-fill hover:text-primary"
+                    className="rounded-md px-1.5 py-0.5 hover:bg-fill hover:text-primary"
                     onClick={event => {
                         event.stopPropagation();
                         props.onAddBranch("else");
@@ -1109,7 +1109,7 @@ function ContainerFooter(props: {
     return (
         <button
             type="button"
-            className="mt-1 flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs italic text-fg-subtle hover:bg-fill hover:text-fg-muted"
+            className="mt-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs italic text-fg-subtle hover:bg-fill hover:text-fg-muted"
             style={{ marginLeft: RAIL_STEP }}
             onClick={event => {
                 event.stopPropagation();
@@ -1141,7 +1141,7 @@ function LensToggle(props: { active: boolean; onToggle: () => void }) {
             tabIndex={-1}
             title={props.active ? t("story.lens.toList") : t("story.lens.toLens")}
             className={[
-                "shrink-0 rounded p-1 transition-colors hover:bg-fill hover:text-primary",
+                "shrink-0 rounded-md p-1 transition-colors hover:bg-fill hover:text-primary",
                 props.active ? "text-primary" : "text-fg-subtle opacity-0 group-hover:opacity-100",
             ].join(" ")}
             onClick={event => {
@@ -1159,7 +1159,7 @@ function ContainerModeBadge({ mode }: { mode: "all" | "allAsync" | "any" }) {
     const color = getCommandCategory("flow").iconColor;
     return (
         <span
-            className="shrink-0 rounded border px-1 py-px font-mono text-[10px] leading-none"
+            className="shrink-0 rounded-md border px-1 py-px font-mono text-2xs leading-none"
             style={{ color, borderColor: color }}
         >
             {mode}
@@ -1177,19 +1177,19 @@ function LensBar({ track, color }: { track: StoryLensRowTrack; color: string }) 
     const { segment, scaleMs, mode, winnerFinishMs } = track;
     const pct = (ms: number) => `${Math.min(100, Math.max(0, (ms / scaleMs) * 100))}%`;
     return (
-        <div className="relative h-3.5 self-center rounded bg-fill-subtle/70" style={{ flex: LENS_LANE_FLEX }} aria-hidden>
+        <div className="relative h-3.5 self-center rounded-md bg-fill-subtle/70" style={{ flex: LENS_LANE_FLEX }} aria-hidden>
             {segment.unknown || segment.disabled ? (
                 // A disabled track is compiled out — it does not set the scale, so a proportional bar
                 // would clamp to a misleading full width. Both it and an undeterminable duration show the
                 // same equal-width dashed stub: "no footprint on this timeline".
-                <div className="absolute inset-y-0 left-0 w-[30%] rounded border border-dashed border-fg-subtle/50" />
+                <div className="absolute inset-y-0 left-0 w-[30%] rounded-md border border-dashed border-fg-subtle/50" />
             ) : (
                 <>
                     {segment.delayMs > 0 ? (
                         <div className="absolute inset-y-0 rounded-l" style={{ left: 0, width: pct(segment.delayMs), backgroundImage: LENS_DELAY_HATCH }} />
                     ) : null}
                     {segment.durationMs > 0 ? (
-                        <div className="absolute inset-y-0 min-w-[3px] rounded" style={{ left: pct(segment.delayMs), width: pct(segment.durationMs), backgroundColor: color, opacity: 0.6 }} />
+                        <div className="absolute inset-y-0 min-w-[3px] rounded-md" style={{ left: pct(segment.delayMs), width: pct(segment.durationMs), backgroundColor: color, opacity: 0.6 }} />
                     ) : null}
                 </>
             )}
@@ -1279,7 +1279,7 @@ function LensTailAdd(props: { onAdd: () => void }) {
                 type="button"
                 tabIndex={-1}
                 title={t("story.container.addAction")}
-                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs text-fg-subtle hover:bg-fill hover:text-primary"
+                className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs text-fg-subtle hover:bg-fill hover:text-primary"
                 onClick={event => {
                     event.stopPropagation();
                     props.onAdd();
@@ -1869,7 +1869,7 @@ function ActionCommandMenuRow(props: {
             aria-selected={props.active}
             data-action-command-key={props.stop.key}
             className={[
-                "flex w-full items-center gap-2 rounded px-2 py-2 text-left transition-colors",
+                "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
                 props.active ? "bg-primary/15 text-fg" : "hover:bg-fill",
             ].join(" ")}
             onMouseDown={() => props.onChoose(command.id)}
@@ -2033,7 +2033,7 @@ function CharacterPicker(props: {
             }}
         >
             {props.characters.length === 0 ? (
-                <button type="button" className="w-full rounded px-2 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onClear}>
+                <button type="button" className="w-full rounded-md px-2 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onClear}>
                     {t("story.rows.noCharacterFound")}
                 </button>
             ) : (
@@ -2048,7 +2048,7 @@ function CharacterPicker(props: {
                             aria-selected={active}
                             data-character-id={candidate.key}
                             className={[
-                                "flex w-full items-center gap-2 rounded px-2 py-2 text-left transition-colors",
+                                "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
                                 active ? "bg-primary/15 text-fg" : "hover:bg-fill",
                             ].join(" ")}
                             onMouseEnter={() => props.onHighlight(candidate.key)}
@@ -2070,7 +2070,7 @@ function CharacterPicker(props: {
                     <div className="my-1 h-px bg-edge" />
                     <button
                         type="button"
-                        className="flex w-full items-center gap-2 rounded px-2 py-2 text-left transition-colors hover:bg-fill"
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors hover:bg-fill"
                         onMouseDown={props.onCreate}
                     >
                         <UserRoundPlus className="h-4 w-4 shrink-0 text-primary" />
@@ -2175,7 +2175,7 @@ function CharacterSelectTrigger(props: {
                 <button
                     type="button"
                     className={[
-                        "flex h-full min-h-[28px] max-w-full items-center truncate rounded px-1 py-0.5 text-left text-sm hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
+                        "flex h-full min-h-[28px] max-w-full items-center truncate rounded-md px-1 py-0.5 text-left text-sm hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
                         unassigned ? "italic text-fg-subtle hover:text-primary" : props.speakerName ? "text-fg-muted" : characterColor ? "" : "text-primary",
                         props.className ?? "",
                     ].join(" ")}
@@ -2201,7 +2201,7 @@ function CharacterSelectTrigger(props: {
                 ref={inputRef}
                 value={draft}
                 className={[
-                    "h-full min-h-[28px] w-[128px] rounded border border-primary/50 bg-surface-sunken px-1 py-0.5 text-sm text-fg outline-none",
+                    "h-full min-h-[28px] w-[128px] rounded-md border border-primary/50 bg-surface-sunken px-1 py-0.5 text-sm text-fg outline-none",
                     props.className ?? "",
                 ].join(" ")}
                 style={props.style}
@@ -2326,7 +2326,7 @@ function BlockBadge({ block, characters, appearance }: { block: StoryBlock; char
     const { url: imageUrl, frame, showingSprite } = useCharacterBadgeImage(block, appearance, characters);
 
     return (
-        <span className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded border border-edge bg-fill-subtle" title={label} aria-label={label}>
+        <span className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-md border border-edge bg-fill-subtle" title={label} aria-label={label}>
             {imageUrl ? (
                 showingSprite ? (
                     <HeadThumbnail url={imageUrl} alt="" frame={frame} className="h-full w-full" iconClassName="h-3.5 w-3.5" />
@@ -2635,7 +2635,7 @@ function DisplayableTransformPreview(props: {
 
     return (
         <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-fg-muted" style={textStyle}>
-            <span className="h-5 w-8 shrink-0 overflow-hidden rounded border border-edge bg-surface">
+            <span className="h-5 w-8 shrink-0 overflow-hidden rounded-md border border-edge bg-surface">
                 {url ? (
                     <img
                         src={url}

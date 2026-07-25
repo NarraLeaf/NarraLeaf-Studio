@@ -571,7 +571,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                         setVolume(Number(event.target.value));
                         setMuted(false);
                     }}
-                    className="h-1 w-20 shrink-0 rounded bg-fill accent-fg/70"
+                    className="h-1 w-20 shrink-0 rounded-md bg-fill accent-fg/70"
                     aria-label={t("assets.audio.volume")}
                 />
             </div>
@@ -582,7 +582,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                 the very samples being aimed at. */}
             <div ref={wheelRef} className="flex min-h-0 flex-1 items-start px-3 py-2">
                 <div
-                    className="relative h-full w-full overflow-hidden rounded border border-edge bg-surface-sunken"
+                    className="relative h-full w-full overflow-hidden rounded-md border border-edge bg-surface-sunken"
                     style={{ maxHeight: waveformMaxHeight }}
                 >
                     <WaveformView

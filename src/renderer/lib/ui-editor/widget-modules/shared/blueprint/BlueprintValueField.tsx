@@ -100,7 +100,7 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
                             </div>
                             <button
                                 type="button"
-                                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-edge bg-fill-subtle text-fg hover:bg-fill disabled:opacity-40"
+                                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-edge bg-fill-subtle text-fg hover:bg-fill disabled:opacity-40"
                                 disabled={!surfaceId}
                                 onClick={() => openValueBlueprint(binding.blueprintId)}
                                 aria-label={t("widgetChrome.blueprint.openBlueprintValue")}
@@ -112,7 +112,7 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
                     </div>
                     <button
                         type="button"
-                        className="inline-flex items-center gap-1.5 rounded border border-edge bg-fill-subtle px-2 py-1 text-xs text-fg hover:bg-fill"
+                        className="inline-flex items-center gap-1.5 rounded-md border border-edge bg-fill-subtle px-2 py-1 text-xs text-fg hover:bg-fill"
                         onClick={() => props.data.documentService.clearElementBlueprintValueBinding(live.id, config.propPath)}
                     >
                         <Pencil className="h-3.5 w-3.5" />
@@ -141,7 +141,7 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
                 )}
                 <button
                     type="button"
-                    className="inline-flex items-center gap-1.5 rounded border border-binding/30 bg-binding/10 px-2 py-1 text-xs text-binding hover:bg-binding/20 disabled:cursor-default disabled:opacity-40"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-binding/30 bg-binding/10 px-2 py-1 text-xs text-binding hover:bg-binding/20 disabled:cursor-default disabled:opacity-40"
                     disabled={!surfaceId || isComponentEditorSurface}
                     onClick={createBinding}
                     title={isComponentEditorSurface ? t("widgetChrome.blueprint.componentsUnavailable") : undefined}
