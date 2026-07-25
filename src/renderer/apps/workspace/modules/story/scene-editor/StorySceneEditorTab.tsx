@@ -35,6 +35,7 @@ import { StoryCommandManual } from "./StoryCommandManual";
 import { publishStoryInspectorState, STORY_INSPECTOR_PANEL_ID } from "./storyInspectorBridge";
 import { stopVoiceAudition } from "./voiceAudition";
 import { StoryEditorTextStyleProvider, storyEditorRootStyle } from "./storyEditorTextStyle";
+import { StoryRowActionsContext, type StoryRowActions } from "./storyRowActions";
 import { getTextSegment } from "./storySceneBlockUtils";
 import {
     captureStoryEditorScrollAnchor,
@@ -1100,6 +1101,111 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         rowMenu.showMenu(event);
     }, [editor, rowMenu]);
 
+    /**
+     * `SortableContext` lists its items as a memo dependency, so a fresh array here would publish a
+     * fresh context value on every render — and a changed context re-renders every `useSortable`
+     * consumer, i.e. every row, which is exactly what `memo` on the row is there to stop.
+     */
+    const sortableRowIds = useMemo(() => editor.visibleRows.map(row => row.block.id), [editor.visibleRows]);
+
+    /**
+     * The rows' action surface, published once and never rebuilt.
+     *
+     * Identity is the whole point: this goes through context, and a context value that changes
+     * identity re-renders every consumer — which would undo `memo` on the row and put us back at a
+     * full re-render per keystroke. The closures it needs (`editor` is a fresh object every render)
+     * are read from a ref refreshed after each commit, so the handlers always see current state
+     * without ever appearing in a dependency array. Handlers only run from events, which is after
+     * the commit that refreshed the ref.
+     */
+    const rowActionsLatest = useRef({ editor, openRowContextMenu, playFromRow });
+    useLayoutEffect(() => {
+        rowActionsLatest.current = { editor, openRowContextMenu, playFromRow };
+    });
+    const rowActions = useMemo<StoryRowActions>(() => {
+        const latest = () => rowActionsLatest.current;
+        /** The row's block, by id, from whatever scene is current. */
+        const blockOf = (blockId: StoryBlockId) => latest().editor.scene?.blocks[blockId] ?? null;
+        return {
+            select: (blockId, event) => latest().editor.selectRow(blockId, event),
+            contextMenu: (blockId, event) => latest().openRowContextMenu(event, blockId),
+            mouseDown: (blockId, event) => latest().editor.beginDragSelection(blockId, event),
+            mouseEnter: blockId => latest().editor.extendDragSelection(blockId),
+            toggleCollapsed: blockId => latest().editor.toggleCollapsed(blockId),
+            startTextEdit: blockId => {
+                const block = blockOf(blockId);
+                const text = block ? getTextSegment(block) : null;
+                if (text) {
+                    latest().editor.setEditorMode({ kind: "text", blockId, value: text.value, rich: text.rich });
+                }
+            },
+            editRichChange: (blockId, value, rich) => {
+                const { editor: current } = latest();
+                current.resetGoalColumn();
+                current.setEditorMode(mode => mode.kind === "text" && mode.blockId === blockId
+                    ? { ...mode, value, rich }
+                    : mode);
+            },
+            commitTextEdit: () => latest().editor.commitTextEdit(),
+            exitTextEdit: () => {
+                const { editor: current } = latest();
+                current.commitTextEdit();
+                current.focusRoot();
+            },
+            continueRow: () => latest().editor.insertContinuationAfterCurrentTextEdit(),
+            arrowOut: (direction, caretX) => latest().editor.navigateFromTextEdit(direction, caretX),
+            goalColumnInvalidated: () => latest().editor.resetGoalColumn(),
+            backspaceAtEmptyStart: () => latest().editor.handleBackspaceAtEmptyStart(),
+            // The row's own stack is spent, so the caret is back where the edit opened and committing
+            // is a no-op (`commitTextEdit` short-circuits when nothing changed, recording no history).
+            // Leaving the field first is what lets a further Mod+Z reach story history.
+            undoBeyondRow: () => {
+                const { editor: current } = latest();
+                current.commitTextEdit();
+                current.focusRoot();
+                current.undoEdit();
+            },
+            redoBeyondRow: () => {
+                const { editor: current } = latest();
+                current.commitTextEdit();
+                current.focusRoot();
+                current.redoEdit();
+            },
+            openInspector: blockId => latest().editor.activateBlockForInspectorOrOp(blockId),
+            updatePayload: (blockId, payload) => latest().editor.updateBlockPayloadFor(blockId, payload),
+            setDialogueCharacter: (blockId, characterId) => {
+                const block = blockOf(blockId);
+                if (block) {
+                    latest().editor.setDialogueSpeaker(block, characterId ? { characterId } : null);
+                }
+            },
+            setPosition: (blockId, position, sourceId) => {
+                const block = blockOf(blockId);
+                if (block) {
+                    latest().editor.setDialogueGroupPosition(block, position, sourceId);
+                }
+            },
+            setSpeaker: (blockId, speaker) => {
+                const block = blockOf(blockId);
+                if (block) {
+                    latest().editor.setDialogueSpeaker(block, speaker);
+                }
+            },
+            createCharacter: (blockId, name) => {
+                const block = blockOf(blockId);
+                if (block) {
+                    latest().editor.createCharacterFromSpeaker(block, name);
+                }
+            },
+            insertAfter: blockId => latest().editor.startInsertAfter(blockId, true),
+            deleteRow: blockId => void latest().editor.deleteRows([blockId]),
+            addInside: parentId => latest().editor.addInsideContainer(parentId),
+            addBranch: (conditionId, branch) => latest().editor.addConditionBranch(conditionId, branch),
+            playFromRow: blockId => latest().playFromRow(blockId),
+            toggleLens: blockId => latest().editor.toggleContainerLens(blockId),
+        };
+    }, []);
+
     if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
         return (
             <div className="flex h-full items-center justify-center p-6 text-sm text-fg-muted">
@@ -1134,7 +1240,6 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // focused too. The row's own highlight comes back when the slot closes (commit selects the new
     // row; cancel leaves activeBlockId on the row the slot opened from, so focus returns there).
     const insertActive = editor.editorMode.kind === "insert";
-    const sortableRowIds = editor.visibleRows.map(row => row.block.id);
     const assetsService = editor.context.services.get<AssetsService>(Services.Assets);
     const backgroundAsset = scene.defaultBackgroundAssetId
         ? assetsService.getAssets()[AssetType.Image]?.[scene.defaultBackgroundAssetId] ?? null
@@ -1169,6 +1274,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
 
     return (
         <StoryEditorTextStyleProvider density={editor.density}>
+        <StoryRowActionsContext.Provider value={rowActions}>
         <div
             ref={editor.rootRef}
             tabIndex={0}
@@ -1302,51 +1408,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     editing={editor.editorMode.kind === "text" && editor.editorMode.blockId === row.block.id}
                                     editInitialCaret={editor.editorMode.kind === "text" && editor.editorMode.blockId === row.block.id ? (editor.editorMode.caret ?? "end") : undefined}
                                     textInputRef={editor.textInputRef}
-                                    onSelect={event => editor.selectRow(row.block.id, event)}
-                                    onContextMenu={event => openRowContextMenu(event, row.block.id)}
-                                    onMouseDown={event => editor.beginDragSelection(row.block.id, event)}
-                                    onMouseEnter={() => editor.extendDragSelection(row.block.id)}
-                                    onToggleCollapsed={() => editor.toggleCollapsed(row.block.id)}
-                                    onStartTextEdit={() => {
-                                        const text = getTextSegment(row.block);
-                                        if (text) {
-                                            editor.setEditorMode({ kind: "text", blockId: row.block.id, value: text.value, rich: text.rich });
-                                        }
-                                    }}
-                                    onEditRichChange={(value, rich) => {
-                                        editor.resetGoalColumn();
-                                        editor.setEditorMode(current =>
-                                            current.kind === "text" && current.blockId === row.block.id
-                                                ? { ...current, value, rich }
-                                                : current,
-                                        );
-                                    }}
-                                    onCommitTextEdit={editor.commitTextEdit}
-                                    onExitTextEdit={() => { editor.commitTextEdit(); editor.focusRoot(); }}
-                                    onContinue={editor.insertContinuationAfterCurrentTextEdit}
-                                    onArrowOut={editor.navigateFromTextEdit}
-                                    onGoalColumnInvalidated={editor.resetGoalColumn}
-                                    onBackspaceAtEmptyStart={editor.handleBackspaceAtEmptyStart}
-                                    // The row's stack is spent, so the caret is back where the edit opened and
-                                    // committing is a no-op (`commitTextEdit` short-circuits when nothing
-                                    // changed, recording no history). Leaving the field first is what lets any
-                                    // further Mod+Z reach story history through the normal keybinding.
-                                    onUndoBeyondRow={() => { editor.commitTextEdit(); editor.focusRoot(); editor.undoEdit(); }}
-                                    onRedoBeyondRow={() => { editor.commitTextEdit(); editor.focusRoot(); editor.redoEdit(); }}
-                                    onOpenInspector={() => editor.activateBlockForInspectorOrOp(row.block.id)}
-                                    onUpdatePayload={payload => editor.updateBlockPayloadFor(row.block.id, payload)}
-                                    onSetDialogueCharacter={characterId => editor.setDialogueSpeaker(row.block, characterId ? { characterId } : null)}
-                                    onSetPosition={position => editor.setDialogueGroupPosition(row.block, position, row.appearance?.positionSourceId ?? null)}
                                     tempSpeakers={editor.tempSpeakers}
-                                    onSetSpeaker={speaker => editor.setDialogueSpeaker(row.block, speaker)}
-                                    onCreateCharacter={name => editor.createCharacterFromSpeaker(row.block, name)}
-                                    onInsertAfter={() => editor.startInsertAfter(row.block.id, true)}
-                                    onDeleteRow={() => void editor.deleteRows([row.block.id])}
-                                    onAddInside={parentId => editor.addInsideContainer(parentId)}
-                                    onAddBranch={(conditionId, branch) => editor.addConditionBranch(conditionId, branch)}
-                                    onPlayFromRow={playFromRow}
                                     lensActive={editor.lensContainerIds.has(row.block.id)}
-                                    onToggleLens={() => editor.toggleContainerLens(row.block.id)}
                                 />
                                 )}
                                 {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === row.block.id ? (
@@ -1466,6 +1529,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             </div>
         </div>
         {manualOpen ? <StoryCommandManual onClose={() => setManualOpen(false)} /> : null}
+        </StoryRowActionsContext.Provider>
         </StoryEditorTextStyleProvider>
     );
 }

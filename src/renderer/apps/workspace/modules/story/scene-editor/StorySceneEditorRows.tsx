@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
 import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Hash, Image, List, Music, Play, Plus, Route, Trash2, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
@@ -69,8 +69,20 @@ import { ConditionPopover } from "./ConditionPopover";
 import { BlockOverview, getQuickParams, QuickParamsInline, type QuickParam } from "./storyQuickParams";
 import { lensTrackRendersBar, type StoryLensRowTrack } from "./storyStagingLens";
 import { actionTrigger, ACTION_TRIGGER, insertChooserType, toCanonicalCommandLine } from "./commandTrigger";
+import { useStoryRowActions } from "./storyRowActions";
 
-export function StoryBlockRow(props: {
+/**
+ * One story row.
+ *
+ * Memoised, and the props above are why it can be: they are data. Everything the row can *do* comes
+ * from `StoryRowActionsContext` as one object that never changes identity, so a state change hands
+ * each row the same props it had and only the rows whose data actually moved re-render. Before that
+ * split, the tab built ~25 arrow functions per row inside its `map`, which made every render a full
+ * re-render of the document — 100ms per keystroke on a 400-row scene, growing with the scene.
+ *
+ * Closures built *inside* this function (see `on` below) are free: memo compares props, not internals.
+ */
+export const StoryBlockRow = memo(function StoryBlockRow(props: {
     row: VisibleStoryRow;
     scene: StoryScene;
     document: StoryDocument;
@@ -84,54 +96,50 @@ export function StoryBlockRow(props: {
     /** Where the caret lands when this row opens for editing (arrow-navigation, or a carried selection). */
     editInitialCaret?: StoryCaretTarget;
     textInputRef: RefObject<RichTextInputHandle | null>;
-    onSelect: (event: MouseEvent) => void;
-    onContextMenu: (event: MouseEvent) => void;
-    onMouseDown: (event: MouseEvent) => void;
-    onMouseEnter: () => void;
-    onToggleCollapsed: () => void;
-    onStartTextEdit: () => void;
-    onEditRichChange: (value: string, runs: StoryRichRun[]) => void;
-    onCommitTextEdit: () => void;
-    onExitTextEdit: () => void;
-    /**
-     * Enter while editing: commit and open a new row that continues the same kind (dialogue keeps
-     * speaker). On a line left empty it takes the Backspace rung instead — see
-     * {@link onBackspaceAtEmptyStart} — so a second Enter ends the run rather than stacking blanks.
-     */
-    onContinue: () => void;
-    /** Caret left the line's top/bottom/edge — move focus to the adjacent story row. */
-    onArrowOut: (direction: "up" | "down" | "left" | "right", caretX: number | null) => void;
-    onGoalColumnInvalidated: () => void;
-    /** Backspace on an empty line: demote dialogue → narration, or delete the row and step back. */
-    onBackspaceAtEmptyStart: () => void;
-    /** Mod+Z / Mod+Shift+Z once the row's own history is spent — hand off to story history. */
-    onUndoBeyondRow: () => void;
-    onRedoBeyondRow: () => void;
-    /** Activate a non-text row (Enter / double-click): opens its inspector in the right panel, or runs its card-less op. */
-    onOpenInspector: () => void;
-    onUpdatePayload: (payload: StoryBlock["payload"]) => void;
-    onSetDialogueCharacter: (characterId: string | undefined) => void;
-    /** Set the dialogue group's speaker placement (WI-3): rewrites the enter/move `at=`, via history. */
-    onSetPosition: (position: StoryStagePlacement) => void;
     tempSpeakers: TempSpeakerRef[];
-    onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
-    onCreateCharacter: (name: string) => void;
-    onInsertAfter: () => void;
-    /** Quick-delete this row from its hover actions. */
-    onDeleteRow: () => void;
-    /** Insert a fresh child (action / menu option) at the end of this container. */
-    onAddInside: (parentId: StoryBlockId) => void;
-    /** Append an if / else-if / else branch to a condition container. */
-    onAddBranch: (conditionId: StoryBlockId, branch: "if" | "elseIf" | "else") => void;
-    /** Run the live preview forward from this row (on an option row: enter that branch). */
-    onPlayFromRow: (blockId: StoryBlockId) => void;
     /** This row is a parallel/race container currently showing its staging lens (M7). */
     lensActive: boolean;
-    /** Toggle this container's staging lens between the bar-timeline view and the plain list. */
-    onToggleLens: () => void;
 }) {
     const { t } = useTranslation();
     const { row, scene, document, characters, selected, active, collapsed, editing, textInputRef } = props;
+    const actions = useStoryRowActions();
+    const blockId = row.block.id;
+    /**
+     * This row's half of every action, bound to its id. Rebuilt each render on purpose — these are
+     * internals, not props, so they cost nothing at the memo boundary, and pinning them with
+     * `useCallback` would buy 26 dependency arrays to maintain for no gain.
+     */
+    const on = {
+        onSelect: (event: MouseEvent) => actions.select(blockId, event),
+        onContextMenu: (event: MouseEvent) => actions.contextMenu(blockId, event),
+        onMouseDown: (event: MouseEvent) => actions.mouseDown(blockId, event),
+        onMouseEnter: () => actions.mouseEnter(blockId),
+        onToggleCollapsed: () => actions.toggleCollapsed(blockId),
+        onStartTextEdit: () => actions.startTextEdit(blockId),
+        onEditRichChange: (value: string, runs: StoryRichRun[]) => actions.editRichChange(blockId, value, runs),
+        onCommitTextEdit: actions.commitTextEdit,
+        onExitTextEdit: actions.exitTextEdit,
+        onContinue: actions.continueRow,
+        onArrowOut: actions.arrowOut,
+        onGoalColumnInvalidated: actions.goalColumnInvalidated,
+        onBackspaceAtEmptyStart: actions.backspaceAtEmptyStart,
+        onUndoBeyondRow: actions.undoBeyondRow,
+        onRedoBeyondRow: actions.redoBeyondRow,
+        onOpenInspector: () => actions.openInspector(blockId),
+        onUpdatePayload: (payload: StoryBlock["payload"]) => actions.updatePayload(blockId, payload),
+        onSetDialogueCharacter: (characterId: string | undefined) => actions.setDialogueCharacter(blockId, characterId),
+        // The placement source is the row's own resolved appearance, which only the row knows.
+        onSetPosition: (position: StoryStagePlacement) => actions.setPosition(blockId, position, row.appearance?.positionSourceId ?? null),
+        onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => actions.setSpeaker(blockId, speaker),
+        onCreateCharacter: (name: string) => actions.createCharacter(blockId, name),
+        onInsertAfter: () => actions.insertAfter(blockId),
+        onDeleteRow: () => actions.deleteRow(blockId),
+        onAddInside: actions.addInside,
+        onAddBranch: actions.addBranch,
+        onPlayFromRow: actions.playFromRow,
+        onToggleLens: () => actions.toggleLens(blockId),
+    };
+
     const block = row.block;
     const container = isContainerBlock(block);
     const containerInfo = container ? getContainerHeaderInfo(block) : null;
@@ -198,10 +206,10 @@ export function StoryBlockRow(props: {
                 // chrome; the runtime treats it as absent.
                 row.disabled ? "opacity-45" : "",
             ].join(" ")}
-            onClick={props.onSelect}
-            onContextMenu={props.onContextMenu}
-            onMouseDown={props.onMouseDown}
-            onMouseEnter={props.onMouseEnter}
+            onClick={on.onSelect}
+            onContextMenu={on.onContextMenu}
+            onMouseDown={on.onMouseDown}
+            onMouseEnter={on.onMouseEnter}
             onDoubleClick={event => {
                 event.stopPropagation();
                 // A row that holds text enters edit from the mouseup gesture, which carries the
@@ -211,7 +219,7 @@ export function StoryBlockRow(props: {
                 if ((event.target as HTMLElement | null)?.closest?.("[data-story-row-text]")) {
                     return;
                 }
-                textSegment ? props.onStartTextEdit() : props.onOpenInspector();
+                textSegment ? on.onStartTextEdit() : on.onOpenInspector();
             }}
         >
             {block.kind === "action" && block.payload.action === "setBackground" ? (
@@ -232,7 +240,7 @@ export function StoryBlockRow(props: {
                             className="rounded text-fg-subtle hover:bg-fill hover:text-primary"
                             onClick={event => {
                                 event.stopPropagation();
-                                props.onToggleCollapsed();
+                                on.onToggleCollapsed();
                             }}
                         >
                             {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
@@ -273,13 +281,13 @@ export function StoryBlockRow(props: {
                         characters={characters}
                         commandContext={props.commandContext}
                         tempSpeakers={props.tempSpeakers}
-                        onSetSpeaker={props.onSetSpeaker}
-                        onCreateCharacter={props.onCreateCharacter}
-                        onSetDialogueCharacter={props.onSetDialogueCharacter}
-                        onUpdatePayload={props.onUpdatePayload}
-                        onAddInside={props.onAddInside}
-                        onInsertAfter={props.onInsertAfter}
-                        onDeleteRow={props.onDeleteRow}
+                        onSetSpeaker={on.onSetSpeaker}
+                        onCreateCharacter={on.onCreateCharacter}
+                        onSetDialogueCharacter={on.onSetDialogueCharacter}
+                        onUpdatePayload={on.onUpdatePayload}
+                        onAddInside={on.onAddInside}
+                        onInsertAfter={on.onInsertAfter}
+                        onDeleteRow={on.onDeleteRow}
                         active={active}
                     />
                 ) : (
@@ -302,11 +310,11 @@ export function StoryBlockRow(props: {
                             block={block}
                             scene={scene}
                             document={document}
-                            onUpdatePayload={props.onUpdatePayload}
+                            onUpdatePayload={on.onUpdatePayload}
                         />
                     ) : null}
                     {containerInfo?.repeatTimes !== undefined ? (
-                        <RepeatTimesField block={block} onUpdatePayload={props.onUpdatePayload} />
+                        <RepeatTimesField block={block} onUpdatePayload={on.onUpdatePayload} />
                     ) : null}
                     {expressionMember ? (
                         <GroupExpressionMember block={block} characters={characters} />
@@ -314,24 +322,24 @@ export function StoryBlockRow(props: {
                         <TextEditBox
                             editorRef={textInputRef}
                             initialCaret={props.editInitialCaret}
-                            onEditRichChange={props.onEditRichChange}
-                            onCommitTextEdit={props.onCommitTextEdit}
-                            onExitTextEdit={props.onExitTextEdit}
-                            onContinue={props.onContinue}
-                            onArrowOut={props.onArrowOut}
-                            onGoalColumnInvalidated={props.onGoalColumnInvalidated}
-                            onBackspaceAtEmptyStart={props.onBackspaceAtEmptyStart}
-                            onUndoBeyondRow={props.onUndoBeyondRow}
-                            onRedoBeyondRow={props.onRedoBeyondRow}
-                            onInsertAfter={props.onInsertAfter}
+                            onEditRichChange={on.onEditRichChange}
+                            onCommitTextEdit={on.onCommitTextEdit}
+                            onExitTextEdit={on.onExitTextEdit}
+                            onContinue={on.onContinue}
+                            onArrowOut={on.onArrowOut}
+                            onGoalColumnInvalidated={on.onGoalColumnInvalidated}
+                            onBackspaceAtEmptyStart={on.onBackspaceAtEmptyStart}
+                            onUndoBeyondRow={on.onUndoBeyondRow}
+                            onRedoBeyondRow={on.onRedoBeyondRow}
+                            onInsertAfter={on.onInsertAfter}
                             block={block}
                             scene={scene}
                             tempSpeakers={props.tempSpeakers}
-                            onSetSpeaker={props.onSetSpeaker}
-                            onCreateCharacter={props.onCreateCharacter}
+                            onSetSpeaker={on.onSetSpeaker}
+                            onCreateCharacter={on.onCreateCharacter}
                             document={document}
                             characters={characters}
-                            onSetDialogueCharacter={props.onSetDialogueCharacter}
+                            onSetDialogueCharacter={on.onSetDialogueCharacter}
                             hideSpeaker={dialogueMember}
                             suppressSpeakerColor={selected}
                         />
@@ -341,46 +349,46 @@ export function StoryBlockRow(props: {
                             scene={scene}
                             commandContext={props.commandContext}
                             tempSpeakers={props.tempSpeakers}
-                            onSetSpeaker={props.onSetSpeaker}
-                            onCreateCharacter={props.onCreateCharacter}
+                            onSetSpeaker={on.onSetSpeaker}
+                            onCreateCharacter={on.onCreateCharacter}
                             document={document}
                             characters={characters}
-                            onSetDialogueCharacter={props.onSetDialogueCharacter}
+                            onSetDialogueCharacter={on.onSetDialogueCharacter}
                             hideSpeaker={dialogueMember}
                             suppressSpeakerColor={selected}
-                            onUpdatePayload={props.onUpdatePayload}
+                            onUpdatePayload={on.onUpdatePayload}
                         />
                     ) : null}
                     <div className="ml-auto flex shrink-0 items-center gap-1">
                         {containerInfo ? (
                             <>
-                                {lensMode ? <LensToggle active={props.lensActive} onToggle={props.onToggleLens} /> : null}
-                                <ContainerHeaderAdd info={containerInfo} onAdd={() => props.onAddInside(block.id)} />
+                                {lensMode ? <LensToggle active={props.lensActive} onToggle={on.onToggleLens} /> : null}
+                                <ContainerHeaderAdd info={containerInfo} onAdd={() => on.onAddInside(block.id)} />
                             </>
                         ) : (
                             <>
                                 {dialogueHead ? (
-                                    <GroupHeadPositionControl position={row.appearance?.position} active={active} onSetPosition={props.onSetPosition} />
+                                    <GroupHeadPositionControl position={row.appearance?.position} active={active} onSetPosition={on.onSetPosition} />
                                 ) : null}
                                 <StoryVoiceIndicator block={block} />
-                                <RowActions onInsertAfter={props.onInsertAfter} onDelete={props.onDeleteRow} active={active} />
+                                <RowActions onInsertAfter={on.onInsertAfter} onDelete={on.onDeleteRow} active={active} />
                             </>
                         )}
-                        <RowPlayAction block={block} active={active} onPlay={() => props.onPlayFromRow(block.id)} />
+                        <RowPlayAction block={block} active={active} onPlay={() => on.onPlayFromRow(block.id)} />
                     </div>
                 </div>
                 {containerInfo ? (
                     <ContainerFooter
                         block={block}
                         info={containerInfo}
-                        onAddInside={() => props.onAddInside(block.id)}
-                        onAddBranch={branch => props.onAddBranch(block.id, branch)}
+                        onAddInside={() => on.onAddInside(block.id)}
+                        onAddBranch={branch => on.onAddBranch(block.id, branch)}
                     />
                 ) : null}
                 {/* A prose track on the ordinary path still carries the lens's tail "+" when it is the
                     container's last child — the affordance belongs to the lens, not to the bar. */}
                 {lensTrack?.segment.isLast && block.parentId ? (
-                    <LensTailAdd onAdd={() => props.onAddInside(block.parentId as StoryBlockId)} />
+                    <LensTailAdd onAdd={() => on.onAddInside(block.parentId as StoryBlockId)} />
                 ) : null}
                 </>
                 )}
@@ -388,7 +396,7 @@ export function StoryBlockRow(props: {
             </div>
         </div>
     );
-}
+});
 
 function editorPlaceholder(block: StoryBlock, t: ReturnType<typeof useTranslation>["t"]): string {
     switch (getTextSegment(block)?.role) {
@@ -1403,15 +1411,38 @@ export function InsertRow(props: {
     slashAtAlias: boolean;
 }) {
     const { t } = useTranslation();
+    /**
+     * The line being typed lives here, not in the editor's mode.
+     *
+     * A slot is one field; the editor around it is a list of every row in the scene. While the text
+     * was editor state, a keystroke re-rendered that whole list — measurably, ~100ms per character on
+     * a 400-row scene. Keeping it local means typing costs this component and nothing else; the
+     * controller keeps its own copy in a ref (`insertDraftRef`) for the commit and resolve paths, fed
+     * by `onValueChange`.
+     *
+     * The slot object is the identity of "which line is being typed", so a new slot re-seeds the
+     * field. This is React's documented adjust-state-on-prop-change form rather than an effect: an
+     * effect would render one frame of the previous slot's text into the new slot.
+     */
+    const [seededSlot, setSeededSlot] = useState(props.mode.slot);
+    const [value, setValue] = useState(props.mode.initialValue);
+    if (seededSlot !== props.mode.slot) {
+        setSeededSlot(props.mode.slot);
+        setValue(props.mode.initialValue);
+    }
+    const setLineValue = (next: string) => {
+        setValue(next);
+        props.onValueChange(next);
+    };
     // The line the author sees keeps the trigger they typed; the parser, the cursor, and the command
     // search read the canonical "/" form (`source`). Same length, so `caret` indexes both.
-    const source = useMemo(() => toCanonicalCommandLine(props.mode.value, props.slashAtAlias), [props.mode.value, props.slashAtAlias]);
+    const source = useMemo(() => toCanonicalCommandLine(value, props.slashAtAlias), [value, props.slashAtAlias]);
     // Drop the trigger character (either "/" or "@") to get the query the menus rank against.
-    const chooserQuery = props.mode.value.slice(1);
+    const chooserQuery = value.slice(1);
     // The menu is derived from the text, never stored - so a reopened draft row always has its
     // completion (bible M3). Escape is the one thing text cannot express: `chooserDismissed` shuts the
     // menu until the next keystroke clears it (see the controller), so it forces "none" here.
-    const chooser = props.mode.chooserDismissed ? "none" : insertChooserType(props.mode.value, props.slashAtAlias);
+    const chooser = props.mode.chooserDismissed ? "none" : insertChooserType(value, props.slashAtAlias);
     const menuAnchorRef = useRef<HTMLDivElement | null>(null);
     const menuPlacement = useAutoMenuPlacement(menuAnchorRef, chooser !== "none", 312);
     const pluginCommands = useStoryPluginActionCommands();
@@ -1438,7 +1469,7 @@ export function InsertRow(props: {
 
     // Where the caret is decides what the slot offers, so it has to be state: `/bg fo|` asks for an
     // image, `/bg forest_day t=|` for a transition, and only the caret tells them apart.
-    const [caret, setCaret] = useState(props.mode.value.length);
+    const [caret, setCaret] = useState(props.mode.initialValue.length);
     const cursor = useMemo(() => getCommandCursor(source, caret), [caret, source]);
     // `form=` can only list the forms of the character this line already named, so the candidates need
     // the args resolved so far.
@@ -1492,10 +1523,9 @@ export function InsertRow(props: {
      * controlled, so the caret has to be restored by hand once React has rendered the new text.
      */
     const applyCompletion = (text: string, replace: { start: number; end: number }) => {
-        const value = props.mode.value;
         const next = value.slice(0, replace.start) + text + value.slice(replace.end);
         const nextCaret = replace.start + text.length;
-        props.onValueChange(next);
+        setLineValue(next);
         setCaret(nextCaret);
         window.requestAnimationFrame(() => props.inputRef.current?.setSelectionRange(nextCaret, nextCaret));
     };
@@ -1517,8 +1547,8 @@ export function InsertRow(props: {
         if (def && def.params.length > 0) {
             // Rebuild the whole line, but keep the trigger the author is using so "@" does not flip to
             // "/" mid-completion. The commit path canonicalizes it either way.
-            const trigger = actionTrigger(props.mode.value, props.slashAtAlias) ?? ACTION_TRIGGER;
-            applyCompletion(`${trigger}${def.token} `, { start: 0, end: props.mode.value.length });
+            const trigger = actionTrigger(value, props.slashAtAlias) ?? ACTION_TRIGGER;
+            applyCompletion(`${trigger}${def.token} `, { start: 0, end: value.length });
             return;
         }
         props.onChooseCommand(commandId);
@@ -1547,7 +1577,7 @@ export function InsertRow(props: {
                     anchor, so it is positioned against the field's box and inherits its exact metrics.
                     `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
                 <div className="relative flex min-w-0 flex-1">
-                <CommandGhostHint value={props.mode.value} source={source} caret={caret} textStyle={textStyle} commandContext={props.commandContext} confirmation={props.mode.confirmation} />
+                <CommandGhostHint value={value} source={source} caret={caret} textStyle={textStyle} commandContext={props.commandContext} confirmation={props.mode.confirmation} />
                 <textarea
                     ref={props.inputRef}
                     // Same in-place surface as an editing row (see TextEditBox): the new line reads as a
@@ -1556,14 +1586,14 @@ export function InsertRow(props: {
                     className="relative min-h-[20px] w-full resize-none bg-transparent px-0 py-0 text-fg outline-none placeholder:italic placeholder:text-fg-subtle"
                     style={textStyle}
                     rows={1}
-                    value={props.mode.value}
+                    value={value}
                     // The hint advertises whichever trigger this author actually uses. Suppressed while a
                     // declaration receipt occupies the ghost zone, so the two do not overprint on the
                     // empty slot; the next keystroke clears the receipt and the placeholder is moot anyway.
                     placeholder={props.mode.confirmation ? "" : t("story.rows.insertPlaceholder", { trigger: props.slashAtAlias ? "@" : "/" })}
                     onChange={event => {
                         setCaret(event.target.selectionStart ?? event.target.value.length);
-                        props.onValueChange(event.target.value);
+                        setLineValue(event.target.value);
                     }}
                     // Fires on caret moves as well as selections — the slot has to follow the caret,
                     // not just the text, or clicking back into `/bg |forest` would still offer transitions.
@@ -1574,7 +1604,7 @@ export function InsertRow(props: {
                         }
                     }}
                     onKeyDown={event => {
-                        if (event.key === "Backspace" && props.mode.value === "" && event.currentTarget.selectionStart === 0 && event.currentTarget.selectionEnd === 0) {
+                        if (event.key === "Backspace" && value === "" && event.currentTarget.selectionStart === 0 && event.currentTarget.selectionEnd === 0) {
                             event.preventDefault();
                             props.onBackspaceEmpty();
                             return;
