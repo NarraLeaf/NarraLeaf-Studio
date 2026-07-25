@@ -125,13 +125,13 @@ export function OutlineRow({
             ) : null}
             <div
                 ref={setNodeRef}
-                className={`group/outline-row relative flex min-h-[26px] items-center gap-1 rounded text-xs pr-1 transition-[background-color,box-shadow,color,opacity] duration-150 ease-out ${rowToneClass} ${rowDropPreviewClass} ${isDimmed ? "opacity-60" : ""}`}
+                className={`group/outline-row relative flex min-h-[26px] items-center gap-1 rounded-md text-xs pr-1 transition-[background-color,box-shadow,color,opacity] duration-150 ease-out ${rowToneClass} ${rowDropPreviewClass} ${isDimmed ? "opacity-60" : ""}`}
                 style={{ paddingLeft: rowPaddingLeft, opacity: isDragging ? 0 : undefined }}
                 onContextMenu={e => onRowContextMenu(element, e)}
             >
                 <button
                     type="button"
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-subtle transition-colors hover:bg-fill-subtle hover:text-fg disabled:pointer-events-none disabled:opacity-25"
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-fg-subtle transition-colors hover:bg-fill-subtle hover:text-fg disabled:pointer-events-none disabled:opacity-25"
                     disabled={!hasChildren}
                     aria-label={expanded ? t("common.collapse") : t("common.expand")}
                     onClick={e => {
@@ -155,7 +155,7 @@ export function OutlineRow({
                 <button
                     type="button"
                     ref={setActivatorNodeRef}
-                    className="flex h-5 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded text-fg-subtle/70 opacity-60 transition hover:text-fg hover:opacity-100 active:cursor-grabbing group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100"
+                    className="flex h-5 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-fg-subtle/70 opacity-60 transition hover:text-fg hover:opacity-100 active:cursor-grabbing group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100"
                     aria-label={t("widgetChrome.outline.dragToReorder")}
                     {...attributes}
                     {...listeners}
@@ -189,7 +189,7 @@ export function OutlineRow({
                 </button>
                 <button
                     type="button"
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-subtle transition hover:bg-fill-subtle hover:text-fg disabled:pointer-events-none disabled:opacity-25 ${
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle transition hover:bg-fill-subtle hover:text-fg disabled:pointer-events-none disabled:opacity-25 ${
                         visible ? "opacity-0 group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100" : "opacity-100"
                     }`}
                     aria-label={visible ? t("common.hide") : t("common.show")}
@@ -234,7 +234,7 @@ export function OutlineDragPreview({ element }: { element: UIElement }) {
 
     return (
         <div
-            className={`flex h-[26px] min-w-40 max-w-72 items-center gap-1 rounded border border-primary/35 bg-surface-raised/90 px-2 pr-2 text-xs text-fg opacity-90 shadow-lg shadow-black/30 ${
+            className={`flex h-[26px] min-w-40 max-w-72 items-center gap-1 rounded-md border border-primary/35 bg-surface-raised/90 px-2 pr-2 text-xs text-fg opacity-90 shadow-lg shadow-black/30 ${
                 visible ? "" : "opacity-70"
             }`}
         >

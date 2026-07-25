@@ -1235,7 +1235,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                             <span className="min-w-0 flex-1 truncate">{getStoryMotionPropertyMeta(track.property).label}</span>
                                             <button
                                                 type="button"
-                                                className="grid h-6 w-6 shrink-0 place-items-center rounded text-fg-subtle opacity-0 transition group-hover:opacity-100 hover:bg-primary/10 hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
+                                                className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-fg-subtle opacity-0 transition group-hover:opacity-100 hover:bg-primary/10 hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
                                                 onClick={event => {
                                                     event.stopPropagation();
                                                     addKeyframeAtTime(track, playheadMs);
@@ -1248,7 +1248,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                             </button>
                                             <button
                                                 type="button"
-                                                className="grid h-6 w-6 shrink-0 place-items-center rounded text-fg-subtle opacity-0 transition group-hover:opacity-100 hover:bg-danger/10 hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-danger/50"
+                                                className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-fg-subtle opacity-0 transition group-hover:opacity-100 hover:bg-danger/10 hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-danger/50"
                                                 onClick={event => {
                                                     event.stopPropagation();
                                                     deleteTrack(track);

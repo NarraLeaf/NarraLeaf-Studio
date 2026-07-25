@@ -691,7 +691,7 @@ function PreviewAssetSlot(props: {
 }) {
     const { t } = useTranslation();
     return (
-        <div className="flex min-w-0 max-w-56 items-center overflow-hidden rounded border border-edge bg-fill-subtle">
+        <div className="flex min-w-0 max-w-56 items-center overflow-hidden rounded-md border border-edge bg-fill-subtle">
             <button
                 ref={props.buttonRef}
                 type="button"

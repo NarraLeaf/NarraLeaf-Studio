@@ -326,7 +326,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                             >
                                 <span>{channelLabel(t, channel)}</span>
                                 <span
-                                    className={`rounded border px-1.5 py-0.5 text-2xs leading-none ${
+                                    className={`rounded-md border px-1.5 py-0.5 text-2xs leading-none ${
                                         active
                                             ? "border-primary/40 bg-primary/10 text-primary"
                                             : "border-edge bg-fill-subtle text-fg-subtle"
@@ -345,7 +345,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                 <div className="flex h-full shrink-0 items-center gap-2 px-2">
                     <button
                         type="button"
-                        className="flex h-7 w-7 cursor-default items-center justify-center rounded border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                        className="flex h-7 w-7 cursor-default items-center justify-center rounded-md border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                         title={t("console.export")}
                         aria-label={t("console.export")}
                         onClick={handleExport}
@@ -355,7 +355,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                     <div ref={filterMenuRef} className="relative">
                         <button
                             type="button"
-                            className="flex h-7 w-7 cursor-default items-center justify-center rounded border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                            className="flex h-7 w-7 cursor-default items-center justify-center rounded-md border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                             title={t("console.filterLevels")}
                             aria-label={t("console.filterLevels")}
                             aria-haspopup="menu"
@@ -367,18 +367,18 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                         {filterMenuOpen ? (
                             <div
                                 role="menu"
-                                className="absolute right-0 top-full z-20 mt-1 w-36 rounded border border-edge bg-surface-overlay p-1 shadow-xl"
+                                className="absolute right-0 top-full z-20 mt-1 w-36 rounded-lg border border-edge bg-surface-overlay p-1 shadow-xl"
                             >
                                 {LOG_LEVELS.map(level => (
                                     <label
                                         key={level}
-                                        className="flex cursor-default items-center gap-2 rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill"
+                                        className="flex cursor-default items-center gap-2 rounded-md px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill"
                                     >
                                         <input
                                             type="checkbox"
                                             checked={visibleLevels.has(level)}
                                             onChange={() => toggleLevel(level)}
-                                            className="h-3 w-3 rounded border-edge-strong bg-surface-sunken"
+                                            className="h-3 w-3 rounded-sm border-edge-strong bg-surface-sunken"
                                         />
                                         <span className={LEVEL_TEXT_CLASS[level]}>{t(`console.level.${level}`)}</span>
                                     </label>

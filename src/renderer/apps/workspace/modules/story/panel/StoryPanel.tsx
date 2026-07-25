@@ -518,7 +518,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                             <span className="min-w-0 flex-1 truncate text-sm text-fg">{entry.name}</span>
                                             <button
                                                 type="button"
-                                                className="rounded p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover/story:opacity-100"
+                                                className="rounded-md p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover/story:opacity-100"
                                                 title={t("story.panel.storyActions")}
                                                 onClick={event => handleOpenStoryMenu(event, entry)}
                                             >
@@ -627,7 +627,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                             </div>
                                                             <button
                                                                 type="button"
-                                                                className="rounded p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover/scene:opacity-100"
+                                                                className="rounded-md p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover/scene:opacity-100"
                                                                 title={t("story.panel.sceneActions")}
                                                                 onClick={event => handleOpenSceneMenu(event, scene)}
                                                             >

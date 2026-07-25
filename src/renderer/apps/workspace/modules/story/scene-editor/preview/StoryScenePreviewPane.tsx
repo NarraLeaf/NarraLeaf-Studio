@@ -46,7 +46,7 @@ export function StoryScenePreviewPane(props: {
                 {onToggleFloat ? (
                     <button
                         type="button"
-                        className="rounded p-1 text-fg-muted hover:bg-fill hover:text-fg"
+                        className="rounded-md p-1 text-fg-muted hover:bg-fill hover:text-fg"
                         // Keep header clicks on controls from starting a window drag.
                         onPointerDown={event => event.stopPropagation()}
                         onClick={onToggleFloat}
@@ -59,7 +59,7 @@ export function StoryScenePreviewPane(props: {
                 ) : null}
                 <button
                     type="button"
-                    className="rounded p-1 text-fg-muted hover:bg-fill hover:text-fg"
+                    className="rounded-md p-1 text-fg-muted hover:bg-fill hover:text-fg"
                     onPointerDown={event => event.stopPropagation()}
                     onClick={onClose}
                     title={t("story.preview.closePreview")}

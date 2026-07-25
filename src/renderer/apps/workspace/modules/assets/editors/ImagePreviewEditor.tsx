@@ -72,7 +72,7 @@ function PreviewToolbar({
             <div className="flex items-center gap-2">
                 <button
                     onClick={controls.zoomOut}
-                    className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default"
+                    className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default"
                     title={t("assets.image.zoomOut")}
                 >
                     <ZoomOut className="w-4 h-4" />
@@ -82,14 +82,14 @@ function PreviewToolbar({
                 </span>
                 <button
                     onClick={controls.zoomIn}
-                    className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default"
+                    className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default"
                     title={t("assets.image.zoomIn")}
                 >
                     <ZoomIn className="w-4 h-4" />
                 </button>
                 <button
                     onClick={controls.resetView}
-                    className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default ml-2"
+                    className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default ml-2"
                     title={t("assets.image.resetView")}
                 >
                     <RefreshCw className="w-4 h-4" />

@@ -28,7 +28,7 @@ export function StoryVoiceIndicator({ block }: { block: StoryBlock }) {
                 type="button"
                 tabIndex={-1}
                 title={voice.isPlaying ? t("story.rows.voiceStop") : t("story.rows.voicePlay")}
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-subtle transition hover:bg-fill hover:text-fg ${
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle transition hover:bg-fill hover:text-fg ${
                     voice.isPlaying ? "opacity-100 text-primary" : "opacity-0 group-hover:opacity-100"
                 }`}
                 onClick={event => {
@@ -42,7 +42,7 @@ export function StoryVoiceIndicator({ block }: { block: StoryBlock }) {
                 type="button"
                 tabIndex={-1}
                 title={voice.stale ? t("story.rows.voiceOutdated") : t("story.rows.voiceManage")}
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded hover:bg-fill hover:text-fg ${
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-fill hover:text-fg ${
                     voice.stale ? "text-warning" : "text-fg-subtle"
                 }`}
                 onClick={event => {

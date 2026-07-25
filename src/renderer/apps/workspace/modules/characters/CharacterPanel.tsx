@@ -504,7 +504,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     )}
                 </div>
                 <button
-                    className="p-1 rounded hover:bg-fill text-fg-muted opacity-0 group-hover:opacity-100"
+                    className="p-1 rounded-md hover:bg-fill text-fg-muted opacity-0 group-hover:opacity-100"
                     onClick={(event) => { event.stopPropagation(); handleMenuOpen(event, { type: "character", character: item.source }); }}
                     title={t("characters.panel.rowActions")}
                 >
@@ -552,7 +552,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     {/* Count removed per request */}
                     <button
                         onClick={loadCharacters}
-                        className="p-2 rounded hover:bg-fill text-fg-muted"
+                        className="p-2 rounded-md hover:bg-fill text-fg-muted"
                         title={t("common.refresh")}
                     >
                         <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -615,7 +615,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                                                     </button>
                                                     <button
                                                         onClick={(event) => handleMenuOpen(event, { type: "group", group })}
-                                                        className="p-1 rounded hover:bg-fill"
+                                                        className="p-1 rounded-md hover:bg-fill"
                                                         title={t("characters.panel.groupActions")}
                                                     >
                                                         <MoreVertical className="w-3 h-3" />

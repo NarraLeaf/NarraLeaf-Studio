@@ -88,7 +88,7 @@ function VariantPreview({
                 </div>
                 <div className="flex items-center gap-2">
                     <button
-                        className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors"
+                        className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors"
                         onClick={controls.zoomOut}
                         title={t("characters.preview.zoomOut")}
                     >
@@ -96,14 +96,14 @@ function VariantPreview({
                     </button>
                     <span className="text-sm text-fg-muted min-w-14 text-center">{controls.zoomLabel}</span>
                     <button
-                        className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors"
+                        className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors"
                         onClick={controls.zoomIn}
                         title={t("characters.preview.zoomIn")}
                     >
                         <ZoomIn className="w-4 h-4" />
                     </button>
                     <button
-                        className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors ml-2"
+                        className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors ml-2"
                         onClick={controls.resetView}
                         title={t("characters.preview.resetView")}
                     >
@@ -155,7 +155,7 @@ export function PreviewPanel({
                     <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                         {formScopeAvailable ? (
                             <button
-                                className={`p-1 rounded hover:bg-fill transition-colors ${formScoped ? "text-primary" : "text-fg-muted hover:text-fg"}`}
+                                className={`p-1 rounded-md hover:bg-fill transition-colors ${formScoped ? "text-primary" : "text-fg-muted hover:text-fg"}`}
                                 onClick={onToggleFormScope}
                                 title={t(formScoped ? "characters.preview.portraitFormScopedOn" : "characters.preview.portraitFormScopedOff")}
                                 aria-label={t(formScoped ? "characters.preview.portraitFormScopedOn" : "characters.preview.portraitFormScopedOff")}
@@ -165,7 +165,7 @@ export function PreviewPanel({
                             </button>
                         ) : null}
                         <button
-                            className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors"
+                            className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors"
                             onClick={onEditPortrait}
                             title={t("characters.preview.setPortrait")}
                             aria-label={t("characters.preview.setPortrait")}
@@ -174,7 +174,7 @@ export function PreviewPanel({
                         </button>
                         {portraitSet ? (
                             <button
-                                className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors"
+                                className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors"
                                 onClick={onResetPortrait}
                                 title={t("characters.preview.resetPortrait")}
                                 aria-label={t("characters.preview.resetPortrait")}

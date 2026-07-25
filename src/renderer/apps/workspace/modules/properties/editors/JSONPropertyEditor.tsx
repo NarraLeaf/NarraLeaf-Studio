@@ -54,7 +54,7 @@ export function JSONPropertyEditor({ asset, onChange }: PropertyEditorProps<Asse
                         <FileJson className="w-4 h-4 text-fg-muted" />
                         <span className="text-sm font-medium text-fg-muted">{t("properties.asset.json.preview")}</span>
                     </div>
-                    <div className="flex items-center justify-center bg-surface rounded p-2">
+                    <div className="flex items-center justify-center bg-surface rounded-md p-2">
                         <div className="text-xs text-fg-subtle text-center">
                             {jsonData.metadata.schema
                                 ? t("properties.asset.json.schemaValue", { schema: jsonData.metadata.schema })
