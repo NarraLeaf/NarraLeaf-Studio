@@ -16,7 +16,7 @@ const CONTEXT = {
     stageObjects: { image: [], text: [], layer: [], video: [], audio: [], vfx: [] },
 } as unknown as StoryCommandContext;
 
-function dialogue(characterId?: string, speakerName?: string): StoryBlock {
+function dialogue(characterId?: string): StoryBlock {
     return {
         id: "b1",
         parentId: null,
@@ -25,7 +25,6 @@ function dialogue(characterId?: string, speakerName?: string): StoryBlock {
         payload: {
             action: "dialogue",
             ...(characterId ? { characterId } : {}),
-            ...(speakerName ? { speakerName } : {}),
             text: { textId: "t1", role: "dialogue", value: "Hello" },
         },
     } as StoryBlock;
@@ -42,23 +41,9 @@ function background(assetId: string): StoryBlock {
 }
 
 describe("diagnoseRow", () => {
-    it("marks a character who speaks without ever being shown", () => {
-        expect(diagnoseRow({ block: dialogue("c1"), context: CONTEXT })).toEqual({ code: "speakerNotShown" });
-    });
-
-    it("says nothing once the character is on stage", () => {
-        expect(diagnoseRow({ block: dialogue("c1"), appearance: { shown: true }, context: CONTEXT })).toBeNull();
-    });
-
-    it("does not count a placement move as an entrance", () => {
-        // `/move` on a hidden character is a runtime no-op, so it must not clear the warning.
-        expect(diagnoseRow({ block: dialogue("c1"), appearance: { positionSourceId: "x" }, context: CONTEXT }))
-            .toEqual({ code: "speakerNotShown" });
-    });
-
-    it("leaves a bare-name speaker alone", () => {
-        // There is no character to show, so there is nothing to have forgotten.
-        expect(diagnoseRow({ block: dialogue(undefined, "Zoe"), context: CONTEXT })).toBeNull();
+    it("leaves a speaker who is not on stage alone", () => {
+        // Off-screen voices, phone calls, a character in the next room: normal writing, not a mistake.
+        expect(diagnoseRow({ block: dialogue("c1"), context: CONTEXT })).toBeNull();
     });
 
     it("marks a row pointing at an asset the project no longer has", () => {
