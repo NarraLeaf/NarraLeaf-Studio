@@ -20,6 +20,7 @@ import type {
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
+import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
     PrivilegedBashExecutePayload,
@@ -170,6 +171,9 @@ export enum IPCEventType {
     pluginLocalesChanged = "plugin.localesChanged",
     pluginRegistryFetch = "plugin.registryFetch",
     pluginInstallFromRegistry = "plugin.installFromRegistry",
+
+    uiTemplateRegistryFetch = "uiTemplate.registryFetch",
+    uiTemplateFetchBundle = "uiTemplate.fetchBundle",
 
     privilegedFsCall = "privileged.fs.call",
     privilegedPermissionRequest = "privileged.permission.request",
@@ -441,7 +445,7 @@ export type IPCEvents = {
             path: string;
         };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameBuildEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCPrivilegedEvents & IPCVcsEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameBuildEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCPrivilegedEvents & IPCVcsEvents;
 
 /**
  * Version control. Every event carries `projectPath`: Studio is
@@ -1351,6 +1355,27 @@ export type IPCPluginManagerEvents = {
             pluginId: string;
         },
         response: PluginInstallResult;
+    };
+};
+
+export type IPCUITemplateEvents = {
+    // Store: fetch the UI template registry index (configured URL, else the default).
+    [IPCEventType.uiTemplateRegistryFetch]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: UITemplateFetchResult;
+    };
+    // Store: fetch one template's document pair + declared resources from the raw
+    // blob directory the index came from. The paths come from the freshly fetched
+    // index, never from the renderer. The renderer migrates and applies the result.
+    [IPCEventType.uiTemplateFetchBundle]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            templateId: string;
+        },
+        response: UITemplateBundle;
     };
 };
 
