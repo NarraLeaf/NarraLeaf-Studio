@@ -392,6 +392,8 @@ export type StoryActionPayload =
               | "clearClip"
               | "filter"
               | "clearFilter"
+              | "backdrop"
+              | "blend"
               | "darken"
               | "circleReveal"
               | "circleClose"
@@ -404,6 +406,17 @@ export type StoryActionPayload =
           clipPath?: string;
           /** CSS filter for the `filter` operation. */
           filter?: string;
+          /**
+           * CSS backdrop-filter for the `backdrop` operation - the frosted-glass knob, a sibling of
+           * `filter` (its raw CSS twin), e.g. `blur(8px)`. Additive: no document before this carries it.
+           */
+          backdropFilter?: string;
+          /**
+           * mix-blend-mode for the `blend` operation. NLR's `blend()` takes the full CSS type, but only
+           * the six modes its `Vfx` overlay exposes are offered (`StoryVfxBlendMode`) - the same curated
+           * set, not the CSS catalogue. Additive.
+           */
+          mixBlendMode?: StoryVfxBlendMode;
           /** Darkness 0..1 for the `darken` operation (image/character targets only). */
           darkness?: number;
           /** Shared effect timing. */

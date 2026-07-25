@@ -30,6 +30,30 @@ export type StoryCommandSidebarGroup = {
     commands: readonly PaletteActionCommand[];
 };
 
+/**
+ * One stop the highlight can land on while browsing - a single rendered row. A generic verb files
+ * under several subjects, so it yields several stops; each carries a `group:id` key that is unique
+ * even when the command id is not (`/show` appears six times, six distinct keys).
+ *
+ * This is what keeps interaction-model rule 2 ("the highlight is Enter's pointer") true once the `/`
+ * browse became the sidebar's projection: the walk moves one stop per keypress, exactly one row is
+ * `active` at a time, and Enter takes `stop.command` - the row the eye is on, not the first row that
+ * happens to share its id. Keying the walk by id alone would light up all six `/show` rows and jump
+ * the caret to the wrong one; keying it by `group:id` cannot.
+ */
+export type StoryCommandMenuStop = {
+    key: string;
+    group: StoryCommandGroup;
+    command: PaletteActionCommand;
+};
+
+/** Flatten the browse groups into the highlight's walk order: one stop per rendered row, top to bottom. */
+export function browseMenuStops(groups: readonly StoryCommandSidebarGroup[]): readonly StoryCommandMenuStop[] {
+    return groups.flatMap(entry =>
+        entry.commands.map(command => ({ key: `${entry.group.id}:${command.id}`, group: entry.group, command })),
+    );
+}
+
 /** Every target kind a spec's params accept, in `accepts` order; empty when the spec takes no target. */
 export function specTargetKinds(spec: AnyStoryCommandSpec): readonly string[] {
     const kinds: string[] = [];
