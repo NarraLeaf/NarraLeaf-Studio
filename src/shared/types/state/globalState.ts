@@ -64,6 +64,13 @@ export interface GlobalStateType extends Record<string, any> {
     "keybindings.overrides": Record<string, string>;
     "editor.fontSize": number;
     "editor.fontFamily": string;
+    /**
+     * Opacity (0-100) of the editor's reading surfaces — story prose area, inspector field area,
+     * Dev Mode debug panel. Published as `--nl-editor-surface-opacity` by lib/appearance; see
+     * lib/settings/editorSurfaceOptions. 100 (fully opaque) is the default and a no-op without a
+     * workspace wallpaper, which is the only thing an opaque plate can cut a seam into.
+     */
+    "editor.surfaceOpacity": number;
     "editor.lineNumbers": boolean;
     "editor.softWrap": boolean;
     "editor.maxActiveEditors": number;
@@ -149,6 +156,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "keybindings.overrides": {},
     "editor.fontSize": 14,
     "editor.fontFamily": "Default",
+    "editor.surfaceOpacity": 100,
     "editor.lineNumbers": true,
     "editor.softWrap": false,
     "editor.maxActiveEditors": 8,
