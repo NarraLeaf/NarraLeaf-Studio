@@ -1908,6 +1908,171 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(propsOf("dark")).toEqual([expect.objectContaining({ filter: "brightness(0)" })]);
     });
 
+    it("compiles /label and /goto, and refuses the two shapes the engine would refuse", async () => {
+        const control = (id: string, payload: Extract<StoryBlock["payload"], { control: string }>): StoryBlock => ({
+            id, kind: "control", parentId: null, childrenIds: [], payload,
+        });
+        const blocks: Record<string, StoryBlock> = {
+            start: control("start", { control: "label", name: "start" }),
+            back: control("back", { control: "goto", targetLabel: "start" }),
+            // Both faults make the engine's own Story.build throw, with no row to blame - which is
+            // why the compiler diagnoses them first, and at `error` so a production build refuses.
+            dupe: control("dupe", { control: "label", name: "start" }),
+            nowhere: control("nowhere", { control: "goto", targetLabel: "elsewhere" }),
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["start", "back", "dupe", "nowhere"]),
+            sceneId: "scene-1",
+        });
+
+        const typeOf = (blockId: string) => compiled.actionIdBindings.find(binding => binding.blockId === blockId)?.action as { type?: string } | undefined;
+        expect(typeOf("start")?.type).toBe("control:label");
+        expect(typeOf("back")?.type).toBe("control:jump");
+        // The faulted rows emit nothing at all - a half-built jump is worse than an absent one.
+        expect(typeOf("dupe")).toBeUndefined();
+        expect(typeOf("nowhere")).toBeUndefined();
+        expect(compiled.diagnostics).toEqual([
+            { level: "error", blockId: "dupe", message: 'Label "start" is declared more than once in this scene.' },
+            { level: "error", blockId: "nowhere", message: "Go to target label not found in this scene: elsewhere" },
+        ]);
+    });
+
+    it("matches label names exactly, as the engine's own label Map does", async () => {
+        // `Scene.constructLabels` keys a plain `Map` on the declared string. Studio compared folded, so
+        // it was wrong in both directions: a `/goto start` left behind by a label renamed `Start` passed
+        // here and then threw in `Story.build`, and a legal `start`/`Start` pair was faulted as a
+        // duplicate. Both directions are pinned here, because both defeat the check's whole purpose.
+        const control = (id: string, payload: Extract<StoryBlock["payload"], { control: string }>): StoryBlock => ({
+            id, kind: "control", parentId: null, childrenIds: [], payload,
+        });
+        const blocks: Record<string, StoryBlock> = {
+            lower: control("lower", { control: "label", name: "start" }),
+            upper: control("upper", { control: "label", name: "Start" }),
+            exact: control("exact", { control: "goto", targetLabel: "Start" }),
+            miscased: control("miscased", { control: "goto", targetLabel: "START" }),
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["lower", "upper", "exact", "miscased"]),
+            sceneId: "scene-1",
+        });
+
+        const typeOf = (blockId: string) => compiled.actionIdBindings.find(binding => binding.blockId === blockId)?.action as { type?: string } | undefined;
+        // Two labels the engine accepts, so both compile - neither is a duplicate of the other.
+        expect(typeOf("lower")?.type).toBe("control:label");
+        expect(typeOf("upper")?.type).toBe("control:label");
+        // A goto spelled exactly as declared resolves; one that only case-folds to it does not.
+        expect(typeOf("exact")?.type).toBe("control:jump");
+        expect(typeOf("miscased")).toBeUndefined();
+        expect(compiled.diagnostics).toEqual([
+            { level: "error", blockId: "miscased", message: "Go to target label not found in this scene: START" },
+        ]);
+    });
+
+    it("compiles /vfx onto one Vfx, showing on create and clamping its knobs", async () => {
+        const vfxBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "vfx" }>): StoryBlock => ({
+            id, kind: "action", parentId: null, childrenIds: [], payload,
+        });
+        const blocks: Record<string, StoryBlock> = {
+            create: vfxBlock("create", {
+                action: "vfx", operation: "create", objectName: "rain", assetId: "asset-rain",
+                blendMode: "screen", opacity: 2, loop: true, fit: "cover", zIndex: 3, durationMs: 600,
+            }),
+            rate: vfxBlock("rate", { action: "vfx", operation: "setRate", objectName: "rain", rate: -1 }),
+            freeze: vfxBlock("freeze", { action: "vfx", operation: "pause", objectName: "rain" }),
+            hide: vfxBlock("hide", { action: "vfx", operation: "hide", objectName: "rain", durationMs: 400 }),
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["create", "rate", "freeze", "hide"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        const actionOf = (blockId: string) => compiled.actionIdBindings.find(binding => binding.blockId === blockId)?.action as any;
+
+        expect(compiled.diagnostics).toEqual([]);
+        // A create puts the overlay on screen - the row an author writes to "start the rain" must.
+        expect(actionOf("create")?.type).toBe("vfx:show");
+        expect(actionOf("freeze")?.type).toBe("vfx:pause");
+        expect(actionOf("hide")?.type).toBe("vfx:hide");
+        expect(actionOf("hide")?.contentNode?.getContent?.()[0]).toMatchObject({ duration: 400 });
+        // Out-of-range knobs are clamped here, not trusted: a negative rate is not a speed.
+        expect(actionOf("rate")?.contentNode?.getContent?.()).toEqual([0]);
+        // Every row addresses the SAME overlay - `create` is what registers the name.
+        expect(actionOf("hide")?.callee).toBe(actionOf("create")?.callee);
+        expect(actionOf("create")?.callee?.config).toMatchObject({ blendMode: "screen", opacity: 1, zIndex: 3, fit: "cover" });
+    });
+
+    it("compiles the video transport operations, converting seek to seconds", async () => {
+        const videoBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "video" }>): StoryBlock => ({
+            id, kind: "action", parentId: null, childrenIds: [], payload,
+        });
+        const blocks: Record<string, StoryBlock> = {
+            create: videoBlock("create", { action: "video", operation: "create", objectName: "clip", assetId: "asset-clip" }),
+            pause: videoBlock("pause", { action: "video", operation: "pause", objectName: "clip" }),
+            resume: videoBlock("resume", { action: "video", operation: "resume", objectName: "clip" }),
+            stop: videoBlock("stop", { action: "video", operation: "stop", objectName: "clip" }),
+            // Negative is not a frame; it floors at the start of the clip.
+            seek: videoBlock("seek", { action: "video", operation: "seek", objectName: "clip", timeMs: 3500 }),
+            rewind: videoBlock("rewind", { action: "video", operation: "seek", objectName: "clip", timeMs: -1000 }),
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["create", "pause", "resume", "stop", "seek", "rewind"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        const typeOf = (blockId: string) => compiled.actionIdBindings
+            .filter(binding => binding.blockId === blockId)
+            .map(binding => (binding.action as { type?: string }).type);
+        const contentOf = (blockId: string) => compiled.actionIdBindings
+            .filter(binding => binding.blockId === blockId)
+            .flatMap(binding => (binding.action as any).contentNode?.getContent?.() ?? []);
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(typeOf("pause")).toEqual(["video:pause"]);
+        expect(typeOf("resume")).toEqual(["video:resume"]);
+        expect(typeOf("stop")).toEqual(["video:stop"]);
+        // Milliseconds in the payload, seconds at the engine boundary.
+        expect(contentOf("seek")).toEqual([3.5]);
+        expect(contentOf("rewind")).toEqual([0]);
+    });
+
+    it("compiles /rename onto the same Character the dialogue rows speak through", async () => {
+        // The point of setName is that the NEXT line by that character reads differently, so the
+        // rename and the dialogue must resolve to one Character instance, not two.
+        const blocks: Record<string, StoryBlock> = {
+            rename: {
+                id: "rename",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "character", operation: "setName", characterId: "char-alice", displayName: "Alice" },
+            },
+            line: {
+                id: "line",
+                kind: "nodeAction",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "dialogue", characterId: "char-alice", text: { textId: "t1", role: "dialogue", value: "Hello." } },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["rename", "line"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "？？？" }],
+        });
+
+        const actionsOf = (blockId: string) => compiled.actionIdBindings
+            .filter(binding => binding.blockId === blockId)
+            .flatMap(binding => collectActionTree(binding.action, compiled.story));
+        const setName = actionsOf("rename").find(action => action?.type === "character:setName");
+        const say = actionsOf("line").find(action => action?.type === "character:say");
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(setName?.contentNode?.getContent?.()).toEqual(["Alice"]);
+        expect(setName?.callee).toBe(say?.callee);
+    });
+
     it("warns when a persistent name is declared in both the registry and a story row (M-VAR merged view)", async () => {
         // Story `/persis Score` row and a blueprint-registry entry also named "Score" - ambiguous.
         const scoreRow: StoryBlock = {
