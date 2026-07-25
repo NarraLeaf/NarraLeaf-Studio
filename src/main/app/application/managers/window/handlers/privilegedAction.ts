@@ -7,8 +7,9 @@ import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents"
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
 import { PrivilegedCapability, PrivilegedFileSystemCallResult } from "@shared/types/privileged";
 import { PluginPermissionPromptResult, PluginPermissionRequest } from "@shared/types/pluginPermissions";
-import type { FileDetails, FileStat } from "@shared/utils/fs";
+import type { FileDetails, FileStat, FileEntry } from "@shared/utils/fs";
 import { Fs } from "@shared/utils/fs";
+import { splitFileEntry } from "@shared/utils/fileEntry";
 import { AppWindow } from "../appWindow";
 import {
     authorizeActorCapabilityRequest,
@@ -153,18 +154,19 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
                 return this.success(denied ?? await Fs.stat(data.path));
             }
             case "list": {
-                const denied = await ensureActorPathAllowed<FileStat[]>(window, data, data.path, "read");
+                const denied = await ensureActorPathAllowed<FileEntry[]>(window, data, data.path, "read");
                 if (denied) return this.success(denied);
                 const entries = await Fs.dirEntries(data.path);
-                if (!entries.ok) return this.success(entries as FsRequestResult<FileStat[]>);
-                const stats: FileStat[] = entries.data.map(entry => ({
-                    name: pathModule.parse(entry.name).name,
-                    ext: pathModule.extname(entry.name) || null,
+                if (!entries.ok) return this.success(entries as FsRequestResult<FileEntry[]>);
+                // Same split factory as the internal `FsListHandler` (fsAction.ts): `name` keeps the
+                // stripped stem for backward compatibility, `fileName` is the additive whole name.
+                const listing: FileEntry[] = entries.data.map(entry => ({
+                    ...splitFileEntry(entry.name),
                     type: entry.isDirectory() ? "directory" : "file",
                 }));
                 return this.success({
                     ok: true,
-                    data: stats,
+                    data: listing,
                 });
             }
             case "details": {

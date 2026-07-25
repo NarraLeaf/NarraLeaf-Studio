@@ -1,5 +1,4 @@
 import crypto from "crypto";
-import type { Dirent } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import { shell, utilityProcess, type UtilityProcess } from "electron";
@@ -30,6 +29,7 @@ import {
     type GameBuildTarget,
 } from "@shared/types/gameBuild";
 import { resolveGameRuntimeInitialBackgroundColor } from "@shared/utils/gameRuntimeEntrySurface";
+import { Fs } from "@shared/utils/fs";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
 import {
@@ -614,7 +614,7 @@ export class GameBuildManager {
         // runtime all move the number), so a payload under the bar says nothing
         // and reports nothing - the worker still enforces the real limit on the
         // real bytes.
-        const assetBytes = await directorySize(path.join(projectPath, "assets"));
+        const assetBytes = (await Fs.directorySize(path.join(projectPath, "assets"))).totalBytes;
         if (payloadExceedsLimit(assetBytes)) {
             findings.push({
                 code: "mobile-payload-too-large",
@@ -971,26 +971,6 @@ export class GameBuildManager {
     private projectKey(projectPath: string): string {
         return path.resolve(projectPath);
     }
-}
-
-/** Total bytes of a directory tree; a missing directory is simply empty. */
-async function directorySize(dir: string): Promise<number> {
-    let total = 0;
-    let entries: Dirent[];
-    try {
-        entries = await fs.readdir(dir, { withFileTypes: true });
-    } catch {
-        return 0;
-    }
-    for (const entry of entries) {
-        const entryPath = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-            total += await directorySize(entryPath);
-        } else if (entry.isFile()) {
-            total += await fs.stat(entryPath).then(stat => stat.size).catch(() => 0);
-        }
-    }
-    return total;
 }
 
 async function fileExists(filePath: string): Promise<boolean> {

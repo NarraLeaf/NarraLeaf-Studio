@@ -1,4 +1,4 @@
-import { FileDetails, FileStat } from "@shared/utils/fs";
+import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
 import { BlueprintPersistenceProjectRef, RequestStatus } from "./ipcEvents";
@@ -43,7 +43,7 @@ export interface RendererPrivilegedInterface {
         /** Native save dialog; resolves to the chosen path, or null when cancelled. */
         selectSaveFile(actor: PrivilegedActor, defaultFileName: string, filters: string[]): Promise<RequestStatus<FsRequestResult<string | null>>>;
         stat(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileStat>>>;
-        list(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileStat[]>>>;
+        list(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileEntry[]>>>;
         details(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileDetails>>>;
         requestRead(actor: PrivilegedActor, path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestReadRaw(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
@@ -110,8 +110,14 @@ export interface RendererPreloadedInterface {
     // File System
     fs: {
         stat(path: string): Promise<RequestStatus<FsRequestResult<FileStat>>>;
-        list(path: string): Promise<RequestStatus<FsRequestResult<FileStat[]>>>;
+        list(path: string): Promise<RequestStatus<FsRequestResult<FileEntry[]>>>;
         details(path: string): Promise<RequestStatus<FsRequestResult<FileDetails>>>;
+        /**
+         * Total the bytes of a directory tree in one round trip. Studio-internal (not on the plugin
+         * privileged surface): the asset overview reads it instead of walking with per-file IPC, and
+         * it shares the build's own measurement - see {@link Fs.directorySize}.
+         */
+        directorySize(path: string): Promise<RequestStatus<FsRequestResult<DirectorySizeResult>>>;
         requestRead(path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestReadRaw(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWrite(path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
