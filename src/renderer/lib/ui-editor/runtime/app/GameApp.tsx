@@ -107,6 +107,19 @@ const NLR_BOOT_PRELOAD_TIMEOUT_MS = 45_000;
 // asset degrades to "start pays for it" instead of never starting.
 const STAGE_WARMUP_TIMEOUT_MS = 30_000;
 
+/**
+ * A pending mount or game entry that was abandoned because something took over: a newer bundle
+ * revision, a quit, a session change. Whatever superseded it now owns the environment, so this is
+ * ordinary control flow and not a broken runtime — reporting it as an error made routine hot reloads
+ * look like failures ("NLR hot reload restart failed") while the newer session was coming up fine.
+ */
+class NlrSessionSupersededError extends Error {
+    constructor(reason: string) {
+        super(reason);
+        this.name = "NlrSessionSupersededError";
+    }
+}
+
 export type GameAppNavEntry = AppNavEntry;
 
 function normalizeError(error: unknown): string {
@@ -700,7 +713,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (!targetSurfaceId) {
             throw new Error("Quit Game: surfaceId is required");
         }
-        rejectPendingGameStarts(new Error("Quit Game"));
+        rejectPendingGameStarts(new NlrSessionSupersededError("Quit Game"));
         activeStoryRequestRef.current = null;
         activeStoryRevisionRef.current = null;
         gameEnteredRef.current = false;
@@ -909,7 +922,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (!activeSurface || !core) {
             throw new Error("Start Game: active surface is not available");
         }
-        rejectPendingGameStarts(new Error("NLR environment superseded by a newer session"));
+        rejectPendingGameStarts(new NlrSessionSupersededError("NLR environment superseded by a newer session"));
         activeStoryRequestRef.current = options.storyRequest;
         activeStoryRevisionRef.current = bundle.revision;
         gameEnteredRef.current = false;
@@ -1335,7 +1348,13 @@ export function GameApp(props: GameAppProps): ReactNode {
             try {
                 await runBootRef.current?.();
             } catch (err) {
-                if (!cancelled) {
+                if (cancelled) {
+                    // nothing to report; the effect was torn down
+                } else if (err instanceof NlrSessionSupersededError) {
+                    // A later mount owns the environment now, so this boot is done rather than
+                    // broken — and the guard stays set, because retrying it would fight that mount.
+                    host.log("info", `[${host.id}] NLR boot superseded: ${err.message}`);
+                } else {
                     nlrBootStartedRef.current = null;
                     host.log("error", normalizeError(err));
                 }
@@ -1559,6 +1578,14 @@ export function GameApp(props: GameAppProps): ReactNode {
                     await startEmptyNlrEnvironment();
                 }
             } catch (err) {
+                if (err instanceof NlrSessionSupersededError) {
+                    // Another revision landed while this restart was in flight and has taken the
+                    // environment over. Expected when saves arrive in quick succession — and more
+                    // often now that a mount also waits for the stage to warm — so it is not a
+                    // failure to report.
+                    host.log("info", `[${host.id}] NLR hot reload restart superseded by a newer bundle revision`);
+                    return;
+                }
                 host.log("error", `[${host.id}] NLR hot reload restart failed: ${normalizeError(err)}`);
             }
         })();
@@ -1576,7 +1603,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         activeStoryRequestRef.current = null;
         activeStoryRevisionRef.current = null;
-        rejectPendingGameStarts(new Error("Runtime session changed"));
+        rejectPendingGameStarts(new NlrSessionSupersededError("Runtime session changed"));
         nlrCharacterPromptTokenRef.current?.cancel();
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
