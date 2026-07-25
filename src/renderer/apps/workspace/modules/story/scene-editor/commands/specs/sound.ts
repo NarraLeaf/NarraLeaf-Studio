@@ -82,6 +82,7 @@ export const bgm = defineStoryCommand({
     id: "bgm",
     token: "bgm",
     category: "sound",
+    examples: ["/bgm theme", "/bgm theme vol=0.6 fade=1 loop"],
     quickParams: ["vol", "loop"],
     params: {
         audio: { aliases: ["src"], hint: "audioAsset", type: { kind: "asset", assetType: "audio" }, positional: true, core: true },
@@ -119,6 +120,7 @@ export const sound = defineStoryCommand({
     token: "sound",
     aliases: ["se"],
     category: "sound",
+    examples: ["/sound hit", "/sound hit name=impact vol=0.8"],
     quickParams: ["vol", "loop"],
     params: {
         audio: { aliases: ["src"], hint: "audioAsset", type: { kind: "asset", assetType: "audio" }, positional: true, core: true },
@@ -158,6 +160,7 @@ export const vol = defineStoryCommand({
     token: "vol",
     aliases: ["volume"],
     category: "sound",
+    examples: ["/vol 0.5", "/vol music 0.5 fade=1"],
     params: {
         target: targetParam(["audio"], { skippable: true }),
         volume: { aliases: ["vol"], hint: "volume", type: { kind: "number", min: 0, max: 1 }, positional: true, core: true },
@@ -173,6 +176,7 @@ export const rate = defineStoryCommand({
     id: "rate",
     token: "rate",
     category: "sound",
+    examples: ["/rate music 1.25"],
     params: {
         // An overlay's rate is how fast the petals fall, which is the same knob under a different
         // subject - so it is the same verb (§7.3). Video has no rate, so it is not listed.
@@ -191,6 +195,7 @@ export const stop = defineStoryCommand({
     id: "stop",
     token: "stop",
     category: "sound",
+    examples: ["/stop music", "/stop music fade=1"],
     params: {
         // `video` widens both the legal lines and the sidebar: the verb now files under 视频 as well
         // as 声音 (§4.2), which is the whole reason four video capabilities cost one new token.
@@ -205,6 +210,7 @@ export const pause = defineStoryCommand({
     token: "pause",
     aliases: ["pausesound"],
     category: "sound",
+    examples: ["/pause clip"],
     params: {
         target: targetParam(["audio", "video", "vfx"], { fallbackKind: "audio" }),
     },
@@ -215,6 +221,7 @@ export const resume = defineStoryCommand({
     id: "resume",
     token: "resume",
     category: "sound",
+    examples: ["/resume clip"],
     params: {
         target: targetParam(["audio", "video", "vfx"], { fallbackKind: "audio" }),
     },
@@ -232,6 +239,7 @@ export const seek = defineStoryCommand({
     id: "seek",
     token: "seek",
     category: "video",
+    examples: ["/seek clip 12"],
     params: {
         target: targetParam(["video"], { core: true }),
         time: { hint: "seekTime", type: { kind: "number", min: 0 }, positional: true, core: true },
@@ -256,6 +264,7 @@ export const mute = defineStoryCommand({
     id: "mute",
     token: "mute",
     category: "sound",
+    examples: ["/mute music"],
     params: {
         target: targetParam(["audio"]),
     },
@@ -268,6 +277,7 @@ export const unmute = defineStoryCommand({
     id: "unmute",
     token: "unmute",
     category: "sound",
+    examples: ["/unmute music"],
     params: {
         target: targetParam(["audio"]),
     },

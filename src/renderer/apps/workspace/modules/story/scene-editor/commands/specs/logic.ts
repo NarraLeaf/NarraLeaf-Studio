@@ -8,6 +8,7 @@ export const ifCommand = defineStoryCommand({
     id: "if",
     token: "if",
     category: "flow",
+    examples: ["/if gold > 10", "/if met"],
     params: {
         test: { hint: "condition", type: { kind: "expression", expects: "boolean" }, positional: true, greedy: true, core: true },
     },
@@ -23,6 +24,7 @@ export const menu = defineStoryCommand({
     token: "menu",
     aliases: ["choice"],
     category: "flow",
+    examples: ["/menu Which way?"],
     params: {
         text: { hint: "content", type: { kind: "text" }, positional: true, greedy: true },
     },
@@ -45,6 +47,7 @@ export const repeat = defineStoryCommand({
     token: "repeat",
     aliases: ["loop"],
     category: "flow",
+    examples: ["/repeat 3"],
     params: {
         times: { hint: "times", type: { kind: "number", min: 1, integer: true }, positional: true, core: true },
     },
@@ -62,6 +65,7 @@ export const parallel = defineStoryCommand({
     id: "parallel",
     token: "parallel",
     category: "flow",
+    examples: ["/parallel"],
     params: {},
     build: (_args, ctx) => createBlockForCommand("parallel", ctx.generateId),
 });
@@ -70,6 +74,7 @@ export const race = defineStoryCommand({
     id: "race",
     token: "race",
     category: "flow",
+    examples: ["/race"],
     params: {},
     build: (_args, ctx) => createBlockForCommand("race", ctx.generateId),
 });
@@ -79,6 +84,7 @@ export const sequence = defineStoryCommand({
     token: "sequence",
     aliases: ["seq"],
     category: "flow",
+    examples: ["/sequence"],
     params: {},
     build: (_args, ctx) => createBlockForCommand("sequence", ctx.generateId),
 });
@@ -98,6 +104,7 @@ export const label = defineStoryCommand({
     token: "label",
     aliases: ["mark"],
     category: "flow",
+    examples: ["/label after refusal"],
     params: {
         // Greedy: a label is a note to the author ("after the first refusal"), not an identifier.
         name: { hint: "labelName", type: { kind: "text" }, positional: true, greedy: true, core: true },
@@ -118,6 +125,7 @@ export const goto = defineStoryCommand({
     token: "goto",
     aliases: ["jumpto"],
     category: "flow",
+    examples: ["/goto intro"],
     params: {
         target: { hint: "labelName", type: { kind: "label" }, positional: true, core: true },
     },
@@ -137,6 +145,7 @@ export const code = defineStoryCommand({
     token: "code",
     aliases: ["script"],
     category: "utils",
+    examples: ["/code", "/code typescript"],
     params: {
         language: {
             hint: "valueType",
@@ -167,6 +176,7 @@ export const blueprint = defineStoryCommand({
     token: "blueprint",
     aliases: ["executescript", "bp"],
     category: "utils",
+    examples: ["/blueprint"],
     params: {},
     build: (_args, ctx) => createBlockForCommand("executeScript", ctx.generateId),
     inspectorAfterCommit: true,

@@ -66,6 +66,7 @@ export const camera = defineStoryCommand({
     // Its own top-level category (§3.3): the pose outlives the scene, so `scene` would have claimed a
     // lifetime the camera does not have, and no other subject is a camera.
     category: "camera",
+    examples: ["/camera zoom 2", "/camera pan left", "/camera reset"],
     quickParams: ["d"],
     params: {
         op: {

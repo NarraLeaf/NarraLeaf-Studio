@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { StoryBlock } from "@shared/types/story";
 import { parseCommandLine } from "../../storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "../../storyCommandResolution";
-import { getCommandSpec } from "../registry";
+import { getCommandSpec, listCommandSpecs } from "../registry";
 import { declarationFromArgs } from "./variables";
 
 /**
@@ -439,5 +439,39 @@ describe("logic and effects", () => {
         expect(build("/transform Alice d=0.4")).toMatchObject({
             payload: { action: "displayable", operation: "transform", target: { kind: "character", name: "Alice" }, durationMs: 400 },
         });
+    });
+});
+
+/**
+ * The manual prints these lines as "here is how you write it". A documented line that no longer
+ * parses is worse than no documentation, and grammar drifts — a param turning core, an enum losing a
+ * word — would otherwise leave the examples wrong with nothing to notice it. Running them through the
+ * same parse → resolve → build the editor uses makes that impossible: an example either works or the
+ * suite is red.
+ */
+describe("manual examples", () => {
+    const specs = listCommandSpecs();
+
+    it("gives every command at least one worked line", () => {
+        const missing = specs.filter(spec => !spec.examples || spec.examples.length === 0).map(spec => spec.token);
+        expect(missing).toEqual([]);
+    });
+
+    it("names the command it documents", () => {
+        for (const spec of specs) {
+            for (const example of spec.examples ?? []) {
+                const tokens = [spec.token, ...(spec.aliases ?? [])];
+                expect(tokens.some(token => example === `/${token}` || example.startsWith(`/${token} `)), example).toBe(true);
+            }
+        }
+    });
+
+    it("parses, resolves and builds every one of them", () => {
+        for (const spec of specs) {
+            for (const example of spec.examples ?? []) {
+                // `build` asserts zero parse and zero resolution issues on the way through.
+                expect(build(example), example).toBeTruthy();
+            }
+        }
     });
 });
