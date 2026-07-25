@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { AlignLeft, BookOpen, Camera, ChevronDown, ChevronRight, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, SlidersHorizontal, StretchVertical, Trash2, Variable } from "lucide-react";
+import { AlignLeft, BookOpen, Camera, Check, ChevronDown, ChevronRight, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, SlidersHorizontal, StretchVertical, Trash2, Variable } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -35,12 +35,14 @@ import { publishStoryInspectorState, STORY_INSPECTOR_PANEL_ID } from "./storyIns
 import { stopVoiceAudition } from "./voiceAudition";
 import { StoryEditorTextStyleProvider, storyEditorRootStyle } from "./storyEditorTextStyle";
 import { StoryRowActionsContext, type StoryRowActions } from "./storyRowActions";
+import type { TranslationKey } from "@shared/i18n";
 import { getTextSegment } from "./storySceneBlockUtils";
 import {
     captureStoryEditorScrollAnchor,
     getStoryEditorViewState,
     patchStoryEditorViewState,
     resolveStoryEditorRestoreScrollTop,
+    STORY_EDITOR_DENSITIES,
 } from "./storyEditorSessionStore";
 import { useStorySceneEditorController } from "./useStorySceneEditorController";
 import { subscribeStoryRowHighlight } from "./storyRowHighlightBus";
@@ -61,6 +63,18 @@ import {
     type StoryScenePreviewPaneMode,
     type StoryScenePreviewPaneState,
 } from "./preview/storyScenePreviewSessionStore";
+
+/**
+ * What an empty scene offers as a starting point. Deliberately the three things a first scene almost
+ * always needs — a backdrop, someone on stage, someone talking — rather than a tour of the vocabulary;
+ * the manual is one click away for the rest. The lines are not translated: a command is keywords, and
+ * these are meant to be typed as they read.
+ */
+const EMPTY_SCENE_EXAMPLES: readonly { line: string; key: TranslationKey }[] = [
+    { line: "/bg", key: "story.sceneEditor.emptyExampleBg" },
+    { line: "/show", key: "story.sceneEditor.emptyExampleShow" },
+    { line: "/say", key: "story.sceneEditor.emptyExampleSay" },
+];
 
 const SCENE_FIELD_LABEL_CLASS = "mb-1 block text-2xs font-medium text-fg-subtle";
 const SCENE_TEXT_FIELD_CLASS = "w-full rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-primary/50";
@@ -1090,6 +1104,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // so the menu's selection-scoped actions act on exactly what the author pointed at; inside the
     // selection, the whole selection is kept.
     const rowMenu = useContextMenu();
+    const densityMenu = useContextMenu();
     const [menuTargetId, setMenuTargetId] = useState<StoryBlockId | null>(null);
     const openRowContextMenu = useCallback((event: ReactMouseEvent, blockId: StoryBlockId) => {
         if (!editor.selectedBlockIds.has(blockId)) {
@@ -1261,6 +1276,13 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // Row context-menu items (WI-3). Insert / play / inspector act on the pointed-at row; duplicate /
     // disable / delete act on the whole selection (which the right-click already normalized). The
     // disable rung reads "Enable" when every targeted root is already disabled, so one action toggles.
+    const densityMenuItems: ContextMenuDef = STORY_EDITOR_DENSITIES.map(density => ({
+        id: density,
+        label: t(`story.view.density.${density}` as TranslationKey),
+        icon: editor.density === density ? <Check className="h-3.5 w-3.5 text-primary" /> : undefined,
+        onClick: () => editor.setDensity(density),
+    }));
+
     const menuTarget = menuTargetId;
     const menuRoots = editor.selectionRootIds();
     const menuAllDisabled = menuRoots.length > 0 && menuRoots.every(id => scene.blocks[id]?.disabled);
@@ -1311,13 +1333,17 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     >
                         <AlignLeft className="h-4 w-4" />
                     </button>
+                    {/* Three densities, so a two-state toggle can no longer say which one is on. The
+                        menu names them and ticks the current one; the button still reads as "not the
+                        default" at a glance. */}
                     <button
                         type="button"
-                        onClick={() => editor.setDensity(editor.density === "comfortable" ? "compact" : "comfortable")}
-                        title={t("story.view.comfortableDensity")}
-                        aria-label={t("story.view.comfortableDensity")}
-                        aria-pressed={editor.density === "comfortable"}
-                        className={["rounded p-1.5 transition-colors", editor.density === "comfortable" ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
+                        onClick={event => densityMenu.showMenu(event)}
+                        title={t("story.view.density")}
+                        aria-label={t("story.view.density")}
+                        aria-haspopup="menu"
+                        aria-pressed={editor.density !== "compact"}
+                        className={["rounded p-1.5 transition-colors", editor.density !== "compact" ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
                     >
                         <StretchVertical className="h-4 w-4" />
                     </button>
@@ -1485,6 +1511,32 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         {t("story.sceneEditor.addRow")}
                     </button>
                 )}
+                {/* A scene with nothing in it is the one place a new author is guaranteed to look, and
+                    all it used to say was "click or type to add a row" — true, and no help at all with
+                    the question actually being asked, which is "what can I write here". Three lines and
+                    the way in. It disappears the moment there is anything to read. */}
+                {editor.visibleRows.length === 0 && editor.editorMode.kind !== "insert" ? (
+                    <div className="mx-auto mt-6 flex max-w-md flex-col gap-2 px-6 text-xs text-fg-subtle">
+                        <p>{t("story.sceneEditor.emptyHint", { trigger: editor.slashAtAlias ? "@" : "/" })}</p>
+                        <ul className="flex flex-col gap-1">
+                            {EMPTY_SCENE_EXAMPLES.map(example => (
+                                <li key={example.line} className="flex flex-wrap items-baseline gap-x-2">
+                                    <code className="rounded border border-edge-subtle bg-surface-sunken px-1.5 py-0.5 font-mono text-2xs text-fg-muted">
+                                        {example.line}
+                                    </code>
+                                    <span className="text-2xs">{t(example.key)}</span>
+                                </li>
+                            ))}
+                        </ul>
+                        <button
+                            type="button"
+                            className="self-start rounded px-0 py-0.5 text-2xs text-primary underline-offset-2 hover:underline"
+                            onClick={openCommandManual}
+                        >
+                            {t("story.sceneEditor.emptyOpenManual")}
+                        </button>
+                    </div>
+                ) : null}
                 {/* Always keep roughly one screen (minus a row) of empty scroll space below the
                     content so the last row can be scrolled up to the top of the editor. The height is
                     a percentage of the (definite, flex-sized) scroll container, so no measurement is
@@ -1496,6 +1548,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 position={rowMenu.menuState.position}
                 visible={rowMenu.menuState.visible}
                 onClose={rowMenu.hideMenu}
+            />
+            <ContextMenu
+                items={densityMenuItems}
+                position={densityMenu.menuState.position}
+                visible={densityMenu.menuState.visible}
+                onClose={densityMenu.hideMenu}
             />
             <button
                 type="button"

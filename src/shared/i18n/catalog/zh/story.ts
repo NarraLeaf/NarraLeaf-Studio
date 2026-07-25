@@ -202,7 +202,10 @@ export const story = {
 
     view: {
         narrativeOnly: "只看叙事",
-        comfortableDensity: "舒适密度",
+        density: "阅读密度",
+        "density.compact": "紧凑",
+        "density.standard": "标准",
+        "density.comfortable": "舒适",
     },
     commandManual: {
         open: "指令手册",
@@ -310,6 +313,11 @@ export const story = {
         loadingScene: "正在加载故事场景…",
         notFound: "未找到故事或场景",
         addRow: "点击或输入以添加一行…",
+        emptyHint: "这个场景是空的。在新行里输入 {{trigger}} 挑一条指令，或者直接写一句旁白。",
+        emptyExampleBg: "设置背景",
+        emptyExampleShow: "让角色登场",
+        emptyExampleSay: "给他一句台词",
+        emptyOpenManual: "打开指令手册",
         variablesPanel: "故事变量",
         snapshotsPanel: "场景快照",
         inspectorPanel: "检查器",
