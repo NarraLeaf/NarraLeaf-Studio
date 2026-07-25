@@ -24,6 +24,7 @@ import {
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
     savedVariableDefs,
+    sceneLabelNames,
     sceneVariableDefs,
 } from "@shared/types/story";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
@@ -360,7 +361,13 @@ const videoOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "create", label: t("common.create") },
     { value: "show", label: t("common.show") },
     { value: "hide", label: t("common.hide") },
+    // `play` waits for the clip to end, `resume` does not - the labels have to carry that, since the
+    // two are otherwise indistinguishable in a list.
     { value: "play", label: t("storyInspector.videoOperation.play") },
+    { value: "pause", label: t("storyInspector.videoOperation.pause") },
+    { value: "resume", label: t("storyInspector.videoOperation.resume") },
+    { value: "stop", label: t("storyInspector.videoOperation.stop") },
+    { value: "seek", label: t("storyInspector.videoOperation.seek") },
 ];
 
 const audioOperationOptions = (t: TFunc): SelectOption[] => [
@@ -993,8 +1000,18 @@ function ActionPayloadFields(props: {
                     onChange={assetId => props.onChange({ ...payload, assetId })}
                 />
                 <CheckboxField label={t("storyInspector.field.muted")} checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
+                {payload.operation === "seek" ? (
+                    <SecondsField
+                        label={t("storyInspector.video.seekTime")}
+                        value={payload.timeMs}
+                        onChange={timeMs => props.onChange({ ...payload, timeMs: timeMs === undefined ? undefined : Math.max(0, timeMs) })}
+                    />
+                ) : null}
             </div>
         );
+    }
+    if (payload.action === "vfx") {
+        return <VfxActionEditor payload={payload} onChange={props.onChange} />;
     }
     if (payload.action === "nvl") {
         return (
@@ -1039,6 +1056,130 @@ function ActionPayloadFields(props: {
         );
     }
     return null;
+}
+
+type VfxActionPayload = Extract<StoryActionPayload, { action: "vfx" }>;
+
+const vfxOperationOptions = (t: TFunc): SelectOption[] => [
+    { value: "create", label: t("common.create") },
+    { value: "show", label: t("common.show") },
+    { value: "hide", label: t("common.hide") },
+    { value: "pause", label: t("storyInspector.vfxOperation.pause") },
+    { value: "resume", label: t("storyInspector.vfxOperation.resume") },
+    { value: "setRate", label: t("storyInspector.vfxOperation.setRate") },
+];
+
+/**
+ * Blend mode, named by the MATERIAL it belongs to rather than by the CSS keyword.
+ *
+ * An author picking here is not expressing a preference, they are declaring which of two production
+ * routes their clip came down: a true-alpha WebM composites plainly, glow rendered on black has to be
+ * added. Naming the routes is what makes the choice answerable without a paragraph of explanation
+ * (M3 card §1) - the keyword alone tells someone who already knows the answer.
+ */
+const vfxBlendOptions = (t: TFunc): SelectOption[] => [
+    { value: "normal", label: t("storyInspector.vfxBlend.normal") },
+    { value: "screen", label: t("storyInspector.vfxBlend.screen") },
+    { value: "multiply", label: t("storyInspector.vfxBlend.multiply") },
+    { value: "lighten", label: t("storyInspector.vfxBlend.lighten") },
+    { value: "color-dodge", label: t("storyInspector.vfxBlend.colorDodge") },
+    { value: "overlay", label: t("storyInspector.vfxBlend.overlay") },
+];
+
+const vfxFitOptions = (t: TFunc): SelectOption[] => [
+    { value: "cover", label: t("storyInspector.vfxFit.cover") },
+    { value: "contain", label: t("storyInspector.vfxFit.contain") },
+    { value: "fill", label: t("storyInspector.vfxFit.fill") },
+];
+
+/**
+ * An ambience overlay's knobs. Two things the layout carries rather than explains:
+ *  - the placement knobs (clip, blend, opacity, fit, z, loop) only appear on the row that CREATES the
+ *    overlay - a later `/hide petals` row cannot change how it composites;
+ *  - there is no transform section at all, because a `Vfx` is not a Displayable and has no transform
+ *    pipeline to offer.
+ */
+function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload: StoryBlock["payload"]) => void }) {
+    const { t } = useTranslation();
+    const payload = props.payload;
+    const isCreate = payload.operation === "create";
+    const fades = payload.operation === "show" || payload.operation === "hide" || isCreate;
+    return (
+        <Section title={t("storyInspector.section.vfx")}>
+            <FieldGrid cols={2}>
+                <SelectField
+                    label={t("storyInspector.field.operation")}
+                    options={vfxOperationOptions(t)}
+                    value={payload.operation}
+                    onChange={operation => props.onChange({ ...payload, operation: operation as VfxActionPayload["operation"] })}
+                />
+                <TextField
+                    label={t("storyInspector.vfx.name")}
+                    value={payload.objectName}
+                    onChange={objectName => props.onChange({ ...payload, objectName })}
+                />
+                {isCreate ? (
+                    <>
+                        <AssetField
+                            label={t("storyInspector.vfx.clip")}
+                            assetType={AssetType.Video}
+                            assetId={payload.assetId}
+                            onChange={assetId => props.onChange({ ...payload, assetId })}
+                        />
+                        <SelectField
+                            label={t("storyInspector.vfx.blendMode")}
+                            options={vfxBlendOptions(t)}
+                            value={payload.blendMode ?? "normal"}
+                            onChange={blendMode => props.onChange({ ...payload, blendMode: blendMode as VfxActionPayload["blendMode"] })}
+                        />
+                        <NumberField
+                            label={t("storyInspector.vfx.opacity")}
+                            value={payload.opacity}
+                            onChange={opacity => props.onChange({ ...payload, opacity: opacity === undefined ? undefined : Math.min(1, Math.max(0, opacity)) })}
+                        />
+                        <SelectField
+                            label={t("storyInspector.vfx.fit")}
+                            options={vfxFitOptions(t)}
+                            value={payload.fit ?? "cover"}
+                            onChange={fit => props.onChange({ ...payload, fit: fit as VfxActionPayload["fit"] })}
+                        />
+                        <NumberField
+                            label={t("storyInspector.vfx.zIndex")}
+                            value={payload.zIndex}
+                            onChange={zIndex => props.onChange({ ...payload, zIndex })}
+                        />
+                        <CheckboxField
+                            label={t("storyInspector.vfx.loop")}
+                            checked={payload.loop !== false}
+                            onChange={loop => props.onChange({ ...payload, loop })}
+                        />
+                    </>
+                ) : null}
+                {isCreate || payload.operation === "setRate" ? (
+                    <NumberField
+                        label={t("storyInspector.vfx.rate")}
+                        value={payload.rate}
+                        onChange={rate => props.onChange({ ...payload, rate: rate === undefined ? undefined : Math.max(0, rate) })}
+                    />
+                ) : null}
+                {fades ? (
+                    <SecondsField
+                        label={t("storyInspector.vfx.fade")}
+                        value={payload.durationMs}
+                        onChange={durationMs => props.onChange({ ...payload, durationMs: durationMs === undefined ? undefined : Math.max(0, durationMs) })}
+                    />
+                ) : null}
+                {fades ? (
+                    <SelectField
+                        label={t("storyInspector.field.easing")}
+                        options={easingOptions(t)}
+                        value={payload.easing ?? ""}
+                        onChange={easing => props.onChange({ ...payload, easing: String(easing) || undefined })}
+                    />
+                ) : null}
+            </FieldGrid>
+        </Section>
+    );
 }
 
 type CameraActionPayload = Extract<StoryActionPayload, { action: "camera" }>;
@@ -1167,6 +1308,26 @@ function CharacterActionEditor(props: {
         const objectName = autofill ? nextCharacter?.profile.getName() ?? payload.objectName : payload.objectName;
         onChange({ ...payload, characterId, objectName, formName: undefined, variants: undefined });
     }, [onChange, payload, props.characters]);
+
+    // A rename touches the speaker label and nothing else - no portrait, so no stage name, appearance,
+    // transform or transition. Offering those would be offering to edit fields the compile never reads.
+    if (payload.operation === "setName") {
+        return (
+            <FieldGrid cols={2}>
+                <SelectField
+                    label={t("storyInspector.field.character")}
+                    options={characterOptions}
+                    value={payload.characterId ?? ""}
+                    onChange={updateCharacter}
+                />
+                <TextField
+                    label={t("storyInspector.character.displayName")}
+                    value={payload.displayName ?? ""}
+                    onChange={displayName => onChange({ ...payload, displayName })}
+                />
+            </FieldGrid>
+        );
+    }
 
     return (
         <div className="grid grid-cols-1 gap-3">
@@ -1953,6 +2114,39 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
     const { t } = useTranslation();
     if (props.payload.control === "condition") {
         return <div className="text-sm text-fg-muted">{t("storyInspector.control.conditionContainer")}</div>;
+    }
+    if (props.payload.control === "label") {
+        const labelPayload = props.payload;
+        return (
+            <div className="max-w-sm">
+                <TextField
+                    label={t("storyInspector.control.labelName")}
+                    value={labelPayload.name}
+                    onChange={name => props.onChange({ ...labelPayload, name })}
+                />
+            </div>
+        );
+    }
+    if (props.payload.control === "goto") {
+        const gotoPayload = props.payload;
+        // A picker, not a free field: the target must be a label declared in THIS scene or the build
+        // fails, so offering the scene's own labels is the difference between a choice and a guess.
+        // Any dangling value already stored stays selectable, or switching rows would silently rewrite it.
+        const names = sceneLabelNames(props.document.scenes[props.sceneId]);
+        const options: SelectOption[] = names.map(name => ({ value: name, label: name }));
+        if (gotoPayload.targetLabel && !names.includes(gotoPayload.targetLabel)) {
+            options.unshift({ value: gotoPayload.targetLabel, label: gotoPayload.targetLabel });
+        }
+        return (
+            <div className="max-w-sm">
+                <SelectField
+                    label={t("storyInspector.control.gotoTarget")}
+                    options={options.length > 0 ? options : [{ value: "", label: t("storyInspector.control.noLabels") }]}
+                    value={gotoPayload.targetLabel}
+                    onChange={targetLabel => props.onChange({ ...gotoPayload, targetLabel: String(targetLabel) })}
+                />
+            </div>
+        );
     }
     if (props.payload.control !== "conditionBranch") {
         const groupPayload = props.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;

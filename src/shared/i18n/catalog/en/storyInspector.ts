@@ -19,6 +19,8 @@ export const storyInspector = {
         voice: "Voice",
         // Names the scope the camera has, which no field can: the pose outlives the scene.
         camera: "Camera · story-wide",
+        // Says the scope no field can: an overlay sits above the whole stage, not inside a layer.
+        vfx: "Ambience · full-screen overlay",
     },
 
     voice: {
@@ -188,6 +190,41 @@ export const storyInspector = {
         setSource: "Set source",
     },
 
+    vfxOperation: {
+        pause: "Freeze",
+        resume: "Continue",
+        setRate: "Set speed",
+    },
+
+    // Named by the material each mode is FOR, not by the CSS keyword: the choice is a production fact
+    // about the clip, and the keyword alone only helps someone who already knows the answer.
+    vfxBlend: {
+        normal: "Normal — transparent clip (alpha WebM)",
+        screen: "Screen — glow on black",
+        multiply: "Multiply — shadow on white",
+        lighten: "Lighten",
+        colorDodge: "Color dodge",
+        overlay: "Overlay",
+    },
+
+    vfxFit: {
+        cover: "Cover",
+        contain: "Contain",
+        fill: "Fill",
+    },
+
+    vfx: {
+        name: "Effect name",
+        clip: "Looping clip",
+        blendMode: "Blend",
+        opacity: "Opacity (0-1)",
+        fit: "Fit",
+        zIndex: "Z-index",
+        loop: "Loop",
+        rate: "Speed (1 = normal)",
+        fade: "Fade (s)",
+    },
+
     cameraOperation: {
         zoom: "Zoom",
         pan: "Pan",
@@ -244,7 +281,12 @@ export const storyInspector = {
     },
 
     videoOperation: {
-        play: "Play",
+        // "Play" waits for the clip to finish before the story continues; "Resume" does not.
+        play: "Play (wait for end)",
+        pause: "Pause",
+        resume: "Resume",
+        stop: "Stop",
+        seek: "Seek to",
     },
 
     audioOperation: {
@@ -337,6 +379,7 @@ export const storyInspector = {
     video: {
         videoName: "Video name",
         videoAsset: "Video asset",
+        seekTime: "Seek to",
     },
 
     nvl: {
@@ -346,6 +389,9 @@ export const storyInspector = {
 
     character: {
         stageName: "Stage name",
+        // Named for what the player reads, not for the field it writes: this is the speaker label from
+        // this row on, which is what makes "？？？" become a name.
+        displayName: "Speaks as",
         chooseHint: "Choose a character to pick its appearance.",
         overrideImage: "Override image",
     },
@@ -387,6 +433,9 @@ export const storyInspector = {
     },
 
     control: {
+        labelName: "Label name",
+        gotoTarget: "Go to label",
+        noLabels: "No labels in this scene",
         conditionContainer: "Condition container. Add condition branches as children.",
         control: "Control",
         sequence: "Sequence",

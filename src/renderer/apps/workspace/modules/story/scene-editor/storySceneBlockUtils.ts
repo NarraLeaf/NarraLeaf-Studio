@@ -1,4 +1,4 @@
-import { Aperture, Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video } from "lucide-react";
+import { Aperture, Bookmark, Clock, Code, CornerUpLeft, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryExpr, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment, StoryVariableRef } from "@shared/types/story";
 import { describeDeclaration, layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef, storyVariableRefKey } from "@shared/types/story";
 import { storyMsToSeconds } from "@shared/utils/storyTime";
@@ -254,6 +254,11 @@ export function canAcceptChildren(block: StoryBlock | undefined): boolean {
     if (!block) {
         return false;
     }
+    // `label` and `goto` are the two control rows that are NOT containers: a label is a point and a
+    // goto is a move, neither has a body. Everything else under `control` groups rows.
+    if (block.kind === "control" && (block.payload.control === "label" || block.payload.control === "goto")) {
+        return false;
+    }
     return block.kind === "control" ||
         (block.kind === "action" && block.payload.action === "nvl") ||
         (block.kind === "nodeAction" && (block.payload.action === "choice" || block.payload.action === "choiceOption"));
@@ -315,6 +320,10 @@ export function getContainerHeaderInfo(block: StoryBlock): StoryContainerHeaderI
                     : translate("story.containerHeader.else");
             return { pill, role: "branch", hasCondition: payload.branch !== "else" };
         }
+        // Not containers, so they have no header at all - they render as ordinary rows.
+        if (payload.control === "label" || payload.control === "goto") {
+            return null;
+        }
         if (payload.control === "repeat") {
             return { pill: translate("story.containerHeader.repeat"), role: "group", hasCondition: false, repeatTimes: payload.times ?? 1 };
         }
@@ -371,6 +380,9 @@ export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typ
         if (block.payload.action === "text") return withCategory(translate("story.badge.text"), Type, "text");
         if (block.payload.action === "layer") return withCategory(translate("story.badge.layer"), Layers, "layer");
         if (block.payload.action === "video") return withCategory(translate("story.badge.video"), Video, "video");
+        // Its own badge and hue, not the screen-effect one: a vfx is a stage object with a name and a
+        // lifetime, while `/blink` is a one-shot the scene plays.
+        if (block.payload.action === "vfx") return withCategory(translate("story.badge.vfx"), Wind, "vfx");
         if (block.payload.action === "nvl") return withCategory(translate("story.badge.nvl"), FileText, "scene");
         if (block.payload.action === "blueprint") return withCategory(translate("story.badge.blueprint"), Puzzle, "utils");
         // Its own badge, not "Effect": `/camera darken` dims the whole stage and outlives the scene,
@@ -380,7 +392,13 @@ export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typ
         // the Sparkles badge is what still tells a `/blink` row apart from a `/bg` row at a glance.
         return withCategory(translate("story.badge.effect"), Sparkles, "scene");
     }
-    if (block.kind === "control") return withCategory(translate("story.badge.control"), Settings2, "flow");
+    if (block.kind === "control") {
+        // A label and a goto get their own badges: they read as a destination and a move, and both
+        // would otherwise wear the generic "Control" of a container they are not.
+        if (block.payload.control === "label") return withCategory(translate("story.badge.label"), Bookmark, "flow");
+        if (block.payload.control === "goto") return withCategory(translate("story.badge.goto"), CornerUpLeft, "flow");
+        return withCategory(translate("story.badge.control"), Settings2, "flow");
+    }
     if (block.kind === "jump") return withCategory(translate("story.badge.jump"), Route, "scene");
     if (block.kind === "code") return withCategory(translate("story.badge.code"), Code, "utils");
     if (block.kind === "invalid") {
@@ -516,6 +534,11 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
             const name = payload.characterId ? getCharacterName(characters, payload.characterId) : (payload.objectName || translate("story.describe.characterFallback"));
             // Localized verb + the target name ("Enter · Alice"), not the raw English enum ("enter Alice").
             const operation = translate(`story.describe.charOp.${payload.operation}` as Parameters<typeof translate>[0]);
+            // A rename's whole content is the new label, so the row shows it - "Rename Stranger" would
+            // say nothing about what the player is about to read.
+            if (payload.operation === "setName") {
+                return `${operation} ${name} → ${payload.displayName || translate("story.describe.unnamed")}`;
+            }
             return `${operation} ${name}`;
         }
         if (payload.action === "audio") return `${payload.operation} ${payload.objectName || payload.assetId || translate("story.describe.unassigned")}`;
@@ -531,6 +554,7 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
             return translate("story.describe.layer", { operation: payload.operation, name: layerName });
         }
         if (payload.action === "video") return translate("story.describe.video", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
+        if (payload.action === "vfx") return translate("story.describe.vfx", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
         if (payload.action === "nvl") return translate("story.describe.nvl");
         if (payload.action === "blueprint") return translate("story.describe.blueprint");
         if (payload.action === "camera") return describeCamera(payload);
@@ -539,6 +563,10 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
     if (block.kind === "control") {
         if (block.payload.control === "condition") return translate("story.describe.condition");
         if (block.payload.control === "conditionBranch") return translate("story.describe.branch", { branch: block.payload.branch });
+        // The name IS the row: a label row saying only "Label" would leave the author counting rows
+        // to find which one a goto points at.
+        if (block.payload.control === "label") return translate("story.describe.label", { name: block.payload.name || translate("story.describe.unnamed") });
+        if (block.payload.control === "goto") return translate("story.describe.goto", { name: block.payload.targetLabel || translate("story.describe.unnamed") });
         return block.payload.control;
     }
     if (block.kind === "jump") {

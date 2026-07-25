@@ -5,6 +5,7 @@ import type { StoryExpressionScope } from "@shared/utils/storyExpressionParser";
 import { createStoryExpressionScope, formatStoryExpressionName, parseStoryExpression } from "@shared/utils/storyExpressionParser";
 import {
     allowsFreeValue,
+    freeTargetKind,
     paramTypes,
     matchEnumOption,
     type StoryCommandParam,
@@ -141,12 +142,11 @@ function resolveTarget(
         return { value: { kind: "target", target: matches[0] } };
     }
 
-    // Nothing on stage answers. A free-typed name can stand only where exactly one object kind is
-    // possible (made dynamically, or in another scene); with several kinds there is nothing to
-    // dispatch the block type on.
-    const stageKinds = type.accepts.filter((kind): kind is StoryCommandStageObjectKind => kind !== "character");
-    if (stageKinds.length === 1 && value.trim() !== "") {
-        return { value: { kind: "target", target: { type: "stageObject", objectKind: stageKinds[0], name: value.trim(), known: false } } };
+    // Nothing on stage answers. A free-typed name can stand only where its kind is knowable anyway
+    // (made dynamically, or in another scene) - one possible kind, or a declared fallback.
+    const freeKind = freeTargetKind(type);
+    if (freeKind && value.trim() !== "") {
+        return { value: { kind: "target", target: { type: "stageObject", objectKind: freeKind, name: value.trim(), known: false } } };
     }
     return { issue: { code: "unknownTarget", span, value } };
 }
@@ -234,6 +234,17 @@ function resolveAgainstType(
                 return { issue: { code: "ambiguousName", span, value } };
             }
             return found ? { value: { kind: "scene", sceneId: found.id } } : { issue: { code: "unknownScene", span, value } };
+        }
+        case "label": {
+            // The engine matches labels exactly, so an exact hit always wins - with both `start` and
+            // `Start` declared (which the engine allows), folding first would silently aim the jump at
+            // whichever was declared earlier. A fold is only a typing convenience for the case where
+            // nothing matched exactly, and it still STORES the declared spelling, so the payload always
+            // spells the name the engine will match.
+            const exact = context.labels.find(name => name.trim() === value.trim());
+            const needle = value.trim().toLowerCase();
+            const found = exact ?? context.labels.find(name => name.trim().toLowerCase() === needle);
+            return found ? { value: { kind: "label", name: found } } : { issue: { code: "unknownLabel", span, value } };
         }
         case "variable": {
             const needle = value.trim().toLowerCase();
@@ -425,6 +436,8 @@ function issueForUnresolvable(type: StoryCommandParamType, value: string, span: 
             return { code: "unknownAsset", span, value, assetType: type.assetType };
         case "scene":
             return { code: "unknownScene", span, value };
+        case "label":
+            return { code: "unknownLabel", span, value };
         case "variable":
             return { code: "unknownVariable", span, value };
         case "target":

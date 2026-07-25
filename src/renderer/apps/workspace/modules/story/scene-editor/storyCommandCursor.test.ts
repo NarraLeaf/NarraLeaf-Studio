@@ -11,9 +11,10 @@ const CONTEXT: StoryCommandContext = {
     characters: [{ id: "c1", name: "Alice" }, { id: "c2", name: "Bob" }],
     tempSpeakers: ["Zoe"],
     scenes: [{ id: "s1", name: "Chapter 2" }],
+    labels: ["intro", "retry"],
     variables: [{ name: "gold", ref: { scope: "scene", variableId: "v1" }, valueType: "number" }],
     formsByCharacterId: { c1: ["smile", "angry"] },
-    stageObjects: { image: ["hero", "portrait"], text: ["title"], layer: ["fx"], video: ["intro"], audio: ["sound", "music"] },
+    stageObjects: { image: ["hero", "portrait"], text: ["title"], layer: ["fx"], video: ["intro"], audio: ["sound", "music"], vfx: ["rain"] },
 };
 
 /** Caret marked with `|`. */
@@ -204,16 +205,27 @@ describe("getCommandCandidates", () => {
 
     it("offers a generic verb everything it accepts: characters first, then each object kind", () => {
         // The headline of the generic verbs (bible B3): `/show` is one pick from everything on stage.
-        expect(values("/show |")).toEqual(["Alice", "Bob", "hero", "portrait", "title", "intro", "fx"]);
+        expect(values("/show |")).toEqual(["Alice", "Bob", "hero", "portrait", "title", "intro", "fx", "rain"]);
         expect(values("/show he|")).toEqual(["hero"]);
         expect(values("/swap |")).toEqual(["hero", "portrait", "title"]);
-        // The sound controls lead with the reserved BGM channel - the explicit spelling of the default.
-        expect(values("/stop |")).toEqual(["bgm", "sound", "music"]);
+        // The sound controls lead with the reserved BGM channel - the explicit spelling of the default -
+        // and reach video too, since `/stop` `/pause` `/resume` are the transport verbs for both.
+        expect(values("/stop |")).toEqual(["bgm", "sound", "music", "intro"]);
     });
 
-    it("offers a typed name back only where one object kind is possible", () => {
-        // `/play new` can only mean a video, so the reference stays valid (never-empty invariant);
-        // `/show new` has nothing to dispatch the block type on, so nothing is offered.
+    it("says which world a name lives in when the slot spans several", () => {
+        // `/pause intro` pausing a clip rather than the music is only right if "intro" was visibly a
+        // video. Read off `accepts`, so a single-kind slot stays label-free. The KIND is carried, not a
+        // display string - the menu translates it, so a zh author never sees a bare "audio".
+        const details = (marked: string) => getCommandCandidates(at(marked), CONTEXT, {}).map(c => `${c.value}:${c.detailKind ?? ""}`);
+        expect(details("/stop |")).toEqual(["bgm:audio", "sound:audio", "music:audio", "intro:video"]);
+        expect(details("/play |")).toEqual(["intro:"]);
+    });
+
+    it("offers a typed name back where the kind is knowable without the stage", () => {
+        // `/play new` can only mean a video; `/stop other` spans two kinds but declares audio as the
+        // fallback, so a sound made elsewhere stays addressable. `/show new` declares neither, and has
+        // nothing to dispatch the block type on, so nothing is offered.
         expect(values("/play new|")).toEqual(["new"]);
         expect(values("/stop other|")).toEqual(["other"]);
         expect(values("/show new|")).toEqual([]);

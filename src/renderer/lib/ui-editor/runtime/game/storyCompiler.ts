@@ -25,6 +25,7 @@ import {
     TextEvent,
     ThroughColor,
     Transform,
+    Vfx,
     Video,
     Word,
 } from "narraleaf-react";
@@ -67,8 +68,10 @@ import type {
 } from "@shared/types/story";
 import {
     collectStoryExpressionVariables,
+    duplicateSceneLabels,
     isStoryExpressionEvaluable,
     layerActionTargetRef,
+    sceneLabelNames,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
     savedVariableDefs,
@@ -406,6 +409,7 @@ type SceneCompileContext = {
     texts: Map<string, Text>;
     layers: Map<string, Layer>;
     videos: Map<string, Video>;
+    vfx: Map<string, Vfx>;
     sounds: Map<string, Sound>;
     animations: Map<string, StoryAnimationAsset>;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
@@ -549,6 +553,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             texts: new Map(),
             layers: new Map(),
             videos: new Map(),
+            vfx: new Map(),
             sounds: new Map(),
             animations,
             resolveAssetUrl,
@@ -698,6 +703,7 @@ async function buildLaunchEntryScene(params: {
         texts: new Map(),
         layers: new Map(),
         videos: new Map(),
+        vfx: new Map(),
         sounds: new Map(),
         animations: params.animations,
         resolveAssetUrl,
@@ -880,6 +886,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         texts: new Map(),
         layers: new Map(),
         videos: new Map(),
+        vfx: new Map(),
         sounds: new Map(),
         animations,
         resolveAssetUrl,
@@ -1231,6 +1238,9 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
         if (block.payload.control === "conditionBranch") {
             diagnostic(ctx, "warning", block.id, "Condition branch is outside of a condition container.");
             return compileBlockList(ctx, block.childrenIds);
+        }
+        if (block.payload.control === "label" || block.payload.control === "goto") {
+            return compileLabelControl(ctx, block, block.payload);
         }
         return compileControlGroup(ctx, block);
     }
@@ -1731,6 +1741,10 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
         return compileVideoAction(ctx, block, payload);
     }
 
+    if (payload.action === "vfx") {
+        return compileVfxAction(ctx, block, payload);
+    }
+
     if (payload.action === "screenEffect") {
         const options = {
             duration: payload.durationMs,
@@ -1808,6 +1822,13 @@ async function compileCharacterStageAction(
 ): Promise<NlrStatement[]> {
     const name = getCharacterStageObjectName(payload);
     const statements: NlrStatement[] = [];
+
+    // The only operation that addresses the Character record rather than its portrait: it renames the
+    // speaker label from this row on ("？？？" → the real name), so it needs no image and no transform.
+    if (payload.operation === "setName") {
+        const character = getCharacter(ctx, payload.characterId);
+        return [recordStatement(ctx, character.setName(payload.displayName ?? ""), block)];
+    }
 
     if (payload.operation === "exit") {
         const image = getImage(ctx, name, { autoFit: true });
@@ -1993,7 +2014,89 @@ async function compileVideoAction(
     if (payload.operation === "play") {
         return [recordStatement(ctx, video.play(), block)];
     }
+    if (payload.operation === "pause") {
+        return [recordStatement(ctx, video.pause(), block)];
+    }
+    if (payload.operation === "resume") {
+        return [recordStatement(ctx, video.resume(), block)];
+    }
+    if (payload.operation === "stop") {
+        return [recordStatement(ctx, video.stop(), block)];
+    }
+    if (payload.operation === "seek") {
+        // The engine seeks in SECONDS; the payload stores milliseconds like every other time in this
+        // document. A negative position is not a frame, so it floors at the start of the clip.
+        return [recordStatement(ctx, video.seek(Math.max(0, finiteOr(payload.timeMs, 0)) / 1000), block)];
+    }
     return [];
+}
+
+/**
+ * `vfx` - the full-screen ambience overlay. Shaped like `compileVideoAction`, not like the displayable
+ * ops, because a `Vfx` is an `Actionable`: it has `show`/`hide`/`pause`/`resume`/`setPlaybackRate` and
+ * nothing else. `create` both constructs it and registers the name the later rows address.
+ */
+async function compileVfxAction(
+    ctx: SceneCompileContext,
+    block: StoryBlock,
+    payload: Extract<StoryActionPayload, { action: "vfx" }>,
+): Promise<NlrStatement[]> {
+    const vfx = await getVfx(ctx, payload, block.id);
+    if (!vfx) {
+        return [];
+    }
+    // A create shows the overlay: the row an author writes to "put petals on screen" must put them on
+    // screen, exactly as `/image` and `/video` do.
+    const fade = { duration: Math.max(0, finiteOr(payload.durationMs, 0)), ease: payload.easing as any };
+    switch (payload.operation) {
+        case "create":
+        case "show":
+            return [recordStatement(ctx, vfx.show(fade as any), block)];
+        case "hide":
+            return [recordStatement(ctx, vfx.hide(fade as any), block)];
+        case "pause":
+            return [recordStatement(ctx, vfx.pause(), block)];
+        case "resume":
+            return [recordStatement(ctx, vfx.resume(), block)];
+        case "setRate":
+            // A rate of 0 freezes the loop, which is what `pause` is for; a negative one is not a speed.
+            return [recordStatement(ctx, vfx.setPlaybackRate(Math.max(0, finiteOr(payload.rate, 1))), block)];
+        default:
+            return [];
+    }
+}
+
+async function getVfx(
+    ctx: SceneCompileContext,
+    payload: Extract<StoryActionPayload, { action: "vfx" }>,
+    blockId: string,
+): Promise<Vfx | null> {
+    const name = normalizeObjectName(payload.objectName);
+    const existing = ctx.vfx.get(name);
+    if (existing) {
+        return existing;
+    }
+    if (!payload.assetId) {
+        diagnostic(ctx, "warning", blockId, `Ambience effect "${name}" has no clip.`);
+        return null;
+    }
+    const url = await resolveAsset(ctx, payload.assetId, "video", blockId);
+    if (!url) {
+        return null;
+    }
+    const vfx = new Vfx({
+        src: url,
+        ...(payload.blendMode ? { blendMode: payload.blendMode } : {}),
+        ...(payload.opacity !== undefined ? { opacity: Math.min(1, Math.max(0, finiteOr(payload.opacity, 1))) } : {}),
+        ...(payload.loop !== undefined ? { loop: payload.loop } : {}),
+        ...(payload.fit ? { fit: payload.fit } : {}),
+        ...(payload.zIndex !== undefined ? { zIndex: payload.zIndex } : {}),
+        // A rate on the CREATE row is the loop's resting speed - and the only one that survives a save,
+        // since the engine does not persist a runtime `setPlaybackRate`.
+        ...(payload.rate !== undefined ? { playbackRate: Math.max(0, finiteOr(payload.rate, 1)) } : {}),
+    });
+    ctx.vfx.set(name, vfx);
+    return vfx;
 }
 
 async function compileChoice(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "nodeAction" }>): Promise<NlrStatement[]> {
@@ -2065,6 +2168,51 @@ async function compileCondition(ctx: SceneCompileContext, block: Extract<StoryBl
     }
 
     return [recordStatement(ctx, chain, block)];
+}
+
+/**
+ * `label` and `goto` - the in-scene play head, and the two ways an author can break it.
+ *
+ * Both faults are diagnosed HERE rather than left to the engine, because both make the engine's own
+ * `Story.build` throw: the author would get a build failure with no row to blame. `error` (not
+ * `warning`) is deliberate - a production build refuses on error diagnostics, which is exactly the
+ * outcome wanted, only reported against the row that caused it.
+ *
+ * Labels are matched by NAME, scene-scoped, so the same name may recur in another scene; the checks
+ * read the one shared scan (`listSceneLabels`) the command line's completion reads, so a name the
+ * editor offered can never be a name the compile then rejects.
+ */
+function compileLabelControl(
+    ctx: SceneCompileContext,
+    block: Extract<StoryBlock, { kind: "control" }>,
+    payload: Extract<StoryControlPayload, { control: "label" | "goto" }>,
+): NlrStatement[] {
+    if (payload.control === "label") {
+        const name = payload.name.trim();
+        if (!name) {
+            diagnostic(ctx, "error", block.id, "Label has no name.");
+            return [];
+        }
+        // The first declaration is the one that stands, so only the later rows are faulted.
+        if (duplicateSceneLabels(ctx.scene).some(duplicate => duplicate.blockId === block.id)) {
+            diagnostic(ctx, "error", block.id, `Label "${name}" is declared more than once in this scene.`);
+            return [];
+        }
+        return [recordStatement(ctx, Control.label(name), block)];
+    }
+
+    const target = payload.targetLabel.trim();
+    if (!target) {
+        diagnostic(ctx, "error", block.id, "Go to has no target label.");
+        return [];
+    }
+    // Exactly, case included - the engine matches a jump against a plain `Map` of declared names, so
+    // a `/goto start` left behind by a label renamed `Start` IS a broken jump and has to be said so.
+    if (!sceneLabelNames(ctx.scene).includes(target)) {
+        diagnostic(ctx, "error", block.id, `Go to target label not found in this scene: ${target}`);
+        return [];
+    }
+    return [recordStatement(ctx, Control.jump(target), block)];
 }
 
 async function compileControlGroup(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "control" }>): Promise<NlrStatement[]> {

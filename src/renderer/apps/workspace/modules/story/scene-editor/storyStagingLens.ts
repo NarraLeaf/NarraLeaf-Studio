@@ -106,6 +106,13 @@ function actionDurationMs(payload: StoryActionPayload): number | undefined {
         // be drawn to scale rather than as an unknown-width stub (2026-07-24-006 §12.7).
         case "camera":
             return payload.durationMs;
+        // A vfx fade is the same case: "the rain fades in while the camera pushes past" is the typical
+        // parallel, and the engine's show/hide WAIT for the fade, so the bar is a real footprint. Its
+        // instant operations (pause/resume/setRate) carry no duration and stay unknown.
+        case "vfx":
+            return payload.operation === "show" || payload.operation === "hide" || payload.operation === "create"
+                ? payload.durationMs
+                : undefined;
         case "screenEffect":
             return payload.durationMs === undefined && payload.holdMs === undefined
                 ? undefined

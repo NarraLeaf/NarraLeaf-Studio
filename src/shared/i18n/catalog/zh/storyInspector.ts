@@ -18,6 +18,7 @@ export const storyInspector = {
         transition: "转场",
         voice: "配音",
         camera: "镜头 · 跨场景保留",
+        vfx: "氛围特效 · 全屏叠加",
     },
     voice: {
         voiced: "已配音",
@@ -172,6 +173,36 @@ export const storyInspector = {
         create: "创建／更新",
         setSource: "设置来源",
     },
+    vfxOperation: {
+        pause: "冻结",
+        resume: "继续",
+        setRate: "设置速度",
+    },
+    vfxBlend: {
+        normal: "正常 —— 透明素材（alpha WebM）",
+        screen: "滤色 —— 黑底辉光素材",
+        multiply: "正片叠底 —— 白底阴影素材",
+        lighten: "变亮",
+        colorDodge: "颜色减淡",
+        overlay: "叠加",
+    },
+    vfxFit: {
+        cover: "覆盖",
+        contain: "包含",
+        fill: "拉伸",
+    },
+    vfx: {
+        name: "特效名称",
+        clip: "循环素材",
+        blendMode: "混合模式",
+        opacity: "不透明度（0-1）",
+        fit: "适配",
+        zIndex: "层级",
+        loop: "循环",
+        rate: "速度（1 = 正常）",
+        fade: "淡入淡出（秒）",
+    },
+
     cameraOperation: {
         zoom: "推拉",
         pan: "平移",
@@ -223,7 +254,11 @@ export const storyInspector = {
         setZIndex: "设置层级",
     },
     videoOperation: {
-        play: "播放",
+        play: "播放（等待结束）",
+        pause: "暂停",
+        resume: "继续",
+        stop: "停止",
+        seek: "跳到",
     },
     audioOperation: {
         setBgm: "设置背景音乐",
@@ -300,6 +335,7 @@ export const storyInspector = {
     video: {
         videoName: "视频名称",
         videoAsset: "视频资源",
+        seekTime: "跳到",
     },
     nvl: {
         hint: "子行在 NLR NVL 模式下运行，下方的变换效果会在 NVL 图层进入时对其进行动画处理",
@@ -307,6 +343,7 @@ export const storyInspector = {
     },
     character: {
         stageName: "舞台名称",
+        displayName: "显示为",
         chooseHint: "先选择一个角色，再选择其外观",
         overrideImage: "覆盖图片",
     },
@@ -343,6 +380,9 @@ export const storyInspector = {
         selectImageTitle: "选择背景图片",
     },
     control: {
+        labelName: "标签名称",
+        gotoTarget: "跳到标签",
+        noLabels: "本场景没有标签",
         conditionContainer: "条件容器，在其下添加条件分支作为子项",
         control: "控制",
         sequence: "顺序",

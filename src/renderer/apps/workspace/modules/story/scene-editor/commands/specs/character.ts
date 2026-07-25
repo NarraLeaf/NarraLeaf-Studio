@@ -2,8 +2,10 @@ import type { StoryBlock } from "@shared/types/story";
 import { createBlockForCommand, type ActionCommandId } from "../../storyActionCommands";
 import type { StoryCommandResolutionIssue, StoryCommandTargetValue, StoryCommandValue } from "../../storyCommandValues";
 import {
+    asDurationMs,
     asEnum,
     asTarget,
+    asText,
     defineStoryCommand,
     placementParam,
     secondsParam,
@@ -13,7 +15,7 @@ import {
     type StoryCommandParamsShape,
     type StoryCommandValidateContext,
 } from "../spec";
-import { withPlacementTransform, withRevealTransform, withTransitionRef } from "../payloadHelpers";
+import { vfxOperationBlock, withPlacementTransform, withRevealTransform, withTransitionRef } from "../payloadHelpers";
 import { mergedTransitionOptions, supportedTransitionWords, transformPresetFor, transitionKindFor } from "../transitions";
 
 /**
@@ -24,7 +26,7 @@ import { mergedTransitionOptions, supportedTransitionWords, transformPresetFor, 
  * an "object type × verb" matrix of tokens.
  */
 
-const SHOW_HIDE_ACCEPTS = ["character", "image", "text", "video", "layer"] as const;
+const SHOW_HIDE_ACCEPTS = ["character", "image", "text", "video", "layer", "vfx"] as const;
 
 /**
  * Reject a transition word the resolved target's context cannot express - `/show Alice t=zoom` parses
@@ -51,7 +53,10 @@ function validateTransitionForTarget(
         return [];
     }
     const context = direction === "show" ? "reveal" : "conceal";
-    if (target.objectKind !== "video" && transformPresetFor(context, word) === undefined) {
+    // Video and vfx are not Displayables, so the reveal/conceal preset table does not describe them
+    // at all - there is no legal word to name, and reporting against a table they do not use would be
+    // reporting the wrong thing.
+    if (target.objectKind !== "video" && target.objectKind !== "vfx" && transformPresetFor(context, word) === undefined) {
         return [{ code: "unsupportedOption", span, value: word, allowed: supportedTransitionWords(context) }];
     }
     return [];
@@ -70,9 +75,16 @@ function validateFormTarget(
     return [{ code: "unknownForm", span, value: args.form.kind === "characterForm" ? args.form.formName : "", characterName: target.name }];
 }
 
-/** The show/hide block for a stage-object target. Layers ride the displayable payload - they have no show/hide command family of their own. */
-function stageObjectBlockId(target: Extract<StoryCommandTargetValue, { type: "stageObject" }>, direction: "show" | "hide"): ActionCommandId {
-    switch (target.objectKind) {
+/**
+ * The show/hide block for a stage-object target. Layers ride the displayable payload - they have no
+ * show/hide command family of their own. `vfx` never reaches here: it has its own payload and is
+ * dispatched before this, which is why its kind is excluded rather than given a dead arm.
+ */
+function stageObjectBlockId(
+    objectKind: Exclude<Extract<StoryCommandTargetValue, { type: "stageObject" }>["objectKind"], "vfx">,
+    direction: "show" | "hide",
+): ActionCommandId {
+    switch (objectKind) {
         case "image":
             return direction === "show" ? "imageShow" : "imageHide";
         case "text":
@@ -118,7 +130,14 @@ function buildShowHide<P extends StoryCommandParamsShape>(
         return { ...block, payload: { ...payload, ...(transform ? { transform } : {}), ...(transition ? { transition } : {}) } };
     }
 
-    const block = createBlockForCommand(stageObjectBlockId(target, direction), ctx.generateId);
+    // An ambience overlay fades rather than shows: its own payload, and `d=` is the fade the action
+    // waits out (NLR `Vfx.show({duration})`), not a transform preset it has no pipeline for.
+    if (target.objectKind === "vfx") {
+        const durationMs = asDurationMs(args.d);
+        return vfxOperationBlock(direction, target.name, ctx.generateId, durationMs === undefined ? undefined : { durationMs });
+    }
+
+    const block = createBlockForCommand(stageObjectBlockId(target.objectKind, direction), ctx.generateId);
     if (block.kind !== "action") {
         return block;
     }
@@ -224,6 +243,42 @@ export const face = defineStoryCommand({
     },
 });
 
+/**
+ * `/rename` - the speaker label, not the portrait.
+ *
+ * It exists for one narrative move: the "？？？" speaker who becomes a name. That is why the new name
+ * is a greedy positional rather than a `name=` modifier - it is the point of the line, and a label may
+ * well contain spaces ("the man in grey").
+ */
+export const rename = defineStoryCommand({
+    id: "rename",
+    token: "rename",
+    aliases: ["setname"],
+    category: "character",
+    params: {
+        character: { hint: "character", type: { kind: "character" }, positional: true, core: true },
+        name: { hint: "displayName", type: { kind: "text" }, positional: true, greedy: true, core: true },
+    },
+    // Built here rather than through `createBlockForCommand`: the block carries no transform, no
+    // transition and no stage name, so there is nothing for the shared constructor to seed. This
+    // follows `/camera` (A2), which did the same for the same reason - `ActionCommandId` is the
+    // retired catalogue's residue and does not need to grow for every new command.
+    build(args, ctx): StoryBlock {
+        return {
+            id: ctx.generateId(),
+            parentId: null,
+            childrenIds: [],
+            kind: "action",
+            payload: {
+                action: "character",
+                operation: "setName",
+                ...(args.character?.kind === "character" ? { characterId: args.character.characterId } : {}),
+                displayName: asText(args.name) ?? "",
+            },
+        };
+    },
+});
+
 export const say = defineStoryCommand({
     id: "say",
     token: "say",
@@ -257,4 +312,4 @@ export const say = defineStoryCommand({
     },
 });
 
-export const CHARACTER_COMMANDS = [show, hide, move, face, say];
+export const CHARACTER_COMMANDS = [show, hide, move, face, rename, say];
