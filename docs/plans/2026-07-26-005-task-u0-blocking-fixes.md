@@ -26,7 +26,13 @@ branch: feat/ui-u0-blocking-fixes
 - 不新增依赖、不引入新配色、不加 chip/徽章/图例堆砌。
 - 编辑面上不要 `title` 原生 tooltip。
 
-## 2. 现状（2026-07-24 orchestrator 亲测，行号会漂移，按符号定位）
+## 2. 现状（2026-07-24 orchestrator 亲测，**已在 develop `39967f6b` + 引擎 0.17.0 上复测**）
+
+**复测结论**：本卡三项缺陷在新 develop 上全部复现，一条都没被那 18 个提交顺手修掉。
+引擎 0.17 的 `fastForward` 语义**未变**（仍"目标前停"、仍只扫根栈、仍**没有** `after:{actionId}`）。
+跳转的最新读数：逐行点满 12 行，**1/12 落对**（唯一对的是后向冷跳），前向依旧 `before+2`。
+
+行号会漂移，按符号定位：
 
 - `src/renderer/apps/dev-mode/components/StoryRuntimeDebugPanel.tsx` — `TimelineTab.jumpToRow` 是跳转实现。
 - `src/renderer/lib/ui-editor/runtime/app/GameAppHost.ts` — `GameAppStoryRuntimeBridge` 定义。
@@ -57,18 +63,17 @@ branch: feat/ui-u0-blocking-fixes
 
 **先诊断，后动手。诊断结论必须写进报告，不许跳过。**
 
-已知事实（orchestrator 实测，develop `41273b81`，demo3 `First Day` 场景 12 行）：
+已知事实（orchestrator 实测，demo3 `First Day` 场景 12 行）：
 
-| 点击目标行 | 起点 | 实际落点 |
-|---|---|---|
-| 10 | 5 | 7 |
-| 12 | 7 | 9 |
-| 2（后向） | 9 | 3 |
-| 9 | 3 | 5 |
+首测（develop `41273b81`，引擎 0.16.1）：点 10 从 5 落 7｜点 12 从 7 落 9｜点 2 从 9 落 3｜点 9 从 3 落 5。
 
-**前向跳转永远只前进 2 行，与点击目标无关。** 先查清这个 +2 从哪来（是 fastForward 提前返回、
-是 `firstActionIdForBlock` 取到错的 id、还是回落 `relaunch` 抛错被 `.catch(()=>{})` 吞掉），
-把证据写进报告，再改。
+复测（develop `39967f6b`，引擎 **0.17.0**）：逐行点满 12 行，**1/12 落对**——
+唯一落对的是 `点 1 从 3 → 落 1`（后向冷跳）；其余前向一律 `落点 = 起点 + 2`；
+点第 11、12 行时播放头直接跑出场景末尾（无高亮行）。
+
+**前向跳转永远只前进固定步数，与点击目标无关。** 先查清这个恒定步长从哪来
+（是 fastForward 提前返回、是 `firstActionIdForBlock` 取到错的 id、
+还是回落 `relaunch` 抛错被 `.catch(()=>{})` 吞掉），把证据写进报告，再改。
 
 **目标架构（snapshot-first）**：
 
