@@ -187,6 +187,18 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [lensContainerIds, setContainerLens]);
     const [editorMode, setEditorMode] = useState<EditorMode>({ kind: "idle" });
     /**
+     * The line being typed into the open insert slot.
+     *
+     * A ref, not state: the slot owns the text (it is the only thing that renders it), and this is the
+     * controller's window onto it for the commit/resolve paths. It used to live in `editorMode`, which
+     * made a keystroke a state change on the whole editor — every row re-rendered to show one character
+     * landing in one field, so typing cost time proportional to the length of the scene.
+     *
+     * The draft is seeded wherever a slot opens and read wherever a line commits; nothing else touches
+     * it, and it is meaningless outside `kind: "insert"`.
+     */
+    const insertDraftRef = useRef("");
+    /**
      * The keyboard cursor is on the "add a row" line that sits just past the last row, reached by
      * arrowing Down off the bottom. It is a position with no row behind it (activeBlockId is null
      * while it holds focus), so Enter there opens a fresh insert slot — the same as clicking it.
@@ -770,7 +782,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     // the one slot that earned it — no separate state, and nothing to clear when the author moves on.
     const startInsertAfter = useCallback((afterBlockId: StoryBlockId | null, focus = true, confirmation?: string) => {
         slotDiscardedRef.current = false;
-        setEditorMode({ kind: "insert", slot: { afterBlockId, focusToken: Date.now() }, value: "", confirmation });
+        insertDraftRef.current = "";
+        setEditorMode({ kind: "insert", slot: { afterBlockId, focusToken: Date.now() }, initialValue: "", confirmation });
         if (afterBlockId) {
             setActiveBlockId(afterBlockId);
         }
@@ -791,10 +804,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         slotDiscardedRef.current = false;
+        insertDraftRef.current = "";
         setEditorMode({
             kind: "insert",
             slot: { afterBlockId: null, focusToken: Date.now(), target: { parentId: block.parentId, beforeBlockId: blockId } },
-            value: "",
+            initialValue: "",
         });
         setActiveBlockId(blockId);
         if (focus) {
@@ -817,6 +831,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds ?? [] : scene.rootBlockIds;
         const index = siblings.indexOf(block.id);
         slotDiscardedRef.current = false;
+        insertDraftRef.current = block.kind === "invalid" ? block.payload.source : getTextSegment(block)?.value ?? "";
         setEditorMode({
             kind: "insert",
             slot: {
@@ -825,7 +840,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 target: { parentId: block.parentId, beforeBlockId: block.id },
                 replaceBlockId: block.id,
             },
-            value: block.kind === "invalid" ? block.payload.source : getTextSegment(block)?.value ?? "",
+            initialValue: insertDraftRef.current,
             // Reopening a draft row lands with its completion menu open (bible M3): the author is here
             // to fix the line, so the candidates it needs are what should greet them - not the suppressed
             // slot the old `chooserDismissed: true` left, which gave a returned-to line no menu at all.
@@ -862,10 +877,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // Every path that opens a slot must clear this, or a discard earlier in the session would go on
         // silently swallowing this slot's blur-commit.
         slotDiscardedRef.current = false;
+        insertDraftRef.current = "";
         setEditorMode({
             kind: "insert",
             slot: { afterBlockId: lastChildId ?? parentId, focusToken: Date.now(), target: { parentId, beforeBlockId: null } },
-            value: "",
+            initialValue: "",
         });
         setActiveBlockId(parentId);
         window.requestAnimationFrame(() => insertInputRef.current?.focus());
@@ -1169,7 +1185,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (editorMode.kind !== "insert" || slotDiscardedRef.current) {
             return;
         }
-        if (!editorMode.value.trim()) {
+        if (!insertDraftRef.current.trim()) {
             setEditorMode({ kind: "idle" });
             return;
         }
@@ -1177,10 +1193,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // command, or it becomes an invalid row. This is reached on blur, which is the one caller that
         // does not already know what the line is; without the guard, clicking away from a half-typed
         // `/set` lands it as narration, which is the exact bug the Escape ladder was fixed to stop.
-        if (isActionCommandLine(editorMode.value, slashAtAlias) || editorMode.value.startsWith("#")) {
+        if (isActionCommandLine(insertDraftRef.current, slashAtAlias) || insertDraftRef.current.startsWith("#")) {
             return;
         }
-        const block = createBlock("narration", editorMode.value);
+        const block = createBlock("narration", insertDraftRef.current);
         if (!block) {
             return;
         }
@@ -1191,23 +1207,30 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [createBlock, editorMode, insertBlock, slashAtAlias, startInsertAfter]);
 
     const handleInsertValueChange = useCallback((value: string) => {
+        const previous = insertDraftRef.current;
+        // The stored value keeps the trigger the author typed ("@" or "/") - only parsing and
+        // committing fold "@" onto "/" - so the slot shows the "@" they pressed.
+        insertDraftRef.current = value;
+        // Dismissal is one-shot: Escape keeps the menu shut only while the text stands still
+        // (caret moves, clicks). The next actual edit clears the flag, and the chooser re-derives
+        // from the value (see `insertChooserType`) - which is what lets a re-opened draft row have
+        // its autocomplete back the moment the author starts fixing it, instead of never (the old
+        // flag was one-way for the slot's whole life, so a returned-to line got no candidates).
+        if (value === previous) {
+            return;
+        }
         setEditorMode(current => {
             if (current.kind !== "insert") {
                 return current;
             }
-            // Dismissal is one-shot: Escape keeps the menu shut only while the text stands still
-            // (caret moves, clicks). The next actual edit clears the flag, and the chooser re-derives
-            // from the value (see `insertChooserType`) - which is what lets a re-opened draft row have
-            // its autocomplete back the moment the author starts fixing it, instead of never (the old
-            // flag was one-way for the slot's whole life, so a returned-to line got no candidates).
-            if (current.chooserDismissed && value === current.value) {
+            // Typing with nothing to strip must NOT produce a new mode object: returning `current`
+            // is what makes React bail out, and that bail-out is the difference between a keystroke
+            // costing one field's render and costing the whole document's. The declaration receipt
+            // (bible §3.5) is one-shot the same way `chooserDismissed` is.
+            if (current.chooserDismissed === undefined && current.confirmation === undefined) {
                 return current;
             }
-            // The stored value keeps the trigger the author typed ("@" or "/") - only parsing and
-            // committing fold "@" onto "/" - so the slot shows the "@" they pressed. The menu the value
-            // asks for is derived at render, so nothing here has to recompute it. The declaration receipt
-            // (bible §3.5) is one-shot the same way `chooserDismissed` is: the first real edit clears it.
-            return { ...current, value, chooserDismissed: undefined, confirmation: undefined };
+            return { ...current, chooserDismissed: undefined, confirmation: undefined };
         });
     }, []);
 
@@ -1256,7 +1279,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // Canonicalize before it lands: an "@" trigger is a per-user input convenience, so the persisted
         // source keeps the "/" form every reader (and the build) understands, whatever this author's
         // alias setting is.
-        const source = toCanonicalCommandLine(editorMode.value, slashAtAlias);
+        const source = toCanonicalCommandLine(insertDraftRef.current, slashAtAlias);
         if (!source.trim()) {
             setEditorMode({ kind: "idle" });
             return;
@@ -1414,7 +1437,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         // Strip the "/command " (or "@command ") prefix off the canonical line to keep the trailing text.
-        const initialText = toCanonicalCommandLine(editorMode.value, slashAtAlias).replace(/^\/\S*\s?/, "");
+        const initialText = toCanonicalCommandLine(insertDraftRef.current, slashAtAlias).replace(/^\/\S*\s?/, "");
         const block = createPluginActionBlock(commandId, initialText);
         if (block) {
             insertBlock(block, editorMode.slot.afterBlockId, true, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
@@ -1430,7 +1453,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (editorMode.kind !== "insert") {
             return;
         }
-        const value = editorMode.value;
+        const value = insertDraftRef.current;
         if (!value.trim()) {
             setEditorMode({ kind: "idle" });
             return;
