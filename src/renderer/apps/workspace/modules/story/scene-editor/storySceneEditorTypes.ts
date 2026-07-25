@@ -113,7 +113,14 @@ export type EditorMode =
      * one-shot — the next edit strips it (see `handleInsertValueChange`) — and it lives on the slot, not
      * in separate state, so navigating to any other slot leaves it behind without anyone clearing it.
      */
-    | { kind: "insert"; slot: InsertSlot; value: string; chooserDismissed?: boolean; confirmation?: string }
+    /**
+     * `initialValue` seeds the slot and is **not** the live text. The line the author is typing lives in
+     * the slot's own state (and, for the controller, in `insertDraftRef`), because putting it here made
+     * every keystroke a state change on the editor — which re-rendered the whole row list for a
+     * character typed into one field. The name says "initial" so a read that wants the live line is a
+     * compile error rather than a silently stale string.
+     */
+    | { kind: "insert"; slot: InsertSlot; initialValue: string; chooserDismissed?: boolean; confirmation?: string }
     | { kind: "inspector"; blockId: StoryBlockId };
 
 export type SerializedStoryBlock = {
