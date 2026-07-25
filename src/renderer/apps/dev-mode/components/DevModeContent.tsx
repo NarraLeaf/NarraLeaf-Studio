@@ -69,6 +69,9 @@ function SessionErrorBanner(props: {
 
 type DevModeDebugPanelId = "none" | "blueprint" | "story";
 
+/** Width the debug drawer takes off the stage while it is open. */
+const DEBUG_PANEL_WIDTH = 380;
+
 /** Studio-only debug tools: floating action button, tools menu, and the live-debug panels. */
 function DevModeDebugOverlay(props: {
     core: BlueprintRuntimeCore;
@@ -79,11 +82,16 @@ function DevModeDebugOverlay(props: {
     projectPath: string | null;
     fastForwardToNextChoice: () => Promise<void>;
     storyRuntime: GameAppStoryRuntimeBridge;
+    /** Owned by DevModeContent so the drawer survives a game-session remount (every timeline jump). */
+    activePanel: DevModeDebugPanelId;
+    setActivePanel: (update: (previous: DevModeDebugPanelId) => DevModeDebugPanelId) => void;
 }) {
-    const { core, bundle, uidoc, activeSurfaceId, widgetRuntimeStore, projectPath, fastForwardToNextChoice, storyRuntime } = props;
+    const {
+        core, bundle, uidoc, activeSurfaceId, widgetRuntimeStore, projectPath, fastForwardToNextChoice, storyRuntime,
+        activePanel, setActivePanel,
+    } = props;
     const { t } = useTranslation();
     const [devtoolsMenuOpen, setDevtoolsMenuOpen] = useState(false);
-    const [activePanel, setActivePanel] = useState<DevModeDebugPanelId>("none");
     const [fastForwarding, setFastForwarding] = useState(false);
     const devtoolsFabRef = useRef<HTMLButtonElement>(null);
     const devtoolsMenuRef = useRef<HTMLDivElement>(null);
@@ -200,7 +208,7 @@ function DevModeDebugOverlay(props: {
                 return;
             }
             if (activePanel !== "none") {
-                setActivePanel("none");
+                setActivePanel(() => "none");
                 e.preventDefault();
             }
         };
@@ -212,35 +220,41 @@ function DevModeDebugOverlay(props: {
         <>
             <AnimatePresence>
                 {activePanel !== "none" ? (
+                    // A flex sibling of the stage, not an overlay: the stage yields the width and
+                    // re-fits (StageViewportFrame measures its own box), so opening the panel never
+                    // crops what is being debugged. Only the box animates; the body inside keeps its
+                    // full width so the panel's own layout does not reflow on the way in.
                     <motion.div
                         key={activePanel}
                         role="complementary"
                         aria-label={activePanel === "story" ? t("devMode.runtime.title") : t("devMode.devtools.title")}
-                        className="pointer-events-auto absolute inset-y-0 right-0 z-30 flex w-[min(100%,380px)] max-w-full flex-col overflow-hidden border-l border-edge bg-surface-sunken shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
-                        initial={{ x: "100%" }}
-                        animate={{ x: 0 }}
-                        exit={{ x: "100%" }}
+                        className="pointer-events-auto relative z-30 h-full shrink-0 overflow-hidden"
+                        initial={{ width: 0 }}
+                        animate={{ width: DEBUG_PANEL_WIDTH }}
+                        exit={{ width: 0 }}
                         transition={{ type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
                     >
-                        {activePanel === "story" ? (
-                            <StoryRuntimeDebugPanel
-                                storyRuntime={storyRuntime}
-                                scopeBridge={core.scopeBridge}
-                                bundle={bundle}
-                                className="h-full min-h-0 w-full border-l-0"
-                            />
-                        ) : (
-                            <BlueprintRuntimeDebugPanel
-                                debug={core.debug}
-                                blueprintDocument={bundle.ui.localBlueprints}
-                                uiDocument={uidoc}
-                                activeSurfaceId={activeSurfaceId}
-                                scopeBridge={core.scopeBridge}
-                                widgetRuntimeStore={widgetRuntimeStore}
-                                projectPath={projectPath}
-                                className="h-full min-h-0 w-full border-l-0"
-                            />
-                        )}
+                        <div className="absolute inset-y-0 right-0" style={{ width: DEBUG_PANEL_WIDTH }}>
+                            {activePanel === "story" ? (
+                                <StoryRuntimeDebugPanel
+                                    storyRuntime={storyRuntime}
+                                    scopeBridge={core.scopeBridge}
+                                    bundle={bundle}
+                                    className="h-full min-h-0 w-full"
+                                />
+                            ) : (
+                                <BlueprintRuntimeDebugPanel
+                                    debug={core.debug}
+                                    blueprintDocument={bundle.ui.localBlueprints}
+                                    uiDocument={uidoc}
+                                    activeSurfaceId={activeSurfaceId}
+                                    scopeBridge={core.scopeBridge}
+                                    widgetRuntimeStore={widgetRuntimeStore}
+                                    projectPath={projectPath}
+                                    className="h-full min-h-0 w-full"
+                                />
+                            )}
+                        </div>
                     </motion.div>
                 ) : null}
             </AnimatePresence>
@@ -621,6 +635,11 @@ export function DevModeContent(props: DevModeContentProps) {
         </div>
     ), [t]);
 
+    // Which debug drawer is open is a property of the window, not of the game session: a timeline
+    // jump relaunches the session, and state owned by the overlay itself would close the very panel
+    // the jump was made from.
+    const [activePanel, setActivePanel] = useState<DevModeDebugPanelId>("none");
+
     const renderOverlays = useCallback((ctx: GameAppOverlayContext) => {
         if (!ctx.core || !ctx.activeSurface || !bundle) {
             return null;
@@ -635,9 +654,11 @@ export function DevModeContent(props: DevModeContentProps) {
                 projectPath={projectPath}
                 fastForwardToNextChoice={ctx.fastForwardToNextChoice}
                 storyRuntime={ctx.storyRuntime}
+                activePanel={activePanel}
+                setActivePanel={setActivePanel}
             />
         );
-    }, [bundle, projectPath]);
+    }, [bundle, projectPath, activePanel]);
 
     if (!bundle || !host) {
         return (
@@ -662,16 +683,21 @@ export function DevModeContent(props: DevModeContentProps) {
     }
 
     return (
-        <div className="relative flex h-full w-full min-h-0 flex-col overflow-hidden">
+        <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
             <SessionErrorBanner sessionError={sessionError} onDismissSessionError={onDismissSessionError} />
-            <GameApp
-                host={host}
-                rendererRegistry={rendererRegistry}
-                getScale={getScale}
-                renderFrame={renderFrame}
-                renderPlaceholder={renderPlaceholder}
-                renderOverlays={renderOverlays}
-            />
+            {/* Stage and debug drawer are siblings in one row: GameApp renders the frame and the
+                overlays next to each other, so the drawer takes width from the stage instead of
+                covering it. The FAB layer inside the overlays is still absolute, against this box. */}
+            <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+                <GameApp
+                    host={host}
+                    rendererRegistry={rendererRegistry}
+                    getScale={getScale}
+                    renderFrame={renderFrame}
+                    renderPlaceholder={renderPlaceholder}
+                    renderOverlays={renderOverlays}
+                />
+            </div>
         </div>
     );
 }
