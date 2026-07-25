@@ -21,6 +21,9 @@ interface AssetsIconViewProps {
     onGroupPathChange: (nextPathIds: string[]) => void;
 }
 
+/** How many thumbnails a group tile stacks. Four fills a 2x2 cleanly; more would be unreadable at 120px. */
+const GROUP_PREVIEW_LIMIT = 4;
+
 /** `groupId` plus every group nested under it, so a subtree can be counted or previewed in one pass. */
 function subtreeGroupIds(groups: readonly AssetGroup[], rootId: string): Set<string> {
     const ids = new Set<string>([rootId]);
@@ -245,6 +248,12 @@ export function AssetsIconView({
                                         const childGroups = filteredGroups[type].filter((g) => g.parentGroupId === group.id);
                                         const childAssets = filteredAssets[type].filter((a) => a.groupId === group.id);
                                         const childCount = childGroups.length + childAssets.length;
+                                        // Nested groups count as content: `UI` holds four subgroups and
+                                        // no loose file, and a card for it that showed nothing would be
+                                        // the blank card this replaces.
+                                        const preview = assetsInSubtree(filteredAssets[type], filteredGroups[type], group.id)
+                                            .filter((asset) => asset.type === AssetType.Image)
+                                            .slice(0, GROUP_PREVIEW_LIMIT);
 
                                         return (
                                             <GroupIconTile
@@ -252,6 +261,7 @@ export function AssetsIconView({
                                                 group={group}
                                                 type={type}
                                                 childCount={childCount}
+                                                preview={preview}
                                                 onNavigate={() => {
                                                     handleGroupFocus(group.id);
                                                     handleEnterGroup(group, type);
@@ -293,14 +303,17 @@ function GroupIconTile({
     group,
     type,
     childCount,
+    preview,
     onNavigate,
 }: {
     group: AssetGroup;
     type: AssetType;
     childCount: number;
+    /** Up to {@link GROUP_PREVIEW_LIMIT} images from anywhere in the group, deepest included. */
+    preview: Asset[];
     onNavigate?: () => void;
 }) {
-    const { tn } = useTranslation();
+    const { t, tn } = useTranslation();
     const {
         selectedItems,
         clipboard,
@@ -361,8 +374,32 @@ function GroupIconTile({
                 }
             }}
         >
-            <div className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-md bg-surface-sunken">
-                <Folder className="h-1/3 w-1/3 text-fg-subtle" />
+            <div className="aspect-square w-full overflow-hidden rounded-md bg-surface-sunken">
+                {preview.length > 0 ? (
+                    <div className={`grid h-full w-full gap-px ${preview.length > 1 ? "grid-cols-2 grid-rows-2" : ""}`}>
+                        {preview.map((asset) => (
+                            <AssetThumbnail key={asset.id} asset={asset} className="h-full w-full min-h-0 min-w-0" />
+                        ))}
+                    </div>
+                ) : childCount > 0 ? (
+                    // Holds things, none of them picturable (audio, fonts): the folder mark is honest here.
+                    <div className="flex h-full w-full items-center justify-center">
+                        <Folder className="h-1/3 w-1/3 text-fg-subtle" />
+                    </div>
+                ) : (
+                    // Holds nothing. Offer the one thing that changes that, rather than say so.
+                    <button
+                        type="button"
+                        title={t("common.import")}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleImportToGroup(type, group.id);
+                        }}
+                        className="flex h-full w-full items-center justify-center rounded-md border border-dashed border-edge-strong text-fg-muted hover:bg-fill hover:text-fg"
+                    >
+                        <Upload className="h-1/4 w-1/4" />
+                    </button>
+                )}
             </div>
             <div className="flex min-w-0 items-center gap-1.5">
                 <Folder className="w-3.5 h-3.5 shrink-0 text-primary" />
