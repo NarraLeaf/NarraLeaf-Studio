@@ -31,7 +31,6 @@ export const devMode = {
         snapshotDefault: "默认值",
         noStory: "没有正在运行的故事",
         noVariables: "未声明变量",
-        noStack: "调用栈为空",
         noRows: "该场景暂无行",
         stackRoot: "主栈",
         stackAsync: "异步",

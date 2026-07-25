@@ -87,11 +87,6 @@ export type GameAppHost = {
 /** A read-only view of the current execution stacks (root + in-flight async branches). */
 export type StoryRuntimeStackView = ReturnType<LiveGame["getStackSnapshot"]>;
 
-export type StoryRuntimeFastForwardResult = {
-    reason: "menu" | "end" | "maxSteps" | "action";
-    reachedTarget?: boolean;
-};
-
 /**
  * Read/write bridge over the running story's live runtime, handed to host debug overlays (the Dev
  * Mode story-runtime panel). Modeled on the blueprint `scopeBridge`: the overlay reads snapshots and
@@ -124,8 +119,20 @@ export type GameAppStoryRuntimeBridge = {
     readStorableNamespace: (namespaceName: string) => Record<string, unknown> | null;
     /** Write a raw value into a Storable namespace (scene/saved scopes). No-op if the ns is absent. */
     writeStorableValue: (namespaceName: string, key: string, value: unknown) => boolean;
-    /** Fast-forward the running game until an action surfaces (hot jump). Rejects if no game runs. */
-    fastForwardToActionId: (actionId: string) => Promise<StoryRuntimeFastForwardResult>;
+    /**
+     * Studio block id → backlog token, for every line this session has actually played and that
+     * the engine kept a restore snapshot for. Read from the live backlog on each call (it is the
+     * single source of truth: it accumulates as playback advances and is trimmed by a restore), and
+     * keyed back to blocks through the compiled action bindings. Empty when no game is running.
+     */
+    getPlayedBlockTokens: () => Record<string, string>;
+    /**
+     * Restore the running game to a played backlog line (see {@link getPlayedBlockTokens}): exact,
+     * immediate and replay-free, because the entry carries its own state snapshot. Returns false
+     * when no game runs, the token is unknown, or the engine build has no snapshot restore — the
+     * caller then falls back to a cold {@link relaunch}.
+     */
+    restoreToHistoryToken: (token: string) => boolean;
     /**
      * Relaunch the current story in-window (cold jump, snapshot switch, scene launch). `sceneId`
      * defaults to the running scene; omitted `startBlockId` enters at the scene top; omitted
