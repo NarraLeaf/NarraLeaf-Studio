@@ -227,6 +227,10 @@ export const story = {
         "density.standard": "Standard",
         "density.comfortable": "Comfortable",
     },
+    diagnostics: {
+        speakerNotShown: "This character has not been shown in this scene — the line will play with no one on stage.",
+        missingAsset: "This row points at an asset the project no longer has.",
+    },
     find: {
         placeholder: "Find in scene",
         replacePlaceholder: "Replace with",
