@@ -194,7 +194,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
      * Row lint. Cheap (two lookups) and derived, so it costs a memoised row nothing until something
      * about that row actually changes.
      */
-    const diagnostic = diagnoseRow({ block, appearance: row.appearance, context: props.commandContext });
+    const diagnostic = diagnoseRow({ block, context: props.commandContext });
     const [hovered, setHovered] = useState(false);
     const reduceMotion = useReduceMotion();
     const showRowActions = hovered || active;

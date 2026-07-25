@@ -1,25 +1,23 @@
 import type { StoryBlock } from "@shared/types/story";
-import type { CharacterAppearanceRef } from "./storySceneEditorTypes";
 import type { StoryCommandContext } from "./storyCommandResolution";
 
 /**
- * Row-level lint: the two mistakes that produce a *silently wrong game* rather than a build error.
+ * Row-level lint: the mistakes that produce a *silently wrong game* rather than a build error.
  *
  * Deliberately a mark on the row and not a problems panel. A panel is a second place to look and a
  * shape nobody has agreed on yet (overhaul plan §9); a mark is where the mistake is, and costs the
  * author nothing when there is none. Anything that already fails the build, or already has its own
  * chrome (an invalid row, a stale voice take), is not repeated here.
+ *
+ * The bar for a mark is that the row is *wrong*, not merely unusual. A speaker who is not on stage
+ * used to be marked and no longer is: voice-overs, phone calls and a character in the next room are
+ * ordinary visual-novel writing, and the mark fired on five of the twelve rows of the demo scene —
+ * at which point the warning colour stops meaning anything on the rows that do need it.
  */
 
 export type StoryRowDiagnosticCode =
-    /**
-     * A character says a line without ever having been shown. NarraLeaf will not put them on stage on
-     * its own — the bible rules out implicit auto-enter — so this plays as a voice from nowhere. It is
-     * legal, hence a mark and not an error: a disembodied line is sometimes the point.
-     */
-    | "speakerNotShown"
     /** The row points at an asset the project no longer has. Builds ship it; the player sees nothing. */
-    | "missingAsset";
+    "missingAsset";
 
 export type StoryRowDiagnostic = {
     code: StoryRowDiagnosticCode;
@@ -27,8 +25,6 @@ export type StoryRowDiagnostic = {
 
 export type StoryRowDiagnosticInput = {
     block: StoryBlock;
-    /** The speaker's accumulated stage state at this row, from `buildDialogueAppearances`. */
-    appearance?: CharacterAppearanceRef;
     context: StoryCommandContext;
 };
 
@@ -54,14 +50,6 @@ export function diagnoseRow(input: StoryRowDiagnosticInput): StoryRowDiagnostic 
     const assetId = referencedAssetId(block);
     if (assetId && !assetExists(input.context, assetId)) {
         return { code: "missingAsset" };
-    }
-
-    if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
-        // A bare-name speaker has no character to show, so there is nothing to have forgotten. Only a
-        // line bound to a real character can be missing its entrance.
-        if (block.payload.characterId && !input.appearance?.shown) {
-            return { code: "speakerNotShown" };
-        }
     }
 
     return null;

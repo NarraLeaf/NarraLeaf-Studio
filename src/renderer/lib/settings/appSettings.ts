@@ -8,6 +8,12 @@ import {
     EDITOR_FONT_SIZE_MIN,
 } from "@/lib/settings/editorFontOptions";
 import {
+    EDITOR_SURFACE_OPACITY_DEFAULT,
+    EDITOR_SURFACE_OPACITY_MAX,
+    EDITOR_SURFACE_OPACITY_MIN,
+    EDITOR_SURFACE_OPACITY_STEP,
+} from "@/lib/settings/editorSurfaceOptions";
+import {
     MAX_ACTIVE_EDITORS_DEFAULT,
     MAX_ACTIVE_EDITORS_MAX,
     MAX_ACTIVE_EDITORS_MIN,
@@ -218,6 +224,26 @@ export const AppSettings: AppSettingDefinition[] = [
         descriptionKey: "settings.items.editorFontSize.description",
         descriptionParams: { min: EDITOR_FONT_SIZE_MIN, max: EDITOR_FONT_SIZE_MAX },
         defaultValue: EDITOR_FONT_SIZE_DEFAULT,
+    },
+    {
+        // Published as the `--nl-editor-surface-opacity` custom property by `lib/appearance`, and
+        // consumed by the one `.nl-editor-surface` rule in styles.css — the story editor's prose
+        // area, the inspector's field area and the Dev Mode debug panel all resolve their fill
+        // through it. Only meaningful with a workspace wallpaper on: the wallpaper is opt-in, so
+        // the hard opaque plate it puts under the prose has to be adjustable rather than pinned.
+        key: "editor.surfaceOpacity",
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Integer,
+        label: "Editor surface opacity",
+        labelKey: "settings.items.editorSurfaceOpacity.label",
+        description: "Opacity of the reading surfaces behind story text, inspector fields, and the Dev Mode debug panel.",
+        descriptionKey: "settings.items.editorSurfaceOpacity.description",
+        defaultValue: EDITOR_SURFACE_OPACITY_DEFAULT,
+        min: EDITOR_SURFACE_OPACITY_MIN,
+        max: EDITOR_SURFACE_OPACITY_MAX,
+        step: EDITOR_SURFACE_OPACITY_STEP,
+        unit: "%",
     },
     {
         // Applied by the Story scene editor via `storyEditorTextStyle.tsx`.

@@ -32,6 +32,13 @@
      */
     --nl-story-row-box: 28px;
 
+    /*
+     * Alpha of the editor's reading surfaces (`.nl-editor-surface` below). Studio windows override
+     * it on the root element from the `editor.surfaceOpacity` setting (src/renderer/lib/appearance);
+     * 1 here is that setting's default and what a surface rendered outside the bootstrap gets.
+     */
+    --nl-editor-surface-opacity: 1;
+
     --narraleaf-accent: rgb(var(--nl-primary));
     --narraleaf-accent-strong: rgb(var(--nl-primary));
     --narraleaf-accent-weak: rgb(var(--nl-primary) / 0.6);
@@ -312,6 +319,22 @@ select:focus {
  */
 .nl-has-workspace-bg .bg-surface {
     background-color: transparent;
+}
+
+/*
+ * The editor's reading surfaces: the story editor's prose area, the inspector's field area and the
+ * Dev Mode debug panel body. Same sunken paint they were pinned to, with its alpha taken from the
+ * `editor.surfaceOpacity` setting instead of from the token.
+ *
+ * Why it is adjustable at all: the rule above deliberately clears every base `bg-surface` so a
+ * wallpaper reads as one picture, which left the text you actually read sitting on the photograph.
+ * Making these three opaque fixed the reading but cut a hard rectangle out of an otherwise
+ * translucent app — and the wallpaper is opt-in, so the plate under the words has to be too.
+ * At 100% this is exactly `bg-surface-sunken`; at 0% the surface is gone and the wallpaper runs
+ * behind the prose again.
+ */
+.nl-editor-surface {
+    background-color: rgb(var(--nl-surface-sunken) / var(--nl-editor-surface-opacity));
 }
 
 /*
