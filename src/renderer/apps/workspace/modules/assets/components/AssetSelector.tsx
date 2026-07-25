@@ -23,7 +23,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { useWorkspace } from "../../../context";
 import { useTranslation } from "@/lib/i18n";
 import { SearchBox } from "./SearchBox";
-import { FilterSystem } from "./FilterSystem";
+import { FilterSystem, type ActiveFilter } from "./FilterSystem";
 import { useAssetData } from "../state/useAssetData";
 import { useAssetFilters } from "../state/useAssetFilters";
 
@@ -100,7 +100,17 @@ export function AssetSelector({
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { assets, groups, loading, hasLoaded, error, loadAssets } = useAssetData({ context, isInitialized });
-    const { filterConfigs, activeFilters, setActiveFilters, handleFilterOpen, filteredAssets, filteredGroups } = useAssetFilters({ assets, groups });
+    // The selector keeps its own search (it matches against virtual groups the library does not
+    // know about) and asks nothing about bytes or usage, so the measured half of the pass stays off.
+    const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
+    const { filterConfigs, handleFilterOpen, filteredAssets, filteredGroups } = useAssetFilters({
+        assets,
+        groups,
+        activeFilters,
+        query: "",
+        bytesByAssetId: null,
+        referencedAssetIds: null,
+    });
     const assetsService = useMemo(() => {
         if (!context) return null;
         return context.services.get<AssetsService>(Services.Assets);

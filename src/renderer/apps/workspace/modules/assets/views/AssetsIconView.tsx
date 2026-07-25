@@ -1,14 +1,11 @@
-import { Dispatch, SetStateAction, DragEvent, useMemo, useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import { Dispatch, SetStateAction, DragEvent, useMemo, useState, useEffect, useLayoutEffect, useCallback } from "react";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
-import { FolderPlus, Link, Upload, ChevronLeft } from "lucide-react";
-import { Services } from "@/lib/workspace/services/services";
-import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { FolderPlus, Folder, Link, Upload, ChevronLeft } from "lucide-react";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
 import { ASSET_TYPE_ICONS } from "../constants";
-import { useWorkspace } from "../../../context";
 import { useTranslation } from "@/lib/i18n";
-import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
+import { AssetThumbnail } from "../components/AssetThumbnail";
 
 interface AssetsIconViewProps {
     dropTargetId: string | null;
@@ -22,6 +19,43 @@ interface AssetsIconViewProps {
     onIconSizeChange: (nextSize: number) => void;
     groupPathIds: string[];
     onGroupPathChange: (nextPathIds: string[]) => void;
+}
+
+/** How many thumbnails a group tile stacks. Four fills a 2x2 cleanly; more would be unreadable at 120px. */
+const GROUP_PREVIEW_LIMIT = 4;
+
+/** `groupId` plus every group nested under it, so a subtree can be counted or previewed in one pass. */
+function subtreeGroupIds(groups: readonly AssetGroup[], rootId: string): Set<string> {
+    const ids = new Set<string>([rootId]);
+    let grew = true;
+    while (grew) {
+        grew = false;
+        for (const group of groups) {
+            if (group.parentGroupId && ids.has(group.parentGroupId) && !ids.has(group.id)) {
+                ids.add(group.id);
+                grew = true;
+            }
+        }
+    }
+    return ids;
+}
+
+/**
+ * Every asset a group holds, however deep.
+ *
+ * The header used to print only the assets sitting loose at this level, which reads `0 assets` for a
+ * category whose every file is filed in a group — the count that sent this card into existence.
+ */
+function assetsInSubtree(
+    assets: readonly Asset[],
+    groups: readonly AssetGroup[],
+    rootId: string | null,
+): Asset[] {
+    if (!rootId) {
+        return [...assets];
+    }
+    const ids = subtreeGroupIds(groups, rootId);
+    return assets.filter(asset => !!asset.groupId && ids.has(asset.groupId));
 }
 
 export function AssetsIconView({
@@ -46,8 +80,9 @@ export function AssetsIconView({
         handleGroupFocus,
         compactToolbar,
         setAssetsIconToolbarCenter,
+        isNarrowed,
+        matchedGroupIds,
     } = useAssetsPanelContext();
-    const { context } = useWorkspace();
     const groupStack = useMemo(() => {
         const groupById = new Map<string, AssetGroup>();
         Object.values(groups).flat().forEach(group => groupById.set(group.id, group));
@@ -61,65 +96,12 @@ export function AssetsIconView({
         return stack;
     }, [groups, groupPathIds]);
     const activeGroup = groupStack.length > 0 ? groupStack[groupStack.length - 1] : null;
+    // While a search or filter is narrowing the library the grid goes flat: a hit filed three groups
+    // down is not a hit if the reader has to guess which folder to open to see it.
     const parentPredicate = useCallback(
-        (parentId?: string) => (activeGroup ? parentId === activeGroup.group.id : !parentId),
-        [activeGroup],
+        (parentId?: string) => (isNarrowed ? true : activeGroup ? parentId === activeGroup.group.id : !parentId),
+        [activeGroup, isNarrowed],
     );
-    const [thumbnailMap, setThumbnailMap] = useState<Record<string, string>>({});
-    const thumbnailCacheRef = useRef<Record<string, string>>({});
-    const imageAssets = useMemo(
-        () => Object.values(filteredAssets).flat().filter((asset) => asset.type === AssetType.Image),
-        [filteredAssets],
-    );
-
-    const requestThumbnail = useCallback(
-        async (asset: Asset) => {
-            if (!context) {
-                return;
-            }
-
-            if (thumbnailCacheRef.current[asset.id]) {
-                return thumbnailCacheRef.current[asset.id];
-            }
-
-            const assetsService = context.services.get<AssetsService>(Services.Assets);
-            const fsService = context.services.get<FileSystemService>(Services.FileSystem);
-            const result = await assetsService.getThumbnailPath(asset);
-            if (!result.success || !result.data) {
-                return;
-            }
-
-            const rawResult = await fsService.readRaw(result.data);
-            if (!rawResult.ok || !rawResult.data) {
-                return;
-            }
-
-            const bufferSource = rawResult.data.buffer.slice(
-                rawResult.data.byteOffset,
-                rawResult.data.byteOffset + rawResult.data.byteLength,
-            ) as ArrayBuffer;
-            const blob = new Blob([bufferSource]);
-            const url = URL.createObjectURL(blob);
-
-            thumbnailCacheRef.current[asset.id] = url;
-            setThumbnailMap((prev) => {
-                if (prev[asset.id] === url) {
-                    return prev;
-                }
-                return { ...prev, [asset.id]: url };
-            });
-
-            return url;
-        },
-        [context],
-    );
-
-    useEffect(() => {
-        return () => {
-            Object.values(thumbnailCacheRef.current).forEach(URL.revokeObjectURL);
-            thumbnailCacheRef.current = {};
-        };
-    }, []);
 
     const handleEnterGroup = useCallback((group: AssetGroup, type: AssetType) => {
         onGroupPathChange([...groupPathIds, group.id]);
@@ -134,7 +116,7 @@ export function AssetsIconView({
             setAssetsIconToolbarCenter(null);
             return;
         }
-        if (activeGroup) {
+        if (activeGroup && !isNarrowed) {
             setAssetsIconToolbarCenter({
                 title: activeGroup.group.name,
                 onBack: handleBack,
@@ -142,13 +124,13 @@ export function AssetsIconView({
         } else {
             setAssetsIconToolbarCenter(null);
         }
-    }, [compactToolbar, activeGroup, handleBack, setAssetsIconToolbarCenter]);
+    }, [compactToolbar, activeGroup, isNarrowed, handleBack, setAssetsIconToolbarCenter]);
 
     useEffect(() => {
         return () => setAssetsIconToolbarCenter(null);
     }, [setAssetsIconToolbarCenter]);
 
-    const displayTypes = activeGroup ? [activeGroup.type] : Object.values(AssetType);
+    const displayTypes = activeGroup && !isNarrowed ? [activeGroup.type] : Object.values(AssetType);
     const minIconSize = 120;
     const maxIconSize = 240;
     const step = 10;
@@ -166,7 +148,7 @@ export function AssetsIconView({
                 }
             }}
         >
-            {activeGroup && !compactToolbar && (
+            {activeGroup && !isNarrowed && !compactToolbar && (
                 <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 bg-surface border-b border-edge">
                     <button
                         onClick={handleBack}
@@ -182,8 +164,16 @@ export function AssetsIconView({
             <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
                 {displayTypes.map((type) => {
                     const TypeIcon = ASSET_TYPE_ICONS[type];
-                    const typeGroups = filteredGroups[type].filter((group) => parentPredicate(group.parentGroupId));
+                    // Narrowed, the grid is a result set: only groups that matched by name are hits.
+                    // The rest of `filteredGroups` is the ancestor scaffolding a tree needs.
+                    const typeGroups = isNarrowed
+                        ? filteredGroups[type].filter((group) => matchedGroupIds.has(group.id))
+                        : filteredGroups[type].filter((group) => parentPredicate(group.parentGroupId));
                     const typeAssets = filteredAssets[type].filter((asset) => parentPredicate(asset.groupId));
+                    // What this section stands for, not what happens to be loose in it.
+                    const scopedAssets = isNarrowed
+                        ? typeAssets
+                        : assetsInSubtree(filteredAssets[type], filteredGroups[type], activeGroup?.group.id ?? null);
                     const hasItems = typeGroups.length > 0 || typeAssets.length > 0;
 
                     return (
@@ -208,7 +198,7 @@ export function AssetsIconView({
                                     <TypeIcon className="w-5 h-5 text-fg" />
                                     <div>
                                         <p className="text-sm font-medium">{t(`assets.types.${type}`)}</p>
-                                        <p className="text-xs text-fg-subtle">{tn("assets.iconView.assetCount", typeAssets.length)}</p>
+                                        <p className="text-xs text-fg-subtle">{tn("assets.iconView.assetCount", scopedAssets.length)}</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1">
@@ -251,7 +241,10 @@ export function AssetsIconView({
                                 </div>
                             </header>
 
-                            {hasItems ? (
+                            {/* An empty category prints nothing under its header. The header's own import
+                                buttons are the way in; a sentence saying there is nothing here is the
+                                thing this card removes. */}
+                            {hasItems && (
                                 <div
                                     className="mt-3 grid gap-3"
                                     style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${iconSize}px, 1fr))` }}
@@ -260,6 +253,12 @@ export function AssetsIconView({
                                         const childGroups = filteredGroups[type].filter((g) => g.parentGroupId === group.id);
                                         const childAssets = filteredAssets[type].filter((a) => a.groupId === group.id);
                                         const childCount = childGroups.length + childAssets.length;
+                                        // Nested groups count as content: `UI` holds four subgroups and
+                                        // no loose file, and a card for it that showed nothing would be
+                                        // the blank card this replaces.
+                                        const preview = assetsInSubtree(filteredAssets[type], filteredGroups[type], group.id)
+                                            .filter((asset) => asset.type === AssetType.Image)
+                                            .slice(0, GROUP_PREVIEW_LIMIT);
 
                                         return (
                                             <GroupIconTile
@@ -267,6 +266,7 @@ export function AssetsIconView({
                                                 group={group}
                                                 type={type}
                                                 childCount={childCount}
+                                                preview={preview}
                                                 onNavigate={() => {
                                                     handleGroupFocus(group.id);
                                                     handleEnterGroup(group, type);
@@ -275,18 +275,8 @@ export function AssetsIconView({
                                         );
                                     })}
                                     {typeAssets.map((asset) => (
-                                        <AssetIconTile
-                                            key={asset.id}
-                                            asset={asset}
-                                            type={type}
-                                            thumbnailUrl={thumbnailMap[asset.id]}
-                                            requestThumbnail={requestThumbnail}
-                                        />
+                                        <AssetIconTile key={asset.id} asset={asset} type={type} />
                                     ))}
-                                </div>
-                            ) : (
-                                <div className="mt-4 text-center text-xs text-fg-subtle">
-                                    {t("assets.emptyType", { label: t(`assets.types.${type}`).toLowerCase() })}
                                 </div>
                             )}
                         </section>
@@ -301,14 +291,17 @@ function GroupIconTile({
     group,
     type,
     childCount,
+    preview,
     onNavigate,
 }: {
     group: AssetGroup;
     type: AssetType;
     childCount: number;
+    /** Up to {@link GROUP_PREVIEW_LIMIT} images from anywhere in the group, deepest included. */
+    preview: Asset[];
     onNavigate?: () => void;
 }) {
-    const { tn } = useTranslation();
+    const { t, tn } = useTranslation();
     const {
         selectedItems,
         clipboard,
@@ -329,7 +322,7 @@ function GroupIconTile({
     return (
         <div
             draggable
-            className={`nl-drag-source border rounded-lg p-3 bg-fill-subtle flex flex-col gap-2 cursor-pointer hover:border-edge-strong ${
+            className={`nl-drag-source border rounded-lg p-2 bg-fill-subtle flex flex-col gap-2 cursor-pointer hover:border-edge-strong ${
                 isSelected ? "border-primary/80 bg-primary/10" : "border-transparent"
             } ${isDragging ? "opacity-50" : ""} ${isCut ? "opacity-40" : ""} ${isDragOverLocal ? "ring-1 ring-primary/50 bg-primary/10" : ""}`}
             onClick={(e) => {
@@ -369,22 +362,46 @@ function GroupIconTile({
                 }
             }}
         >
-            <div className="flex items-center gap-2 text-sm font-medium">
-                <FolderPlus className="w-4 h-4 text-primary" />
-                <span className="truncate">{group.name}</span>
+            <div className="aspect-square w-full overflow-hidden rounded-md bg-surface-sunken">
+                {preview.length > 0 ? (
+                    <div className={`grid h-full w-full gap-px ${preview.length > 1 ? "grid-cols-2 grid-rows-2" : ""}`}>
+                        {preview.map((asset) => (
+                            <AssetThumbnail key={asset.id} asset={asset} className="h-full w-full min-h-0 min-w-0" />
+                        ))}
+                    </div>
+                ) : childCount > 0 ? (
+                    // Holds things, none of them picturable (audio, fonts): the folder mark is honest here.
+                    <div className="flex h-full w-full items-center justify-center">
+                        <Folder className="h-1/3 w-1/3 text-fg-subtle" />
+                    </div>
+                ) : (
+                    // Holds nothing. Offer the one thing that changes that, rather than say so.
+                    <button
+                        type="button"
+                        title={t("common.import")}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleImportToGroup(type, group.id);
+                        }}
+                        className="flex h-full w-full items-center justify-center rounded-md border border-dashed border-edge-strong text-fg-muted hover:bg-fill hover:text-fg"
+                    >
+                        <Upload className="h-1/4 w-1/4" />
+                    </button>
+                )}
             </div>
-            <span className="text-xs text-fg-subtle">{tn("assets.itemCount", childCount)}</span>
+            <div className="flex min-w-0 items-center gap-1.5">
+                <Folder className="w-3.5 h-3.5 shrink-0 text-primary" />
+                <span className="truncate text-xs font-medium">{group.name}</span>
+                <span className="ml-auto shrink-0 text-2xs tabular-nums text-fg-subtle" title={tn("assets.itemCount", childCount)}>
+                    {childCount}
+                </span>
+            </div>
         </div>
     );
 }
 
-function AssetIconTile({
-    asset,
-    type,
-    thumbnailUrl,
-    requestThumbnail,
-}: { asset: Asset; type: AssetType; thumbnailUrl?: string; requestThumbnail: (asset: Asset) => Promise<string | undefined> }) {
-    const { t, tn } = useTranslation();
+function AssetIconTile({ asset, type }: { asset: Asset; type: AssetType }) {
+    const { tn } = useTranslation();
     const {
         selectedItems,
         handleItemSelect,
@@ -397,19 +414,14 @@ function AssetIconTile({
         draggedItem,
     } = useAssetsPanelContext();
     const Icon = ASSET_TYPE_ICONS[asset.type];
+    const isImage = asset.type === AssetType.Image;
     const isSelected = selectedItems.has("asset:" + asset.id);
     const isDragging = !!draggedItem && !draggedItem.isGroup && draggedItem.item.id === asset.id;
-
-    useEffect(() => {
-        if (!thumbnailUrl) {
-            void requestThumbnail(asset);
-        }
-    }, [thumbnailUrl, requestThumbnail, asset.id]);
 
     return (
         <div
             draggable
-            className={`nl-drag-source border rounded-lg p-3 bg-fill-subtle flex items-start gap-3 cursor-pointer hover:border-edge-strong ${
+            className={`nl-drag-source border rounded-lg p-2 bg-fill-subtle flex flex-col gap-2 cursor-pointer hover:border-edge-strong ${
                 isSelected ? "border-primary/80 bg-primary/10" : "border-transparent"
             } ${isDragging ? "opacity-50" : ""} ${
                 clipboard?.type === "cut" && clipboard.assets.some((a) => a.id === asset.id) ? "opacity-40" : ""
@@ -423,20 +435,23 @@ function AssetIconTile({
             onDragStart={(e) => handleDragStart?.(e, type, asset, false)}
             onDragEnd={() => handleDragEnd?.()}
         >
-            <div className="w-16 h-16 shrink-0 rounded-lg bg-surface-sunken overflow-hidden flex items-center justify-center">
-                {thumbnailUrl ? (
-                    <img src={thumbnailUrl} alt={asset.name} draggable={false} className="w-full h-full object-cover" />
-                ) : (
-                    <Icon className="w-5 h-5 text-fg-muted" />
+            {isImage ? (
+                <div className="aspect-square w-full overflow-hidden rounded-md bg-surface-sunken">
+                    <AssetThumbnail asset={asset} className="h-full w-full" />
+                </div>
+            ) : (
+                // Not a thumbnail pretending to be one: no picture frame, just the category mark. A
+                // waveform / first frame replaces this per type, not a generic file glyph in a photo box.
+                <div className="flex aspect-square w-full items-center justify-center rounded-md bg-fill">
+                    <Icon className="h-1/4 w-1/4 text-fg-muted" />
+                </div>
+            )}
+            <div className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate text-xs font-medium" title={asset.name}>{asset.name}</span>
+                {asset.tags.length > 0 && (
+                    <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{tn("assets.iconView.tagCount", asset.tags.length)}</span>
                 )}
             </div>
-            <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{asset.name}</p>
-                <p className="text-xs text-fg-subtle">{asset.tags.length > 0 ? tn("assets.iconView.tagCount", asset.tags.length) : t("assets.noTags")}</p>
-            </div>
-            {clipboard?.type === "cut" && clipboard.assets.some((a) => a.id === asset.id) && (
-                <span className="text-xs text-fg-muted">{t("common.cut")}</span>
-            )}
         </div>
     );
 }
