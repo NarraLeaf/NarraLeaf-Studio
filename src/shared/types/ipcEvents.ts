@@ -1,4 +1,4 @@
-import { FileDetails, FileStat } from "@shared/utils/fs";
+import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
@@ -76,6 +76,7 @@ export enum IPCEventType {
     fsStat = "fs.stat",
     fsList = "fs.list",
     fsDetails = "fs.details",
+    fsDirectorySize = "fs.directorySize",
     fsRequestRead = "fs.requestRead",
     fsRequestWrite = "fs.requestWrite",
     fsEnsureRegularFile = "fs.ensureRegularFile",
@@ -527,7 +528,7 @@ export type IPCFsEvents = {
         data: {
             path: string;
         },
-        response: FsRequestResult<FileStat[]>;
+        response: FsRequestResult<FileEntry[]>;
     };
     [IPCEventType.fsDetails]: {
         type: IPCMessageType.request,
@@ -536,6 +537,14 @@ export type IPCFsEvents = {
             path: string;
         },
         response: FsRequestResult<FileDetails>;
+    };
+    [IPCEventType.fsDirectorySize]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: FsRequestResult<DirectorySizeResult>;
     };
     [IPCEventType.fsRequestRead]: {
         type: IPCMessageType.request,

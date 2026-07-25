@@ -1,22 +1,32 @@
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
-import { FileDetails, FileStat } from "@shared/utils/fs";
+import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { IFileSystemService, WorkspaceContext } from "../services";
 import { Service } from "../Service";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
+import { getInterface } from "@/lib/app/bridge";
 
 export class BaseFileSystemService {
     public static async stat(path: string): Promise<FsRequestResult<FileStat>> {
         return this.wrapIPCError(await appPrivilegedFacade.fs.stat(path));
     }
 
-    public static async list(path: string): Promise<FsRequestResult<FileStat[]>> {
+    public static async list(path: string): Promise<FsRequestResult<FileEntry[]>> {
         return this.wrapIPCError(await appPrivilegedFacade.fs.list(path));
     }
 
     public static async details(path: string): Promise<FsRequestResult<FileDetails>> {
         return this.wrapIPCError(await appPrivilegedFacade.fs.details(path));
+    }
+
+    /**
+     * Total the bytes of a directory tree in one round trip, sharing the game build's own
+     * measurement (`Fs.directorySize`). Goes through the base app bridge rather than the privileged
+     * facade: this is a Studio-internal capability, not part of the plugin-facing fs surface.
+     */
+    public static async directorySize(path: string): Promise<FsRequestResult<DirectorySizeResult>> {
+        return this.wrapIPCError(await getInterface().fs.directorySize(path));
     }
 
     public static async read(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>> {
@@ -246,12 +256,16 @@ export class FileSystemService extends Service<FileSystemService> implements IFi
         return BaseFileSystemService.stat(path);
     }
 
-    public async list(path: string): Promise<FsRequestResult<FileStat[]>> {
+    public async list(path: string): Promise<FsRequestResult<FileEntry[]>> {
         return BaseFileSystemService.list(path);
     }
 
     public async details(path: string): Promise<FsRequestResult<FileDetails>> {
         return BaseFileSystemService.details(path);
+    }
+
+    public async directorySize(path: string): Promise<FsRequestResult<DirectorySizeResult>> {
+        return BaseFileSystemService.directorySize(path);
     }
 
     public async read(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>> {
