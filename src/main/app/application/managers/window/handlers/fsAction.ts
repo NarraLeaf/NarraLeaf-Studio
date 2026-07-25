@@ -3,10 +3,10 @@ import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents"
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { Fs } from "@shared/utils/fs";
-import { FileStat, FileDetails } from "@shared/utils/fs";
+import { FileStat, FileEntry, FileDetails, DirectorySizeResult } from "@shared/utils/fs";
+import { splitFileEntry } from "@shared/utils/fileEntry";
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
 import { dialog } from "electron";
-import pathModule from "path";
 import { getRuntimeGrantPolicy } from "../permissions";
 
 function unauthorizedPathResult<T>(fsPath: string): FsRequestResult<T> {
@@ -51,27 +51,25 @@ export class FsListHandler extends IPCHandler<IPCEventType.fsList> {
     readonly name = IPCEventType.fsList;
     readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsList]["data"]): Promise<RequestStatus<FsRequestResult<FileStat[]>>> {
-        const denied = await ensurePathAllowed<FileStat[]>(window, path, "read");
+    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsList]["data"]): Promise<RequestStatus<FsRequestResult<FileEntry[]>>> {
+        const denied = await ensurePathAllowed<FileEntry[]>(window, path, "read");
         if (denied) return this.success(denied);
 
-        // Use Fs.dirEntries to get all entries (files and directories)
-        // Then convert to FileStat[] format to maintain compatibility
         const dirEntriesResult = await Fs.dirEntries(path);
         if (!dirEntriesResult.ok) {
-            return this.success(dirEntriesResult as FsRequestResult<FileStat[]>);
+            return this.success(dirEntriesResult as FsRequestResult<FileEntry[]>);
         }
 
-        // Convert Dirent[] to FileStat[]
-        const fileStats: FileStat[] = dirEntriesResult.data.map(entry => ({
-            name: pathModule.parse(entry.name).name,
-            ext: pathModule.extname(entry.name) || null,
+        // One split factory (`splitFileEntry`) fills name/ext/fileName; `type` comes off the Dirent.
+        // The plugin-facing `privileged.fs.list` builds its entries the same way - see privilegedAction.ts.
+        const fileEntries: FileEntry[] = dirEntriesResult.data.map(entry => ({
+            ...splitFileEntry(entry.name),
             type: entry.isDirectory() ? "directory" : "file",
         }));
 
         return this.success({
             ok: true,
-            data: fileStats
+            data: fileEntries
         });
     }
 }
@@ -86,6 +84,21 @@ export class FsDetailsHandler extends IPCHandler<IPCEventType.fsDetails> {
 
         const result = await Fs.details(path);
         return this.success(result);
+    }
+}
+
+export class FsDirectorySizeHandler extends IPCHandler<IPCEventType.fsDirectorySize> {
+    readonly name = IPCEventType.fsDirectorySize;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsDirectorySize]["data"]): Promise<RequestStatus<FsRequestResult<DirectorySizeResult>>> {
+        const denied = await ensurePathAllowed<DirectorySizeResult>(window, path, "read");
+        if (denied) return this.success(denied);
+
+        // Shares the build's measurement (`Fs.directorySize`); the asset overview reads this once
+        // instead of walking the tree with one IPC per file.
+        const result = await Fs.directorySize(path);
+        return this.success({ ok: true, data: result });
     }
 }
 
