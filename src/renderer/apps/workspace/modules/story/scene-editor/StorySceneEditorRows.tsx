@@ -27,12 +27,11 @@ import {
     commandCategoryLabelKey,
     getCommandCategory,
     getCommandGroup,
-    STORY_COMMAND_GROUPS,
     subjectGroupId,
-    type StoryCommandGroup,
 } from "./storyCommandCategories";
 import { searchActionCommands } from "./storyCommandSearch";
 import { localizeSpecCommand, specPaletteCommands } from "./commands/specPalette";
+import { browseMenuStops, buildSpecSidebarGroups, type StoryCommandMenuStop, type StoryCommandSidebarGroup } from "./commands/specSidebar";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import { paramTypes } from "./storyCommandGrammar";
 import { getCommandDef } from "./commands/registry";
@@ -1407,8 +1406,8 @@ export function InsertRow(props: {
     const actionOptions = useMemo<PaletteActionCommand[]>(
         () => searchActionCommands(
             [
-                // The slash menu lists LINE commands, one per spec — one entry each, unlike the sidebar,
-                // because the highlight walks this list by command id and a repeat would break it.
+                // The typing/filter tier lists one entry per spec — the ranked flat list is the right
+                // shape while filtering, so a verb appears once even though it files under many subjects.
                 ...specPaletteCommands().map(command => localizeSpecCommand(command, t)),
                 // A plugin action carries the label its own language pack already resolved.
                 ...pluginCommands,
@@ -1417,11 +1416,17 @@ export function InsertRow(props: {
         ),
         [chooserQuery, pluginCommands, t],
     );
+    // The empty-state browse is the sidebar's projection, not a second catalogue: same `accepts`
+    // classification, so 图片 lists "显示" here exactly as it does in the sidebar (WI-1).
+    const browseGroups = useMemo(
+        () => buildSpecSidebarGroups(pluginCommands, command => localizeSpecCommand(command, t)),
+        [pluginCommands, t],
+    );
     const characterOptions = useMemo(
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, chooserQuery),
         [chooserQuery, props.characters, props.tempSpeakers],
     );
-    const actionMenu = useActionCommandMenuState(actionOptions, chooserQuery);
+    const actionMenu = useActionCommandMenuState(actionOptions, chooserQuery, browseGroups);
     const characterMenu = useCharacterPickerState(characterOptions);
     const textStyle = useStoryEditorTextStyle();
 
@@ -1584,7 +1589,7 @@ export function InsertRow(props: {
                             }
                             if (actionMenuOpen) {
                                 event.preventDefault();
-                                actionMenu.moveCommand(event.key === "ArrowDown" ? 1 : -1);
+                                actionMenu.move(event.key === "ArrowDown" ? 1 : -1);
                                 return;
                             }
                             if (chooser === "character") {
@@ -1607,7 +1612,7 @@ export function InsertRow(props: {
                                 return true;
                             }
                             if (actionMenuOpen) {
-                                const command = actionMenu.activeCommand;
+                                const command = actionMenu.activeStop?.command;
                                 if (!command) {
                                     return false;
                                 }
@@ -1660,10 +1665,10 @@ export function InsertRow(props: {
                 {actionMenuOpen ? (
                     <ActionCommandMenu
                         browse={actionMenu.browse}
-                        groups={actionMenu.groups}
-                        commands={actionMenu.flatCommands}
-                        activeCommandId={actionMenu.activeCommand?.id ?? null}
-                        onHighlightCommand={actionMenu.selectCommand}
+                        groups={actionMenu.browseGroups}
+                        stops={actionMenu.stops}
+                        activeKey={actionMenu.activeStop?.key ?? null}
+                        onHighlight={actionMenu.selectKey}
                         onChoose={chooseCommandCandidate}
                         onCancel={props.onDismissChooser}
                         placement={menuPlacement}
@@ -1745,10 +1750,6 @@ export function getSpeakerCandidates(characters: Character[], tempSpeakers: Temp
     return candidates;
 }
 
-type VisibleActionCommandGroup = StoryCommandGroup & {
-    commands: PaletteActionCommand[];
-};
-
 type PopupPlacement = "above" | "below";
 
 function useAutoMenuPlacement(anchorRef: RefObject<HTMLElement | null>, open: boolean, expectedHeight: number): PopupPlacement {
@@ -1788,84 +1789,96 @@ function getPopupPlacementClass(placement: PopupPlacement): string {
 
 /**
  * State for the inline `/` command menu, in two display modes decided by whether the author has typed
- * a query yet (WI-2):
- *  - **browse** (empty query): the whole command set laid out under category headers, in category
- *    order — a "here is everything you can write" map rather than a wall of names. `flatCommands`
- *    concatenates the groups so the highlight walks the sections top-to-bottom.
+ * a query yet:
+ *  - **browse** (empty query): the whole command set laid out under subject headers, the SAME
+ *    projection the sidebar shows (`buildSpecSidebarGroups`) — a generic verb appears under every
+ *    subject its `accepts` names, so an author browsing 图片 finds "显示" exactly where the sidebar
+ *    puts it. The two menus are one source now; the `/` browse is no longer a second catalogue filed
+ *    single-point by `category` (plan 2026-07-26-003 WI-1).
  *  - **filter** (a query): the matcher's ranked hits, flat across categories, best match first — the
- *    ranking is the point, so headers would only get in its way.
- * `options` arrives already filtered/ranked for the query, so the empty-query case is the full set.
+ *    ranking is the point, so headers (and the multi-subject repetition) would only get in its way.
+ *
+ * `browseGroups` is the pre-derived sidebar projection (empty query); `options` is the ranked flat
+ * list for the query. Either way the highlight walks `stops` — one stop per rendered row, keyed by
+ * `group:id` so a verb that files under six subjects is six distinct stops. That composite key is what
+ * keeps rule 2 true: one keypress moves one stop, one row is `active`, and Enter takes the row on
+ * screen rather than the first row that shares its id (see {@link browseMenuStops}).
  */
-function useActionCommandMenuState(options: PaletteActionCommand[], query: string) {
+function useActionCommandMenuState(
+    options: PaletteActionCommand[],
+    query: string,
+    browseGroups: readonly StoryCommandSidebarGroup[],
+) {
     const browse = query.trim() === "";
-    // Only non-empty categories, "all" excluded (it is every command, not a section). Category order
-    // is the layout order.
-    const groups = useMemo<VisibleActionCommandGroup[]>(() => {
-        return STORY_COMMAND_GROUPS
-            .map(group => ({ ...group, commands: options.filter(command => command.group === group.id) }))
-            .filter(group => group.commands.length > 0);
-    }, [options]);
-    // The order the highlight walks and Enter commits from: grouped sections while browsing, the raw
-    // ranked list while filtering.
-    const flatCommands = useMemo(
-        () => (browse ? groups.flatMap(group => group.commands) : options),
-        [browse, groups, options],
-    );
-    const [activeCommandId, setActiveCommandId] = useState<string | null>(null);
-    const activeCommand = flatCommands.find(command => command.id === activeCommandId) ?? flatCommands[0] ?? null;
+    // The rows the menu shows, in the order the highlight walks them: the sidebar projection while
+    // browsing, the raw ranked list (one row per command) while filtering.
+    const stops = useMemo<readonly StoryCommandMenuStop[]>(() => {
+        if (browse) {
+            return browseMenuStops(browseGroups);
+        }
+        return options.map(command => {
+            const group = getCommandGroup(command.group);
+            return { key: `${group.id}:${command.id}`, group, command };
+        });
+    }, [browse, browseGroups, options]);
+    const [activeKey, setActiveKey] = useState<string | null>(null);
+    const activeStop = stops.find(stop => stop.key === activeKey) ?? stops[0] ?? null;
 
     useEffect(() => {
-        setActiveCommandId(current => flatCommands.some(command => command.id === current) ? current : flatCommands[0]?.id ?? null);
-    }, [flatCommands]);
+        setActiveKey(current => stops.some(stop => stop.key === current) ? current : stops[0]?.key ?? null);
+    }, [stops]);
 
-    const selectCommand = (commandId: string) => {
-        setActiveCommandId(commandId);
+    const selectKey = (key: string) => {
+        setActiveKey(key);
     };
 
-    const moveCommand = (direction: -1 | 1) => {
-        if (flatCommands.length === 0) {
+    const move = (direction: -1 | 1) => {
+        if (stops.length === 0) {
             return;
         }
-        const currentIndex = Math.max(0, flatCommands.findIndex(command => command.id === activeCommand?.id));
-        const nextIndex = (currentIndex + direction + flatCommands.length) % flatCommands.length;
-        setActiveCommandId(flatCommands[nextIndex].id);
+        const currentIndex = Math.max(0, stops.findIndex(stop => stop.key === activeStop?.key));
+        const nextIndex = (currentIndex + direction + stops.length) % stops.length;
+        setActiveKey(stops[nextIndex].key);
     };
 
     return {
         browse,
-        groups,
-        flatCommands,
-        activeCommand,
-        selectCommand,
-        moveCommand,
+        browseGroups,
+        stops,
+        activeStop,
+        activeKey,
+        selectKey,
+        move,
     };
 }
 
 function ActionCommandMenuRow(props: {
-    command: PaletteActionCommand;
+    stop: StoryCommandMenuStop;
     active: boolean;
-    onHighlight: (commandId: string) => void;
+    onHighlight: (key: string) => void;
     onChoose: (commandId: string) => void;
 }) {
-    const Icon = props.command.icon;
-    const group = getCommandGroup(props.command.group);
+    const { command, group } = props.stop;
+    // The icon follows the SECTION, not the command's own filing: `/show` listed under 图片 must not
+    // wear a person glyph just because its `category` says 角色 (the sidebar's rule, shared here).
+    const Icon = group.icon;
     return (
         <button
             type="button"
             role="option"
             aria-selected={props.active}
-            data-action-command-id={props.command.id}
+            data-action-command-key={props.stop.key}
             className={[
                 "flex w-full items-center gap-2 rounded px-2 py-2 text-left transition-colors",
                 props.active ? "bg-primary/15 text-fg" : "hover:bg-fill",
             ].join(" ")}
-            onMouseDown={() => props.onChoose(props.command.id)}
-            onMouseEnter={() => props.onHighlight(props.command.id)}
+            onMouseDown={() => props.onChoose(command.id)}
+            onMouseEnter={() => props.onHighlight(props.stop.key)}
         >
             <Icon className="h-4 w-4 shrink-0" style={{ color: group.iconColor }} />
             <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-fg">{props.command.label}</span>
-                {props.command.detail ? <span className="block truncate text-2xs text-fg-subtle">{props.command.detail}</span> : null}
+                <span className="block truncate text-sm text-fg">{command.label}</span>
+                {command.detail ? <span className="block truncate text-2xs text-fg-subtle">{command.detail}</span> : null}
             </span>
         </button>
     );
@@ -1873,10 +1886,10 @@ function ActionCommandMenuRow(props: {
 
 function ActionCommandMenu(props: {
     browse: boolean;
-    groups: VisibleActionCommandGroup[];
-    commands: PaletteActionCommand[];
-    activeCommandId: string | null;
-    onHighlightCommand: (commandId: string) => void;
+    groups: readonly StoryCommandSidebarGroup[];
+    stops: readonly StoryCommandMenuStop[];
+    activeKey: string | null;
+    onHighlight: (key: string) => void;
     onChoose: (commandId: string) => void;
     onCancel: () => void;
     placement: PopupPlacement;
@@ -1885,14 +1898,14 @@ function ActionCommandMenu(props: {
     const listRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
-        if (!props.activeCommandId) {
+        if (!props.activeKey) {
             return;
         }
         window.requestAnimationFrame(() => {
-            const activeItem = listRef.current?.querySelector(`[data-action-command-id="${props.activeCommandId}"]`);
+            const activeItem = listRef.current?.querySelector(`[data-action-command-key="${props.activeKey}"]`);
             activeItem?.scrollIntoView({ block: "nearest" });
         });
-    }, [props.activeCommandId]);
+    }, [props.activeKey]);
 
     return (
         <div
@@ -1902,43 +1915,47 @@ function ActionCommandMenu(props: {
                 event.stopPropagation();
             }}
         >
-            {props.commands.length === 0 ? (
+            {props.stops.length === 0 ? (
                 <button type="button" className="w-full px-3 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
                     {t("story.actionCreator.noActions")}
                 </button>
             ) : (
                 <div ref={listRef} className="nl-no-scrollbar max-h-64 overflow-auto p-1">
                     {props.browse ? (
-                        // Empty query: the full set as a browsable map, one section per category so the
-                        // author sees what is available rather than a flat wall of names (WI-2).
-                        props.groups.map(group => {
-                            const Icon = group.icon;
+                        // Empty query: the sidebar's projection, one section per subject, so the author
+                        // sees "here is everything you can do to an image" — a verb appearing under
+                        // several subjects is several rows, each its own highlight stop.
+                        props.groups.map(entry => {
+                            const Icon = entry.group.icon;
                             return (
-                                <div key={group.id}>
+                                <div key={entry.group.id}>
                                     <div className="flex items-center gap-1.5 px-2 pb-1 pt-2 text-2xs font-medium uppercase tracking-wide text-fg-subtle">
-                                        <Icon className="h-3 w-3 shrink-0" style={{ color: group.iconColor }} />
-                                        <span>{t(commandCategoryLabelKey(group.id))}</span>
+                                        <Icon className="h-3 w-3 shrink-0" style={{ color: entry.group.iconColor }} />
+                                        <span>{t(commandCategoryLabelKey(entry.group.id))}</span>
                                     </div>
-                                    {group.commands.map(command => (
-                                        <ActionCommandMenuRow
-                                            key={command.id}
-                                            command={command}
-                                            active={command.id === props.activeCommandId}
-                                            onHighlight={props.onHighlightCommand}
-                                            onChoose={props.onChoose}
-                                        />
-                                    ))}
+                                    {entry.commands.map(command => {
+                                        const key = `${entry.group.id}:${command.id}`;
+                                        return (
+                                            <ActionCommandMenuRow
+                                                key={key}
+                                                stop={{ key, group: entry.group, command }}
+                                                active={key === props.activeKey}
+                                                onHighlight={props.onHighlight}
+                                                onChoose={props.onChoose}
+                                            />
+                                        );
+                                    })}
                                 </div>
                             );
                         })
                     ) : (
                         // A query: the matcher's ranking, flat and best-first — headers would fight it.
-                        props.commands.map(command => (
+                        props.stops.map(stop => (
                             <ActionCommandMenuRow
-                                key={command.id}
-                                command={command}
-                                active={command.id === props.activeCommandId}
-                                onHighlight={props.onHighlightCommand}
+                                key={stop.key}
+                                stop={stop}
+                                active={stop.key === props.activeKey}
+                                onHighlight={props.onHighlight}
                                 onChoose={props.onChoose}
                             />
                         ))
