@@ -479,7 +479,7 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                 <div className="flex min-w-0 items-center gap-2">
                     <Languages className="h-4 w-4 shrink-0 text-fg-muted" />
                     <span className="truncate text-sm font-medium text-fg">{localeDisplayName}</span>
-                    <span className="rounded border border-edge px-1.5 py-0.5 text-2xs text-fg-subtle">{locale}</span>
+                    <span className="rounded-md border border-edge px-1.5 py-0.5 text-2xs text-fg-subtle">{locale}</span>
                 </div>
                 <div className="ml-auto flex items-center gap-3">
                     <div className="flex items-center gap-2">
@@ -522,7 +522,7 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                                 title={option.key === "review" && counts.pending > 0
                                     ? t("workspace.localization.table.reviewPendingCount", { count: counts.pending })
                                     : undefined}
-                                className={`flex h-6 items-center gap-1.5 rounded px-2.5 text-xs transition-colors ${
+                                className={`flex h-6 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors ${
                                     mode === option.key
                                         ? "bg-surface-raised text-fg shadow-sm"
                                         : "text-fg-muted hover:text-fg"

@@ -46,7 +46,7 @@ export function FontPropertyEditor({ asset, onChange }: PropertyEditorProps<Asse
                         <Type className="w-4 h-4 text-fg-muted" />
                         <span className="text-sm font-medium text-fg-muted">{t("properties.asset.font.preview")}</span>
                     </div>
-                    <div className="flex items-center justify-center bg-surface rounded p-3">
+                    <div className="flex items-center justify-center bg-surface rounded-md p-3">
                         <div
                             className="text-sm text-center text-fg-muted"
                             style={{

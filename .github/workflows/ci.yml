@@ -49,6 +49,19 @@ jobs:
       - name: Typecheck
         run: yarn lint
 
+      # Counts the hard-coded styling patterns the design-system consolidation is
+      # retiring (docs/design-system.md) and fails if any count rises above
+      # scripts/style-ratchet.baseline.json.
+      #
+      # Gated here because leaving it local-only did not work: the baseline was
+      # last written on 2026-07-16 and was already inconsistent with the tree it
+      # was committed against, so every branch cut afterwards inherited a red
+      # ratchet it did not cause — which is the same as having no gate at all. A
+      # rise must now be argued for in the PR that causes it, not discovered
+      # months later.
+      - name: Style ratchet
+        run: yarn style:ratchet
+
       # Regenerates the published plugin API declarations and fails if they no
       # longer compile on their own. Without this, a refactor that leaks an
       # unexportable internal type into the plugin surface would only be caught

@@ -678,7 +678,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             </div>
                             <button
                                 type="button"
-                                className="rounded border border-primary/35 bg-primary/15 px-2.5 py-1 text-2xs font-medium text-fg hover:bg-primary/25 disabled:cursor-not-allowed disabled:opacity-45"
+                                className="rounded-md border border-primary/35 bg-primary/15 px-2.5 py-1 text-2xs font-medium text-fg hover:bg-primary/25 disabled:cursor-not-allowed disabled:opacity-45"
                                 disabled={!bindingSelection}
                                 onClick={handleConfirmElementBinding}
                             >
@@ -686,7 +686,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             </button>
                             <button
                                 type="button"
-                                className="rounded border border-edge bg-fill-subtle px-2.5 py-1 text-2xs text-fg-muted hover:bg-fill"
+                                className="rounded-md border border-edge bg-fill-subtle px-2.5 py-1 text-2xs text-fg-muted hover:bg-fill"
                                 onClick={handleCancelElementBinding}
                             >
                                 {t("common.cancel")}

@@ -145,6 +145,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         stat: (path: string) => ipcClient.invoke(IPCEventType.fsStat, { path }),
         list: (path: string) => ipcClient.invoke(IPCEventType.fsList, { path }),
         details: (path: string) => ipcClient.invoke(IPCEventType.fsDetails, { path }),
+        directorySize: (path: string) => ipcClient.invoke(IPCEventType.fsDirectorySize, { path }),
         requestRead: (path: string, encoding: BufferEncoding) => ipcClient.invoke(IPCEventType.fsRequestRead, { path, encoding, raw: false }),
         requestReadRaw: (path: string) => ipcClient.invoke(IPCEventType.fsRequestRead, { path, raw: true }),
         requestWrite: (path: string, encoding: BufferEncoding) => ipcClient.invoke(IPCEventType.fsRequestWrite, { path, encoding, raw: false }),

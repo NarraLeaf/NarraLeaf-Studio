@@ -230,7 +230,7 @@ function StorySceneOverviewBlock(props: {
                 )}
                 {collapsed ? (
                     <>
-                        <span className="relative h-9 w-16 shrink-0 overflow-hidden rounded border border-edge bg-surface">
+                        <span className="relative h-9 w-16 shrink-0 overflow-hidden rounded-md border border-edge bg-surface">
                             {url ? (
                                 <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
                             ) : (
@@ -1610,7 +1610,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         title={t("story.view.narrativeOnly")}
                         aria-label={t("story.view.narrativeOnly")}
                         aria-pressed={editor.narrativeOnly}
-                        className={["rounded p-1.5 transition-colors", editor.narrativeOnly ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
+                        className={["rounded-md p-1.5 transition-colors", editor.narrativeOnly ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
                     >
                         <AlignLeft className="h-4 w-4" />
                     </button>
@@ -1624,7 +1624,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         aria-label={t("story.view.density")}
                         aria-haspopup="menu"
                         aria-pressed={editor.density !== "compact"}
-                        className={["rounded p-1.5 transition-colors", editor.density !== "compact" ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
+                        className={["rounded-md p-1.5 transition-colors", editor.density !== "compact" ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
                     >
                         <StretchVertical className="h-4 w-4" />
                     </button>
@@ -1636,7 +1636,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         onClick={openCommandManual}
                         title={t("story.commandManual.open")}
                         aria-label={t("story.commandManual.open")}
-                        className="rounded p-1.5 text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                        className="rounded-md p-1.5 text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                     >
                         <BookOpen className="h-4 w-4" />
                     </button>
@@ -1841,7 +1841,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         <ul className="flex flex-col gap-1">
                             {EMPTY_SCENE_EXAMPLES.map(example => (
                                 <li key={example.line} className="flex flex-wrap items-baseline gap-x-2">
-                                    <code className="rounded border border-edge-subtle bg-surface-sunken px-1.5 py-0.5 font-mono text-2xs text-fg-muted">
+                                    <code className="rounded-md border border-edge-subtle bg-surface-sunken px-1.5 py-0.5 font-mono text-2xs text-fg-muted">
                                         {example.line}
                                     </code>
                                     <span className="text-2xs">{t(example.key)}</span>
@@ -1850,7 +1850,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         </ul>
                         <button
                             type="button"
-                            className="self-start rounded px-0 py-0.5 text-2xs text-primary underline-offset-2 hover:underline"
+                            className="self-start rounded-md px-0 py-0.5 text-2xs text-primary underline-offset-2 hover:underline"
                             onClick={openCommandManual}
                         >
                             {t("story.sceneEditor.emptyOpenManual")}

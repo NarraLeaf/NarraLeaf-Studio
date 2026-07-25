@@ -57,10 +57,10 @@ type Props = {
 };
 
 const ICON_BUTTON =
-    "nodrag !h-5 !w-5 shrink-0 !gap-0 rounded !p-1 text-fg-muted hover:bg-fill-subtle hover:text-fg";
-const INPUT_CLASS = "h-6 rounded border-edge bg-surface px-1.5 py-0.5 font-mono text-2xs";
+    "nodrag !h-5 !w-5 shrink-0 !gap-0 rounded-md !p-1 text-fg-muted hover:bg-fill-subtle hover:text-fg";
+const INPUT_CLASS = "h-6 rounded-md border-edge bg-surface px-1.5 py-0.5 font-mono text-2xs";
 const RAW_TEXTAREA_CLASS =
-    "min-h-[300px] resize-none rounded border-edge bg-surface-sunken px-2 py-1.5 font-mono text-2xs leading-relaxed";
+    "min-h-[300px] resize-none rounded-md border-edge bg-surface-sunken px-2 py-1.5 font-mono text-2xs leading-relaxed";
 const JSON_EDITOR_SCOPE_ATTRIBUTE = "data-blueprint-json-editor-scope";
 const JSON_EDITOR_PANEL_Z_INDEX = 10000;
 const JSON_EDITOR_MENU_Z_INDEX = JSON_EDITOR_PANEL_Z_INDEX + 1;
@@ -348,7 +348,7 @@ function JsonTreeRow({
     return (
         <div>
             <div
-                className="flex min-h-[28px] min-w-0 items-center gap-1 rounded px-1 py-0.5 hover:bg-fill-subtle"
+                className="flex min-h-[28px] min-w-0 items-center gap-1 rounded-md px-1 py-0.5 hover:bg-fill-subtle"
                 style={{ paddingLeft: 4 + depth * 12 }}
             >
                 {expandable ? (
@@ -379,7 +379,7 @@ function JsonTreeRow({
                     )}
                     {lockedKind ? (
                         <span
-                            className="w-[6.25rem] shrink-0 rounded border border-edge bg-surface-sunken px-1.5 py-1 text-2xs capitalize tracking-wide text-fg-subtle"
+                            className="w-[6.25rem] shrink-0 rounded-md border border-edge bg-surface-sunken px-1.5 py-1 text-2xs capitalize tracking-wide text-fg-subtle"
                             title={t("blueprint.json.schemaFieldType")}
                         >
                             {lockedKind}
@@ -777,7 +777,7 @@ export function BlueprintJsonValueControl({ value, onChange, schema }: Props) {
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
-            <div className="min-w-0 flex-1 rounded border border-edge bg-surface px-1.5 py-1">
+            <div className="min-w-0 flex-1 rounded-md border border-edge bg-surface px-1.5 py-1">
                 <div className="text-2xs capitalize tracking-wide text-fg-subtle">{kind}</div>
                 <div className="truncate font-mono text-2xs text-fg-muted" title={summarizeJsonValue(root)}>
                     {summarizeJsonValue(root)}
@@ -789,7 +789,7 @@ export function BlueprintJsonValueControl({ value, onChange, schema }: Props) {
                 aria-label={t("blueprint.json.edit")}
                 variant="ghost"
                 size="sm"
-                className="nodrag !h-8 !w-8 shrink-0 !gap-0 rounded border border-edge !p-1.5 text-fg-muted hover:bg-fill-subtle"
+                className="nodrag !h-8 !w-8 shrink-0 !gap-0 rounded-md border border-edge !p-1.5 text-fg-muted hover:bg-fill-subtle"
                 onMouseDown={stopFlowNodePointerBubble}
                 onPointerDown={stopFlowNodePointerBubble}
                 onClick={e => {

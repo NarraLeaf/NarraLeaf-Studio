@@ -56,7 +56,7 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                 {allowTypeScriptRevision ? (
                     <button
                         type="button"
-                        className="rounded border border-edge bg-fill-subtle px-2 py-1 text-2xs text-fg hover:bg-fill"
+                        className="rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs text-fg hover:bg-fill"
                         onClick={() => {
                             const newId = localBp.createSiblingPrivateBlueprintForOwnerKey(ownerKey, "typescript");
                             onReopenRevision?.(newId);
@@ -67,7 +67,7 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                 ) : null}
                 <button
                     type="button"
-                    className="rounded border border-edge bg-fill-subtle px-2 py-1 text-2xs text-fg hover:bg-fill"
+                    className="rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs text-fg hover:bg-fill"
                     onClick={() => {
                         const newId = localBp.createSiblingPrivateBlueprintForOwnerKey(ownerKey, "visual");
                         onReopenRevision?.(newId);

@@ -139,16 +139,12 @@ describe("PluginManager", () => {
         expect(runtimePlugins).toHaveLength(1);
     });
 
-    it("requires authorization again when the installed manifest version changes", async () => {
+    // The permission set is the security boundary, not the version string: an
+    // update that asks for no more than was approved keeps running.
+    it("keeps the grant when a new version does not widen permissions", async () => {
         const manager = new PluginManager(tempDir, permissionManager as any);
         await manager.installFromDirectory(sourceDir);
-        await manager.approvePlugin("acme.sample-plugin", {
-            requestId: "install",
-            pluginId: "acme.sample-plugin",
-            kind: "install",
-            approved: true,
-            persistence: "permanent",
-        });
+        await approve(manager);
 
         await writePluginPackage(path.join(tempDir, "plugins", "acme.sample-plugin"), "1.1.0");
         const rescanned = new PluginManager(tempDir, permissionManager as any);
@@ -156,12 +152,74 @@ describe("PluginManager", () => {
 
         expect(plugin).toMatchObject({
             pluginId: "acme.sample-plugin",
+            status: "enabled",
+            grantedManifestVersion: "1.1.0",
+            manifest: { version: "1.1.0" },
+        });
+    });
+
+    it("keeps the grant when a new version drops a permission", async () => {
+        const manager = new PluginManager(tempDir, permissionManager as any);
+        await manager.installFromDirectory(sourceDir);
+        await approve(manager);
+
+        await writePluginPackage(path.join(tempDir, "plugins", "acme.sample-plugin"), "1.1.0", undefined, []);
+        const rescanned = new PluginManager(tempDir, permissionManager as any);
+        const [plugin] = await rescanned.listPlugins();
+
+        expect(plugin).toMatchObject({ status: "enabled", grantedManifestVersion: "1.1.0" });
+    });
+
+    it("requires authorization again when a new version widens permissions", async () => {
+        const manager = new PluginManager(tempDir, permissionManager as any);
+        await manager.installFromDirectory(sourceDir);
+        await approve(manager);
+
+        await writePluginPackage(path.join(tempDir, "plugins", "acme.sample-plugin"), "1.1.0", undefined, [
+            { kind: "api", capability: "bash.execute" },
+            { kind: "filesystem", path: "/", mode: "readwrite", recursive: true },
+        ]);
+        const rescanned = new PluginManager(tempDir, permissionManager as any);
+        const [plugin] = await rescanned.listPlugins();
+
+        expect(plugin).toMatchObject({
+            pluginId: "acme.sample-plugin",
             status: "needsAuthorization",
             grantedManifestVersion: null,
-            manifest: {
-                version: "1.1.0",
-            },
+            manifest: { version: "1.1.0" },
         });
+    });
+
+    it("installing a widened version over an approved one revokes the grant", async () => {
+        const manager = new PluginManager(tempDir, permissionManager as any);
+        await manager.installFromDirectory(sourceDir);
+        await approve(manager);
+
+        await writePluginPackage(sourceDir, "2.0.0", undefined, [
+            { kind: "api", capability: "bash.execute" },
+            { kind: "api", capability: "plugin.trust.grant" },
+        ]);
+        const result = await manager.installFromDirectory(sourceDir);
+
+        expect(result.plugin).toMatchObject({ status: "needsAuthorization", grantedManifestVersion: null });
+    });
+
+    // Declining leaves the plugin unauthorized; leaving `enabled` set would
+    // report a plugin that nothing loads as running.
+    it("disables a plugin whose re-authorization is declined", async () => {
+        const manager = new PluginManager(tempDir, permissionManager as any);
+        await manager.installFromDirectory(sourceDir);
+        await approve(manager);
+
+        await writePluginPackage(sourceDir, "2.0.0", undefined, [
+            { kind: "api", capability: "bash.execute" },
+            { kind: "api", capability: "plugin.trust.grant" },
+        ]);
+        await manager.installFromDirectory(sourceDir);
+        const declined = await manager.approvePlugin("acme.sample-plugin", null);
+
+        expect(declined.approved).toBe(false);
+        expect(declined.plugin).toMatchObject({ enabled: false, status: "needsAuthorization" });
     });
 
     it("uninstalls local plugins and revokes saved permissions", async () => {
@@ -209,10 +267,22 @@ describe("PluginManager", () => {
     });
 });
 
+/** Approve the pending install prompt for the sample plugin. */
+function approve(manager: PluginManager) {
+    return manager.approvePlugin("acme.sample-plugin", {
+        requestId: "install",
+        pluginId: "acme.sample-plugin",
+        kind: "install",
+        approved: true,
+        persistence: "permanent",
+    });
+}
+
 async function writePluginPackage(
     dir: string,
     version: string,
     entries: Record<string, string> = { studio: "main.js" },
+    permissions: unknown[] = [{ kind: "api", capability: "bash.execute" }],
 ): Promise<void> {
     await fs.mkdir(dir, { recursive: true });
     for (const entry of Object.values(entries)) {
@@ -225,11 +295,6 @@ async function writePluginPackage(
         version,
         description: "Test plugin",
         entries,
-        permissions: [
-            {
-                kind: "api",
-                capability: "bash.execute",
-            },
-        ],
+        permissions,
     }), "utf-8");
 }

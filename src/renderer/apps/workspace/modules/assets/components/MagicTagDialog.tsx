@@ -111,7 +111,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-1 rounded hover:bg-fill transition-colors"
+                        className="p-1 rounded-md hover:bg-fill transition-colors"
                         aria-label={t("common.close")}
                     >
                         <svg className="w-5 h-5 text-fg-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -137,7 +137,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                                                     : [...prev, delim.char]
                                             );
                                         }}
-                                        className={`px-3 py-1.5 rounded text-sm transition-colors ${
+                                        className={`px-3 py-1.5 rounded-md text-sm transition-colors ${
                                             selectedDelimiters.includes(delim.char)
                                                 ? 'bg-primary text-on-primary'
                                                 : 'bg-fill text-fg-muted hover:bg-fill-strong'
@@ -157,7 +157,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                     {template.mode === 'regex' && template.regex && (
                         <div className="space-y-3">
                             <label className="text-sm font-medium text-fg-muted">{t("assets.magicTag.regexPattern")}</label>
-                            <div className="bg-fill rounded p-3 font-mono text-sm text-fg-muted">
+                            <div className="bg-fill rounded-md p-3 font-mono text-sm text-fg-muted">
                                 {template.regex.pattern}
                             </div>
                             <p className="text-xs text-fg-muted">
@@ -197,7 +197,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                                     <div key={index} className="flex items-center gap-4">
                                         <div className="flex items-center gap-3 flex-1">
                                             <span className="text-sm text-fg-muted w-12 text-center font-mono">{index}</span>
-                                            <div className="bg-fill-strong rounded px-3 py-1.5 text-sm min-w-[100px] text-center border border-edge-strong">
+                                            <div className="bg-fill-strong rounded-md px-3 py-1.5 text-sm min-w-[100px] text-center border border-edge-strong">
                                                 {segment}
                                             </div>
                                             <span className="text-fg-muted text-lg">→</span>
@@ -206,7 +206,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                                                 placeholder={t("assets.magicTag.categoryPlaceholder")}
                                                 value={categoryMapping[index] || ''}
                                                 onChange={(e) => handleCategoryChange(index, e.target.value)}
-                                                className="flex-1 bg-fill border border-edge-strong rounded px-3 py-1.5 text-sm focus:outline-none focus:border-primary transition-colors"
+                                                className="flex-1 bg-fill border border-edge-strong rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-primary transition-colors"
                                             />
                                         </div>
                                     </div>
@@ -228,7 +228,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                                                 item.tags.map((tag, tagIdx) => (
                                                     <span
                                                         key={tagIdx}
-                                                        className="bg-primary/20 text-primary px-2 py-0.5 rounded text-xs border border-primary/30"
+                                                        className="bg-primary/20 text-primary px-2 py-0.5 rounded-md text-xs border border-primary/30"
                                                     >
                                                         {tag}
                                                     </span>
@@ -259,7 +259,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                         onClick={onClose}
                         disabled={applying}
                         className={`
-                            px-4 py-2 text-sm rounded transition-colors
+                            px-4 py-2 text-sm rounded-md transition-colors
                             ${applying
                                 ? "bg-fill text-fg-subtle cursor-not-allowed"
                                 : "bg-fill-subtle hover:bg-fill text-fg-muted"
@@ -272,7 +272,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                         onClick={handleApply}
                         disabled={applying || Object.keys(categoryMapping).length === 0}
                         className={`
-                            px-4 py-2 text-sm rounded transition-colors
+                            px-4 py-2 text-sm rounded-md transition-colors
                             ${applying || Object.keys(categoryMapping).length === 0
                                 ? "bg-fill text-fg-subtle cursor-not-allowed"
                                 : "bg-primary hover:bg-primary/80 text-on-primary font-medium"

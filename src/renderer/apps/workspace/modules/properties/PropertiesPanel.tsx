@@ -773,7 +773,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                             {d.elementId ? (
                                 <button
                                     type="button"
-                                    className="w-full rounded px-1 py-0.5 text-left text-warning hover:bg-warning/10"
+                                    className="w-full rounded-md px-1 py-0.5 text-left text-warning hover:bg-warning/10"
                                     onClick={() => selectUiCanvasElement(surfaceId, d.elementId!)}
                                 >
                                     {d.message}

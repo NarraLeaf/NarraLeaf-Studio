@@ -1,5 +1,5 @@
 import { FsRequestResult } from "@shared/types/os";
-import { FileDetails, FileStat } from "@shared/utils/fs";
+import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { Porject, ProjectConfig, ProjectIconConfig, ProjectIconPlatform, ProjectMetadata } from "../project/project";
 import type { MobileConfiguration, NetworkConfiguration, SecurityConfiguration } from "../project/configuration";
 import type {
@@ -193,8 +193,9 @@ interface IUuidService extends IService {
 
 interface IFileSystemService extends IService {
     stat(path: string): Promise<FsRequestResult<FileStat>>;
-    list(path: string): Promise<FsRequestResult<FileStat[]>>;
+    list(path: string): Promise<FsRequestResult<FileEntry[]>>;
     details(path: string): Promise<FsRequestResult<FileDetails>>;
+    directorySize(path: string): Promise<FsRequestResult<DirectorySizeResult>>;
     read(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>>;
     readRaw(path: string): Promise<FsRequestResult<Uint8Array>>;
     write(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
