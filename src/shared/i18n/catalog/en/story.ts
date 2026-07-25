@@ -222,7 +222,10 @@ export const story = {
 
     view: {
         narrativeOnly: "Narrative only",
-        comfortableDensity: "Comfortable density",
+        density: "Reading density",
+        "density.compact": "Compact",
+        "density.standard": "Standard",
+        "density.comfortable": "Comfortable",
     },
     commandManual: {
         open: "Command manual",
@@ -330,6 +333,11 @@ export const story = {
         loadingScene: "Loading story scene…",
         notFound: "Story or scene not found.",
         addRow: "Click or type to add a row…",
+        emptyHint: "This scene is empty. Type {{trigger}} on a new row to pick a command, or just write a line of narration.",
+        emptyExampleBg: "set the backdrop",
+        emptyExampleShow: "bring someone on stage",
+        emptyExampleSay: "give them a line",
+        emptyOpenManual: "Open the command manual",
         variablesPanel: "Story Variables",
         snapshotsPanel: "Scene Snapshots",
         inspectorPanel: "Inspector",
