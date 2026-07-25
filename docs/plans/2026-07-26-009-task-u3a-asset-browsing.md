@@ -1,7 +1,7 @@
 ---
 title: "task: U3a 资产浏览层 — 真缩略图、搜索筛选、总览并入"
 type: task
-status: queued
+status: ready
 date: 2026-07-26
 plan: 2026-07-26-004-plan-ui-professionalization.md
 branch: feat/ui-u3a-asset-browsing
@@ -12,14 +12,42 @@ branch: feat/ui-u3a-asset-browsing
 总计划 `2026-07-26-004` §U3a。用户裁决"资产管理器做完整版"，拆成 U3a 浏览层 / U3b 管理层；
 本卡是 U3a，**只解决"看不见图"，不碰资产写路径**。
 
-> **状态 queued**：与 U1 触碰区不交叉，但共享同一个检出，两张卡并行会互相 `git checkout`。
-> 由 orchestrator 在 U1 落地后（或备好独立 worktree 后）再发。
-
 ## 0. 分支与纪律
 
-- 从当时的 `develop` 切 `feat/ui-u3a-asset-browsing`。
+- 从 `develop`（`0a1e9f88`）切 `feat/ui-u3a-asset-browsing`。
 - 逐文件 `git add`，**禁止 `git add -A`**。每个 WI 完成即 commit。不合并、不 push。
 - 禁止 `git worktree remove`、禁止 `git stash`。
+
+### 0.1 共享检出：别人的未提交改动（进来先读这一段）
+
+工作树里有**其他 session 的 9 个未提交文件**。它们不是你的，**一个都不许碰、不许 add、不许提交**：
+
+```
+project/app/dev-electron.js
+src/renderer/apps/workspace/components/layout/BottomPanel.tsx
+src/renderer/apps/workspace/components/layout/LeftSidebar.tsx
+src/renderer/apps/workspace/components/layout/RightSidebar.tsx
+src/renderer/apps/workspace/components/layout/WorkspaceLayout.tsx
+src/renderer/apps/workspace/components/ui/ResizableHandle.tsx
+src/renderer/apps/workspace/modules/story/scene-editor/StorySceneEditorTab.tsx
+src/renderer/apps/workspace/modules/story/scene-editor/preview/StoryScenePreviewFloat.tsx
+src/renderer/styles/styles.css
+```
+
+**并且——这条在 U1 上真的发生过，代价是一次退回：**
+
+> 你跑 `yarn dev` 看到的画面，**包含这些未提交改动的效果**。
+> 如果你把自己提交的代码适配到只存在于它们里面的东西上，合进 develop 就会坏，
+> 而 lint、测试、你的截图**全都发现不了**——因为在你的构建里那些东西是活的。
+
+只存在于这些未提交改动中的符号（用到即错）：
+`nl-dock-divider`、`nl-dock-divider--x/--y/--active`、`nl-dock-focused`。
+
+`styles.css` 已被他人占用，**本卡不许改它**。需要新样式就用组件内联或既有 token；
+需要 CSS 变量就照 U0.1 的 `storyEditorRootStyle` 范式从组件发布，并在每个消费点写 fallback。
+
+**交卡前自查**：对你 `git add` 过的每一个文件，确认它没有引用上面那些符号，也没有依赖那 9 个文件里的任何改动。
+把你检查了什么写进报告，不要只写结论。
 
 ## 1. 风格铁律
 
