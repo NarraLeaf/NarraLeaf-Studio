@@ -88,6 +88,13 @@ export type PluginInstallRecord = {
     installedAt: number;
     updatedAt: number;
     grantedManifestVersion?: string | null;
+    /**
+     * The permission set the user actually approved, recorded so a later version
+     * that does not widen it can inherit the grant instead of re-prompting.
+     * Absent on records written before this was tracked — the manifest at
+     * `grantedManifestVersion` is the fallback source of truth for those.
+     */
+    grantedPermissions?: PluginInstallPermission[] | null;
     lastError?: string | null;
 };
 
