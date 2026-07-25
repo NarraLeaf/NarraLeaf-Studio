@@ -147,7 +147,7 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
                 <span className="text-xs font-medium text-fg">{t("devMode.runtime.title")}</span>
                 {snapshots.length > 0 ? (
                     <select
-                        className="max-w-[55%] shrink-0 truncate rounded border border-edge bg-surface-sunken px-1.5 py-0.5 text-2xs text-fg-muted outline-none focus-visible:border-edge-strong"
+                        className="max-w-[55%] shrink-0 truncate rounded-md border border-edge bg-surface-sunken px-1.5 py-0.5 text-2xs text-fg-muted outline-none focus-visible:border-edge-strong"
                         value={context?.snapshotId ?? ""}
                         aria-label={t("devMode.runtime.snapshot")}
                         onChange={event => onSelectSnapshot(event.target.value)}
@@ -344,7 +344,7 @@ function VariableValueEditor(props: {
             <input
                 type="checkbox"
                 checked={value === true}
-                className={`h-3 w-3 rounded border-edge-strong bg-surface-sunken ${live ? "" : "opacity-60"}`}
+                className={`h-3 w-3 rounded-sm border-edge-strong bg-surface-sunken ${live ? "" : "opacity-60"}`}
                 onChange={event => onCommit(event.target.checked)}
             />
         );
@@ -389,7 +389,7 @@ function VariableTextEditor(props: {
             type="text"
             value={draft}
             spellCheck={false}
-            className={`min-w-0 flex-1 rounded border bg-surface-sunken px-1.5 py-0.5 text-2xs outline-none focus-visible:border-edge-strong ${
+            className={`min-w-0 flex-1 rounded-md border bg-surface-sunken px-1.5 py-0.5 text-2xs outline-none focus-visible:border-edge-strong ${
                 invalid ? "border-danger/60 text-danger" : "border-edge text-fg-muted"
             } ${live ? "" : "opacity-60"}`}
             onFocus={() => { focusedRef.current = true; }}
@@ -648,7 +648,7 @@ function TimelineTab(props: {
                         <li
                             key={row.blockId}
                             ref={isCurrent ? currentRowRef : undefined}
-                            className={`flex cursor-default items-baseline gap-2 rounded px-1.5 py-0.5 ${
+                            className={`flex cursor-default items-baseline gap-2 rounded-md px-1.5 py-0.5 ${
                                 isCurrent ? "bg-primary/15 text-fg" : "text-fg-muted hover:bg-fill"
                             } ${row.disabled ? "opacity-45" : ""}`}
                             onClick={row.disabled ? undefined : () => void jumpToRow(row)}

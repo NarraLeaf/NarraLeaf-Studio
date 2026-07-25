@@ -77,20 +77,20 @@ export function StoryMotionStagePreview(props: {
 
     return (
         <div
-            className={`${fixedStage ? "relative shrink-0 rounded bg-[#15171b]" : "relative min-h-0 flex-1 bg-[#15171b]"} ${overflowClass}`}
+            className={`${fixedStage ? "relative shrink-0 rounded-md bg-[#15171b]" : "relative min-h-0 flex-1 bg-[#15171b]"} ${overflowClass}`}
             style={fixedStage ? { width: props.stageSize!.width, height: props.stageSize!.height } : undefined}
         >
             {props.backgroundUrl ? (
                 <img
                     src={props.backgroundUrl}
                     alt=""
-                    className={`${fixedStage ? "absolute inset-0" : "absolute inset-6"} h-full w-full object-cover ${fixedStage ? "" : "rounded"}`}
+                    className={`${fixedStage ? "absolute inset-0" : "absolute inset-6"} h-full w-full object-cover ${fixedStage ? "" : "rounded-md"}`}
                     draggable={false}
                 />
             ) : null}
-            <div className={`${fixedStage ? "absolute inset-0" : "absolute inset-6"} rounded border border-white/10 bg-[linear-gradient(90deg,rgba(255,255,255,.04)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px)] bg-[length:32px_32px]`} />
+            <div className={`${fixedStage ? "absolute inset-0" : "absolute inset-6"} rounded-md border border-white/10 bg-[linear-gradient(90deg,rgba(255,255,255,.04)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px)] bg-[length:32px_32px]`} />
             {showLabel ? (
-                <div className={`${fixedStage ? "left-2 top-2" : "left-6 top-6"} absolute rounded border border-white/10 bg-black/30 px-2 py-1 text-2xs text-white/70`}>
+                <div className={`${fixedStage ? "left-2 top-2" : "left-6 top-6"} absolute rounded-md border border-white/10 bg-black/30 px-2 py-1 text-2xs text-white/70`}>
                     {t("motion.preview.stageLabel")}
                 </div>
             ) : null}
@@ -110,7 +110,7 @@ export function StoryMotionStagePreview(props: {
                 {interactive ? (
                     <>
                         <div
-                            className="absolute -right-2 -bottom-2 h-4 w-4 cursor-nwse-resize rounded border border-white/70 bg-primary"
+                            className="absolute -right-2 -bottom-2 h-4 w-4 cursor-nwse-resize rounded-md border border-white/70 bg-primary"
                             style={{ transform: `scale(${handleInvX}, ${handleInvY})`, transformOrigin: "center" }}
                             onPointerDown={event => props.onPointerDrag(event, "zoom")}
                             title={t("motion.preview.dragZoom")}
@@ -179,13 +179,13 @@ function PreviewContent(props: {
     }
     if (props.target.kind === "layer") {
         return (
-            <div className="grid h-full w-full place-items-center rounded border border-dashed border-primary/50 bg-primary/10 px-4 text-xs font-medium text-primary">
+            <div className="grid h-full w-full place-items-center rounded-md border border-dashed border-primary/50 bg-primary/10 px-4 text-xs font-medium text-primary">
                 {props.target.label}
             </div>
         );
     }
     return (
-        <div className="grid h-full w-full place-items-center rounded border border-primary/40 bg-primary/15 px-3 text-xs font-medium text-primary">
+        <div className="grid h-full w-full place-items-center rounded-md border border-primary/40 bg-primary/15 px-3 text-xs font-medium text-primary">
             {props.target.label}
         </div>
     );
@@ -207,10 +207,10 @@ function targetFrameClass(
     }
     const boxed = `${base} shadow-[0_12px_40px_rgba(0,0,0,.28)]`;
     if (kind === "text") {
-        return `${boxed} min-h-12 min-w-32 max-w-80 rounded border border-primary/30 bg-black/20`;
+        return `${boxed} min-h-12 min-w-32 max-w-80 rounded-md border border-primary/30 bg-black/20`;
     }
     if (kind === "layer") {
-        return `${boxed} h-40 w-56 rounded`;
+        return `${boxed} h-40 w-56 rounded-md`;
     }
-    return `${boxed} h-40 w-32 rounded`;
+    return `${boxed} h-40 w-32 rounded-md`;
 }

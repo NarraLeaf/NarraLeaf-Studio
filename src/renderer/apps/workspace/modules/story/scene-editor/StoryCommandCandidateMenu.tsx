@@ -107,7 +107,7 @@ export function StoryCommandCandidateMenu(props: {
             }}
         >
             {props.items.length === 0 ? (
-                <button type="button" className="w-full rounded px-2 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
+                <button type="button" className="w-full rounded-md px-2 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
                     {t("story.rows.noCandidates")}
                 </button>
             ) : (
@@ -122,7 +122,7 @@ export function StoryCommandCandidateMenu(props: {
                             aria-selected={active}
                             data-candidate-key={item.key}
                             className={[
-                                "flex w-full items-center gap-2 rounded px-2 py-2 text-left transition-colors",
+                                "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
                                 active ? "bg-primary/15 text-fg" : "hover:bg-fill",
                             ].join(" ")}
                             onMouseEnter={() => props.onHighlight(item.key)}

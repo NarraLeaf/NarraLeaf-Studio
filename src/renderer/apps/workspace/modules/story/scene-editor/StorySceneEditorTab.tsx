@@ -154,7 +154,7 @@ function StorySceneOverviewBlock(props: {
                 )}
                 {collapsed ? (
                     <>
-                        <span className="relative h-9 w-16 shrink-0 overflow-hidden rounded border border-edge bg-surface">
+                        <span className="relative h-9 w-16 shrink-0 overflow-hidden rounded-md border border-edge bg-surface">
                             {url ? (
                                 <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
                             ) : (
@@ -1195,7 +1195,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         title={t("story.view.narrativeOnly")}
                         aria-label={t("story.view.narrativeOnly")}
                         aria-pressed={editor.narrativeOnly}
-                        className={["rounded p-1.5 transition-colors", editor.narrativeOnly ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
+                        className={["rounded-md p-1.5 transition-colors", editor.narrativeOnly ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
                     >
                         <AlignLeft className="h-4 w-4" />
                     </button>
@@ -1205,7 +1205,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         title={t("story.view.comfortableDensity")}
                         aria-label={t("story.view.comfortableDensity")}
                         aria-pressed={editor.density === "comfortable"}
-                        className={["rounded p-1.5 transition-colors", editor.density === "comfortable" ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
+                        className={["rounded-md p-1.5 transition-colors", editor.density === "comfortable" ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
                     >
                         <StretchVertical className="h-4 w-4" />
                     </button>
@@ -1214,7 +1214,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         onClick={() => setManualOpen(true)}
                         title={t("story.commandManual.open")}
                         aria-label={t("story.commandManual.open")}
-                        className="rounded p-1.5 text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                        className="rounded-md p-1.5 text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                     >
                         <BookOpen className="h-4 w-4" />
                     </button>

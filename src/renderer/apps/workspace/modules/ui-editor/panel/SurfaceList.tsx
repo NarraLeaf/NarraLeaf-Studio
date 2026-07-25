@@ -167,7 +167,7 @@ export function SurfaceList({
                             </div>
                             <button
                                 type="button"
-                                className="p-1 rounded hover:bg-fill text-fg-muted opacity-0 group-hover:opacity-100"
+                                className="p-1 rounded-md hover:bg-fill text-fg-muted opacity-0 group-hover:opacity-100"
                                 onClick={event => onOpenMenu(event, surface)}
                                 title={t("uiEditor.panel.surfaceActions", { label: typeLabel })}
                             >

@@ -45,7 +45,7 @@ export function ConditionRowToggles({ conditions, disabled, onChange }: Props) {
                         title={t("widgetAppearance.conditions.toggleTitle", { condition: conditionLabel })}
                         onClick={() => toggle(key)}
                         className={[
-                            "rounded px-1.5 py-0.5 border transition",
+                            "rounded-md px-1.5 py-0.5 border transition",
                             active
                                 ? state === true
                                     ? "border-primary/60 bg-primary/15 text-primary"

@@ -63,7 +63,7 @@ export function SurfaceBlueprintEntrySection({ data }: CustomFieldProps<SceneEdi
                 <BlueprintLayerPreview model={previewModel} />
             </button>
             {summary.brokenBindingCount > 0 ? (
-                <p className="text-2xs text-warning rounded border border-warning/25 bg-warning/10 px-2 py-1.5">
+                <p className="text-2xs text-warning rounded-md border border-warning/25 bg-warning/10 px-2 py-1.5">
                     {tn("properties.blueprintEntry.brokenBindings", summary.brokenBindingCount)}
                 </p>
             ) : null}

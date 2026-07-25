@@ -90,7 +90,7 @@ function ManualRow(props: { entry: StoryCommandManualEntry; aliasesLabel: string
     const group = getCommandGroup(entry.group);
     const Icon = group.icon;
     return (
-        <div className="flex items-start gap-2 rounded px-2 py-1.5">
+        <div className="flex items-start gap-2 rounded-md px-2 py-1.5">
             <Icon className="mt-0.5 h-4 w-4 shrink-0" style={{ color: group.iconColor }} />
             <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">

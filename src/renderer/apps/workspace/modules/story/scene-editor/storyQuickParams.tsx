@@ -120,7 +120,7 @@ function displayValue(value: QuickParamValue, sceneName: (id: string | undefined
     }
 }
 
-const TOKEN_CLASS = "cursor-pointer rounded px-0.5 underline decoration-dotted decoration-fg-subtle/60 underline-offset-2 transition-colors hover:bg-fill hover:text-fg";
+const TOKEN_CLASS = "cursor-pointer rounded-md px-0.5 underline decoration-dotted decoration-fg-subtle/60 underline-offset-2 transition-colors hover:bg-fill hover:text-fg";
 
 /**
  * One piece of a committed row's overview projection (WI-2 / bible M5): either a run of plain text
@@ -321,7 +321,7 @@ function QuickParamPopover(props: {
                                 <button
                                     key={ms}
                                     type="button"
-                                    className="h-6 rounded border border-edge bg-surface px-1.5 text-2xs text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                                    className="h-6 rounded-md border border-edge bg-surface px-1.5 text-2xs text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                                     onClick={() => props.onApply(param.apply({ kind: "duration", ms }))}
                                 >
                                     {formatStorySecondsValue(ms)}s
@@ -355,7 +355,7 @@ function QuickParamPopover(props: {
                             <button
                                 key={scene.id}
                                 type="button"
-                                className={`flex w-full items-center rounded px-2 py-1.5 text-left text-sm transition-colors ${selected ? "bg-primary/15 text-fg" : "text-fg-muted hover:bg-fill hover:text-fg"}`}
+                                className={`flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm transition-colors ${selected ? "bg-primary/15 text-fg" : "text-fg-muted hover:bg-fill hover:text-fg"}`}
                                 onClick={() => { props.onApply(param.apply({ kind: "scene", sceneId: scene.id })); props.onClose(); }}
                             >
                                 <span className="truncate">{scene.name || scene.id}</span>

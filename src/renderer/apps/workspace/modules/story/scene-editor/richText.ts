@@ -2,17 +2,17 @@ import type { StoryInlineEvent, StoryInterpolationRef, StoryRichRun, StoryTextMa
 import { formatStorySecondsLabel, storyMsToSeconds } from "@shared/utils/storyTime";
 
 /** Pause chip class (a literal so Tailwind's content scan can see it). */
-const PAUSE_CHIP_CLASS = "story-rt-pause mx-0.5 inline-flex select-none items-center rounded bg-primary/20 px-1 py-0.5 align-middle text-2xs font-medium text-primary";
+const PAUSE_CHIP_CLASS = "story-rt-pause mx-0.5 inline-flex select-none items-center rounded-md bg-primary/20 px-1 py-0.5 align-middle text-2xs font-medium text-primary";
 const PAUSE_CHIP_INTERACTIVE_CLASS = "cursor-pointer hover:bg-primary/30";
 const PAUSE_ICON_SVG = '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="14" y="4" width="4" height="16" rx="1"></rect><rect x="6" y="4" width="4" height="16" rx="1"></rect></svg>';
 
 /** Interpolation chip class (variable / blueprint value). */
-const INTERP_CHIP_CLASS = "story-rt-interp mx-0.5 inline-flex select-none items-center rounded bg-success/20 px-1 py-0.5 align-middle text-2xs font-medium text-success";
+const INTERP_CHIP_CLASS = "story-rt-interp mx-0.5 inline-flex select-none items-center rounded-md bg-success/20 px-1 py-0.5 align-middle text-2xs font-medium text-success";
 const INTERP_CHIP_INTERACTIVE_CLASS = "cursor-pointer hover:bg-success/30";
 const INTERP_ICON_SVG = '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1"></path><path d="M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"></path></svg>';
 
 /** Inline reveal-time event chip class (expression switch / SE). */
-const EVENT_CHIP_CLASS = "story-rt-event mx-0.5 inline-flex select-none items-center rounded bg-warning/20 px-1 py-0.5 align-middle text-2xs font-medium text-warning";
+const EVENT_CHIP_CLASS = "story-rt-event mx-0.5 inline-flex select-none items-center rounded-md bg-warning/20 px-1 py-0.5 align-middle text-2xs font-medium text-warning";
 const EVENT_CHIP_INTERACTIVE_CLASS = "cursor-pointer hover:bg-warning/30";
 /** lucide "smile" — the expression-switch token. */
 const EVENT_FACE_ICON_SVG = '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>';

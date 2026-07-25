@@ -108,7 +108,7 @@ export function VoiceRow(props: VoiceRowProps) {
                 <>
                     <button
                         type="button"
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-muted hover:bg-fill hover:text-fg"
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
                         title={isPlaying ? strings.stop : strings.play}
                         onClick={props.onTogglePlay}
                         disabled={!asset}
@@ -130,7 +130,7 @@ export function VoiceRow(props: VoiceRowProps) {
                             state === "approved" ? (
                                 <button
                                     type="button"
-                                    className="flex h-6 w-6 items-center justify-center rounded text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-fg group-hover:opacity-100"
+                                    className="flex h-6 w-6 items-center justify-center rounded-md text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-fg group-hover:opacity-100"
                                     title={strings.reject}
                                     onClick={props.onReturn}
                                 >
@@ -139,7 +139,7 @@ export function VoiceRow(props: VoiceRowProps) {
                             ) : (
                                 <button
                                     type="button"
-                                    className="flex h-6 w-6 items-center justify-center rounded text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-success group-hover:opacity-100"
+                                    className="flex h-6 w-6 items-center justify-center rounded-md text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-success group-hover:opacity-100"
                                     title={strings.approve}
                                     onClick={props.onApprove}
                                     disabled={state === "stale"}
@@ -152,7 +152,7 @@ export function VoiceRow(props: VoiceRowProps) {
                                 <button
                                     ref={assignRef}
                                     type="button"
-                                    className="flex h-6 w-6 items-center justify-center rounded text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-fg group-hover:opacity-100"
+                                    className="flex h-6 w-6 items-center justify-center rounded-md text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-fg group-hover:opacity-100"
                                     title={strings.replace}
                                     onClick={() => assignRef.current && props.onAssign(assignRef.current)}
                                 >
@@ -160,7 +160,7 @@ export function VoiceRow(props: VoiceRowProps) {
                                 </button>
                                 <button
                                     type="button"
-                                    className="flex h-6 w-6 items-center justify-center rounded text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-danger group-hover:opacity-100"
+                                    className="flex h-6 w-6 items-center justify-center rounded-md text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-danger group-hover:opacity-100"
                                     title={strings.remove}
                                     onClick={props.onRemove}
                                 >
@@ -174,7 +174,7 @@ export function VoiceRow(props: VoiceRowProps) {
                 <button
                     ref={assignRef}
                     type="button"
-                    className="flex h-7 shrink-0 items-center gap-1 rounded border border-dashed border-edge px-2 text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg"
+                    className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-dashed border-edge px-2 text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg"
                     title={strings.assign}
                     onClick={() => assignRef.current && props.onAssign(assignRef.current)}
                 >

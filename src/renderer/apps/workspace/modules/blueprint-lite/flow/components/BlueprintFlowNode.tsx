@@ -134,15 +134,15 @@ export type BlueprintFlowNodeData = {
     onBindElementLiteral?: (nodeId: string) => void;
 };
 
-const EXEC_HANDLE_CLASS = "!h-2 !w-2 !border border-edge-strong !bg-cyan-500";
+const EXEC_HANDLE_CLASS = "!h-2 !w-2 !border border-edge-strong !bg-primary";
 const DATA_HANDLE_CLASS = "!h-2 !w-2 !border border-amber-200/35 !bg-amber-500";
 const PIN_LABEL_CLASS = "text-fg-muted";
 const OPTIONAL_UNWIRED_PIN_LABEL_CLASS = "text-fg-subtle italic";
 
 const CARD_INPUT =
-    "rounded border-edge bg-surface px-1.5 py-1 font-mono text-2xs";
+    "rounded-md border-edge bg-surface px-1.5 py-1 font-mono text-2xs";
 const CARD_ICON_BUTTON =
-    "nodrag !h-4 !w-4 shrink-0 !gap-0 rounded !p-0.5 text-fg-muted hover:bg-fill-subtle hover:text-fg-muted";
+    "nodrag !h-4 !w-4 shrink-0 !gap-0 rounded-md !p-0.5 text-fg-muted hover:bg-fill-subtle hover:text-fg-muted";
 
 /** Hide native number steppers — keep same look as other card fields (WebKit + Firefox). */
 const INPUT_NUMBER_NO_SPINNER =
@@ -209,7 +209,7 @@ function ImageAssetPickerCard({
                     ref={anchorRef}
                     type="button"
                     disabled={disabled}
-                    className={`group relative flex w-full min-w-0 overflow-hidden rounded border border-edge bg-surface text-left transition-colors ${
+                    className={`group relative flex w-full min-w-0 overflow-hidden rounded-md border border-edge bg-surface text-left transition-colors ${
                         disabled ? "cursor-default opacity-80" : "hover:border-primary/35 hover:bg-fill-subtle"
                     } ${heightClass}`}
                     title={assetId ? `${label} (${assetId})` : t("blueprint.image.selectAsset")}
@@ -252,7 +252,7 @@ function ImageAssetPickerCard({
                 {assetId && !disabled ? (
                     <button
                         type="button"
-                        className="absolute right-1 top-1 rounded bg-black/55 p-0.5 text-white/80 hover:bg-black/80 hover:text-white"
+                        className="absolute right-1 top-1 rounded-md bg-black/55 p-0.5 text-white/80 hover:bg-black/80 hover:text-white"
                         title={t("blueprint.image.clear")}
                         aria-label={t("blueprint.image.clear")}
                         onMouseDown={stopFlowNodePointerBubble}
@@ -1058,7 +1058,7 @@ function KeyboardBindingCardControl({
     return (
         <div ref={rootRef} className="nodrag relative min-w-0">
             {listening ? (
-                <div className="absolute bottom-full left-0 z-[60] mb-1 w-full rounded border border-primary/35 bg-surface-overlay px-2 py-1.5 text-left shadow-lg ring-1 ring-black/35">
+                <div className="absolute bottom-full left-0 z-[60] mb-1 w-full rounded-lg border border-primary/35 bg-surface-overlay px-2 py-1.5 text-left shadow-lg ring-1 ring-black/35">
                     <div className="truncate font-mono text-2xs text-primary">
                         {preview || t("blueprint.keyboard.pressKey")}
                     </div>
@@ -1067,7 +1067,7 @@ function KeyboardBindingCardControl({
             ) : null}
             <button
                 type="button"
-                className={`flex min-h-[26px] w-full min-w-0 items-center gap-1.5 rounded border px-2 py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 ${
+                className={`flex min-h-[26px] w-full min-w-0 items-center gap-1.5 rounded-md border px-2 py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 ${
                     listening
                         ? "border-primary/45 bg-primary/10 text-primary"
                         : "border-edge bg-surface text-fg hover:border-primary/35 hover:bg-fill-subtle"
@@ -1092,7 +1092,7 @@ function KeyboardBindingCardControl({
             {displayValue ? (
                 <button
                     type="button"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-fg-subtle hover:bg-fill hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-fg-subtle hover:bg-fill hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
                     title={t("blueprint.keyboard.clear")}
                     aria-label={t("blueprint.keyboard.clear")}
                     onMouseDown={event => {
@@ -1468,7 +1468,7 @@ function CardNumberInput({
     return (
         <div className="relative">
             <input
-                className={`nodrag block w-full rounded border border-edge bg-surface px-1.5 py-1 font-mono text-2xs text-fg transition-colors focus:border-primary focus:outline-none ${
+                className={`nodrag block w-full rounded-md border border-edge bg-surface px-1.5 py-1 font-mono text-2xs text-fg transition-colors focus:border-primary focus:outline-none ${
                     unit ? "pr-8" : ""
                 } ${disabled ? "cursor-not-allowed opacity-55" : ""} ${INPUT_NUMBER_NO_SPINNER}`}
                 type="text"
@@ -2007,7 +2007,7 @@ function BlueprintCommentNodeCard({
 
     return (
         <div
-            className="group relative flex flex-col overflow-hidden rounded border shadow-lg backdrop-blur-[1px]"
+            className="group relative flex flex-col overflow-hidden rounded-md border shadow-lg backdrop-blur-[1px]"
             style={{
                 width: draftSize.width,
                 height: draftSize.height,
@@ -2131,7 +2131,7 @@ function BlueprintElementLiteralNodeCard({
             <div className="mx-2 my-1.5">
                 <button
                     type="button"
-                    className="nodrag block w-full overflow-hidden rounded border border-edge bg-fill-subtle p-1.5 text-left transition-colors hover:border-primary/35 hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
+                    className="nodrag block w-full overflow-hidden rounded-md border border-edge bg-fill-subtle p-1.5 text-left transition-colors hover:border-primary/35 hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
                     aria-label={elementPreview ? t("blueprint.element.selectNamed", { name: boundLabel }) : t("blueprint.element.select")}
                     onMouseDown={stopFlowNodePointerBubble}
                     onPointerDown={stopFlowNodePointerBubble}
@@ -2185,7 +2185,7 @@ function BlueprintImageAssetLiteralNodeCard({
                 firstNodeError
                     ? "border-danger/85 ring-1 ring-danger/40"
                     : selected
-                      ? "border-cyan-400/80 ring-1 ring-cyan-500/40"
+                      ? "border-primary/80 ring-1 ring-primary/40"
                       : "border-edge"
             }`}
             title={firstNodeError?.message}
@@ -2341,7 +2341,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
         <Button
             type="button"
             title={catalog.dynamicInputPinAddLabel ?? t("blueprint.pin.addInput")}
-            className="nodrag mt-0.5 flex w-full items-center justify-center rounded border border-dashed border-edge !py-0.5 text-fg-subtle hover:border-edge-strong hover:bg-fill-subtle hover:text-fg-muted"
+            className="nodrag mt-0.5 flex w-full items-center justify-center rounded-md border border-dashed border-edge !py-0.5 text-fg-subtle hover:border-edge-strong hover:bg-fill-subtle hover:text-fg-muted"
             variant="ghost"
             size="sm"
             aria-label={catalog.dynamicInputPinAddLabel ?? t("blueprint.pin.addInput")}
@@ -2415,12 +2415,12 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                 firstNodeError
                     ? "border-danger/85 ring-1 ring-danger/40"
                     : selected
-                      ? "border-cyan-400/80 ring-1 ring-cyan-500/40"
+                      ? "border-primary/80 ring-1 ring-primary/40"
                       : "border-edge"
-            } ${!firstNodeError && isEventHead ? "border-l-cyan-400/70" : ""} ${
+            } ${!firstNodeError && isEventHead ? "border-l-primary/70" : ""} ${
                 !firstNodeError && isVarDeclare ? "border-l-amber-500/80" : ""
             } ${
-                !firstNodeError && isTerminalNode ? "border-r-cyan-400/70" : ""
+                !firstNodeError && isTerminalNode ? "border-r-primary/70" : ""
             }`}
             title={firstNodeError?.message}
             aria-invalid={Boolean(firstNodeError)}

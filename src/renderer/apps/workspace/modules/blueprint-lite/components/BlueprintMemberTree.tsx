@@ -154,12 +154,12 @@ function BlueprintVariableRow({
     }, [blueprintId, draftName, localBp, v.id, v.name]);
 
     return (
-        <div className="group rounded border border-edge bg-surface-sunken px-2 py-1.5 space-y-1.5">
+        <div className="group rounded-md border border-edge bg-surface-sunken px-2 py-1.5 space-y-1.5">
             <div className="flex items-center justify-between gap-1">
                 <div className="flex min-w-0 items-center gap-1.5">
                     <span className={`text-2xs ${accentClass}`}>{scopeLabel}</span>
                     {v.valueType ? (
-                        <span className="truncate rounded border border-edge bg-fill-subtle px-1 py-0.5 font-mono text-2xs text-fg-muted">
+                        <span className="truncate rounded-md border border-edge bg-fill-subtle px-1 py-0.5 font-mono text-2xs text-fg-muted">
                             {v.valueType}
                         </span>
                     ) : null}
@@ -168,7 +168,7 @@ function BlueprintVariableRow({
                     type="button"
                     title={t("blueprint.memberTree.deleteVariableLabel", { name: v.name })}
                     aria-label={t("blueprint.memberTree.deleteVariableLabel", { name: v.name })}
-                    className="-m-0.5 rounded p-1 text-danger/90 opacity-0 transition-opacity hover:bg-danger/15 hover:text-danger group-hover:opacity-100"
+                    className="-m-0.5 rounded-md p-1 text-danger/90 opacity-0 transition-opacity hover:bg-danger/15 hover:text-danger group-hover:opacity-100"
                     onClick={() => {
                         if (!uiService) {
                             return;
@@ -248,7 +248,7 @@ function BlueprintPersistentVariableRow({
     }, [draftName, historyBlueprintId, localBp, v.id, v.name]);
 
     return (
-        <div className="group rounded border border-edge bg-surface-sunken px-2 py-1.5 space-y-1.5">
+        <div className="group rounded-md border border-edge bg-surface-sunken px-2 py-1.5 space-y-1.5">
             <div className="flex items-center justify-between gap-1">
                 <label htmlFor={`persistent-variable-name-${v.id}`} className="text-2xs font-medium text-fg-subtle">
                     {t("common.name")}
@@ -257,7 +257,7 @@ function BlueprintPersistentVariableRow({
                     type="button"
                     title={t("blueprint.memberTree.deletePersistentVariableLabel", { name: v.name })}
                     aria-label={t("blueprint.memberTree.deletePersistentVariableLabel", { name: v.name })}
-                    className="-m-0.5 rounded p-1 text-danger/90 opacity-0 transition-opacity hover:bg-danger/15 hover:text-danger group-hover:opacity-100"
+                    className="-m-0.5 rounded-md p-1 text-danger/90 opacity-0 transition-opacity hover:bg-danger/15 hover:text-danger group-hover:opacity-100"
                     onClick={() => {
                         if (!uiService) {
                             return;
@@ -735,7 +735,7 @@ export function BlueprintMemberTree({
                                 <li key={id}>
                                     <button
                                         type="button"
-                                        className={`w-full rounded px-2 py-1 text-left font-mono text-2xs ${
+                                        className={`w-full rounded-md px-2 py-1 text-left font-mono text-2xs ${
                                             layerActive(id)
                                                 ? "bg-primary/15 text-fg"
                                                 : "text-fg-muted hover:bg-fill-subtle"
