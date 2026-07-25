@@ -1,4 +1,4 @@
-import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
+import { FsRejectError, FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { IFileSystemService, WorkspaceContext } from "../services";
 import { Service } from "../Service";
@@ -7,7 +7,53 @@ import { AppHost, AppProtocol } from "@shared/types/constants";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { getInterface } from "@/lib/app/bridge";
 
+/**
+ * The result of one attempt to put bytes on disk, reported for every write that goes through this
+ * module.
+ *
+ * This is the only place in the renderer that knows both *which file* a save was aiming at and
+ * whether it landed - each document service only sees its own `FsRequestResult` and, before
+ * SaveStatusService, most of them dropped it. Observing here means one subscriber can report every
+ * failing path without each service having to remember to say so.
+ */
+export type FsWriteOutcome = {
+    path: string;
+    ok: boolean;
+    error?: FsRejectError;
+};
+
+const writeObservers = new Set<(outcome: FsWriteOutcome) => void>();
+
+function reportWriteOutcome(path: string, result: FsRequestResult<void>): FsRequestResult<void> {
+    if (writeObservers.size > 0) {
+        const outcome: FsWriteOutcome = result.ok ? { path, ok: true } : { path, ok: false, error: result.error };
+        for (const observer of writeObservers) {
+            try {
+                observer(outcome);
+            } catch (error) {
+                // An observer must never be able to turn a successful write into a failed one.
+                console.warn("[FileSystem] write observer threw", error);
+            }
+        }
+    }
+    return result;
+}
+
 export class BaseFileSystemService {
+    /**
+     * Watch every write this module performs. Returns an unsubscribe.
+     *
+     * Deliberately module-level rather than per-workspace: the writes themselves are static, and a
+     * subscriber that outlives a project switch is a subscriber that still reports the writes made
+     * while the next project loads.
+     */
+    public static observeWrites(observer: (outcome: FsWriteOutcome) => void): () => void {
+        writeObservers.add(observer);
+        return () => {
+            writeObservers.delete(observer);
+        };
+    }
+
     public static async stat(path: string): Promise<FsRequestResult<FileStat>> {
         return this.wrapIPCError(await appPrivilegedFacade.fs.stat(path));
     }
@@ -38,19 +84,19 @@ export class BaseFileSystemService {
     }
 
     public static async write(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
-        return this.put(path, data, encoding);
+        return reportWriteOutcome(path, await this.put(path, data, encoding));
     }
 
     public static async writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>> {
-        return this.putRaw(path, data);
+        return reportWriteOutcome(path, await this.putRaw(path, data));
     }
 
     public static async ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
-        return this.wrapIPCError(await appPrivilegedFacade.fs.ensureRegularFile(path, data, encoding));
+        return reportWriteOutcome(path, this.wrapIPCError(await appPrivilegedFacade.fs.ensureRegularFile(path, data, encoding)));
     }
 
     public static async writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
-        return this.wrapIPCError(await appPrivilegedFacade.fs.writeFileNoFollow(path, data, encoding));
+        return reportWriteOutcome(path, this.wrapIPCError(await appPrivilegedFacade.fs.writeFileNoFollow(path, data, encoding)));
     }
 
     public static async recoverCorruptedJsonFile(path: string, replacement: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
@@ -251,6 +297,11 @@ export class BaseFileSystemService {
 
 export class FileSystemService extends Service<FileSystemService> implements IFileSystemService {
     protected init(_ctx: WorkspaceContext): Promise<void> | void {}
+
+    /** See {@link BaseFileSystemService.observeWrites}. */
+    public observeWrites(observer: (outcome: FsWriteOutcome) => void): () => void {
+        return BaseFileSystemService.observeWrites(observer);
+    }
 
     public async stat(path: string): Promise<FsRequestResult<FileStat>> {
         return BaseFileSystemService.stat(path);

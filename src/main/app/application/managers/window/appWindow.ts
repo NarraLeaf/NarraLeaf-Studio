@@ -449,10 +449,26 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
             this.getApp().logger.warn(`[Window] Blocked webview attachment for ${this.getWindowType()}: ${params.src ?? ""}`);
         });
 
+        // A hung window and a busy one look identical from the outside; the log is the only place
+        // the difference is recorded, and "it froze for 40 seconds and came back" is exactly the
+        // report that is impossible to act on without a timestamp.
+        win.on("unresponsive", () => {
+            this.getApp().logger.warn(`[Window] The ${this.getWindowType()} window stopped responding`);
+        });
+        win.on("responsive", () => {
+            this.getApp().logger.info(`[Window] The ${this.getWindowType()} window is responding again`);
+        });
+
         webContents.on("render-process-gone", (_event, details) => {
             if (!details.reason || details.reason === "clean-exit") {
                 return;
             }
+            // The window is about to be destroyed with no dialog and no trace. Say so somewhere
+            // that outlives it - the emitted event below has no subscribers.
+            this.getApp().logger.error(
+                `[Crash] The ${this.getWindowType()} window's renderer exited: ${details.reason} `
+                + `(exit code ${details.exitCode})`,
+            );
             this.getEvents().emit("render-process-gone", this, details.reason, `Exit Code: ${details.exitCode}`);
 
             win.destroy();

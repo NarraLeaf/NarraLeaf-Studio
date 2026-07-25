@@ -41,11 +41,13 @@ const BUILTIN_CHANNEL_LABEL_KEYS: Partial<Record<ConsoleChannelId, TranslationKe
     blueprint: "console.channels.blueprint",
     build: "console.channels.build",
     story: "console.channels.story",
+    storage: "console.channels.storage",
 };
 const BUILTIN_CHANNEL_DESCRIPTION_KEYS: Partial<Record<ConsoleChannelId, TranslationKey>> = {
     blueprint: "console.channels.blueprintDescription",
     build: "console.channels.buildDescription",
     story: "console.channels.storyDescription",
+    storage: "console.channels.storageDescription",
 };
 
 function channelLabel(t: (key: TranslationKey) => string, channel: ConsoleChannelDefinition): string {

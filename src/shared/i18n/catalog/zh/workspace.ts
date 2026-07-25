@@ -258,6 +258,9 @@ export const workspace = {
             openConsole: "打开控制台",
             unsavedChanges: "未保存的更改",
             saveNow: "立即保存",
+            saving: "保存中…",
+            saveFailed: "保存失败",
+            retrySave: "立即重试保存",
             resetZoom: "重置缩放到 100%",
             shortcuts: "快捷键速查",
             words: "{count} 字",
@@ -274,6 +277,27 @@ export const workspace = {
                 notifications: "通知",
                 theme: "主题切换",
                 zoom: "缩放比例",
+            },
+        },
+        // 保存反馈：文件写不进去时弹出的常驻提示，以及「存储」控制台频道的日志行。
+        // 失败的写入会按退避阶梯一直重试、永不放弃，所以文案说的是「仍在重试」而不是「已丢失」。
+        save: {
+            failedTitle: "无法保存 {file}",
+            failedDetailTransient: "正在后台继续重试。{error}",
+            failedDetailPermanent: "这一条需要你处理——在修复之前重试也无济于事。{error}",
+            retry: "立即重试",
+            consoleFailed: "写入失败（{code}，第 {attempt} 次尝试）：{path} - {error}",
+            consoleRecovered: "写入成功：{path}",
+            flushFailed: "{label} 刷盘失败：{error}",
+            // 自动保存对象的名称，刷盘失败时使用。
+            stores: {
+                uiDocument: "界面文档",
+                uiGraph: "界面蓝图",
+                story: "故事",
+                localization: "本地化",
+                voice: "语音库",
+                variables: "变量注册表",
+                characters: "角色",
             },
         },
         // 快捷键自定义（设置 tab）+「?」速查浮层。
