@@ -21,10 +21,10 @@ plan: 2026-07-26-004-plan-ui-professionalization.md
 
 | | |
 |---|---|
-| Studio `develop` | `a97e5471`，已推送，0 ahead |
+| Studio `develop` | `1e10c170`，已推送，0 ahead |
 | 引擎 `narraleaf-react` | `dev_nomen` @ `1ea5846` = **0.17.1 已由用户发版**，npm latest 0.17.1 |
 | Studio 依赖 | `^0.17.1`，node_modules 已是 npm 生产包（无 sourcemap）——旧的"dist 是开发构建"欠账**已闭合** |
-| 工作树 | 干净，**除了 9 个属于其他 session 的未提交文件**（见 §4） |
+| 工作树 | **完全干净**——原先 9 个外来未提交文件已于 2026-07-26 提交为新基线（见 §4） |
 | 本地已合并分支 | `feat/ui-u0-blocking-fixes` / `feat/ui-u0-1-surface-opacity` / `feat/ui-u1-reading-layer` / `feat/ui-u3a-asset-browsing`，可删可留 |
 
 ## 2. 已完成
@@ -59,26 +59,25 @@ plan: 2026-07-26-004-plan-ui-professionalization.md
 一条我自己判的、可推翻：U1 让 compact 组头行 36→44px，一屏可读行数 20→19（约 5%）。
 我判"一条基线"优先、判据让位。用户未反对但也未明确认可。
 
-## 4. 共享检出：最危险的一条
+## 4. 共享检出：陷阱与当前基线
 
-工作树里有**其他 session 的 9 个未提交文件**（dock 分隔条重做 + 插入槽虚拟化修复 + 预览浮窗 + dev-electron）：
+**工作树现在是干净的。** 2026-07-26 用户确认无其他 agent 在跑，我把那 9 个未提交文件
+按关注点分四次提交并推送，作为新的干净基线（`f4ac3556` dock 分隔线 / `20309da0` 预览浮窗
+测量向下取整 / `5fb208e3` 插入槽宿主行提前重测 / `1e10c170` dev 构建并行化 + 补上
+`compileWorker.js`）。提交前我读过全部 9 份 diff、跑了 lint + `build:apps:dev`，
+并做了真机烟测：三条 dock 分隔线各 1px 同色、一处接缝一条线、布局完好。
 
-```
-project/app/dev-electron.js
-src/renderer/apps/workspace/components/layout/{BottomPanel,LeftSidebar,RightSidebar,WorkspaceLayout}.tsx
-src/renderer/apps/workspace/components/ui/ResizableHandle.tsx
-src/renderer/apps/workspace/modules/story/scene-editor/StorySceneEditorTab.tsx
-src/renderer/apps/workspace/modules/story/scene-editor/preview/StoryScenePreviewFloat.tsx
-src/renderer/styles/styles.css
-```
+**但陷阱本身依然成立，下一任必须继续防**：只要工作树里出现别人的未提交改动，
+`yarn dev` 看到的画面就包含它们的效果。
 
-**U1 上真的踩了，代价是一次回退**：执行者把提交的代码适配到只存在于这些未提交改动里的
+**U1 上真的踩了，代价是一次回退**：执行者把提交的代码适配到当时只存在于未提交改动里的
 `.nl-dock-divider` 上。合进 develop 会得到没有宽度/填充/边框的分隔条，而
 **lint、测试、执行者的截图全部通过**——因为在他们的 dev 构建里那些样式是活的。
 
 **U3a 执行者给出了正确解法，沿用它**：`git archive HEAD` 到隔离树（node_modules 用 junction），
-在**不含那 9 个改动的树上**跑 tsc + build + ratchet。这是唯一能真正抓住这个失败模式的检查。
-每张卡都要写进 §0.1 并要求报告里给审计过程，不只给结论。
+在**不含未提交改动的树上**跑 tsc + build + ratchet。这是唯一能真正抓住这个失败模式的检查。
+每次开卡先 `git status`：**只要有未提交的外来文件，就把清单和这条审计要求写进卡的 §0.1**，
+并要求报告里给审计过程，不只给结论。
 
 其余共享检出铁律：逐文件 `git add`（**禁 `git add -A`**）、禁 `git stash`、
 **禁止 agent 执行 `git worktree remove`**。
@@ -119,7 +118,7 @@ src/renderer/styles/styles.css
 - **U3b 资产管理层**（触碰写路径，风险最高，单独验收）
   - 就地重命名/删除/移组、批量选择与操作、替换资产内容（保 id 换文件）、标签管理、导入队列
   - **删除必须经 `ReferenceService` 反查并在被引用时明确拦截**——那是玩家侧缺资产的唯一防线
-  - 顺手：删掉 `AssetOverviewCommand` 空壳的挂载（在 `WorkspaceLayout.tsx`，等它自由）
+  - 顺手：删掉 `AssetOverviewCommand` 空壳的挂载（在 `WorkspaceLayout.tsx`，**该文件现已提交、可自由改**）
 - **U4 Dev Mode 调试台**
   - 时间线与编辑器**共用一套 describe**（删 `storyRuntimeDebugModel.describeStoryBlock` 这套弱实现，
     把编辑器投影提到可共享层）；行要带类别色与说话人
