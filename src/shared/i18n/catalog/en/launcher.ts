@@ -62,6 +62,9 @@ export const launcher = {
         permissions: "Permissions",
         noPermissions: "No special permissions",
         updateAvailable: "Update available",
+        // Shown when the entry's studioVersion range excludes this build, so the
+        // install/update button is withheld rather than failing in the main process.
+        requiresStudio: "This plugin requires Studio {range}. You are running {version}.",
         openReleasePage: "View release notes",
         homepage: "Homepage",
         field: {
@@ -82,6 +85,7 @@ export const launcher = {
             install: "Install",
             installed: "Installed",
             update: "Update",
+            needsStudio: "Needs Studio {range}",
             emptyList: "No plugins available in the registry.",
             offline: "Couldn't reach the plugin registry.",
             retry: "Try again",
