@@ -36,6 +36,18 @@ orchestrator 在 develop 上量过：
 - 行类别色条 `2px opacity .55` ≈1.6:1，同样低于 3:1。
 - 头像容器 24px，占编辑器宽度 1.7%；差分头像/裁剪选区做过的全部工作在这个尺寸下不可见。
 
+### 2.1 改前基线（orchestrator 亲测，develop `a1278e70`，demo3 `First Day`，壁纸开启，`editor.surfaceOpacity` 100，背板 `rgb(11,13,18)`）
+
+| 元素 | 实测值 | 有效对比度 | 目标 |
+|---|---|---|---|
+| 组内归属导轨（第 7、8 行，静息态、鼠标移开） | `1px rgba(255,255,255,0.1)` | **1.27 : 1** | ≥ 3 : 1 |
+| 行类别色条（第 2、12 行） | `2px`，`opacity .55` | **2.87 : 1** | ≥ 3 : 1 |
+| 头像容器 | `24 × 24px` | — | compact ≥28、comfortable ≥40 |
+| `compact` 行高 / 一屏行数 | `36px` / **20 行**（视口 748px） | — | 一屏行数不得低于 20 |
+
+对比度按"前景按自身 alpha 合成到背板后再与背板比"计算，即眼睛实际拿到的值。
+改后我会用同一套方法在 `surfaceOpacity` 100 与 45 两档下复量。
+
 ## 3. 与已落地的三档密度和解（orchestrator 裁决，不要另起炉灶）
 
 develop 的 `83fea6f1` 已落三档 `compact | standard | comfortable`
