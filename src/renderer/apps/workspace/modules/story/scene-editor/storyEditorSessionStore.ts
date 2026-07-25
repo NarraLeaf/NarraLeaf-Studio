@@ -84,8 +84,20 @@ export type StoryEditorViewState = {
     overviewCollapsed?: boolean;
 };
 
-/** Reading-density of the scene editor (WI-6): compact is the status quo, comfortable enlarges type. */
-export type StoryEditorDensity = "compact" | "comfortable";
+/**
+ * Reading-density of the scene editor (WI-6). `compact` is the status quo; the other two open up type
+ * and row boxes by the amounts in `STORY_DENSITY_METRICS` (storyEditorTextStyle.tsx), which is the one
+ * place the numbers live — the row chrome reads them through a CSS variable rather than hard-coding a
+ * second copy in the stylesheet.
+ */
+export type StoryEditorDensity = "compact" | "standard" | "comfortable";
+
+export const STORY_EDITOR_DENSITIES: readonly StoryEditorDensity[] = ["compact", "standard", "comfortable"];
+
+/** A stored value from an older build (or a hand-edited state file) falls back to the status quo. */
+function normalizeDensity(value: unknown): StoryEditorDensity {
+    return STORY_EDITOR_DENSITIES.includes(value as StoryEditorDensity) ? value as StoryEditorDensity : "compact";
+}
 
 /**
  * Editor-wide view preferences (WI-6): density and the "narrative only" filter. Persisted per-project
@@ -102,7 +114,8 @@ const STORY_EDITOR_VIEW_PREFS_KEY = "story:editor:view-prefs";
 const DEFAULT_STORY_EDITOR_VIEW_PREFS: StoryEditorViewPrefs = { density: "compact", narrativeOnly: false };
 
 export function getStoryEditorViewPrefs(panelState: PanelStateService): StoryEditorViewPrefs {
-    return { ...DEFAULT_STORY_EDITOR_VIEW_PREFS, ...panelState.getPanelState<StoryEditorViewPrefs>(STORY_EDITOR_VIEW_PREFS_KEY) };
+    const stored = { ...DEFAULT_STORY_EDITOR_VIEW_PREFS, ...panelState.getPanelState<StoryEditorViewPrefs>(STORY_EDITOR_VIEW_PREFS_KEY) };
+    return { ...stored, density: normalizeDensity(stored.density) };
 }
 
 export function patchStoryEditorViewPrefs(panelState: PanelStateService, patch: Partial<StoryEditorViewPrefs>): void {

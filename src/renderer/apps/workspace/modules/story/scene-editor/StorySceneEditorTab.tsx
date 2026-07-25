@@ -34,7 +34,7 @@ import { StoryInspectorPanel } from "./StoryInspectorPanel";
 import { StoryCommandManual } from "./StoryCommandManual";
 import { publishStoryInspectorState, STORY_INSPECTOR_PANEL_ID } from "./storyInspectorBridge";
 import { stopVoiceAudition } from "./voiceAudition";
-import { StoryEditorTextStyleProvider } from "./storyEditorTextStyle";
+import { StoryEditorTextStyleProvider, storyEditorRootStyle } from "./storyEditorTextStyle";
 import { getTextSegment } from "./storySceneBlockUtils";
 import {
     captureStoryEditorScrollAnchor,
@@ -1173,6 +1173,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             ref={editor.rootRef}
             tabIndex={0}
             data-story-density={editor.density}
+            style={storyEditorRootStyle(editor.density, editor.visibleRows.length)}
             className="flex h-full min-h-0 flex-col bg-surface text-fg outline-none"
             onFocus={editor.focusWorkspace}
             onFocusCapture={handleEditorFocusCapture}
@@ -1402,7 +1403,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         // Down off the last row lands the keyboard cursor here; the ring is how the
                         // author sees that Enter will open a new row (see moveActiveRowSelection).
                         className={[
-                            "mt-1 flex min-h-[32px] w-full items-center gap-2 pl-[64px] pr-3 text-left text-sm italic",
+                            "mt-1 flex min-h-[32px] w-full items-center gap-2 pl-[calc(var(--nl-story-gutter)+28px)] pr-3 text-left text-sm italic",
                             editor.addRowFocused
                                 ? "bg-primary/10 text-fg-muted ring-1 ring-inset ring-primary/50"
                                 : "text-fg-subtle hover:bg-fill-subtle hover:text-fg-muted",

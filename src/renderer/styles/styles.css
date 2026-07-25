@@ -25,6 +25,13 @@
      */
     --nl-on-primary: 255 255 255;
 
+    /*
+     * Story editor reading density: the height of a row's single-line content box. The scene editor
+     * root overrides it per density from STORY_DENSITY_METRICS; this baseline is the compact value, so
+     * a row rendered outside that root (tests, isolated previews) still has a sane box.
+     */
+    --nl-story-row-box: 28px;
+
     --narraleaf-accent: rgb(var(--nl-primary));
     --narraleaf-accent-strong: rgb(var(--nl-primary));
     --narraleaf-accent-weak: rgb(var(--nl-primary) / 0.6);
@@ -456,15 +463,15 @@ input[type="radio"]:focus {
 }
 
 /**
- * Comfortable reading density for the story editor (WI-6). Font size and line spacing come from the
- * story text-style provider; this one lever opens up the row boxes to match, so lines breathe instead
- * of just growing taller text inside the same 35px slot. Unlayered so it outranks the row's own
- * `min-h-[35px]` Tailwind utility. Compact (the default) has no rule and keeps the status quo.
+ * Reading density for the story editor used to live here, as a flat `min-height` on the row. It grew
+ * the row but not its columns — the row grid is `items-start` by design — so the extra height piled up
+ * *below* the text (10.8px per row in comfortable) while the drag handle, which centred over the whole
+ * row, drifted out of line with the words it grabs.
+ *
+ * The density numbers now live in one table (`STORY_DENSITY_METRICS`, storyEditorTextStyle.tsx) and
+ * reach the rows as the `--nl-story-row-box` custom property, so each column sizes the same single-line
+ * box and centres in it. Nothing density-specific belongs in this stylesheet any more.
  */
-[data-story-density="comfortable"] [data-story-row-block-id],
-[data-story-density="comfortable"] [data-story-insert-slot] {
-    min-height: 46px;
-}
 
 @layer utilities {
     .titlebar-drag { -webkit-app-region: drag; }
