@@ -14,11 +14,27 @@ type Interaction = { kind: "move" } | { kind: "resize"; corner: Corner };
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
+/**
+ * The editor body's usable size, floored — never rounded.
+ *
+ * `clientWidth`/`clientHeight` round a fractional box, so a 470.4px-wide body reports 470 but a
+ * 470.6px one reports 471. A window parked flush against that phantom pixel overflows the body by
+ * a subpixel, and since the editor group hosts every tab in an `overflow-auto` scroller, that
+ * subpixel is enough to pop a scrollbar — which shrinks the body, which re-clamps the window, which
+ * removes the scrollbar, which grows the body again. Flooring the measurement keeps the flush case
+ * strictly inside the real box, so that loop has nothing to start from.
+ */
 function readBounds(el: HTMLElement | null): Bounds | null {
-    if (!el || el.clientWidth < 1 || el.clientHeight < 1) {
+    if (!el) {
         return null;
     }
-    return { width: el.clientWidth, height: el.clientHeight };
+    const rect = el.getBoundingClientRect();
+    const width = Math.min(el.clientWidth, Math.floor(rect.width));
+    const height = Math.min(el.clientHeight, Math.floor(rect.height));
+    if (width < 1 || height < 1) {
+        return null;
+    }
+    return { width, height };
 }
 
 /** Fit a rect inside the container while respecting the minimum window size. */
@@ -172,8 +188,17 @@ export function StoryScenePreviewFloat(props: {
     const cornerClass = "absolute h-3 w-3";
 
     return (
+        // Containment layer. The window is an overlay and must never contribute *scrollable*
+        // overflow: the editor group puts every tab inside an `overflow-auto` host, so a window
+        // hanging even one pixel past the editor body raises a scrollbar there, and a scrollbar
+        // resizes the body under the clamp above — the window and the workspace then shake against
+        // each other, and once Chrome's ResizeObserver loop guard starts dropping notifications the
+        // window is left stranded outside the body for good. Clipping here breaks that at the
+        // source; `pointer-events-none` keeps the layer itself out of the way of the editor
+        // underneath, and the window turns them back on for itself.
+        <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
         <div
-            className="absolute z-30 flex flex-col overflow-hidden rounded-lg border border-edge bg-surface-overlay shadow-2xl"
+            className="pointer-events-auto absolute flex flex-col overflow-hidden rounded-lg border border-edge bg-surface-overlay shadow-2xl"
             style={{ left: rendered.x, top: rendered.y, width: rendered.width, height: rendered.height }}
         >
             <StoryScenePreviewPane
@@ -197,6 +222,7 @@ export function StoryScenePreviewFloat(props: {
             <div className={`${cornerClass} right-0 bottom-0 cursor-nwse-resize`} style={{ touchAction: "none" }} onPointerDown={startResize("se")}>
                 <div className="pointer-events-none absolute bottom-1 right-1 h-2 w-2 rounded-sm border-b-2 border-r-2 border-fg-subtle/60" />
             </div>
+        </div>
         </div>
     );
 }
