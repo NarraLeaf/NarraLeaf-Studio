@@ -1,7 +1,11 @@
 import fs from "fs/promises";
 import path from "path";
 import { UserDataNamespace, AppHost, AppProtocol } from "@shared/types/constants";
-import type { PluginPermissionGrantResult, PluginPermissionRequest } from "@shared/types/pluginPermissions";
+import type {
+    PluginInstallPermission,
+    PluginPermissionGrantResult,
+    PluginPermissionRequest,
+} from "@shared/types/pluginPermissions";
 import {
     type NormalizedPluginManifestV2,
     type PluginApproveResult,
@@ -15,6 +19,7 @@ import {
 import { PersistentState } from "@shared/utils/persistentState";
 import type { PersistentStateConfig } from "@shared/types/persistentState";
 import { validatePluginManifest } from "@shared/utils/pluginManifest";
+import { isPermissionSubset } from "@shared/utils/pluginInstallPermissions";
 import { flattenCatalog, type LocaleContribution } from "@shared/i18n";
 import { PluginPermissionManager } from "./pluginPermissionManager";
 
@@ -187,6 +192,12 @@ export class PluginManager {
 
         const manifest = samePath ? sourceManifest : await this.readManifest(installPath);
         const now = Date.now();
+        // An update inherits the existing grant when it asks for no more than the
+        // user already approved. Re-prompting on a version bump that widens
+        // nothing is pure friction - the permission set is the security boundary,
+        // not the version number.
+        const granted = this.grantedPermissionsOf(existing);
+        const inheritsGrant = granted !== null && isPermissionSubset(manifest.permissions, granted);
         const record: PluginInstallRecord = {
             pluginId: manifest.id,
             installPath,
@@ -196,9 +207,8 @@ export class PluginManager {
             installSource: sourceOverride ?? { kind: "local-directory", path: sourceDir },
             installedAt: existing?.installedAt ?? now,
             updatedAt: now,
-            grantedManifestVersion: existing?.grantedManifestVersion === manifest.version
-                ? existing.grantedManifestVersion
-                : null,
+            grantedManifestVersion: inheritsGrant ? manifest.version : null,
+            grantedPermissions: inheritsGrant ? granted : null,
             lastError: null,
         };
 
@@ -221,6 +231,15 @@ export class PluginManager {
         await this.initialize();
         const record = this.getRecord(pluginId);
         if (!grant?.approved) {
+            // Declining leaves an unauthorized plugin, so it must not stay flagged
+            // enabled: nothing loads it, and consumers that read `enabled`
+            // directly (dependency resolution, the pack compiler) would otherwise
+            // count a plugin that is not running.
+            if (this.needsAuthorization(record) && record.enabled) {
+                const disabled = { ...record, enabled: false, updatedAt: Date.now() };
+                this.saveRecord(disabled);
+                return { plugin: this.toListItem(disabled), approved: false };
+            }
             return { plugin: this.toListItem(record), approved: false };
         }
 
@@ -228,6 +247,7 @@ export class PluginManager {
             ...record,
             enabled: true,
             grantedManifestVersion: record.manifest.version,
+            grantedPermissions: record.manifest.permissions,
             updatedAt: Date.now(),
             lastError: null,
         };
@@ -256,6 +276,7 @@ export class PluginManager {
             ...record,
             enabled: false,
             grantedManifestVersion: null,
+            grantedPermissions: null,
             updatedAt: Date.now(),
         };
         this.saveRecord(next);
@@ -340,11 +361,12 @@ export class PluginManager {
                 const builtInSource = builtInSources.get(manifest.id);
                 const previous = records[manifest.id] ?? existing;
                 const builtIn = Boolean(builtInSource) || previous?.builtIn === true;
-                const grantedManifestVersion = builtIn
-                    ? manifest.version
-                    : previous?.grantedManifestVersion === manifest.version
-                    ? previous.grantedManifestVersion
-                    : null;
+                // A manifest that changed under us (built-in sync, a swapped
+                // folder) keeps its grant only while it asks for no more than was
+                // approved - the same rule installFromDirectory applies.
+                const priorGrant = builtIn ? null : this.grantedPermissionsOf(previous);
+                const inheritsGrant = priorGrant !== null && isPermissionSubset(manifest.permissions, priorGrant);
+                const grantedManifestVersion = builtIn || inheritsGrant ? manifest.version : null;
                 nextRecords[manifest.id] = {
                     pluginId: manifest.id,
                     installPath,
@@ -357,6 +379,9 @@ export class PluginManager {
                     installedAt: previous?.installedAt ?? now,
                     updatedAt: previous?.updatedAt ?? now,
                     grantedManifestVersion,
+                    grantedPermissions: builtIn
+                        ? manifest.permissions
+                        : inheritsGrant ? priorGrant : null,
                     lastError: builtIn ? null : previous?.lastError ?? null,
                 };
             } catch (error) {
@@ -563,6 +588,25 @@ export class PluginManager {
 
     private needsAuthorization(record: PluginInstallRecord): boolean {
         return record.grantedManifestVersion !== record.manifest.version;
+    }
+
+    /**
+     * The permission set the user approved for this plugin, or `null` if there is
+     * no grant to reason about. Records written before `grantedPermissions` was
+     * tracked fall back to the manifest that was authorized — sound only while
+     * that manifest is still the installed one, which `grantedManifestVersion`
+     * proves.
+     */
+    private grantedPermissionsOf(record: PluginInstallRecord | undefined): PluginInstallPermission[] | null {
+        if (!record || !record.grantedManifestVersion) {
+            return null;
+        }
+        if (record.grantedPermissions) {
+            return record.grantedPermissions;
+        }
+        return record.grantedManifestVersion === record.manifest.version
+            ? record.manifest.permissions
+            : null;
     }
 
     private formatInstallSource(source: PluginInstallSource): string {

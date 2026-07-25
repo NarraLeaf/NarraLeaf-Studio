@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyCompatibility, compareSemver, parseSemver } from "./semver";
+import { classifyCompatibility, compareSemver, parseSemver, satisfiesRange } from "./semver";
 
 describe("parseSemver", () => {
     it("parses major.minor.patch", () => {
@@ -62,5 +62,70 @@ describe("classifyCompatibility", () => {
 
     it("is incompatible when a version cannot be parsed", () => {
         expect(classifyCompatibility("1.0.0", "not-a-version")).toBe("incompatible");
+    });
+});
+
+describe("satisfiesRange", () => {
+    it("treats an absent, empty or wildcard range as any version", () => {
+        expect(satisfiesRange("0.1.1", undefined)).toBe(true);
+        expect(satisfiesRange("0.1.1", "")).toBe(true);
+        expect(satisfiesRange("0.1.1", "   ")).toBe(true);
+        expect(satisfiesRange("0.1.1", "*")).toBe(true);
+    });
+
+    it("applies the comparison operators", () => {
+        expect(satisfiesRange("0.1.1", ">=0.0.1")).toBe(true);
+        expect(satisfiesRange("0.1.1", ">=0.2.0")).toBe(false);
+        expect(satisfiesRange("0.1.1", ">0.1.1")).toBe(false);
+        expect(satisfiesRange("0.1.1", "<1.0.0")).toBe(true);
+        expect(satisfiesRange("1.0.0", "<=1.0.0")).toBe(true);
+        expect(satisfiesRange("1.0.1", "=1.0.0")).toBe(false);
+    });
+
+    it("treats a bare version as an exact match", () => {
+        expect(satisfiesRange("1.0.0", "1.0.0")).toBe(true);
+        expect(satisfiesRange("1.0.1", "1.0.0")).toBe(false);
+    });
+
+    it("tolerates whitespace between an operator and its version", () => {
+        expect(satisfiesRange("0.1.1", ">= 0.1.0")).toBe(true);
+        expect(satisfiesRange("0.1.1", ">= 0.2.0")).toBe(false);
+    });
+
+    it("ANDs space-separated comparators", () => {
+        expect(satisfiesRange("0.5.0", ">=0.1.0 <1.0.0")).toBe(true);
+        expect(satisfiesRange("1.5.0", ">=0.1.0 <1.0.0")).toBe(false);
+    });
+
+    it("ORs across ||", () => {
+        expect(satisfiesRange("2.1.0", "^1.0.0 || ^2.0.0")).toBe(true);
+        expect(satisfiesRange("3.0.0", "^1.0.0 || ^2.0.0")).toBe(false);
+    });
+
+    it("applies caret with the below-1.0.0 rule", () => {
+        expect(satisfiesRange("1.9.9", "^1.2.0")).toBe(true);
+        expect(satisfiesRange("2.0.0", "^1.2.0")).toBe(false);
+        expect(satisfiesRange("0.2.9", "^0.2.1")).toBe(true);
+        expect(satisfiesRange("0.3.0", "^0.2.1")).toBe(false);
+        expect(satisfiesRange("0.0.3", "^0.0.3")).toBe(true);
+        expect(satisfiesRange("0.0.4", "^0.0.3")).toBe(false);
+    });
+
+    it("applies tilde", () => {
+        expect(satisfiesRange("1.2.9", "~1.2.0")).toBe(true);
+        expect(satisfiesRange("1.3.0", "~1.2.0")).toBe(false);
+    });
+
+    // A range Studio cannot parse must never be the reason an install fails.
+    it("is permissive about ranges and versions it cannot parse", () => {
+        expect(satisfiesRange("0.1.1", "not-a-range")).toBe(true);
+        expect(satisfiesRange("0.1.1", ">=1.x")).toBe(true);
+        expect(satisfiesRange("nightly", ">=99.0.0")).toBe(true);
+    });
+
+    // npm would exclude prereleases here; locking beta users out of the store
+    // is a worse failure than letting a beta install a plugin.
+    it("lets prereleases satisfy an ordinary range", () => {
+        expect(satisfiesRange("0.2.0-beta.1", ">=0.1.0")).toBe(true);
     });
 });
