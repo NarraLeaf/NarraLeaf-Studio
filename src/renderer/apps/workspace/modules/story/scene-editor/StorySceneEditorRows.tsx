@@ -70,6 +70,7 @@ import { BlockOverview, getQuickParams, QuickParamsInline, type QuickParam } fro
 import { lensTrackRendersBar, type StoryLensRowTrack } from "./storyStagingLens";
 import { actionTrigger, ACTION_TRIGGER, insertChooserType, toCanonicalCommandLine } from "./commandTrigger";
 import { useStoryRowActions } from "./storyRowActions";
+import { useReduceMotion } from "@/lib/appearance/useReduceMotion";
 
 /**
  * One story row.
@@ -181,8 +182,23 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     // not the category, is the colour unit); narration/note and in-group expression members keep zero
     // chrome.
     const categoryColor = !isDialogue && !hideBadge && row.groupRole !== "member" ? getBlockBadgeInfo(block).iconColor : null;
+    /**
+     * Whether the pointer is on this row, kept local so a hover re-renders one row and nothing else.
+     *
+     * It gates the *mounting* of the hover cluster. Those buttons were always in the DOM, merely
+     * invisible: three buttons and their icons on every row of the document, which is a third of a
+     * row's nodes bought for the one row the pointer is actually on. The drag handle is deliberately
+     * NOT gated — it is `tabIndex={0}` and reachable by keyboard, so it has to exist to be focused.
+     */
+    const [hovered, setHovered] = useState(false);
+    const reduceMotion = useReduceMotion();
+    const showRowActions = hovered || active;
     const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
         id: row.block.id,
+        // Reduce-motion means the sort animation is off at the source, not merely overridden in CSS:
+        // dnd-kit writes this transition as an inline style, which the stylesheet's blanket rule
+        // cannot reach.
+        transition: reduceMotion ? null : undefined,
     });
     const sortableStyle: CSSProperties = {
         transform: toSortableTransform(transform),
@@ -209,7 +225,11 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
             onClick={on.onSelect}
             onContextMenu={on.onContextMenu}
             onMouseDown={on.onMouseDown}
-            onMouseEnter={on.onMouseEnter}
+            onMouseEnter={() => {
+                setHovered(true);
+                on.onMouseEnter();
+            }}
+            onMouseLeave={() => setHovered(false)}
             onDoubleClick={event => {
                 event.stopPropagation();
                 // A row that holds text enters edit from the mouseup gesture, which carries the
@@ -367,14 +387,18 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                             </>
                         ) : (
                             <>
-                                {dialogueHead ? (
+                                {dialogueHead && showRowActions ? (
                                     <GroupHeadPositionControl position={row.appearance?.position} active={active} onSetPosition={on.onSetPosition} />
                                 ) : null}
                                 <StoryVoiceIndicator block={block} />
-                                <RowActions onInsertAfter={on.onInsertAfter} onDelete={on.onDeleteRow} active={active} />
+                                {showRowActions ? (
+                                    <RowActions onInsertAfter={on.onInsertAfter} onDelete={on.onDeleteRow} active={active} />
+                                ) : null}
                             </>
                         )}
-                        <RowPlayAction block={block} active={active} onPlay={() => on.onPlayFromRow(block.id)} />
+                        {showRowActions ? (
+                            <RowPlayAction block={block} active={active} onPlay={() => on.onPlayFromRow(block.id)} />
+                        ) : null}
                     </div>
                 </div>
                 {containerInfo ? (
@@ -2525,28 +2549,34 @@ function BlockPreview(props: {
 }
 
 /**
- * Share of the row width covered by the scrim that keeps the gutter, grip and label legible on top
- * of the artwork. Fixed rather than label-driven so the seam lands in the same place down the list;
- * `BACKGROUND_LABEL_MAX_WIDTH` truncates the label before it can reach the fade.
+ * Width of the artwork strip at the row's trailing edge.
+ *
+ * The artwork used to be painted across the WHOLE row, held down on the left by a blurred scrim. Two
+ * problems, one visual and one mechanical:
+ *
+ *  - A scene with a run of `/bg` rows turned into a wall of photographs with the prose floating on
+ *    top of it. The pictures are a *reference* — "which image is this" — not the content of the line.
+ *  - The scrim used `backdrop-filter`, one of the most expensive things a compositor can be asked
+ *    for, and it was asked for once per background row on every frame that touched them. On a weak
+ *    GPU that is a scroll-killer, and it bought contrast that a plain gradient buys for free.
+ *
+ * A bounded strip fixes both: the row reads as text again, the painted area drops by roughly three
+ * quarters, and the fade is an ordinary gradient mask with no backdrop sampling anywhere.
  */
-const BACKGROUND_SCRIM_WIDTH = "56%";
-/** Softens the scrim's inner edge so it dissolves into the artwork instead of cutting a hard seam. */
-const BACKGROUND_SCRIM_MASK = "linear-gradient(to right, #000 68%, transparent)";
-/**
- * The label's own cap, measured against the content column: the scrim's share of the row, less the
- * gutter + grip + badge that sit ahead of the label. Kept a touch tighter than the fade's start so
- * truncation always wins before the text hits thinning scrim.
- */
-const BACKGROUND_LABEL_MAX_WIDTH = "calc(56% - 84px)";
+const BACKGROUND_STRIP_WIDTH = 180;
+/** Dissolves the strip's leading edge into the row instead of cutting a seam down the list. */
+const BACKGROUND_STRIP_MASK = "linear-gradient(to right, transparent, #000 62%)";
+/** The label's cap: the content column, less the strip it must not run under. */
+const BACKGROUND_LABEL_MAX_WIDTH = `calc(100% - ${BACKGROUND_STRIP_WIDTH + 24}px)`;
 
 /**
- * The picked background, painted across the whole row — gutter and drag grip included — with a
- * translucent blurred panel holding the left side down so the text keeps its contrast. Rendered only
- * for background rows with the inspector closed (its card carries its own picker), which also keeps
- * the asset-url hook off every other row in the list.
+ * The picked background, as a strip at the row's trailing edge. Rendered only for background rows
+ * with the inspector closed (its card carries its own picker), which also keeps the asset-url hook
+ * off every other row in the list.
  *
- * `bg-surface/75` rather than a literal black: on the dark theme it resolves to #0f1115 at 75%, but
- * a fixed black would leave the light theme's near-black `fg` unreadable on top of it.
+ * Under reduce-motion the image is dropped for a plain colour block. That setting is the closest
+ * thing Studio has to "this machine would rather not", and a photograph decoded per background row
+ * is the single most expensive thing the row list asks of a weak machine.
  */
 function BackgroundRowArtwork({ payload, selected, active }: {
     payload: Extract<StoryActionPayload, { action: "setBackground" }>;
@@ -2554,25 +2584,29 @@ function BackgroundRowArtwork({ payload, selected, active }: {
     active: boolean;
 }) {
     const { url } = useAssetObjectUrl(payload.assetId ?? null);
+    const reduceMotion = useReduceMotion();
     const color = !payload.assetId && payload.color ? payload.color : null;
     if (!url && !color) {
         return null;
     }
+    const showImage = Boolean(url) && !reduceMotion;
     return (
-        <span className="pointer-events-none absolute inset-0 select-none overflow-hidden" aria-hidden>
-            {url ? (
-                <img src={url} alt="" draggable={false} className="h-full w-full object-cover object-center" />
+        <span
+            // A hairline top and bottom, so a run of `/bg` rows reads as one strip per row rather
+            // than as a single tall picture down the side of the list.
+            className="pointer-events-none absolute inset-y-px right-0 select-none overflow-hidden rounded-sm"
+            style={{
+                width: BACKGROUND_STRIP_WIDTH,
+                maskImage: BACKGROUND_STRIP_MASK,
+                WebkitMaskImage: BACKGROUND_STRIP_MASK,
+            }}
+            aria-hidden
+        >
+            {showImage ? (
+                <img src={url ?? undefined} alt="" draggable={false} className="h-full w-full object-cover object-center" />
             ) : (
-                <span className="block h-full w-full" style={{ backgroundColor: color ?? undefined }} />
+                <span className="block h-full w-full bg-fill" style={color ? { backgroundColor: color } : undefined} />
             )}
-            <span
-                className="absolute inset-y-0 left-0 bg-surface/75 backdrop-blur-[3px]"
-                style={{
-                    width: BACKGROUND_SCRIM_WIDTH,
-                    maskImage: BACKGROUND_SCRIM_MASK,
-                    WebkitMaskImage: BACKGROUND_SCRIM_MASK,
-                }}
-            />
             {selected ? (
                 <span className="absolute inset-0 bg-primary/25" />
             ) : active ? (
