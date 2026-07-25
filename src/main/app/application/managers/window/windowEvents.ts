@@ -73,12 +73,12 @@ export class WindowEventManager {
     }
 
     public onRenderProcessGone(fn: (window: AppWindow, reason: string, detail: string) => void): AppEventToken {
+        // Register and cancel the *same* function: the previous version subscribed an inline
+        // closure and then tried to remove a different one, so `cancel()` never removed anything.
         const handler = (window: AppWindow, reason: string, detail: string) => {
             fn(window, reason, detail);
         };
-        this.events.on("render-process-gone", (window, reason, detail) => {
-            fn(window, reason, detail);
-        });
+        this.events.on("render-process-gone", handler);
         return {
             cancel: () => {
                 this.events.removeListener("render-process-gone", handler);

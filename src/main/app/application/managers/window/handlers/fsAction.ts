@@ -193,15 +193,12 @@ export class FsRequestWriteHandler extends IPCHandler<IPCEventType.fsRequestWrit
                 });
             }
 
-            // Check if we can write to the target location (try to create a test file)
-            const testPath = path + '.test';
-            try {
-                const writeResult = await Fs.write(testPath, '', encoding);
-                if (writeResult.ok) {
-                    // Clean up test file
-                    await Fs.deleteFile(testPath);
-                }
-            } catch (error) {
+            // Ask the OS whether the directory is writable instead of proving it by creating and
+            // deleting a real `<path>.test` file: that probe put a file the user never asked for
+            // next to their document on every single save, tripped the project watchers, and raced
+            // with itself when two saves overlapped.
+            const writable = await Fs.isWritableDir(dirPath);
+            if (!writable.ok || !writable.data) {
                 window.app.storageManager.cleanup(hash);
                 return this.success({
                     ok: false,
