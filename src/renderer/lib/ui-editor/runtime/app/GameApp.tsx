@@ -96,11 +96,16 @@ import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
 import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
 import type { GameAppFrameContext, GameAppHost, GameAppOverlayContext, GameAppStoryRuntimeBridge } from "./GameAppHost";
 
-const NLR_BOOT_PRELOAD_TIMEOUT_MS = 15_000;
-// How long a mount waits for the first scene's images to be fetched and decoded. Comfortably
-// inside NLR_BOOT_PRELOAD_TIMEOUT_MS so a slow warm-up degrades to "start pays for it", the old
-// behaviour, rather than tripping the boot guard and blanking the surface stack.
-const STAGE_WARMUP_TIMEOUT_MS = 10_000;
+// Outer safety net: if the environment never comes up at all, start the surface system anyway
+// rather than sit on the loading step forever. Generous on purpose — it has to sit *outside*
+// STAGE_WARMUP_TIMEOUT_MS, because cutting a warm-up short is the one failure that shows up as
+// in-game stutter, and boot latency is explicitly not what this trades against.
+const NLR_BOOT_PRELOAD_TIMEOUT_MS = 45_000;
+// How long a mount waits for the first scene to be fetched and decoded. Long enough that a real
+// project's opening scene always finishes: a longer loading step is the cheaper cost, since the
+// alternative is the player paying for it on a button they just pressed. Bounded only so a broken
+// asset degrades to "start pays for it" instead of never starting.
+const STAGE_WARMUP_TIMEOUT_MS = 30_000;
 
 export type GameAppNavEntry = AppNavEntry;
 
