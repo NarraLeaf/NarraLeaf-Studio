@@ -389,6 +389,13 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.pluginInstallFromRegistry, { pluginId }),
     },
 
+    uiTemplates: {
+        registryFetch: () =>
+            ipcClient.invoke(IPCEventType.uiTemplateRegistryFetch, {}),
+        fetchBundle: (templateId: string) =>
+            ipcClient.invoke(IPCEventType.uiTemplateFetchBundle, { templateId }),
+    },
+
     privileged: privilegedBootstrapBridge,
 };
 
