@@ -85,20 +85,19 @@ export const assets = {
     },
     filter: {
         label: "Filters",
+        // Headings for the filter groups. "Category" is the asset kind (image, audio); "Format" is
+        // the file extension — two different questions that both used to read as "type".
+        category: "Category",
+        usage: "Usage",
+        size: "Size",
+        tags: "Tags",
+        format: "Format",
     },
     actions: {
         copyTooltip: "Copy selected assets or groups",
         cutTooltip: "Cut selected assets or groups",
         pasteTooltip: "Paste assets or groups",
         deleteTooltip: "Delete selected assets or groups",
-    },
-    search: {
-        noResults: "No matching assets found",
-        matchTag: "Tag: {tag}",
-        resultCount: {
-            one: "{count} result",
-            other: "{count} results",
-        },
     },
     list: {
         emptyFiltered: "No assets matched the current filters.",

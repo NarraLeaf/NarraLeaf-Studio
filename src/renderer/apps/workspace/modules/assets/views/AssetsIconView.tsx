@@ -81,6 +81,7 @@ export function AssetsIconView({
         compactToolbar,
         setAssetsIconToolbarCenter,
         isNarrowed,
+        matchedGroupIds,
     } = useAssetsPanelContext();
     const groupStack = useMemo(() => {
         const groupById = new Map<string, AssetGroup>();
@@ -163,7 +164,11 @@ export function AssetsIconView({
             <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
                 {displayTypes.map((type) => {
                     const TypeIcon = ASSET_TYPE_ICONS[type];
-                    const typeGroups = isNarrowed ? [] : filteredGroups[type].filter((group) => parentPredicate(group.parentGroupId));
+                    // Narrowed, the grid is a result set: only groups that matched by name are hits.
+                    // The rest of `filteredGroups` is the ancestor scaffolding a tree needs.
+                    const typeGroups = isNarrowed
+                        ? filteredGroups[type].filter((group) => matchedGroupIds.has(group.id))
+                        : filteredGroups[type].filter((group) => parentPredicate(group.parentGroupId));
                     const typeAssets = filteredAssets[type].filter((asset) => parentPredicate(asset.groupId));
                     // What this section stands for, not what happens to be loose in it.
                     const scopedAssets = isNarrowed
