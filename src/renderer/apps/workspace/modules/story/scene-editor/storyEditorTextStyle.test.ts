@@ -4,6 +4,8 @@ import {
     STORY_AVATAR_VAR,
     STORY_DENSITY_METRICS,
     STORY_GUTTER_VAR,
+    STORY_HANDLE_PX,
+    STORY_HANDLE_VAR,
     STORY_ROW_BOX_VAR,
     storyEditorRootStyle,
     storyGutterWidth,
@@ -56,6 +58,7 @@ describe("story editor density metrics", () => {
         expect(style[STORY_ROW_BOX_VAR]).toBe(`${STORY_DENSITY_METRICS.comfortable.rowBox}px`);
         expect(style[STORY_GUTTER_VAR]).toBe(`${storyGutterWidth(12)}px`);
         expect(style[STORY_AVATAR_VAR]).toBe(`${STORY_DENSITY_METRICS.comfortable.avatar}px`);
+        expect(style[STORY_HANDLE_VAR]).toBe(`${STORY_HANDLE_PX}px`);
     });
 });
 
