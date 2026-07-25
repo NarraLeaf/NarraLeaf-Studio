@@ -18,7 +18,7 @@ import {
 import { localizeSpecCommand } from "./commands/specPalette";
 import { listCommandSpecs } from "./commands/registry";
 import { specGroupIds } from "./commands/specSidebar";
-import { buildSpecSidebarGroups, filterSidebarGroups, type StoryCommandSidebarGroup } from "./commands/specSidebar";
+import { buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, type StoryCommandSidebarGroup } from "./commands/specSidebar";
 import { searchActionCommands } from "./storyCommandSearch";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import { FAVORITES_SETTING_KEY, migrateStarredActionIds } from "./storyActionCreatorFavorites";
@@ -44,14 +44,16 @@ import {
  * scene, generated from the same spec the parser reads, with the insert action on the page you are
  * reading. Nothing here is hand-written per command, so nothing here can go stale.
  *
- * Filing is A1's, unchanged: a spec with a target param belongs to every subject its `accepts` names,
- * so `/show` is listed under 图片 exactly where an author browses for it. The `/` browse menu made the
- * same choice (A4 WI-1), and the two surfaces have to agree — a command that exists under 图片 in one
- * menu and not the other is the "two menus, two mental models" split both were built to close.
+ * Filing is A1's: a spec with a target param belongs to every subject its `accepts` names. Which of
+ * those subjects a list *shows* depends on what the list is:
  *
- * That does mean a generic verb repeats, with the same sentence under it each time. The answer to that
- * is the detail page, which says what this command does to THIS subject and names the others; it is
- * not to hide the row from the subject an author is looking under.
+ *  - Pick a subject and the full filing applies — "everything I can do to an Image" has to list
+ *    `/show`, and there it is the answer, not a repeat.
+ *  - Show everything at once — this panel's unfiltered tab, and the `/` browse, which has no filter at
+ *    all — and it collapses to one row per command. Six `/show` rows with the same sentence under each
+ *    read as six commands that share a name. Which subjects it reaches is on its detail page.
+ *
+ * Both surfaces take that collapse from the same function, so they cannot disagree about it.
  */
 
 const STARRED_CATEGORY_ID = "starred";
@@ -151,12 +153,23 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
         return searchActionCommands(starred, query);
     }, [activeTab, query, sidebarGroups, starredIds]);
 
-    /** Every other tab keeps the subject sections, each ranked by the matcher the `/` creator uses. */
+    /**
+     * Every other tab keeps the subject sections, each ranked by the matcher the `/` creator uses.
+     *
+     * With no subject chosen this is the whole vocabulary at once, so it collapses to one row per
+     * command — the same rule, from the same function, the `/` browse uses. Choosing a subject brings
+     * the full filing back: "everything I can do to an Image" has to list `/show`, and there it is not
+     * a repeat, it is the answer.
+     */
     const visibleGroups = useMemo<StoryCommandSidebarGroup[]>(() => {
         if (activeTab === STARRED_CATEGORY_ID) {
             return [];
         }
-        return filterSidebarGroups(sidebarGroups, activeTab === ALL_CATEGORY_ID ? null : activeTab)
+        const unfiltered = activeTab === ALL_CATEGORY_ID;
+        const scoped = unfiltered
+            ? dedupeToPrimarySubject(sidebarGroups)
+            : filterSidebarGroups(sidebarGroups, activeTab);
+        return scoped
             .map(entry => ({ ...entry, commands: searchActionCommands(entry.commands, query) }))
             .filter(entry => entry.commands.length > 0);
     }, [activeTab, query, sidebarGroups]);

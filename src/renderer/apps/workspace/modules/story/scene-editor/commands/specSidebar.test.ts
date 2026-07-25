@@ -7,7 +7,7 @@ import {
     type StoryCommandGroupId,
 } from "../storyCommandCategories";
 import { listCommandSpecs } from "./registry";
-import { browseMenuStops, buildSpecSidebarGroups, filterSidebarGroups, specGroupIds } from "./specSidebar";
+import { browseMenuStops, buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, specGroupIds } from "./specSidebar";
 
 /**
  * The `accepts` classification rule (plan §4.2) and the colour contract A1 was warned about (§12.3).
@@ -226,5 +226,56 @@ describe("pinned colours (§12.3)", () => {
         // A blueprint call is a tool, not control flow.
         expect(groupIds("blueprint")).toEqual(["utils"]);
         expect(getCommandGroup("utils").iconColor).toBe(GROUP_COLORS.utils);
+    });
+});
+
+/**
+ * The one-row-per-command collapse the two "everything at once" surfaces share — the `/` browse, which
+ * has no subject filter, and the sidebar's unfiltered tab.
+ *
+ * The failure it has to be held to is not the repeat it removes; it is losing a command outright. A
+ * spec whose `category` is not among the subjects it accepts has no "home" section to be kept in, and
+ * the naive rule ("keep it where its category says") would delete it from the vocabulary with nothing
+ * to notice.
+ */
+describe("one row per command (the unfiltered collapse)", () => {
+    const groups = buildSpecSidebarGroups([], command => command);
+    const collapsed = dedupeToPrimarySubject(groups);
+
+    it("shows every command exactly once", () => {
+        const seen = new Map<string, number>();
+        for (const entry of collapsed) {
+            for (const command of entry.commands) {
+                seen.set(command.id, (seen.get(command.id) ?? 0) + 1);
+            }
+        }
+        const repeated = [...seen.entries()].filter(([, count]) => count > 1);
+        expect(repeated).toEqual([]);
+    });
+
+    it("loses none of them", () => {
+        const before = new Set(groups.flatMap(entry => entry.commands.map(command => command.id)));
+        const after = new Set(collapsed.flatMap(entry => entry.commands.map(command => command.id)));
+        expect([...before].filter(id => !after.has(id))).toEqual([]);
+        expect(after.size).toBe(before.size);
+    });
+
+    it("keeps a command under its own category when it is filed there", () => {
+        // `/show` reaches five subjects; collapsed, it belongs to the one its spec calls home.
+        const home = collapsed.find(entry => entry.commands.some(command => command.id === "show"));
+        expect(home?.group.id).toBe("character");
+    });
+
+    it("leaves a chosen subject's full filing alone", () => {
+        // The collapse is only for the unfiltered view: the 舞台 chip must still find "显示" under 图片
+        // (the chip is a CATEGORY; 图片 is one of the four groups filed beneath it).
+        const stage = filterSidebarGroups(groups, "stage");
+        const image = stage.find(entry => entry.group.id === "image");
+        expect(image?.commands.map(command => command.id)).toContain("show");
+    });
+
+    it("gives the browse walk one stop per row, still uniquely keyed", () => {
+        const stops = browseMenuStops(collapsed);
+        expect(new Set(stops.map(stop => stop.key)).size).toBe(stops.length);
     });
 });
