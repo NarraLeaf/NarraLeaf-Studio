@@ -5,7 +5,7 @@ import { FolderPlus, Folder, Link, Upload, ChevronLeft } from "lucide-react";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
 import { ASSET_TYPE_ICONS } from "../constants";
 import { useTranslation } from "@/lib/i18n";
-import { useBadgeImageUrl } from "../../story/scene-editor/storyBadgeImageCache";
+import { AssetThumbnail } from "../components/AssetThumbnail";
 
 interface AssetsIconViewProps {
     dropTargetId: string | null;
@@ -285,23 +285,6 @@ export function AssetsIconView({
             </div>
         </div>
     );
-}
-
-/**
- * One image, drawn from the shared refcounted thumbnail cache.
- *
- * `object-contain` rather than `cover`: a browser exists so a reader can recognise the asset, and a
- * cropped centre of a wide background is not recognisable. Until the bytes arrive the box stays
- * empty rather than flashing a placeholder glyph that would read as "this asset has no picture".
- */
-function AssetThumbnail({ asset, className = "" }: { asset: Asset; className?: string }) {
-    const url = useBadgeImageUrl(
-        asset.type === AssetType.Image ? { kind: "thumbnail", asset: asset as Asset<AssetType.Image> } : null,
-    );
-    if (!url) {
-        return <div className={className} />;
-    }
-    return <img src={url} alt="" draggable={false} className={`${className} object-contain`} />;
 }
 
 function GroupIconTile({
