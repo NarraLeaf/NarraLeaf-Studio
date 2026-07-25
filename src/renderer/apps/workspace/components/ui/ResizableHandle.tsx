@@ -7,8 +7,13 @@ interface ResizableHandleProps {
 }
 
 /**
- * Resizable handle component
- * Allows dragging to resize adjacent panels
+ * The seam between two dock regions: one 1px line, and the drag target for resizing them.
+ *
+ * The line is the ONLY thing painted at the seam — the panels on either side draw no border of
+ * their own, so there is no second line and no strip of a third surface colour between them
+ * (that strip used to read as a gap, and picked up the wrong contrast against panel headers and
+ * a custom workspace background). Its grab area and its hover glow are both pseudo-elements
+ * that spill past the 1px box without occupying layout — see `.nl-dock-divider` in styles.css.
  */
 export function ResizableHandle({ direction, onResize, className = "" }: ResizableHandleProps) {
     const [isDragging, setIsDragging] = useState(false);
@@ -44,21 +49,14 @@ export function ResizableHandle({ direction, onResize, className = "" }: Resizab
         setIsDragging(true);
     };
 
-    const cursorClass = direction === "horizontal" ? "cursor-col-resize" : "cursor-row-resize";
-    const hoverClass = direction === "horizontal" 
-        ? "hover:border-r-primary"
-        : "hover:border-t-primary";
-    const activeClass = isDragging 
-        ? (direction === "horizontal" ? "border-r-primary" : "border-t-primary")
-        : "";
+    const axisClass = direction === "horizontal" ? "nl-dock-divider--x" : "nl-dock-divider--y";
 
     return (
         <div
-            className={`${cursorClass} ${hoverClass} ${activeClass} ${className} transition-colors select-none`}
+            role="separator"
+            aria-orientation={direction === "horizontal" ? "vertical" : "horizontal"}
+            className={`nl-dock-divider ${axisClass}${isDragging ? " nl-dock-divider--active" : ""} ${className}`.trim()}
             onMouseDown={handleMouseDown}
-            style={{
-                userSelect: "none",
-            }}
         />
     );
 }
