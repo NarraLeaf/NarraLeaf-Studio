@@ -92,6 +92,12 @@ export function createNlrGameWithGameUi(input: {
         aspectRatio: width / height,
         ratioUpdateInterval: 0,
         contentContainerId,
+        // NLR paces its preloader (default: 5 at a time, 100ms between batches) for games served
+        // over a network. Every asset here comes off the local disk — through `nlgame://` in a
+        // packaged game, the dev server in Dev Mode — so the pacing buys nothing and its idle time
+        // lands squarely on the path to the first painted frame. Wider batches, no waiting.
+        preloadConcurrency: 8,
+        preloadDelay: 0,
         ...(minStageSize ? { minWidth: minStageSize.width, minHeight: minStageSize.height } : {}),
         ...(slots.dialog ? { dialog: slots.dialog, dialogWidth: width, dialogHeight: height } : {}),
         ...(slots.notification ? { notification: slots.notification } : {}),
