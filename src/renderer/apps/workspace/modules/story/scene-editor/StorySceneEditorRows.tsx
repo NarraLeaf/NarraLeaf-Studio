@@ -101,7 +101,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     tempSpeakers: TempSpeakerRef[];
     /** This row is a parallel/race container currently showing its staging lens (M7). */
     lensActive: boolean;
-    /** Reading density (U1): the attribution rail and the portrait column size themselves from it. */
+    /** Reading density (U1). Only `comfortable` differs structurally — see `stackedDialogue` below. */
     density: StoryEditorDensity;
 }) {
     const { t } = useTranslation();
@@ -185,6 +185,18 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     // not the category, is the colour unit); narration/note and in-group expression members keep zero
     // chrome.
     const categoryColor = !isDialogue && !hideBadge && row.groupRole !== "member" ? getBlockBadgeInfo(block).iconColor : null;
+    /**
+     * A dialogue opens a block: the speaker's name heads the run on its own line, the words follow
+     * underneath, and the portrait stays out in the gutter beside them (U1 WI-3).
+     *
+     * The name used to sit inline in front of the first line, which is what made the run impossible to
+     * read as one thing: the body text started after the name, so it started at a different x on the
+     * head than on every continuation — and, because the name's width is the name's *length*, at a
+     * different x for every speaker. Five distinct left edges on one screen, four of them accidental.
+     * On its own line the name lands on the same baseline as the words it introduces, and every line
+     * of every run by every speaker starts at exactly one x.
+     */
+    const stackedDialogue = isDialogue && !dialogueMember;
     /**
      * The group's attribution rail (U1 WI-1), drawn on the ROW rather than inside the badge slot.
      *
@@ -323,8 +335,6 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     title={t("story.rows.dragRow")}
                     // Sized to the (narrowed) column so the invisible-but-clickable target never
                     // overhangs into the badge beside it — an opacity-0 button still takes clicks.
-                    // Sized to the (narrowed) column so the invisible-but-clickable target never
-                    // overhangs into the badge beside it — an opacity-0 button still takes clicks.
                     className="flex h-7 w-[var(--nl-story-handle,20px)] touch-none select-none items-center justify-center rounded-md text-fg-subtle opacity-0 transition-colors hover:cursor-grab hover:text-primary hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 group-hover:opacity-100"
                     onMouseDown={event => event.stopPropagation()}
                     onClick={event => event.stopPropagation()}
@@ -354,19 +364,27 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     />
                 ) : (
                 <>
-                <div className="flex min-h-[var(--nl-story-row-box)] min-w-0 items-center gap-2">
+                <div className={[
+                    "flex min-h-[var(--nl-story-row-box)] min-w-0 gap-2",
+                    // A dialogue block is read top-down (portrait, name, words), so its columns hang
+                    // from the top; every other row keeps the single centred line.
+                    stackedDialogue ? "items-start" : "items-center",
+                ].join(" ")}>
                     {containerInfo ? (
                         <>
                             <ContainerPill info={containerInfo} />
                             {lensMode ? <ContainerModeBadge mode={lensMode} /> : null}
                         </>
-                    ) : expressionMember ? null : (
+                    ) : (
                         // The gutter's last column: one fixed width for every row at a given density,
-                        // so the portrait, the category plate and the empty slot a continuation leaves
-                        // for the rail all reserve the same space. A category plate stays 28px and
-                        // sits at the column's leading edge rather than growing into it (U1).
+                        // so nothing in it — portrait, category plate, differential bead, or the empty
+                        // slot a continuation leaves for the rail — can move the text baseline beside
+                        // it. A category plate stays 28px and sits at the column's leading edge rather
+                        // than growing into it (U1).
                         <span className="flex w-[var(--nl-story-avatar,28px)] shrink-0 items-center" aria-hidden={dialogueMember || hideBadge}>
-                            {dialogueMember || hideBadge ? null : (
+                            {expressionMember ? (
+                                <GroupExpressionBead block={block} characters={characters} />
+                            ) : dialogueMember || hideBadge ? null : (
                                 <BlockBadge block={block} characters={characters} appearance={row.appearance} portrait={isDialogue} />
                             )}
                         </span>
@@ -408,6 +426,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                             onSetDialogueCharacter={on.onSetDialogueCharacter}
                             hideSpeaker={dialogueMember}
                             suppressSpeakerColor={selected}
+                            stacked={stackedDialogue}
                         />
                     ) : textSegment || !containerInfo ? (
                         <BlockPreview
@@ -422,6 +441,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                             onSetDialogueCharacter={on.onSetDialogueCharacter}
                             hideSpeaker={dialogueMember}
                             suppressSpeakerColor={selected}
+                            stacked={stackedDialogue}
                             onUpdatePayload={on.onUpdatePayload}
                         />
                     ) : null}
@@ -527,6 +547,8 @@ function TextEditBox(props: {
     hideSpeaker?: boolean;
     /** Row is selected: the nametag yields its accent colour to the selection highlight. */
     suppressSpeakerColor?: boolean;
+    /** `comfortable` dialogue block (U1 WI-3): nametag on its own line above the field. */
+    stacked?: boolean;
 }) {
     const { t } = useTranslation();
     const dialoguePayload = props.block.kind === "nodeAction" && props.block.payload.action === "dialogue"
@@ -649,7 +671,15 @@ function TextEditBox(props: {
     };
 
     return (
-        <div ref={containerRef} className="relative flex min-w-0 flex-1 items-center gap-2 overflow-visible">
+        <div
+            ref={containerRef}
+            className={[
+                "relative flex min-w-0 flex-1 overflow-visible",
+                // Mirrors the read row's stacked block exactly, so opening a dialogue for editing does
+                // not move a single glyph.
+                props.stacked ? "flex-col items-start" : "items-center gap-2",
+            ].join(" ")}
+        >
             <RichTextToolbar editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} hasVariables={variableOptions.scene.length + variableOptions.saved.length + variableOptions.persistent.length > 0} canInsertEvent={Boolean(dialoguePayload?.characterId)} onInsertEvent={insertEvent} />
             {dialoguePayload && !props.hideSpeaker ? (
                 <CharacterSelectTrigger
@@ -661,6 +691,7 @@ function TextEditBox(props: {
                     onCreateCharacter={props.onCreateCharacter}
                     style={textStyle}
                     suppressColor={props.suppressSpeakerColor}
+                    heading={props.stacked}
                 />
             ) : null}
             <RichTextInput
@@ -672,7 +703,11 @@ function TextEditBox(props: {
                 // the "you are here" signal, so the field needs none of its own. See the interaction model.
                 // A group member needs no indent of its own: the row holds the portrait column open
                 // for it, so read and edit start at the same x and entering edit never jumps.
-                className="min-h-[20px] flex-1 whitespace-pre-wrap break-words bg-transparent text-fg outline-none empty:before:italic empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]"
+                className={[
+                    "min-h-[20px] whitespace-pre-wrap break-words bg-transparent text-fg outline-none empty:before:italic empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]",
+                    // Down a column the main axis is vertical, so the field takes its width outright.
+                    props.stacked ? "w-full" : "flex-1",
+                ].join(" ")}
                 style={textStyle}
                 placeholder={editorPlaceholder(props.block, t)}
                 onChange={props.onEditRichChange}
@@ -962,17 +997,37 @@ function RailGuides({ depth, highlight }: { depth: number; highlight: boolean })
 }
 
 /**
- * The compact, muted body of an in-group expression row (WI-5): a small differential avatar and the
- * differential's name. It stays an ordinary row (selection / drag / Enter live on the row around it);
- * only the read-only content is compacted.
+ * The differential thumbnail an in-group expression row shows, sized as a bead on the group's rail
+ * (U1). It lives in the gutter with the portraits, not in the text column: the row's words — the
+ * differential's name — belong on the same baseline as every other line in the block, and anything
+ * drawn in front of them would be a fourth left edge.
+ */
+function GroupExpressionBead({ block, characters }: { block: StoryBlock; characters: Character[] }) {
+    const { url: imageUrl, frame, showingSprite } = useCharacterBadgeImage(block, undefined, characters);
+    return (
+        <span className="relative ml-[calc((var(--nl-story-avatar,28px)-1rem)/2)] h-4 w-4 shrink-0 overflow-hidden rounded-full border border-edge bg-fill-subtle">
+            {imageUrl ? (
+                showingSprite ? (
+                    <HeadThumbnail url={imageUrl} alt="" frame={frame} className="h-full w-full" iconClassName="h-2.5 w-2.5" />
+                ) : (
+                    <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+                )
+            ) : null}
+        </span>
+    );
+}
+
+/**
+ * The muted body of an in-group expression row (WI-5): the differential's name, and nothing else. It
+ * stays an ordinary row (selection / drag / Enter live on the row around it); only the read-only
+ * content is compacted.
  *
- * It carries no slot of its own any more (U1): the row already holds the portrait column open for the
- * group's rail, so the annotation starts in the body column with the speaker's words — a look change
- * reads as a note inside the block instead of a line that breaks it.
+ * Its thumbnail moved out to `GroupExpressionBead` in the gutter (U1), so the label starts on the
+ * block's one text baseline — a look change reads as a note inside the block rather than a line that
+ * breaks it, and it adds no left edge of its own.
  */
 function GroupExpressionMember({ block, characters }: { block: StoryBlock; characters: Character[] }) {
     const { t } = useTranslation();
-    const { url: imageUrl, frame, showingSprite } = useCharacterBadgeImage(block, undefined, characters);
     const label = useMemo(() => {
         if (block.kind !== "action" || block.payload.action !== "character") {
             return "";
@@ -991,16 +1046,7 @@ function GroupExpressionMember({ block, characters }: { block: StoryBlock; chara
     }, [block, t]);
 
     return (
-        <span className="flex min-w-0 flex-1 items-center gap-1.5 self-stretch text-2xs text-fg-subtle">
-            <span className="relative h-4 w-4 shrink-0 overflow-hidden rounded-full border border-edge bg-fill-subtle">
-                {imageUrl ? (
-                    showingSprite ? (
-                        <HeadThumbnail url={imageUrl} alt="" frame={frame} className="h-full w-full" iconClassName="h-2.5 w-2.5" />
-                    ) : (
-                        <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} />
-                    )
-                ) : null}
-            </span>
+        <span className="flex min-w-0 flex-1 items-center self-stretch text-2xs text-fg-subtle">
             <span className="min-w-0 truncate">{label}</span>
         </span>
     );
@@ -2238,6 +2284,12 @@ function CharacterSelectTrigger(props: {
     style?: CSSProperties;
     /** When the row is selected, drop the accent so the selection highlight owns the nametag colour. */
     suppressColor?: boolean;
+    /**
+     * The nametag heads its run on its own line (U1): one type size down, no reserved line box, and
+     * its horizontal padding pulled back out by a negative margin — the hover target keeps its 4px,
+     * but the *glyphs* start exactly on the block's text baseline, which is the whole point.
+     */
+    heading?: boolean;
 }) {
     const { t } = useTranslation();
     const rootRef = useRef<HTMLDivElement | null>(null);
@@ -2308,15 +2360,26 @@ function CharacterSelectTrigger(props: {
     if (!editing) {
         const unassigned = !committedName;
         return (
-            <div ref={rootRef} className="relative shrink-0 overflow-visible">
+            <div ref={rootRef} className={["relative overflow-visible", props.heading ? "w-full" : "shrink-0"].join(" ")}>
                 <button
                     type="button"
                     className={[
-                        "flex h-full min-h-[28px] max-w-full items-center truncate rounded-md px-1 py-0.5 text-left text-sm hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
+                        "flex max-w-full items-center truncate rounded-md px-1 py-0.5 text-left hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
+                        // The negative margins are what keep the name line cheap: the hover chip keeps
+                        // its padding, but the padding is pulled back out of the layout, so heading a
+                        // run costs one 16px line and its glyphs start on the baseline, not 4px in.
+                        // `w-fit` matters: the heading's wrapper spans the body width (so a very long
+                        // name truncates at the column rather than at nothing), and without it the
+                        // block-level flex button would stretch its hover chip across the whole line.
+                        props.heading ? "-mx-1 -my-0.5 w-fit text-2xs font-medium leading-4" : "h-full min-h-[28px] text-sm",
                         unassigned ? "italic text-fg-subtle hover:text-primary" : props.speakerName ? "text-fg-muted" : characterColor ? "" : "text-primary",
                         props.className ?? "",
                     ].join(" ")}
-                    style={characterColor ? { ...props.style, color: characterColor } : props.style}
+                    // A heading takes its size from the class, not from the editor's body type.
+                    style={(() => {
+                        const base = props.heading ? { ...props.style, fontSize: undefined, lineHeight: undefined } : props.style;
+                        return characterColor ? { ...base, color: characterColor } : base;
+                    })()}
                     onMouseDown={event => {
                         event.preventDefault();
                         event.stopPropagation();
@@ -2339,6 +2402,7 @@ function CharacterSelectTrigger(props: {
                 value={draft}
                 className={[
                     "h-full min-h-[28px] w-[128px] rounded-md border border-primary/50 bg-surface-sunken px-1 py-0.5 text-sm text-fg outline-none",
+                    props.heading ? "-ml-1" : "",
                     props.className ?? "",
                 ].join(" ")}
                 style={props.style}
@@ -2561,6 +2625,8 @@ function BlockPreview(props: {
     hideSpeaker?: boolean;
     /** Row is selected: the nametag yields its accent colour to the selection highlight. */
     suppressSpeakerColor?: boolean;
+    /** `comfortable` dialogue block (U1 WI-3): nametag on its own line above the words. */
+    stacked?: boolean;
     /** Commit an inline quick-param edit (WI-2) through the same history path the inspector uses. */
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
@@ -2572,7 +2638,12 @@ function BlockPreview(props: {
     if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
         const hasValue = Boolean(text?.value) || Boolean(text?.rich && text.rich.length > 0);
         return (
-            <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch text-sm">
+            <div className={[
+                "flex min-w-0 flex-1 self-stretch text-sm",
+                // Stacked (U1 WI-3): the nametag heads the block on its own line and the words run
+                // full width underneath it, instead of the name eating into the line it introduces.
+                props.stacked ? "flex-col items-start" : "items-center gap-2",
+            ].join(" ")}>
                 {props.hideSpeaker ? null : (
                     <CharacterSelectTrigger
                         characters={props.characters}
@@ -2583,14 +2654,15 @@ function BlockPreview(props: {
                         onCreateCharacter={props.onCreateCharacter}
                         style={textStyle}
                         suppressColor={props.suppressSpeakerColor}
+                        heading={props.stacked}
                     />
                 )}
                 {hasValue && text ? (
-                    <TextClickTarget style={textStyle}>
+                    <TextClickTarget style={textStyle} className={props.stacked ? "w-full" : undefined}>
                         <RichTextView className="min-w-0 flex-1 whitespace-pre-wrap break-words text-fg" segment={text} document={props.document} sceneId={props.scene.id} />
                     </TextClickTarget>
                 ) : (
-                    <TextClickTarget style={textStyle} className="italic text-fg-subtle">{getEmptyTextPlaceholder(block)}</TextClickTarget>
+                    <TextClickTarget style={textStyle} className={["italic text-fg-subtle", props.stacked ? "w-full" : ""].join(" ")}>{getEmptyTextPlaceholder(block)}</TextClickTarget>
                 )}
             </div>
         );
