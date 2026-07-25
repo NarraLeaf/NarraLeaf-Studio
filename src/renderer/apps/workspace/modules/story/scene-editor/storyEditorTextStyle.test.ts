@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { STORY_EDITOR_DENSITIES } from "./storyEditorSessionStore";
 import {
+    STORY_AVATAR_VAR,
     STORY_DENSITY_METRICS,
     STORY_GUTTER_VAR,
+    STORY_HANDLE_PX,
+    STORY_HANDLE_VAR,
     STORY_ROW_BOX_VAR,
     storyEditorRootStyle,
     storyGutterWidth,
@@ -36,20 +39,36 @@ describe("story editor density metrics", () => {
     it("orders the densities by how much room they give", () => {
         const boxes = STORY_EDITOR_DENSITIES.map(density => STORY_DENSITY_METRICS[density].rowBox);
         expect(boxes).toEqual([...boxes].sort((a, b) => a - b));
+        const avatars = STORY_EDITOR_DENSITIES.map(density => STORY_DENSITY_METRICS[density].avatar);
+        expect(avatars).toEqual([...avatars].sort((a, b) => a - b));
     });
 
-    it("publishes both row-chrome variables from one style object", () => {
+    /**
+     * U1 §6.3, as a number rather than a screenshot: 24px was 1.7% of the editor's width, at which a
+     * differential head and a crop selection are both invisible. These two floors are the acceptance
+     * criteria, so a future density tweak that walks back under them fails here first.
+     */
+    it("keeps the speaker portrait legible at compact and gives it a column at comfortable", () => {
+        expect(STORY_DENSITY_METRICS.compact.avatar).toBeGreaterThanOrEqual(28);
+        expect(STORY_DENSITY_METRICS.comfortable.avatar).toBeGreaterThanOrEqual(40);
+    });
+
+    it("publishes every row-chrome variable from one style object", () => {
         const style = storyEditorRootStyle("comfortable", 12) as Record<string, string>;
         expect(style[STORY_ROW_BOX_VAR]).toBe(`${STORY_DENSITY_METRICS.comfortable.rowBox}px`);
         expect(style[STORY_GUTTER_VAR]).toBe(`${storyGutterWidth(12)}px`);
+        expect(style[STORY_AVATAR_VAR]).toBe(`${STORY_DENSITY_METRICS.comfortable.avatar}px`);
+        expect(style[STORY_HANDLE_VAR]).toBe(`${STORY_HANDLE_PX}px`);
     });
 });
 
 describe("line-number gutter", () => {
-    it("keeps the historical width while line numbers fit in two digits", () => {
-        expect(storyGutterWidth(0)).toBe(36);
-        expect(storyGutterWidth(1)).toBe(36);
-        expect(storyGutterWidth(99)).toBe(36);
+    it("holds one width while line numbers fit in two digits", () => {
+        // 30, down from 36: the numbers dropped a type size and tightened to the fold chevron (U1
+        // WI-2), and the width they gave up went to the words.
+        expect(storyGutterWidth(0)).toBe(30);
+        expect(storyGutterWidth(1)).toBe(30);
+        expect(storyGutterWidth(99)).toBe(30);
     });
 
     it("widens once a digit is added, so four digits cannot collide with the fold chevron", () => {

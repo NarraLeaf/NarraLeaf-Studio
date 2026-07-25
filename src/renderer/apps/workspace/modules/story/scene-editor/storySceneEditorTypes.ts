@@ -50,6 +50,12 @@ export type VisibleStoryRow = {
      */
     groupRole?: "head" | "member";
     /**
+     * This head's run continues on the very next row (U1). Purely so the head can extend the group's
+     * attribution rail out of its own bottom edge — the rail is what says "the lines below are still
+     * this speaker", and a rail that starts one row late points at nothing.
+     */
+    groupContinues?: boolean;
+    /**
      * The row is compiled out (WI-3 / schema v7): disabled itself or nested in a disabled container.
      * Rendered muted at reduced opacity; the runtime behaves as if it were not there.
      */

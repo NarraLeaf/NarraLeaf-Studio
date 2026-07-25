@@ -96,11 +96,17 @@ function sameGroupSpeaker(a: GroupSpeaker, b: GroupSpeaker): boolean {
  * last line never groups with a same-speaker line that lives outside the container (adjacency in the
  * flattened list is not adjacency in the tree). Only dialogue and in-group expression rows are cloned;
  * every other row is returned untouched, so referential identity is preserved where it can be.
+ *
+ * `groupContinues` is set on a head whose very next row is one of its members. It is not a grouping
+ * rule — the runs are exactly the ones the loop below already found — only the one fact a row cannot
+ * see about itself: whether the attribution rail has to leave its bottom edge (U1 WI-1). Without it
+ * the rail starts abruptly under the first continuation line and never reaches the speaker it points
+ * at, which is the whole thing it exists to say.
  */
 export function annotateDialogueGroups(rows: VisibleStoryRow[]): VisibleStoryRow[] {
     let groupSpeaker: GroupSpeaker | null = null;
     let groupParentId: StoryBlockId | null = null;
-    return rows.map(row => {
+    const annotated = rows.map(row => {
         const block = row.block;
         const parentId = block.parentId ?? null;
         const sameContainer = groupSpeaker !== null && groupParentId === parentId;
@@ -128,6 +134,10 @@ export function annotateDialogueGroups(rows: VisibleStoryRow[]): VisibleStoryRow
         groupParentId = null;
         return row;
     });
+    return annotated.map((row, index) =>
+        row.groupRole === "head" && annotated[index + 1]?.groupRole === "member"
+            ? { ...row, groupContinues: true }
+            : row);
 }
 
 export function buildVisibleRows(scene: StoryScene, collapsedIds: Set<StoryBlockId>): VisibleStoryRow[] {
