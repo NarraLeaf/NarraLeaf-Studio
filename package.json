@@ -46,6 +46,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@monaco-editor/react": "^4.7.0",
     "@narraleaf/encryption": "^0.4.1",
+    "@tanstack/react-virtual": "^3.14.8",
     "@xyflow/react": "^12.10.2",
     "clsx": "^2.1.1",
     "electron-builder": "^26.0.12",

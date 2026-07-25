@@ -33,8 +33,9 @@ import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/componen
 import { StoryInspectorPanel } from "./StoryInspectorPanel";
 import { publishStoryInspectorState, STORY_INSPECTOR_PANEL_ID } from "./storyInspectorBridge";
 import { stopVoiceAudition } from "./voiceAudition";
-import { StoryEditorTextStyleProvider, storyEditorRootStyle } from "./storyEditorTextStyle";
+import { STORY_DENSITY_METRICS, StoryEditorTextStyleProvider, storyEditorRootStyle } from "./storyEditorTextStyle";
 import { StoryRowActionsContext, type StoryRowActions } from "./storyRowActions";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TranslationKey } from "@shared/i18n";
 import { getTextSegment } from "./storySceneBlockUtils";
 import {
@@ -75,6 +76,9 @@ const EMPTY_SCENE_EXAMPLES: readonly { line: string; key: TranslationKey }[] = [
     { line: "/show", key: "story.sceneEditor.emptyExampleShow" },
     { line: "/say", key: "story.sceneEditor.emptyExampleSay" },
 ];
+
+/** A row's `py-1`, the part of its height the density's box does not cover. */
+const ROW_VERTICAL_PADDING_PX = 8;
 
 const SCENE_FIELD_LABEL_CLASS = "mb-1 block text-2xs font-medium text-fg-subtle";
 const SCENE_TEXT_FIELD_CLASS = "w-full rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-primary/50";
@@ -659,6 +663,87 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const editorRef = useRef(editor);
     editorRef.current = editor;
 
+    const sortableRowIds = useMemo(() => editor.visibleRows.map(row => row.block.id), [editor.visibleRows]);
+
+    /**
+     * The row list is windowed: only the rows on screen (plus a little overscan) exist in the DOM.
+     *
+     * Interaction cost is already flat — the rows are memoised — but *mounting* was not. Opening a
+     * 400-row scene cost one 340ms frozen frame, and that is linear: a 1500-line chapter froze the
+     * window for over a second on this machine and several times that on a slow one. Windowing makes
+     * opening a scene cost what a screenful costs, whatever the chapter's length.
+     *
+     * `scrollMargin` is what makes it agree with the rest of the column: the scene overview sits above
+     * the list inside the same scroller, so the virtualiser has to know the list does not start at
+     * scroll offset zero. Heights are measured rather than assumed, because a wrapped line of dialogue
+     * is taller than a `/bg` row and the estimate only has to be close enough to size the scrollbar.
+     */
+    const rowListRef = useRef<HTMLDivElement | null>(null);
+    const [rowListMargin, setRowListMargin] = useState(0);
+    const estimatedRowHeight = STORY_DENSITY_METRICS[editor.density].rowBox + ROW_VERTICAL_PADDING_PX;
+    const rowVirtualizer = useVirtualizer({
+        count: editor.visibleRows.length,
+        getScrollElement: () => editor.scrollContainerRef.current,
+        estimateSize: () => estimatedRowHeight,
+        overscan: 12,
+        scrollMargin: rowListMargin,
+        getItemKey: index => editor.visibleRows[index]?.block.id ?? index,
+    });
+
+    // The overview block's height changes (collapse, a background image loading), and the list's start
+    // offset with it. Measured after every commit rather than once: a stale margin puts every row a
+    // constant distance from where the scrollbar says it is.
+    useLayoutEffect(() => {
+        const list = rowListRef.current;
+        const scroller = editor.scrollContainerRef.current;
+        if (!list || !scroller) {
+            return;
+        }
+        const margin = list.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+        setRowListMargin(previous => (Math.abs(previous - margin) > 0.5 ? margin : previous));
+    });
+
+    /**
+     * Put a row on screen by index, whether or not it is currently mounted.
+     *
+     * Everything that used to reach for a row's DOM node — deep links, the Dev Mode play head,
+     * keyboard navigation — could assume the node existed. Under windowing it may not, and the fix
+     * cannot be "scroll the node into view" because there is no node until it is scrolled to.
+     */
+    const scrollRowIntoView = useCallback((blockId: StoryBlockId, align: "center" | "auto" = "auto") => {
+        const index = editor.visibleRows.findIndex(row => row.block.id === blockId);
+        if (index < 0) {
+            return false;
+        }
+        rowVirtualizer.scrollToIndex(index, { align });
+        return true;
+    }, [editor.visibleRows, rowVirtualizer]);
+
+    /**
+     * Keep the active row on screen. Arrow-navigating a long scene used to walk the selection off the
+     * viewport and leave it there — survivable while every row was in the DOM, fatal once they are
+     * not, because Enter would open an editor on a row that does not exist.
+     */
+    useEffect(() => {
+        if (!active || !editor.activeBlockId || editor.editorMode.kind === "text") {
+            return;
+        }
+        const scroller = editor.scrollContainerRef.current;
+        const row = scroller?.querySelector<HTMLElement>(`[data-story-row-block-id="${CSS.escape(editor.activeBlockId)}"]`);
+        if (!scroller) {
+            return;
+        }
+        if (!row) {
+            scrollRowIntoView(editor.activeBlockId, "center");
+            return;
+        }
+        const rowRect = row.getBoundingClientRect();
+        const viewRect = scroller.getBoundingClientRect();
+        if (rowRect.top < viewRect.top || rowRect.bottom > viewRect.bottom) {
+            row.scrollIntoView({ block: "nearest" });
+        }
+    }, [active, editor.activeBlockId, editor.editorMode.kind, editor.scrollContainerRef, scrollRowIntoView]);
+
     // The right-sidebar inspector (WI-1). Registered like the other three dynamic panels; its body reads
     // the selection from the per-tab bridge below rather than a static payload.
     useEffect(() => {
@@ -924,15 +1009,17 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         if (!el) {
             return;
         }
-        const row = el.querySelector<HTMLElement>(`[data-story-row-block-id="${CSS.escape(deepLinkBlockId)}"]`);
-        if (!row) {
-            return; // row not laid out yet (still loading / inside a collapsed parent); re-runs on row changes
+        // The row may not be in the DOM — the list is windowed — so this asks the virtualiser to put
+        // it there rather than looking for a node. A `false` means the row is not in the visible set
+        // at all (still loading, or inside a collapsed parent), which is the old bail-out: the effect
+        // re-runs when the rows change.
+        if (!scrollRowIntoView(deepLinkBlockId, "center")) {
+            return;
         }
         handledDeepLinkRef.current = deepLinkBlockId;
         editor.revealBlock(deepLinkBlockId);
-        row.scrollIntoView({ block: "center" });
         editor.focusRoot();
-    }, [active, deepLinkBlockId, rowCount, scrollContainerRef, editor.revealBlock, editor.focusRoot]);
+    }, [active, deepLinkBlockId, rowCount, scrollContainerRef, scrollRowIntoView, editor.revealBlock, editor.focusRoot]);
 
     // Dev Mode play head (WI-2): follow the running row in place when this editor owns the scene.
     // Uses the plain row-select visual — never `revealBlock` (which would flip the author's
@@ -940,6 +1027,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // author's view nor pulls keyboard focus. Only rows the author is currently showing react: a row
     // hidden by the filter or a collapsed parent is not in the DOM, so it is silently skipped.
     const lastPlayHeadBlockRef = useRef<StoryBlockId | null>(null);
+    const scrollRowIntoViewRef = useRef(scrollRowIntoView);
+    scrollRowIntoViewRef.current = scrollRowIntoView;
     useEffect(() => {
         lastPlayHeadBlockRef.current = null;
         return subscribeStoryRowHighlight(highlight => {
@@ -949,15 +1038,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             if (lastPlayHeadBlockRef.current === highlight.blockId) {
                 return;
             }
-            const row = scrollContainerRef.current?.querySelector<HTMLElement>(
-                `[data-story-row-block-id="${CSS.escape(highlight.blockId)}"]`,
-            );
-            if (!row) {
+            // Windowed list: ask for the row by index rather than by node, and skip when the author
+            // is not showing it at all (filtered out, or inside a collapsed parent) — same silence as
+            // before, for the same reason.
+            if (!scrollRowIntoViewRef.current(highlight.blockId, "auto")) {
                 return;
             }
             lastPlayHeadBlockRef.current = highlight.blockId;
             editorRef.current.selectRow(highlight.blockId);
-            row.scrollIntoView({ block: "nearest" });
         });
     }, [active, payload?.storyId, payload?.sceneId, scrollContainerRef]);
 
@@ -1126,7 +1214,6 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
      * fresh context value on every render — and a changed context re-renders every `useSortable`
      * consumer, i.e. every row, which is exactly what `memo` on the row is there to stop.
      */
-    const sortableRowIds = useMemo(() => editor.visibleRows.map(row => row.block.id), [editor.visibleRows]);
 
     /**
      * The rows' action surface, published once and never rebuilt.
@@ -1378,9 +1465,24 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     panelStateService={panelStateService}
                 />
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                    {/* `items` stays the WHOLE list, not the window. dnd-kit tolerates a rect it has
+                        not measured (its strategy and gap helpers both guard on it), and telling it
+                        only about the rows currently on screen would make "which index is this" mean
+                        something different from what the document says. */}
                     <SortableContext items={sortableRowIds} strategy={verticalListSortingStrategy}>
-                        {editor.visibleRows.map(row => (
-                            <div key={row.block.id}>
+                    <div ref={rowListRef} style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
+                        {rowVirtualizer.getVirtualItems().map(virtualRow => {
+                            const row = editor.visibleRows[virtualRow.index];
+                            if (!row) {
+                                return null;
+                            }
+                            return (
+                            <div
+                                key={row.block.id}
+                                data-index={virtualRow.index}
+                                ref={rowVirtualizer.measureElement}
+                                style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${virtualRow.start}px)` }}
+                            >
                                 {/* "Insert above" (WI-3): a before-target slot renders in front of this row at
                                     its own depth, so the new line lands above it whether or not it has a
                                     previous sibling. */}
@@ -1470,7 +1572,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     />
                                 ) : null}
                             </div>
-                        ))}
+                            );
+                        })}
+                    </div>
                     </SortableContext>
                 </DndContext>
                 {editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === null && !editor.editorMode.slot.target?.beforeBlockId ? (
