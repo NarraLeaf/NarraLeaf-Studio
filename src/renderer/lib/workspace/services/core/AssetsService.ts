@@ -113,11 +113,26 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         }
     }
 
+    /**
+     * Write the metadata shards that changed.
+     *
+     * Failures used to vanish here: `writeAssetsMetadata` returns an `FsRequestResult` and this
+     * dropped it, so a shard that could not be written was still marked clean and the library
+     * silently diverged from disk. A rejected shard now stays dirty, so the next mutation retries
+     * it, and the failure is reported (SaveStatusService observes the write itself and raises the
+     * toast / "Storage" console line).
+     */
     private async flushPendingWrites(): Promise<void> {
         if (this.dirtyTypes.size === 0) return;
         const types = Array.from(this.dirtyTypes);
         this.dirtyTypes.clear();
-        await Promise.all(types.map(type => this.writeAssetsMetadata(type)));
+        const results = await Promise.all(types.map(async type => ({ type, result: await this.writeAssetsMetadata(type) })));
+        for (const { type, result } of results) {
+            if (!result.ok) {
+                this.dirtyTypes.add(type);
+                console.warn(`[AssetsService] failed to write ${type} metadata: ${result.error.message}`);
+            }
+        }
     }
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {

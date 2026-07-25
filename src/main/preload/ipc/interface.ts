@@ -190,6 +190,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.workspaceExportConsoleLogs, { defaultFileName, content }),
         onConfirmClose: (handler: () => Promise<RequestStatus<{ confirmed: boolean }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceConfirmClose, handler),
+        onFlushPendingSaves: (handler: () => Promise<RequestStatus<{ flushed: boolean }>>) =>
+            ipcClient.onRequest(IPCEventType.workspaceFlushPendingSaves, handler),
         onResolveAssetUrl: (handler: (payload: { assetId: string; assetType?: string }) => Promise<RequestStatus<{ url: string }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceResolveAssetUrl, handler),
         onResolveImageAssetUrl: (handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>) =>

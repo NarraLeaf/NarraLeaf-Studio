@@ -4,6 +4,7 @@ import chokidar, { FSWatcher } from "chokidar";
 import { App } from "@/app/app";
 import { AppWindow } from "../window/appWindow";
 import { IPCEventType } from "@shared/types/ipcEvents";
+import { ATOMIC_WRITE_TEMP_PATTERN } from "@shared/utils/fs";
 import { DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import { WindowAppType } from "@shared/types/window";
 import { INLangCompiler, NullNLangCompiler } from "./compiler/INLangCompiler";
@@ -371,7 +372,10 @@ export class DevModeManager {
         this.emitVerbose(session, "watching project files for Dev Mode reload");
         session.watcher = chokidar.watch(
             [uidocPath, uigraphsPath, storyRoot, localizationRoot, characterStorePath, blueprintMetaPath, assetsContentRoot],
-            { ignoreInitial: true },
+            // Atomic writes put a scratch sibling in the tree for a few milliseconds before renaming
+            // it into place. Reporting it would schedule a reload against a file that is already
+            // gone, on top of the reload the rename itself triggers.
+            { ignoreInitial: true, ignored: ATOMIC_WRITE_TEMP_PATTERN },
         );
         session.watcher.on("add", file => this.scheduleReload(session, "add", file));
         session.watcher.on("change", file => this.scheduleReload(session, "change", file));
