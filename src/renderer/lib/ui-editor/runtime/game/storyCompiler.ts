@@ -2438,7 +2438,7 @@ function getDisplayable(ctx: SceneCompileContext, name: string, kind?: string): 
 }
 
 const DISPLAYABLE_EFFECT_OPS = new Set([
-    "mask", "clearMask", "clip", "clearClip", "filter", "clearFilter", "darken", "circleReveal", "circleClose", "wipe",
+    "mask", "clearMask", "clip", "clearClip", "filter", "clearFilter", "backdrop", "blend", "darken", "circleReveal", "circleClose", "wipe",
 ]);
 
 function isDisplayableEffectOperation(operation: string): boolean {
@@ -2520,6 +2520,17 @@ async function compileDisplayableEffect(
         }
         case "clearFilter":
             return record(target.clearFilter(options));
+        case "backdrop": {
+            if (!payload.backdropFilter) {
+                diagnostic(ctx, "warning", block.id, "Backdrop effect has no CSS backdrop-filter.");
+                return [];
+            }
+            return record(target.backdrop(payload.backdropFilter, options));
+        }
+        case "blend":
+            // The full CSS type is what the engine takes; only the six curated modes ever reach here
+            // (the inspector offers no others), so "normal" is the safe reset when a payload has none.
+            return record(target.blend(payload.mixBlendMode ?? "normal", options));
         case "darken": {
             if (typeof target.darken !== "function") {
                 diagnostic(ctx, "warning", block.id, "Darken applies to image / character targets only.");
