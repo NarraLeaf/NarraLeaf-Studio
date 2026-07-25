@@ -3,6 +3,7 @@ import { BlurDissolve, Darkness, DevTools, Push, Reveal, ThroughColor, Transitio
 import type { StoryAnimationAsset, StoryBlock, StoryDocument, StoryTransitionRef } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 
 function declarationBlock(id: string, valueType: "boolean" | "number", defaultValue?: number | boolean): StoryBlock {
     return {
@@ -1906,6 +1907,31 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(propsOf("rotate")).toEqual([expect.objectContaining({ rotation: 15 })]);
         // darkness 2 → brightness(-1), which renders as nothing at all. Clamped to 1 → brightness(0).
         expect(propsOf("dark")).toEqual([expect.objectContaining({ filter: "brightness(0)" })]);
+    });
+
+    it("pre-poses the stage camera when a row-precise launch starts after a /camera op", async () => {
+        // A launch that starts after `/camera zoom 2` must open on the zoomed shot. The pose is
+        // pre-posed onto story.camera through the same DevTools path the built-in layers use, and its
+        // darkness compiles to a `camera.darken(d, 0)` statement here - this guards that the camera
+        // element is actually reachable at compile time (an undefined `story.camera` would throw).
+        const cameraBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "camera" }>): StoryBlock => ({
+            id, kind: "action", parentId: null, childrenIds: [], payload,
+        });
+        const document = baseDocument({
+            zoom: cameraBlock("zoom", { action: "camera", operation: "zoom", zoom: 2 }),
+            dark: cameraBlock("dark", { action: "camera", operation: "darken", darkness: 0.6 }),
+            target: narrationBlock("target", "target-text", "Here"),
+        }, ["zoom", "dark", "target"]);
+        const snapshot = computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "target" });
+        expect(snapshot.camera).toEqual({ props: { zoom: 2 }, effects: { darkness: 0.6 } });
+
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            launch: { targetBlockId: "target", snapshot },
+        });
+        expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
+        expect(compiled.story).toBeDefined();
     });
 
     it("compiles /label and /goto, and refuses the two shapes the engine would refuse", async () => {
