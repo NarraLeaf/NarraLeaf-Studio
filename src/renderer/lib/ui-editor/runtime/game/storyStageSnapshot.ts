@@ -17,6 +17,7 @@ import { isStoryExpressionEvaluable, resolveDisplayableTargetRef, savedVariableD
 import { evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
 import {
     getCharacterStageObjectName,
+    getPresetPosition,
     mergeTransformProps,
     normalizeObjectName,
     storyTransformRefFinalProps,
@@ -53,6 +54,23 @@ export type StageSnapshotEffects = {
     darkness?: number;
 };
 
+/**
+ * The stage camera's settled pose (`/camera` pan/zoom/rotate/darken), accumulated up to the target
+ * row. `null` means the camera is at its neutral pose (nothing to pre-pose). Structurally a sibling
+ * of {@link StageSnapshotDisplayable}: `props` are pre-posed like any displayable's transform, and
+ * `effects.darkness` re-applies through the same channel `/camera darken` drives at runtime.
+ *
+ * Scope caveat: the camera is a story-level singleton whose pose persists across scenes, but this
+ * snapshot is computed per scene, so only the launch scene's own `/camera` rows are reconstructed -
+ * a pose set in an earlier scene and carried across a `jump` is not (see the WI-2 report).
+ */
+export type StageSnapshotCamera = {
+    /** Settled NLR transform props (position/zoom/rotation) - pre-posed via setDisplayableTransformProps. */
+    props: Record<string, unknown>;
+    /** Camera darkness (0-1), the only `/camera` effect; re-applied as `camera.darken(d, 0)`. */
+    effects: StageSnapshotEffects;
+};
+
 export type StageSnapshotDisplayable = {
     kind: "image" | "text" | "layer";
     /** Normalized object name - the compiler's element-registry key. */
@@ -87,10 +105,24 @@ export type StoryStageSnapshot = {
     /** Explicitly-assigned variable values (storage key → value). */
     sceneVariables: Record<string, StoryLiteralValue>;
     savedVariables: Record<string, StoryLiteralValue>;
+    /** Settled stage-camera pose accumulated within this scene, or null if neutral. */
+    camera: StageSnapshotCamera | null;
     /** True when the target sits inside an NVL container. */
     nvl: boolean;
     diagnostics: StageSnapshotDiagnostic[];
 };
+
+/**
+ * Lower bound on camera zoom (a zero/negative scale is a broken transform, not a shot). Mirrors the
+ * compiler's `MIN_CAMERA_ZOOM`: the pose is pre-posed straight onto the camera, bypassing the
+ * `compileCameraAction` clamp, so it must be clamped here too.
+ */
+const MIN_CAMERA_ZOOM = 0.05;
+
+/** A finite number or the neutral fallback - a NaN reaching a Transform prop silently kills the animation. */
+function finiteOr(value: number | undefined, fallback: number): number {
+    return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
 
 export function computeStoryStageSnapshot(input: {
     document: StoryDocument;
@@ -130,6 +162,8 @@ class SnapshotWalker {
     private backgroundProps: Record<string, unknown> = {};
     private backgroundEffects: StageSnapshotEffects = {};
     private builtinLayerProps = { backgroundLayer: {} as Record<string, unknown>, displayableLayer: {} as Record<string, unknown> };
+    /** Story-level camera pose accumulated within this scene; null until a `/camera` op sets one. */
+    private camera: StageSnapshotCamera | null = null;
     private nvl = false;
     private reachedTarget = false;
 
@@ -173,6 +207,7 @@ class SnapshotWalker {
             builtinLayerProps: this.builtinLayerProps,
             sceneVariables: this.assignedScene,
             savedVariables: this.assignedSaved,
+            camera: this.camera,
             nvl: this.nvl,
             diagnostics: this.diagnostics,
         };
@@ -365,6 +400,9 @@ class SnapshotWalker {
             case "layer":
                 this.applyLayer(block, payload);
                 return;
+            case "camera":
+                this.applyCamera(payload);
+                return;
             case "setVariable":
                 this.applySetVariable(block, payload);
                 return;
@@ -491,6 +529,43 @@ class SnapshotWalker {
             } else if (targetProps.builtin) {
                 this.builtinLayerProps[targetProps.builtin] = mergeTransformProps(this.builtinLayerProps[targetProps.builtin], props);
             }
+        }
+    }
+
+    /**
+     * Accumulate the stage camera's settled pose. Each op writes its own channel and the latest
+     * value wins (matching the runtime, where `/camera` transforms are absolute, not relative);
+     * `reset` returns the camera to neutral, which for a pre-pose means "nothing to apply".
+     *
+     * Values are clamped with the same idiom the compiler's `compileCameraAction` uses, because the
+     * pose is pre-posed directly onto the camera and never passes through that compile path.
+     */
+    private applyCamera(payload: Extract<StoryActionPayload, { action: "camera" }>): void {
+        if (payload.operation === "reset") {
+            this.camera = null;
+            return;
+        }
+        const camera = this.camera ?? (this.camera = { props: {}, effects: {} });
+        switch (payload.operation) {
+            case "pan":
+                camera.props.position = getPresetPosition("custom", {
+                    xalign: payload.position?.xalign ?? 0.5,
+                    yalign: payload.position?.yalign ?? 0.5,
+                    ...(payload.position?.xoffset !== undefined ? { xoffset: payload.position.xoffset } : {}),
+                    ...(payload.position?.yoffset !== undefined ? { yoffset: payload.position.yoffset } : {}),
+                });
+                return;
+            case "zoom":
+                camera.props.zoom = Math.max(MIN_CAMERA_ZOOM, finiteOr(payload.zoom, 1));
+                return;
+            case "rotate":
+                camera.props.rotation = finiteOr(payload.rotation, 0);
+                return;
+            case "darken":
+                camera.effects.darkness = Math.min(1, Math.max(0, finiteOr(payload.darkness, 0)));
+                return;
+            default:
+                return;
         }
     }
 
