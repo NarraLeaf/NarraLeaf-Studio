@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ChevronDown, Copy } from "lucide-react";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetSource, type Asset } from "@/lib/workspace/services/assets/types";
 import { Button } from "@/lib/components/elements";
@@ -195,9 +196,17 @@ function AssetRow({
 
 /**
  * One asset, in full: what it looks like, what it weighs, and every place that points at it.
+ *
+ * The shard path (`content/35/f4/5bbaf…`) and the content hash are addresses this editor invented
+ * for its own storage, and they used to be two of the four lines here, printed at every reader
+ * whether or not they had asked. Nobody writing a story needs to know where a file was filed; the
+ * one time either is worth having is when it is being pasted somewhere else. So they fold away, and
+ * unfold with a copy button — no sentence explaining what a shard is, because the fix for jargon is
+ * not to caption it.
  */
 function AssetDetail({ entry }: { entry: AssetOverviewEntry }) {
     const { t, tn } = useTranslation();
+    const [showStorage, setShowStorage] = useState(false);
     const asset = entry.asset;
     const relativePath = assetContentRelativePath(asset);
     const previewUrl = useBadgeImageUrl(
@@ -220,9 +229,27 @@ function AssetDetail({ entry }: { entry: AssetOverviewEntry }) {
             <dl className="flex flex-col gap-1.5">
                 <DetailRow label={t("properties.asset.info.size")} value={formatByteSize(entry.bytes)} />
                 <DetailRow label={t("assets.overview.stat.referenced")} value={tn("assets.overview.uses", entry.referenceCount)} />
-                <DetailRow label={t("properties.asset.info.hash")} value={asset.hash} mono />
-                <DetailRow label={t("assets.overview.detail.path")} value={storageLocation ?? "—"} mono />
             </dl>
+
+            <div>
+                <button
+                    type="button"
+                    onClick={() => setShowStorage(prev => !prev)}
+                    aria-expanded={showStorage}
+                    className="flex items-center gap-1 rounded-md text-2xs text-fg-subtle hover:text-fg-muted"
+                >
+                    <ChevronDown className={cn("h-3 w-3 transition-transform", !showStorage && "-rotate-90")} />
+                    {t("assets.overview.detail.storage")}
+                </button>
+                {showStorage && (
+                    <dl className="mt-1.5 flex flex-col gap-1.5">
+                        <CopyRow label={t("properties.asset.info.hash")} value={asset.hash} />
+                        {storageLocation && (
+                            <CopyRow label={t("assets.overview.detail.path")} value={storageLocation} />
+                        )}
+                    </dl>
+                )}
+            </div>
 
             <AssetReferencesSection assetId={asset.id} />
         </div>
@@ -236,6 +263,27 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
             <dd className={cn("min-w-0 truncate text-2xs text-fg-muted", mono && "font-mono")} title={value}>
                 {value}
             </dd>
+        </div>
+    );
+}
+
+/** A storage address: shown on request, and only ever useful somewhere else — so it copies. */
+function CopyRow({ label, value }: { label: string; value: string }) {
+    const { t } = useTranslation();
+    return (
+        <div className="flex items-baseline gap-2">
+            <dt className="shrink-0 text-2xs text-fg-subtle">{label}</dt>
+            <dd className="min-w-0 flex-1 truncate font-mono text-2xs text-fg-muted" title={value}>
+                {value}
+            </dd>
+            <button
+                type="button"
+                title={t("common.copy")}
+                onClick={() => void navigator.clipboard?.writeText(value)}
+                className="shrink-0 rounded-md p-0.5 text-fg-subtle hover:bg-fill hover:text-fg-muted"
+            >
+                <Copy className="h-3 w-3" />
+            </button>
         </div>
     );
 }
