@@ -123,11 +123,14 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
                 </div>
             )}
 
-            {/* Filter Options Panel */}
+            {/* Filter Options Panel. `left-0 right-0` alone sizes it to the toggle button — about
+                110px — which stacked every option on its own line and made five groups taller than
+                the panel they filter. A floor width lets the chips sit side by side; a group with
+                nothing to offer (no tags in this project) is not printed at all. */}
             {isExpanded && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-surface-overlay border border-edge-strong rounded-lg shadow-xl z-10">
+                <div className="absolute top-full left-0 right-0 mt-2 min-w-64 bg-surface-overlay border border-edge-strong rounded-lg shadow-xl z-10">
                     <div className="p-3 space-y-3">
-                        {filters.map(filter => (
+                        {filters.filter(filter => filter.options.length > 0).map(filter => (
                             <div key={filter.id} className="space-y-2">
                                 <div className="flex items-center gap-2 text-sm text-fg-muted">
                                     {filter.icon}
