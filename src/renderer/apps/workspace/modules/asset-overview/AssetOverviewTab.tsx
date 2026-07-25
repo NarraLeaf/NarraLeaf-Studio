@@ -21,15 +21,15 @@ import {
 import { assetContentRelativePath, computeAssetOverviewSnapshot } from "./assetOverviewSnapshot";
 
 /**
- * The asset overview: one page that answers "what is in this library, what uses it, and what would
- * a reference-following package weigh".
+ * The asset overview: one page that answers "what is in this library and what uses it".
  *
  * Read-only by construction. The page derives everything from `AssetsService` and
  * `ReferenceService` and writes nothing back - not to the documents, and above all not to the
- * build. The packaging figures are a **prediction**: a build still packages the whole `assets/`
- * directory, and this page exists so that claim can be audited before anything is allowed to act
- * on it (overhaul plan §5.5). The sidebar keeps its job as the drag-in surface; this is the
- * reading surface.
+ * build. The sidebar keeps its job as the drag-in surface; this is the reading surface.
+ *
+ * It used to carry a packaging read-out as well (overhaul plan §5.5's "predict before you trim").
+ * That section is no longer rendered - see the note where it used to sit - though the summary still
+ * carries the figures.
  */
 export function AssetOverviewTab({ active }: EditorTabComponentProps) {
     const { context } = useWorkspace();
@@ -128,14 +128,10 @@ export function AssetOverviewTab({ active }: EditorTabComponentProps) {
     return (
         <div className="flex h-full min-h-0 flex-col bg-surface">
             <div className="flex shrink-0 items-center gap-3 border-b border-edge px-3 py-1.5">
+                {/* No count/size readout here: the Library section below opens with exactly these two
+                    numbers, and the page is short enough that printing them twice reads as two
+                    different figures rather than one. */}
                 <span className="truncate text-xs font-medium text-fg">{t("assets.overview.tabTitle")}</span>
-                {snapshot && (
-                    <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">
-                        {tn("assets.itemCount", snapshot.total.count)}
-                        {" · "}
-                        {formatByteSize(snapshot.total.bytes)}
-                    </span>
-                )}
                 <div className="ml-auto flex shrink-0 items-center gap-2">
                     <button
                         type="button"
@@ -189,7 +185,13 @@ export function AssetOverviewTab({ active }: EditorTabComponentProps) {
                                     </div>
                                 </DashboardSection>
 
-                                <PackagingSection packaging={snapshot.packaging} />
+                                {/* The packaging read-out ("what ships today" vs "if trimmed") used to sit
+                                    here. It is not rendered any more: it predicted a saving no build acts
+                                    on, its "actual" figure restated the Library total, and Studio's users
+                                    do not make decisions on a megabyte. `AssetOverviewSummary.packaging`
+                                    is still computed — whether the trimming feature itself lives on is a
+                                    separate call (overhaul plan §5.5), and this page is not the place to
+                                    prejudge it. */}
 
                                 <DashboardSection title={t("assets.overview.section.byType")}>
                                     <ul className="flex flex-col gap-2.5">
@@ -255,44 +257,6 @@ export function AssetOverviewTab({ active }: EditorTabComponentProps) {
                 )}
             </div>
         </div>
-    );
-}
-
-/**
- * What ships today against what a trimmed build would ship, as two numbers and the bar between them.
- *
- * The second number is worded as a hypothetical ("if trimmed"), not a forecast: builds still pack
- * the whole `assets/` directory, so this is the size of the referenced subset and not a prediction
- * of the next build. The page must not be readable as though trimming were already on. The bar shows
- * the reachable set filling part of what ships today; what is left is the difference, next to it.
- */
-function PackagingSection({ packaging }: { packaging: AssetOverviewSummary["packaging"] }) {
-    const { t, tn } = useTranslation();
-
-    return (
-        <DashboardSection title={t("assets.overview.section.packaging")}>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <StatTile
-                    label={t("assets.overview.stat.actual")}
-                    value={formatByteSize(packaging.actualBytes)}
-                    hint={tn("assets.overview.files", packaging.fileCount)}
-                />
-                <StatTile
-                    label={t("assets.overview.stat.ifTrimmed")}
-                    value={formatByteSize(packaging.reachableBytes)}
-                />
-                <StatTile
-                    label={t("assets.overview.stat.difference")}
-                    value={formatByteSize(packaging.differenceBytes)}
-                />
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-fill">
-                <div
-                    className="h-full bg-primary"
-                    style={{ width: `${byteShare(packaging.reachableBytes, packaging.actualBytes)}%` }}
-                />
-            </div>
-        </DashboardSection>
     );
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
-import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Hash, Image, List, Music, Play, Plus, Route, UserRoundPlus, Variable, Video } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Hash, Image, List, Music, Play, Plus, Route, Trash2, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterVariantSelection, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
@@ -189,7 +189,10 @@ export function StoryBlockRow(props: {
             style={sortableStyle}
             data-story-row-block-id={block.id}
             className={[
-                "group relative grid min-h-[35px] grid-cols-[36px_28px_1fr] items-start border-l-2 pr-3",
+                // Height comes from the density's single-line box plus the content column's `py-1`, so
+                // every column can centre inside the same box (see STORY_DENSITY_METRICS). `items-start`
+                // is load-bearing: a wrapped line keeps its first line aligned with the badge.
+                "group relative grid min-h-[calc(var(--nl-story-row-box)+0.5rem)] grid-cols-[var(--nl-story-gutter)_28px_1fr] items-start border-l-2 pr-3",
                 selected ? "border-primary bg-primary/20" : active ? "border-primary bg-fill-subtle" : "border-transparent hover:bg-fill-subtle",
                 // A disabled row (WI-3) dims whole — muted content, kept line number — but no invented
                 // chrome; the runtime treats it as absent.
@@ -222,7 +225,7 @@ export function StoryBlockRow(props: {
                 />
             ) : null}
             <div className="relative flex h-full items-start justify-end pt-1 text-[12px] tabular-nums text-fg-subtle">
-                <div className="flex min-h-[27px] items-center gap-1">
+                <div className="flex min-h-[var(--nl-story-row-box)] items-center gap-1">
                     {canFold ? (
                         <button
                             type="button"
@@ -240,7 +243,10 @@ export function StoryBlockRow(props: {
                     <span>{row.lineNumber}</span>
                 </div>
             </div>
-            <div className="relative flex self-stretch items-center justify-center">
+            {/* The handle centres inside the SAME single-line box the text and the line number use,
+                not over the whole row: on a wrapped row, centring over the row would drift it below
+                the line it grabs. */}
+            <div className="relative flex min-h-[calc(var(--nl-story-row-box)+0.25rem)] items-center justify-center pt-1">
                 <div
                     ref={setActivatorNodeRef}
                     {...attributes}
@@ -278,7 +284,7 @@ export function StoryBlockRow(props: {
                     />
                 ) : (
                 <>
-                <div className="flex min-h-[27px] min-w-0 items-center gap-2">
+                <div className="flex min-h-[var(--nl-story-row-box)] min-w-0 items-center gap-2">
                     {containerInfo ? (
                         <>
                             <ContainerPill info={containerInfo} />
@@ -658,29 +664,34 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
                 props.active ? "opacity-100" : "pointer-events-none opacity-0",
             ].join(" ")}
         >
+            {/* Icons, not words: the cluster sits at the end of every row and two text buttons cost
+                three times the width while saying what the glyph and its tooltip already say. The
+                labels stay as `aria-label`, so the accessible names did not change with the look. */}
             <button
                 type="button"
                 tabIndex={-1}
                 title={t("story.rows.insertTitle", { keys: insertKeys })}
-                className="rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill hover:text-primary"
+                aria-label={t("story.rows.insert")}
+                className="grid h-6 w-6 place-items-center rounded text-fg-muted hover:bg-fill hover:text-primary"
                 onClick={event => {
                     event.stopPropagation();
                     props.onInsertAfter();
                 }}
             >
-                {t("story.rows.insert")}
+                <Plus className="h-3.5 w-3.5" />
             </button>
             <button
                 type="button"
                 tabIndex={-1}
                 title={t("story.rows.deleteTitle", { keys: deleteKeys })}
-                className="rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-danger/10 hover:text-danger"
+                aria-label={t("story.rows.delete")}
+                className="grid h-6 w-6 place-items-center rounded text-fg-muted hover:bg-danger/10 hover:text-danger"
                 onClick={event => {
                     event.stopPropagation();
                     props.onDelete();
                 }}
             >
-                {t("story.rows.delete")}
+                <Trash2 className="h-3.5 w-3.5" />
             </button>
         </div>
     );
@@ -1237,7 +1248,7 @@ function LensTrackContent(props: {
     const barColor = getBlockBadgeInfo(block).iconColor;
     return (
         <>
-            <div className="flex min-h-[27px] min-w-0 items-center gap-2">
+            <div className="flex min-h-[var(--nl-story-row-box)] min-w-0 items-center gap-2">
                 {containerInfo ? (
                     <ContainerPill info={containerInfo} />
                 ) : (
@@ -1519,9 +1530,9 @@ export function InsertRow(props: {
         // highlight while it is open — see the tab's `insertActive`). The marker attribute lets the
         // comfortable-density rule open it to the same 46px as a committed row, so narration's Enter
         // falls into it without a vertical jump.
-        <div data-story-insert-slot="" className="relative grid min-h-[35px] grid-cols-[36px_28px_1fr] items-start border-l-2 border-primary bg-fill-subtle pr-3">
+        <div data-story-insert-slot="" className="relative grid min-h-[calc(var(--nl-story-row-box)+0.5rem)] grid-cols-[var(--nl-story-gutter)_28px_1fr] items-start border-l-2 border-primary bg-fill-subtle pr-3">
             <div aria-hidden />
-            <div className="flex justify-center pt-1">
+            <div className="flex min-h-[calc(var(--nl-story-row-box)+0.25rem)] items-center justify-center pt-1">
                 <Plus className="h-4 w-4 text-primary" />
             </div>
             <div ref={menuAnchorRef} className="relative min-w-0 py-1">
@@ -1530,7 +1541,7 @@ export function InsertRow(props: {
                     same 24px + gap, whether they show a badge or hide it). */}
                 <RailGuides depth={props.depth ?? 0} highlight={false} />
                 <div style={{ paddingLeft: (props.depth ?? 0) * RAIL_STEP }}>
-                <div className="flex min-h-[27px] items-center gap-2">
+                <div className="flex min-h-[var(--nl-story-row-box)] items-center gap-2">
                 <span className="h-6 w-6 shrink-0" aria-hidden />
                 {/* The ghost hint sits in a wrapper around the textarea rather than the row's own
                     anchor, so it is positioned against the field's box and inherits its exact metrics.
