@@ -1917,8 +1917,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             </div>
             {previewOpen && previewMode === "dock" ? (
                 <>
-                    <ResizableHandle direction="horizontal" onResize={handlePreviewResize} />
-                    <div style={{ width: previewWidth }} className="min-h-0 shrink-0">
+                    <ResizableHandle
+                        direction="horizontal"
+                        onResize={handlePreviewResize}
+                        className="w-1 shrink-0 border-r-2 border-transparent bg-fill-subtle"
+                    />
+                    <div style={{ width: previewWidth }} className="min-h-0 shrink-0 border-l border-edge">
                         <StoryScenePreviewPane
                             controller={preview}
                             onClose={togglePreview}
