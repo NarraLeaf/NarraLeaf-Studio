@@ -104,14 +104,14 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
                     {getActiveFilterLabels().map((label, index) => (
                         <span
                             key={index}
-                            className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-primary/20 text-primary rounded"
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-primary/20 text-primary rounded-md"
                         >
                             {label}
                         </span>
                     ))}
                     <button
                         onClick={handleClearAllFilters}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-danger/20 text-danger rounded hover:bg-danger/30 transition-colors"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-danger/20 text-danger rounded-md hover:bg-danger/30 transition-colors"
                     >
                         <X className="w-3 h-3" />
                         {t("common.clear")}
@@ -137,7 +137,7 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
                                                 key={option.id}
                                                 onClick={() => handleFilterToggle(filter.id, option.id)}
                                                 className={`
-                                                    px-2 py-1 text-xs rounded transition-colors
+                                                    px-2 py-1 text-xs rounded-md transition-colors
                                                     ${isActive
                                                         ? 'bg-primary text-on-primary'
                                                         : 'bg-fill text-fg-muted hover:bg-fill-strong'

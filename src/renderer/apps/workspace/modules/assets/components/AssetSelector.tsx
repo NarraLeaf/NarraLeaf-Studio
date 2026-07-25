@@ -619,14 +619,14 @@ export function AssetSelector({
                         <button
                             onClick={handleImportAssets}
                             disabled={loading}
-                            className="p-1 rounded hover:bg-fill disabled:opacity-50"
+                            className="p-1 rounded-md hover:bg-fill disabled:opacity-50"
                             title={t("assets.selector.importFromDisk")}
                         >
                             <FolderOpen className="w-4 h-4" />
                         </button>
                         <button
                             onClick={onClose}
-                            className="p-1 rounded hover:bg-fill"
+                            className="p-1 rounded-md hover:bg-fill"
                             title={t("common.close")}
                         >
                             <X className="w-4 h-4" />

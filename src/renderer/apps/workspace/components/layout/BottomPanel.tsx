@@ -86,7 +86,7 @@ export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
                 </div>
                 <button
                     onClick={onClose}
-                    className="w-6 h-6 rounded flex items-center justify-center text-fg-muted hover:bg-fill hover:text-fg transition-colors cursor-default"
+                    className="w-6 h-6 rounded-md flex items-center justify-center text-fg-muted hover:bg-fill hover:text-fg transition-colors cursor-default"
                     aria-label={t("workspace.shell.closePanel")}
                     title={t("workspace.shell.closePanel")}
                 >

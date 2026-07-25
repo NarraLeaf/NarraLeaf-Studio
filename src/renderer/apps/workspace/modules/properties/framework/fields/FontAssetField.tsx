@@ -120,7 +120,7 @@ export function FontAssetField<TData extends UIInspectorData>({
                             <button
                                 type="button"
                                 onClick={handleClear}
-                                className="shrink-0 rounded px-2 py-0.5 text-2xs tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted"
+                                className="shrink-0 rounded-md px-2 py-0.5 text-2xs tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted"
                             >
                                 {t("common.clear")}
                             </button>

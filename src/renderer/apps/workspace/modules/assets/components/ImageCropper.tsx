@@ -442,13 +442,13 @@ export function ImageCropper({
                                     img.src = imageUrl;
                                 }
                             }}
-                            className="p-1 rounded hover:bg-fill disabled:opacity-50"
+                            className="p-1 rounded-md hover:bg-fill disabled:opacity-50"
                             disabled={loading}
                             title={t("assets.cropper.reload")}
                         >
                             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
                         </button>
-                        <button onClick={onClose} className="p-1 rounded hover:bg-fill" title={t("common.close")}>
+                        <button onClick={onClose} className="p-1 rounded-md hover:bg-fill" title={t("common.close")}>
                             <X className="w-4 h-4" />
                         </button>
                     </div>
@@ -540,7 +540,7 @@ export function ImageCropper({
                                     )}
 
                                     {dragState && dragState.handle !== "move" && (
-                                        <div className="absolute left-2 bottom-2 bg-black/60 text-2xs px-2 py-1 rounded text-white pointer-events-none">
+                                        <div className="absolute left-2 bottom-2 bg-black/60 text-2xs px-2 py-1 rounded-md text-white pointer-events-none">
                                             {Math.round(selection.width)} x {Math.round(selection.height)}
                                         </div>
                                     )}

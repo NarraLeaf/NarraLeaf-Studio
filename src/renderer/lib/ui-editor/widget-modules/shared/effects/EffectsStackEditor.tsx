@@ -474,7 +474,7 @@ function EffectsAnchoredPanel({
 }
 
 const ROW_BTN =
-    "grid h-7 w-7 shrink-0 place-items-center rounded border border-edge bg-surface-sunken text-fg-muted transition-colors hover:border-edge-strong hover:bg-fill hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-40 disabled:pointer-events-none";
+    "grid h-7 w-7 shrink-0 place-items-center rounded-md border border-edge bg-surface-sunken text-fg-muted transition-colors hover:border-edge-strong hover:bg-fill hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-40 disabled:pointer-events-none";
 
 export type EffectsStackEditorProps = {
     values: ElementEffectValues;

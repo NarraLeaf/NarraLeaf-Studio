@@ -96,7 +96,7 @@ export function StoryLayerField(props: {
                 <span className="truncate text-fg">{resolved.name || t("story.layerField.defaultName")}</span>
                 {unresolved ? (
                     <span
-                        className="shrink-0 rounded bg-warning/10 px-1 text-2xs text-warning"
+                        className="shrink-0 rounded-md bg-warning/10 px-1 text-2xs text-warning"
                         title={t("story.layerField.notOnStageTitle")}
                     >
                         {t("story.stage.notOnStage")}
@@ -140,10 +140,10 @@ export function StoryLayerField(props: {
                         <div className="my-1 border-t border-edge-subtle" />
                         <button
                             type="button"
-                            className="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-left text-sm text-primary transition-colors hover:bg-primary/10"
+                            className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm text-primary transition-colors hover:bg-primary/10"
                             onClick={createLayer}
                         >
-                            <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-primary/30 bg-primary/10">
+                            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-primary/30 bg-primary/10">
                                 <Plus className="h-3.5 w-3.5" />
                             </span>
                             <span className="min-w-0 flex-1 truncate">{t("story.layerField.createNew")}</span>
@@ -167,12 +167,12 @@ function LayerRow(props: {
             role="option"
             aria-selected={props.active}
             className={[
-                "flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-left transition-colors",
+                "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors",
                 props.active ? "bg-primary/15 text-fg" : "hover:bg-fill",
             ].join(" ")}
             onClick={props.onChoose}
         >
-            <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-edge bg-fill-subtle">
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle">
                 <Layers className="h-3.5 w-3.5 text-fg-muted" />
             </span>
             <span className="min-w-0 flex-1">

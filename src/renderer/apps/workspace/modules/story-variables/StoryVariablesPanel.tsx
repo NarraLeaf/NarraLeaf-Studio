@@ -24,7 +24,7 @@ import { buildMergedPersistentView } from "@shared/variables/mergedPersistentVie
 import type { StoryVariablesPanelPayload } from "./storyVariablesPanelId";
 
 const INPUT_CLASS =
-    "h-7 min-w-0 flex-1 rounded border border-edge bg-surface-raised px-2 text-xs text-fg outline-none focus:border-primary/50";
+    "h-7 min-w-0 flex-1 rounded-md border border-edge bg-surface-raised px-2 text-xs text-fg outline-none focus:border-primary/50";
 
 function defaultForType(valueType: StoryVariableValueType): StoryLiteralValue {
     if (valueType === "boolean") return false;
@@ -99,7 +99,7 @@ function VariableRowEditor(props: {
             />
             <button
                 type="button"
-                className="flex h-7 w-7 items-center justify-center rounded text-fg-subtle hover:bg-fill hover:text-danger"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-fg-subtle hover:bg-fill hover:text-danger"
                 onClick={props.onDelete}
                 title={t("storyVars.row.delete")}
             >
@@ -124,7 +124,7 @@ function SectionHeader(props: { title: string; hint: string; onAdd?: () => void 
             {props.onAdd ? (
                 <button
                     type="button"
-                    className="flex h-6 items-center gap-1 rounded border border-edge px-2 text-2xs text-fg-muted hover:border-primary/50 hover:text-fg"
+                    className="flex h-6 items-center gap-1 rounded-md border border-edge px-2 text-2xs text-fg-muted hover:border-primary/50 hover:text-fg"
                     onClick={props.onAdd}
                 >
                     <Plus className="h-3 w-3" /> {t("common.add")}
@@ -267,7 +267,7 @@ export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariab
                         <div className="text-2xs text-fg-subtle">{t("storyVars.persistent.empty")}</div>
                     ) : (
                         persistent.map(variable => (
-                            <div key={variable.storageKey} className="flex items-center justify-between rounded border border-edge-subtle px-2 py-1 text-xs text-fg-muted">
+                            <div key={variable.storageKey} className="flex items-center justify-between rounded-md border border-edge-subtle px-2 py-1 text-xs text-fg-muted">
                                 <span className="truncate">{variable.name}</span>
                                 <span className="text-2xs text-fg-subtle">{variable.valueType}</span>
                             </div>
