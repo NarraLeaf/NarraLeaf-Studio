@@ -1694,7 +1694,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                 key={row.block.id}
                                 data-index={virtualRow.index}
                                 ref={rowVirtualizer.measureElement}
-                                style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${virtualRow.start}px)` }}
+                                // `start` is measured from the top of the SCROLLER, so the list's own offset has to come
+                                // back off it — the list element is already that far down the flow. Leaving it in
+                                // pushes every row down by the height of the scene overview above it.
+                                style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${virtualRow.start - rowListMargin}px)` }}
                             >
                                 {/* "Insert above" (WI-3): a before-target slot renders in front of this row at
                                     its own depth, so the new line lands above it whether or not it has a
