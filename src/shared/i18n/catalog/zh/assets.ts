@@ -38,12 +38,9 @@ export const assets = {
         other: "{count} 项",
     },
     overview: {
-        tabTitle: "资源总览",
-        open: "打开资源总览",
         loading: "正在读取资源库…",
         failed: "无法读取资源库。",
         retry: "重试",
-        empty: "此项目还没有资源。",
         section: {
             library: "资源库",
             packaging: "打包",
@@ -72,6 +69,7 @@ export const assets = {
     view: {
         list: "列表视图",
         icons: "图标视图",
+        overview: "总览",
     },
     filter: {
         label: "筛选",
