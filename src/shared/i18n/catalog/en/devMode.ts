@@ -30,7 +30,6 @@ export const devMode = {
         snapshotDefault: "Defaults",
         noStory: "No story is running",
         noVariables: "No variables declared",
-        noStack: "Nothing on the stack",
         noRows: "No rows in this scene",
         stackRoot: "Root",
         stackAsync: "Async",
