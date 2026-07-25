@@ -139,6 +139,23 @@ export type LiveGameUiCallbacks = Pick<GameUiSlotHostOptions,
 >;
 
 /**
+ * Restore the running game to a past backlog line by token.
+ *
+ * Feature-detected (the same convention `fastForward` follows), so an engine build without
+ * `restoreToHistory` reports failure instead of throwing and the caller can fall back. Restoring
+ * re-applies the entry's own state snapshot, so it works after loading a save and costs no replay.
+ */
+export function restoreLiveGameToHistory(liveGame: LiveGame, token: string): boolean {
+    const restoreToHistory = (liveGame as {
+        restoreToHistory?: (token: string) => boolean;
+    }).restoreToHistory;
+    if (!token || typeof restoreToHistory !== "function") {
+        return false;
+    }
+    return restoreToHistory.call(liveGame, token) === true;
+}
+
+/**
  * Fast-forward the running game to the next menu, preserving full history.
  *
  * Prefers the engine's `LiveGame.fastForward` primitive (feature-detected, per the same
@@ -231,10 +248,7 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             // Snapshot-based restore works both during live play and after loading a save (where the
             // closure-based undo stack is empty). Prefer it when a specific backlog line is targeted
             // and the engine exposes it; fall back to undo otherwise (and for "go back one line").
-            const restoreToHistory = (liveGame as {
-                restoreToHistory?: (token: string) => boolean;
-            }).restoreToHistory;
-            if (token && typeof restoreToHistory === "function" && restoreToHistory.call(liveGame, token)) {
+            if (restoreLiveGameToHistory(liveGame, token)) {
                 return;
             }
             liveGame.undo(token ? token : undefined);

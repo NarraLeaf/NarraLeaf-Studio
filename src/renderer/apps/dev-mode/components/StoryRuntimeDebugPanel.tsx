@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { DevModeBundle } from "@shared/types/devMode";
-import type { StoryDocument, StoryLiteralValue, StorySceneId, StoryVariableValueType } from "@shared/types/story";
+import type { StoryBlockId, StoryDocument, StoryLiteralValue, StorySceneId, StoryVariableValueType } from "@shared/types/story";
 import { useTranslation } from "@/lib/i18n";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { GameAppStoryRuntimeBridge, StoryRuntimeStackView } from "@/lib/ui-editor/runtime/app/GameAppHost";
@@ -8,7 +8,6 @@ import { buildSceneFlowGraph } from "@/apps/workspace/modules/story-flow/sceneFl
 import { SceneFlowCanvas } from "@/apps/workspace/modules/story-flow/SceneFlowCanvas";
 import {
     blockIdForActionId,
-    firstActionIdForBlock,
     listDeclaredStoryVariables,
     projectSceneTimeline,
     type DeclaredStoryVariable,
@@ -100,6 +99,54 @@ function useCurrentActionId(storyRuntime: GameAppStoryRuntimeBridge): string | n
         };
     }, [storyRuntime]);
     return actionId;
+}
+
+/**
+ * The play head as a Studio row: the last block an executed action belonged to.
+ *
+ * Resolved inside the subscription rather than at flush time, because the id stream is not
+ * replayable — a row whose action shares a frame with a later one (the engine's own tail action
+ * after the last row of a scene, an async branch) would otherwise never be seen, and the play head
+ * would sit a row behind whatever actually ran. Ids that belong to no Studio block leave the head
+ * where it is; a null id (no story running) clears it.
+ */
+function useCurrentBlockId(storyRuntime: GameAppStoryRuntimeBridge): StoryBlockId | null {
+    const [blockId, setBlockId] = useState<StoryBlockId | null>(
+        () => blockIdForActionId(storyRuntime.getActionIdBindings(), storyRuntime.getCurrentActionId()),
+    );
+    useEffect(() => {
+        let raf = 0;
+        let next: StoryBlockId | null = blockIdForActionId(
+            storyRuntime.getActionIdBindings(),
+            storyRuntime.getCurrentActionId(),
+        );
+        setBlockId(next);
+        const flush = (): void => {
+            raf = 0;
+            setBlockId(next);
+        };
+        const unsubscribe = storyRuntime.subscribeCurrentAction(actionId => {
+            if (actionId !== null) {
+                const resolved = blockIdForActionId(storyRuntime.getActionIdBindings(), actionId);
+                if (!resolved) {
+                    return;
+                }
+                next = resolved;
+            } else {
+                next = null;
+            }
+            if (!raf) {
+                raf = requestAnimationFrame(flush);
+            }
+        });
+        return () => {
+            if (raf) {
+                cancelAnimationFrame(raf);
+            }
+            unsubscribe();
+        };
+    }, [storyRuntime]);
+    return blockId;
 }
 
 export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): ReactNode {
@@ -568,10 +615,7 @@ function TimelineTab(props: {
         [bundle.storyLibrary],
     );
 
-    const currentBlockId = useMemo(
-        () => blockIdForActionId(storyRuntime.getActionIdBindings(), currentActionId),
-        [storyRuntime, currentActionId],
-    );
+    const currentBlockId = useCurrentBlockId(storyRuntime);
 
     // The timeline follows the running scene so the play head stays on screen across jumps; every
     // scene is compiled, so the current block resolves to whichever scene is live. Falls back to the
@@ -597,42 +641,37 @@ function TimelineTab(props: {
         currentRowRef.current?.scrollIntoView({ block: "nearest" });
     }, [currentBlockId, runningSceneId]);
 
+    /**
+     * Snapshot first: a row this session already played is restored from its own backlog snapshot —
+     * exact, immediate, no replay. Everything else (never played, played but not a backlog line, a
+     * trimmed backlog after an earlier restore) is a cold relaunch that enters the story at that
+     * row. Row order is deliberately not consulted: with `/label` + `/goto` it is not the execution
+     * order, and "has it played" is the question that actually decides which mechanism applies.
+     */
     const jumpToRow = useCallback(
         async (row: StoryTimelineRow) => {
             const context = storyRuntime.getStoryContext();
             if (!context) {
                 return;
             }
-            const bindings = storyRuntime.getActionIdBindings();
-            const orderIndex = (blockId: string | null) =>
-                blockId ? rows.findIndex(candidate => candidate.blockId === blockId) : -1;
-            const targetIndex = orderIndex(row.blockId);
-            const activeBlockId = blockIdForActionId(bindings, storyRuntime.getCurrentActionId());
-            const currentIndex = orderIndex(activeBlockId);
-            const targetActionId = firstActionIdForBlock(bindings, row.blockId);
-
-            // Hot jump only forward within the running scene from the current point; anything else (or
-            // a failed / unreachable fast-forward) silently falls back to a cold relaunch at the row.
-            if (targetActionId && currentIndex >= 0 && targetIndex > currentIndex) {
-                try {
-                    const result = await storyRuntime.fastForwardToActionId(targetActionId);
-                    if (result.reason === "action" && result.reachedTarget) {
-                        return;
-                    }
-                } catch {
-                    // fall through to the cold jump
-                }
+            const token = storyRuntime.getPlayedBlockTokens()[row.blockId];
+            if (token && storyRuntime.restoreToHistoryToken(token)) {
+                return;
             }
-            // The snapshot only seeds the entry scene; a cold jump into another scene uses defaults.
-            await storyRuntime.relaunch({
-                sceneId: runningSceneId,
-                startBlockId: row.blockId,
-                snapshotId: runningSceneId === entrySceneId ? context.snapshotId : undefined,
-            }).catch(() => {
-                // superseded / failed relaunch — swallow (debug affordance)
-            });
+            try {
+                // The snapshot only seeds the entry scene; a cold jump into another scene uses defaults.
+                await storyRuntime.relaunch({
+                    sceneId: runningSceneId,
+                    startBlockId: row.blockId,
+                    snapshotId: runningSceneId === entrySceneId ? context.snapshotId : undefined,
+                });
+            } catch (error) {
+                // A superseded or failed relaunch leaves the play head where it was; say so in the
+                // console rather than looking like a click that did nothing.
+                console.warn("[DevMode] timeline jump failed", error);
+            }
         },
-        [rows, runningSceneId, entrySceneId, storyRuntime],
+        [runningSceneId, entrySceneId, storyRuntime],
     );
 
     if (rows.length === 0) {
