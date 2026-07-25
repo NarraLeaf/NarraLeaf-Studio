@@ -472,6 +472,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         handleDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup,
         setExpandedGroups,
         isFocused: (id: string) => focusedItemId === id,
+        isNarrowed: activeFilters.length > 0,
         compactToolbar: !showHeader,
         setAssetsIconToolbarCenter,
     };
