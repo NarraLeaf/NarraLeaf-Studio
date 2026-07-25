@@ -15,6 +15,11 @@ interface AssetsPanelContextType {
     groups: Record<AssetType, AssetGroup[]>;
     filteredAssets: Record<AssetType, Asset[]>;
     filteredGroups: Record<AssetType, AssetGroup[]>;
+    /**
+     * Groups whose own name matched the search. `filteredGroups` also carries the ancestors needed
+     * to draw a tree; those are scaffolding, and a flat result grid must not present them as hits.
+     */
+    matchedGroupIds: ReadonlySet<string>;
 
     // State
     selectedItems: Set<string>;

@@ -10,13 +10,13 @@ import { ContextMenu } from "@/lib/components/elements/ContextMenu";
 import { useAssetsContextMenu } from "./hooks/useAssetsContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { SearchBox } from "./components/SearchBox";
-import { SearchResultsPopup } from "./components/SearchResultsPopup";
-import { FilterSystem } from "./components/FilterSystem";
+import { FilterSystem, type ActiveFilter } from "./components/FilterSystem";
 
 import { useAssetData } from "./state/useAssetData";
 import { useMultiSelection } from "./state/useMultiSelection";
-import { useAssetSearch, SearchResult } from "./state/useAssetSearch";
-import { useAssetFilters } from "./state/useAssetFilters";
+import { useAssetSearch } from "./state/useAssetSearch";
+import { useAssetFilters, filtersNeedLibrarySnapshot } from "./state/useAssetFilters";
+import { useAssetLibrarySnapshot } from "../asset-overview/useAssetLibrarySnapshot";
 import { useDragAndDrop, type InternalAssetDropCompletedInfo } from "./state/useDragAndDrop";
 import { useClipboard } from "./state/useClipboard";
 import { useAssetFocus } from "./state/useAssetFocus";
@@ -214,9 +214,24 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         }
     });
 
-    const { searchQuery, searchResults, isSearchResultsVisible, setSearchQuery, setSearchResultsVisible } = useAssetSearch({ assets, groups });
+    const { searchQuery, activeQuery, setSearchQuery } = useAssetSearch();
 
-    const { filterConfigs, activeFilters, setActiveFilters, handleFilterOpen, filteredAssets, filteredGroups } = useAssetFilters({ assets, groups });
+    const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
+    // Measuring the library costs a directory walk; only pay for it once a filter asks a question
+    // the asset records cannot answer on their own.
+    const { bytesByAssetId, referencedAssetIds } = useAssetLibrarySnapshot(
+        context,
+        filtersNeedLibrarySnapshot(activeFilters),
+    );
+
+    const { filterConfigs, handleFilterOpen, filteredAssets, filteredGroups, matchedGroupIds } =
+        useAssetFilters({ assets, groups, activeFilters, query: activeQuery, bytesByAssetId, referencedAssetIds });
+
+    /**
+     * A search or a filter is narrowing the library. The views read this to stop hiding hits: the
+     * tree opens every group it still shows, and the grid drops the folder walk and goes flat.
+     */
+    const isNarrowed = activeQuery.length > 0 || activeFilters.length > 0;
 
     useEffect(() => {
         if (!hasLoaded) return;
@@ -355,16 +370,6 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         handleCreateGroup, handleImportToGroup, handleCreateMagicTags: handleMagicTagsClick
     });
 
-    const handleSearchResultClick = useCallback((result: SearchResult) => {
-        if (result.isGroup) {
-            handleGroupFocus(result.id);
-        } else {
-            const asset = Object.values(assets).flat().find(a => a.id === result.id);
-            if(asset) handleAssetClick(asset, false);
-        }
-        setSearchResultsVisible(false);
-    }, [assets, handleGroupFocus, handleAssetClick, setSearchResultsVisible]);
-
     const handleRootDrop = useCallback(
         async (event: React.DragEvent, type: AssetType, contextualGroup?: AssetGroup | null) => {
             const targetGroup = contextualGroup ?? null;
@@ -465,14 +470,21 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         return <div className="p-4 text-danger flex items-start gap-2"><AlertCircle className="w-4 h-4" /> <div><p>{t("assets.loadError")}</p><p className="text-xs">{error}</p></div></div>;
     }
 
+    // While narrowing, every category holding a survivor opens: a hit inside a category the reader
+    // last left collapsed is not a hit. The stored list is untouched and comes back when the search
+    // is cleared.
+    const effectiveOpenItems = isNarrowed
+        ? Object.values(AssetType).filter(type => filteredAssets[type].length > 0 || filteredGroups[type].length > 0)
+        : assetTypeOpenItems;
+
     const contextValue = {
-        assets, groups, filteredAssets, filteredGroups, selectedItems, focusedItemId, 
+        assets, groups, filteredAssets, filteredGroups, matchedGroupIds, selectedItems, focusedItemId,
         draggedItem, dropTargetId, clipboard, isMultiSelectMode, expandedGroups,
         handleItemSelect, handleAssetClick, handleGroupFocus, showContextMenu,
         handleDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup,
         setExpandedGroups,
         isFocused: (id: string) => focusedItemId === id,
-        isNarrowed: activeFilters.length > 0,
+        isNarrowed,
         compactToolbar: !showHeader,
         setAssetsIconToolbarCenter,
     };
@@ -530,7 +542,6 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                         onClick={() => {
                                             setIsSearchActive(false);
                                             setSearchQuery("");
-                                            setSearchResultsVisible(false);
                                         }}
                                         className="h-9 w-9 flex items-center justify-center rounded-md border border-edge-strong bg-fill-subtle text-fg-muted hover:bg-fill"
                                         title={t("assets.closeSearch")}
@@ -548,12 +559,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                         onFilterOpen={handleFilterOpen}
                                     />
                                     <button
-                                        onClick={() => {
-                                            setIsSearchActive(true);
-                                            if (searchQuery.trim()) {
-                                                setSearchResultsVisible(true);
-                                            }
-                                        }}
+                                        onClick={() => setIsSearchActive(true)}
                                         className={`h-9 w-9 flex items-center justify-center rounded-md border transition-colors ${
                                             searchQuery
                                                 ? "border-primary bg-primary/10 text-primary"
@@ -609,7 +615,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             handleCreateGroup={handleCreateGroup}
                             actionLoading={actionLoading}
                             setDropTargetId={setDropTargetId}
-                            openItems={assetTypeOpenItems}
+                            openItems={effectiveOpenItems}
                             onOpenChange={(next) => setAssetTypeOpenItems(filterKnownAssetTypeIds(next))}
                             disableAnimation={disableAccordionAnimation}
                         />
@@ -630,7 +636,6 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     )}
                 </div>
                 
-                <SearchResultsPopup results={searchResults} visible={isSearchResultsVisible} onResultClick={handleSearchResultClick} onClose={() => setSearchResultsVisible(false)} searchQuery={searchQuery} anchorRef={searchBoxRef} />
                 <ContextMenu items={contextMenu} position={menuState.position} visible={menuState.visible} onClose={closeContextMenu} />
                 <MagicTagDialog 
                     visible={magicTagDialogVisible}

@@ -1,7 +1,11 @@
-import React, { useState, useMemo } from "react";
-import { Filter, ChevronDown, X, Tag, FileImage } from "lucide-react";
+import React, { useState } from "react";
+import { Filter, ChevronDown, X, Tag, FileImage, Shapes, Link2, Scale } from "lucide-react";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { useTranslation } from "@/lib/i18n";
+import type { Translator } from "@shared/i18n";
+
+/** The one thing this factory needs from `useTranslation`: a key in, a string out. */
+export type FilterTranslator = Translator["t"];
 
 export interface FilterConfig {
     id: string;
@@ -158,20 +162,56 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
     );
 }
 
+/** Byte thresholds behind the size bands. Labels are the numbers themselves — no sentence explains them. */
+export const ASSET_SIZE_BANDS = [
+    { id: 'lt1mb', label: '< 1 MB', max: 1024 * 1024 },
+    { id: '1to10mb', label: '1 – 10 MB', min: 1024 * 1024, max: 10 * 1024 * 1024 },
+    { id: 'gt10mb', label: '> 10 MB', min: 10 * 1024 * 1024 },
+] as const satisfies readonly { id: string; label: string; min?: number; max?: number }[];
+
 /**
- * Predefined filter configurations
+ * Predefined filter configurations.
+ *
+ * Takes a translator rather than reading one itself: this is a plain factory the filter hook calls
+ * inside a memo, and the group headings used to be hard-coded English in a fully localized panel.
  */
-export const createDefaultFilters = (): FilterConfig[] => [
+export const createDefaultFilters = (t: FilterTranslator): FilterConfig[] => [
+    {
+        id: 'type',
+        label: t('assets.filter.category'),
+        icon: <Shapes className="w-4 h-4" />,
+        multiSelect: true,
+        options: Object.values(AssetType).map(type => ({
+            id: type,
+            label: t(`assets.types.${type}` as `assets.types.${AssetType}`),
+            value: type,
+        })),
+    },
+    {
+        id: 'referenced',
+        label: t('assets.filter.usage'),
+        icon: <Link2 className="w-4 h-4" />,
+        options: [
+            { id: 'referenced', label: t('assets.overview.stat.referenced'), value: true },
+            { id: 'unreferenced', label: t('assets.overview.stat.unreferenced'), value: false },
+        ],
+    },
+    {
+        id: 'size',
+        label: t('assets.filter.size'),
+        icon: <Scale className="w-4 h-4" />,
+        options: ASSET_SIZE_BANDS.map(band => ({ id: band.id, label: band.label, value: band.id })),
+    },
     {
         id: 'tags',
-        label: 'Tags',
+        label: t('assets.filter.tags'),
         icon: <Tag className="w-4 h-4" />,
         multiSelect: true,
         options: [], // Will be populated dynamically
     },
     {
         id: 'file-extensions',
-        label: 'File Extensions',
+        label: t('assets.filter.format'),
         icon: <FileImage className="w-4 h-4" />,
         multiSelect: true,
         options: [
