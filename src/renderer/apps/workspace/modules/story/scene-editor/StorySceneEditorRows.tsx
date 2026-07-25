@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
-import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Hash, Image, List, Music, Play, Plus, Route, Trash2, UserRoundPlus, Variable, Video } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Hash, Image, List, Music, Play, Plus, Route, Trash2, TriangleAlert, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterVariantSelection, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
@@ -70,6 +70,7 @@ import { BlockOverview, getQuickParams, QuickParamsInline, type QuickParam } fro
 import { lensTrackRendersBar, type StoryLensRowTrack } from "./storyStagingLens";
 import { actionTrigger, ACTION_TRIGGER, insertChooserType, toCanonicalCommandLine } from "./commandTrigger";
 import { useStoryRowActions } from "./storyRowActions";
+import { diagnoseRow, type StoryRowDiagnosticCode } from "./storyRowDiagnostics";
 import { useReduceMotion } from "@/lib/appearance/useReduceMotion";
 
 /**
@@ -190,6 +191,11 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
      * row's nodes bought for the one row the pointer is actually on. The drag handle is deliberately
      * NOT gated — it is `tabIndex={0}` and reachable by keyboard, so it has to exist to be focused.
      */
+    /**
+     * Row lint. Cheap (two lookups) and derived, so it costs a memoised row nothing until something
+     * about that row actually changes.
+     */
+    const diagnostic = diagnoseRow({ block, appearance: row.appearance, context: props.commandContext });
     const [hovered, setHovered] = useState(false);
     const reduceMotion = useReduceMotion();
     const showRowActions = hovered || active;
@@ -390,6 +396,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                                 {dialogueHead && showRowActions ? (
                                     <GroupHeadPositionControl position={row.appearance?.position} active={active} onSetPosition={on.onSetPosition} />
                                 ) : null}
+                                {diagnostic ? <RowDiagnosticMark code={diagnostic.code} /> : null}
                                 <StoryVoiceIndicator block={block} />
                                 {showRowActions ? (
                                     <RowActions onInsertAfter={on.onInsertAfter} onDelete={on.onDeleteRow} active={active} />
@@ -421,6 +428,28 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
         </div>
     );
 });
+
+
+/**
+ * The lint mark: a small warning glyph beside the voice indicator, with the reason on hover.
+ *
+ * Always visible rather than hover-revealed — the whole point is to be noticed while reading, and a
+ * warning you have to go looking for is not one.
+ */
+function RowDiagnosticMark({ code }: { code: StoryRowDiagnosticCode }) {
+    const { t } = useTranslation();
+    const label = t(`story.diagnostics.${code}` as TranslationKey);
+    return (
+        <span
+            className="grid h-5 w-5 shrink-0 place-items-center text-warning"
+            title={label}
+            aria-label={label}
+            role="img"
+        >
+            <TriangleAlert className="h-3.5 w-3.5" />
+        </span>
+    );
+}
 
 function editorPlaceholder(block: StoryBlock, t: ReturnType<typeof useTranslation>["t"]): string {
     switch (getTextSegment(block)?.role) {
