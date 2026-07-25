@@ -10,6 +10,36 @@ export type FileStat = {
     type: "file" | "directory";
 };
 
+/**
+ * A directory-listing entry: a {@link FileStat} plus the reassembled full filename.
+ *
+ * `name` keeps its old meaning - the stem with the extension stripped off - so nothing that matches
+ * on `name`/`ext` (see `@shared/utils/nlproj`) changes behaviour. `fileName` is the additive escape
+ * hatch: it is the complete filename as it sits on disk, so a caller joining a child path should use
+ * it rather than `name`, which addresses a file that is not there for anything with an extension.
+ */
+export type FileEntry = FileStat & {
+    /** The complete filename on disk (`name` + `ext`), the value {@link entryFileName} reassembles. */
+    fileName: string;
+};
+
+/**
+ * The result of totalling a directory tree - the one measurement the build and the asset overview
+ * now share (see {@link Fs.directorySize}).
+ */
+export type DirectorySizeResult = {
+    /** Sum of the sizes of every regular file in the tree. */
+    totalBytes: number;
+    /** How many regular files were summed. */
+    fileCount: number;
+    /**
+     * Bytes of each regular file, keyed by its path relative to the walked root and joined with `/`
+     * on every platform. Lets a caller attribute the total back to individual files without a second
+     * walk; callers that only need the total (the build) ignore it.
+     */
+    bytesByRelativePath: Record<string, number>;
+};
+
 export type FileDetails = {
     name: string;
     ext: string | null;
@@ -165,18 +195,6 @@ export class Fs {
         }));
     }
 
-    public static listFiles(dir: string): Promise<FsRequestResult<FileStat[]>> {
-        return this.wrap(fs.readdir(dir, {withFileTypes: true}).then((files) => {
-            return files
-                .filter((file) => file.isFile())
-                .map((file) => ({
-                    name: path.parse(file.name).name,
-                    ext: path.extname(file.name),
-                    type: "file",
-                }));
-        }));
-    }
-
     public static listDirs(dir: string): Promise<FsRequestResult<string[]>> {
         return this.wrap(fs.readdir(dir, {withFileTypes: true}).then((files) => {
             return files
@@ -191,6 +209,52 @@ export class Fs {
 
     public static dirEntries(dir: string): Promise<FsRequestResult<Dirent[]>> {
         return this.wrap(fs.readdir(dir, {withFileTypes: true}));
+    }
+
+    /**
+     * Total the bytes of a directory tree, recursively.
+     *
+     * This is the single measurement the game build and the asset overview both read from. The
+     * build only wants {@link DirectorySizeResult.totalBytes}; the overview also needs the per-file
+     * breakdown to attribute bytes back to individual assets. Sharing one walk is the point - a
+     * second implementation would be free to disagree on the edges, and the overview's "actual vs
+     * reachable" read-out is only worth anything if its left-hand number is the one the build ships.
+     *
+     * The edges, fixed here so both sides inherit them:
+     *  - A directory that cannot be read counts as empty rather than failing the whole walk.
+     *  - A file whose size cannot be read counts as zero, because a build that would still ship
+     *    those bytes must not be reported as smaller than it is.
+     *  - Classification is by `Dirent`, so a symlink is neither a file nor a directory: it
+     *    contributes nothing and a symlinked directory is not descended into. Nothing the editor
+     *    writes creates one; this is a note about hand-made trees, not a case anyone should hit.
+     */
+    public static async directorySize(dir: string): Promise<DirectorySizeResult> {
+        const result: DirectorySizeResult = {totalBytes: 0, fileCount: 0, bytesByRelativePath: {}};
+        await this.accumulateDirectorySize(dir, "", result);
+        return result;
+    }
+
+    private static async accumulateDirectorySize(dir: string, relativePrefix: string, result: DirectorySizeResult): Promise<void> {
+        let entries: Dirent[];
+        try {
+            entries = await fs.readdir(dir, {withFileTypes: true});
+        } catch {
+            return;
+        }
+        for (const entry of entries) {
+            const entryPath = path.join(dir, entry.name);
+            // Relative keys are joined with "/" on every platform so they line up with the
+            // renderer's own "/"-joined asset paths regardless of the host separator.
+            const relativePath = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
+            if (entry.isDirectory()) {
+                await this.accumulateDirectorySize(entryPath, relativePath, result);
+            } else if (entry.isFile()) {
+                const size = await fs.stat(entryPath).then(stat => stat.size).catch(() => 0);
+                result.totalBytes += size;
+                result.fileCount += 1;
+                result.bytesByRelativePath[relativePath] = size;
+            }
+        }
     }
 
     public static stat(filePath: string): Promise<FsRequestResult<FileStat>> {

@@ -2,16 +2,21 @@
  * The impure half of the overview: gather what the pure model needs, once.
  *
  * Three sources, none of them new: the asset records (`AssetsService`), the reverse-lookup index
- * (`ReferenceService`, flushed first so a jump written a moment ago is counted), and a walk of the
- * project's `assets/` directory for bytes. The walk measures what the build measures - the
- * "actual vs reachable" comparison is only worth reading if its left-hand side is the number
- * `GameBuildManager` would arrive at, so it counts every file under the directory rather than only
- * the ones the asset records claim. See {@link walkDirectoryBytes} for the one case where the two
- * walks disagree.
+ * (`ReferenceService`, flushed first so a jump written a moment ago is counted), and a measurement of
+ * the project's `assets/` directory for bytes. That measurement is a single `fs.directorySize` IPC -
+ * the same recursive walk the game build runs (`Fs.directorySize`), so the "actual vs reachable"
+ * comparison's left-hand side is exactly the number `GameBuildManager` would ship. It replaces an
+ * earlier per-file walk (one `fs.list`/`fs.details` round trip per file), which on a project with
+ * thousands of assets flooded the IPC channel and left the page spinning.
  *
- * Deliberately a one-shot snapshot rather than a live projection: it costs one `stat` per file, and
- * the page reads it, it does not depend on it being current to the keystroke. The tab re-runs it
- * when it becomes visible again and when the reference index changes.
+ * One consequence of sharing the build's walk: it classifies with `Dirent`, so a symlink counts as
+ * zero and a symlinked directory is not descended into - where the old per-file walk followed
+ * symlinks to their target size. An `assets/` tree with hand-made symlinks therefore reads the way
+ * the build packages it now, not larger. Nothing the editor writes creates one.
+ *
+ * Deliberately a one-shot snapshot rather than a live projection: the page reads it, it does not
+ * depend on it being current to the keystroke. The tab re-runs it when it becomes visible again and
+ * when the reference index changes.
  */
 
 import { ProjectNameConvention, isValidAssetStorageId } from "@/lib/workspace/project/nameConvention";
@@ -20,101 +25,14 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { ReferenceService } from "@/lib/workspace/services/references/ReferenceService";
 import { AssetSource, type Asset } from "@/lib/workspace/services/assets/types";
-import { entryFileName } from "@shared/utils/fileEntry";
-import { join } from "@shared/utils/path";
+import type { DirectorySizeResult } from "@shared/utils/fs";
 import { buildAssetOverview, type AssetOverviewSummary } from "./assetOverviewModel";
 
 /** How many rows the "largest" list keeps. Enough to see the hogs, short enough to read at once. */
 const TOP_ASSET_COUNT = 12;
 
 /**
- * Concurrent `stat`/`readdir` calls in flight. Each one is an IPC round trip; unbounded fan-out on a
- * project with thousands of assets floods the channel and starves the rest of the UI's traffic.
- */
-const WALK_CONCURRENCY = 16;
-
-/** A directory that will not open is reported as empty rather than failing the whole snapshot. */
-interface DirectoryWalk {
-    totalBytes: number;
-    fileCount: number;
-    /** Path relative to the walked root, joined with `/`. */
-    bytesByRelativePath: Map<string, number>;
-}
-
-async function mapWithLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-    const results = new Array<R>(items.length);
-    let cursor = 0;
-    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-        while (cursor < items.length) {
-            const index = cursor++;
-            results[index] = await fn(items[index]);
-        }
-    });
-    await Promise.all(workers);
-    return results;
-}
-
-/**
- * Total the bytes of a directory tree, breadth-first.
- *
- * Failure handling matches `GameBuildManager.directorySize`: a directory that cannot be read counts
- * as empty, and a file whose size cannot be read counts as zero, because a build that would still
- * ship those bytes must not be reported as smaller than it is - and refusing to produce a number at
- * all would take the whole page down over one unreadable file.
- *
- * It is not byte-identical to that walk, and the divergence is symlinks: `directorySize` classifies
- * with `Dirent.isFile()`, so a symlink is neither a file nor a directory to it - it contributes zero
- * and a symlinked directory is not recursed into. This walk sees the IPC's two-way `type`, so a
- * symlink arrives as a file and `fs.details` follows it to the target's size. An `assets/` tree with
- * symlinks in it therefore reads larger here than in the build. Nothing the editor writes creates
- * one, so this is a note about hand-made trees rather than a discrepancy anyone should hit.
- */
-export async function walkDirectoryBytes(fs: FileSystemService, root: string): Promise<DirectoryWalk> {
-    const walk: DirectoryWalk = { totalBytes: 0, fileCount: 0, bytesByRelativePath: new Map() };
-    let level: Array<{ path: string; relative: string }> = [{ path: root, relative: "" }];
-
-    while (level.length > 0) {
-        const listings = await mapWithLimit(level, WALK_CONCURRENCY, async directory => {
-            const result = await fs.list(directory.path);
-            return { directory, entries: result.ok ? result.data : [] };
-        });
-
-        const nextLevel: Array<{ path: string; relative: string }> = [];
-        const files: Array<{ path: string; relative: string }> = [];
-        for (const { directory, entries } of listings) {
-            for (const entry of entries) {
-                // `fs.list` hands back the extension split off into `entry.ext`, so the name alone
-                // addresses nothing on disk - every `.json` under `assets/` would stat as missing
-                // and be counted as a zero-byte file.
-                const fileName = entryFileName(entry);
-                const child = {
-                    path: join(directory.path, fileName),
-                    relative: directory.relative ? `${directory.relative}/${fileName}` : fileName,
-                };
-                if (entry.type === "directory") {
-                    nextLevel.push(child);
-                } else {
-                    files.push(child);
-                }
-            }
-        }
-
-        await mapWithLimit(files, WALK_CONCURRENCY, async file => {
-            const details = await fs.details(file.path);
-            const size = details.ok && Number.isFinite(details.data.size) ? Math.max(0, details.data.size) : 0;
-            walk.totalBytes += size;
-            walk.fileCount += 1;
-            walk.bytesByRelativePath.set(file.relative, size);
-        });
-
-        level = nextLevel;
-    }
-
-    return walk;
-}
-
-/**
- * Where an asset's bytes live inside `assets/`, as the walk keys them.
+ * Where an asset's bytes live inside `assets/`, as the directory walk keys them.
  *
  * Remote assets have no content file at all (they are fetched by URL and cached under `editor/`),
  * and an id that is not a valid storage id would throw in the shard splitter - both mean "no local
@@ -128,6 +46,32 @@ export function assetContentRelativePath(asset: Asset): string | null {
     // `AssetsDataShard` is rooted at the project, and the walk is rooted at `assets/` - drop the
     // leading segment so the two agree.
     return shard.slice(1).join("/");
+}
+
+/**
+ * Attribute the walk's per-file bytes back to asset ids.
+ *
+ * The one place the original bug lived: a file listed but addressed by the wrong (stem-only) path
+ * counted as zero. Now the bytes arrive keyed by the walk's own relative paths, and an asset only
+ * gets a byte count when its content path is actually among them - a missing content file leaves the
+ * id absent (unknown bytes), never a spurious zero.
+ */
+export function assetBytesFromWalk(
+    assets: readonly Asset[],
+    bytesByRelativePath: DirectorySizeResult["bytesByRelativePath"],
+): Map<string, number> {
+    const bytesByAssetId = new Map<string, number>();
+    for (const asset of assets) {
+        const relative = assetContentRelativePath(asset);
+        if (relative === null) {
+            continue;
+        }
+        const bytes = bytesByRelativePath[relative];
+        if (bytes !== undefined) {
+            bytesByAssetId.set(asset.id, bytes);
+        }
+    }
+    return bytesByAssetId;
 }
 
 export async function computeAssetOverviewSnapshot(ctx: WorkspaceContext): Promise<AssetOverviewSummary> {
@@ -153,16 +97,13 @@ export async function computeAssetOverviewSnapshot(ctx: WorkspaceContext): Promi
     // `ProjectNameConvention.Assets` carries a trailing slash (it names a directory); the walk
     // joins child names onto this string, so trim it the way the build's own `path.join` would.
     const assetsRoot = ctx.project.resolve(ProjectNameConvention.Assets).replace(/[\\/]+$/, "");
-    const walk = await walkDirectoryBytes(fs, assetsRoot);
+    const sizeResult = await fs.directorySize(assetsRoot);
+    // A directory that cannot be measured reads as empty rather than taking the whole page down.
+    const walk: DirectorySizeResult = sizeResult.ok
+        ? sizeResult.data
+        : { totalBytes: 0, fileCount: 0, bytesByRelativePath: {} };
 
-    const bytesByAssetId = new Map<string, number>();
-    for (const asset of assets) {
-        const relative = assetContentRelativePath(asset);
-        const bytes = relative === null ? undefined : walk.bytesByRelativePath.get(relative);
-        if (bytes !== undefined) {
-            bytesByAssetId.set(asset.id, bytes);
-        }
-    }
+    const bytesByAssetId = assetBytesFromWalk(assets, walk.bytesByRelativePath);
 
     return buildAssetOverview({
         assets,
