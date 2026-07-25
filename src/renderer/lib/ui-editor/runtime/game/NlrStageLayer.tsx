@@ -92,6 +92,8 @@ async function waitForImageUrl(url: string): Promise<void> {
 }
 
 async function waitForStageVisualReady(root: HTMLElement): Promise<void> {
+    // One frame so React has committed the scene and the elements/backgrounds below are the ones
+    // that will actually paint.
     await waitForPaintFrames(1);
     const imageElements = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
     const cssImageUrls = collectCssImageUrls(root);
@@ -99,6 +101,10 @@ async function waitForStageVisualReady(root: HTMLElement): Promise<void> {
         ...imageElements.map(waitForImageElement),
         ...cssImageUrls.map(waitForImageUrl),
     ]);
+    // And two to let the decoded result reach a painted frame: `AspectScaleImage` renders at 0×0
+    // until its load handler measures the bitmap and sets state, so the reveal has to outlast that
+    // commit or the stage pops to size in view. Cheap next to what the awaits above cost, and the
+    // whole point of this helper is that a revealed stage is never half-painted.
     await waitForPaintFrames(2);
 }
 
@@ -108,12 +114,16 @@ async function waitForStageVisualReady(root: HTMLElement): Promise<void> {
  * on the hidden buffer before revealing it, so the swap never shows half-loaded content.
  */
 export async function waitForStageVisualReadyWithTimeout(root: HTMLElement): Promise<void> {
+    let timeoutId: number | null = null;
     await Promise.race([
         waitForStageVisualReady(root),
         new Promise<void>(resolve => {
-            window.setTimeout(resolve, STAGE_VISUAL_READY_TIMEOUT_MS);
+            timeoutId = window.setTimeout(resolve, STAGE_VISUAL_READY_TIMEOUT_MS);
         }),
     ]);
+    if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+    }
     await waitForPaintFrames(1);
 }
 
@@ -144,8 +154,11 @@ export function NlrStageLayer(props: {
      */
     onLiveGameReady: (sessionId: string, liveGame: LiveGame) => Promise<void> | void;
     /**
-     * The Player's initial preload pass has completed (Player `onPreloadComplete`). Assets for the
-     * mounted story are warm; still nothing has entered the game.
+     * The Player's initial preload pass has completed (Player `onPreloadComplete`): the entry
+     * scene's images are fetched and decoded, so entering the game paints without another load.
+     * Still nothing has entered the game. Fires during the host's boot step, because
+     * {@link NlrStageLayer} registers the entry scene with the preloader as soon as the Player is
+     * ready — hosts gate their loading step on this to keep the fetch/decode off the start path.
      */
     onEnvironmentReady: (sessionId: string) => void;
     /**
@@ -172,6 +185,23 @@ export function NlrStageLayer(props: {
             for (const binding of session.compiled.actionIdBindings) {
                 DevTools.setActionId(binding.action, binding.staticId);
             }
+        }
+        // Give the preloader the entry scene right now. NLR derives its preload set from the
+        // *mounted* scene, and nothing is mounted until `newGame()` — so without this the whole
+        // fetch → base64 → decode pass for the first scene lands between the player pressing start
+        // and the first painted frame. Handing it the entry scene here moves that work under the
+        // host's boot/loading step instead, which is what `onEnvironmentReady` then reports.
+        // Idempotent: a version of the engine that warms the entry scene itself sets the
+        // preloading scene before this runs, and re-entering an already-playing session has a
+        // last scene.
+        try {
+            if (!ctx.gameState.getPreloadingScene() && !ctx.gameState.getLastScene()) {
+                ctx.gameState.preloadScene(session.compiled.scene);
+            }
+        } catch (error) {
+            // A story without a usable entry scene must not take the whole stage down: the game
+            // still runs, it just pays the preload on entry as it did before.
+            onError(error instanceof Error ? error : new Error(String(error)), sessionId);
         }
         // Initialise the environment only (dispatch gameReady, hand back the LiveGame).
         // Entering the game (newGame) is the host's decision, made when the player starts a game.
