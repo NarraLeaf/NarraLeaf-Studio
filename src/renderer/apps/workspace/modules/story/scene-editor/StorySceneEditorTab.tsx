@@ -788,6 +788,65 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     }, [editor.density, rowVirtualizer]);
 
     /**
+     * The row whose wrapper currently holds the insert slot, or null when no slot is inside one.
+     *
+     * A slot is not a row of its own: it renders *inside* its host row's wrapper — the very element
+     * the virtualiser measures — so opening or closing one changes that row's height without changing
+     * a single row id, exactly like a density switch does. Which row hosts it depends on the slot:
+     * a rewrite renders in place of the row, an "insert above" in front of it, everything else after
+     * it. A slot with no host (`afterBlockId` null and no before-target) renders outside the list and
+     * moves nothing.
+     */
+    const insertSlotHostId: StoryBlockId | null = editor.editorMode.kind === "insert"
+        ? editor.editorMode.slot.replaceBlockId
+            ?? editor.editorMode.slot.target?.beforeBlockId
+            ?? editor.editorMode.slot.afterBlockId
+        : null;
+    const measuredSlotHostRef = useRef<StoryBlockId | null>(null);
+    /**
+     * Re-measure the host before the browser paints, instead of a frame later.
+     *
+     * Backspace on an empty dialogue deletes the row and opens a blank slot where it stood, in the
+     * previous row's wrapper. Both land in one commit, but only one of them is a fact the virtualiser
+     * knows: the list is one row shorter, so every row below moves *up* by the deleted row's height —
+     * while the wrapper that grew by the slot's height is still cached at its old size. Measured on a
+     * run of YouKi's, the slot and the next line of dialogue were handed the identical 40px band, one
+     * drawn over the other, until the ResizeObserver reported the new height and everything below
+     * dropped back. That correction cannot arrive in the same commit, so the wrong frame is always
+     * painted: the flash the author sees on the line they just backspaced.
+     *
+     * Reading the height here is what the observer would have read, only in time to be used. It costs
+     * one `offsetHeight` on the two rows a slot moves between, and only on the commit that moves it.
+     * `resizeItem` rather than `measureElement`: the latter returns the cached size when it is called
+     * without a ResizeObserver entry, which is the number we are here to correct.
+     */
+    useLayoutEffect(() => {
+        const previousHostId = measuredSlotHostRef.current;
+        if (previousHostId === insertSlotHostId) {
+            return;
+        }
+        measuredSlotHostRef.current = insertSlotHostId;
+        const list = rowListRef.current;
+        if (!list) {
+            return;
+        }
+        // Both ends of the move: the row the slot left (shrunk back) and the one it landed on (grown).
+        for (const blockId of [previousHostId, insertSlotHostId]) {
+            if (!blockId) {
+                continue;
+            }
+            const index = editor.visibleRows.findIndex(row => row.block.id === blockId);
+            if (index < 0) {
+                continue;
+            }
+            const element = list.querySelector<HTMLElement>(`[data-index="${index}"]`);
+            if (element) {
+                rowVirtualizer.resizeItem(index, element.offsetHeight);
+            }
+        }
+    });
+
+    /**
      * Put a row on screen by index, whether or not it is currently mounted.
      *
      * Everything that used to reach for a row's DOM node — deep links, the Dev Mode play head,
