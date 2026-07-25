@@ -162,7 +162,10 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
         ? bundle.storyLibrary?.documents[context.storyId]
         : undefined;
 
-    const rootClass = ["flex h-full min-h-0 shrink-0 flex-col border-l border-edge bg-surface-sunken text-2xs text-fg-muted", className]
+    // `.nl-editor-surface` rather than `bg-surface-sunken`: the same paint, at the
+    // `editor.surfaceOpacity` the author chose for the editor's reading surfaces. Identical at the
+    // default 100%.
+    const rootClass = ["nl-editor-surface flex h-full min-h-0 shrink-0 flex-col border-l border-edge text-2xs text-fg-muted", className]
         .filter(Boolean)
         .join(" ");
 
@@ -233,7 +236,9 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
                 ) : null}
             </div>
 
-            <div className="flex shrink-0 border-b border-edge bg-surface-sunken" role="tablist" aria-label={t("devMode.runtime.panelsAria")}>
+            {/* No fill of its own: it is a direct child of the panel surface and the paint was the
+                same token, so repeating it here would double the alpha at anything under 100%. */}
+            <div className="flex shrink-0 border-b border-edge" role="tablist" aria-label={t("devMode.runtime.panelsAria")}>
                 {tabs.map(([id, label]) => {
                     const active = activeTab === id;
                     return (

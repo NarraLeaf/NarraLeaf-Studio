@@ -81,6 +81,10 @@ export const settings = {
             label: "故事编辑器字体",
             description: "场景编辑器中故事文本所用的字体",
         },
+        editorSurfaceOpacity: {
+            label: "编辑面不透明度",
+            description: "故事正文、检查器字段与 Dev Mode 调试面板背后阅读面的不透明度",
+        },
         maxActiveEditors: {
             label: "最大活动编辑器数",
             description: "同时保持加载的编辑器标签数，切换标签时保留其滚动位置与焦点（{min}–{max}），超出的标签会在重新打开时重新加载",
