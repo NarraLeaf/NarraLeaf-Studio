@@ -20,6 +20,13 @@ export type StoryCommandCandidate = {
     /** What to show. Empty for command candidates - the caller translates from `commandId`. */
     label: string;
     detail?: string;
+    /**
+     * Which world this name lives in, when the slot spans more than one. Carried as the KIND rather
+     * than as text for the same reason `commandId` is: this module holds no locale data, so the caller
+     * translates it through `commandCategoryLabelKey(subjectGroupId(kind))`. Writing the kind straight
+     * into `detail` put a raw `audio` / `video` / `vfx` in front of a zh author.
+     */
+    detailKind?: StoryCommandStageObjectKind;
     /** Set on command candidates only. */
     commandId?: string;
     /**
@@ -73,7 +80,7 @@ function stageObjectCandidates(
         ? [BGM_OBJECT_NAME, ...(context.stageObjects.audio ?? [])]
         : context.stageObjects[kind] ?? [];
     return refCandidates(names.map(name => ({ id: name, name })), query)
-        .map(candidate => (labelKind ? { ...candidate, detail: kind } : candidate));
+        .map(candidate => (labelKind ? { ...candidate, detailKind: kind } : candidate));
 }
 
 function targetCandidates(

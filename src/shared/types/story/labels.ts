@@ -70,7 +70,7 @@ export function listSceneLabels(scene: StoryScene | null | undefined): StoryScen
 export function sceneLabelNames(scene: StoryScene | null | undefined): string[] {
     const names: string[] = [];
     for (const label of listSceneLabels(scene)) {
-        if (!names.some(name => name.toLowerCase() === label.name.toLowerCase())) {
+        if (!names.includes(label.name)) {
             names.push(label.name);
         }
     }
@@ -80,17 +80,22 @@ export function sceneLabelNames(scene: StoryScene | null | undefined): string[] 
 /**
  * The labels declared more than once in a scene, keyed by the SECOND and later blocks - the rows a
  * duplicate diagnostic anchors to, since the first declaration is the one that stands.
+ *
+ * Compared EXACTLY, case included, because that is what the engine does: `Scene.constructLabels`
+ * keys a plain `Map` on the declared string and resolves a jump with `get`. Folding case here would
+ * make Studio wrong in both directions - it would report `start` and `Start` as a duplicate the
+ * engine happily accepts, and it would pass a `/goto start` aimed at a label since renamed `Start`,
+ * which is exactly the `Story.build` throw this scan exists to prevent.
  */
 export function duplicateSceneLabels(scene: StoryScene | null | undefined): StorySceneLabel[] {
     const seen = new Set<string>();
     const duplicates: StorySceneLabel[] = [];
     for (const label of listSceneLabels(scene)) {
-        const key = label.name.toLowerCase();
-        if (seen.has(key)) {
+        if (seen.has(label.name)) {
             duplicates.push(label);
             continue;
         }
-        seen.add(key);
+        seen.add(label.name);
     }
     return duplicates;
 }

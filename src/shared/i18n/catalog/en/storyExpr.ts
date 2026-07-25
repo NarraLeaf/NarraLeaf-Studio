@@ -44,6 +44,7 @@ export const storyExpr = {
         unknownAsset: "No {assetType} named \"{value}\".",
         unknownCharacter: "No character named \"{value}\".",
         unknownScene: "No scene named \"{value}\".",
+        unknownLabel: "No label named \"{value}\" in this scene.",
         unknownVariable: "No variable named \"{value}\".",
         unknownForm: "{characterName} has no \"{value}\" expression.",
         ambiguousName: "More than one thing is called \"{value}\" — rename one.",
