@@ -1825,7 +1825,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         // Down off the last row lands the keyboard cursor here; the ring is how the
                         // author sees that Enter will open a new row (see moveActiveRowSelection).
                         className={[
-                            "mt-1 flex min-h-[32px] w-full items-center gap-2 pl-[calc(var(--nl-story-gutter)+28px)] pr-3 text-left text-sm italic",
+                            "mt-1 flex min-h-[32px] w-full items-center gap-2 pl-[calc(var(--nl-story-gutter)+var(--nl-story-handle,20px))] pr-3 text-left text-sm italic",
                             editor.addRowFocused
                                 ? "bg-primary/10 text-fg-muted ring-1 ring-inset ring-primary/50"
                                 : "text-fg-subtle hover:bg-fill-subtle hover:text-fg-muted",

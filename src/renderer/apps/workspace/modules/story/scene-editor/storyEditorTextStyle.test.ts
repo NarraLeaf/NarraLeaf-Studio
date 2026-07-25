@@ -60,10 +60,12 @@ describe("story editor density metrics", () => {
 });
 
 describe("line-number gutter", () => {
-    it("keeps the historical width while line numbers fit in two digits", () => {
-        expect(storyGutterWidth(0)).toBe(36);
-        expect(storyGutterWidth(1)).toBe(36);
-        expect(storyGutterWidth(99)).toBe(36);
+    it("holds one width while line numbers fit in two digits", () => {
+        // 30, down from 36: the numbers dropped a type size and tightened to the fold chevron (U1
+        // WI-2), and the width they gave up went to the words.
+        expect(storyGutterWidth(0)).toBe(30);
+        expect(storyGutterWidth(1)).toBe(30);
+        expect(storyGutterWidth(99)).toBe(30);
     });
 
     it("widens once a digit is added, so four digits cannot collide with the fold chevron", () => {
