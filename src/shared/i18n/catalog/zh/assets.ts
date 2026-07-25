@@ -24,7 +24,6 @@ export const assets = {
         },
         confirmMessage: "所选分组内的全部内容也会一并删除，且无法撤销。",
     },
-    emptyType: "还没有 {label}",
     types: {
         image: "图片",
         audio: "音频",
@@ -39,12 +38,9 @@ export const assets = {
         other: "{count} 项",
     },
     overview: {
-        tabTitle: "资源总览",
-        open: "打开资源总览",
         loading: "正在读取资源库…",
         failed: "无法读取资源库。",
         retry: "重试",
-        empty: "此项目还没有资源。",
         section: {
             library: "资源库",
             packaging: "打包",
@@ -67,29 +63,28 @@ export const assets = {
             other: "{count} 处引用",
         },
         detail: {
+            storage: "存储",
             path: "路径",
         },
     },
     view: {
         list: "列表视图",
         icons: "图标视图",
+        overview: "总览",
     },
     filter: {
         label: "筛选",
+        category: "类别",
+        usage: "引用",
+        size: "体积",
+        tags: "标签",
+        format: "格式",
     },
     actions: {
         copyTooltip: "复制选中的素材或分组",
         cutTooltip: "剪切选中的素材或分组",
         pasteTooltip: "粘贴素材或分组",
         deleteTooltip: "删除选中的素材或分组",
-    },
-    search: {
-        noResults: "未找到匹配的素材",
-        matchTag: "标签：{tag}",
-        resultCount: {
-            one: "{count} 条结果",
-            other: "{count} 条结果",
-        },
     },
     list: {
         emptyFiltered: "没有符合当前筛选的素材",

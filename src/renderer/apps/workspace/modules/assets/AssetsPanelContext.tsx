@@ -15,6 +15,11 @@ interface AssetsPanelContextType {
     groups: Record<AssetType, AssetGroup[]>;
     filteredAssets: Record<AssetType, Asset[]>;
     filteredGroups: Record<AssetType, AssetGroup[]>;
+    /**
+     * Groups whose own name matched the search. `filteredGroups` also carries the ancestors needed
+     * to draw a tree; those are scaffolding, and a flat result grid must not present them as hits.
+     */
+    matchedGroupIds: ReadonlySet<string>;
 
     // State
     selectedItems: Set<string>;
@@ -37,6 +42,14 @@ interface AssetsPanelContextType {
     handleDropOnItem?: (e: React.DragEvent, targetType: AssetType, targetGroup: AssetGroup | null) => void;
     handleImportToGroup: (type: AssetType, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => void;
     isFocused: (id: string) => boolean;
+
+    /**
+     * True when a search or a filter is currently narrowing `filteredAssets` / `filteredGroups`.
+     *
+     * The views read this to stop hiding hits behind folders: a match filed inside a collapsed group
+     * has to be on screen, so the tree force-opens and the grid goes flat while this is set.
+     */
+    isNarrowed: boolean;
 
     /** True when the panel uses the compact toolbar (e.g. bottom dock). Icon view can merge group navigation there. */
     compactToolbar: boolean;
