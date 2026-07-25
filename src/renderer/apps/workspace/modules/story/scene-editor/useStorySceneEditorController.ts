@@ -669,6 +669,24 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [recordHistory, scene, sceneId, storyId, storyService]);
 
+    /**
+     * Write several blocks' payloads as ONE edit.
+     *
+     * Replace-all is the caller: pushing each row through `updateBlockPayloadFor` would record a
+     * history entry per row, so undoing a replacement across forty lines would take forty presses.
+     * One `recordHistory` in front of the batch makes the whole sweep a single step, which is what an
+     * author means by "undo that".
+     */
+    const updateBlockPayloads = useCallback((edits: readonly { blockId: StoryBlockId; payload: StoryBlock["payload"] }[]) => {
+        if (!storyService || !storyId || !sceneId || edits.length === 0) {
+            return;
+        }
+        recordHistory();
+        for (const edit of edits) {
+            storyService.updateBlock(storyId, sceneId, edit.blockId, edit.payload);
+        }
+    }, [recordHistory, sceneId, storyId, storyService]);
+
     const updateSceneMetadata = useCallback((patch: StorySceneUpdate): boolean => {
         if (!storyService || !storyId || !sceneId || !scene) {
             return false;
@@ -2109,7 +2127,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
         deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, selectRow, beginDragSelection,
         selectionRootIds, toggleDisableSelection,
-        extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateSceneMetadata,
+        extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata,
         setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange,
         undoEdit, redoEdit,
         startInsertAfterSelection, indentSelection, selectAllRows, moveActiveRowSelection,

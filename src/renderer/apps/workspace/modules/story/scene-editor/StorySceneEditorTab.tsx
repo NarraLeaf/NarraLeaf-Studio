@@ -12,7 +12,7 @@ import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleServic
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
-import type { StoryBlockId, StoryDocument, StoryScene, StorySceneUpdate } from "@shared/types/story";
+import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneUpdate } from "@shared/types/story";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
@@ -38,6 +38,15 @@ import { StoryRowActionsContext, type StoryRowActions } from "./storyRowActions"
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TranslationKey } from "@shared/i18n";
 import { getCharacterName, getContainerHeaderInfo, getTextSegment } from "./storySceneBlockUtils";
+import { StoryFindBar } from "./StoryFindBar";
+import {
+    findRangesInText,
+    getSegmentSlot,
+    replaceAllInSegment,
+    replaceInSegment,
+    segmentPlainText,
+    type StoryFindMatch,
+} from "./storyFindReplace";
 import type { VisibleStoryRow } from "./storySceneEditorTypes";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import {
@@ -380,7 +389,17 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const sensors = useSensors(
         useSensor(PointerSensor),
     );
+    // The find bar's opener lives with the rest of the find state, further down; the binding table is
+    // built before it exists, so it reaches the current one through a ref.
+    const openFindRef = useRef<() => void>(() => {});
+
     const keybindings = useMemo<KeybindingDefinition[]>(() => [
+        {
+            id: "find",
+            key: "mod+f",
+            description: t("story.keybindings.find"),
+            handler: () => openFindRef.current(),
+        },
         {
             id: "delete",
             key: "delete",
@@ -1282,6 +1301,101 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         rowMenu.showMenu(event);
     }, [editor, rowMenu]);
 
+    /**
+     * Find and replace, scoped to this scene.
+     *
+     * The searched set is `visibleRows` — what the author is actually showing. A row hidden by a
+     * collapsed container is hidden because they collapsed it, and "narrative only" hides staging
+     * rows, which carry no prose. Searching what is not on the page would find hits the author cannot
+     * see the context of, and replacing in them would edit a part of the scene they had put away.
+     */
+    const [findOpen, setFindOpen] = useState(false);
+    const [findQuery, setFindQuery] = useState("");
+    const [findReplacement, setFindReplacement] = useState("");
+    const [findCaseSensitive, setFindCaseSensitive] = useState(false);
+    const [findCursor, setFindCursor] = useState(0);
+    const [findFocusToken, setFindFocusToken] = useState(0);
+
+    const findMatches = useMemo<StoryFindMatch[]>(() => {
+        if (!findOpen || !findQuery) {
+            return [];
+        }
+        const matches: StoryFindMatch[] = [];
+        editor.visibleRows.forEach((row, rowIndex) => {
+            const slot = getSegmentSlot(row.block);
+            if (!slot) {
+                return;
+            }
+            for (const range of findRangesInText(segmentPlainText(slot.segment), findQuery, { caseSensitive: findCaseSensitive })) {
+                matches.push({ ...range, blockId: row.block.id, rowIndex });
+            }
+        });
+        return matches;
+    }, [editor.visibleRows, findCaseSensitive, findOpen, findQuery]);
+
+    // A shrinking result set must not leave the cursor pointing past the end.
+    const activeFindIndex = findMatches.length === 0 ? 0 : findCursor % findMatches.length;
+
+    const goToMatch = useCallback((index: number) => {
+        const match = findMatches[index];
+        if (!match) {
+            return;
+        }
+        setFindCursor(index);
+        editor.selectRow(match.blockId);
+        scrollRowIntoView(match.blockId, "center");
+    }, [editor, findMatches, scrollRowIntoView]);
+
+    const stepMatch = useCallback((delta: number) => {
+        if (findMatches.length === 0) {
+            return;
+        }
+        goToMatch((activeFindIndex + delta + findMatches.length) % findMatches.length);
+    }, [activeFindIndex, findMatches.length, goToMatch]);
+
+    const replaceCurrentMatch = useCallback(() => {
+        const match = findMatches[activeFindIndex];
+        const block = match ? editor.scene?.blocks[match.blockId] : null;
+        const slot = block ? getSegmentSlot(block) : null;
+        if (!match || !block || !slot) {
+            return;
+        }
+        const next = replaceInSegment(slot.segment, match, findReplacement);
+        editor.updateBlockPayloads([{ blockId: match.blockId, payload: slot.withSegment(next).payload }]);
+        // Stay put: the list re-derives and the cursor lands on whatever now occupies this position,
+        // which is the next hit when the replacement no longer matches.
+    }, [activeFindIndex, editor, findMatches, findReplacement]);
+
+    const replaceAllMatches = useCallback(() => {
+        if (findMatches.length === 0) {
+            return;
+        }
+        const byBlock = new Map<StoryBlockId, StoryFindMatch[]>();
+        for (const match of findMatches) {
+            const bucket = byBlock.get(match.blockId);
+            bucket ? bucket.push(match) : byBlock.set(match.blockId, [match]);
+        }
+        const edits: { blockId: StoryBlockId; payload: StoryBlock["payload"] }[] = [];
+        for (const [blockId, ranges] of byBlock) {
+            const block = editor.scene?.blocks[blockId];
+            const slot = block ? getSegmentSlot(block) : null;
+            if (!block || !slot) {
+                continue;
+            }
+            const next = replaceAllInSegment(slot.segment, ranges, findReplacement);
+            edits.push({ blockId, payload: slot.withSegment(next).payload });
+        }
+        // One history entry for the sweep, not one per row.
+        editor.updateBlockPayloads(edits);
+        setFindCursor(0);
+    }, [editor, findMatches, findReplacement]);
+
+    const openFind = useCallback(() => {
+        setFindOpen(true);
+        setFindFocusToken(token => token + 1);
+    }, []);
+    openFindRef.current = openFind;
+
     const openCommandManual = useCallback(() => {
         if (!editor.context) {
             return;
@@ -1528,6 +1642,25 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     </button>
                 </div>
             </div>
+
+            {findOpen ? (
+                <StoryFindBar
+                    query={findQuery}
+                    onQueryChange={value => { setFindQuery(value); setFindCursor(0); }}
+                    replacement={findReplacement}
+                    onReplacementChange={setFindReplacement}
+                    caseSensitive={findCaseSensitive}
+                    onToggleCaseSensitive={() => setFindCaseSensitive(value => !value)}
+                    matchCount={findMatches.length}
+                    activeMatch={findMatches.length === 0 ? 0 : activeFindIndex + 1}
+                    onNext={() => stepMatch(1)}
+                    onPrevious={() => stepMatch(-1)}
+                    onReplace={replaceCurrentMatch}
+                    onReplaceAll={replaceAllMatches}
+                    onClose={() => { setFindOpen(false); editor.focusRoot(); }}
+                    focusToken={findFocusToken}
+                />
+            ) : null}
 
             <div ref={editorBodyRef} className="relative flex min-h-0 flex-1 flex-row">
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">

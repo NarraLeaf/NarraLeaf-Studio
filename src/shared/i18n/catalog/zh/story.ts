@@ -207,6 +207,17 @@ export const story = {
         "density.standard": "标准",
         "density.comfortable": "舒适",
     },
+    find: {
+        placeholder: "在场景中查找",
+        replacePlaceholder: "替换为",
+        caseSensitive: "区分大小写",
+        noMatches: "没有结果",
+        previous: "上一个",
+        next: "下一个",
+        replace: "替换",
+        replaceAll: "全部替换",
+        open: "查找和替换",
+    },
     commandManual: {
         open: "指令手册",
         title: "指令手册",
@@ -574,6 +585,7 @@ export const story = {
         delete: "删除",
     },
     keybindings: {
+        find: "查找和替换",
         deleteRows: "删除选中的故事行",
         deleteRowsConfirm: "删除选中的故事行（多选时需确认）",
         undo: "撤销故事场景编辑",
