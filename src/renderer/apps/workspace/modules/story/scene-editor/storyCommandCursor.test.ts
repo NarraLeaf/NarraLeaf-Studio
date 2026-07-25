@@ -215,8 +215,9 @@ describe("getCommandCandidates", () => {
 
     it("says which world a name lives in when the slot spans several", () => {
         // `/pause intro` pausing a clip rather than the music is only right if "intro" was visibly a
-        // video. Read off `accepts`, so a single-kind slot stays label-free.
-        const details = (marked: string) => getCommandCandidates(at(marked), CONTEXT, {}).map(c => `${c.value}:${c.detail ?? ""}`);
+        // video. Read off `accepts`, so a single-kind slot stays label-free. The KIND is carried, not a
+        // display string - the menu translates it, so a zh author never sees a bare "audio".
+        const details = (marked: string) => getCommandCandidates(at(marked), CONTEXT, {}).map(c => `${c.value}:${c.detailKind ?? ""}`);
         expect(details("/stop |")).toEqual(["bgm:audio", "sound:audio", "music:audio", "intro:video"]);
         expect(details("/play |")).toEqual(["intro:"]);
     });
