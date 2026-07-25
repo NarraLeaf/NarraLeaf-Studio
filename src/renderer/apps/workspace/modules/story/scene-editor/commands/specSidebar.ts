@@ -126,6 +126,35 @@ export function buildSpecSidebarGroups(
         .filter(entry => entry.commands.length > 0);
 }
 
+/**
+ * Collapse the subject filing to one row per command, for the surfaces that show everything at once.
+ *
+ * A generic verb files under every subject its `accepts` names, which is the right answer when the
+ * author has *chosen* a subject — "everything I can do to an Image" has to list `/show`. It is the
+ * wrong answer in a single list of the whole vocabulary, where the same verb with the same sentence
+ * under it six times reads as six commands that happen to share a name.
+ *
+ * The rule: keep a command under its own `category` when it is filed there, and otherwise under the
+ * first subject it reached. The fallback matters — a spec whose category is not among the subjects it
+ * accepts would otherwise vanish from the list entirely, which is a far worse failure than a repeat.
+ */
+export function dedupeToPrimarySubject(
+    groups: readonly StoryCommandSidebarGroup[],
+): readonly StoryCommandSidebarGroup[] {
+    const home = new Map<string, StoryCommandGroupId>();
+    for (const entry of groups) {
+        for (const command of entry.commands) {
+            const current = home.get(command.id);
+            if (current === undefined || (current !== command.group && entry.group.id === command.group)) {
+                home.set(command.id, entry.group.id);
+            }
+        }
+    }
+    return groups
+        .map(entry => ({ ...entry, commands: entry.commands.filter(command => home.get(command.id) === entry.group.id) }))
+        .filter(entry => entry.commands.length > 0);
+}
+
 /** The sidebar groups a category chip shows; `null` means "no filter" and returns all of them. */
 export function filterSidebarGroups(
     groups: readonly StoryCommandSidebarGroup[],

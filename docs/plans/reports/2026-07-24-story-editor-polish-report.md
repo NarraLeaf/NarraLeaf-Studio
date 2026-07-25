@@ -87,7 +87,7 @@ parent: 2026-07-24-009-plan-story-editor-polish.md
 
 - **查找替换的范围是 `visibleRows`**：被折叠容器藏起来的行搜不到。这是有意的——作者折叠它就是把它收起来了，在看不见的地方替换是危险的。若以后要改成全场景，需要一并解决"跳过去时展开祖先"。
 - **拖拽的落点在虚拟化下没有做逐像素回归**：视口内拖放、边缘自动滚动（滚动中持续挂载新行）都在真机验证过；`SortableContext` 拿的是完整 id 列表，dnd-kit 对未测量的 rect 全程有 guard（`verticalListSortingStrategy` / `getItemGap` 都判空），所以不会崩。**没验证**的是超长距离拖拽的落点精度是否与改动前逐行一致。
-- **`yarn style:ratchet` 在本分支是红的，但不是本分支造成的**：`origin/develop` 自身就超基线（`raw-white-black-alpha` 62/53、`arbitrary-px-font` 8/3、`bare-or-arbitrary-rounded` 306/224、`raw-accent` 22/16），本分支 diff 对六个指标的净贡献**全部为 0**（逐行核过增删）。没有 `--save`，那会把别人的债洗进这次提交。已开一张独立任务处理基线与接入 CI。
+- **`yarn style:ratchet` 曾经是红的，但不是本分支造成的，现已解决**：合并前 `origin/develop` 自身就超基线（`raw-white-black-alpha` 62/53、`arbitrary-px-font` 8/3、`bare-or-arbitrary-rounded` 306/224、`raw-accent` 22/16），本分支 diff 对六个指标的净贡献**全部为 0**（逐行核过增删），所以没有 `--save`——那会把别人的债洗进这次提交。改由一张独立任务处理，已随 `338eef9e` 落地并把 ratchet 接进了 CI；合并后本分支实测通过（见 §8）。
 - **诊断只有两条**（说话未入场、资产缺失）。语音状态已有自己的指示器，invalid 行已有自己的样式，都没有重复。问题面板的形态仍然是总计划 §9 的开放问题，本轮没有建。
 
 ## 6. 真机验收记录
@@ -108,3 +108,21 @@ parent: 2026-07-24-009-plan-story-editor-polish.md
 1. **行的 props 只能是数据。** 任何新回调都要走 `StoryRowActionsContext`，否则 memo 当场失效，整份文档回到每次交互全渲染。
 2. **`SortableContext` 的 `items` 必须 memo。** dnd-kit 把它列进 context 的依赖，新数组 = 新 context = 所有 `useSortable` 消费者重渲染，`memo` 拦不住。
 3. **虚拟化之后，"按 id 查 DOM 再 scrollIntoView"这个写法是坏的。** 行可能根本不在 DOM 里。用 `scrollRowIntoView(blockId)`（按 index 找虚拟化器），它返回 `false` 表示"这行根本不在可见集合里"，那才是旧的静默跳过。
+
+## 8. 合并进 develop（2026-07-24 晚）
+
+合并时 develop 已前进 19 个提交，四处冲突全在故事编辑器：
+
+- 三处是 ratchet 的 `rounded` → `rounded-md` 清扫落在本分支重写过的行上。取本分支的版本 + `rounded-md`，并把本分支其余处一并扫齐；ratchet 现已进 CI，实测通过且降一格（删掉的模态里带一个 `bg-black/30`）。
+- `StoryCommandManual.tsx` 是"这边删、那边改"。先查了 develop 到底改了什么——只有同一条清扫，无功能改动，所以删除不丢东西。
+
+**一处真分歧：`/` 浏览与手册边栏要不要去重。** A4 WI-1 刚落地的做法是不去重——泛型动词在它 `accepts` 的每个主题下各出现一次（`/show` 六行），并为此写了 `browseMenuStops` 用 `group:id` 做键保住高亮。本分支在手册边栏的"全部"列表里做了去重。
+
+用户裁决：**`/` 里要去重**。最终口径统一为一条规则，两个面写同一个函数（`dedupeToPrimarySubject`）：
+
+- **选定了主题** → 完整归档不变。"我能对图片做什么"必须列出 `/show`，那里它不是重复，它就是答案。
+- **一次看全部**（`/` 浏览没有筛选器；手册边栏的"全部"页签）→ 收敛成一条指令一行。同一个动词配同一句描述出现六次，读起来是六条同名指令，而不是一条能到六个地方。它到底能到哪些地方，由详情页回答。
+
+规则里有一条不显然但要命的兜底：**按"归到自己 category 名下"来去重，会让 category 不在自己 accepts 主题里的 spec 直接从列表消失**——比重复严重得多。所以实现是"能归到自己 category 就归，否则留在它到达的第一个主题"，并有单测钉住"每条只出现一次"和"一条都不能少"。
+
+真机复核：`/` 浏览 `/show` 一行、方向键一次走一格（A4 的高亮不变式仍成立）；手册"全部"页签一行；舞台 chip 下五行。

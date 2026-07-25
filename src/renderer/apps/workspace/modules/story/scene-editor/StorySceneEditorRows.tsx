@@ -31,7 +31,7 @@ import {
 } from "./storyCommandCategories";
 import { searchActionCommands } from "./storyCommandSearch";
 import { localizeSpecCommand, specPaletteCommands } from "./commands/specPalette";
-import { browseMenuStops, buildSpecSidebarGroups, type StoryCommandMenuStop, type StoryCommandSidebarGroup } from "./commands/specSidebar";
+import { browseMenuStops, buildSpecSidebarGroups, dedupeToPrimarySubject, type StoryCommandMenuStop, type StoryCommandSidebarGroup } from "./commands/specSidebar";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import { paramTypes } from "./storyCommandGrammar";
 import { getCommandDef } from "./commands/registry";
@@ -1512,9 +1512,12 @@ export function InsertRow(props: {
         [chooserQuery, pluginCommands, t],
     );
     // The empty-state browse is the sidebar's projection, not a second catalogue: same `accepts`
-    // classification, so 图片 lists "显示" here exactly as it does in the sidebar (WI-1).
+    // classification (WI-1), and the same one-row-per-command collapse the sidebar's unfiltered list
+    // uses. This menu has no subject filter — it is the whole vocabulary at once — and a verb repeated
+    // under six subjects with the same sentence each time reads as six commands, not as one that
+    // reaches six places. Which places it reaches is the manual's job to say.
     const browseGroups = useMemo(
-        () => buildSpecSidebarGroups(pluginCommands, command => localizeSpecCommand(command, t)),
+        () => dedupeToPrimarySubject(buildSpecSidebarGroups(pluginCommands, command => localizeSpecCommand(command, t))),
         [pluginCommands, t],
     );
     const characterOptions = useMemo(
