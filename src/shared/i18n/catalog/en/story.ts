@@ -227,6 +227,17 @@ export const story = {
         "density.standard": "Standard",
         "density.comfortable": "Comfortable",
     },
+    find: {
+        placeholder: "Find in scene",
+        replacePlaceholder: "Replace with",
+        caseSensitive: "Match case",
+        noMatches: "No results",
+        previous: "Previous match",
+        next: "Next match",
+        replace: "Replace",
+        replaceAll: "Replace all",
+        open: "Find and replace",
+    },
     commandManual: {
         open: "Command manual",
         title: "Command manual",
@@ -605,6 +616,7 @@ export const story = {
         delete: "Delete",
     },
     keybindings: {
+        find: "Find and replace",
         deleteRows: "Delete selected story rows",
         deleteRowsConfirm: "Delete selected story rows with multi-select confirmation",
         undo: "Undo story scene edit",
