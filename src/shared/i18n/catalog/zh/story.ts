@@ -208,7 +208,6 @@ export const story = {
         "density.comfortable": "舒适",
     },
     diagnostics: {
-        speakerNotShown: "这个角色在本场景里还没有登场——这句话会在舞台上没有人的情况下播出。",
         missingAsset: "这一行指向的资源已经不在项目里了。",
     },
     find: {
