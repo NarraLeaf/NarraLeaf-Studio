@@ -197,7 +197,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     const groupRail = row.groupRole === "member" || row.groupContinues
         ? {
             // Centre of the portrait column, plus this row's nesting indent and the two chrome columns.
-            left: `calc(var(--nl-story-gutter) + 28px + ${row.depth * RAIL_STEP + STORY_DENSITY_METRICS[props.density].avatar / 2 - 1}px)`,
+            left: `calc(var(--nl-story-gutter) + var(--nl-story-handle,20px) + ${row.depth * RAIL_STEP + STORY_DENSITY_METRICS[props.density].avatar / 2 - 1}px)`,
             // A head hands the rail off from under its own portrait; a member carries it edge to edge.
             top: row.groupRole === "member" ? 0 : ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].avatar,
         }
@@ -241,7 +241,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                 // Height comes from the density's single-line box plus the content column's `py-1`, so
                 // every column can centre inside the same box (see STORY_DENSITY_METRICS). `items-start`
                 // is load-bearing: a wrapped line keeps its first line aligned with the badge.
-                "group relative grid min-h-[calc(var(--nl-story-row-box)+0.5rem)] grid-cols-[var(--nl-story-gutter)_28px_1fr] items-start border-l-2 pr-3",
+                "group relative grid min-h-[calc(var(--nl-story-row-box)+0.5rem)] grid-cols-[var(--nl-story-gutter)_var(--nl-story-handle,20px)_1fr] items-start border-l-2 pr-3",
                 selected ? "border-primary bg-primary/20" : active ? "border-primary bg-fill-subtle" : "border-transparent hover:bg-fill-subtle",
                 // A disabled row (WI-3) dims whole — muted content, kept line number — but no invented
                 // chrome; the runtime treats it as absent.
@@ -290,8 +290,8 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     style={groupRail}
                 />
             ) : null}
-            <div className="relative flex h-full items-start justify-end pt-1 text-xs tabular-nums text-fg-subtle">
-                <div className="flex min-h-[var(--nl-story-row-box)] items-center gap-1">
+            <div className="relative flex h-full items-start justify-end pt-1 text-2xs tabular-nums text-fg-subtle/60 transition-colors group-hover:text-fg-subtle">
+                <div className="flex min-h-[var(--nl-story-row-box)] items-center gap-0.5">
                     {canFold ? (
                         <button
                             type="button"
@@ -323,7 +323,9 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     title={t("story.rows.dragRow")}
                     // Sized to the (narrowed) column so the invisible-but-clickable target never
                     // overhangs into the badge beside it — an opacity-0 button still takes clicks.
-                    className="flex h-7 w-7 touch-none select-none items-center justify-center rounded-md text-fg-subtle opacity-0 transition-colors hover:cursor-grab hover:text-primary hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 group-hover:opacity-100"
+                    // Sized to the (narrowed) column so the invisible-but-clickable target never
+                    // overhangs into the badge beside it — an opacity-0 button still takes clicks.
+                    className="flex h-7 w-[var(--nl-story-handle,20px)] touch-none select-none items-center justify-center rounded-md text-fg-subtle opacity-0 transition-colors hover:cursor-grab hover:text-primary hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 group-hover:opacity-100"
                     onMouseDown={event => event.stopPropagation()}
                     onClick={event => event.stopPropagation()}
                 >
@@ -1659,7 +1661,7 @@ export function InsertRow(props: {
         // highlight while it is open — see the tab's `insertActive`). The marker attribute lets the
         // comfortable-density rule open it to the same 46px as a committed row, so narration's Enter
         // falls into it without a vertical jump.
-        <div data-story-insert-slot="" className="relative grid min-h-[calc(var(--nl-story-row-box)+0.5rem)] grid-cols-[var(--nl-story-gutter)_28px_1fr] items-start border-l-2 border-primary bg-fill-subtle pr-3">
+        <div data-story-insert-slot="" className="relative grid min-h-[calc(var(--nl-story-row-box)+0.5rem)] grid-cols-[var(--nl-story-gutter)_var(--nl-story-handle,20px)_1fr] items-start border-l-2 border-primary bg-fill-subtle pr-3">
             <div aria-hidden />
             <div className="flex min-h-[calc(var(--nl-story-row-box)+0.25rem)] items-center justify-center pt-1">
                 <Plus className="h-4 w-4 text-primary" />

@@ -87,11 +87,30 @@ export const STORY_ROW_BOX_VAR = "--nl-story-row-box";
 export const STORY_GUTTER_VAR = "--nl-story-gutter";
 /** The CSS variable a dialogue row sizes its speaker portrait (and a group member's rail slot) from. */
 export const STORY_AVATAR_VAR = "--nl-story-avatar";
+/** The CSS variable the row grid sizes its drag-handle column from. */
+export const STORY_HANDLE_VAR = "--nl-story-handle";
 
-/** Gutter at two digits — chevron (14) + gap (4) + two tabular digits, the width it has always had. */
-const GUTTER_BASE_PX = 36;
-/** One tabular digit at the gutter's 12px type. */
-const GUTTER_DIGIT_PX = 7;
+/**
+ * Width of the drag-handle column, between the line numbers and the content (U1 WI-2).
+ *
+ * 20, down from 28. Constant across the tiers, but published with the density variables rather than
+ * pinned in the stylesheet: the row grid, the insert slot's grid and the tail "+" button all need it
+ * as a literal length, and one variable they read beats three hard-coded numbers that drift apart.
+ * Every consumer still spells the fallback, so a row rendered outside the editor root (tests,
+ * isolated previews) keeps a sane column instead of collapsing.
+ */
+export const STORY_HANDLE_PX = 20;
+
+/**
+ * Gutter at two digits — chevron (14) + gap (2) + two tabular digits at the line number's 11px type.
+ *
+ * Was 36 with a 4px gap and 12px digits. The line number is an anchor — for compile diagnostics and
+ * for jumping — not a reading surface (U1 WI-2), so it keeps its column one size smaller and tighter
+ * to the fold chevron, and the 6px it gives up goes to the words, as does the handle column's 8px.
+ */
+const GUTTER_BASE_PX = 30;
+/** One tabular digit at the gutter's 11px type. */
+const GUTTER_DIGIT_PX = 6;
 
 /**
  * Width of the line-number column for a scene of `rowCount` rows. Fixed at 36px, four digits would
@@ -111,7 +130,8 @@ export function storyEditorRootStyle(density: StoryEditorDensity, rowCount: numb
     return {
         [STORY_ROW_BOX_VAR]: `${STORY_DENSITY_METRICS[density].rowBox}px`,
         [STORY_GUTTER_VAR]: `${storyGutterWidth(rowCount)}px`,
-        [STORY_AVATAR_VAR]: `${STORY_DENSITY_METRICS[density].avatar}px`,
+        [STORY_AVATAR_VAR]: `${STORY_DENSITY_METRICS[density].avatar}px`,
+        [STORY_HANDLE_VAR]: `${STORY_HANDLE_PX}px`,
     } as CSSProperties;
 }
 
