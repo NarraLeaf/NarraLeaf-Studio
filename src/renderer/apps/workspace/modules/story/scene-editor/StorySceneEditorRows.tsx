@@ -28,6 +28,7 @@ import {
     getCommandCategory,
     getCommandGroup,
     STORY_COMMAND_GROUPS,
+    subjectGroupId,
     type StoryCommandGroup,
 } from "./storyCommandCategories";
 import { searchActionCommands } from "./storyCommandSearch";
@@ -1441,7 +1442,11 @@ export function InsertRow(props: {
                 key: `${index}:${candidate.value}`,
                 value: candidate.value,
                 label: candidate.label,
-                detail: candidate.detail,
+                // The kind a name belongs to is carried untranslated; it shares the subject vocabulary
+                // the category strip already names, so it reads in the author's own language.
+                detail: candidate.detailKind
+                    ? t(commandCategoryLabelKey(subjectGroupId(candidate.detailKind)))
+                    : candidate.detail,
                 icon: icon?.icon,
                 iconClassName: icon?.className,
                 tag: candidate.free ? t("story.rows.tempSpeaker") : undefined,

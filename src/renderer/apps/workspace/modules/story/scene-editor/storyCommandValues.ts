@@ -28,8 +28,8 @@ export type StoryCommandVariableEntry = {
     defaultValue?: StoryLiteralValue;
 };
 
-/** The five kinds of named object a command can address by `objectName`. */
-export type StoryCommandStageObjectKind = "image" | "text" | "layer" | "video" | "audio";
+/** The kinds of named object a command can address by `objectName`. */
+export type StoryCommandStageObjectKind = "image" | "text" | "layer" | "video" | "audio" | "vfx";
 
 /** What a generic verb's target may be: a character, or a stage object of some kind. */
 export type StoryCommandTargetKind = "character" | StoryCommandStageObjectKind;
@@ -38,7 +38,7 @@ export type StoryCommandTargetKind = "character" | StoryCommandStageObjectKind;
 export type StoryCommandStageObjects = Readonly<Record<StoryCommandStageObjectKind, readonly string[]>>;
 
 export const EMPTY_STORY_COMMAND_STAGE_OBJECTS: StoryCommandStageObjects = {
-    image: [], text: [], layer: [], video: [], audio: [],
+    image: [], text: [], layer: [], video: [], audio: [], vfx: [],
 };
 
 /**
@@ -60,6 +60,12 @@ export type StoryCommandContext = {
      */
     tempSpeakers: readonly string[];
     scenes: readonly StoryCommandNamedRef[];
+    /**
+     * The `label` rows of the CURRENT scene, in declaration order - what `/goto` may address.
+     * Scene-scoped like the engine's own matching, and scanned by the same function the compiler
+     * validates with, so the two can never disagree about which names exist.
+     */
+    labels: readonly string[];
     variables: readonly StoryCommandVariableEntry[];
     /** Form / appearance names per character id - the candidates for a form slot, which only exist once the character resolves. */
     formsByCharacterId: Readonly<Record<string, readonly string[]>>;
@@ -68,7 +74,7 @@ export type StoryCommandContext = {
 };
 
 export const EMPTY_STORY_COMMAND_CONTEXT: StoryCommandContext = {
-    images: [], audio: [], videos: [], characters: [], tempSpeakers: [], scenes: [], variables: [], formsByCharacterId: {},
+    images: [], audio: [], videos: [], characters: [], tempSpeakers: [], scenes: [], labels: [], variables: [], formsByCharacterId: {},
     stageObjects: EMPTY_STORY_COMMAND_STAGE_OBJECTS,
 };
 
@@ -91,6 +97,8 @@ export type StoryCommandValue =
     | { kind: "speakerName"; speakerName: string }
     | { kind: "characterForm"; formName: string }
     | { kind: "scene"; sceneId: string }
+    /** A label declared in this scene - stored as declared, so it matches what the engine sees. */
+    | { kind: "label"; name: string }
     /** `name` is the author-facing name as declared - the compound-assignment sugar re-emits it into the desugared source. */
     | { kind: "variable"; ref: StoryVariableRef; valueType: StoryVariableValueType; name: string; defaultValue?: StoryLiteralValue }
     | { kind: "enum"; value: string }
@@ -110,6 +118,8 @@ export type StoryCommandResolutionIssue =
     | { code: "unknownAsset"; span: StoryCommandSpan; value: string; assetType: "image" | "audio" | "video" }
     | { code: "unknownCharacter"; span: StoryCommandSpan; value: string }
     | { code: "unknownScene"; span: StoryCommandSpan; value: string }
+    /** `/goto intro` with no `intro` label in this scene - the engine would refuse to build. */
+    | { code: "unknownLabel"; span: StoryCommandSpan; value: string }
     | { code: "unknownVariable"; span: StoryCommandSpan; value: string }
     | { code: "unknownForm"; span: StoryCommandSpan; value: string; characterName: string }
     /** A generic verb's subject matching neither a character nor anything on stage. */

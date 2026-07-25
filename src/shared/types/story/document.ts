@@ -139,8 +139,15 @@ export type StorySceneUpdate = {
  */
 export type StoryVariableScope = "scene" | "saved" | "persistent";
 export type StoryVariableValueType = "boolean" | "number" | "string" | "json";
-export type StoryStageObjectKind = "image" | "text" | "layer" | "video";
-export type StoryDisplayableTargetKind = Exclude<StoryStageObjectKind, "video"> | "character";
+export type StoryStageObjectKind = "image" | "text" | "layer" | "video" | "vfx";
+/**
+ * The stage objects that ARE Displayables, and so answer `/transform` and `/fx`.
+ *
+ * Video and Vfx are `Actionable`s in the engine, not Displayables: they carry no transform pipeline
+ * at all. Excluding them here is what makes "a vfx cannot be transformed" a fact of the type system
+ * rather than a rule every target picker has to remember.
+ */
+export type StoryDisplayableTargetKind = Exclude<StoryStageObjectKind, "video" | "vfx"> | "character";
 
 /** Declaration for a scene variable (backed by NLR `Scene.local`). */
 export type StorySceneVariableDefinition = {
@@ -306,12 +313,19 @@ export type StoryActionPayload =
       }
     | {
           action: "character";
-          operation: "enter" | "move" | "exit" | "expression";
+          /**
+           * `setName` is the one operation that touches no portrait: it renames the *speaker label*
+           * (NLR `Character.setName`), which is how "？？？" becomes a real name mid-scene. Every other
+           * operation acts on the character's stage image.
+           */
+          operation: "enter" | "move" | "exit" | "expression" | "setName";
           characterId?: string;
           assetId?: string;
           objectName?: string;
           formName?: string;
           variants?: StoryCharacterVariantSelection;
+          /** `setName` — the label shown from this row on. Empty is legal: some reveals hide the name again. */
+          displayName?: string;
           transition?: StoryTransitionRef;
           transform?: StoryTransformRef;
       }
@@ -421,11 +435,20 @@ export type StoryActionPayload =
           transform?: StoryTransformRef;
       }
     | {
+          /**
+           * A `Video` — an Actionable, not a Displayable, which is why it has its own verb set rather
+           * than sharing `displayable`'s. `play` waits for the clip to finish; `resume` does not.
+           *
+           * Additive: the four transport operations and `timeMs` are new in A3, and no document
+           * written before them carries either, so no schema bump.
+           */
           action: "video";
-          operation: "create" | "show" | "hide" | "play";
+          operation: "create" | "show" | "hide" | "play" | "pause" | "resume" | "stop" | "seek";
           objectName: string;
           assetId?: string;
           muted?: boolean;
+          /** `seek` — where to jump to, in milliseconds. The engine's `seek` takes seconds; the compiler converts. */
+          timeMs?: number;
       }
     | {
           /**
@@ -454,6 +477,40 @@ export type StoryActionPayload =
           easing?: string;
       }
     | {
+          /**
+           * A `Vfx` (NLR 0.16.0) — a full-screen looping video overlay for ambience: falling petals,
+           * rain, dust, light flares. An `Actionable`, **not** a Displayable: it has no transform
+           * pipeline, which is why `StoryDisplayableTargetKind` excludes it and `/transform` `/fx`
+           * never offer it as a target.
+           *
+           * `create` is what puts it on stage AND registers the name the later verbs address, the
+           * same shape `video` uses. Additive: no document before A3 carries it, so no schema bump.
+           */
+          action: "vfx";
+          operation: "create" | "show" | "hide" | "pause" | "resume" | "setRate";
+          objectName: string;
+          /** The looping clip — a video asset, the same pipeline `/video` uses. */
+          assetId?: string;
+          /**
+           * How the overlay composites. The choice IS the material route: `normal` for a true-alpha
+           * WebM, `screen` for glow rendered on black, `multiply` for shadow rendered on white.
+           */
+          blendMode?: StoryVfxBlendMode;
+          opacity?: number;
+          loop?: boolean;
+          fit?: "cover" | "contain" | "fill";
+          zIndex?: number;
+          /**
+           * Playback speed; 0.5 drifts slowly, 2 falls twice as fast. On `setRate` it is the change;
+           * on `create` it is the loop's resting speed — and only the latter survives a save, since
+           * the engine does not persist a runtime rate change.
+           */
+          rate?: number;
+          /** `show` / `hide` — the fade the action waits out. */
+          durationMs?: number;
+          easing?: string;
+      }
+    | {
           action: "nvl";
           transition?: StoryTransformRef;
       }
@@ -472,6 +529,9 @@ export type StoryActionPayload =
           blueprintId: string;
       };
 
+/** Mirrors NLR's `VfxBlendMode`; the compiler passes it straight through to the overlay's CSS. */
+export type StoryVfxBlendMode = "normal" | "screen" | "multiply" | "lighten" | "color-dodge" | "overlay";
+
 export type StoryControlPayload =
     | {
           control: "condition";
@@ -485,6 +545,27 @@ export type StoryControlPayload =
           control: "sequence" | "parallel" | "race" | "repeat";
           mode?: "do" | "doAsync" | "all" | "allAsync" | "any";
           times?: number;
+      }
+    | {
+          /**
+           * A named point inside a scene (`Control.label`). Invisible at runtime — it passes straight
+           * through to the next row — and it is the only thing `goto` can address.
+           *
+           * Names are scoped to their scene, so the same name may recur in another one; declaring it
+           * twice within a scene is an error the engine's build rejects, which is why the compiler
+           * diagnoses it here first.
+           */
+          control: "label";
+          name: string;
+      }
+    | {
+          /**
+           * Move the play head to a `label` in the SAME scene (`Control.jump`). Distinct from a
+           * `jump` block, which changes scene and therefore unloads and re-initializes one — this
+           * unloads nothing, so it is the loop and the retry, not the transition.
+           */
+          control: "goto";
+          targetLabel: string;
       };
 
 export type StoryJumpPayload = {

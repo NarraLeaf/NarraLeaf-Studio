@@ -187,6 +187,7 @@ function acceptsType(type: StoryCommandParamType, value: string): boolean {
         case "characterForm":
         case "scene":
         case "variable":
+        case "label":
         case "target":
         case "content":
         case "literal":

@@ -93,6 +93,50 @@ describe("computeStoryStageSnapshot", () => {
         expect(atTarget2.displayables[0].props.opacity).toBe(0);
     });
 
+    it("leaves the portrait alone across a /rename", () => {
+        // `setName` retitles the speaker label and nothing else. It used to fall into the
+        // enter/expression arm, which rebuilds `source` from a payload it never carries - so a
+        // `/rename` after a `/face` silently reverted the character to their default look in a
+        // row-precise launch, which is the one place this snapshot is the whole truth.
+        const document = baseDocument({
+            enter: block("enter", "action", { action: "character", operation: "enter", characterId: "char-alice" }),
+            face: block("face", "action", { action: "character", operation: "expression", characterId: "char-alice", formName: "angry" }),
+            rename: block("rename", "action", { action: "character", operation: "setName", characterId: "char-alice", displayName: "Alice" }),
+            target: say("target"),
+        }, ["enter", "face", "rename", "target"]);
+
+        const result = snapshot(document, "target");
+        expect(result.displayables).toHaveLength(1);
+        const alice = result.displayables[0];
+        expect(alice.visible).toBe(true);
+        expect(alice.source).toEqual({ type: "character", characterId: "char-alice", formName: "angry", variants: undefined });
+    });
+
+    it("does not conjure a stage record for a character only ever renamed", () => {
+        // `setName` settles no stage state, so it must not even reserve a displayable - otherwise
+        // "？？？" becoming a name would put a blank portrait in the preview.
+        const document = baseDocument({
+            rename: block("rename", "action", { action: "character", operation: "setName", characterId: "char-bob", displayName: "Bob" }),
+            target: say("target"),
+        }, ["rename", "target"]);
+        expect(snapshot(document, "target").displayables).toEqual([]);
+    });
+
+    it("warns that a /vfx overlay is not previewed, as it does for a video", () => {
+        // An ambience overlay is a real visual the snapshot cannot settle. Silence would leave the
+        // author reading a row-precise launch as complete when a layer of it is simply missing.
+        const document = baseDocument({
+            rain: block("rain", "action", { action: "vfx", operation: "create", objectName: "rain", assetId: "asset-rain" }),
+            clip: block("clip", "action", { action: "video", operation: "create", objectName: "intro", assetId: "asset-intro" }),
+            target: say("target"),
+        }, ["rain", "clip", "target"]);
+        const result = snapshot(document, "target");
+        expect(result.diagnostics).toEqual([
+            { level: "warning", blockId: "rain", message: "Ambience effects are not previewed." },
+            { level: "warning", blockId: "clip", message: "Videos are not previewed." },
+        ]);
+    });
+
     it("merges successive transforms with position-aware semantics", () => {
         const document = baseDocument({
             show: block("show", "action", { action: "image", operation: "show", objectName: "hero", transform: { preset: "left", durationMs: 200 } }),

@@ -11,6 +11,7 @@ import {
     Type,
     UserRound,
     Video,
+    Wind,
 } from "lucide-react";
 import type { TranslationKey } from "@shared/i18n";
 import type { StoryCommandTargetKind } from "./storyCommandValues";
@@ -46,7 +47,7 @@ export type StoryCommandCategoryId =
     | "utils";
 
 /** 舞台's second-level subjects - the only category that has one. */
-export type StoryStageSubjectId = "image" | "text" | "layer" | "video";
+export type StoryStageSubjectId = "image" | "text" | "layer" | "video" | "vfx";
 
 /**
  * Where a command files itself, and the unit that carries an icon and a colour: every category except
@@ -97,6 +98,9 @@ export const STORY_COMMAND_GROUPS: readonly StoryCommandGroup[] = [
     { id: "text", category: "stage", icon: Type, iconColor: "#9bb7d8" },
     { id: "layer", category: "stage", icon: Layers, iconColor: "#92b9b0" },
     { id: "video", category: "stage", icon: Video, iconColor: "#b59dcc" },
+    // The one hue nothing else claimed, for the one subject that is pure light: 氛围特效 sits under
+    // 舞台 because a vfx IS a stage object - just not a Displayable one (it takes no /transform).
+    { id: "vfx", category: "stage", icon: Wind, iconColor: "#d3c07c" },
     { id: "camera", category: "camera", icon: Aperture, iconColor: "#d1a176" },
     { id: "scene", category: "scene", icon: MonitorPlay, iconColor: "#8fa9c7" },
     { id: "sound", category: "sound", icon: Music, iconColor: "#bd97a3" },

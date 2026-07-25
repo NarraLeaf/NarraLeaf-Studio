@@ -27,6 +27,7 @@ export const storyExpr = {
         unknownAsset: "没有名为「{value}」的{assetType}资源",
         unknownCharacter: "没有名为「{value}」的角色",
         unknownScene: "没有名为「{value}」的场景",
+        unknownLabel: "本场景中没有名为「{value}」的标签",
         unknownVariable: "没有名为「{value}」的变量",
         unknownForm: "{characterName} 没有「{value}」这个表情",
         ambiguousName: "有多个东西叫「{value}」，请重命名其中一个",

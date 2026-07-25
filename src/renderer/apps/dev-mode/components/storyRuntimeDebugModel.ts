@@ -96,7 +96,18 @@ export function describeStoryBlock(
         }
         case "control": {
             const payload = block.payload;
-            return payload.control === "conditionBranch" ? payload.branch : payload.control;
+            if (payload.control === "conditionBranch") {
+                return payload.branch;
+            }
+            // The name is the whole row on the timeline: with `goto` in play the row order is no
+            // longer the execution order, so "which label" is precisely what a reader needs to see.
+            if (payload.control === "label") {
+                return `▸ ${payload.name}`;
+            }
+            if (payload.control === "goto") {
+                return `↺ ${payload.targetLabel}`;
+            }
+            return payload.control;
         }
         case "declaration":
             return `var ${block.payload.name}`;

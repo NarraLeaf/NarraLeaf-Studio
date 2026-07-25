@@ -371,6 +371,9 @@ class SnapshotWalker {
             case "video":
                 this.diagnostic(block.id, "Videos are not previewed.");
                 return;
+            case "vfx":
+                this.diagnostic(block.id, "Ambience effects are not previewed.");
+                return;
             case "blueprint":
                 this.diagnostic(block.id, "Story Action Blueprint effects are not simulated in the preview.");
                 return;
@@ -381,6 +384,14 @@ class SnapshotWalker {
     }
 
     private applyCharacter(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "character" }>): void {
+        if (payload.operation === "setName") {
+            // `/rename` retitles the speaker LABEL and touches no portrait, so it settles no stage
+            // state at all - it must not even `ensure` a record, or renaming a character who was never
+            // shown would conjure a blank one. Falling through to the enter/expression arm below would
+            // be worse still: that arm rebuilds `source` from a payload `setName` never carries, so an
+            // earlier `/face` would silently revert to the default look in a row-precise launch.
+            return;
+        }
         const objectName = getCharacterStageObjectName(payload);
         const record = this.ensure("image", objectName, block.id);
         record.autoFit = true;
