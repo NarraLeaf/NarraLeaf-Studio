@@ -93,7 +93,11 @@ export function StoryBlockRow(props: {
     onEditRichChange: (value: string, runs: StoryRichRun[]) => void;
     onCommitTextEdit: () => void;
     onExitTextEdit: () => void;
-    /** Enter while editing: commit and open a new row that continues the same kind (dialogue keeps speaker). */
+    /**
+     * Enter while editing: commit and open a new row that continues the same kind (dialogue keeps
+     * speaker). On a line left empty it takes the Backspace rung instead — see
+     * {@link onBackspaceAtEmptyStart} — so a second Enter ends the run rather than stacking blanks.
+     */
     onContinue: () => void;
     /** Caret left the line's top/bottom/edge — move focus to the adjacent story row. */
     onArrowOut: (direction: "up" | "down" | "left" | "right", caretX: number | null) => void;

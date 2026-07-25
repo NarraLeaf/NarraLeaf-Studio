@@ -950,95 +950,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [sceneId, storyId, storyService, uuidService]);
 
-    // Enter while editing a text row: commit and open a new row that continues the same kind - narration
-    // begets narration, a dialogue keeps its speaker, a menu option adds a sibling option. Kinds without a
-    // natural successor (e.g. a choice prompt) fall back to the generic "/"-and-"#" insert slot.
-    const insertContinuationAfterCurrentTextEdit = useCallback(() => {
-        if (editorMode.kind !== "text" || !storyService || !storyId || !sceneId || !scene) {
-            return;
-        }
-        const currentBlock = scene.blocks[editorMode.blockId];
-        if (!currentBlock) {
-            return;
-        }
-        const continuation = continuationCommandFor(currentBlock);
-        if (!continuation) {
-            commitTextEdit();
-            startInsertAfter(editorMode.blockId, true);
-            return;
-        }
-        recordHistory();
-        // Persist the current line from the live editor DOM (captures marks/chips not yet flushed to draft).
-        const liveRuns = textInputRef.current?.getRuns();
-        const value = liveRuns ? richRunsToPlain(liveRuns) : editorMode.value;
-        const rich = liveRuns ?? editorMode.rich;
-        const updatedPayload = updateTextPayload(currentBlock, value, rich);
-        if (updatedPayload) {
-            storyService.updateBlock(storyId, sceneId, currentBlock.id, updatedPayload);
-        }
-        const characterId = currentBlock.kind === "nodeAction" && currentBlock.payload.action === "dialogue"
-            ? currentBlock.payload.characterId
-            : undefined;
-        const block = createBlock(continuation, "", characterId);
-        if (!block) {
-            return;
-        }
-        insertBlock(block, currentBlock.id, false, { recordHistory: false });
-        setEditorMode({ kind: "text", blockId: block.id, value: "", caret: "end" });
-    }, [commitTextEdit, createBlock, editorMode, insertBlock, recordHistory, scene, sceneId, startInsertAfter, storyId, storyService]);
-
-    // Arrow navigation across the row boundary while editing text. The current line is committed first;
-    // landing on a text row re-opens it for editing (caret at the near edge), landing on an action row
-    // just selects it and hands focus back to the keyboard so plain arrows keep walking the list.
-    const navigateFromTextEdit = useCallback((direction: "up" | "down" | "left" | "right", caretX?: number | null) => {
-        if (editorMode.kind !== "text") {
-            return;
-        }
-        const vertical = direction === "up" || direction === "down";
-        // A horizontal arrow is the author stating a new column; a vertical one keeps the column it
-        // already had, and only seeds it if this is the move that started the run.
-        if (!vertical) {
-            goalColumnRef.current = null;
-        } else if (goalColumnRef.current === null && typeof caretX === "number") {
-            goalColumnRef.current = caretX;
-        }
-        const goalX = vertical ? goalColumnRef.current : null;
-        const currentId = editorMode.blockId;
-        const currentIndex = rowIndexById.get(currentId);
-        commitTextEdit();
-        if (currentIndex === undefined) {
-            return;
-        }
-        const goingBack = direction === "up" || direction === "left";
-        const target = visibleRows[goingBack ? currentIndex - 1 : currentIndex + 1];
-        if (!target) {
-            if (!goingBack) {
-                // Past the last row - drop into a fresh insert slot so the author can keep writing downward.
-                startInsertAfter(currentId, true);
-            } else {
-                setActiveBlockId(currentId);
-                setSelectedBlockIds(new Set([currentId]));
-                selectionAnchorRef.current = currentId;
-                focusRoot();
-            }
-            return;
-        }
-        const targetBlock = target.block;
-        setActiveBlockId(targetBlock.id);
-        setSelectedBlockIds(new Set([targetBlock.id]));
-        selectionAnchorRef.current = targetBlock.id;
-        if (isTextEditableBlock(targetBlock)) {
-            const segment = getTextSegment(targetBlock);
-            const caret: StoryCaretTarget = goalX === null
-                ? (goingBack ? "end" : "start")
-                : { goalX, line: goingBack ? "last" : "first" };
-            setEditorMode({ kind: "text", blockId: targetBlock.id, value: segment?.value ?? "", rich: segment?.rich, caret });
-        } else {
-            setEditorMode({ kind: "idle" });
-            focusRoot();
-        }
-    }, [commitTextEdit, editorMode, focusRoot, rowIndexById, startInsertAfter, visibleRows]);
-
     // Backspace on an empty line. An empty dialogue drops a rung to a blank insert slot in the same spot -
     // a completely empty line that can become anything (type narration, "/" for an action, "#" for another
     // speaker) rather than a committed narration row. Any other empty text row is deleted and focus steps
@@ -1093,6 +1004,103 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             focusRoot();
         }
     }, [editorMode, focusRoot, recordHistory, rowIndexById, scene, sceneId, startInsertAfter, storyId, storyService, visibleRows]);
+
+    // Enter while editing a text row: commit and open a new row that continues the same kind - narration
+    // begets narration, a dialogue keeps its speaker, a menu option adds a sibling option. Kinds without a
+    // natural successor (e.g. a choice prompt) fall back to the generic "/"-and-"#" insert slot.
+    const insertContinuationAfterCurrentTextEdit = useCallback(() => {
+        if (editorMode.kind !== "text" || !storyService || !storyId || !sceneId || !scene) {
+            return;
+        }
+        const currentBlock = scene.blocks[editorMode.blockId];
+        if (!currentBlock) {
+            return;
+        }
+        const continuation = continuationCommandFor(currentBlock);
+        if (!continuation) {
+            commitTextEdit();
+            startInsertAfter(editorMode.blockId, true);
+            return;
+        }
+        // Read the live editor DOM (captures marks/chips not yet flushed to draft) before anything commits.
+        const liveRuns = textInputRef.current?.getRuns();
+        const value = liveRuns ? richRunsToPlain(liveRuns) : editorMode.value;
+        const rich = liveRuns ?? editorMode.rich;
+        // Enter on a still-empty continuation row means "stop continuing", the way Enter on an empty list
+        // item ends the list in a prose editor. Stacking another blank row of the same kind is never what
+        // the author meant, so take the Backspace rung instead: the empty dialogue becomes the blank slot
+        // that can turn into anything. Same keystroke, same result as backing out of the line by hand.
+        if (value === "") {
+            handleBackspaceAtEmptyStart();
+            return;
+        }
+        recordHistory();
+        const updatedPayload = updateTextPayload(currentBlock, value, rich);
+        if (updatedPayload) {
+            storyService.updateBlock(storyId, sceneId, currentBlock.id, updatedPayload);
+        }
+        const characterId = currentBlock.kind === "nodeAction" && currentBlock.payload.action === "dialogue"
+            ? currentBlock.payload.characterId
+            : undefined;
+        const block = createBlock(continuation, "", characterId);
+        if (!block) {
+            return;
+        }
+        insertBlock(block, currentBlock.id, false, { recordHistory: false });
+        setEditorMode({ kind: "text", blockId: block.id, value: "", caret: "end" });
+    }, [commitTextEdit, createBlock, editorMode, handleBackspaceAtEmptyStart, insertBlock, recordHistory, scene, sceneId, startInsertAfter, storyId, storyService]);
+
+    // Arrow navigation across the row boundary while editing text. The current line is committed first;
+    // landing on a text row re-opens it for editing (caret at the near edge), landing on an action row
+    // just selects it and hands focus back to the keyboard so plain arrows keep walking the list.
+    const navigateFromTextEdit = useCallback((direction: "up" | "down" | "left" | "right", caretX?: number | null) => {
+        if (editorMode.kind !== "text") {
+            return;
+        }
+        const vertical = direction === "up" || direction === "down";
+        // A horizontal arrow is the author stating a new column; a vertical one keeps the column it
+        // already had, and only seeds it if this is the move that started the run.
+        if (!vertical) {
+            goalColumnRef.current = null;
+        } else if (goalColumnRef.current === null && typeof caretX === "number") {
+            goalColumnRef.current = caretX;
+        }
+        const goalX = vertical ? goalColumnRef.current : null;
+        const currentId = editorMode.blockId;
+        const currentIndex = rowIndexById.get(currentId);
+        commitTextEdit();
+        if (currentIndex === undefined) {
+            return;
+        }
+        const goingBack = direction === "up" || direction === "left";
+        const target = visibleRows[goingBack ? currentIndex - 1 : currentIndex + 1];
+        if (!target) {
+            if (!goingBack) {
+                // Past the last row - drop into a fresh insert slot so the author can keep writing downward.
+                startInsertAfter(currentId, true);
+            } else {
+                setActiveBlockId(currentId);
+                setSelectedBlockIds(new Set([currentId]));
+                selectionAnchorRef.current = currentId;
+                focusRoot();
+            }
+            return;
+        }
+        const targetBlock = target.block;
+        setActiveBlockId(targetBlock.id);
+        setSelectedBlockIds(new Set([targetBlock.id]));
+        selectionAnchorRef.current = targetBlock.id;
+        if (isTextEditableBlock(targetBlock)) {
+            const segment = getTextSegment(targetBlock);
+            const caret: StoryCaretTarget = goalX === null
+                ? (goingBack ? "end" : "start")
+                : { goalX, line: goingBack ? "last" : "first" };
+            setEditorMode({ kind: "text", blockId: targetBlock.id, value: segment?.value ?? "", rich: segment?.rich, caret });
+        } else {
+            setEditorMode({ kind: "idle" });
+            focusRoot();
+        }
+    }, [commitTextEdit, editorMode, focusRoot, rowIndexById, startInsertAfter, visibleRows]);
 
     /**
      * A selected non-text row was activated (Enter, double-click). A block with a real inspector opens
@@ -2101,8 +2109,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
  * begets narration" would trap the author in prose with no keyboard path to an action. Its Enter
  * falls through to the insert slot instead - the one surface where the next line can stay narration,
  * become an action (`/`), or a line of dialogue (`#`). Dialogue keeps its successor: continuing a
- * speaker is what a back-and-forth wants, and an empty dialogue still demotes to the slot on
- * Backspace, so it is not a trap.
+ * speaker is what a back-and-forth wants, and an empty dialogue still demotes to the slot - on
+ * Backspace, or on a second Enter that leaves it empty - so it is not a trap.
  */
 function continuationCommandFor(block: StoryBlock): ActionCommandId | null {
     if (block.kind === "note") {
