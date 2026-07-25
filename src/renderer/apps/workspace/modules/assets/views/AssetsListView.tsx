@@ -105,9 +105,9 @@ export function AssetsListView({
                             }}
                             onContextMenu={(e) => e.preventDefault()}
                         >
-                            {typeAssets.length === 0 && typeGroups.length === 0 ? (
-                                <div className="p-4 text-center text-xs text-fg-subtle">{t("assets.emptyType", { label: t(`assets.types.${type}`).toLowerCase() })}</div>
-                            ) : (
+                            {/* An empty category prints nothing. The accordion header's import buttons
+                                are the way in; announcing the absence is not information. */}
+                            {(typeAssets.length > 0 || typeGroups.length > 0) && (
                                 <div className="py-1">
                                     {typeGroups.filter(g => !g.parentGroupId).map(group => <GroupItem key={group.id} group={group} type={type} level={0} />)}
                                     {typeAssets.filter(a => !a.groupId).map(asset => <AssetItem key={asset.id} asset={asset} type={type} level={0} />)}
