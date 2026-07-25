@@ -46,12 +46,9 @@ export const assets = {
      * number were a forecast of what the next build will produce.
      */
     overview: {
-        tabTitle: "Asset Overview",
-        open: "Open asset overview",
         loading: "Reading the asset library…",
         failed: "Could not read the asset library.",
         retry: "Try again",
-        empty: "This project has no assets yet.",
         section: {
             library: "Library",
             packaging: "Packaging",
@@ -82,6 +79,7 @@ export const assets = {
     view: {
         list: "List view",
         icons: "Icon view",
+        overview: "Overview",
     },
     filter: {
         label: "Filters",

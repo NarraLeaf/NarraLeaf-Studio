@@ -33,9 +33,9 @@ import { AssetsListView } from "./views/AssetsListView";
 import { AssetsIconView } from "./views/AssetsIconView";
 import { useWorkspaceAssetDragOptional } from "@/apps/workspace/dnd/WorkspaceAssetDragProvider";
 import { useTranslation } from "@/lib/i18n";
-import { openAssetOverviewTab } from "../asset-overview/openAssetOverviewTab";
+import { AssetOverviewView } from "../asset-overview/AssetOverviewView";
 
-export type AssetViewMode = "list" | "icons";
+export type AssetViewMode = "list" | "icons" | "overview";
 
 const VIEW_MODE_OPTIONS: { id: AssetViewMode; icon: ComponentType<any> }[] = [
     {
@@ -46,7 +46,18 @@ const VIEW_MODE_OPTIONS: { id: AssetViewMode; icon: ComponentType<any> }[] = [
         id: "icons",
         icon: LayoutGrid,
     },
+    {
+        id: "overview",
+        icon: Boxes,
+    },
 ];
+
+const VIEW_MODE_IDS = new Set<string>(VIEW_MODE_OPTIONS.map(option => option.id));
+
+/** A persisted view mode from before the overview was folded in, or from a hand-edited store. */
+function sanitizeViewMode(mode: string | undefined): AssetViewMode | null {
+    return mode && VIEW_MODE_IDS.has(mode) ? (mode as AssetViewMode) : null;
+}
 
 interface AssetsPanelPayload {
     defaultViewMode?: AssetViewMode;
@@ -166,8 +177,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
 
         const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
         const saved = panelStateService.getPanelState<AssetsPanelState>(panelId);
-        if (saved?.viewMode) {
-            setViewMode(saved.viewMode);
+        const savedViewMode = sanitizeViewMode(saved?.viewMode);
+        if (savedViewMode) {
+            setViewMode(savedViewMode);
             setHasPersistedViewMode(true);
         }
         if (typeof saved?.iconSize === "number") {
@@ -217,12 +229,16 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const { searchQuery, activeQuery, setSearchQuery } = useAssetSearch();
 
     const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
-    // Measuring the library costs a directory walk; only pay for it once a filter asks a question
-    // the asset records cannot answer on their own.
-    const { bytesByAssetId, referencedAssetIds } = useAssetLibrarySnapshot(
-        context,
-        filtersNeedLibrarySnapshot(activeFilters),
-    );
+    // Measuring the library costs a directory walk and a reference-index flush; only pay for it
+    // while something is reading the result — the overview view, or a filter asking a question the
+    // asset records cannot answer on their own.
+    const {
+        snapshot,
+        failed: snapshotFailed,
+        refresh: refreshSnapshot,
+        bytesByAssetId,
+        referencedAssetIds,
+    } = useAssetLibrarySnapshot(context, viewMode === "overview" || filtersNeedLibrarySnapshot(activeFilters));
 
     const { filterConfigs, handleFilterOpen, filteredAssets, filteredGroups, matchedGroupIds } =
         useAssetFilters({ assets, groups, activeFilters, query: activeQuery, bytesByAssetId, referencedAssetIds });
@@ -250,6 +266,16 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         loadAssets();
         handleClearSelection();
     }, [loadAssets, handleClearSelection]);
+
+    // One refresh button for the whole panel. The overview reads measured numbers the asset records
+    // do not carry, so on that view it has to re-walk as well — a refresh that reloaded the records
+    // and left the sizes alone would look like it had done nothing.
+    const handleRefresh = useCallback(() => {
+        loadAssets();
+        if (viewMode === "overview") {
+            refreshSnapshot();
+        }
+    }, [loadAssets, refreshSnapshot, viewMode]);
 
     const { clipboard, setClipboard } = useClipboard();
 
@@ -505,8 +531,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             <FilterSystem filters={filterConfigs} activeFilters={activeFilters} onFiltersChange={setActiveFilters} onFilterOpen={handleFilterOpen} />
                             <div className="flex items-center gap-2">
                                 <ViewModeToggle mode={viewMode} onChange={setViewMode} />
-                                <OpenOverviewButton />
-                                <button onClick={loadAssets} disabled={loading} className="p-1 rounded-md hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
+                                <button onClick={handleRefresh} disabled={loading} className="p-1 rounded-md hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
                             </div>
                         </div>
                     </div>
@@ -598,15 +623,16 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                     the total) and it never gave way: `hidden sm:inline` is a VIEWPORT
                                     query, so a narrow sidebar in a wide window still paid for it. */}
                                 <ViewModeToggle mode={viewMode} onChange={setViewMode} />
-                                <OpenOverviewButton />
-                                <button onClick={loadAssets} disabled={loading} className="p-1 rounded-md hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
+                                <button onClick={handleRefresh} disabled={loading} className="p-1 rounded-md hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
                             </div>
                         )}
                     </div>
                 )}
 
                 <div className="flex-1 overflow-y-auto">
-                    {viewMode === "list" ? (
+                    {viewMode === "overview" ? (
+                        <AssetOverviewView snapshot={snapshot} failed={snapshotFailed} refresh={refreshSnapshot} />
+                    ) : viewMode === "list" ? (
                         <AssetsListView
                             dropTargetId={dropTargetId}
                             handleRootDrop={handleRootDrop}
@@ -649,34 +675,18 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     );
 }
 
-/**
- * Opens the read-only overview page. The sidebar stays the place assets are dragged out of; the
- * page is where they are read about, so this is a way *out* of the panel rather than a mode of it.
- */
-function OpenOverviewButton() {
-    const { t } = useTranslation();
-    const { context } = useWorkspace();
-    if (!context) {
-        return null;
-    }
-    return (
-        <button
-            type="button"
-            onClick={() => openAssetOverviewTab(context)}
-            title={t("assets.overview.open")}
-            className="p-1 rounded-md hover:bg-fill"
-        >
-            <Boxes className="w-4 h-4" />
-        </button>
-    );
-}
+const VIEW_MODE_LABEL_KEYS = {
+    list: "assets.view.list",
+    icons: "assets.view.icons",
+    overview: "assets.view.overview",
+} as const;
 
 function ViewModeToggle({ mode, onChange }: { mode: AssetViewMode; onChange: (mode: AssetViewMode) => void }) {
     const { t } = useTranslation();
     return (
         <div className="inline-flex items-center gap-1 rounded-md border border-edge-strong bg-fill-subtle p-1">
             {VIEW_MODE_OPTIONS.map(({ id, icon: Icon }) => {
-                const label = id === "list" ? t("assets.view.list") : t("assets.view.icons");
+                const label = t(VIEW_MODE_LABEL_KEYS[id]);
                 return (
                 <button
                     key={id}
