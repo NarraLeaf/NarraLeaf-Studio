@@ -236,10 +236,14 @@ function resolveAgainstType(
             return found ? { value: { kind: "scene", sceneId: found.id } } : { issue: { code: "unknownScene", span, value } };
         }
         case "label": {
-            // Matched case-insensitively but STORED as declared, so the payload always spells the
-            // name the engine will match - the compiler compares the same way.
+            // The engine matches labels exactly, so an exact hit always wins - with both `start` and
+            // `Start` declared (which the engine allows), folding first would silently aim the jump at
+            // whichever was declared earlier. A fold is only a typing convenience for the case where
+            // nothing matched exactly, and it still STORES the declared spelling, so the payload always
+            // spells the name the engine will match.
+            const exact = context.labels.find(name => name.trim() === value.trim());
             const needle = value.trim().toLowerCase();
-            const found = context.labels.find(name => name.trim().toLowerCase() === needle);
+            const found = exact ?? context.labels.find(name => name.trim().toLowerCase() === needle);
             return found ? { value: { kind: "label", name: found } } : { issue: { code: "unknownLabel", span, value } };
         }
         case "variable": {

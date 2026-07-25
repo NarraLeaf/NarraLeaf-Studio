@@ -1937,6 +1937,37 @@ describe("compileStudioStoryToNlr voice", () => {
         ]);
     });
 
+    it("matches label names exactly, as the engine's own label Map does", async () => {
+        // `Scene.constructLabels` keys a plain `Map` on the declared string. Studio compared folded, so
+        // it was wrong in both directions: a `/goto start` left behind by a label renamed `Start` passed
+        // here and then threw in `Story.build`, and a legal `start`/`Start` pair was faulted as a
+        // duplicate. Both directions are pinned here, because both defeat the check's whole purpose.
+        const control = (id: string, payload: Extract<StoryBlock["payload"], { control: string }>): StoryBlock => ({
+            id, kind: "control", parentId: null, childrenIds: [], payload,
+        });
+        const blocks: Record<string, StoryBlock> = {
+            lower: control("lower", { control: "label", name: "start" }),
+            upper: control("upper", { control: "label", name: "Start" }),
+            exact: control("exact", { control: "goto", targetLabel: "Start" }),
+            miscased: control("miscased", { control: "goto", targetLabel: "START" }),
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["lower", "upper", "exact", "miscased"]),
+            sceneId: "scene-1",
+        });
+
+        const typeOf = (blockId: string) => compiled.actionIdBindings.find(binding => binding.blockId === blockId)?.action as { type?: string } | undefined;
+        // Two labels the engine accepts, so both compile - neither is a duplicate of the other.
+        expect(typeOf("lower")?.type).toBe("control:label");
+        expect(typeOf("upper")?.type).toBe("control:label");
+        // A goto spelled exactly as declared resolves; one that only case-folds to it does not.
+        expect(typeOf("exact")?.type).toBe("control:jump");
+        expect(typeOf("miscased")).toBeUndefined();
+        expect(compiled.diagnostics).toEqual([
+            { level: "error", blockId: "miscased", message: "Go to target label not found in this scene: START" },
+        ]);
+    });
+
     it("compiles /vfx onto one Vfx, showing on create and clamping its knobs", async () => {
         const vfxBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "vfx" }>): StoryBlock => ({
             id, kind: "action", parentId: null, childrenIds: [], payload,

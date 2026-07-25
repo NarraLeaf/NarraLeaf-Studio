@@ -2206,7 +2206,9 @@ function compileLabelControl(
         diagnostic(ctx, "error", block.id, "Go to has no target label.");
         return [];
     }
-    if (!sceneLabelNames(ctx.scene).some(name => name.toLowerCase() === target.toLowerCase())) {
+    // Exactly, case included - the engine matches a jump against a plain `Map` of declared names, so
+    // a `/goto start` left behind by a label renamed `Start` IS a broken jump and has to be said so.
+    if (!sceneLabelNames(ctx.scene).includes(target)) {
         diagnostic(ctx, "error", block.id, `Go to target label not found in this scene: ${target}`);
         return [];
     }

@@ -46,10 +46,19 @@ describe("listSceneLabels", () => {
     });
 
     it("reports the LATER declaration as the duplicate, since the first is the one that stands", () => {
-        const duplicates = duplicateSceneLabels(scene([label("a", "intro"), label("b", "INTRO"), label("c", "other")]));
-        expect(duplicates).toEqual([{ blockId: "b", name: "INTRO" }]);
-        // ...and the offered name list folds the pair to one entry, spelled as first declared.
-        expect(sceneLabelNames(scene([label("a", "intro"), label("b", "INTRO")]))).toEqual(["intro"]);
+        const duplicates = duplicateSceneLabels(scene([label("a", "intro"), label("b", "intro"), label("c", "other")]));
+        expect(duplicates).toEqual([{ blockId: "b", name: "intro" }]);
+        // ...and the offered name list collapses the pair to one entry.
+        expect(sceneLabelNames(scene([label("a", "intro"), label("b", "intro")]))).toEqual(["intro"]);
+    });
+
+    it("treats two labels differing only in case as two labels, exactly as the engine does", () => {
+        // `Scene.constructLabels` keys a plain `Map` on the declared string, so `intro` and `INTRO` are
+        // two distinct, legal labels. Folding here used to fault the second as a duplicate the engine
+        // would have accepted, and hide it from what `/goto` could address.
+        const both = scene([label("a", "intro"), label("b", "INTRO")]);
+        expect(duplicateSceneLabels(both)).toEqual([]);
+        expect(sceneLabelNames(both)).toEqual(["intro", "INTRO"]);
     });
 
     it("survives a corrupted childrenIds cycle rather than spinning", () => {
