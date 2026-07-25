@@ -26,6 +26,7 @@ export const vfx = defineStoryCommand({
     token: "vfx",
     aliases: ["ambience"],
     category: "vfx",
+    examples: ["/vfx intro", "/vfx intro name=petals opacity=0.5 d=0.8"],
     quickParams: ["d"],
     params: {
         clip: { aliases: ["src"], hint: "videoAsset", type: { kind: "asset", assetType: "video" }, positional: true, core: true },

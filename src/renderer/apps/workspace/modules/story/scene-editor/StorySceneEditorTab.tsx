@@ -31,7 +31,6 @@ import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, set
 import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { StoryInspectorPanel } from "./StoryInspectorPanel";
-import { StoryCommandManual } from "./StoryCommandManual";
 import { publishStoryInspectorState, STORY_INSPECTOR_PANEL_ID } from "./storyInspectorBridge";
 import { stopVoiceAudition } from "./voiceAudition";
 import { StoryEditorTextStyleProvider, storyEditorRootStyle } from "./storyEditorTextStyle";
@@ -311,7 +310,6 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const editor = useStorySceneEditorController(tabId, payload);
     // The command reference overlay (WI-2), opened from the header. Local state, not a panel — it is a
     // read-only reference the author dips into, not a docked surface, so it mirrors the cheat sheet.
-    const [manualOpen, setManualOpen] = useState(false);
     const sensors = useSensors(
         useSensor(PointerSensor),
     );
@@ -505,7 +503,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         const uiService = editor.context.services.get<UIService>(Services.UI);
         const unregister = uiService.panels.register({
             id: STORY_ACTION_CREATOR_PANEL_ID,
-            title: t("story.sceneEditor.actionsPanel"),
+            title: t("story.commandManual.title"),
             icon: <ListPlus className="w-4 h-4" />,
             position: PanelPosition.Right,
             component: StoryActionCreatorPanel,
@@ -1101,6 +1099,13 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         rowMenu.showMenu(event);
     }, [editor, rowMenu]);
 
+    const openCommandManual = useCallback(() => {
+        if (!editor.context) {
+            return;
+        }
+        editor.context.services.get<UIService>(Services.UI).panels.show(STORY_ACTION_CREATOR_PANEL_ID);
+    }, [editor.context]);
+
     /**
      * `SortableContext` lists its items as a memo dependency, so a fresh array here would publish a
      * fresh context value on every render — and a changed context re-renders every `useSortable`
@@ -1316,9 +1321,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     >
                         <StretchVertical className="h-4 w-4" />
                     </button>
+                    {/* The manual used to be a modal, which meant closing what you were reading before
+                        you could use it. It is the right-hand panel now, so the documentation and the
+                        line you are writing are on screen together. */}
                     <button
                         type="button"
-                        onClick={() => setManualOpen(true)}
+                        onClick={openCommandManual}
                         title={t("story.commandManual.open")}
                         aria-label={t("story.commandManual.open")}
                         className="rounded p-1.5 text-fg-muted transition-colors hover:bg-fill hover:text-fg"
@@ -1528,7 +1536,6 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             ) : null}
             </div>
         </div>
-        {manualOpen ? <StoryCommandManual onClose={() => setManualOpen(false)} /> : null}
         </StoryRowActionsContext.Provider>
         </StoryEditorTextStyleProvider>
     );

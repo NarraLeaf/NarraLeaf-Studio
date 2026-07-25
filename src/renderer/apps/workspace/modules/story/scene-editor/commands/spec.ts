@@ -99,6 +99,17 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
      * this declaration keeps the intended set discoverable in one place alongside the rest of the spec.
      */
     quickParams?: readonly (keyof P & string)[];
+    /**
+     * Working lines for the manual, written exactly as an author would type them.
+     *
+     * Not translated: a command line is keywords and names, English in every locale (bible B11), and a
+     * localized example would teach a language the parser does not speak.
+     *
+     * `specs.test.ts` runs every one of these through parse → resolve → build against the suite's
+     * fixture project, so an example that stopped being legal fails the suite instead of teaching an
+     * author a line that no longer works. Use the fixture's names (`Alice`, `forest_day`, `gold`, …).
+     */
+    examples?: readonly string[];
 };
 
 /**

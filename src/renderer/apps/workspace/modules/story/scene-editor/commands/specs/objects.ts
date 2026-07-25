@@ -22,6 +22,7 @@ export const image = defineStoryCommand({
     token: "image",
     aliases: ["img"],
     category: "image",
+    examples: ["/image night", "/image night name=sky at=center", "/image forest_day name=backdrop t=fade d=0.4"],
     params: {
         image: { aliases: ["src"], hint: "imageAsset", type: { kind: "asset", assetType: "image" }, positional: true, core: true },
         name: { hint: "objectName", type: { kind: "text" } },
@@ -57,6 +58,7 @@ export const text = defineStoryCommand({
     token: "text",
     aliases: ["txt"],
     category: "text",
+    examples: ["/text Welcome home", "/text name=title at=center Chapter One"],
     params: {
         // `name=` must be typed before the greedy content - the one ordering rule greedy imposes.
         name: { hint: "objectName", type: { kind: "text" } },
@@ -87,6 +89,7 @@ export const video = defineStoryCommand({
     token: "video",
     aliases: ["vid"],
     category: "video",
+    examples: ["/video intro", "/video intro name=cutscene muted"],
     params: {
         video: { aliases: ["src"], hint: "videoAsset", type: { kind: "asset", assetType: "video" }, positional: true, core: true },
         name: { hint: "objectName", type: { kind: "text" } },
@@ -118,6 +121,7 @@ export const layer = defineStoryCommand({
     id: "layer",
     token: "layer",
     category: "layer",
+    examples: ["/layer overlay", "/layer overlay z=10"],
     params: {
         name: { hint: "objectName", type: { kind: "text" }, positional: true, core: true },
         z: { aliases: ["zindex"], hint: "z", type: { kind: "number", integer: true } },
@@ -147,6 +151,7 @@ export const swap = defineStoryCommand({
     // model B3's generic verbs replace - the target says what is being swapped, the token never does.
     aliases: ["src"],
     category: "image",
+    examples: ["/swap hero night", "/swap title A new title"],
     params: {
         target: targetParam(["image", "text"], { core: true }),
         // Typed by the target: an image's new content is an image asset, a text's is its new words.
@@ -184,6 +189,7 @@ export const play = defineStoryCommand({
     id: "play",
     token: "play",
     category: "video",
+    examples: ["/play clip"],
     params: {
         target: targetParam(["video"], { core: true }),
     },
@@ -202,6 +208,7 @@ export const font = defineStoryCommand({
     token: "font",
     aliases: ["txtfont"],
     category: "text",
+    examples: ["/font title 24", "/font title color=#ffcc00"],
     params: {
         target: targetParam(["text"], { core: true }),
         size: { hint: "size", type: { kind: "number", min: 1 }, positional: true },
