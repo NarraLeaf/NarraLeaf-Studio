@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { StoryBlockId, StoryDocument, StoryLiteralValue, StorySceneId, StoryVariableValueType } from "@shared/types/story";
 import { useTranslation } from "@/lib/i18n";
+import { Select } from "@/lib/components/elements/Select";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { GameAppStoryRuntimeBridge, StoryRuntimeStackView } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { buildSceneFlowGraph } from "@/apps/workspace/modules/story-flow/sceneFlowModel";
@@ -188,37 +189,53 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
         [storyRuntime],
     );
 
+    const snapshotOptions = useMemo(
+        () => [
+            { value: "", label: t("devMode.runtime.snapshotDefault") },
+            ...snapshots.map(snapshot => ({ value: snapshot.id, label: snapshot.name })),
+        ],
+        [snapshots, t],
+    );
+
+    // The root execution stack is empty for most of a normal scene, so the tab is shown only while
+    // it holds something rather than standing there with a sentence explaining that it does not.
+    const stackTick = useStoryRuntimeTick(storyRuntime);
+    const hasStack = useMemo(() => {
+        void stackTick;
+        const snapshot = storyRuntime.getStackSnapshot();
+        return Boolean(snapshot && (snapshot.root.frames.length > 0 || snapshot.async.length > 0));
+    }, [storyRuntime, stackTick]);
+
+    const tabs = useMemo(
+        () => ([
+            ["variables", t("devMode.tabs.variables")],
+            ...(hasStack ? [["stack", t("devMode.tabs.stack")]] : []),
+            ["timeline", t("devMode.tabs.timeline")],
+            ["scene", t("devMode.tabs.scene")],
+        ] as [StoryRuntimeTabId, string][]),
+        [hasStack, t],
+    );
+    const activeTab: StoryRuntimeTabId = tab === "stack" && !hasStack ? "variables" : tab;
+
     return (
         <div className={rootClass}>
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-edge px-2 py-1.5">
                 <span className="text-xs font-medium text-fg">{t("devMode.runtime.title")}</span>
                 {snapshots.length > 0 ? (
-                    <select
-                        className="max-w-[55%] shrink-0 truncate rounded-md border border-edge bg-surface-sunken px-1.5 py-0.5 text-2xs text-fg-muted outline-none focus-visible:border-edge-strong"
+                    <Select
+                        className="max-w-[55%] shrink-0"
+                        size="sm"
+                        portalMenu
+                        options={snapshotOptions}
                         value={context?.snapshotId ?? ""}
-                        aria-label={t("devMode.runtime.snapshot")}
-                        onChange={event => onSelectSnapshot(event.target.value)}
-                    >
-                        <option value="">{t("devMode.runtime.snapshotDefault")}</option>
-                        {snapshots.map(snapshot => (
-                            <option key={snapshot.id} value={snapshot.id}>
-                                {snapshot.name}
-                            </option>
-                        ))}
-                    </select>
+                        onChange={value => onSelectSnapshot(String(value))}
+                    />
                 ) : null}
             </div>
 
             <div className="flex shrink-0 border-b border-edge bg-surface-sunken" role="tablist" aria-label={t("devMode.runtime.panelsAria")}>
-                {(
-                    [
-                        ["variables", t("devMode.tabs.variables")],
-                        ["stack", t("devMode.tabs.stack")],
-                        ["timeline", t("devMode.tabs.timeline")],
-                        ["scene", t("devMode.tabs.scene")],
-                    ] as const
-                ).map(([id, label]) => {
-                    const active = tab === id;
+                {tabs.map(([id, label]) => {
+                    const active = activeTab === id;
                     return (
                         <button
                             key={id}
@@ -245,16 +262,16 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden font-mono leading-snug">
                 {!document || !context ? (
                     <p className="p-2 text-2xs text-fg-subtle">{t("devMode.runtime.noStory")}</p>
-                ) : tab === "variables" ? (
+                ) : activeTab === "variables" ? (
                     <VariablesTab
                         storyRuntime={storyRuntime}
                         scopeBridge={scopeBridge}
                         document={document}
                         entrySceneId={context.sceneId}
                     />
-                ) : tab === "stack" ? (
+                ) : activeTab === "stack" ? (
                     <StackTab storyRuntime={storyRuntime} />
-                ) : tab === "timeline" ? (
+                ) : activeTab === "timeline" ? (
                     <TimelineTab storyRuntime={storyRuntime} document={document} sceneId={context.sceneId} bundle={bundle} />
                 ) : (
                     <SceneTab storyRuntime={storyRuntime} document={document} entrySceneId={context.sceneId} />
@@ -514,8 +531,10 @@ function StackTab(props: { storyRuntime: GameAppStoryRuntimeBridge }): ReactNode
 
     const bindings = storyRuntime.getActionIdBindings();
 
+    // The tab itself is hidden while the stacks are empty (see the panel's `hasStack`); this only
+    // covers the frame between the last stack frame draining and the tab disappearing.
     if (!snapshot || (snapshot.root.frames.length === 0 && snapshot.async.length === 0)) {
-        return <p className="p-2 text-2xs text-fg-subtle">{t("devMode.runtime.noStack")}</p>;
+        return null;
     }
 
     return (

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Check, ChevronsRight } from "lucide-react";
+import { Bug, Check, ChevronsRight } from "lucide-react";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
@@ -336,7 +336,7 @@ function DevModeDebugOverlay(props: {
                             aria-haspopup="menu"
                             onClick={() => setDevtoolsMenuOpen(prev => !prev)}
                         >
-                            <img src="/favicon.ico" alt="" className="h-7 w-7 rounded-full" draggable={false} />
+                            <Bug className="h-5 w-5 text-fg-muted" aria-hidden />
                         </button>
                     </div>
                 </div>
