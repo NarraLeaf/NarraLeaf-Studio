@@ -63,6 +63,7 @@ export const assets = {
             other: "{count} 处引用",
         },
         detail: {
+            storage: "存储",
             path: "路径",
         },
     },

@@ -73,6 +73,9 @@ export const assets = {
             other: "{count} uses",
         },
         detail: {
+            // The heading over the two addresses this editor invented for its own storage. It is a
+            // noun, not a sentence: the rows under it are a hash and a path, and nothing captions them.
+            storage: "Storage",
             path: "Path",
         },
     },
