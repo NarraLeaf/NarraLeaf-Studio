@@ -91,32 +91,49 @@ async function waitForImageUrl(url: string): Promise<void> {
     }
 }
 
-async function waitForStageVisualReady(root: HTMLElement): Promise<void> {
+async function waitForStageVisualReady(root: HTMLElement, warm: boolean): Promise<void> {
     // One frame so React has committed the scene and the elements/backgrounds below are the ones
     // that will actually paint.
     await waitForPaintFrames(1);
     const imageElements = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
-    const cssImageUrls = collectCssImageUrls(root);
+    // The CSS sweep runs `getComputedStyle` over the entire stage subtree — a forced style recalc
+    // whose whole purpose is catching sources the preloader did not know about. On a stage that was
+    // warmed before the game was entered there are none: every source the story registers is
+    // already fetched and decoded, and the on-stage Game UI does not mount until the reveal. So
+    // skip it there and pay only for the element awaits below.
+    const cssImageUrls = warm ? [] : collectCssImageUrls(root);
     await Promise.all([
         ...imageElements.map(waitForImageElement),
         ...cssImageUrls.map(waitForImageUrl),
     ]);
-    // And two to let the decoded result reach a painted frame: `AspectScaleImage` renders at 0×0
-    // until its load handler measures the bitmap and sets state, so the reveal has to outlast that
-    // commit or the stage pops to size in view. Cheap next to what the awaits above cost, and the
-    // whole point of this helper is that a revealed stage is never half-painted.
-    await waitForPaintFrames(2);
+    // Then let the decoded result reach a painted frame: `AspectScaleImage` renders at 0×0 until
+    // its load handler measures the bitmap and sets state, so the reveal has to outlast that
+    // commit or the stage pops to size in view. A cold stage gets two, because its images finished
+    // loading only just now and their handlers may still be landing. A warm stage needs none here
+    // — its loads fired in the frame above, and the caller's single post-race frame covers the
+    // commit. That is the whole budget after the button press: two frames.
+    if (!warm) {
+        await waitForPaintFrames(2);
+    }
 }
 
 /**
  * Resolve once every image inside `root` (elements and CSS backgrounds) has loaded and decoded and
  * the result has been painted, bounded by a timeout. Hosts double-buffering stage sessions use this
  * on the hidden buffer before revealing it, so the swap never shows half-loaded content.
+ *
+ * Pass `warm` when the stage's assets were already fetched and decoded before this content mounted.
+ * The guarantee is the same; it just stops re-verifying what is known to be ready, taking the reveal
+ * from four animation frames plus a whole-subtree style recalc down to two frames — the difference
+ * between "start" reading as a transition and reading as a wait.
  */
-export async function waitForStageVisualReadyWithTimeout(root: HTMLElement): Promise<void> {
+export async function waitForStageVisualReadyWithTimeout(
+    root: HTMLElement,
+    options?: { warm?: boolean },
+): Promise<void> {
     let timeoutId: number | null = null;
     await Promise.race([
-        waitForStageVisualReady(root),
+        waitForStageVisualReady(root, options?.warm === true),
         new Promise<void>(resolve => {
             timeoutId = window.setTimeout(resolve, STAGE_VISUAL_READY_TIMEOUT_MS);
         }),
@@ -174,12 +191,18 @@ export function NlrStageLayer(props: {
     const { session, interactive, visible = true, renderOnStage, onFirstSceneReady, onEnvironmentReady, onLiveGameReady, onError } = props;
     const startedSessionRef = useRef<string | null>(null);
     const stageRootRef = useRef<HTMLDivElement>(null);
+    const gameStateRef = useRef<PlayerEventContext["gameState"] | null>(null);
+    // Whether the preload pass finished while no scene was mounted — i.e. the stage's assets were
+    // fetched and decoded ahead of the game being entered, and the reveal has nothing left to load.
+    const warmedBeforeEntryRef = useRef(false);
 
     const handleReady = useCallback((ctx: PlayerEventContext) => {
         if (!session || startedSessionRef.current === session.id) {
             return;
         }
         startedSessionRef.current = session.id;
+        gameStateRef.current = ctx.gameState;
+        warmedBeforeEntryRef.current = false;
         const sessionId = session.id;
         if (typeof devToolsWithStaticId.setStaticId !== "function") {
             for (const binding of session.compiled.actionIdBindings) {
@@ -214,6 +237,10 @@ export function NlrStageLayer(props: {
         if (!session) {
             return;
         }
+        // No mounted scene at this point means the pass warmed the *entry* scene ahead of entry
+        // rather than catching up with a scene already on screen — which is what lets the reveal
+        // skip re-verifying it.
+        warmedBeforeEntryRef.current = !gameStateRef.current?.getLastScene();
         onEnvironmentReady(session.id);
     }, [onEnvironmentReady, session]);
 
@@ -222,12 +249,13 @@ export function NlrStageLayer(props: {
             return;
         }
         const sessionId = session.id;
+        const warm = warmedBeforeEntryRef.current;
         void (async () => {
             const root = stageRootRef.current;
             if (root) {
-                await waitForStageVisualReadyWithTimeout(root);
+                await waitForStageVisualReadyWithTimeout(root, { warm });
             } else {
-                await waitForPaintFrames(2);
+                await waitForPaintFrames(warm ? 1 : 2);
             }
             if (startedSessionRef.current !== sessionId) {
                 return;
