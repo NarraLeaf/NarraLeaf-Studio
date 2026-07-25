@@ -65,7 +65,7 @@ import {
 } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { sceneVariableDefs, savedVariableDefs } from "@shared/types/story";
-import { resolveDefaultLaunchScene } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
+import { resolveStagePreloadTarget } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import {
     clearDevModeSavePreviewImages,
@@ -90,13 +90,17 @@ import {
     createTextReadTracker,
     type TextReadTracker,
 } from "./textReadTracker";
-import { waitForAnimationFrame } from "./frameTiming";
+import { withDeadline } from "./frameTiming";
 import { NavigationController } from "./navigation/NavigationController";
 import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
 import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
 import type { GameAppFrameContext, GameAppHost, GameAppOverlayContext, GameAppStoryRuntimeBridge } from "./GameAppHost";
 
 const NLR_BOOT_PRELOAD_TIMEOUT_MS = 15_000;
+// How long a mount waits for the first scene's images to be fetched and decoded. Comfortably
+// inside NLR_BOOT_PRELOAD_TIMEOUT_MS so a slow warm-up degrades to "start pays for it", the old
+// behaviour, rather than tripping the boot guard and blanking the surface stack.
+const STAGE_WARMUP_TIMEOUT_MS = 10_000;
 
 export type GameAppNavEntry = AppNavEntry;
 
@@ -241,6 +245,12 @@ export function GameApp(props: GameAppProps): ReactNode {
     const gameEnteredRef = useRef(false);
     // Resolves when the environment is initialised (gameReady dispatched), gating the surface system.
     const pendingEnvReadyRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
+    // Resolves when the mounted session's first-scene assets are fetched and decoded (the stage
+    // layer's `onEnvironmentReady`). The boot step waits on it so the cost is paid behind the
+    // loading screen rather than between "Start Game" and the first painted frame; `enterMountedGame`
+    // waits on it too, for the paths that enter without going through boot.
+    const pendingAssetsReadyRef = useRef(new Map<string, { resolve: () => void }>());
+    const stageWarmupRef = useRef<{ sessionId: string; promise: Promise<void> } | null>(null);
     const startStoryInGameRef = useRef<
         ((request: DevModeStartStoryRequest, options?: { forceReinit?: boolean }) => Promise<void>) | null
     >(null);
@@ -329,6 +339,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
+        stageWarmupRef.current = null;
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
         currentActionIdRef.current = null;
@@ -488,6 +499,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         pendingGameStartsRef.current.clear();
         pendingEnvReadyRef.current.forEach(pending => pending.reject(gameError));
         pendingEnvReadyRef.current.clear();
+        // A warm-up that will never report in is *resolved*, not rejected: it is an optimisation,
+        // and a superseded or broken preload must not stall a boot or a game start.
+        pendingAssetsReadyRef.current.forEach(pending => pending.resolve());
+        pendingAssetsReadyRef.current.clear();
     }, []);
 
     const clearCurrentDialogNametag = useCallback(() => {
@@ -698,6 +713,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
+        stageWarmupRef.current = null;
         choiceRuntimeRef.current = null;
         clearCurrentDialogNametag();
         setGameStageVisible(false);
@@ -961,6 +977,24 @@ export function GameApp(props: GameAppProps): ReactNode {
         const environmentReady = new Promise<void>((resolve, reject) => {
             pendingEnvReadyRef.current.set(sessionId, { resolve, reject });
         });
+        // The first scene's assets, warmed while this mount is still hidden behind the host's
+        // loading step. Bounded: a slow or broken asset degrades to the old behaviour (paid on
+        // entry) instead of holding the boot open.
+        const assetsReady = withDeadline(
+            new Promise<void>(resolve => {
+                pendingAssetsReadyRef.current.set(sessionId, { resolve });
+            }),
+            STAGE_WARMUP_TIMEOUT_MS,
+            () => {
+                pendingAssetsReadyRef.current.delete(sessionId);
+                host.log(
+                    "warning",
+                    `[${host.id}] first-scene preload did not finish in ${STAGE_WARMUP_TIMEOUT_MS}ms; `
+                    + "continuing without a warm stage",
+                );
+            },
+        );
+        stageWarmupRef.current = { sessionId, promise: assetsReady };
         setGameStageVisible(false);
         clearGameHiddenStudioPages();
         gameReadyFiredRef.current = null;
@@ -979,6 +1013,10 @@ export function GameApp(props: GameAppProps): ReactNode {
             onStageNode,
         });
         await environmentReady;
+        // Hold the mount open until the stage is warm. Callers mount either from boot (loading
+        // step on screen) or from a Start Game that could not fast-path, and both would otherwise
+        // reveal a stage that still has to fetch and decode its first scene.
+        await assetsReady;
         return sessionId;
     }, [
         activeSurface,
@@ -1032,13 +1070,20 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (!liveGame || !sessionId) {
             throw new Error("Start Game: game environment is not ready");
         }
+        // Normally already settled — the boot step waited on it. It can still be pending when the
+        // environment was mounted without a boot gate, and entering before the warm-up lands would
+        // put the fetch/decode right back on the start path.
+        if (stageWarmupRef.current?.sessionId === sessionId) {
+            await stageWarmupRef.current.promise;
+        }
         const sceneReady = new Promise<void>((resolve, reject) => {
             pendingGameStartsRef.current.set(sessionId, { resolve, reject });
         });
         liveGame.newGame();
         gameEnteredRef.current = true;
+        // `onFirstSceneReady` already ends on a painted frame (see waitForStageVisualReadyWithTimeout),
+        // so there is nothing left to wait for here: an extra frame only delays the UI's exit.
         await sceneReady;
-        await waitForAnimationFrame();
         setGameStageVisible(true);
         hideCurrentStudioPagesForGame();
     }, [hideCurrentStudioPagesForGame]);
@@ -1241,9 +1286,11 @@ export function GameApp(props: GameAppProps): ReactNode {
                 snapshotId: host.bootAction.snapshotId,
             });
         } else {
-            // Menu launch: initialise the environment (gameReady) and preheat the default
-            // scene, but do NOT enter the game — the player stays on the menu.
-            const defaultScene = resolveDefaultLaunchScene(bundle);
+            // Menu launch: initialise the environment (gameReady) and fully warm the scene the
+            // project's Start Game would enter — fetched and decoded — but do NOT enter the game;
+            // the player stays on the menu. Getting the target right is the whole point: a warm
+            // environment for the wrong scene has to be recompiled and remounted on start.
+            const defaultScene = resolveStagePreloadTarget(bundle);
             if (defaultScene) {
                 await initDefaultSceneEnvironment(defaultScene);
             } else {
@@ -1836,6 +1883,11 @@ export function GameApp(props: GameAppProps): ReactNode {
             }}
             onEnvironmentReady={sessionId => {
                 host.log("info", `[${host.id}] NLR environment assets preheated: ${sessionId}`);
+                const pending = pendingAssetsReadyRef.current.get(sessionId);
+                if (pending) {
+                    pendingAssetsReadyRef.current.delete(sessionId);
+                    pending.resolve();
+                }
             }}
             onLiveGameReady={async (sessionId, liveGame) => {
                 if (nlrSession?.id !== sessionId) {
