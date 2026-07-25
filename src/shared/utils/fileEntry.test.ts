@@ -1,6 +1,6 @@
 import nodePath from "node:path";
 import { describe, expect, it } from "vitest";
-import { entryFileName } from "./fileEntry";
+import { entryFileName, splitFileEntry } from "./fileEntry";
 import { extname, parse } from "./path";
 
 /**
@@ -58,5 +58,35 @@ describe("entryFileName", () => {
         // `name` already held the whole filename and whose `ext` was null.
         expect(entryFileName({ name: "a", ext: ".json" })).toBe("a.json");
         expect(entryFileName({ name: "dir", ext: null })).toBe("dir");
+    });
+});
+
+describe("splitFileEntry", () => {
+    it("is the inverse of entryFileName for every filename the list IPC handles", () => {
+        for (const fileName of FILE_NAMES) {
+            const parts = splitFileEntry(fileName);
+            // `fileName` is carried whole, and the split halves reassemble back to it.
+            expect(parts.fileName).toBe(fileName);
+            expect(entryFileName(parts)).toBe(fileName);
+        }
+    });
+
+    it("splits into the exact halves the old hand-rolled handlers produced", () => {
+        // The split lived in two copies (FsListHandler + privileged list) before this factory; both
+        // ran node's `path`, so a divergence here would silently change what listings report.
+        for (const fileName of FILE_NAMES) {
+            const parts = splitFileEntry(fileName);
+            expect({ name: parts.name, ext: parts.ext }).toEqual(splitLikeIpcHandler(fileName));
+        }
+    });
+
+    it("keeps `name` the stem (extension stripped), not the whole filename", () => {
+        // The load-bearing property behind not redefining `name`: `nlproj.ts` matches on stem+ext,
+        // and a full-filename `name` would make `logo.png` reassemble to `logo.png.png`.
+        expect(splitFileEntry("logo.png")).toEqual({ name: "logo", ext: ".png", fileName: "logo.png" });
+        expect(splitFileEntry("archive.tar.gz")).toEqual({ name: "archive.tar", ext: ".gz", fileName: "archive.tar.gz" });
+        expect(splitFileEntry(".gitignore")).toEqual({ name: ".gitignore", ext: null, fileName: ".gitignore" });
+        expect(splitFileEntry("README")).toEqual({ name: "README", ext: null, fileName: "README" });
+        expect(splitFileEntry("trailing.")).toEqual({ name: "trailing", ext: ".", fileName: "trailing." });
     });
 });
