@@ -772,6 +772,22 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     });
 
     /**
+     * Throw away the measured heights when the density changes.
+     *
+     * The cache is keyed by row id, and a density switch changes every row's height without changing a
+     * single id — so the cache survives it and each row lands at the *previous* density's offset. The
+     * rows themselves are the new height, so they overlap: `comfortable`'s dialogue blocks stacked
+     * 40px apart, the standard row pitch, with the text of one block printing over the next.
+     *
+     * The per-element ResizeObserver does not save it either: it re-measures whatever is mounted, and
+     * a windowed list has a screenful. Dropping the cache outright is the honest answer — every row
+     * re-measures as it comes into view, which is what happens on first open anyway.
+     */
+    useLayoutEffect(() => {
+        rowVirtualizer.measure();
+    }, [editor.density, rowVirtualizer]);
+
+    /**
      * Put a row on screen by index, whether or not it is currently mounted.
      *
      * Everything that used to reach for a row's DOM node — deep links, the Dev Mode play head,
@@ -1766,6 +1782,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     textInputRef={editor.textInputRef}
                                     tempSpeakers={editor.tempSpeakers}
                                     lensActive={editor.lensContainerIds.has(row.block.id)}
+                                    density={editor.density}
                                 />
                                 )}
                                 {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === row.block.id ? (
@@ -1824,7 +1841,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         // Down off the last row lands the keyboard cursor here; the ring is how the
                         // author sees that Enter will open a new row (see moveActiveRowSelection).
                         className={[
-                            "mt-1 flex min-h-[32px] w-full items-center gap-2 pl-[calc(var(--nl-story-gutter)+28px)] pr-3 text-left text-sm italic",
+                            "mt-1 flex min-h-[32px] w-full items-center gap-2 pl-[calc(var(--nl-story-gutter)+var(--nl-story-handle,20px))] pr-3 text-left text-sm italic",
                             editor.addRowFocused
                                 ? "bg-primary/10 text-fg-muted ring-1 ring-inset ring-primary/50"
                                 : "text-fg-subtle hover:bg-fill-subtle hover:text-fg-muted",
