@@ -170,7 +170,7 @@ export function AssetsIconView({
                 <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 bg-surface border-b border-edge">
                     <button
                         onClick={handleBack}
-                        className="p-1 rounded hover:bg-fill"
+                        className="p-1 rounded-md hover:bg-fill"
                         title={t("assets.backToParent")}
                     >
                         <ChevronLeft className="w-4 h-4" />
@@ -221,7 +221,7 @@ export function AssetsIconView({
                                                     e.stopPropagation();
                                                     handleImport(type);
                                                 }}
-                                                className="p-1 rounded hover:bg-fill"
+                                                className="p-1 rounded-md hover:bg-fill"
                                                 title={t("common.import")}
                                             >
                                                 <Upload className="w-4 h-4" />
@@ -231,7 +231,7 @@ export function AssetsIconView({
                                                     e.stopPropagation();
                                                     handleImportRemote(type);
                                                 }}
-                                                className="p-1 rounded hover:bg-fill"
+                                                className="p-1 rounded-md hover:bg-fill"
                                                 title={t("assets.importRemote")}
                                             >
                                                 <Link className="w-4 h-4" />
@@ -241,7 +241,7 @@ export function AssetsIconView({
                                                     e.stopPropagation();
                                                     handleCreateGroup(type);
                                                 }}
-                                                className="p-1 rounded hover:bg-fill"
+                                                className="p-1 rounded-md hover:bg-fill"
                                                 title={t("assets.menu.newGroup")}
                                             >
                                                 <FolderPlus className="w-4 h-4" />

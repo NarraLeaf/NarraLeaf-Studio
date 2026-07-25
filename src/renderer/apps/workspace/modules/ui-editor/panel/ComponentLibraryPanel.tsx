@@ -45,7 +45,7 @@ function ComponentPreviewFrame({
     const scale = frameWidth > 0 ? Math.min(frameWidth / designWidth, frameHeight / designHeight) : 0;
 
     return (
-        <div ref={frameRef} className="mt-2 h-20 w-full overflow-hidden rounded border border-edge bg-surface-canvas">
+        <div ref={frameRef} className="mt-2 h-20 w-full overflow-hidden rounded-md border border-edge bg-surface-canvas">
             <div className="relative h-full w-full">
                 {scale > 0 ? (
                     <div
@@ -322,7 +322,7 @@ export function ComponentLibraryPanel({
                             <span className="min-w-0 flex-1 px-1 text-2xs text-fg-muted">{t("uiEditor.componentLibrary.selectedCount", { count: selectedCount })}</span>
                             <button
                                 type="button"
-                                className="grid h-7 w-7 place-items-center rounded text-fg-muted hover:bg-fill hover:text-fg"
+                                className="grid h-7 w-7 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
                                 onClick={() => handleDuplicate([...selectedIds])}
                                 title={t("uiEditor.componentLibrary.duplicateSelected")}
                                 aria-label={t("uiEditor.componentLibrary.duplicateSelected")}
@@ -331,7 +331,7 @@ export function ComponentLibraryPanel({
                             </button>
                             <button
                                 type="button"
-                                className="grid h-7 w-7 place-items-center rounded text-danger hover:bg-danger/15"
+                                className="grid h-7 w-7 place-items-center rounded-md text-danger hover:bg-danger/15"
                                 onClick={() => void handleDelete([...selectedIds])}
                                 title={t("uiEditor.componentLibrary.deleteSelected")}
                                 aria-label={t("uiEditor.componentLibrary.deleteSelected")}
@@ -394,7 +394,7 @@ export function ComponentLibraryPanel({
                                             </div>
                                             <button
                                                 type="button"
-                                                className="grid h-6 w-6 place-items-center rounded text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover:opacity-100"
+                                                className="grid h-6 w-6 place-items-center rounded-md text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover:opacity-100"
                                                 onClick={event => {
                                                     event.stopPropagation();
                                                     void handleRename(component);
@@ -406,7 +406,7 @@ export function ComponentLibraryPanel({
                                             </button>
                                             <button
                                                 type="button"
-                                                className="grid h-6 w-6 place-items-center rounded text-fg-muted hover:bg-fill hover:text-fg"
+                                                className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
                                                 onClick={event => openContextMenu(event, component, { selectComponent: false })}
                                                 title={t("uiEditor.componentLibrary.componentActions")}
                                                 aria-label={t("uiEditor.componentLibrary.componentActions")}

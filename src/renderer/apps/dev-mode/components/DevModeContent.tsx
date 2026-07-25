@@ -57,7 +57,7 @@ function SessionErrorBanner(props: {
                 </pre>
                 <button
                     type="button"
-                    className="shrink-0 rounded border border-danger/50 px-2 py-0.5 text-2xs text-danger hover:bg-danger/25"
+                    className="shrink-0 rounded-md border border-danger/50 px-2 py-0.5 text-2xs text-danger hover:bg-danger/25"
                     onClick={onDismissSessionError}
                 >
                     {t("devMode.dismiss")}

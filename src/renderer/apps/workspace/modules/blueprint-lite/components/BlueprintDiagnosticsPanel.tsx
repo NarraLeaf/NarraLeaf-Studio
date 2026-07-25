@@ -23,7 +23,7 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick }: Props) {
     const Row = ({ d }: { d: BlueprintGraphEditorDiagnostic }) => (
         <button
             type="button"
-            className="flex w-full gap-2 rounded px-2 py-1 text-left hover:bg-fill-subtle"
+            className="flex w-full gap-2 rounded-md px-2 py-1 text-left hover:bg-fill-subtle"
             onClick={() => onPick(d)}
         >
             <span

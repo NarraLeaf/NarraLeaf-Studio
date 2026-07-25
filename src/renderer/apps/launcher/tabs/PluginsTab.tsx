@@ -20,7 +20,7 @@ import { Badge, Button, EmptyState, IconButton, Input } from "@/lib/components/e
 import { cn } from "@/lib/utils/cn";
 import type { PluginListItem } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
-import { PluginAvatar, PluginDetailsModal, PluginStatusBadge, hasUpdate } from "./PluginDetailsModal";
+import { PluginAvatar, PluginDetailsModal, PluginStatusBadge, hasUpdate, isCompatible } from "./PluginDetailsModal";
 
 type LauncherTab = "installed" | "store";
 
@@ -72,13 +72,16 @@ export function PluginsTab() {
         void refresh();
     }, []);
 
-    // Fetch the store index the first time it is opened; a manual refresh or retry
-    // clears `registry`/`registryError` to trigger this again.
+    // Fetch the store index as soon as this tab is open, not when the Store
+    // segment is first selected: the installed list needs the same index to mark
+    // updates, and gating the fetch on the Store tab made every update invisible
+    // to anyone who never went looking for one. A manual refresh or retry clears
+    // `registry`/`registryError` to trigger this again.
     useEffect(() => {
-        if (activeTab === "store" && registry === null && !registryError && !registryLoading) {
+        if (registry === null && !registryError && !registryLoading) {
             void refreshRegistry();
         }
-    }, [activeTab, registry, registryError, registryLoading]);
+    }, [registry, registryError, registryLoading]);
 
     const runTask = async (message: string, action: () => Promise<void>) => {
         if (busy) return;
@@ -90,12 +93,12 @@ export function PluginsTab() {
         }
     };
 
+    // Refresh means both halves, whichever segment is showing - the installed
+    // list's update markers are only as fresh as the index behind them.
     const handleRefresh = () => {
         void refresh();
-        if (activeTab === "store") {
-            setRegistry(null);
-            setRegistryError(null);
-        }
+        setRegistry(null);
+        setRegistryError(null);
     };
 
     const installLocal = () => runTask(t("launcher.plugins.task.installing"), async () => {
@@ -151,7 +154,10 @@ export function PluginsTab() {
     });
 
     // Install (or update) from the store, then chain straight into the permission
-    // prompt so browse → install → authorize is one gesture.
+    // prompt so browse → install → authorize is one gesture. An update that
+    // widens no permission inherits the grant it already has and skips the
+    // prompt entirely — asking again for an unchanged permission set is friction
+    // with nothing behind it.
     const installFromStore = (pluginId: string) => runTask(t("launcher.plugins.task.downloading"), async () => {
         const result = await getInterface().plugins.installFromRegistry(pluginId);
         if (!result.success) {
@@ -162,6 +168,10 @@ export function PluginsTab() {
             return;
         }
         await refresh();
+        if (result.data.plugin.status !== "needsAuthorization") {
+            setTask({ status: "success", message: t("launcher.plugins.task.installed") });
+            return;
+        }
         const approval = await getInterface().plugins.approve(pluginId);
         if (!approval.success) {
             throw new Error(approval.error ?? t("launcher.plugins.error.approve"));
@@ -281,12 +291,13 @@ export function PluginsTab() {
                                 <InstalledRow
                                     key={plugin.pluginId}
                                     plugin={plugin}
-                                    hasUpdate={hasUpdate(plugin, registryById.get(plugin.pluginId))}
+                                    entry={registryById.get(plugin.pluginId) ?? null}
                                     busy={busy}
                                     onOpen={() => setDetailId(plugin.pluginId)}
                                     onAuthorize={() => approve(plugin.pluginId)}
                                     onToggle={() => setEnabled(plugin.pluginId, !plugin.enabled)}
                                     onUninstall={() => uninstall(plugin.pluginId)}
+                                    onUpdate={() => installFromStore(plugin.pluginId)}
                                 />
                             ))}
                         </div>
@@ -343,30 +354,36 @@ export function PluginsTab() {
 
 function InstalledRow({
     plugin,
-    hasUpdate: updateAvailable,
+    entry,
     busy,
     onOpen,
     onAuthorize,
     onToggle,
     onUninstall,
+    onUpdate,
 }: {
     plugin: PluginListItem;
-    hasUpdate: boolean;
+    entry: PluginRegistryEntry | null;
     busy: boolean;
     onOpen: () => void;
     onAuthorize: () => void;
     onToggle: () => void;
     onUninstall: () => void;
+    onUpdate: () => void;
 }) {
     const { t } = useTranslation();
     const needsAuth = plugin.status === "needsAuthorization";
+    const updateAvailable = hasUpdate(plugin, entry);
+    // An update this build cannot take is still announced, but as a fact rather
+    // than a button — the main process would refuse the install anyway.
+    const updatable = updateAvailable && isCompatible(entry);
 
     return (
         <div className="group relative">
             <button
                 type="button"
                 onClick={onOpen}
-                className="flex w-full cursor-default items-center gap-3 rounded-md px-3 py-2.5 pr-28 text-left transition-colors hover:bg-fill"
+                className="flex w-full cursor-default items-center gap-3 rounded-md px-3 py-2.5 pr-36 text-left transition-colors hover:bg-fill"
             >
                 <PluginAvatar name={plugin.manifest.name} />
                 <span className="min-w-0 flex-1">
@@ -387,15 +404,24 @@ function InstalledRow({
                         <ShieldCheck className="h-3.5 w-3.5" />
                         {t("launcher.plugins.authorize")}
                     </Button>
-                ) : plugin.status !== "error" ? (
-                    <RowIconButton
-                        title={plugin.enabled ? t("common.disable") : t("common.enable")}
-                        disabled={busy}
-                        onClick={onToggle}
-                    >
-                        {plugin.enabled ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
-                    </RowIconButton>
-                ) : null}
+                ) : (
+                    <>
+                        {updatable ? (
+                            <Button size="sm" variant="primary" onClick={onUpdate} disabled={busy}>
+                                {t("launcher.plugins.store.update")}
+                            </Button>
+                        ) : null}
+                        {plugin.status !== "error" ? (
+                            <RowIconButton
+                                title={plugin.enabled ? t("common.disable") : t("common.enable")}
+                                disabled={busy}
+                                onClick={onToggle}
+                            >
+                                {plugin.enabled ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+                            </RowIconButton>
+                        ) : null}
+                    </>
+                )}
                 {!plugin.builtIn ? (
                     <RowIconButton title={t("launcher.plugins.uninstall")} disabled={busy} onClick={onUninstall}>
                         <Trash2 className="h-4 w-4" />
@@ -421,13 +447,16 @@ function StoreRow({
 }) {
     const { t } = useTranslation();
     const updateAvailable = hasUpdate(installed, entry);
+    // A plugin this build is too old for shows what it needs instead of a button
+    // the main process would reject.
+    const compatible = isCompatible(entry);
 
     return (
         <div className="group relative">
             <button
                 type="button"
                 onClick={onOpen}
-                className="flex w-full cursor-default items-center gap-3 rounded-md px-3 py-2.5 pr-28 text-left transition-colors hover:bg-fill"
+                className="flex w-full cursor-default items-center gap-3 rounded-md px-3 py-2.5 pr-40 text-left transition-colors hover:bg-fill"
             >
                 <PluginAvatar name={entry.name} />
                 <span className="min-w-0 flex-1">
@@ -441,7 +470,11 @@ function StoreRow({
                 </span>
             </button>
             <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                {updateAvailable ? (
+                {!compatible ? (
+                    <Badge tone="warning">
+                        {t("launcher.plugins.store.needsStudio", { range: entry.studioVersion ?? "" })}
+                    </Badge>
+                ) : updateAvailable ? (
                     <Button size="sm" variant="primary" onClick={onInstall} disabled={busy}>
                         {t("launcher.plugins.store.update")}
                     </Button>
@@ -501,7 +534,7 @@ function Segmented<T extends string>({
                     type="button"
                     onClick={() => onChange(option.value)}
                     className={cn(
-                        "no-drag cursor-default rounded px-3 py-1 text-xs font-medium transition-colors",
+                        "no-drag cursor-default rounded-md px-3 py-1 text-xs font-medium transition-colors",
                         value === option.value
                             ? "bg-fill-strong text-fg shadow-sm"
                             : "text-fg-muted hover:text-fg",

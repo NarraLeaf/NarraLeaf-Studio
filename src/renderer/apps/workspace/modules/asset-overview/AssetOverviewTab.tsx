@@ -138,7 +138,7 @@ export function AssetOverviewTab({ active }: EditorTabComponentProps) {
                         onClick={refresh}
                         disabled={loading}
                         title={t("common.refresh")}
-                        className="rounded p-1 text-fg-muted hover:bg-fill"
+                        className="rounded-md p-1 text-fg-muted hover:bg-fill"
                     >
                         <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
                     </button>
@@ -277,7 +277,7 @@ function AssetRow({
                 type="button"
                 onClick={() => onSelect(entry.asset.id)}
                 className={cn(
-                    "flex w-full items-baseline gap-3 rounded px-2 py-1 text-left transition-colors",
+                    "flex w-full items-baseline gap-3 rounded-md px-2 py-1 text-left transition-colors",
                     selected ? "bg-fill" : "hover:bg-surface-raised",
                 )}
             >
@@ -323,7 +323,7 @@ function AssetDetail({ entry }: { entry: AssetOverviewEntry }) {
                 <img
                     src={previewUrl}
                     alt=""
-                    className="max-h-40 w-full rounded border border-edge bg-surface-sunken object-contain"
+                    className="max-h-40 w-full rounded-md border border-edge bg-surface-sunken object-contain"
                 />
             )}
 

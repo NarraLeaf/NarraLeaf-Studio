@@ -13,8 +13,8 @@ import type { ActiveMarks, RichTextInputHandle } from "./RichTextInput";
 /** Fallback quick colors shown until the author has built up a recent-colors history. */
 const DEFAULT_SWATCHES = ["#ffffff", "#f87171", "#fb923c", "#facc15", "#4ade80", "#38bdf8", "#a78bfa"];
 const SWATCH_COUNT = 7;
-const BTN = "grid h-6 w-6 place-items-center rounded text-fg-muted hover:bg-fill hover:text-fg";
-const BTN_ACTIVE = "grid h-6 w-6 place-items-center rounded bg-primary/25 text-primary";
+const BTN = "grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg";
+const BTN_ACTIVE = "grid h-6 w-6 place-items-center rounded-md bg-primary/25 text-primary";
 /** Rendered heights of the two strips, and the breathing room between strip and row. */
 const TOOLBAR_HEIGHT = 24;
 const TOOLBAR_HEIGHT_EXPANDED = 30;

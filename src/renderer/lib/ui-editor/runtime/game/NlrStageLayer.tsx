@@ -91,29 +91,56 @@ async function waitForImageUrl(url: string): Promise<void> {
     }
 }
 
-async function waitForStageVisualReady(root: HTMLElement): Promise<void> {
+async function waitForStageVisualReady(root: HTMLElement, warm: boolean): Promise<void> {
+    // One frame so React has committed the scene and the elements/backgrounds below are the ones
+    // that will actually paint.
     await waitForPaintFrames(1);
     const imageElements = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
-    const cssImageUrls = collectCssImageUrls(root);
+    // The CSS sweep runs `getComputedStyle` over the entire stage subtree — a forced style recalc
+    // whose whole purpose is catching sources the preloader did not know about. On a stage that was
+    // warmed before the game was entered there are none: every source the story registers is
+    // already fetched and decoded, and the on-stage Game UI does not mount until the reveal. So
+    // skip it there and pay only for the element awaits below.
+    const cssImageUrls = warm ? [] : collectCssImageUrls(root);
     await Promise.all([
         ...imageElements.map(waitForImageElement),
         ...cssImageUrls.map(waitForImageUrl),
     ]);
-    await waitForPaintFrames(2);
+    // Then let the decoded result reach a painted frame: `AspectScaleImage` renders at 0×0 until
+    // its load handler measures the bitmap and sets state, so the reveal has to outlast that
+    // commit or the stage pops to size in view. A cold stage gets two, because its images finished
+    // loading only just now and their handlers may still be landing. A warm stage needs none here
+    // — its loads fired in the frame above, and the caller's single post-race frame covers the
+    // commit. That is the whole budget after the button press: two frames.
+    if (!warm) {
+        await waitForPaintFrames(2);
+    }
 }
 
 /**
  * Resolve once every image inside `root` (elements and CSS backgrounds) has loaded and decoded and
  * the result has been painted, bounded by a timeout. Hosts double-buffering stage sessions use this
  * on the hidden buffer before revealing it, so the swap never shows half-loaded content.
+ *
+ * Pass `warm` when the stage's assets were already fetched and decoded before this content mounted.
+ * The guarantee is the same; it just stops re-verifying what is known to be ready, taking the reveal
+ * from four animation frames plus a whole-subtree style recalc down to two frames — the difference
+ * between "start" reading as a transition and reading as a wait.
  */
-export async function waitForStageVisualReadyWithTimeout(root: HTMLElement): Promise<void> {
+export async function waitForStageVisualReadyWithTimeout(
+    root: HTMLElement,
+    options?: { warm?: boolean },
+): Promise<void> {
+    let timeoutId: number | null = null;
     await Promise.race([
-        waitForStageVisualReady(root),
+        waitForStageVisualReady(root, options?.warm === true),
         new Promise<void>(resolve => {
-            window.setTimeout(resolve, STAGE_VISUAL_READY_TIMEOUT_MS);
+            timeoutId = window.setTimeout(resolve, STAGE_VISUAL_READY_TIMEOUT_MS);
         }),
     ]);
+    if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+    }
     await waitForPaintFrames(1);
 }
 
@@ -144,8 +171,11 @@ export function NlrStageLayer(props: {
      */
     onLiveGameReady: (sessionId: string, liveGame: LiveGame) => Promise<void> | void;
     /**
-     * The Player's initial preload pass has completed (Player `onPreloadComplete`). Assets for the
-     * mounted story are warm; still nothing has entered the game.
+     * The Player's initial preload pass has completed (Player `onPreloadComplete`): the entry
+     * scene's images are fetched and decoded, so entering the game paints without another load.
+     * Still nothing has entered the game. Fires during the host's boot step, because
+     * {@link NlrStageLayer} registers the entry scene with the preloader as soon as the Player is
+     * ready — hosts gate their loading step on this to keep the fetch/decode off the start path.
      */
     onEnvironmentReady: (sessionId: string) => void;
     /**
@@ -161,17 +191,40 @@ export function NlrStageLayer(props: {
     const { session, interactive, visible = true, renderOnStage, onFirstSceneReady, onEnvironmentReady, onLiveGameReady, onError } = props;
     const startedSessionRef = useRef<string | null>(null);
     const stageRootRef = useRef<HTMLDivElement>(null);
+    const gameStateRef = useRef<PlayerEventContext["gameState"] | null>(null);
+    // Whether the preload pass finished while no scene was mounted — i.e. the stage's assets were
+    // fetched and decoded ahead of the game being entered, and the reveal has nothing left to load.
+    const warmedBeforeEntryRef = useRef(false);
 
     const handleReady = useCallback((ctx: PlayerEventContext) => {
         if (!session || startedSessionRef.current === session.id) {
             return;
         }
         startedSessionRef.current = session.id;
+        gameStateRef.current = ctx.gameState;
+        warmedBeforeEntryRef.current = false;
         const sessionId = session.id;
         if (typeof devToolsWithStaticId.setStaticId !== "function") {
             for (const binding of session.compiled.actionIdBindings) {
                 DevTools.setActionId(binding.action, binding.staticId);
             }
+        }
+        // Give the preloader the entry scene right now. NLR derives its preload set from the
+        // *mounted* scene, and nothing is mounted until `newGame()` — so without this the whole
+        // fetch → base64 → decode pass for the first scene lands between the player pressing start
+        // and the first painted frame. Handing it the entry scene here moves that work under the
+        // host's boot/loading step instead, which is what `onEnvironmentReady` then reports.
+        // Idempotent: a version of the engine that warms the entry scene itself sets the
+        // preloading scene before this runs, and re-entering an already-playing session has a
+        // last scene.
+        try {
+            if (!ctx.gameState.getPreloadingScene() && !ctx.gameState.getLastScene()) {
+                ctx.gameState.preloadScene(session.compiled.scene);
+            }
+        } catch (error) {
+            // A story without a usable entry scene must not take the whole stage down: the game
+            // still runs, it just pays the preload on entry as it did before.
+            onError(error instanceof Error ? error : new Error(String(error)), sessionId);
         }
         // Initialise the environment only (dispatch gameReady, hand back the LiveGame).
         // Entering the game (newGame) is the host's decision, made when the player starts a game.
@@ -184,6 +237,10 @@ export function NlrStageLayer(props: {
         if (!session) {
             return;
         }
+        // No mounted scene at this point means the pass warmed the *entry* scene ahead of entry
+        // rather than catching up with a scene already on screen — which is what lets the reveal
+        // skip re-verifying it.
+        warmedBeforeEntryRef.current = !gameStateRef.current?.getLastScene();
         onEnvironmentReady(session.id);
     }, [onEnvironmentReady, session]);
 
@@ -192,12 +249,13 @@ export function NlrStageLayer(props: {
             return;
         }
         const sessionId = session.id;
+        const warm = warmedBeforeEntryRef.current;
         void (async () => {
             const root = stageRootRef.current;
             if (root) {
-                await waitForStageVisualReadyWithTimeout(root);
+                await waitForStageVisualReadyWithTimeout(root, { warm });
             } else {
-                await waitForPaintFrames(2);
+                await waitForPaintFrames(warm ? 1 : 2);
             }
             if (startedSessionRef.current !== sessionId) {
                 return;

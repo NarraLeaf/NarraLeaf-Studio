@@ -69,7 +69,7 @@ function Thumb(props: { assetId: string | null; className?: string; alt?: string
     const { url } = useAssetObjectUrl(props.assetId);
     if (!url) {
         return (
-            <div className={["grid place-items-center rounded bg-fill-subtle text-fg-subtle", props.className ?? ""].join(" ")}>
+            <div className={["grid place-items-center rounded-md bg-fill-subtle text-fg-subtle", props.className ?? ""].join(" ")}>
                 <ImageOff className="h-4 w-4" />
             </div>
         );

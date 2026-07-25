@@ -1,9 +1,10 @@
 import { ExternalLink } from "lucide-react";
 import { Badge, Modal, dialogFooterButtonClass } from "@/lib/components/elements";
 import { getInterface } from "@/lib/app/bridge";
+import { getAppInfo } from "@/lib/renderApp";
 import { useTranslation } from "@/lib/i18n";
 import type { Translator } from "@shared/i18n";
-import { compareSemver } from "@shared/utils/semver";
+import { compareSemver, satisfiesRange } from "@shared/utils/semver";
 import { describePluginInstallPermissions } from "@shared/utils/pluginInstallPermissions";
 import type { PluginListItem, PluginStatus } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
@@ -13,6 +14,17 @@ import { projectAvatarColor, projectInitials } from "../projectAvatar";
 export function hasUpdate(installed: PluginListItem | null | undefined, entry: PluginRegistryEntry | null | undefined): boolean {
     if (!installed || !entry) return false;
     return compareSemver(entry.version, installed.manifest.version) > 0;
+}
+
+/**
+ * Whether this Studio build satisfies the range the entry declares. Kept
+ * separate from {@link hasUpdate} on purpose: an update the running build cannot
+ * take is still worth surfacing, it just needs to say why rather than offering a
+ * button that the main process would refuse.
+ */
+export function isCompatible(entry: PluginRegistryEntry | null | undefined): boolean {
+    if (!entry?.studioVersion) return true;
+    return satisfiesRange(getAppInfo().version, entry.studioVersion);
 }
 
 export function statusText(status: PluginStatus, t: Translator["t"]): string {
@@ -92,6 +104,7 @@ export function PluginDetailsModal({
         : registryEntry?.targets ?? [];
     const categories = registryEntry?.categories ?? [];
     const updateAvailable = hasUpdate(installed, registryEntry);
+    const compatible = isCompatible(registryEntry);
     const link = registryEntry?.homepage || registryEntry?.release.page;
 
     const footer = (
@@ -128,18 +141,18 @@ export function PluginDetailsModal({
             {updateAvailable ? (
                 <button
                     type="button"
-                    className={dialogFooterButtonClass({ variant: "primary", disabled: busy })}
+                    className={dialogFooterButtonClass({ variant: "primary", disabled: busy || !compatible })}
                     onClick={() => onInstall(pluginId)}
-                    disabled={busy}
+                    disabled={busy || !compatible}
                 >
                     {t("launcher.plugins.store.update")}
                 </button>
             ) : !installed && registryEntry ? (
                 <button
                     type="button"
-                    className={dialogFooterButtonClass({ variant: "primary", disabled: busy })}
+                    className={dialogFooterButtonClass({ variant: "primary", disabled: busy || !compatible })}
                     onClick={() => onInstall(pluginId)}
-                    disabled={busy}
+                    disabled={busy || !compatible}
                 >
                     {t("launcher.plugins.store.install")}
                 </button>
@@ -166,6 +179,15 @@ export function PluginDetailsModal({
 
                 {description ? (
                     <p className="text-sm leading-6 text-fg-muted">{description}</p>
+                ) : null}
+
+                {!compatible && registryEntry?.studioVersion ? (
+                    <div className="rounded-md border border-warning/25 bg-warning/10 px-3 py-2 text-sm text-warning">
+                        {t("launcher.plugins.requiresStudio", {
+                            range: registryEntry.studioVersion,
+                            version: getAppInfo().version,
+                        })}
+                    </div>
                 ) : null}
 
                 {categories.length > 0 ? (

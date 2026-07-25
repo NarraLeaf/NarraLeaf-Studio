@@ -228,7 +228,7 @@ export function BackgroundImageDialog() {
                                 aria-checked={current.anchor === anchor}
                                 aria-label={anchor}
                                 onClick={() => write("anchor", anchor)}
-                                className={`h-7 w-7 rounded border transition-colors ${
+                                className={`h-7 w-7 rounded-md border transition-colors ${
                                     current.anchor === anchor
                                         ? "border-primary bg-primary/25"
                                         : "border-edge bg-fill-subtle hover:bg-fill"

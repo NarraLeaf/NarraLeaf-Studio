@@ -105,7 +105,7 @@ function BuildRow({ build, now }: { build: BuildActivityRecord; now: number }) {
                     {build.log?.length ? (
                         /* Wraps rather than scrolls sideways: the dashboard column is narrow, and a
                            build's payload — the error, the artifact path — is at the end of the line. */
-                        <pre className="max-h-72 select-text overflow-y-auto whitespace-pre-wrap break-words rounded border border-edge bg-surface px-2.5 py-2 font-mono text-2xs leading-5 text-fg-muted">
+                        <pre className="max-h-72 select-text overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-edge bg-surface px-2.5 py-2 font-mono text-2xs leading-5 text-fg-muted">
                             {build.log.join("\n")}
                         </pre>
                     ) : (

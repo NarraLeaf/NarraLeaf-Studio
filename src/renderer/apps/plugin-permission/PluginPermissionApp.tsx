@@ -294,7 +294,7 @@ export function PluginPermissionApp() {
                             type="button"
                             onClick={handleDeny}
                             autoFocus
-                            className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded border border-edge bg-fill-subtle px-3 text-sm font-medium text-fg hover:bg-fill focus:outline-none focus:ring-2 focus:ring-primary/60"
+                            className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded-md border border-edge bg-fill-subtle px-3 text-sm font-medium text-fg hover:bg-fill focus:outline-none focus:ring-2 focus:ring-primary/60"
                         >
                             <X size={15} className="shrink-0" />
                             <span className="whitespace-nowrap">{request.kind === "install" ? t("pluginPermission.button.dontAllow") : t("pluginPermission.button.deny")}</span>
@@ -304,7 +304,7 @@ export function PluginPermissionApp() {
                                 type="button"
                                 onClick={() => handleApprove("temporary")}
                                 disabled={!request || busy}
-                                className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded border border-edge bg-fill px-3 text-sm font-medium text-fg hover:bg-fill-strong disabled:cursor-not-allowed disabled:opacity-50"
+                                className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded-md border border-edge bg-fill px-3 text-sm font-medium text-fg hover:bg-fill-strong disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 <Check size={15} className="shrink-0" />
                                 <span className="whitespace-nowrap">{t("pluginPermission.button.allowOnce")}</span>
@@ -314,7 +314,7 @@ export function PluginPermissionApp() {
                             type="button"
                             onClick={() => handleApprove(showPersistentChoices ? "permanent" : undefined)}
                             disabled={!request || busy}
-                            className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded bg-primary px-3 text-sm font-semibold text-on-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-on-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <Check size={15} className="shrink-0" />
                             <span className="whitespace-nowrap">{busy ? t("pluginPermission.button.granting") : showPersistentChoices ? t("pluginPermission.button.alwaysAllow") : t("pluginPermission.button.allow")}</span>

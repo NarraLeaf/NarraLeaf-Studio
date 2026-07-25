@@ -89,6 +89,91 @@ function comparePrereleaseIdentifier(a: string, b: string): number {
     return a === b ? 0 : a < b ? -1 : 1;
 }
 
+/**
+ * Test a version against a semver *range*, for the `studioVersion` field a
+ * registry entry declares ("which Studio builds can run this plugin").
+ *
+ * Supports the subset of the npm range grammar a plugin author realistically
+ * writes: `*`, exact versions, the `> >= < <= =` comparators, `^`, `~`,
+ * space-separated AND, and `||` OR. Whitespace between an operator and its
+ * version (`>= 1.2.0`) is tolerated.
+ *
+ * Two deliberate departures from npm, both toward permissiveness, because a
+ * false negative here *blocks an install the registry vouched for*:
+ *  - A range this parser cannot make sense of is treated as `*`. Registry CI
+ *    validates the field; a range Studio fails to understand must not be the
+ *    thing that stops a user installing.
+ *  - Prereleases participate normally, so a nightly `0.2.0-beta.1` still
+ *    satisfies `>=0.1.0`. npm would exclude it; for a desktop app that would
+ *    lock every beta user out of the store.
+ */
+export function satisfiesRange(version: string, range: string | undefined | null): boolean {
+    const parsed = parseSemver(version);
+    if (!parsed) {
+        return true;
+    }
+    const text = typeof range === "string" ? range.trim() : "";
+    if (!text || text === "*" || text.toLowerCase() === "x") {
+        return true;
+    }
+    // Glue each operator to its version so a clause splits cleanly on whitespace.
+    const normalized = text.replace(/([<>=^~]+)\s+/g, "$1");
+    return normalized
+        .split("||")
+        .some(clause => {
+            const comparators = clause.trim().split(/\s+/).filter(Boolean);
+            return comparators.every(comparator => satisfiesComparator(version, comparator));
+        });
+}
+
+/** One comparator of a range. An unrecognized comparator is treated as satisfied. */
+function satisfiesComparator(version: string, comparator: string): boolean {
+    if (comparator === "*" || comparator.toLowerCase() === "x") {
+        return true;
+    }
+    const match = /^(\^|~|>=|<=|>|<|=)?(.+)$/.exec(comparator);
+    if (!match) {
+        return true;
+    }
+    const [, operator = "=", operand] = match;
+    const target = parseSemver(operand);
+    if (!target) {
+        return true;
+    }
+    const cmp = compareSemver(version, target.raw);
+    switch (operator) {
+        case ">":
+            return cmp > 0;
+        case ">=":
+            return cmp >= 0;
+        case "<":
+            return cmp < 0;
+        case "<=":
+            return cmp <= 0;
+        case "^":
+            return cmp >= 0 && compareSemver(version, caretCeiling(target)) < 0;
+        case "~":
+            return cmp >= 0 && compareSemver(version, `${target.major}.${target.minor + 1}.0`) < 0;
+        default:
+            return cmp === 0;
+    }
+}
+
+/**
+ * The exclusive upper bound of `^`: the next version that may break. Below 1.0.0
+ * semver treats the leading non-zero as the breaking digit, so `^0.2.1` allows
+ * 0.2.x but not 0.3.0, and `^0.0.3` allows nothing but 0.0.3.
+ */
+function caretCeiling(target: SemVer): string {
+    if (target.major > 0) {
+        return `${target.major + 1}.0.0`;
+    }
+    if (target.minor > 0) {
+        return `0.${target.minor + 1}.0`;
+    }
+    return `0.0.${target.patch + 1}`;
+}
+
 export type CompatibilityVerdict = "satisfied" | "outdated" | "incompatible";
 
 /**

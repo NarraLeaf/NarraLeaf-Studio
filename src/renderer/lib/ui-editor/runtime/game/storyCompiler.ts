@@ -760,6 +760,10 @@ async function buildLaunchEntryScene(params: {
     // One synchronous injection step: register the pre-posed elements and apply built-in-singleton props.
     const backgroundProps = snapshot.backgroundProps;
     const builtinLayerProps = snapshot.builtinLayerProps;
+    // The stage camera is a story-level singleton pre-posed exactly like the built-in layers: its pan/
+    // zoom/rotate settle instantly here so a launch that starts after a `/camera zoom` opens on the
+    // real shot, not a neutral one. Its darkness rides the residual-effects pass below.
+    const cameraProps = snapshot.camera?.props ?? {};
     statements.push(Script.execute(((scriptCtx: ScriptCtx) => {
         for (const registration of registrations) {
             DevTools.registerDisplayable(scriptCtx.gameState, registration.element as any, launchScene, registration.layer ?? null);
@@ -772,6 +776,9 @@ async function buildLaunchEntryScene(params: {
         }
         if (Object.keys(builtinLayerProps.displayableLayer).length > 0) {
             DevTools.setDisplayableTransformProps(scriptCtx.gameState, launchScene.displayableLayer as any, builtinLayerProps.displayableLayer);
+        }
+        if (Object.keys(cameraProps).length > 0) {
+            DevTools.setDisplayableTransformProps(scriptCtx.gameState, nlrStory.camera as any, cameraProps);
         }
     }) as any));
 
@@ -787,6 +794,10 @@ async function buildLaunchEntryScene(params: {
         }
     }
     statements.push(...await compileSnapshotEffects(ctx, launchScene.background, snapshot.backgroundEffects));
+    // Camera darkness settles through the same `darken(d, 0)` channel `/camera darken` uses.
+    if (snapshot.camera) {
+        statements.push(...await compileSnapshotEffects(ctx, nlrStory.camera, snapshot.camera.effects));
+    }
 
     // Play the real story forward from the target row, following jumps into the other scenes.
     const plan = collectStoryPlaybackPlan(scene, launch.targetBlockId, { followJumps: true });
@@ -2427,7 +2438,7 @@ function getDisplayable(ctx: SceneCompileContext, name: string, kind?: string): 
 }
 
 const DISPLAYABLE_EFFECT_OPS = new Set([
-    "mask", "clearMask", "clip", "clearClip", "filter", "clearFilter", "darken", "circleReveal", "circleClose", "wipe",
+    "mask", "clearMask", "clip", "clearClip", "filter", "clearFilter", "backdrop", "blend", "darken", "circleReveal", "circleClose", "wipe",
 ]);
 
 function isDisplayableEffectOperation(operation: string): boolean {
@@ -2509,6 +2520,17 @@ async function compileDisplayableEffect(
         }
         case "clearFilter":
             return record(target.clearFilter(options));
+        case "backdrop": {
+            if (!payload.backdropFilter) {
+                diagnostic(ctx, "warning", block.id, "Backdrop effect has no CSS backdrop-filter.");
+                return [];
+            }
+            return record(target.backdrop(payload.backdropFilter, options));
+        }
+        case "blend":
+            // The full CSS type is what the engine takes; only the six curated modes ever reach here
+            // (the inspector offers no others), so "normal" is the safe reset when a payload has none.
+            return record(target.blend(payload.mixBlendMode ?? "normal", options));
         case "darken": {
             if (typeof target.darken !== "function") {
                 diagnostic(ctx, "warning", block.id, "Darken applies to image / character targets only.");

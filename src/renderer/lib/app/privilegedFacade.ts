@@ -1,4 +1,4 @@
-import type { FileDetails, FileStat } from "@shared/utils/fs";
+import type { FileDetails, FileStat, FileEntry } from "@shared/utils/fs";
 import type { FsRequestResult } from "@shared/types/os";
 import type { RequestStatus } from "@shared/types/ipcEvents";
 import type { PluginIdentity, PluginPermissionRequest, PluginPermissionPromptResult } from "@shared/types/pluginPermissions";
@@ -26,7 +26,7 @@ function createBoundPrivilegedFacade(token: PrivilegedFacadeToken) {
                 privileged().fs.selectSaveFile(actor(), defaultFileName, filters),
             stat: (path: string): Promise<RequestStatus<FsRequestResult<FileStat>>> =>
                 privileged().fs.stat(actor(), path),
-            list: (path: string): Promise<RequestStatus<FsRequestResult<FileStat[]>>> =>
+            list: (path: string): Promise<RequestStatus<FsRequestResult<FileEntry[]>>> =>
                 privileged().fs.list(actor(), path),
             details: (path: string): Promise<RequestStatus<FsRequestResult<FileDetails>>> =>
                 privileged().fs.details(actor(), path),

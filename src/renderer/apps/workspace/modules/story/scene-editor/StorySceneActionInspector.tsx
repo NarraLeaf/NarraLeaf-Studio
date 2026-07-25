@@ -17,6 +17,7 @@ import type {
     StoryVariableRef,
     StoryVariableScope,
     StoryVariableValueType,
+    StoryVfxBlendMode,
 } from "@shared/types/story";
 import {
     isStoryExpressionEvaluable,
@@ -314,6 +315,8 @@ const displayableOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "clearClip", label: t("storyInspector.displayableOperation.clearClip") },
     { value: "filter", label: t("storyInspector.displayableOperation.filter") },
     { value: "clearFilter", label: t("storyInspector.displayableOperation.clearFilter") },
+    { value: "backdrop", label: t("storyInspector.displayableOperation.backdrop") },
+    { value: "blend", label: t("storyInspector.displayableOperation.blend") },
     { value: "darken", label: t("storyInspector.displayableOperation.darken") },
     { value: "circleReveal", label: t("storyInspector.displayableOperation.circleReveal") },
     { value: "circleClose", label: t("storyInspector.displayableOperation.circleClose") },
@@ -321,7 +324,7 @@ const displayableOperationOptions = (t: TFunc): SelectOption[] => [
 ];
 
 const DISPLAYABLE_EFFECT_OPERATIONS = new Set([
-    "mask", "clearMask", "clip", "clearClip", "filter", "clearFilter", "darken", "circleReveal", "circleClose", "wipe",
+    "mask", "clearMask", "clip", "clearClip", "filter", "clearFilter", "backdrop", "blend", "darken", "circleReveal", "circleClose", "wipe",
 ]);
 
 const displayableEffectHints = (t: TFunc): Record<string, string> => ({
@@ -331,6 +334,8 @@ const displayableEffectHints = (t: TFunc): Record<string, string> => ({
     clearClip: t("storyInspector.displayableEffectHint.clearClip"),
     filter: t("storyInspector.displayableEffectHint.filter"),
     clearFilter: t("storyInspector.displayableEffectHint.clearFilter"),
+    backdrop: t("storyInspector.displayableEffectHint.backdrop"),
+    blend: t("storyInspector.displayableEffectHint.blend"),
     darken: t("storyInspector.displayableEffectHint.darken"),
     circleReveal: t("storyInspector.displayableEffectHint.circleReveal"),
     circleClose: t("storyInspector.displayableEffectHint.circleClose"),
@@ -1525,6 +1530,24 @@ function DisplayableEffectEditor(props: {
                 {op === "filter" ? (
                     <TextField label={t("storyInspector.displayableEffect.cssFilter")} value={payload.filter ?? ""} onChange={filter => props.onChange({ ...payload, filter: filter || undefined })} />
                 ) : null}
+                {op === "backdrop" ? (
+                    // Sibling of the CSS-filter field: a raw backdrop-filter string (`blur(8px)` for
+                    // frosted glass), edited exactly as `filter` is - the hint below carries the example.
+                    <TextField
+                        label={t("storyInspector.displayableEffect.backdropFilter")}
+                        value={payload.backdropFilter ?? ""}
+                        onChange={backdropFilter => props.onChange({ ...payload, backdropFilter: backdropFilter || undefined })}
+                    />
+                ) : null}
+                {op === "blend" ? (
+                    // The same six curated modes the ambience overlay offers, not the CSS catalogue.
+                    <SelectField
+                        label={t("storyInspector.displayableEffect.blendMode")}
+                        options={vfxBlendOptions(t)}
+                        value={payload.mixBlendMode ?? "normal"}
+                        onChange={mixBlendMode => props.onChange({ ...payload, mixBlendMode: mixBlendMode as StoryVfxBlendMode })}
+                    />
+                ) : null}
                 {op === "darken" ? (
                     <NumberField label={t("storyInspector.displayableEffect.darkness")} value={payload.darkness} onChange={darkness => props.onChange({ ...payload, darkness })} />
                 ) : null}
@@ -2389,7 +2412,7 @@ function VoiceInspectorSection({ block }: { block: StoryBlock }) {
             right={
                 <button
                     type="button"
-                    className="grid h-6 w-6 place-items-center rounded text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                    className="grid h-6 w-6 place-items-center rounded-md text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                     title={t("storyInspector.voice.openTable")}
                     onClick={voice.openVoiceTable}
                 >

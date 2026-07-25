@@ -7,7 +7,7 @@ import {
     type StoryCommandGroupId,
 } from "../storyCommandCategories";
 import { listCommandSpecs } from "./registry";
-import { buildSpecSidebarGroups, filterSidebarGroups, specGroupIds } from "./specSidebar";
+import { browseMenuStops, buildSpecSidebarGroups, filterSidebarGroups, specGroupIds } from "./specSidebar";
 
 /**
  * The `accepts` classification rule (plan §4.2) and the colour contract A1 was warned about (§12.3).
@@ -84,6 +84,44 @@ describe("accepts-driven classification (§4.2)", () => {
         for (const spec of listCommandSpecs()) {
             expect(listed.has(spec.id)).toBe(true);
         }
+    });
+});
+
+/**
+ * The `/` empty-state browse is the sidebar's projection (task 2026-07-26-003 WI-1), so `/show` shows
+ * up under every subject there too. The catch A1 flagged: the highlight walked by command id, and a
+ * verb repeated across subjects would have collided. The stop keys are the fix - one per rendered row -
+ * so the invariant interaction-model rule 2 rests on ("the highlight is Enter's pointer") holds: one
+ * keypress, one stop, and Enter takes the row on screen rather than the first that shares its id.
+ */
+describe("browse walk stops (§4.2, interaction rule 2)", () => {
+    const stops = () => browseMenuStops(sidebar());
+
+    it("files /show under all six subjects, once per subject, in the order they render", () => {
+        // Sidebar/group order (STORY_COMMAND_GROUPS), not `accepts` order: the walk order is the order
+        // the eye reads down the menu, so the two must be the same thing.
+        const showStops = stops().filter(stop => stop.command.id === "show");
+        expect(showStops.map(stop => stop.group.id)).toEqual(["character", "image", "text", "layer", "video", "vfx"]);
+    });
+
+    it("gives every rendered row a distinct key, so the highlight never double-hits", () => {
+        const keys = stops().map(stop => stop.key);
+        expect(new Set(keys).size).toBe(keys.length);
+    });
+
+    it("walks one row per keypress: a verb under six subjects is six separate stops", () => {
+        // Six `/show` rows means six presses to pass them all - not one press that skips five. Each key
+        // is `group:id`, so the same command id never merges two rows into one stop.
+        const showStops = stops().filter(stop => stop.command.id === "show");
+        expect(showStops).toHaveLength(6);
+        expect(new Set(showStops.map(stop => stop.key)).size).toBe(6);
+        expect(showStops.every(stop => stop.command.id === "show")).toBe(true);
+    });
+
+    it("walks the stops in sidebar order, section by section", () => {
+        const groups = sidebar();
+        const expected = groups.flatMap(entry => entry.commands.map(command => `${entry.group.id}:${command.id}`));
+        expect(stops().map(stop => stop.key)).toEqual(expected);
     });
 });
 

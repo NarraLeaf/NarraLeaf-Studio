@@ -52,7 +52,7 @@ function toTransitionMs(seconds: number): number {
 /** Borderless icon-only trigger; active = field has a transition configured. */
 function motionIconTriggerClass(active: boolean): string {
     return [
-        "grid h-7 w-7 shrink-0 place-items-center rounded border-0 bg-transparent p-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+        "grid h-7 w-7 shrink-0 place-items-center rounded-md border-0 bg-transparent p-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
         active ? "text-primary hover:text-primary" : "text-fg-subtle hover:text-fg",
     ].join(" ");
 }

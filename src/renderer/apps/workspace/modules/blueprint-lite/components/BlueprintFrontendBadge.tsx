@@ -8,7 +8,7 @@ export function BlueprintFrontendBadge({ kind }: { kind: BlueprintFrontendKind }
     const label = isTs ? "TypeScript" : t("blueprint.frontend.visual");
     return (
         <span
-            className={`inline-flex items-center rounded px-1.5 py-0.5 text-2xs font-medium tracking-wide ${
+            className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-2xs font-medium tracking-wide ${
                 isTs ? "bg-warning/15 text-warning" : "bg-primary/15 text-primary"
             }`}
         >

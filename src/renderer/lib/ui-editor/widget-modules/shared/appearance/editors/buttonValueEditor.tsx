@@ -199,7 +199,7 @@ export function ButtonAppearanceValueEditor({
                         type="checkbox"
                         checked={b}
                         onChange={e => onChange(e.target.checked)}
-                        className="rounded border-edge-strong"
+                        className="rounded-sm border-edge-strong"
                     />
                     {t("widgetAppearance.spacing.clip")}
                 </label>

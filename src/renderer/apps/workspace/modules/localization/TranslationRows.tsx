@@ -185,7 +185,7 @@ export function TranslateRow(props: {
                 <button
                     type="button"
                     title={t("workspace.localization.table.removeKey")}
-                    className="absolute right-3 top-2 flex h-6 w-6 items-center justify-center rounded text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+                    className="absolute right-3 top-2 flex h-6 w-6 items-center justify-center rounded-md text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
                     onClick={() => props.onRemove?.(props.row)}
                 >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -261,7 +261,7 @@ export function ReviewRow(props: {
 }
 
 const ADD_KEY_INPUT_CLASS =
-    "h-7 min-w-0 rounded border border-edge bg-surface-raised px-2 text-xs text-fg outline-none placeholder:text-fg-subtle focus:border-primary/50";
+    "h-7 min-w-0 rounded-md border border-edge bg-surface-raised px-2 text-xs text-fg outline-none placeholder:text-fg-subtle focus:border-primary/50";
 
 /**
  * Ghost row at the end of the named-keys group (translate mode only).
@@ -292,7 +292,7 @@ export function AddKeyRow(props: { onSubmit: (name: string, sourceText: string) 
             <div className="px-4 py-2">
                 <button
                     type="button"
-                    className="flex h-7 w-full items-center justify-center gap-1 rounded border border-dashed border-edge text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg"
+                    className="flex h-7 w-full items-center justify-center gap-1 rounded-md border border-dashed border-edge text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg"
                     onClick={() => setExpanded(true)}
                 >
                     <Plus className="h-3 w-3" /> {t("workspace.localization.table.addKey")}
@@ -335,7 +335,7 @@ export function AddKeyRow(props: { onSubmit: (name: string, sourceText: string) 
             />
             <button
                 type="button"
-                className="flex h-7 w-7 flex-none items-center justify-center rounded border border-edge text-fg-muted hover:border-primary/50 hover:text-fg"
+                className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-edge text-fg-muted hover:border-primary/50 hover:text-fg"
                 onClick={submit}
                 title={t("workspace.localization.table.addKey")}
             >

@@ -50,7 +50,7 @@ function CheckboxFieldInner<TData>({ field, data, onSaving }: CheckboxFieldProps
                 checked={localValue}
                 onChange={(e) => handleChange(e.target.checked)}
                 disabled={isDisabled}
-                className="w-4 h-4 rounded border-edge-strong bg-surface-raised text-primary 
+                className="w-4 h-4 rounded-sm border-edge-strong bg-surface-raised text-primary 
                     focus:ring-primary/50 focus:ring-offset-0 transition-colors
                     disabled:opacity-50 disabled:cursor-not-allowed"
             />
