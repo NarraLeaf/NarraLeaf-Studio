@@ -1766,6 +1766,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     textInputRef={editor.textInputRef}
                                     tempSpeakers={editor.tempSpeakers}
                                     lensActive={editor.lensContainerIds.has(row.block.id)}
+                                    density={editor.density}
                                 />
                                 )}
                                 {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === row.block.id ? (
@@ -1900,12 +1901,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             </div>
             {previewOpen && previewMode === "dock" ? (
                 <>
-                    <ResizableHandle
-                        direction="horizontal"
-                        onResize={handlePreviewResize}
-                        className="w-1 shrink-0 border-r-2 border-transparent bg-fill-subtle"
-                    />
-                    <div style={{ width: previewWidth }} className="min-h-0 shrink-0 border-l border-edge">
+                    <ResizableHandle direction="horizontal" onResize={handlePreviewResize} />
+                    <div style={{ width: previewWidth }} className="min-h-0 shrink-0">
                         <StoryScenePreviewPane
                             controller={preview}
                             onClose={togglePreview}
