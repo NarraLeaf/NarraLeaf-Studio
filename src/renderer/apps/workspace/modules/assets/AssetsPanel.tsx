@@ -494,7 +494,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                 <span className="text-xs text-fg-muted">{tn("assets.itemCount", Object.values(filteredAssets).flat().length)}</span>
                                 <ViewModeToggle mode={viewMode} onChange={setViewMode} />
                                 <OpenOverviewButton />
-                                <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
+                                <button onClick={loadAssets} disabled={loading} className="p-1 rounded-md hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
                             </div>
                         </div>
                     </div>
@@ -571,7 +571,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                 <button
                                     type="button"
                                     onClick={assetsIconToolbarCenter.onBack}
-                                    className="p-1 rounded hover:bg-fill shrink-0"
+                                    className="p-1 rounded-md hover:bg-fill shrink-0"
                                     title={t("assets.backToParent")}
                                 >
                                     <ChevronLeft className="w-4 h-4" />
@@ -590,7 +590,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                 <span className="text-2xs text-fg-subtle hidden sm:inline">{tn("assets.itemCount", Object.values(filteredAssets).flat().length)}</span>
                                 <ViewModeToggle mode={viewMode} onChange={setViewMode} />
                                 <OpenOverviewButton />
-                                <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
+                                <button onClick={loadAssets} disabled={loading} className="p-1 rounded-md hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
                             </div>
                         )}
                     </div>
@@ -656,7 +656,7 @@ function OpenOverviewButton() {
             type="button"
             onClick={() => openAssetOverviewTab(context)}
             title={t("assets.overview.open")}
-            className="p-1 rounded hover:bg-fill"
+            className="p-1 rounded-md hover:bg-fill"
         >
             <Boxes className="w-4 h-4" />
         </button>
@@ -676,7 +676,7 @@ function ViewModeToggle({ mode, onChange }: { mode: AssetViewMode; onChange: (mo
                     title={label}
                     aria-pressed={mode === id}
                     onClick={() => onChange(id)}
-                    className={`p-1 rounded ${mode === id ? "bg-primary/80 text-on-primary" : "text-fg-muted hover:bg-fill"}`}
+                    className={`p-1 rounded-md ${mode === id ? "bg-primary/80 text-on-primary" : "text-fg-muted hover:bg-fill"}`}
                 >
                     <Icon className="w-4 h-4" />
                 </button>

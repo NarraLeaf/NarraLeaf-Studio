@@ -411,7 +411,7 @@ function StoryMotionBezierEditor(props: { easing: string; onChange: (easing: str
             <svg
                 ref={svgRef}
                 viewBox={`0 0 ${BEZIER_VIEW_SIZE} ${BEZIER_VIEW_SIZE}`}
-                className="w-full touch-none rounded border border-edge bg-fill-subtle"
+                className="w-full touch-none rounded-md border border-edge bg-fill-subtle"
             >
                 <rect x={0} y={toY(1)} width={BEZIER_VIEW_SIZE} height={toY(0) - toY(1)} style={{ fill: "var(--nl-fill-subtle)" }} />
                 <line x1={0} y1={toY(0)} x2={BEZIER_VIEW_SIZE} y2={toY(0)} style={{ stroke: "var(--nl-edge)" }} strokeWidth={1} />

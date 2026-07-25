@@ -42,7 +42,7 @@ const PREVIEW_LOOP_GAP_MS = 1100;
 const PREVIEW_FRAME_MS = 1000 / 30;
 
 const ICON_BUTTON_CLASS = controlButtonClass();
-const TOOL_BUTTON_CLASS = "inline-flex h-8 items-center gap-1.5 rounded border border-edge bg-fill-subtle px-2 text-xs text-fg hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
+const TOOL_BUTTON_CLASS = "inline-flex h-8 items-center gap-1.5 rounded-md border border-edge bg-fill-subtle px-2 text-xs text-fg hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
 
 const STORY_MOTION_TEMPLATE_KEYS = {
     "Fade in + slide": "fadeInSlide",
@@ -285,7 +285,7 @@ export function MotionSelector(props: {
                                     className="flex min-w-0 flex-1 items-center gap-2 text-left"
                                     onClick={() => props.onSelect(asset.id)}
                                 >
-                                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-edge bg-fill-subtle text-primary">
+                                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-primary">
                                         <Spline className="h-3.5 w-3.5" />
                                     </span>
                                     <span className="min-w-0 flex-1">
@@ -418,10 +418,10 @@ function MotionHoverPreview(props: {
                             />
                         </div>
                     </div>
-                    <div className="absolute left-2 top-2 truncate rounded bg-black/55 px-1.5 py-0.5 text-2xs font-medium text-white">
+                    <div className="absolute left-2 top-2 truncate rounded-md bg-black/55 px-1.5 py-0.5 text-2xs font-medium text-white">
                         {asset.name}
                     </div>
-                    <div className="absolute right-2 bottom-2 rounded bg-black/55 px-1.5 py-0.5 text-2xs text-white/70">
+                    <div className="absolute right-2 bottom-2 rounded-md bg-black/55 px-1.5 py-0.5 text-2xs text-white/70">
                         {motionSummary(asset, t)}
                     </div>
                 </div>

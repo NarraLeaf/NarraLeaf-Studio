@@ -24,7 +24,7 @@ type Props = {
 
 function chipClass(active: boolean): string {
     return [
-        "rounded px-1.5 py-0.5 text-2xs font-medium border transition shrink-0",
+        "rounded-md px-1.5 py-0.5 text-2xs font-medium border transition shrink-0",
         active
             ? "border-primary/60 bg-primary/15 text-primary"
             : "border-edge bg-fill-subtle text-fg-muted hover:bg-fill hover:text-fg",

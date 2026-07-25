@@ -81,7 +81,7 @@ function NotificationItem({ notification, onClose }: { notification: Notificatio
                                     onClose();
                                 }}
                                 className={`
-                                    px-3 py-1 text-xs rounded transition-colors
+                                    px-3 py-1 text-xs rounded-md transition-colors
                                     ${action.primary
                                         ? "bg-fill-strong hover:bg-fg/30 text-fg font-medium"
                                         : "bg-fill-subtle hover:bg-fill text-fg-muted"
@@ -98,7 +98,7 @@ function NotificationItem({ notification, onClose }: { notification: Notificatio
             {notification.closable && (
                 <button
                     onClick={onClose}
-                    className="flex-shrink-0 p-1 rounded hover:bg-fill transition-colors"
+                    className="flex-shrink-0 p-1 rounded-md hover:bg-fill transition-colors"
                     aria-label={t("common.close")}
                 >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

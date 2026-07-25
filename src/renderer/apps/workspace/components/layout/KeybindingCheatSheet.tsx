@@ -178,7 +178,7 @@ export function KeybindingCheatSheet() {
                                 {group.items.map(entry => (
                                     <div key={entry.id} className="flex h-8 min-w-0 items-center gap-3">
                                         <span className="min-w-0 flex-1 truncate text-sm text-fg-muted">{entry.name}</span>
-                                        <span className="shrink-0 rounded border border-edge bg-fill-subtle px-1.5 py-0.5 text-xs tabular-nums text-fg-muted">
+                                        <span className="shrink-0 rounded-md border border-edge bg-fill-subtle px-1.5 py-0.5 text-xs tabular-nums text-fg-muted">
                                             {formatKeybinding(entry.key, isMac)}
                                         </span>
                                     </div>

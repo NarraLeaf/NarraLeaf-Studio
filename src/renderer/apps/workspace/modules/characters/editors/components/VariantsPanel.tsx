@@ -134,7 +134,7 @@ export function VariantsPanel({
                                                 <ImagePlus className="w-3 h-3" />
                                             </button>
                                             <button
-                                                className="p-1 rounded hover:bg-fill"
+                                                className="p-1 rounded-md hover:bg-fill"
                                                 onClick={(e) => onOpenVariantMenu(e, activeForm?.name ?? "", group, variant.name)}
                                                 title={t("characters.variantsPanel.variantActions")}
                                             >
@@ -236,7 +236,7 @@ export function VariantsPanel({
                                                             <ImagePlus className="w-3 h-3" />
                                                         </button>
                                                         <button
-                                                            className="p-1 rounded hover:bg-fill"
+                                                            className="p-1 rounded-md hover:bg-fill"
                                                             onClick={(e) => onOpenVariantMenu(e, activeForm?.name ?? "", group, variant.name)}
                                                             title={t("characters.variantsPanel.variantActions")}
                                                         >
