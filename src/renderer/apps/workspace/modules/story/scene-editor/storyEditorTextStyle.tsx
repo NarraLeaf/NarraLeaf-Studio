@@ -93,20 +93,20 @@ export const STORY_HANDLE_VAR = "--nl-story-handle";
 /**
  * Width of the drag-handle column, between the line numbers and the content (U1 WI-2).
  *
- * 20, down from 28. Constant across the tiers, but published with the density variables rather than
- * pinned in the stylesheet: the row grid, the insert slot's grid and the tail "+" button all need it
- * as a literal length, and one variable they read beats three hard-coded numbers that drift apart.
- * Every consumer still spells the fallback, so a row rendered outside the editor root (tests,
- * isolated previews) keeps a sane column instead of collapsing.
+ * Constant across the tiers, but published with the density variables rather than pinned in the
+ * stylesheet: the row grid, the insert slot's grid and the tail "+" button all need it as a literal
+ * length, and one variable they read beats three hard-coded 20s that drift apart. Every consumer
+ * still spells the fallback, so a row rendered outside the editor root (tests, isolated previews)
+ * keeps a sane column instead of collapsing.
  */
 export const STORY_HANDLE_PX = 20;
 
 /**
  * Gutter at two digits — chevron (14) + gap (2) + two tabular digits at the line number's 11px type.
  *
- * Was 36 with a 4px gap and 12px digits. The line number is an anchor — for compile diagnostics and
- * for jumping — not a reading surface (U1 WI-2), so it keeps its column one size smaller and tighter
- * to the fold chevron, and the 6px it gives up goes to the words, as does the handle column's 8px.
+ * Was 36 with a 4px gap and 12px digits. The line number is an anchor, not a reading surface (U1
+ * WI-2): it keeps its column, one size smaller and tighter to the fold chevron, and the 6px it gives
+ * up goes to the words — as does the handle column's 8px next to it.
  */
 const GUTTER_BASE_PX = 30;
 /** One tabular digit at the gutter's 11px type. */
