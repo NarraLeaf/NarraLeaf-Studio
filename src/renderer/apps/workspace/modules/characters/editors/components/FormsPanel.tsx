@@ -86,7 +86,7 @@ export function FormsPanel({
                                         </span>
                                     )}
                                     <button
-                                        className="p-1 rounded hover:bg-fill"
+                                        className="p-1 rounded-md hover:bg-fill"
                                         onClick={(e) => onOpenMenu(e, form)}
                                         title={t("characters.formsPanel.formActions")}
                                     >

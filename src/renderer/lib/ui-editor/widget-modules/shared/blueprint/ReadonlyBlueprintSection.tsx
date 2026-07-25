@@ -64,12 +64,12 @@ export function ReadonlyBlueprintSection({ data }: CustomFieldProps<UIInspectorD
                 <BlueprintLayerPreview model={previewModel} />
             </button>
             {summary.legacyHookCount > 0 ? (
-                <p className="text-2xs text-warning rounded border border-warning/25 bg-warning/10 px-2 py-1.5">
+                <p className="text-2xs text-warning rounded-md border border-warning/25 bg-warning/10 px-2 py-1.5">
                     {tn("widgetChrome.blueprint.legacyHookCount", summary.legacyHookCount)}
                 </p>
             ) : null}
             {summary.eventSchemaIssueCount > 0 ? (
-                <p className="text-2xs text-warning rounded border border-warning/25 bg-warning/10 px-2 py-1.5">
+                <p className="text-2xs text-warning rounded-md border border-warning/25 bg-warning/10 px-2 py-1.5">
                     {t("widgetChrome.blueprint.eventSchemaMismatch")}
                 </p>
             ) : null}

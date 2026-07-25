@@ -9,42 +9,24 @@
  *   yarn style:ratchet          compare current counts against the baseline
  *   yarn style:ratchet --save   write current counts as the new baseline
  *
- * Scans .ts/.tsx under src/renderer, excluding build output (dist/).
+ * Scans .ts/.tsx under src/renderer, excluding build output (dist/), tests, and
+ * comment bodies — see scripts/style-scan.mjs for why those last two are out.
  */
-import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative } from "node:path";
+import { METRICS, walk, readCode } from "./style-scan.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SCAN_DIR = join(ROOT, "src", "renderer");
 const BASELINE = join(ROOT, "scripts", "style-ratchet.baseline.json");
 
-const METRICS = {
-    "arbitrary-hex": /\[#[0-9a-fA-F]{3,8}\]/g,
-    "raw-neutral-palette": /\b(?:bg|text|border|ring|divide|from|via|to)-(?:gray|slate|zinc|neutral|stone)-\d/g,
-    "raw-white-black-alpha": /\b(?:bg|text|border|ring|divide|shadow|from|via|to)-(?:white|black)\/\d/g,
-    "arbitrary-px-font": /text-\[\d+px\]/g,
-    "bare-or-arbitrary-rounded": /\brounded(?![-\w])|rounded-\[/g,
-    "raw-accent": /#40a8c4|\b(?:bg|text|border|ring)-cyan-\d/gi,
-};
-
-function walk(dir, out = []) {
-    for (const name of readdirSync(dir)) {
-        if (name === "dist" || name === "node_modules") continue;
-        const full = join(dir, name);
-        const st = statSync(full);
-        if (st.isDirectory()) walk(full, out);
-        else if (/\.tsx?$/.test(name)) out.push(full);
-    }
-    return out;
-}
-
 function count() {
     const totals = Object.fromEntries(Object.keys(METRICS).map((k) => [k, 0]));
     for (const file of walk(SCAN_DIR)) {
-        const src = readFileSync(file, "utf8");
+        const { code } = readCode(file);
         for (const [key, re] of Object.entries(METRICS)) {
-            const m = src.match(re);
+            const m = code.match(re);
             if (m) totals[key] += m.length;
         }
     }

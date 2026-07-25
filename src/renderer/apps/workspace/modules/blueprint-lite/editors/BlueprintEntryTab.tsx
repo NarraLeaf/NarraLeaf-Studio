@@ -416,7 +416,7 @@ function ElementLiteralSurfacePreview({
     return (
         <div className="relative flex h-[72px] w-full items-center justify-center overflow-hidden rounded-sm bg-surface-sunken">
             <div
-                className="relative overflow-hidden rounded-[3px] border border-edge shadow-sm"
+                className="relative overflow-hidden rounded-sm border border-edge shadow-sm"
                 style={{
                     width: frameWidth,
                     height: frameHeight,

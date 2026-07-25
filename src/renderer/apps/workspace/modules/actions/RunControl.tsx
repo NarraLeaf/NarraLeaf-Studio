@@ -169,7 +169,7 @@ export function RunControl() {
                     aria-expanded={menuOpen}
                     className={cn(
                         "flex cursor-default items-center justify-center px-1 transition-colors",
-                        running ? "cursor-not-allowed text-white/40" : "text-fg-muted hover:bg-fill hover:text-fg",
+                        running ? "cursor-not-allowed text-on-primary/40" : "text-fg-muted hover:bg-fill hover:text-fg",
                     )}
                 >
                     <ChevronDown className={cn("h-3 w-3 transition-transform", menuOpen && "rotate-180")} />

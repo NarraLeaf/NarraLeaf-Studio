@@ -275,7 +275,7 @@ function ActionCreatorRow(props: {
             <button
                 type="button"
                 className={[
-                    "mr-1 grid h-7 w-7 shrink-0 place-items-center rounded text-fg-subtle transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50",
+                    "mr-1 grid h-7 w-7 shrink-0 place-items-center rounded-md text-fg-subtle transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50",
                     props.starred ? "opacity-100 text-warning" : "opacity-0 hover:text-warning group-hover:opacity-100",
                 ].join(" ")}
                 title={props.starred ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")}

@@ -22,7 +22,7 @@ export function BlueprintEventBindingField(props: CustomFieldProps<UIInspectorDa
                 {rows.map(row => (
                     <span
                         key={row.eventId}
-                        className="rounded border border-edge bg-surface-sunken px-2 py-1 text-2xs text-fg"
+                        className="rounded-md border border-edge bg-surface-sunken px-2 py-1 text-2xs text-fg"
                         title={row.description}
                     >
                         {row.displayName}
