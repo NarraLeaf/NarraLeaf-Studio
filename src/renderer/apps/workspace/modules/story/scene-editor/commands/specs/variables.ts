@@ -79,6 +79,7 @@ export const set = defineStoryCommand({
     id: "set",
     token: "set",
     category: "data",
+    examples: ["/set gold 100", "/set gold gold + 1", "/set met true"],
     params: {
         variable: VARIABLE,
         value: { hint: "expressionValue", type: { kind: "expression", assignTo: "variable" }, positional: true, greedy: true, core: true },
@@ -123,6 +124,7 @@ export const inc = defineStoryCommand({
     token: "inc",
     aliases: ["add"],
     category: "data",
+    examples: ["/inc gold", "/inc gold 5"],
     params: {
         variable: VARIABLE,
         by: { hint: "amount", type: { kind: "expression" }, positional: true, greedy: true },
@@ -135,6 +137,7 @@ export const dec = defineStoryCommand({
     token: "dec",
     aliases: ["sub"],
     category: "data",
+    examples: ["/dec gold 5"],
     params: {
         variable: VARIABLE,
         by: { hint: "amount", type: { kind: "expression" }, positional: true, greedy: true },
@@ -147,6 +150,7 @@ export const toggle = defineStoryCommand({
     token: "toggle",
     aliases: ["flip"],
     category: "data",
+    examples: ["/toggle met"],
     params: { variable: VARIABLE },
     build(args, ctx) {
         const { block, base, payload, self, name } = setVariableBase(ctx.generateId, args.variable);
@@ -164,6 +168,7 @@ export const reset = defineStoryCommand({
     id: "reset",
     token: "reset",
     category: "data",
+    examples: ["/reset gold"],
     params: { variable: VARIABLE },
     build(args, ctx) {
         const { block, base, payload } = setVariableBase(ctx.generateId, args.variable);
@@ -317,6 +322,7 @@ export const declareLocal = defineStoryCommand({
     token: "local",
     aliases: ["scenevar"],
     category: "data",
+    examples: ["/local hp 100", "/local hp 100 type=number desc='Player health'"],
     params: declarationParams(),
     build: buildDeclaration("scene"),
     validate: validateDeclaration("scene"),
@@ -337,6 +343,7 @@ export const declareVar = defineStoryCommand({
     token: "save",
     aliases: ["var", "savedvar"],
     category: "data",
+    examples: ["/save chapter 1 type=number"],
     params: declarationParams(),
     build: buildDeclaration("saved"),
     validate: validateDeclaration("saved"),
@@ -348,6 +355,7 @@ export const declarePersis = defineStoryCommand({
     token: "global",
     aliases: ["persis", "persistent"],
     category: "data",
+    examples: ["/global seenIntro false type=boolean"],
     params: declarationParams(),
     build: buildDeclaration("persistent"),
     validate: validateDeclaration("persistent"),

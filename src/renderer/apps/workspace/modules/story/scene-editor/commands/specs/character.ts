@@ -163,6 +163,7 @@ export const show = defineStoryCommand({
     token: "show",
     aliases: ["enter"],
     category: "character",
+    examples: ["/show Alice", "/show Alice smile at=left", "/show hero t=fade d=0.3"],
     // Inline quick-edit (WI-2): the enter transition duration (the transition kind stays inspector-only).
     quickParams: ["d"],
     params: {
@@ -184,6 +185,7 @@ export const hide = defineStoryCommand({
     token: "hide",
     aliases: ["exit"],
     category: "character",
+    examples: ["/hide Alice", "/hide hero t=fade d=0.3"],
     // Inline quick-edit (WI-2): the exit transition duration (the transition kind stays inspector-only).
     quickParams: ["d"],
     params: {
@@ -199,6 +201,7 @@ export const move = defineStoryCommand({
     id: "move",
     token: "move",
     category: "character",
+    examples: ["/move Alice at=center", "/move Alice at=left d=0.4"],
     params: {
         character: { hint: "character", type: { kind: "character" }, positional: true, core: true },
         at: { ...placementParam(), core: true },
@@ -223,6 +226,7 @@ export const face = defineStoryCommand({
     token: "face",
     aliases: ["expr", "expression"],
     category: "character",
+    examples: ["/face Alice smile"],
     params: {
         character: { hint: "character", type: { kind: "character" }, positional: true, core: true },
         form: { hint: "form", type: { kind: "characterForm", dependsOn: "character" }, positional: true, core: true },
@@ -255,6 +259,7 @@ export const rename = defineStoryCommand({
     token: "rename",
     aliases: ["setname"],
     category: "character",
+    examples: ["/rename Alice The Stranger"],
     params: {
         character: { hint: "character", type: { kind: "character" }, positional: true, core: true },
         name: { hint: "displayName", type: { kind: "text" }, positional: true, greedy: true, core: true },
@@ -283,6 +288,7 @@ export const say = defineStoryCommand({
     id: "say",
     token: "say",
     category: "character",
+    examples: ["/say Alice Hello there.", "/say Zoe Who are you?"],
     params: {
         character: { hint: "speaker", type: { kind: "character", allowTemp: true }, positional: true, core: true },
         // Optional on purpose: `/say Alice` commits and drops the caret into the row's text - the
