@@ -95,7 +95,6 @@ class UiDriver {
      */
     async click(x, y, options = {}) {
         const { button = 'left', clickCount = 1, modifiers = 0, settleMs = 120 } = options;
-        await this.client.enable('Input');
         const base = { x: Math.round(x), y: Math.round(y), button, modifiers };
         await this.client.send('Input.dispatchMouseEvent', { ...base, type: 'mouseMoved', buttons: 0 });
         await this.client.send('Input.dispatchMouseEvent', { ...base, type: 'mousePressed', clickCount, buttons: 1 });
@@ -106,7 +105,6 @@ class UiDriver {
     /** Move the pointer without pressing (hover states, menu reveal). */
     async hover(x, y, options = {}) {
         const { settleMs = 80 } = options;
-        await this.client.enable('Input');
         await this.client.send('Input.dispatchMouseEvent', {
             type: 'mouseMoved', x: Math.round(x), y: Math.round(y), buttons: 0, modifiers: 0,
         });
@@ -115,7 +113,6 @@ class UiDriver {
 
     /** Press key specs in order, e.g. keys('Escape') or keys('Control+ArrowRight', 'Enter'). */
     async keys(...specs) {
-        await this.client.enable('Input');
         for (const spec of specs.flat()) {
             const { modifiers, key, code, keyCode, text } = parseKeySpec(spec);
             const shared = { modifiers, key, code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode };
@@ -132,7 +129,6 @@ class UiDriver {
 
     /** Insert text at the caret (reliable where synthesized keystrokes are not). */
     async type(text) {
-        await this.client.enable('Input');
         await this.client.send('Input.insertText', { text: String(text) });
         await delay(30);
     }
