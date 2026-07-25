@@ -37,7 +37,9 @@ import { STORY_DENSITY_METRICS, StoryEditorTextStyleProvider, storyEditorRootSty
 import { StoryRowActionsContext, type StoryRowActions } from "./storyRowActions";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TranslationKey } from "@shared/i18n";
-import { getTextSegment } from "./storySceneBlockUtils";
+import { getCharacterName, getContainerHeaderInfo, getTextSegment } from "./storySceneBlockUtils";
+import type { VisibleStoryRow } from "./storySceneEditorTypes";
+import type { Character } from "@/lib/workspace/services/character/Character";
 import {
     captureStoryEditorScrollAnchor,
     getStoryEditorViewState,
@@ -76,6 +78,53 @@ const EMPTY_SCENE_EXAMPLES: readonly { line: string; key: TranslationKey }[] = [
     { line: "/show", key: "story.sceneEditor.emptyExampleShow" },
     { line: "/say", key: "story.sceneEditor.emptyExampleSay" },
 ];
+
+/**
+ * The context a row inherits from rows above it: the speaker of the dialogue run it belongs to, or the
+ * container it sits inside. Returns null when the row introduces its own context (a group head, a
+ * container header, a top-level line) — there is nothing to restate in that case.
+ */
+function describeScrollContext(
+    rows: readonly VisibleStoryRow[],
+    characters: Character[],
+    firstVisibleId: StoryBlockId | null,
+): string | null {
+    if (!firstVisibleId) {
+        return null;
+    }
+    const index = rows.findIndex(row => row.block.id === firstVisibleId);
+    if (index < 0) {
+        return null;
+    }
+    const row = rows[index];
+    // Inside a dialogue run: walk back to its head, which is the row carrying the nametag.
+    if (row.groupRole === "member") {
+        for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+            const candidate = rows[cursor];
+            if (candidate.groupRole !== "head") {
+                continue;
+            }
+            const block = candidate.block;
+            if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
+                return block.payload.characterId
+                    ? getCharacterName(characters, block.payload.characterId)
+                    : block.payload.speakerName ?? null;
+            }
+            return null;
+        }
+        return null;
+    }
+    // Inside a container: the nearest ancestor still above the viewport names the block.
+    if (row.depth > 0) {
+        for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+            const candidate = rows[cursor];
+            if (candidate.depth < row.depth) {
+                return getContainerHeaderInfo(candidate.block)?.pill ?? null;
+            }
+        }
+    }
+    return null;
+}
 
 /** A row's `py-1`, the part of its height the density's box does not cover. */
 const ROW_VERTICAL_PADDING_PX = 8;
@@ -945,18 +994,49 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // Capture the scroll anchor at most once per frame while scrolling (querying row geometry on every
     // raw scroll event would thrash layout on long scenes). The live scrollTop is recorded eagerly so
     // the keep-alive restore has an accurate value even for the last scroll before a tab switch.
+    /**
+     * What has scrolled off the top: the speaker of the dialogue run you are reading inside, or the
+     * container whose header is now above the viewport.
+     *
+     * A long back-and-forth drops its nametag after the first line by design (that is the grouping),
+     * and a container's header is one row among hundreds — so ten screens into a scene there is
+     * nothing on screen saying who is talking or what block you are in. This says it, and only while
+     * the row that would have said it is out of sight.
+     */
+    const [scrollContext, setScrollContext] = useState<string | null>(null);
+    const scrollContextRef = useRef<() => void>(() => {});
+    scrollContextRef.current = () => {
+        const el = scrollContainerRef.current;
+        if (!el) {
+            return;
+        }
+        const top = el.getBoundingClientRect().top;
+        // Only the mounted rows are candidates, which is at most a window's worth — and the read is
+        // once per animation frame while scrolling, not once per scroll event.
+        const rows = el.querySelectorAll<HTMLElement>("[data-story-row-block-id]");
+        let firstVisibleId: StoryBlockId | null = null;
+        for (const node of rows) {
+            if (node.getBoundingClientRect().bottom > top + 1) {
+                firstVisibleId = node.dataset.storyRowBlockId ?? null;
+                break;
+            }
+        }
+        setScrollContext(describeScrollContext(editorRef.current.visibleRows, editorRef.current.characters, firstVisibleId));
+    };
+
     const handleScroll = useCallback(() => {
         const el = scrollContainerRef.current;
         if (el) {
             liveScrollTopRef.current = el.scrollTop;
         }
-        if (!sceneId || !panelStateService || scrollSaveRafRef.current !== null) {
+        if (scrollSaveRafRef.current !== null) {
             return;
         }
         scrollSaveRafRef.current = window.requestAnimationFrame(() => {
             scrollSaveRafRef.current = null;
+            scrollContextRef.current();
             const el = scrollContainerRef.current;
-            if (el && sceneId) {
+            if (el && sceneId && panelStateService) {
                 patchStoryEditorViewState(panelStateService, sceneId, { scroll: captureStoryEditorScrollAnchor(el) });
             }
         });
@@ -1647,6 +1727,15 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     needed and scroll-position restore keeps working. */}
                 <div aria-hidden style={{ height: "calc(100% - 40px)" }} />
             </div>
+            {/* Pinned over the scroller rather than sticky inside it: the rows are a windowed absolute
+                layout, so there is no ancestor for a sticky row to stick within. */}
+            {scrollContext ? (
+                <div className="pointer-events-none absolute inset-x-0 top-0 z-[4] flex justify-start px-3 pt-1">
+                    <span className="truncate rounded-md border border-edge bg-surface-overlay/95 px-2 py-0.5 text-2xs text-fg-muted shadow-sm">
+                        {scrollContext}
+                    </span>
+                </div>
+            ) : null}
             <ContextMenu
                 items={rowMenuItems}
                 position={rowMenu.menuState.position}
