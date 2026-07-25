@@ -137,6 +137,52 @@ describe("computeStoryStageSnapshot", () => {
         ]);
     });
 
+    it("records the settled camera pose before the target and clamps degenerate values", () => {
+        // The stage camera is a story-level singleton whose pose the runtime carries into a
+        // row-precise launch. A launch that pre-poses everything else but leaves the camera neutral
+        // shows the author a shot the real playthrough never had. Clamping mirrors the compiler,
+        // because the pose is pre-posed straight onto the camera, bypassing compileCameraAction.
+        const document = baseDocument({
+            zoom: block("zoom", "action", { action: "camera", operation: "zoom", zoom: 0 }),
+            pan: block("pan", "action", { action: "camera", operation: "pan", position: { xalign: 0.25, yalign: 0.5 } }),
+            rotate: block("rotate", "action", { action: "camera", operation: "rotate", rotation: 15 }),
+            dark: block("dark", "action", { action: "camera", operation: "darken", darkness: 2 }),
+            target: say("target"),
+        }, ["zoom", "pan", "rotate", "dark", "target"]);
+        const result = snapshot(document, "target");
+        expect(result.diagnostics).toEqual([]);
+        // zoom 0 → the 0.05 floor; darkness 2 → the 0-1 ceiling.
+        expect(result.camera).toEqual({
+            props: {
+                zoom: 0.05,
+                position: expect.objectContaining({ xalign: 0.25, yalign: 0.5 }),
+                rotation: 15,
+            },
+            effects: { darkness: 1 },
+        });
+    });
+
+    it("lets the latest camera op on a channel win and drops the pose on reset", () => {
+        const later = baseDocument({
+            first: block("first", "action", { action: "camera", operation: "zoom", zoom: 2 }),
+            second: block("second", "action", { action: "camera", operation: "zoom", zoom: 3 }),
+            target: say("target"),
+        }, ["first", "second", "target"]);
+        expect(snapshot(later, "target").camera?.props.zoom).toBe(3);
+
+        const reset = baseDocument({
+            zoom: block("zoom", "action", { action: "camera", operation: "zoom", zoom: 2 }),
+            reset: block("reset", "action", { action: "camera", operation: "reset" }),
+            target: say("target"),
+        }, ["zoom", "reset", "target"]);
+        expect(snapshot(reset, "target").camera).toBeNull();
+    });
+
+    it("leaves the camera pose null when no /camera runs before the target", () => {
+        const document = baseDocument({ target: say("target") }, ["target"]);
+        expect(snapshot(document, "target").camera).toBeNull();
+    });
+
     it("merges successive transforms with position-aware semantics", () => {
         const document = baseDocument({
             show: block("show", "action", { action: "image", operation: "show", objectName: "hero", transform: { preset: "left", durationMs: 200 } }),
