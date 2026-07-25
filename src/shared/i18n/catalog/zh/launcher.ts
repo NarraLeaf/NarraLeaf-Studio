@@ -61,6 +61,7 @@ export const launcher = {
         permissions: "权限",
         noPermissions: "无特殊权限",
         updateAvailable: "有可用更新",
+        requiresStudio: "此插件需要 Studio {range}，当前版本为 {version}。",
         openReleasePage: "查看发行说明",
         homepage: "主页",
         field: {
@@ -81,6 +82,7 @@ export const launcher = {
             install: "安装",
             installed: "已安装",
             update: "更新",
+            needsStudio: "需要 Studio {range}",
             emptyList: "注册表中暂无可用插件。",
             offline: "无法连接到插件注册表。",
             retry: "重试",
