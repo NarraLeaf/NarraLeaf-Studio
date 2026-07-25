@@ -4,7 +4,6 @@ import type { StoryBlock, StoryBlockId, StoryScene } from "@shared/types/story";
 import type { NlrActionIdBinding } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import {
     blockIdForActionId,
-    firstActionIdForBlock,
     projectSceneTimeline,
 } from "./storyRuntimeDebugModel";
 
@@ -82,10 +81,5 @@ describe("action id ↔ block bindings", () => {
         expect(blockIdForActionId(bindings, "s-b-0")).toBe("b");
         expect(blockIdForActionId(bindings, "missing")).toBeNull();
         expect(blockIdForActionId(bindings, null)).toBeNull();
-    });
-
-    it("resolves the first action id a block compiled to", () => {
-        expect(firstActionIdForBlock(bindings, "a")).toBe("s-a-0");
-        expect(firstActionIdForBlock(bindings, "missing")).toBeNull();
     });
 });
