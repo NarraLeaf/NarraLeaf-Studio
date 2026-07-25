@@ -3,19 +3,29 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
+import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import type { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 
 /**
- * Where a story-editor avatar's bytes come from. A character's differential sprite is a *project*
- * asset (the shared asset library, addressed by its `Asset` object); a character's thumbnail is an
- * *editor* asset (the private `editor/assets/` store, addressed by a file id). The two live in
- * different id spaces and load through different services, so a source has to name which — routing by
- * id string alone silently misses (a project id handed to `readRaw` returns not-found and the avatar
- * quietly falls back to the category icon, which was the M1 differential-avatar defect).
+ * Where an image's bytes come from. A character's differential sprite is a *project* asset (the
+ * shared asset library, addressed by its `Asset` object); a character's thumbnail is an *editor*
+ * asset (the private `editor/assets/` store, addressed by a file id). The two live in different id
+ * spaces and load through different services, so a source has to name which — routing by id string
+ * alone silently misses (a project id handed to `readRaw` returns not-found and the avatar quietly
+ * falls back to the category icon, which was the M1 differential-avatar defect).
+ *
+ * `thumbnail` is the same project asset read small: `AssetsService.getThumbnailPath` renders (and
+ * disk-caches) a 160px PNG, which is what a grid of tiles wants — a browser view of a library with
+ * twenty backgrounds in it must not decode twenty full-size images to draw twenty 96px squares. It
+ * falls back to the full bytes rather than to an icon, because a tile that cannot show its own
+ * content is the defect this cache exists to prevent. `project` and `thumbnail` are separate cache
+ * entries on purpose: they hold different bytes at different sizes, and a detail pane asking for the
+ * full image must not be handed the tile's downscale.
  */
 export type BadgeImageSource =
     | { kind: "project"; asset: Asset<AssetType.Image> }
+    | { kind: "thumbnail"; asset: Asset<AssetType.Image> }
     | { kind: "editor"; fileId: string };
 
 /**
@@ -42,7 +52,7 @@ const entries = new Map<string, Entry>();
 const listeners = new Map<string, Set<() => void>>();
 
 function sourceKey(source: BadgeImageSource): string {
-    return source.kind === "project" ? `project:${source.asset.id}` : `editor:${source.fileId}`;
+    return source.kind === "editor" ? `editor:${source.fileId}` : `${source.kind}:${source.asset.id}`;
 }
 
 function emit(key: string): void {
@@ -157,8 +167,16 @@ function ensureAssetInvalidationWired(assets: AssetsService): void {
     }
     wiredAssets = assets;
     const events = assets.getEvents();
-    events.on("updated", asset => invalidate(`project:${asset.id}`, false));
-    events.on("deleted", asset => invalidate(`project:${asset.id}`, true));
+    // Both readings of the same asset have to be told: a row showing the full image and a tile
+    // showing its downscale are separate entries, and refreshing only one leaves the other stale.
+    events.on("updated", asset => {
+        invalidate(`project:${asset.id}`, false);
+        invalidate(`thumbnail:${asset.id}`, false);
+    });
+    events.on("deleted", asset => {
+        invalidate(`project:${asset.id}`, true);
+        invalidate(`thumbnail:${asset.id}`, true);
+    });
 }
 
 function release(key: string): void {
@@ -212,6 +230,7 @@ export function useBadgeImageUrl(source: BadgeImageSource | null): string | null
         return {
             assets: context.services.get<AssetsService>(Services.Assets),
             serviceAssets: context.services.get<ServiceAssetsService>(Services.ServiceAssets),
+            fileSystem: context.services.get<FileSystemService>(Services.FileSystem),
         };
     }, [context, isInitialized]);
 
@@ -228,14 +247,27 @@ export function useBadgeImageUrl(source: BadgeImageSource | null): string | null
     // The loader closes over the current source; held in a ref so the memoized `subscribe` (which only
     // re-runs when `key` changes) always reads a fresh loader without re-subscribing every render.
     const loadRef = useRef<() => Promise<Uint8Array | null>>(() => Promise.resolve(null));
-    loadRef.current = () => {
+    loadRef.current = async () => {
         if (!source || !services) {
-            return Promise.resolve(null);
+            return null;
         }
-        if (source.kind === "project") {
-            return services.assets.fetch(source.asset).then(result => (result.success ? new Uint8Array(result.data.data) : null));
+        if (source.kind === "editor") {
+            const result = await services.serviceAssets.readRaw(source.fileId);
+            return result.ok ? result.data : null;
         }
-        return services.serviceAssets.readRaw(source.fileId).then(result => (result.ok ? result.data : null));
+        if (source.kind === "thumbnail") {
+            const path = await services.assets.getThumbnailPath(source.asset);
+            if (path.success && path.data) {
+                const raw = await services.fileSystem.readRaw(path.data);
+                if (raw.ok && raw.data && raw.data.byteLength > 0) {
+                    return raw.data;
+                }
+            }
+            // The downscale could not be produced or read (unsupported codec, cache directory gone).
+            // Fall through to the full bytes: a heavier decode still shows the asset, an icon does not.
+        }
+        const result = await services.assets.fetch(source.asset);
+        return result.success ? new Uint8Array(result.data.data) : null;
     };
 
     const subscribe = useCallback((onChange: () => void) => {

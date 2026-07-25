@@ -25,7 +25,6 @@ export const assets = {
         },
         confirmMessage: "Everything inside a selected group is deleted too. This cannot be undone.",
     },
-    emptyType: "No {label} yet",
     /** Asset category labels, keyed by the `AssetType` enum value. */
     types: {
         image: "Images",

@@ -38,6 +38,14 @@ interface AssetsPanelContextType {
     handleImportToGroup: (type: AssetType, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => void;
     isFocused: (id: string) => boolean;
 
+    /**
+     * True when a search or a filter is currently narrowing `filteredAssets` / `filteredGroups`.
+     *
+     * The views read this to stop hiding hits behind folders: a match filed inside a collapsed group
+     * has to be on screen, so the tree force-opens and the grid goes flat while this is set.
+     */
+    isNarrowed: boolean;
+
     /** True when the panel uses the compact toolbar (e.g. bottom dock). Icon view can merge group navigation there. */
     compactToolbar: boolean;
     setAssetsIconToolbarCenter: (state: AssetsIconViewToolbarCenter | null) => void;

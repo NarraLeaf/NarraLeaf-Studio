@@ -24,7 +24,6 @@ export const assets = {
         },
         confirmMessage: "所选分组内的全部内容也会一并删除，且无法撤销。",
     },
-    emptyType: "还没有 {label}",
     types: {
         image: "图片",
         audio: "音频",
