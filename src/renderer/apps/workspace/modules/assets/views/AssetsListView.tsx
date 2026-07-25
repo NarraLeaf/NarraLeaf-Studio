@@ -141,10 +141,13 @@ function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType;
         handleDropOnItem,
         handleImportToGroup,
         isFocused,
+        isNarrowed,
     } = useAssetsPanelContext();
     const [isDragOverLocal, setDragOverLocal] = useState(false);
 
-    const isOpen = expandedGroups.has(group.id);
+    // Groups default to collapsed, so a search that left them collapsed would return hits nobody can
+    // see. While something is narrowing the library, every surviving group is open.
+    const isOpen = isNarrowed || expandedGroups.has(group.id);
     const toggleOpen = useCallback(() => {
         setExpandedGroups((prev) => {
             const newSet = new Set(prev);
