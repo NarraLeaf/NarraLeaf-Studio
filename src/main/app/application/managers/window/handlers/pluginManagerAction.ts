@@ -17,6 +17,7 @@ import type { LocaleContribution } from "@shared/i18n";
 import { downloadAndExtract, fetchRegistryIndex, resolveRegistryUrl } from "../../pluginRegistryClient";
 import { WindowAppType, WindowCloseResults } from "@shared/types/window";
 import { resolveDependencies } from "@shared/utils/resolveDependencies";
+import { satisfiesRange } from "@shared/utils/semver";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
 import { readPublishedPluginData } from "../../pluginRuntimeData";
 import { authorizeActorCapabilityRequest } from "../actorAuthorization";
@@ -306,6 +307,16 @@ export class PluginInstallFromRegistryHandler extends IPCHandler<IPCEventType.pl
             const entry = index.plugins.find(plugin => plugin.id === data.pluginId);
             if (!entry) {
                 throw new Error(`Plugin is not in the registry: ${data.pluginId}`);
+            }
+            // The store UI already hides the button, but the range is enforced
+            // here too: this handler is the trust boundary, and an incompatible
+            // plugin that installs and then throws at load is far harder to
+            // diagnose than one that refuses up front.
+            const studioVersion = window.app.getAppInfo().version;
+            if (!satisfiesRange(studioVersion, entry.studioVersion)) {
+                throw new Error(
+                    `${entry.name} requires Studio ${entry.studioVersion} (this is ${studioVersion})`,
+                );
             }
             const tempDir = path.join(
                 os.tmpdir(),

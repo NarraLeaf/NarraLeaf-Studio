@@ -195,7 +195,7 @@ export function StoryScenePreviewFloat(props: {
             <div className={`${cornerClass} right-0 top-0 cursor-nesw-resize`} style={{ touchAction: "none" }} onPointerDown={startResize("ne")} />
             <div className={`${cornerClass} left-0 bottom-0 cursor-nesw-resize`} style={{ touchAction: "none" }} onPointerDown={startResize("sw")} />
             <div className={`${cornerClass} right-0 bottom-0 cursor-nwse-resize`} style={{ touchAction: "none" }} onPointerDown={startResize("se")}>
-                <div className="pointer-events-none absolute bottom-1 right-1 h-2 w-2 rounded-[1px] border-b-2 border-r-2 border-fg-subtle/60" />
+                <div className="pointer-events-none absolute bottom-1 right-1 h-2 w-2 rounded-sm border-b-2 border-r-2 border-fg-subtle/60" />
             </div>
         </div>
     );

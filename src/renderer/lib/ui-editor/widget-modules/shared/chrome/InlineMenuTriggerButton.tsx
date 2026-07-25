@@ -20,7 +20,7 @@ export type InlineMenuTriggerButtonProps = {
 };
 
 const ICON_GHOST_TRIGGER_BASE =
-    "grid h-7 w-7 shrink-0 place-items-center rounded border-0 bg-transparent p-0 text-fg-subtle transition-colors hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40";
+    "grid h-7 w-7 shrink-0 place-items-center rounded-md border-0 bg-transparent p-0 text-fg-subtle transition-colors hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40";
 
 /**
  * Square trigger that opens a positioned ContextMenu (used in compact inspector rows).

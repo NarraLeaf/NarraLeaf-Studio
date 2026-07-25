@@ -97,7 +97,7 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
                         localTags.map((tag) => (
                             <span
                                 key={tag}
-                                className="inline-flex items-center gap-1 px-2 py-1 bg-primary/20 text-primary text-xs rounded"
+                                className="inline-flex items-center gap-1 px-2 py-1 bg-primary/20 text-primary text-xs rounded-md"
                             >
                                 {tag}
                                 <button

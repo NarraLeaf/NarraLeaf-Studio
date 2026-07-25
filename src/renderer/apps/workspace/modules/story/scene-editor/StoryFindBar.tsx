@@ -78,7 +78,7 @@ export function StoryFindBar(props: {
                 aria-label={t("story.find.caseSensitive")}
                 aria-pressed={props.caseSensitive}
                 className={[
-                    "grid h-7 w-7 place-items-center rounded transition-colors",
+                    "grid h-7 w-7 place-items-center rounded-md transition-colors",
                     props.caseSensitive ? "bg-primary/15 text-primary" : "text-fg-subtle hover:bg-fill hover:text-fg",
                 ].join(" ")}
             >
@@ -97,7 +97,7 @@ export function StoryFindBar(props: {
                 disabled={props.matchCount === 0}
                 title={t("story.find.previous")}
                 aria-label={t("story.find.previous")}
-                className="grid h-7 w-7 place-items-center rounded text-fg-muted transition-colors hover:bg-fill hover:text-fg disabled:opacity-40"
+                className="grid h-7 w-7 place-items-center rounded-md text-fg-muted transition-colors hover:bg-fill hover:text-fg disabled:opacity-40"
             >
                 <ChevronUp className="h-3.5 w-3.5" />
             </button>
@@ -107,7 +107,7 @@ export function StoryFindBar(props: {
                 disabled={props.matchCount === 0}
                 title={t("story.find.next")}
                 aria-label={t("story.find.next")}
-                className="grid h-7 w-7 place-items-center rounded text-fg-muted transition-colors hover:bg-fill hover:text-fg disabled:opacity-40"
+                className="grid h-7 w-7 place-items-center rounded-md text-fg-muted transition-colors hover:bg-fill hover:text-fg disabled:opacity-40"
             >
                 <ChevronDown className="h-3.5 w-3.5" />
             </button>
@@ -127,7 +127,7 @@ export function StoryFindBar(props: {
                 disabled={props.matchCount === 0}
                 title={t("story.find.replace")}
                 aria-label={t("story.find.replace")}
-                className="grid h-7 w-7 place-items-center rounded text-fg-muted transition-colors hover:bg-fill hover:text-fg disabled:opacity-40"
+                className="grid h-7 w-7 place-items-center rounded-md text-fg-muted transition-colors hover:bg-fill hover:text-fg disabled:opacity-40"
             >
                 <Replace className="h-3.5 w-3.5" />
             </button>
@@ -137,7 +137,7 @@ export function StoryFindBar(props: {
                 disabled={props.matchCount === 0}
                 title={t("story.find.replaceAll")}
                 aria-label={t("story.find.replaceAll")}
-                className="grid h-7 w-7 place-items-center rounded text-fg-muted transition-colors hover:bg-fill hover:text-fg disabled:opacity-40"
+                className="grid h-7 w-7 place-items-center rounded-md text-fg-muted transition-colors hover:bg-fill hover:text-fg disabled:opacity-40"
             >
                 <ReplaceAll className="h-3.5 w-3.5" />
             </button>
@@ -147,7 +147,7 @@ export function StoryFindBar(props: {
                 onClick={props.onClose}
                 title={t("common.close")}
                 aria-label={t("common.close")}
-                className="ml-auto grid h-7 w-7 place-items-center rounded text-fg-subtle transition-colors hover:bg-fill hover:text-fg"
+                className="ml-auto grid h-7 w-7 place-items-center rounded-md text-fg-subtle transition-colors hover:bg-fill hover:text-fg"
             >
                 <X className="h-3.5 w-3.5" />
             </button>

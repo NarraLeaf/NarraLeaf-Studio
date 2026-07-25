@@ -28,7 +28,7 @@ export function StatusEntry({
     // and the background arrive together rather than the text snapping ahead of the wash.
     const tone = running
         ? `${emphasis ? "text-on-primary" : "text-on-primary/85"} ${
-            onClick ? "cursor-default hover:bg-white/15 hover:text-on-primary" : ""
+            onClick ? "cursor-default hover:bg-on-primary/15 hover:text-on-primary" : ""
         }`
         : `${emphasis ? "text-fg-muted" : "text-fg-subtle"} ${
             onClick ? "cursor-default hover:bg-fill hover:text-fg" : ""

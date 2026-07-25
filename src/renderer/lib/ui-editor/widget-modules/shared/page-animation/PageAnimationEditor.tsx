@@ -102,7 +102,7 @@ function PageAnimationPreview({
                         settings.exitDurationSeconds,
                         settings.exitBlocking,
                     ].join(":")}
-                    className="h-9 w-14 rounded border border-cyan-300/40 bg-cyan-400/20 shadow-[0_0_24px_rgba(34,211,238,0.18)]"
+                    className="h-9 w-14 rounded-md border border-primary/40 bg-primary/20 shadow-[0_0_24px_rgba(64,168,196,0.18)]"
                     initial={initial}
                     animate={animate}
                 />

@@ -1,4 +1,4 @@
-import type { FileDetails, FileStat } from "@shared/utils/fs";
+import type { FileDetails, FileStat, FileEntry } from "@shared/utils/fs";
 import type { FsRequestResult } from "./os";
 import type { PluginPermissionRequest } from "./pluginPermissions";
 
@@ -49,7 +49,7 @@ export type PrivilegedFileSystemCallPayload = PrivilegedFileSystemCall & {
 
 export type PrivilegedFileSystemCallResult =
     | FsRequestResult<FileStat>
-    | FsRequestResult<FileStat[]>
+    | FsRequestResult<FileEntry[]>
     | FsRequestResult<FileDetails>
     | FsRequestResult<string>
     | FsRequestResult<string[]>

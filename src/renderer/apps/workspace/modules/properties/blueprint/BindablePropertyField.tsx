@@ -123,7 +123,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
         <div className="space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
                 <span
-                    className={`rounded border px-2 py-0.5 text-2xs font-medium capitalize tracking-wide ${statusBadgeClass(bp.status)}`}
+                    className={`rounded-md border px-2 py-0.5 text-2xs font-medium capitalize tracking-wide ${statusBadgeClass(bp.status)}`}
                 >
                     {bp.status}
                 </span>
@@ -154,7 +154,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                         <button
                             type="button"
                             disabled={!bp.canBind}
-                            className="rounded border border-binding/40 bg-binding/10 px-2 py-1 text-2xs text-binding hover:bg-binding/20 disabled:cursor-not-allowed disabled:opacity-40"
+                            className="rounded-md border border-binding/40 bg-binding/10 px-2 py-1 text-2xs text-binding hover:bg-binding/20 disabled:cursor-not-allowed disabled:opacity-40"
                             onClick={() => openPicker()}
                             title={
                                 !bp.canBind
@@ -170,7 +170,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                                     <span className="text-2xs font-medium text-fg">{t("properties.binding.bindProperty")}</span>
                                     <button
                                         type="button"
-                                        className="rounded p-0.5 text-fg-subtle hover:bg-fill hover:text-fg-muted"
+                                        className="rounded-md p-0.5 text-fg-subtle hover:bg-fill hover:text-fg-muted"
                                         aria-label={t("properties.binding.closePicker")}
                                         onClick={() => setPickerOpen(false)}
                                     >
@@ -187,7 +187,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                                         inputClassName="text-2xs"
                                     />
                                 </div>
-                                <div className="mb-2 max-h-32 overflow-auto rounded border border-edge">
+                                <div className="mb-2 max-h-32 overflow-auto rounded-md border border-edge">
                                     {filteredCandidates.length === 0 ? (
                                         <p className="px-2 py-2 text-2xs text-fg-subtle">{t("properties.binding.noMatches")}</p>
                                     ) : (
@@ -210,7 +210,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                                             <button
                                                 key={scope}
                                                 type="button"
-                                                className={`rounded px-2 py-0.5 text-2xs font-medium transition-colors ${
+                                                className={`rounded-md px-2 py-0.5 text-2xs font-medium transition-colors ${
                                                     newFieldScope === scope
                                                         ? "bg-binding/20 text-binding border border-binding/40"
                                                         : "bg-fill-subtle text-fg-muted border border-edge hover:bg-fill"
@@ -237,7 +237,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                                         />
                                         <button
                                             type="button"
-                                            className="shrink-0 rounded border border-binding/40 bg-binding/15 px-2 py-1 text-2xs font-medium text-binding hover:bg-binding/25"
+                                            className="shrink-0 rounded-md border border-binding/40 bg-binding/15 px-2 py-1 text-2xs font-medium text-binding hover:bg-binding/25"
                                             onClick={() => submitNew()}
                                         >
                                             {t("properties.binding.createAndBind")}
@@ -252,14 +252,14 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                     <>
                         <button
                             type="button"
-                            className="rounded border border-edge px-2 py-1 text-2xs text-fg hover:bg-fill-subtle"
+                            className="rounded-md border border-edge px-2 py-1 text-2xs text-fg hover:bg-fill-subtle"
                             onClick={() => bp.goToField()}
                         >
                             {t("properties.binding.openField")}
                         </button>
                         <button
                             type="button"
-                            className="rounded border border-edge px-2 py-1 text-2xs text-fg-muted hover:bg-fill-subtle"
+                            className="rounded-md border border-edge px-2 py-1 text-2xs text-fg-muted hover:bg-fill-subtle"
                             onClick={() => bp.unbind()}
                         >
                             {t("properties.binding.removeBinding")}
@@ -270,7 +270,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                     <>
                         <button
                             type="button"
-                            className="rounded border border-edge px-2 py-1 text-2xs text-fg-muted hover:bg-fill-subtle"
+                            className="rounded-md border border-edge px-2 py-1 text-2xs text-fg-muted hover:bg-fill-subtle"
                             onClick={() => bp.unbind()}
                         >
                             {t("properties.binding.removeBroken")}

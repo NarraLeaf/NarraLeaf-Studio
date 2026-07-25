@@ -44,10 +44,14 @@ import {
  * scene, generated from the same spec the parser reads, with the insert action on the page you are
  * reading. Nothing here is hand-written per command, so nothing here can go stale.
  *
- * Filing is still A1's: a spec with a target param belongs to every subject its `accepts` names, which
- * is what makes "everything I can do to an Image" a real question. The unfiltered list files each
- * command once, under its own `category`, because five identical `/show` rows with five identical
- * descriptions is not a browsing aid — the other subjects are named in the detail instead.
+ * Filing is A1's, unchanged: a spec with a target param belongs to every subject its `accepts` names,
+ * so `/show` is listed under 图片 exactly where an author browses for it. The `/` browse menu made the
+ * same choice (A4 WI-1), and the two surfaces have to agree — a command that exists under 图片 in one
+ * menu and not the other is the "two menus, two mental models" split both were built to close.
+ *
+ * That does mean a generic verb repeats, with the same sentence under it each time. The answer to that
+ * is the detail page, which says what this command does to THIS subject and names the others; it is
+ * not to hide the row from the subject an author is looking under.
  */
 
 const STARRED_CATEGORY_ID = "starred";
@@ -147,40 +151,15 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
         return searchActionCommands(starred, query);
     }, [activeTab, query, sidebarGroups, starredIds]);
 
-    /**
-     * Every other tab keeps the subject sections, each ranked by the matcher the `/` creator uses.
-     *
-     * With no subject chosen, a command appears once — under the section its own `category` names.
-     * Repeating `/show` under five subjects with the same sentence beneath it each time reads as five
-     * commands that happen to share a name; the subjects it really reaches are in its detail.
-     */
+    /** Every other tab keeps the subject sections, each ranked by the matcher the `/` creator uses. */
     const visibleGroups = useMemo<StoryCommandSidebarGroup[]>(() => {
         if (activeTab === STARRED_CATEGORY_ID) {
             return [];
         }
-        const unfiltered = activeTab === ALL_CATEGORY_ID;
-        const seen = new Set<string>();
-        return filterSidebarGroups(sidebarGroups, unfiltered ? null : activeTab)
-            .map(entry => {
-                const commands = searchActionCommands(entry.commands, query).filter(command => {
-                    if (!unfiltered) {
-                        return true;
-                    }
-                    const manual = manualById.get(command.id);
-                    // A plugin action has no spec: it is filed once already, so it is kept as-is.
-                    if (manual && manual.group !== entry.group.id) {
-                        return false;
-                    }
-                    if (seen.has(command.id)) {
-                        return false;
-                    }
-                    seen.add(command.id);
-                    return true;
-                });
-                return { ...entry, commands };
-            })
+        return filterSidebarGroups(sidebarGroups, activeTab === ALL_CATEGORY_ID ? null : activeTab)
+            .map(entry => ({ ...entry, commands: searchActionCommands(entry.commands, query) }))
             .filter(entry => entry.commands.length > 0);
-    }, [activeTab, manualById, query, sidebarGroups]);
+    }, [activeTab, query, sidebarGroups]);
 
     const createAction = useCallback((commandId: string) => {
         if (!payload?.tabId) {
@@ -210,7 +189,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                     <button
                         type="button"
                         className={[
-                            "ml-auto grid h-7 w-7 place-items-center rounded transition-colors",
+                            "ml-auto grid h-7 w-7 place-items-center rounded-md transition-colors",
                             starredIds.has(openCommandId) ? "text-warning" : "text-fg-subtle hover:text-warning",
                         ].join(" ")}
                         title={starredIds.has(openCommandId) ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")}
@@ -388,7 +367,7 @@ function ActionCreatorRow(props: {
             </button>
             <button
                 type="button"
-                className="mr-1 grid h-7 w-7 shrink-0 place-items-center rounded text-fg-subtle opacity-0 transition hover:bg-fill-strong hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 group-hover:opacity-100"
+                className="mr-1 grid h-7 w-7 shrink-0 place-items-center rounded-md text-fg-subtle opacity-0 transition hover:bg-fill-strong hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 group-hover:opacity-100"
                 title={t("story.manual.insert")}
                 aria-label={t("story.manual.insert")}
                 onClick={() => props.onCreate(props.command.id)}
@@ -470,7 +449,7 @@ function CommandDetail(props: {
                     <ul className="flex flex-col gap-1">
                         {entry.examples.map(example => (
                             <li key={example}>
-                                <code className="block break-words rounded border border-edge-subtle bg-surface-sunken px-2 py-1.5 font-mono text-2xs text-fg-muted">
+                                <code className="block break-words rounded-md border border-edge-subtle bg-surface-sunken px-2 py-1.5 font-mono text-2xs text-fg-muted">
                                     {example}
                                 </code>
                             </li>
