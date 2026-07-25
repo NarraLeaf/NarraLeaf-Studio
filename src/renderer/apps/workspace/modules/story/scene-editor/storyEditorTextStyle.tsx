@@ -41,15 +41,69 @@ function resolveFontFamily(value: unknown): string {
     return FONT_FAMILY_STACKS[EDITOR_FONT_FAMILY_DEFAULT];
 }
 
-/** Comfortable density (WI-6) enlarges the authored text and opens up its line spacing. */
-const COMFORTABLE_FONT_SCALE = 1.15;
-const COMFORTABLE_LINE_HEIGHT = 1.7;
+/**
+ * The reading-density table — **the only place** the density numbers live.
+ *
+ * `rowBox` is the height of the single-line content box a row centres its text, its line number and its
+ * drag handle inside. It used to be a flat `min-height` on the row itself (a rule in styles.css), which
+ * grew the row but left all three columns pinned to its top (the grid is `items-start`, deliberately —
+ * a wrapped line must keep its FIRST line aligned with the badge, not float to the middle). The extra
+ * height therefore landed entirely below the text: 10.8px of dead space per row in comfortable, with the
+ * drag handle — which did centre, over the full row — visibly out of line with it.
+ *
+ * Publishing the box height as a CSS variable instead lets every column size the same box and centre
+ * inside it, so single-line rows are exactly centred and wrapped rows still align on their first line.
+ *
+ * `lineHeight` is deliberately absent for `compact`: that档 inherits the Tailwind `text-sm` leading it
+ * has always had, and pinning a number here would silently change the status quo.
+ */
+export const STORY_DENSITY_METRICS: Record<StoryEditorDensity, { rowBox: number; fontScale: number; lineHeight?: number }> = {
+    // 28, not the historical 27: a dialogue row's speaker nametag is `min-h-[28px]` and was already
+    // driving those rows one pixel taller than narration rows. Matching it here makes every compact row
+    // the same height (the rhythm the 27 was meant to give) and lands the three columns on the same
+    // centre line, instead of half a pixel apart.
+    compact: { rowBox: 28, fontScale: 1 },
+    standard: { rowBox: 32, fontScale: 1.08, lineHeight: 1.55 },
+    comfortable: { rowBox: 38, fontScale: 1.15, lineHeight: 1.7 },
+};
+
+/** The CSS variable the row chrome sizes its single-line boxes from. */
+export const STORY_ROW_BOX_VAR = "--nl-story-row-box";
+/** The CSS variable the row grid sizes its line-number gutter from. */
+export const STORY_GUTTER_VAR = "--nl-story-gutter";
+
+/** Gutter at two digits — chevron (14) + gap (4) + two tabular digits, the width it has always had. */
+const GUTTER_BASE_PX = 36;
+/** One tabular digit at the gutter's 12px type. */
+const GUTTER_DIGIT_PX = 7;
+
+/**
+ * Width of the line-number column for a scene of `rowCount` rows. Fixed at 36px, four digits would
+ * collide with the fold chevron, which is exactly what a 1000-line chapter has.
+ */
+export function storyGutterWidth(rowCount: number): number {
+    const digits = String(Math.max(1, rowCount)).length;
+    return GUTTER_BASE_PX + Math.max(0, digits - 2) * GUTTER_DIGIT_PX;
+}
+
+/**
+ * Root style for the scene editor: publishes the density's box height and the line-number gutter width
+ * to the rows below. Applied alongside `data-story-density`, which stays as the attribute selectors
+ * and the tests read.
+ */
+export function storyEditorRootStyle(density: StoryEditorDensity, rowCount: number): CSSProperties {
+    return {
+        [STORY_ROW_BOX_VAR]: `${STORY_DENSITY_METRICS[density].rowBox}px`,
+        [STORY_GUTTER_VAR]: `${storyGutterWidth(rowCount)}px`,
+    } as CSSProperties;
+}
 
 function toStyle(fontSize: number, fontFamily: string, density: StoryEditorDensity | undefined): CSSProperties {
-    if (density === "comfortable") {
-        return { fontSize: Math.round(fontSize * COMFORTABLE_FONT_SCALE), fontFamily, lineHeight: COMFORTABLE_LINE_HEIGHT };
-    }
-    return { fontSize, fontFamily };
+    const metrics = STORY_DENSITY_METRICS[density ?? "compact"] ?? STORY_DENSITY_METRICS.compact;
+    const scaled = metrics.fontScale === 1 ? fontSize : Math.round(fontSize * metrics.fontScale);
+    return metrics.lineHeight === undefined
+        ? { fontSize: scaled, fontFamily }
+        : { fontSize: scaled, fontFamily, lineHeight: metrics.lineHeight };
 }
 
 const DEFAULT_STYLE = toStyle(EDITOR_FONT_SIZE_DEFAULT, resolveFontFamily(EDITOR_FONT_FAMILY_DEFAULT), undefined);

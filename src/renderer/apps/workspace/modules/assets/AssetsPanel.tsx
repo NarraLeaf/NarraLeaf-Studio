@@ -108,7 +108,7 @@ function resolveAssetGroupPathIds(pathIds: string[], groups: Record<AssetType, A
 }
 
 export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPanelPayload>) {
-    const { t, tn } = useTranslation();
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { registerActionGroup, unregisterActionGroup } = useRegistry();
     const searchBoxRef = useRef<HTMLInputElement>(null);
@@ -491,7 +491,6 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                         <div className="flex items-center justify-between">
                             <FilterSystem filters={filterConfigs} activeFilters={activeFilters} onFiltersChange={setActiveFilters} onFilterOpen={handleFilterOpen} />
                             <div className="flex items-center gap-2">
-                                <span className="text-xs text-fg-muted">{tn("assets.itemCount", Object.values(filteredAssets).flat().length)}</span>
                                 <ViewModeToggle mode={viewMode} onChange={setViewMode} />
                                 <OpenOverviewButton />
                                 <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
@@ -587,7 +586,10 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                         : "flex items-center gap-2 shrink-0"
                                 }
                             >
-                                <span className="text-2xs text-fg-subtle hidden sm:inline">{tn("assets.itemCount", Object.values(filteredAssets).flat().length)}</span>
+                                {/* The item count used to sit here. It was redundant (every group in the
+                                    tree below already prints its own count, and the overview page prints
+                                    the total) and it never gave way: `hidden sm:inline` is a VIEWPORT
+                                    query, so a narrow sidebar in a wide window still paid for it. */}
                                 <ViewModeToggle mode={viewMode} onChange={setViewMode} />
                                 <OpenOverviewButton />
                                 <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
