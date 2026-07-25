@@ -78,7 +78,13 @@ import {
 } from "./AppSurfaceLayer";
 import type { ChoiceSlotRuntime } from "./ChoiceSlotSurface";
 import type { GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
-import { createGameUiSlotComponents, createLiveGameUiCallbacks, createNlrGameWithGameUi, fastForwardToNextChoice } from "./gameUiSlots";
+import {
+    createGameUiSlotComponents,
+    createLiveGameUiCallbacks,
+    createNlrGameWithGameUi,
+    fastForwardToNextChoice,
+    restoreLiveGameToHistory,
+} from "./gameUiSlots";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -685,12 +691,46 @@ export function GameApp(props: GameAppProps): ReactNode {
                 return false;
             }
         },
-        fastForwardToActionId: async actionId => {
+        getPlayedBlockTokens: () => {
+            const liveGame = nlrLiveGameRef.current;
+            const bindings = nlrCompiledRef.current?.actionIdBindings;
+            if (!liveGame || !bindings?.length) {
+                return {};
+            }
+            try {
+                // Backlog entries carry the very Action object the compiler bound, so the block is
+                // resolved by identity — no id parsing, and immune to a story compiled with more
+                // than one copy of a scene (a row-precise launch compiles the entry scene twice).
+                // Keyed by identity, so the map is typed by reference rather than by the binding's
+                // narrower Action union (the backlog hands back the base `Action`).
+                const blockByAction = new Map<unknown, string>(
+                    bindings.map(binding => [binding.action, binding.blockId]),
+                );
+                const tokens: Record<string, string> = {};
+                for (const entry of liveGame.getHistory()) {
+                    const blockId = blockByAction.get(entry.action);
+                    // A pending line is still being played; it has no usable restore snapshot yet.
+                    if (!blockId || entry.isPending === true || entry.snapshot == null || !entry.token) {
+                        continue;
+                    }
+                    // Last write wins: a re-entered row restores to its most recent visit.
+                    tokens[blockId] = entry.token;
+                }
+                return tokens;
+            } catch {
+                return {};
+            }
+        },
+        restoreToHistoryToken: token => {
             const liveGame = nlrLiveGameRef.current;
             if (!liveGame) {
-                throw new Error("Fast Forward: game runtime is not available");
+                return false;
             }
-            return liveGame.fastForward({ until: { actionId } });
+            try {
+                return restoreLiveGameToHistory(liveGame, token);
+            } catch {
+                return false;
+            }
         },
         relaunch: async ({ sceneId, startBlockId, snapshotId }) => {
             const request = activeStoryRequestRef.current;

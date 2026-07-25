@@ -177,19 +177,6 @@ export function blockIdForActionId(
     return null;
 }
 
-/** The first action id a block compiles to — the hot-jump target for a timeline row. */
-export function firstActionIdForBlock(
-    bindings: readonly ActionIdBindingLike[],
-    blockId: StoryBlockId,
-): string | null {
-    for (const binding of bindings) {
-        if (binding.blockId === blockId) {
-            return binding.staticId;
-        }
-    }
-    return null;
-}
-
 /**
  * The declared variables of the running story, split by scope: scene variables of the entry scene,
  * document-wide saved and persistent. Live values are merged in by the panel from the runtime store.

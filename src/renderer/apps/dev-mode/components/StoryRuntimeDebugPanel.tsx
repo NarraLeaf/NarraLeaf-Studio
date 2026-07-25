@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { DevModeBundle } from "@shared/types/devMode";
-import type { StoryDocument, StoryLiteralValue, StorySceneId, StoryVariableValueType } from "@shared/types/story";
+import type { StoryBlockId, StoryDocument, StoryLiteralValue, StorySceneId, StoryVariableValueType } from "@shared/types/story";
 import { useTranslation } from "@/lib/i18n";
+import { Select } from "@/lib/components/elements/Select";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { GameAppStoryRuntimeBridge, StoryRuntimeStackView } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { buildSceneFlowGraph } from "@/apps/workspace/modules/story-flow/sceneFlowModel";
 import { SceneFlowCanvas } from "@/apps/workspace/modules/story-flow/SceneFlowCanvas";
 import {
     blockIdForActionId,
-    firstActionIdForBlock,
     listDeclaredStoryVariables,
     projectSceneTimeline,
     type DeclaredStoryVariable,
@@ -102,6 +102,54 @@ function useCurrentActionId(storyRuntime: GameAppStoryRuntimeBridge): string | n
     return actionId;
 }
 
+/**
+ * The play head as a Studio row: the last block an executed action belonged to.
+ *
+ * Resolved inside the subscription rather than at flush time, because the id stream is not
+ * replayable — a row whose action shares a frame with a later one (the engine's own tail action
+ * after the last row of a scene, an async branch) would otherwise never be seen, and the play head
+ * would sit a row behind whatever actually ran. Ids that belong to no Studio block leave the head
+ * where it is; a null id (no story running) clears it.
+ */
+function useCurrentBlockId(storyRuntime: GameAppStoryRuntimeBridge): StoryBlockId | null {
+    const [blockId, setBlockId] = useState<StoryBlockId | null>(
+        () => blockIdForActionId(storyRuntime.getActionIdBindings(), storyRuntime.getCurrentActionId()),
+    );
+    useEffect(() => {
+        let raf = 0;
+        let next: StoryBlockId | null = blockIdForActionId(
+            storyRuntime.getActionIdBindings(),
+            storyRuntime.getCurrentActionId(),
+        );
+        setBlockId(next);
+        const flush = (): void => {
+            raf = 0;
+            setBlockId(next);
+        };
+        const unsubscribe = storyRuntime.subscribeCurrentAction(actionId => {
+            if (actionId !== null) {
+                const resolved = blockIdForActionId(storyRuntime.getActionIdBindings(), actionId);
+                if (!resolved) {
+                    return;
+                }
+                next = resolved;
+            } else {
+                next = null;
+            }
+            if (!raf) {
+                raf = requestAnimationFrame(flush);
+            }
+        });
+        return () => {
+            if (raf) {
+                cancelAnimationFrame(raf);
+            }
+            unsubscribe();
+        };
+    }, [storyRuntime]);
+    return blockId;
+}
+
 export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): ReactNode {
     const { storyRuntime, scopeBridge, bundle, className } = props;
     const { t } = useTranslation();
@@ -141,37 +189,53 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
         [storyRuntime],
     );
 
+    const snapshotOptions = useMemo(
+        () => [
+            { value: "", label: t("devMode.runtime.snapshotDefault") },
+            ...snapshots.map(snapshot => ({ value: snapshot.id, label: snapshot.name })),
+        ],
+        [snapshots, t],
+    );
+
+    // The root execution stack is empty for most of a normal scene, so the tab is shown only while
+    // it holds something rather than standing there with a sentence explaining that it does not.
+    const stackTick = useStoryRuntimeTick(storyRuntime);
+    const hasStack = useMemo(() => {
+        void stackTick;
+        const snapshot = storyRuntime.getStackSnapshot();
+        return Boolean(snapshot && (snapshot.root.frames.length > 0 || snapshot.async.length > 0));
+    }, [storyRuntime, stackTick]);
+
+    const tabs = useMemo(
+        () => ([
+            ["variables", t("devMode.tabs.variables")],
+            ...(hasStack ? [["stack", t("devMode.tabs.stack")]] : []),
+            ["timeline", t("devMode.tabs.timeline")],
+            ["scene", t("devMode.tabs.scene")],
+        ] as [StoryRuntimeTabId, string][]),
+        [hasStack, t],
+    );
+    const activeTab: StoryRuntimeTabId = tab === "stack" && !hasStack ? "variables" : tab;
+
     return (
         <div className={rootClass}>
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-edge px-2 py-1.5">
                 <span className="text-xs font-medium text-fg">{t("devMode.runtime.title")}</span>
                 {snapshots.length > 0 ? (
-                    <select
-                        className="max-w-[55%] shrink-0 truncate rounded-md border border-edge bg-surface-sunken px-1.5 py-0.5 text-2xs text-fg-muted outline-none focus-visible:border-edge-strong"
+                    <Select
+                        className="max-w-[55%] shrink-0"
+                        size="sm"
+                        portalMenu
+                        options={snapshotOptions}
                         value={context?.snapshotId ?? ""}
-                        aria-label={t("devMode.runtime.snapshot")}
-                        onChange={event => onSelectSnapshot(event.target.value)}
-                    >
-                        <option value="">{t("devMode.runtime.snapshotDefault")}</option>
-                        {snapshots.map(snapshot => (
-                            <option key={snapshot.id} value={snapshot.id}>
-                                {snapshot.name}
-                            </option>
-                        ))}
-                    </select>
+                        onChange={value => onSelectSnapshot(String(value))}
+                    />
                 ) : null}
             </div>
 
             <div className="flex shrink-0 border-b border-edge bg-surface-sunken" role="tablist" aria-label={t("devMode.runtime.panelsAria")}>
-                {(
-                    [
-                        ["variables", t("devMode.tabs.variables")],
-                        ["stack", t("devMode.tabs.stack")],
-                        ["timeline", t("devMode.tabs.timeline")],
-                        ["scene", t("devMode.tabs.scene")],
-                    ] as const
-                ).map(([id, label]) => {
-                    const active = tab === id;
+                {tabs.map(([id, label]) => {
+                    const active = activeTab === id;
                     return (
                         <button
                             key={id}
@@ -198,16 +262,16 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden font-mono leading-snug">
                 {!document || !context ? (
                     <p className="p-2 text-2xs text-fg-subtle">{t("devMode.runtime.noStory")}</p>
-                ) : tab === "variables" ? (
+                ) : activeTab === "variables" ? (
                     <VariablesTab
                         storyRuntime={storyRuntime}
                         scopeBridge={scopeBridge}
                         document={document}
                         entrySceneId={context.sceneId}
                     />
-                ) : tab === "stack" ? (
+                ) : activeTab === "stack" ? (
                     <StackTab storyRuntime={storyRuntime} />
-                ) : tab === "timeline" ? (
+                ) : activeTab === "timeline" ? (
                     <TimelineTab storyRuntime={storyRuntime} document={document} sceneId={context.sceneId} bundle={bundle} />
                 ) : (
                     <SceneTab storyRuntime={storyRuntime} document={document} entrySceneId={context.sceneId} />
@@ -467,8 +531,10 @@ function StackTab(props: { storyRuntime: GameAppStoryRuntimeBridge }): ReactNode
 
     const bindings = storyRuntime.getActionIdBindings();
 
+    // The tab itself is hidden while the stacks are empty (see the panel's `hasStack`); this only
+    // covers the frame between the last stack frame draining and the tab disappearing.
     if (!snapshot || (snapshot.root.frames.length === 0 && snapshot.async.length === 0)) {
-        return <p className="p-2 text-2xs text-fg-subtle">{t("devMode.runtime.noStack")}</p>;
+        return null;
     }
 
     return (
@@ -568,10 +634,7 @@ function TimelineTab(props: {
         [bundle.storyLibrary],
     );
 
-    const currentBlockId = useMemo(
-        () => blockIdForActionId(storyRuntime.getActionIdBindings(), currentActionId),
-        [storyRuntime, currentActionId],
-    );
+    const currentBlockId = useCurrentBlockId(storyRuntime);
 
     // The timeline follows the running scene so the play head stays on screen across jumps; every
     // scene is compiled, so the current block resolves to whichever scene is live. Falls back to the
@@ -597,42 +660,37 @@ function TimelineTab(props: {
         currentRowRef.current?.scrollIntoView({ block: "nearest" });
     }, [currentBlockId, runningSceneId]);
 
+    /**
+     * Snapshot first: a row this session already played is restored from its own backlog snapshot —
+     * exact, immediate, no replay. Everything else (never played, played but not a backlog line, a
+     * trimmed backlog after an earlier restore) is a cold relaunch that enters the story at that
+     * row. Row order is deliberately not consulted: with `/label` + `/goto` it is not the execution
+     * order, and "has it played" is the question that actually decides which mechanism applies.
+     */
     const jumpToRow = useCallback(
         async (row: StoryTimelineRow) => {
             const context = storyRuntime.getStoryContext();
             if (!context) {
                 return;
             }
-            const bindings = storyRuntime.getActionIdBindings();
-            const orderIndex = (blockId: string | null) =>
-                blockId ? rows.findIndex(candidate => candidate.blockId === blockId) : -1;
-            const targetIndex = orderIndex(row.blockId);
-            const activeBlockId = blockIdForActionId(bindings, storyRuntime.getCurrentActionId());
-            const currentIndex = orderIndex(activeBlockId);
-            const targetActionId = firstActionIdForBlock(bindings, row.blockId);
-
-            // Hot jump only forward within the running scene from the current point; anything else (or
-            // a failed / unreachable fast-forward) silently falls back to a cold relaunch at the row.
-            if (targetActionId && currentIndex >= 0 && targetIndex > currentIndex) {
-                try {
-                    const result = await storyRuntime.fastForwardToActionId(targetActionId);
-                    if (result.reason === "action" && result.reachedTarget) {
-                        return;
-                    }
-                } catch {
-                    // fall through to the cold jump
-                }
+            const token = storyRuntime.getPlayedBlockTokens()[row.blockId];
+            if (token && storyRuntime.restoreToHistoryToken(token)) {
+                return;
             }
-            // The snapshot only seeds the entry scene; a cold jump into another scene uses defaults.
-            await storyRuntime.relaunch({
-                sceneId: runningSceneId,
-                startBlockId: row.blockId,
-                snapshotId: runningSceneId === entrySceneId ? context.snapshotId : undefined,
-            }).catch(() => {
-                // superseded / failed relaunch — swallow (debug affordance)
-            });
+            try {
+                // The snapshot only seeds the entry scene; a cold jump into another scene uses defaults.
+                await storyRuntime.relaunch({
+                    sceneId: runningSceneId,
+                    startBlockId: row.blockId,
+                    snapshotId: runningSceneId === entrySceneId ? context.snapshotId : undefined,
+                });
+            } catch (error) {
+                // A superseded or failed relaunch leaves the play head where it was; say so in the
+                // console rather than looking like a click that did nothing.
+                console.warn("[DevMode] timeline jump failed", error);
+            }
         },
-        [rows, runningSceneId, entrySceneId, storyRuntime],
+        [runningSceneId, entrySceneId, storyRuntime],
     );
 
     if (rows.length === 0) {
