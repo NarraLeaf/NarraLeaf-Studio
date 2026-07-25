@@ -24,7 +24,6 @@ export interface GlobalStateType extends Record<string, any> {
      * resolves through. Studio windows only; a shipped game keeps the brand anchor.
      */
     "ui.accentColor": string;
-    "ui.compactMode": boolean;
     /**
      * Calm the Studio interface: no CSS transitions or animations (styles.css) and no
      * framer-motion transform/layout animations (the MotionConfig in lib/renderApp). Independent
@@ -139,7 +138,6 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "ui.runMode": "devMode",
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,
     "ui.accentColor": ACCENT_COLOR_DEFAULT,
-    "ui.compactMode": false,
     "ui.reduceMotion": false,
     "ui.statusBar.visible": true,
     "ui.statusBar.hiddenItems": [],
