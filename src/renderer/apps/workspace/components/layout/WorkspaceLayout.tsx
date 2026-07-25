@@ -690,11 +690,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                         onClose={() => setLeftSidebarVisible(false)}
                         width={effective.left}
                     />
-                    <ResizableHandle
-                        direction="horizontal"
-                        onResize={handleLeftSidebarResize}
-                        className="w-1 border-r border-edge hover:bg-primary/20"
-                    />
+                    <ResizableHandle direction="horizontal" onResize={handleLeftSidebarResize} />
                 </div>
 
                 {/* Center Area (min-w-0/min-h-0 so it can shrink below content in the flex chain) */}
@@ -714,14 +710,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     {/* Bottom Panel - Always rendered, controlled by CSS visibility. shrink-0 keeps
                         its height so the editor above yields space instead of the panel collapsing. */}
                     <div
-                        className={bottomPanelVisible && activeBottomPanelId ? "shrink-0 border-t border-edge" : "hidden"}
+                        className={bottomPanelVisible && activeBottomPanelId ? "shrink-0" : "hidden"}
                         style={{ height: bottomPanelVisible && activeBottomPanelId ? `${effective.bottom}px` : 0 }}
                     >
-                        <ResizableHandle
-                            direction="vertical"
-                            onResize={handleBottomPanelResize}
-                            className="h-1 border-t border-edge hover:bg-primary/20"
-                        />
+                        <ResizableHandle direction="vertical" onResize={handleBottomPanelResize} />
                         <BottomPanel
                             panelId={activeBottomPanelId || ""}
                             onClose={() => setBottomPanelVisible(false)}
@@ -734,11 +726,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 <div 
                     className={rightSidebarVisible && activeRightPanelId ? "flex" : "hidden"}
                 >
-                    <ResizableHandle
-                        direction="horizontal"
-                        onResize={handleRightSidebarResize}
-                        className="w-1 border-l border-edge hover:bg-primary/20"
-                    />
+                    <ResizableHandle direction="horizontal" onResize={handleRightSidebarResize} />
                     <RightSidebar
                         panelId={activeRightPanelId || ""}
                         onClose={() => setRightSidebarVisible(false)}

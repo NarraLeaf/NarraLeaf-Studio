@@ -61,8 +61,10 @@ export function RightSidebar({ panelId, onClose, width }: RightSidebarProps) {
 
     return (
         <div 
+            // No border at the seam: the `.nl-dock-divider` beside this panel is the one line
+            // drawn there. The (transparent) border box stays for the focus ring alone.
             className={`bg-surface flex flex-col border transition-colors ${
-                isFocused ? 'border-primary' : 'border-transparent border-l-edge'
+                isFocused ? 'nl-dock-focused border-primary' : 'border-transparent'
             }`}
             style={{ width: `${width}px` }}
             onClick={handleClick}
