@@ -715,6 +715,105 @@ input[type="radio"]:focus {
 }
 
 /*
+ * Dock divider (see components/ui/ResizableHandle) — the seam between two regions of the shell:
+ * sidebar/editor, editor/bottom panel, editor/preview pane.
+ *
+ * ONE line, 1px, and nothing else. It used to be two: the panel painted `border-*-edge` and the
+ * 4px drag handle beside it painted another, leaving a 3px strip between them that showed the
+ * root surface — a different colour from the panel header above it, and a bright slot for a
+ * workspace wallpaper to shine through. So the panels now draw no border at the seam at all and
+ * this element IS the seam.
+ *
+ * Everything the 1px box is too thin for is a pseudo-element, so neither the grab area nor the
+ * glow can push the layout around:
+ *   ::before  the pointer target, widened past the line into both neighbours (same trick as the
+ *             blueprint pin hit areas and the editor split sash).
+ *   ::after   the hover/drag bloom: a gradient that fades out symmetrically to BOTH sides, so
+ *             the seam lights up across the boundary instead of thickening into a bar.
+ */
+.nl-dock-divider {
+    position: relative;
+    /* Above the editor group's own `z-10` so the bloom is not painted under the neighbour. */
+    z-index: 15;
+    flex: none;
+    background-color: var(--nl-edge);
+    transition: background-color 150ms ease;
+}
+
+.nl-dock-divider--x {
+    width: 1px;
+    align-self: stretch;
+    cursor: col-resize;
+}
+
+.nl-dock-divider--y {
+    height: 1px;
+    cursor: row-resize;
+}
+
+.nl-dock-divider::before,
+.nl-dock-divider::after {
+    content: "";
+    position: absolute;
+}
+
+/* Grab area only — invisible, 3px into each neighbour (a 7px target for a 1px line). */
+.nl-dock-divider--x::before {
+    inset: 0 -3px;
+}
+
+.nl-dock-divider--y::before {
+    inset: -3px 0;
+}
+
+.nl-dock-divider::after {
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 160ms ease;
+}
+
+.nl-dock-divider--x::after {
+    inset: 0 -6px;
+    background: linear-gradient(to right, transparent, rgb(var(--nl-primary) / 0.09), transparent);
+}
+
+.nl-dock-divider--y::after {
+    inset: -6px 0;
+    background: linear-gradient(to bottom, transparent, rgb(var(--nl-primary) / 0.09), transparent);
+}
+
+/*
+ * A focused dock panel rings itself in the accent, and one arm of that ring lands on this exact
+ * seam. Stand the line down there so the seam still shows exactly ONE line — the accent one —
+ * instead of an accent line pressed up against a grey one. The divider keeps its full grab area
+ * and its hover glow; only the resting paint yields. (`+` covers the left dock, where the panel
+ * precedes the divider; `:has(+ …)` covers the right/bottom docks, where it follows.)
+ */
+.nl-dock-focused + .nl-dock-divider,
+.nl-dock-divider:has(+ .nl-dock-focused) {
+    background-color: transparent;
+}
+
+/*
+ * Hover is an aside, not an event: the line lifts to a half-strength accent and the bloom stays
+ * near the threshold of visible. Same weights the editor split sash already uses (`primary/50`
+ * hovered, solid while dragging), so the seam reads as part of the chrome rather than a highlight
+ * laid over it. Only the drag — a thing the user is actively doing — goes to the full accent.
+ */
+.nl-dock-divider:hover {
+    background-color: rgb(var(--nl-primary) / 0.5);
+}
+
+.nl-dock-divider--active {
+    background-color: rgb(var(--nl-primary));
+}
+
+.nl-dock-divider:hover::after,
+.nl-dock-divider--active::after {
+    opacity: 1;
+}
+
+/*
  * Inline value / pause chips are contentEditable=false, so the browser draws no selection highlight
  * on them. When the rich-text editor flags a chip as selected (`data-selected`), give it a themed
  * highlight behind the whole chip, matching a text selection.
