@@ -1,6 +1,5 @@
 /** `storyInspector` - the per-action-type inspector in the story scene editor. */
 export const storyInspector = {
-    closeEditor: "Close editor",
     noEditableFields: "No editable fields for this action yet.",
     textId: "Text ID",
     advanced: "Advanced",
