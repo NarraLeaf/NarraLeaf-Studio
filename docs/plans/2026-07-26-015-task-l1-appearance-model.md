@@ -90,21 +90,27 @@ type CharacterLayer = { id; name; axisId: string | null;   // null = 恒定层
 - 编译器分层路径：`getImage` 的 `src` 放宽为「url/颜色 或 分层定义」——Image 的 src 形状在
   构造时固定，所以整栈必须在第一次触碰该角色时就位；之后的行只改 tag。
 
-**未做**：WI-6 全部（约 155 个类型错误，全部集中在编辑面）：
+**WI-6 已完成的部分**（`711df7b8` + `a0cb4fc0`）：引用图（层资产按「层 × tag」建键，
+否则同层多 tag 会塌成一条，少报引用）、舞台快照（跨行**累积** tag，否则在后面的行预演会丢掉
+先前的轴改动）、命令面（存 id 不存名字，改名后旧行仍可解析）、属性面板、
+`CharacterAppearancePicker` 重写（两档两套控件；分层档按轴分行、只存作者动过的轴，
+未动的轴标「不改动」而不是「默认」——那是两个不同的断言）、行摘要族、i18n 词条。
+
+`__default__` 哨兵组随 form 一起消失。
+
+**已知债**：`characterForm` 这个语法 token 已经不再指 form（只有载荷改了）。改名要动十几个文件
+加两份 i18n 目录，单独一张微卡处理。
+
+**未做**（130 个错误）：
 
 | 文件 | 错误数 | 性质 |
 |---|---|---|
-| `CharacterEditor.tsx` | 69 | form/group/variant 编辑器，需按两档重写 |
+| `CharacterEditor.tsx` + `VariantsPanel` + `CharacterPropertiesEditor` + `FormsPanel` + `PreviewPanel` | 88 | 角色编辑器，需按两档重写（**最大一块**） |
 | `storyCompiler.integration.test.ts` | 19 | 夹具用旧 summary 形状 |
-| `StorySceneEditorRows.tsx` | 14 | 行徽章 + 差分摘要 |
-| `CharacterAppearancePicker.tsx` | 10 | 选择器（`__default__` 哨兵一并删） |
-| `VariantsPanel.tsx` / `FormsPanel` / `PreviewPanel` / `CharacterPropertiesEditor` | 16 | 面板 |
-| `storySceneBlockUtils(.test)` / `StorySceneActionInspector` / `ExpressionPopover` / `richText` / `storySceneEditorTypes` / `commands/specs/character` | 16 | 行摘要与指令 spec |
-| `storyStageSnapshot.ts` / `ReferenceService` / `characterSchema` / `storyCommandContext` / `PropertiesPanel` / 2 个测试 | 11 | 机械替换 |
+| `StorySceneEditorRows.tsx` | 15 | 行徽章（分层角色暂显最底层，见 §5） |
+| `storySceneBlockUtils.test` / `storyRuntimeDebugModel.test` / 其他夹具 | 8 | 夹具 |
 
-**下一步的建议顺序**：先 `ReferenceService` + `storyStageSnapshot` + `characterSchema` +
-`storyCommandContext`（纯机械，解锁一批）→ 行摘要族（`storySceneBlockUtils` 等）→
-`CharacterAppearancePicker` → `CharacterEditor` 重写（最大一块）→ 测试夹具。
+**下一步**：`StorySceneEditorRows`（15，独立）→ 测试夹具（27，机械）→ 角色编辑器重写（88）。
 
 ## 4. 判据
 
