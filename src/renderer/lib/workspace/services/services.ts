@@ -166,6 +166,7 @@ enum Services {
 // Core Services
 interface IProjectService extends IService {
     getProjectConfig(): ProjectConfig;
+    reloadProjectConfig(): Promise<ProjectConfig>;
     updateProjectConfig(updater: (config: ProjectConfig) => ProjectConfig): Promise<ProjectConfig>;
     updateProjectName(name: string): Promise<ProjectConfig>;
     updateProjectMetadata(patch: Partial<ProjectMetadata>): Promise<ProjectConfig>;

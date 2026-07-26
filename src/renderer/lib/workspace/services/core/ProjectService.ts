@@ -84,27 +84,9 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         const configPath = join(projectPath, configFileName);
         const isNlproj = configFileName.endsWith(".nlproj");
 
-        let projectConfig: ProjectConfig;
-        if (isNlproj) {
-            const rawData = throwException(await filesystemService.readRaw(configPath));
-            const decoded = decodeProjectConfig(rawData);
-            projectConfig = decoded as ProjectConfig;
-        } else {
-            projectConfig = throwException(await filesystemService.readJSON<ProjectConfig>(configPath));
-        }
-
-        // Normalize (or drop) a possibly-malformed dependency table up front so a
-        // corrupt table can never propagate - a broken table must not block load.
-        const normalizedDependencies = normalizeProjectDependencyTable(projectConfig.dependencies);
-        if (normalizedDependencies) {
-            projectConfig.dependencies = normalizedDependencies;
-        } else {
-            delete projectConfig.dependencies;
-        }
-
-        this.projectConfig = projectConfig;
         this.projectConfigPath = configPath;
         this.projectConfigFormat = isNlproj ? "nlproj" : "json";
+        this.projectConfig = await this.readProjectConfigFile();
     }
 
     public getProjectConfig(): ProjectConfig {
@@ -112,6 +94,22 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
             throw new RendererError("Project config not initialized");
         }
         return this.projectConfig;
+    }
+
+    /**
+     * Re-read the manifest from disk, replacing the cached copy.
+     *
+     * Every mutation here writes through immediately, so the cache normally
+     * matches the file - but it only ever learns about writes *this* window
+     * made. A second Studio instance on the same project, the packaging
+     * pipeline, or a hand edit all move the file behind our back. A surface that
+     * reports what the next build will do has to read what the build reads (see
+     * the build dialog, which re-reads before describing the package).
+     */
+    public async reloadProjectConfig(): Promise<ProjectConfig> {
+        const config = await this.readProjectConfigFile();
+        this.projectConfig = config;
+        return config;
     }
 
     public async updateProjectConfig(updater: (config: ProjectConfig) => ProjectConfig): Promise<ProjectConfig> {
@@ -429,6 +427,37 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
             }
             return next;
         });
+    }
+
+    /**
+     * Load the manifest from the path resolved at init, in whichever format that
+     * file uses. The format is never re-sniffed: a session that opened a .nlproj
+     * keeps reading a .nlproj.
+     */
+    private async readProjectConfigFile(): Promise<ProjectConfig> {
+        if (!this.projectConfigPath || !this.projectConfigFormat) {
+            throw new RendererError("Project config path not initialized");
+        }
+
+        const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        let projectConfig: ProjectConfig;
+        if (this.projectConfigFormat === "nlproj") {
+            const rawData = throwException(await filesystemService.readRaw(this.projectConfigPath));
+            projectConfig = decodeProjectConfig(rawData) as ProjectConfig;
+        } else {
+            projectConfig = throwException(await filesystemService.readJSON<ProjectConfig>(this.projectConfigPath));
+        }
+
+        // Normalize (or drop) a possibly-malformed dependency table up front so a
+        // corrupt table can never propagate - a broken table must not block load.
+        const normalizedDependencies = normalizeProjectDependencyTable(projectConfig.dependencies);
+        if (normalizedDependencies) {
+            projectConfig.dependencies = normalizedDependencies;
+        } else {
+            delete projectConfig.dependencies;
+        }
+
+        return projectConfig;
     }
 
     private async writeProjectConfig(config: ProjectConfig): Promise<void> {
