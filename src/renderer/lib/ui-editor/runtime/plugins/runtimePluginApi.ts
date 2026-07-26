@@ -13,9 +13,6 @@ import type { PluginIdentity } from "@shared/types/pluginPermissions";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import type { BehaviorNodeExecuteResult } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { ElementRendererProps } from "../ElementRendererRegistry";
-import type { StoryCompilePass } from "../game/storyCompilePass";
-
-export type { StoryCompilePass, SceneCompileContext, CompileBlockView, BlockInjection, StageImage, RuntimeFlag, EngineAction } from "../game/storyCompilePass";
 
 export type RuntimePluginLogLevel = "info" | "warning" | "error";
 
@@ -262,19 +259,6 @@ export type RuntimePluginGame = {
      */
     data: {
         readJson<T = unknown>(namespace: string): T | null;
-    };
-    story: {
-        /**
-         * Register a compile pass that observes each scene's blocks and injects engine
-         * actions around them during compilation. Runs in every game environment; there is
-         * no unload, and a duplicate pass id is ignored. The pass id must be prefixed with
-         * the plugin id.
-         *
-         * Not capability-gated, unlike the domains below — it predates the gate and
-         * plugins already depend on it. Given what a pass can rewrite, it arguably
-         * belongs behind one; that is a decision with a migration attached.
-         */
-        registerCompilePass(pass: StoryCompilePass): void;
     };
     log(level: RuntimePluginLogLevel, message: string): void;
 
