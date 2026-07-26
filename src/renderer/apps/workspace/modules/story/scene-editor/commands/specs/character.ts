@@ -62,6 +62,21 @@ function validateTransitionForTarget(
     return [];
 }
 
+/**
+ * Store a resolved appearance ref on a character payload.
+ *
+ * `axisId` is what distinguishes the two kinds: a layered character's ref is a tag on some axis and
+ * lands in `tags` (merged, never replacing — an expression row names only the axes it changes), a
+ * preset character's is a pose id and lands in `pose`.
+ */
+function applyAppearanceRef(payload: Record<string, unknown>, refId: string, axisId: string | undefined): void {
+    if (axisId) {
+        payload.tags = { ...(payload.tags as Record<string, string> | undefined), [axisId]: refId };
+    } else {
+        payload.pose = refId;
+    }
+}
+
 /** A form filled against a non-character target names nothing - say so on the form's own span. */
 function validateFormTarget(
     args: { readonly target?: StoryCommandValue; readonly form?: StoryCommandValue },
@@ -72,7 +87,7 @@ function validateFormTarget(
     if (!span || args.form === undefined || target === undefined || target.type === "character") {
         return [];
     }
-    return [{ code: "unknownForm", span, value: args.form.kind === "characterForm" ? args.form.formName : "", characterName: target.name }];
+    return [{ code: "unknownForm", span, value: args.form.kind === "characterForm" ? args.form.label : "", characterName: target.name }];
 }
 
 /**
@@ -120,8 +135,8 @@ function buildShowHide<P extends StoryCommandParamsShape>(
         if (target) {
             payload.characterId = target.characterId;
         }
-        if (args.form?.kind === "characterForm") {
-            payload.formName = args.form.formName;
+        if (args.form?.kind === "characterForm" && args.form.refId) {
+            applyAppearanceRef(payload, args.form.refId, args.form.axisId);
         }
         const transform = direction === "show"
             ? withPlacementTransform(payload.transform, args.at, args.d)
@@ -240,8 +255,8 @@ export const face = defineStoryCommand({
         if (args.character?.kind === "character") {
             payload.characterId = args.character.characterId;
         }
-        if (args.form?.kind === "characterForm") {
-            payload.formName = args.form.formName;
+        if (args.form?.kind === "characterForm" && args.form.refId) {
+            applyAppearanceRef(payload, args.form.refId, args.form.axisId);
         }
         return { ...block, payload };
     },

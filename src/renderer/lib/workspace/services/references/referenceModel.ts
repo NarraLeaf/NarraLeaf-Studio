@@ -509,10 +509,16 @@ export interface ReferenceScannableCharacter {
     id: string;
     name: string;
     thumbnailAssetId?: string | null;
-    forms: ReadonlyArray<{ name: string; variantAssetIds: Readonly<Record<string, string | null | undefined>> }>;
+    /**
+     * Every image the appearance uses, with a slot key that stays stable across renames and a
+     * human-readable detail. Flattened by the caller because the two appearance kinds address their
+     * images differently — a preset character by pose, a layered one by layer and tag — and a
+     * reference does not care which.
+     */
+    appearanceAssets: ReadonlyArray<{ slot: string; detail: string; assetId: string | null | undefined }>;
 }
 
-/** Character slice: profile thumbnail plus every appearance variant asset. */
+/** Character slice: profile thumbnail plus every image the appearance uses. */
 export function extractCharacterAssetReferences(
     characters: readonly ReferenceScannableCharacter[],
 ): AssetReference[] {
@@ -528,20 +534,18 @@ export function extractCharacterAssetReferences(
                 field: "profile.thumbnail",
             });
         }
-        for (const form of character.forms) {
-            for (const [variantName, assetId] of Object.entries(form.variantAssetIds)) {
-                if (!isLibraryAssetId(assetId)) {
-                    continue;
-                }
-                references.push({
-                    id: `char:${character.id}:${form.name}:${variantName}`,
-                    assetId: assetId.trim(),
-                    kind: "character",
-                    label: character.name,
-                    detail: `${form.name} › ${variantName}`,
-                    field: "form.variantAssets",
-                });
+        for (const entry of character.appearanceAssets) {
+            if (!isLibraryAssetId(entry.assetId)) {
+                continue;
             }
+            references.push({
+                id: `char:${character.id}:${entry.slot}`,
+                assetId: entry.assetId.trim(),
+                kind: "character",
+                label: character.name,
+                detail: entry.detail,
+                field: "appearance",
+            });
         }
     }
 

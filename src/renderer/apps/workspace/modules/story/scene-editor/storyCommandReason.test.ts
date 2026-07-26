@@ -19,7 +19,7 @@ const CONTEXT: StoryCommandContext = {
         { name: "gold", ref: { scope: "saved", variableId: "v1" }, valueType: "number" },
         { name: "met", ref: { scope: "scene", variableId: "v2" }, valueType: "boolean" },
     ],
-    formsByCharacterId: { c1: ["smile"] },
+    appearanceByCharacterId: { c1: [{ id: "t1", name: "smile" }] },
 };
 
 /** The catalog entry a line resolves to, so a test failure names the message rather than a key. */
