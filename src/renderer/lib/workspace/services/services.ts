@@ -18,7 +18,7 @@ import { ServiceRegistry } from "./serviceRegistry";
 import { AssetData, AssetType } from "./assets/assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Character } from "./character/Character";
-import { CharacterGroup } from "./character/types";
+import { CharacterAppearanceKind, CharacterGroup } from "./character/types";
 import type {
     UIDocument,
     UISurface,
@@ -814,7 +814,7 @@ interface IUIEditorHistoryService extends IService {
 interface ICharacterService extends IService {
     getCharacter(id: string): Character | undefined;
     listCharacter(): Character[];
-    createCharacter(name: string): Character;
+    createCharacter(name: string, kind?: CharacterAppearanceKind): Character;
     renameCharacter(id: string, name: string): boolean;
     deleteCharacter(id: string): boolean;
     listGroups(): CharacterGroup[];

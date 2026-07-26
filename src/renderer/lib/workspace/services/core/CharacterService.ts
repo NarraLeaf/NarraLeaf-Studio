@@ -3,7 +3,8 @@ import { Service } from "../Service";
 import { ICharacterService, Services, WorkspaceContext } from "../services";
 import { Character } from "../character/Character";
 import { CharacterProfile } from "../character/CharacterProfile";
-import { CharacterGroup } from "../character/types";
+import { CharacterAppearanceKind, CharacterGroup } from "../character/types";
+import { CHARACTER_STORE_VERSION, migrateCharacterStore } from "../character/migrateAppearance";
 import { UuidService } from "./UuidService";
 import { AssetsService } from "./AssetsService";
 import { FileSystemService } from "./FileSystem";
@@ -12,6 +13,8 @@ import { UIService } from "./UIService";
 import { AssetLockReason } from "../assets/AssetLockManager";
 
 type CharacterStore = {
+    /** Absent on stores written before the appearance rework; see `migrateAppearance.ts`. */
+    version?: number;
     characters: ReturnType<Character["toJSON"]>[];
     groups?: Record<string, CharacterGroup>;
 };
@@ -43,9 +46,9 @@ export class CharacterService extends Service<CharacterService> implements IChar
         return this.characterOrder.map(id => this.characters[id]).filter(Boolean);
     }
 
-    public createCharacter(name: string): Character {
+    public createCharacter(name: string, kind: CharacterAppearanceKind = "preset"): Character {
         const id = this.getUuidService().generate();
-        const profile = CharacterProfile.create(id, name);
+        const profile = CharacterProfile.create(id, name, kind);
         const character = Character.fromJSON({ profile: profile.toJSON() });
         this.registerCharacter(character);
         this.markDirty();
@@ -182,6 +185,22 @@ export class CharacterService extends Service<CharacterService> implements IChar
         if (!store.data?.characters?.length) {
             return;
         }
+        // Runs on every load and is idempotent: a character already on the two-kind model is left
+        // alone. Nothing is written back until something else marks the store dirty, so opening a
+        // project read-only does not rewrite it.
+        const report = migrateCharacterStore(store.data.characters);
+        if (report.migrated > 0) {
+            this.markDirty();
+        }
+        if (report.multiGroupForms.length > 0) {
+            // Not an error the author caused: these differentials could not compose under the old
+            // model either (it took the first variant that had an asset). Say so once, with names,
+            // rather than let the flattened result look like a faithful translation.
+            this.getContext().services.get<UIService>(Services.UI).showError(
+                `These character differentials could not compose before the appearance rework and were flattened; `
+                + `please check the result: ${report.multiGroupForms.join(", ")}`,
+            );
+        }
         for (const config of store.data.characters) {
             const character = Character.fromJSON(config);
             this.registerCharacter(character);
@@ -231,6 +250,7 @@ export class CharacterService extends Service<CharacterService> implements IChar
     private async flush(): Promise<void> {
         if (!this.dirty) return;
         const payload: CharacterStore = {
+            version: CHARACTER_STORE_VERSION,
             characters: this.characterOrder
                 .map(id => this.characters[id])
                 .filter((c): c is Character => Boolean(c))
@@ -264,16 +284,10 @@ export class CharacterService extends Service<CharacterService> implements IChar
     private lockCharacterAssets(character: Character): void {
         const assetsService = this.getContext().services.get<AssetsService>(Services.Assets);
         const characterId = character.profile.getId();
-        
-        // Lock all variant assets across all forms
-        const forms = character.profile.appearance.getForms();
-        for (const form of forms) {
-            for (const [variantName, variantData] of Object.entries(form.variantAssets)) {
-                const asset = variantData.data;
-                if (asset && asset.id) {
-                    assetsService.lockAsset(asset.id, AssetLockReason.UsedByCharacter, { characterId });
-                }
-            }
+
+        // Poses for a preset character, every layer and layer option for a layered one.
+        for (const assetId of character.profile.appearance.listAssetIds()) {
+            assetsService.lockAsset(assetId, AssetLockReason.UsedByCharacter, { characterId });
         }
     }
 
@@ -283,16 +297,9 @@ export class CharacterService extends Service<CharacterService> implements IChar
     private unlockCharacterAssets(character: Character): void {
         const assetsService = this.getContext().services.get<AssetsService>(Services.Assets);
         const characterId = character.profile.getId();
-        
-        // Unlock all variant assets across all forms
-        const forms = character.profile.appearance.getForms();
-        for (const form of forms) {
-            for (const [variantName, variantData] of Object.entries(form.variantAssets)) {
-                const asset = variantData.data;
-                if (asset && asset.id) {
-                    assetsService.unlockAsset(asset.id, AssetLockReason.UsedByCharacter, { characterId });
-                }
-            }
+
+        for (const assetId of character.profile.appearance.listAssetIds()) {
+            assetsService.unlockAsset(assetId, AssetLockReason.UsedByCharacter, { characterId });
         }
     }
 
