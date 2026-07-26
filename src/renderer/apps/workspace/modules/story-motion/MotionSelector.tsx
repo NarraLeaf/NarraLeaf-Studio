@@ -264,11 +264,9 @@ export function MotionSelector(props: {
                     </button>
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto p-1">
-                    {filteredAssets.length === 0 ? (
-                        <div className="p-6 text-center text-xs text-fg-subtle">
-                            {t("motion.selector.emptyKind", { kind: t(`motion.targetKind.${props.targetKind}`).toLowerCase() })}
-                        </div>
-                    ) : filteredAssets.map(asset => {
+                    {/* Nothing to list: the list is empty. The New button is one row above, inside
+                        the same popover, so a sentence pointing at it adds only height. */}
+                    {filteredAssets.length === 0 ? null : filteredAssets.map(asset => {
                         const selected = props.value === asset.id;
                         return (
                             <div

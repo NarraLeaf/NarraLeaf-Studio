@@ -75,7 +75,10 @@ export function LayerStackPreview(props: {
     return (
         <div className="flex h-full flex-col">
             <div className="flex items-center gap-3 border-b border-edge px-4 py-2 text-xs text-fg-muted">
-                <span>{reference ? `${reference.width} × ${reference.height}` : t("characters.editor.noCanvas")}</span>
+                {/* No canvas declared: the readout is simply absent. The Set canvas button sits in
+                    this same toolbar, so a sentence saying there is no canvas yet would only be
+                    naming the button beside it. */}
+                {reference ? <span>{`${reference.width} × ${reference.height}`}</span> : null}
                 <span>{t("characters.editor.layerCount", { count: drawn.length })}</span>
                 <div className="ml-auto flex items-center gap-1">{props.toolbar}</div>
             </div>
