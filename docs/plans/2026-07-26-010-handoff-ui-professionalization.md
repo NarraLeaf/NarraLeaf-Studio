@@ -13,7 +13,7 @@ plan: 2026-07-26-004-plan-ui-professionalization.md
 ## 0. 三十秒版本
 
 上一轮（`2026-07-22-001`，17 分支）工程赢了、体验没发生。本轮是纠偏，已完成
-**U0 / U0.1 / U1 / U2 / U3a + 一个引擎根治**，剩 **U3b / U4 / U5**。
+**U0 / U0.1 / U1 / U2 / U3a / U3b + 一个引擎根治**，剩 **U4 / U5**。
 本轮和上一轮的唯一实质差别是**验收方式**：orchestrator 亲手拉起应用、亲眼读图、跑自己写的断言。
 **这条不能软化——它是本轮唯一真正的护栏，且已经四次抓到测试与 lint 看不见的问题。**
 
@@ -134,10 +134,15 @@ U2 又添了四个，都是新种类（2026-07-26）：
   `Text ID` 仍打印裸 uuid、`Stage name` 仍是内部词汇、资产/角色/UI 检查器仍是透明表面。
   另有一条产品事实：**没有任何手势能取消行选中**（Escape / ctrl-click / 点空白都不行，点场景卡会选中第 1 行），
   所以场景级属性只在"还没点过的场景"里可达。
-- **U3b 资产管理层**（触碰写路径，风险最高，单独验收）
-  - 就地重命名/删除/移组、批量选择与操作、替换资产内容（保 id 换文件）、标签管理、导入队列
-  - **删除必须经 `ReferenceService` 反查并在被引用时明确拦截**——那是玩家侧缺资产的唯一防线
-  - 顺手：删掉 `AssetOverviewCommand` 空壳的挂载（在 `WorkspaceLayout.tsx`，**该文件现已提交、可自由改**）
+- ~~**U3b 资产管理层**~~ —— **已完成并合并**（卡 `2026-07-26-015`，报告 `reports/2026-07-26-U3b-report.md`，
+  merge `f37fc04f`）。**发卡前重测基线把这张卡砍掉了三分之二**：重命名/删除/多选/批量删除/
+  批量标签/拖拽移组/导入**在 develop 上早就有了**，连引用反查也有且会列出引用位置。
+  真缺的四块（替换内容、守卫下沉、导入队列、删空壳）已交付。
+  **验收结论**：守卫与按钮层级、空壳、无回归全部亲验绿；替换端到端跑通
+  （hash `a039e2b1`→`bdb75262`、709.7KB→2.0MB、故事行缩略图改画新图）。
+  **两条没验到**：替换后的引用点只验了 1 处（那个资产只有 1 处引用，不是 3 处）；
+  **导入队列的进度与重试至今没有任何人驱动过**——原因见下面 §8 的"原生文件对话框"。
+  另booked：`createWorkspaceBlobUrlResolver` 按实例缓存，内嵌场景预览在重建前仍显示旧图。
 - **U4 Dev Mode 调试台**
   - 时间线与编辑器**共用一套 describe**（删 `storyRuntimeDebugModel.describeStoryBlock` 这套弱实现，
     把编辑器投影提到可共享层）；行要带类别色与说话人
@@ -157,3 +162,32 @@ U2 又添了四个，都是新种类（2026-07-26）：
 - 视口 1400×902 CSS @ dpr 1.25；截图像素 = CSS × 1.25
 - 调试面板是 tween 滑入的，**动画未 settle 时读 rect 会整体偏 380px**——连续两次读数一致再信
 - `yarn lint` 只跑 tsc；仓里有 CI style ratchet；win32 vitest 基线 8–9 个失败不是回归
+
+### 8.1 隔离树验收（U2/U3b 用的标准做法，建议沿用）
+
+共享检出里别人的未提交改动会进你的 `yarn dev` 画面（U1 就是这么栽的）。所以验收在**只含被测分支**的树上做：
+
+```
+git archive <branch> | tar -x -C <isoDir>
+cp yarn.lock <isoDir>/                     # 被 gitignore，yarn 4 没它会拒绝跑
+mklink /J <isoDir>\node_modules <repo>\node_modules
+cp -r .dev/temp/userData-dev <isoDir>/.dev/temp/     # 再另存一份 pristine，每轮拷回
+NLS_DEV_RELOAD_PORT=<p2> node project/app/dev-electron.js --cdp --cdp-port=<p1>
+```
+
+停实例**必须带同一个 `NLS_DEV_RELOAD_PORT`**，否则 stop-dev 找不到会话、下次启动报端口占用。
+别人的实例在 9222/5588，**不要 `yarn stop`**。
+写路径的卡（U3b 这种）还要把 profile 的 `app.recentProjects` 改成只指向**你自己的项目副本**，
+demo3 从 recents 里删掉——这样你连误写 demo3 的可能都没有。
+
+### 8.2 原生文件对话框：验收的硬边界（U3b 实测）
+
+`fs.selectFile` 走的是 Electron 原生对话框，**两条自动化路径都够不到**：
+- 渲染进程侧 `window.__NLS_RENDERER_INTERFACE__` 是 **non-writable / non-configurable 的 window 属性、
+  对象与 `fs` 都 frozen、`selectFile` 不可重定义**——CDP 里无法打桩；
+- dev 构建不是已安装应用，`request_access` 解析不到，**桌面自动化也指不了它**。
+
+我试过在**一次性隔离树**里打桩 `dialog.showOpenDialog`，结果那次调用挂住、`busy` 卡在 true，
+于是"替换按钮是死的"——**这是桩自己造出来的假象**，我在干净构建上推翻了它。
+教训：**打桩打在被测调用本身上时，先怀疑桩**。最终替换是**请用户点了一次选择器**才验成的。
+凡是走这个对话框的判据（替换、导入队列），要么排进用户手测，要么在卡里写明"没人验过"。
