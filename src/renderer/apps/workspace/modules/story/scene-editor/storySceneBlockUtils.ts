@@ -1,13 +1,30 @@
 import { Aperture, Bookmark, Clock, Code, CornerUpLeft, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
-import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryExpr, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment, StoryVariableRef } from "@shared/types/story";
-import { describeDeclaration, layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef, storyVariableRefKey } from "@shared/types/story";
-import { storyMsToSeconds } from "@shared/utils/storyTime";
+import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment } from "@shared/types/story";
 import { richIfMeaningful } from "./richText";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { CharacterAppearanceRef, StoryBlockTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
-import { getCommandGroup, type StoryCommandGroupId } from "./storyCommandCategories";
-import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
+import {
+    describeStoryBlock,
+    getStoryEmptyTextPlaceholder,
+    getStorySceneName,
+    getStoryTextSegment,
+    storyBlockBadge,
+    storyRowAccentColor,
+    type StoryBlockBadgeId,
+    type StoryRowLookups,
+} from "@/lib/story/storyRowProjection";
 import { translate } from "@/lib/i18n";
+
+/**
+ * The row projection moved to `@/lib/story/storyRowProjection` (U4 WI-1) so the Dev Mode timeline can
+ * read the same sentence the editor shows. What stays here is the editor's own half: the `Character[]`
+ * service adapters, the lucide icons, and the reading-layer passes (dialogue groups, visible rows).
+ */
+export {
+    getStoryContainerHeaderInfo as getContainerHeaderInfo,
+    type StoryContainerHeaderInfo,
+    type StoryContainerRole,
+} from "@/lib/story/storyRowProjection";
 
 /**
  * The appearance each dialogue speaker has at its line, accumulated in a single document-order pass:
@@ -166,21 +183,7 @@ export function buildVisibleRows(scene: StoryScene, collapsedIds: Set<StoryBlock
     return rows;
 }
 
-export function getTextSegment(block: StoryBlock): StoryTextSegment | null {
-    if (block.kind === "note") {
-        return block.payload.text;
-    }
-    if (block.kind !== "nodeAction") {
-        return null;
-    }
-    if ("text" in block.payload) {
-        return block.payload.text;
-    }
-    if ("prompt" in block.payload) {
-        return block.payload.prompt ?? null;
-    }
-    return null;
-}
+export const getTextSegment = getStoryTextSegment;
 
 function mergeSegment(text: StoryTextSegment, value: string, rich: StoryRichRun[] | undefined): StoryTextSegment {
     const meaningful = rich ? richIfMeaningful(rich) : undefined;
@@ -310,59 +313,42 @@ export function isContainerBlock(block: StoryBlock | undefined): boolean {
     return canAcceptChildren(block);
 }
 
-export type StoryContainerRole = "condition" | "branch" | "group" | "menu" | "option" | "nvl";
-
-export type StoryContainerHeaderInfo = {
-    /** Plain-language pill label shown on the accordion header (proper case, no ALL-CAPS). */
-    pill: string;
-    role: StoryContainerRole;
-    /** Branch (if / else-if) headers carry an editable condition; else / others do not. */
-    hasCondition: boolean;
-    /** Repeat groups expose an inline repeat count. */
-    repeatTimes?: number;
+/**
+ * The badge icons stay here, with the rest of the editor's React. Everything that decides WHICH badge
+ * a row wears - its id, its label key and its colour group - is `storyBlockBadge` in the shared row
+ * projection, so the editor's left-edge bar and the Dev Mode timeline's hue can never come from two
+ * different chains of ifs (U4 WI-1).
+ */
+const BADGE_ICONS: Record<StoryBlockBadgeId, typeof FileText> = {
+    narration: FileText,
+    dialogue: MessageSquare,
+    choice: GitBranch,
+    choiceOption: Route,
+    background: Image,
+    character: UserRound,
+    audio: Music,
+    variable: Variable,
+    wait: Clock,
+    image: Image,
+    transform: Move,
+    displayable: Eye,
+    text: Type,
+    layer: Layers,
+    video: Video,
+    vfx: Wind,
+    nvl: FileText,
+    blueprint: Puzzle,
+    camera: Aperture,
+    effect: Sparkles,
+    label: Bookmark,
+    goto: CornerUpLeft,
+    control: Settings2,
+    jump: Route,
+    code: Code,
+    invalid: TriangleAlert,
+    declaration: Variable,
+    note: StickyNote,
 };
-
-/** Header descriptor for a container block - the pill text + which inline editors it exposes. */
-export function getContainerHeaderInfo(block: StoryBlock): StoryContainerHeaderInfo | null {
-    if (block.kind === "control") {
-        const payload = block.payload;
-        if (payload.control === "condition") {
-            return { pill: translate("story.containerHeader.condition"), role: "condition", hasCondition: false };
-        }
-        if (payload.control === "conditionBranch") {
-            const pill = payload.branch === "if"
-                ? translate("story.containerHeader.if")
-                : payload.branch === "elseIf"
-                    ? translate("story.containerHeader.elseIf")
-                    : translate("story.containerHeader.else");
-            return { pill, role: "branch", hasCondition: payload.branch !== "else" };
-        }
-        // Not containers, so they have no header at all - they render as ordinary rows.
-        if (payload.control === "label" || payload.control === "goto") {
-            return null;
-        }
-        if (payload.control === "repeat") {
-            return { pill: translate("story.containerHeader.repeat"), role: "group", hasCondition: false, repeatTimes: payload.times ?? 1 };
-        }
-        if (payload.control === "parallel") {
-            return { pill: translate("story.containerHeader.parallel"), role: "group", hasCondition: false };
-        }
-        if (payload.control === "race") {
-            return { pill: translate("story.containerHeader.race"), role: "group", hasCondition: false };
-        }
-        return { pill: translate("story.containerHeader.sequence"), role: "group", hasCondition: false };
-    }
-    if (block.kind === "action" && block.payload.action === "nvl") {
-        return { pill: translate("story.containerHeader.nvl"), role: "nvl", hasCondition: false };
-    }
-    if (block.kind === "nodeAction" && block.payload.action === "choice") {
-        return { pill: translate("story.containerHeader.menu"), role: "menu", hasCondition: false };
-    }
-    if (block.kind === "nodeAction" && block.payload.action === "choiceOption") {
-        return { pill: translate("story.containerHeader.option"), role: "option", hasCondition: false };
-    }
-    return null;
-}
 
 /**
  * The row's badge and its left-edge colour bar. `iconColor` comes from the command GROUP (see
@@ -372,237 +358,33 @@ export function getContainerHeaderInfo(block: StoryBlock): StoryContainerHeaderI
  * belongs to the scene, a blueprint call is a tool.
  */
 export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typeof FileText; iconColor: string } {
-    const withCategory = (label: string, icon: typeof FileText, groupId: StoryCommandGroupId) => ({
-        label,
-        icon,
-        iconColor: getCommandGroup(groupId).iconColor,
-    });
-    if (block.kind === "nodeAction") {
-        if (block.payload.action === "narration") return withCategory(translate("story.badge.narration"), FileText, "character");
-        if (block.payload.action === "dialogue") return withCategory(translate("story.badge.dialogue"), MessageSquare, "character");
-        if (block.payload.action === "choice") return withCategory(translate("story.badge.choice"), GitBranch, "flow");
-        return withCategory(translate("story.badge.choiceOption"), Route, "flow");
-    }
-    if (block.kind === "action") {
-        if (block.payload.action === "setBackground") return withCategory(translate("story.badge.background"), Image, "scene");
-        if (block.payload.action === "character") return withCategory(translate("story.badge.character"), UserRound, "character");
-        if (block.payload.action === "audio") return withCategory(translate("story.badge.audio"), Music, "sound");
-        if (block.payload.action === "setVariable") return withCategory(translate("story.badge.variable"), Variable, "data");
-        if (block.payload.action === "wait") return withCategory(translate("story.badge.wait"), Clock, "flow");
-        if (block.payload.action === "image") return withCategory(translate("story.badge.image"), Image, "image");
-        if (block.payload.action === "displayable") {
-            if (block.payload.operation === "transform") return withCategory(translate("story.badge.transform"), Move, "image");
-            return withCategory(translate("story.badge.displayable"), Eye, "image");
-        }
-        if (block.payload.action === "text") return withCategory(translate("story.badge.text"), Type, "text");
-        if (block.payload.action === "layer") return withCategory(translate("story.badge.layer"), Layers, "layer");
-        if (block.payload.action === "video") return withCategory(translate("story.badge.video"), Video, "video");
-        // Its own badge and hue, not the screen-effect one: a vfx is a stage object with a name and a
-        // lifetime, while `/blink` is a one-shot the scene plays.
-        if (block.payload.action === "vfx") return withCategory(translate("story.badge.vfx"), Wind, "vfx");
-        if (block.payload.action === "nvl") return withCategory(translate("story.badge.nvl"), FileText, "scene");
-        if (block.payload.action === "blueprint") return withCategory(translate("story.badge.blueprint"), Puzzle, "utils");
-        // Its own badge, not "Effect": `/camera darken` dims the whole stage and outlives the scene,
-        // while `/vignette` is a mask layer inside it. The row has to say which one it is at a glance.
-        if (block.payload.action === "camera") return withCategory(translate("story.badge.camera"), Aperture, "camera");
-        // A screen effect is a property of the scene it happens in (§4.1), so it wears the scene hue;
-        // the Sparkles badge is what still tells a `/blink` row apart from a `/bg` row at a glance.
-        return withCategory(translate("story.badge.effect"), Sparkles, "scene");
-    }
-    if (block.kind === "control") {
-        // A label and a goto get their own badges: they read as a destination and a move, and both
-        // would otherwise wear the generic "Control" of a container they are not.
-        if (block.payload.control === "label") return withCategory(translate("story.badge.label"), Bookmark, "flow");
-        if (block.payload.control === "goto") return withCategory(translate("story.badge.goto"), CornerUpLeft, "flow");
-        return withCategory(translate("story.badge.control"), Settings2, "flow");
-    }
-    if (block.kind === "jump") return withCategory(translate("story.badge.jump"), Route, "scene");
-    if (block.kind === "code") return withCategory(translate("story.badge.code"), Code, "utils");
-    if (block.kind === "invalid") {
-        // Deliberately not a category colour: this row is an error, not another kind of action, and a
-        // build will refuse it. It has to read as wrong at a glance.
-        return { label: translate("story.badge.invalid"), icon: TriangleAlert, iconColor: "rgb(var(--nl-danger))" };
-    }
-    if (block.kind === "declaration") {
-        return withCategory(translate(`story.badge.declare.${block.payload.scope}` as Parameters<typeof translate>[0]), Variable, "data");
-    }
-    return withCategory(translate("story.badge.note"), StickyNote, "utils");
+    const badge = storyBlockBadge(block);
+    return { label: translate(badge.labelKey), icon: BADGE_ICONS[badge.id], iconColor: storyRowAccentColor(block) };
 }
 
 /**
- * Short, user-safe label for a variable reference (never exposes internal ids).
+ * The structural character lookup the shared row projection takes, backed by the workspace service.
  *
- * v6: the variableId IS a declaration block's id, so the name comes straight off the row - the
- * current scene first, then the rest of the document. This is what made "saved variable += 5" read
- * as `gold += 5`: a row that does not say WHICH variable it touches is a row the author has to open
- * to understand, which fails the first principle.
+ * This IS the coupling the shared projection was extracted to break: `Character` is a service class
+ * with a `profile`, and Dev Mode has nothing of the sort (only `DevModeCharacterSummary`). Only three
+ * of its methods were ever used, so the projection asks for those three values rather than for the
+ * object that happens to hold them here.
  */
-function variableRefShortLabel(ref: StoryVariableRef, scene?: StoryScene, scenes?: Record<string, StoryScene>): string {
-    if (ref.scope === "persistent") {
-        for (const candidate of Object.values(scenes ?? {})) {
-            for (const block of Object.values(candidate.blocks)) {
-                if (block.kind === "declaration" && block.payload.storageKey === ref.variableId) {
-                    return block.payload.name;
-                }
-            }
+export function characterRowLookup(characters: Character[]): StoryRowLookups["character"] {
+    return characterId => {
+        const character = characters.find(candidate => candidate.profile.getId() === characterId);
+        if (!character) {
+            return null;
         }
-        // Blueprint-declared: its name lives in the blueprint document, out of reach here.
-        return translate("story.describe.persistent");
-    }
-    const inScene = scene?.blocks[ref.variableId];
-    if (inScene?.kind === "declaration") {
-        return inScene.payload.name;
-    }
-    for (const candidate of Object.values(scenes ?? {})) {
-        const block = candidate.blocks[ref.variableId];
-        if (block?.kind === "declaration") {
-            return block.payload.name;
-        }
-    }
-    return translate("story.describe.variableFallback");
-}
-
-/**
- * How an assignment row reads in the list.
- *
- * `gold = 100` for a constant, and the *shorthand* for the shapes that have one — `/inc gold` rather
- * than `gold = gold + (1)`. The author typed a shorthand; echoing back the desugared form would make
- * the row grow every time they glanced at it and teach them the shorthand does not survive.
- *
- * Recognized structurally rather than from a stored "this was an /inc" flag, so a `/set gold gold + 1`
- * typed longhand reads as an increment too — it *is* one.
- *
- * This mirrors `describeAssignment` in `storySceneProjection`, which formats the same block for the
- * text projection. Two renderers for one payload is pre-existing here (every action has both); the
- * expression case was added to the projection first and this one was missed, which is why an
- * `/inc gold` row displayed as `gold = true` — the seed value — while the stored payload was correct.
- */
-function describeAssignment(payload: Extract<StoryActionPayload, { action: "setVariable" }>, name: string): string {
-    const ast = payload.expression?.ast;
-    if (!ast) {
-        return `${name} = ${String(payload.value)}`;
-    }
-    const targetKey = storyVariableRefKey(payload.target);
-    const readsTarget = (node: StoryExpr) => node.kind === "var" && storyVariableRefKey(node.target) === targetKey;
-
-    if (ast.kind === "unary" && ast.op === "!" && readsTarget(ast.operand)) {
-        return `${name} = !${name}`;
-    }
-    if (ast.kind === "binary" && (ast.op === "+" || ast.op === "-") && readsTarget(ast.left)) {
-        const step = ast.right.kind === "literal" ? String(ast.right.value) : "…";
-        return `${name} ${ast.op}= ${step}`;
-    }
-    return `${name} = ${payload.expression?.source ?? ""}`;
-}
-
-/**
- * `xalign → the `at=` word that lands there`, derived from {@link getPresetPosition} — the one forward
- * table for `left/center/right → xalign` — rather than restating its numbers, which would let the two
- * drift and leave this summary quietly naming the wrong side. An xalign no word produces is absent
- * from the table, and the row reads as its raw aligns instead.
- */
-const CAMERA_PAN_PLACEMENTS: Record<number, StoryStagePlacement> = (["left", "center", "right"] as const)
-    .reduce<Record<number, StoryStagePlacement>>((table, placement) => {
-        const xalign = getPresetPosition(placement, {})?.xalign;
-        if (xalign !== undefined) {
-            table[xalign] = placement;
-        }
-        return table;
-    }, {});
-
-/**
- * How a camera row reads: the operation plus the one value it carries. The verb is NOT repeated from
- * the badge, but the knob is named ("Zoom ×1.5", not "×1.5"), because five operations share one badge.
- */
-function describeCamera(payload: Extract<StoryActionPayload, { action: "camera" }>): string {
-    const operation = translate(`story.describe.cameraOp.${payload.operation}` as Parameters<typeof translate>[0]);
-    if (payload.operation === "zoom") {
-        return `${operation} ×${payload.zoom ?? 1}`;
-    }
-    if (payload.operation === "rotate") {
-        return `${operation} ${payload.rotation ?? 0}°`;
-    }
-    if (payload.operation === "darken") {
-        return `${operation} ${Math.round(Math.min(1, Math.max(0, payload.darkness ?? 0)) * 100)}%`;
-    }
-    if (payload.operation === "pan") {
-        const xalign = payload.position?.xalign ?? 0.5;
-        const yalign = payload.position?.yalign ?? 0.5;
-        const placement = yalign === 0.5 && !payload.position?.xoffset && !payload.position?.yoffset
-            ? CAMERA_PAN_PLACEMENTS[xalign]
-            : undefined;
-        return `${operation} ${placement ? translate(`story.position.${placement}`) : `${Math.round(xalign * 100)}% · ${Math.round(yalign * 100)}%`}`;
-    }
-    return operation;
+        const color = character.profile.getColor();
+        return color && isReadableAccentColor(color)
+            ? { name: character.profile.getName(), color }
+            : { name: character.profile.getName() };
+    };
 }
 
 export function describeBlock(block: StoryBlock, characters: Character[], scene?: StoryScene, scenes?: Record<StorySceneId, StoryScene>): string {
-    if (block.kind === "nodeAction") {
-        const payload = block.payload;
-        if (payload.action === "narration") return payload.text.value || translate("story.describe.narration");
-        if (payload.action === "dialogue") return `${getCharacterName(characters, payload.characterId)}: ${payload.text.value || translate("story.describe.dialogue")}`;
-        if (payload.action === "choice") return `${translate("story.describe.choice")}${payload.prompt?.value ? ` - ${payload.prompt.value}` : ""}`;
-        return `${translate("story.describe.option")} ${payload.text.value || ""}`;
-    }
-    if (block.kind === "action") {
-        const payload = block.payload;
-        if (payload.action === "setBackground") return translate("story.describe.setBackground", { value: payload.assetId || payload.color || translate("story.describe.unassigned") });
-        if (payload.action === "character") {
-            const name = payload.characterId ? getCharacterName(characters, payload.characterId) : (payload.objectName || translate("story.describe.characterFallback"));
-            // Localized verb + the target name ("Enter · Alice"), not the raw English enum ("enter Alice").
-            const operation = translate(`story.describe.charOp.${payload.operation}` as Parameters<typeof translate>[0]);
-            // A rename's whole content is the new label, so the row shows it - "Rename Stranger" would
-            // say nothing about what the player is about to read.
-            if (payload.operation === "setName") {
-                return `${operation} ${name} → ${payload.displayName || translate("story.describe.unnamed")}`;
-            }
-            return `${operation} ${name}`;
-        }
-        if (payload.action === "audio") return `${payload.operation} ${payload.objectName || payload.assetId || translate("story.describe.unassigned")}`;
-        if (payload.action === "setVariable") return describeAssignment(payload, variableRefShortLabel(payload.target, scene, scenes));
-        if (payload.action === "wait") return payload.mode === "duration" ? translate("story.describe.waitDuration", { seconds: storyMsToSeconds(payload.durationMs ?? 0) }) : translate("story.describe.waitClick");
-        if (payload.action === "image") return translate("story.describe.image", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
-        if (payload.action === "displayable") return `${payload.operation} ${resolveDisplayableTargetRef(scene, payload.target).label || translate("story.describe.targetFallback")}`;
-        if (payload.action === "text") return translate("story.describe.text", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
-        if (payload.action === "layer") {
-            const layerName = payload.operation === "create"
-                ? (payload.objectName || translate("story.describe.unnamed"))
-                : (resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)).name || translate("story.describe.unnamed"));
-            return translate("story.describe.layer", { operation: payload.operation, name: layerName });
-        }
-        if (payload.action === "video") return translate("story.describe.video", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
-        if (payload.action === "vfx") return translate("story.describe.vfx", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
-        if (payload.action === "nvl") return translate("story.describe.nvl");
-        if (payload.action === "blueprint") return translate("story.describe.blueprint");
-        if (payload.action === "camera") return describeCamera(payload);
-        if (payload.action === "plugin") return payload.actionId;
-        return translate("story.describe.effect", { effect: payload.effect });
-    }
-    if (block.kind === "control") {
-        if (block.payload.control === "condition") return translate("story.describe.condition");
-        if (block.payload.control === "conditionBranch") return translate("story.describe.branch", { branch: block.payload.branch });
-        // The name IS the row: a label row saying only "Label" would leave the author counting rows
-        // to find which one a goto points at.
-        if (block.payload.control === "label") return translate("story.describe.label", { name: block.payload.name || translate("story.describe.unnamed") });
-        if (block.payload.control === "goto") return translate("story.describe.goto", { name: block.payload.targetLabel || translate("story.describe.unnamed") });
-        return block.payload.control;
-    }
-    if (block.kind === "jump") {
-        return translate("story.describe.jump", { scene: getSceneName(scenes, block.payload.targetSceneId) });
-    }
-    if (block.kind === "code") {
-        return translate("story.describe.code", { language: block.payload.language });
-    }
-    if (block.kind === "invalid") {
-        // The author's own text is the most useful thing to show them - it never parsed, so there is
-        // nothing to describe in its place.
-        return block.payload.source || translate("story.describe.invalid");
-    }
-    if (block.kind === "declaration") {
-        // The row reads as what it declares: `gold: number = 100`. The scope arrives via the badge.
-        return describeDeclaration(block);
-    }
-    return block.payload.text.value || translate("story.describe.note");
+    return describeStoryBlock(block, { character: characterRowLookup(characters), scene, scenes });
 }
 
 /**
@@ -610,13 +392,10 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
  * to asset names.
  *
  * A row can say `Set background 4b645b59-1723-4ac9-98ab-e6859b837bef` because the *payload* stores an
- * id and `describeBlock` is pure — it has no way to reach the asset table. In the list that is
+ * id and the projection is pure - it has no way to reach the asset table. In the list that is
  * tolerable (a background row also paints the picture); as the heading of the panel naming what the
- * author is editing, it is nothing but noise. So the resolver is a parameter: this stays pure, and the
- * caller, which is in React and has the service, supplies the lookup.
- *
- * Only the two payloads that can hold a bare id are handled here — every other branch of
- * `describeBlock` already resolves through a name with a named fallback.
+ * author is editing, it is nothing but noise. So the resolver is a parameter: the projection stays
+ * pure, and the caller, which is in React and has the service, supplies the lookup.
  */
 export function describeBlockSubject(
     block: StoryBlock,
@@ -625,42 +404,17 @@ export function describeBlockSubject(
     scene?: StoryScene,
     scenes?: Record<StorySceneId, StoryScene>,
 ): string {
-    if (block.kind === "action") {
-        const payload = block.payload;
-        if (payload.action === "setBackground") {
-            const named = payload.assetId
-                ? resolveAssetName(payload.assetId) ?? translate("story.background.missingImage")
-                : null;
-            return translate("story.describe.setBackground", {
-                value: named ?? payload.color ?? translate("story.describe.unassigned"),
-            });
-        }
-        if (payload.action === "audio") {
-            const named = payload.assetId
-                ? resolveAssetName(payload.assetId) ?? translate("story.describe.missingAsset")
-                : null;
-            return `${payload.operation} ${payload.objectName || named || translate("story.describe.unassigned")}`;
-        }
-    }
-    return describeBlock(block, characters, scene, scenes);
+    return describeStoryBlock(block, {
+        character: characterRowLookup(characters),
+        assetName: resolveAssetName,
+        scene,
+        scenes,
+    });
 }
 
-export function getEmptyTextPlaceholder(block: StoryBlock): string {
-    if (block.kind === "nodeAction") {
-        if (block.payload.action === "narration") return translate("story.emptyPlaceholder.narration");
-        if (block.payload.action === "choiceOption") return translate("story.emptyPlaceholder.option");
-        if (block.payload.action === "choice") return translate("story.emptyPlaceholder.choice");
-    }
-    if (block.kind === "note") return translate("story.emptyPlaceholder.note");
-    return translate("story.emptyPlaceholder.text");
-}
+export const getEmptyTextPlaceholder = getStoryEmptyTextPlaceholder;
 
-export function getSceneName(scenes: Record<StorySceneId, StoryScene> | undefined, sceneId: string | undefined): string {
-    if (!sceneId) {
-        return translate("story.describe.sceneUnassigned");
-    }
-    return scenes?.[sceneId]?.name || translate("story.describe.sceneUnknown");
-}
+export const getSceneName = getStorySceneName;
 
 export function getCharacterName(characters: Character[], characterId: string | undefined): string {
     if (!characterId) {

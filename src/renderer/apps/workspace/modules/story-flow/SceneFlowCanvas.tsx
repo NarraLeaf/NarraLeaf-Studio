@@ -1,6 +1,6 @@
 import "@xyflow/react/dist/style.css";
 
-import { useCallback, useEffect, useId, useMemo, useRef } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, type CSSProperties } from "react";
 import {
     Background,
     MarkerType,
@@ -10,6 +10,7 @@ import {
     useEdgesState,
     useNodesState,
     useReactFlow,
+    useStore,
     type Edge,
     type Node,
     type NodeTypes,
@@ -77,6 +78,15 @@ function edgeLabel(edge: SceneFlowEdgeModel, t: Translator["t"]): string | undef
     return `${clampLabel(named[0])} +${named.length - 1}`;
 }
 
+/** The node title's own CSS size at scale 1 — `text-xs`, in px. The scale multiplies it. */
+const NODE_TITLE_BASE_PX = 12;
+
+/**
+ * How far the embed is allowed to grow its type before the two lines stop fitting the 72px node box
+ * (title + meta line-boxes are 16px each at scale 1, plus the node's 16px of vertical padding).
+ */
+const MAX_NODE_TYPE_SCALE = 1.6;
+
 export interface SceneFlowCanvasProps {
     graph: SceneFlowGraph;
     /** Scenes the author dragged; anything absent falls back to the auto-layout. */
@@ -87,6 +97,21 @@ export interface SceneFlowCanvasProps {
     onOpenScene: (sceneId: StorySceneId) => void;
     onMoveScene: (sceneId: StorySceneId, position: { x: number; y: number }) => void;
     onViewportChange?: (viewport: SceneFlowViewport) => void;
+    /**
+     * Framing padding for the first fit, as React Flow's viewport fraction. The workspace tab keeps
+     * the roomy default; a narrow embed trades the margin for zoom.
+     */
+    fitPadding?: number;
+    /**
+     * On-screen px a node title must never render below — CSS size × viewport zoom. Set it and the
+     * canvas scales its type up as the fit zooms out; leave it unset (the workspace tab) and nothing
+     * about the node's type changes at all.
+     *
+     * The alternative was refusing to zoom out that far, which fails the other half of the
+     * requirement: at a legible zoom a 380px panel cannot hold the whole graph, and a map with nodes
+     * off the edge is worse than a small one.
+     */
+    minTitleRenderedPx?: number;
 }
 
 function resolvePosition(
@@ -105,6 +130,8 @@ function SceneFlowCanvasInner({
     onOpenScene,
     onMoveScene,
     onViewportChange,
+    fitPadding = 0.2,
+    minTitleRenderedPx,
 }: SceneFlowCanvasProps) {
     // React Flow derives document-wide ids from this (the dot-grid `<pattern>`, edge markers, handle
     // element ids) and falls back to a literal "1" when unset, so two canvases on one page collide.
@@ -180,7 +207,7 @@ function SceneFlowCanvasInner({
         }
         let second = 0;
         const first = requestAnimationFrame(() => {
-            second = requestAnimationFrame(() => fitView({ padding: 0.2, duration: 0 }));
+            second = requestAnimationFrame(() => fitView({ padding: fitPadding, duration: 0 }));
         });
         return () => {
             cancelAnimationFrame(first);
@@ -189,6 +216,12 @@ function SceneFlowCanvasInner({
         // Deliberately first-mount only: re-framing on every graph edit would yank the view away.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fitView]);
+
+    // Live zoom, so the type scale below follows a fit, a pinch and the zoom buttons alike.
+    const zoom = useStore(state => state.transform[2]);
+    const typeScale = minTitleRenderedPx
+        ? Math.min(MAX_NODE_TYPE_SCALE, Math.max(1, minTitleRenderedPx / (NODE_TITLE_BASE_PX * (zoom || 1))))
+        : 1;
 
     const handleNodeDragStart = useCallback(() => {
         isDraggingRef.current = true;
@@ -233,6 +266,9 @@ function SceneFlowCanvasInner({
             zoomOnScroll={false}
             zoomOnPinch
             className="narraleaf-scene-flow bg-surface"
+            // Read by SceneFlowNode's type. Unset in the workspace tab (scale 1), where the CSS
+            // fallbacks in the node leave every computed size exactly where it was.
+            style={typeScale === 1 ? undefined : ({ "--nl-scene-flow-type-scale": String(typeScale) } as CSSProperties)}
             proOptions={{ hideAttribution: true }}
         >
             <Background color="rgb(var(--nl-fg-subtle))" gap={20} size={1} />

@@ -109,6 +109,13 @@ export type DevModeStoryLibrary = {
     documents: Record<StoryId, StoryDocument>;
     characters: DevModeCharacterSummary[];
     animations: Record<StoryAnimationAssetId, StoryAnimationAsset>;
+    /**
+     * `assetId → author-facing asset name`, for the media types a story row can name (image / audio /
+     * video). Names only — the bytes travel through the compiler, and this table exists so the Dev
+     * Mode debug panel can read a row the way the editor does: `Set background outside_s.jpg` rather
+     * than `Set background 4b645b59-1723-4ac9-98ab-e6859b837bef` (U4 WI-1).
+     */
+    assetNames: Record<string, string>;
 };
 
 export type DevModeStartStoryRequest = {
