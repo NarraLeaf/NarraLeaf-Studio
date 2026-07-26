@@ -1,8 +1,7 @@
 import type { LocaleNamespace } from "../types";
 
 export const storyInspector = {
-    noEditableFields: "此动作暂无可编辑的字段",
-    textId: "文本 ID",
+    textId: "本地化键名",
     advanced: "高级",
     advancedParams: "高级参数",
     noVariablesDeclared: "尚未声明变量",
@@ -345,7 +344,7 @@ export const storyInspector = {
         motionLabel: "NVL 进入动画",
     },
     character: {
-        stageName: "舞台名称",
+        objectName: "后续称呼为",
         displayName: "显示为",
         chooseHint: "先选择一个角色，再选择其外观",
         overrideImage: "覆盖图片",
