@@ -9,8 +9,6 @@ export const properties = {
         storyMotion: "Story Motion",
         scene: "Scene",
         character: "Character",
-        noSelection: "No item selected",
-        noSelectionHint: "Select an item to view its properties",
     },
     scene: {
         title: "Interface Properties",
