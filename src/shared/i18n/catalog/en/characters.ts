@@ -61,6 +61,7 @@ export const characters = {
             axisNoTags: "{name} has no tags",
             axisUnused: "{name} drives no layer",
             duplicateTag: "{axis} has two tags named {name}",
+            occluded: "{name} is completely covered by the layers above it",
         },
         header: {
             fallbackName: "Character",

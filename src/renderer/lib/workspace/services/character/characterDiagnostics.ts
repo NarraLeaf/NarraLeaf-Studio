@@ -4,7 +4,7 @@ export type LayerSize = { width: number; height: number };
 
 export type CharacterDiagnostic = {
     /** Which message to render. The editor owns the wording; this module owns the finding. */
-    code: "offCanvas" | "constantNoImage" | "layerNoImage" | "axisNoTags" | "axisUnused" | "duplicateTag";
+    code: "offCanvas" | "constantNoImage" | "layerNoImage" | "axisNoTags" | "axisUnused" | "duplicateTag" | "occluded";
     severity: "error" | "warning";
     /** What to select when the author clicks the row. */
     target: { kind: "layer" | "axis"; id: string };
@@ -27,13 +27,14 @@ function format(size: LayerSize): string {
  * pixel size), keyed by layer id; a layer that has not been measured yet is skipped rather than
  * guessed at.
  *
- * Deliberately absent: "this layer is completely covered by the ones above it". That needs the alpha
- * of every layer intersected, i.e. the same offscreen compositing pass as L4's SpriteCompositor, and
- * doing it twice would mean two answers. It lands with that service, not here.
+ * `occluded` is passed in rather than computed: deciding that a layer is completely covered needs the
+ * alpha of every layer intersected, which is the compositor's offscreen pass. Computing it here too
+ * would mean two answers to one question.
  */
 export function collectCharacterDiagnostics(
     appearance: CharacterAppearance,
     sizes: Record<string, LayerSize> = {},
+    occluded: Record<string, boolean> = {},
 ): CharacterDiagnostic[] {
     if (appearance.getKind() !== "layered") {
         return [];
@@ -59,6 +60,15 @@ export function collectCharacterDiagnostics(
                 severity: "error",
                 target: { kind: "layer", id: layer.id },
                 values: { name: layer.name, size: format(size), canvas: format(canvas) },
+            });
+        }
+
+        if (occluded[layer.id]) {
+            found.push({
+                code: "occluded",
+                severity: "warning",
+                target: { kind: "layer", id: layer.id },
+                values: { name: layer.name },
             });
         }
 
