@@ -12,7 +12,7 @@ import { BlueprintService } from "../assets/BlueprintService";
 import { AssetsMetadataManager } from "../assets/mgr/AssetsMetadataManager";
 import { EditorRemoteCacheManager } from "../assets/mgr/EditorRemoteCacheManager";
 import { GroupAssetsManager } from "../assets/mgr/GroupAssetsManager";
-import { LocalAssetsManager } from "../assets/mgr/LocalAssetsManager";
+import { LocalAssetsManager, type ImportFromPathsOptions } from "../assets/mgr/LocalAssetsManager";
 import { RemoteAssetsManager } from "../assets/mgr/RemoteAssetsManager";
 import { OtherService } from "../assets/OtherService";
 import type { ExpandImportPathsResult } from "../assets/importPathExpansion";
@@ -627,9 +627,10 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
     public async importFromPaths<T extends AssetType>(
         type: T,
-        paths: string[]
+        paths: string[],
+        options?: ImportFromPathsOptions,
     ): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
-        return this.getLocalAssetsManager().importFromPaths(type, paths);
+        return this.getLocalAssetsManager().importFromPaths(type, paths, options);
     }
 
     /**
