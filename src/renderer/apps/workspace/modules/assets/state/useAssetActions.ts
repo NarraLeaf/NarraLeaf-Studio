@@ -5,7 +5,6 @@ import { runReplaceAssetContentFlow } from '@/lib/workspace/assets/replaceAssetC
 import { WorkspaceContext } from '@/lib/workspace/services/services';
 import { AssetsService } from '@/lib/workspace/services/core/AssetsService';
 import { UIService } from '@/lib/workspace/services/core/UIService';
-import { ReferenceService } from '@/lib/workspace/services/references/ReferenceService';
 import type { AssetReference } from '@/lib/workspace/services/references/referenceModel';
 import { Services } from '@/lib/workspace/services/services';
 import { InputDialog } from '@/lib/components/dialogs/InputDialog';
@@ -664,29 +663,19 @@ export function useAssetActions({
             // targets let a whole folder of referenced material through without a warning.
             const affectedAssets = collectAffectedAssets(targets, assets, groups);
 
-            const referenceService = context?.services.get<ReferenceService>(Services.Reference) ?? null;
-            // "No references found" and "could not look for references" must not be the same answer.
-            // An empty index reports every asset as unused, so a build that failed - or a service
-            // that is missing entirely - has to stop the delete rather than wave it through.
-            let referencesByAsset = new Map<string, AssetReference[]>();
-            let referencesChecked = false;
-            if (referenceService) {
-                try {
-                    // The index is lazy; without this an unopened project reports everything as unused.
-                    await referenceService.ensureReady();
-                    // And it is debounced, so an edit made moments ago may still be sitting in a timer.
-                    await referenceService.flushPendingRebuilds();
-                    referencesByAsset = referenceService.getReferencesForAll(affectedAssets.map(asset => asset.id));
-                    referencesChecked = true;
-                } catch {
-                    referencesChecked = false;
-                }
-            }
+            // The same reading the service's guard enforces — asked through the service rather than
+            // looked up here, so the list the author is shown and the list the delete is checked
+            // against cannot drift apart. "No references found" and "could not look for references"
+            // stay different answers: an empty index reports every asset as unused.
+            const { checked: referencesChecked, references: referencesByAsset } =
+                (await withAssetsService(assetsService => assetsService.findAssetReferences(affectedAssets.map(asset => asset.id))))
+                ?? { checked: false, references: new Map<string, AssetReference[]>() };
 
             if (!referencesChecked) {
-                const proceedUnverified = await uiService.showConfirm(
+                const proceedUnverified = await uiService.showDestructiveConfirm(
                     t("assets.delete.unverifiedTitle"),
                     t("assets.delete.unverifiedMessage"),
+                    t("assets.delete.action"),
                 );
                 if (!proceedUnverified) {
                     return;
@@ -710,18 +699,23 @@ export function useAssetActions({
                     })
                     .join("\n");
 
-                const forceConfirmed = await uiService.showConfirm(
+                // Warn, do not block: sometimes deleting the referenced file is exactly the intent.
+                // The hierarchy is what expresses the risk — Cancel is the default and the keyboard
+                // target, the delete is a danger-coloured secondary.
+                const forceConfirmed = await uiService.showDestructiveConfirm(
                     t("assets.delete.inUseTitle"),
                     `${t("assets.delete.inUseMessage")}\n\n${details}`,
+                    t("assets.delete.action"),
                 );
                 if (!forceConfirmed) {
                     return;
                 }
             }
 
-            const confirmed = await uiService.showConfirm(
+            const confirmed = await uiService.showDestructiveConfirm(
                 tn("assets.delete.confirmTitle", targets.length),
                 t("assets.delete.confirmMessage"),
+                t("assets.delete.action"),
             );
             if (!confirmed) {
                 return;
@@ -730,17 +724,25 @@ export function useAssetActions({
             // Remove duplicate targets by id to avoid double deletion
             const uniqueTargets = Array.from(new Map(targets.map(t => [t.item.id, t])).values());
 
+            // The author has now seen the reference list and said go ahead, so this is the one place
+            // allowed through the service guard. Every other caller — a group cascade, anything
+            // programmatic — is refused by default.
+            const deleteFailures: string[] = [];
             await withAssetsService(async (assetsService) => {
                 await assetsService.transaction(async (svc) => {
                     await Promise.all(uniqueTargets.map(async (t) => {
-                        if (t.isGroup) {
-                            await svc.deleteGroup(t.type, (t.item as AssetGroup).id, true);
-                        } else {
-                            await svc.deleteAsset(t.item as Asset);
+                        const result = t.isGroup
+                            ? await svc.deleteGroup(t.type, (t.item as AssetGroup).id, true, { allowReferenced: true })
+                            : await svc.deleteAsset(t.item as Asset, { allowReferenced: true });
+                        if (!result.success && result.error) {
+                            deleteFailures.push(result.error);
                         }
                     }));
                 });
             });
+            if (deleteFailures.length > 0) {
+                uiService.showAlert(t("assets.delete.failedTitle"), deleteFailures.join("\n"));
+            }
             onActionComplete();
         } catch (error) {
             console.error("Failed to delete asset", error);

@@ -24,6 +24,7 @@ export const assets = {
         },
         confirmMessage: "所选分组内的全部内容也会一并删除，且无法撤销。",
         action: "删除",
+        failedTitle: "删除失败",
     },
     replace: {
         confirmTitle: "替换 {name} 的文件内容？",
