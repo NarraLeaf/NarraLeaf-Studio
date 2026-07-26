@@ -285,7 +285,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     }, []);
 
     const {
-        handleCreateGroup, handleCopy, handleCut, handlePaste, handleRename, handleDelete, handleImport, handleImportToGroup, handleImportRemote,
+        handleCreateGroup, handleCopy, handleCut, handlePaste, handleRename, handleReplaceContent, handleDelete, handleImport, handleImportToGroup, handleImportRemote,
         handleCreateMagicTags, handleApplyMagicTags
     } = useAssetActions({
         context, inputDialog, assets, groups, selectedItems, clipboard, contextMenuTarget,
@@ -393,6 +393,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         handlePaste: () => handlePasteRef.current(),
         handleDelete: () => handleDeleteRef.current(),
         handleRename,
+        handleReplaceContent: () => handleReplaceContent(),
         handleCreateGroup, handleImportToGroup, handleCreateMagicTags: handleMagicTagsClick
     });
 

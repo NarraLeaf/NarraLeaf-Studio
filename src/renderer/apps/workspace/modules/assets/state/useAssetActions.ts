@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
 import { AssetType } from '@/lib/workspace/services/assets/assetTypes';
+import { runReplaceAssetContentFlow } from '@/lib/workspace/assets/replaceAssetContentFlow';
 import { WorkspaceContext } from '@/lib/workspace/services/services';
 import { AssetsService } from '@/lib/workspace/services/core/AssetsService';
 import { UIService } from '@/lib/workspace/services/core/UIService';
@@ -557,6 +558,49 @@ export function useAssetActions({
         onActionComplete();
     }, [context, contextMenuTarget, selectedItems, focusedItemId, assets, groups, inputDialog, onActionComplete, withAssetsService]);
 
+    /**
+     * The one asset the single-subject actions act on, in the same priority order rename uses:
+     * right-clicked row, then a lone selection, then the focused row. Groups resolve to nothing —
+     * replacing contents is per file, and the card rules out a batch version.
+     */
+    const resolveSingleAsset = useCallback((): Asset | null => {
+        if (contextMenuTarget?.item) {
+            return contextMenuTarget.isGroup ? null : (contextMenuTarget.item as Asset);
+        }
+
+        const candidateId = selectedItems.size === 1 ? Array.from(selectedItems)[0] : focusedItemId;
+        if (!candidateId || !candidateId.startsWith('asset:')) {
+            return null;
+        }
+        const assetId = candidateId.replace('asset:', '');
+        return Object.values(assets).flat().find(a => a.id === assetId) ?? null;
+    }, [assets, contextMenuTarget, focusedItemId, selectedItems]);
+
+    /**
+     * Swap the file behind an asset while keeping its id, so every place already pointing at it
+     * renders the new file instead of needing to be relinked one by one.
+     *
+     * `target` lets a caller outside the panel (the inspector) name the asset directly; the panel's
+     * own entry points resolve it from the selection.
+     */
+    const handleReplaceContent = useCallback(async (target?: Asset) => {
+        const ctx = contextRef.current;
+        if (!ctx) return;
+
+        const asset = target ?? resolveSingleAsset();
+        if (!asset) return;
+
+        notifyLoading(true);
+        try {
+            const outcome = await runReplaceAssetContentFlow(ctx, asset, t);
+            if (outcome === "replaced") {
+                onActionComplete();
+            }
+        } finally {
+            notifyLoading(false);
+        }
+    }, [notifyLoading, onActionComplete, resolveSingleAsset, t]);
+
     const handleDelete = useCallback(async () => {
         notifyLoading(true);
         try {
@@ -784,6 +828,7 @@ export function useAssetActions({
         handleCut,
         handlePaste,
         handleRename,
+        handleReplaceContent,
         handleDelete,
         handleCreateMagicTags,
         handleApplyMagicTags,

@@ -13,6 +13,20 @@ import { RendererError } from "@shared/utils/error";
 import { basename, dirname, extname } from "@shared/utils/path";
 import { expandImportPaths, type ExpandImportPathsResult } from "../importPathExpansion";
 
+/**
+ * What the bytes on disk now are, after {@link LocalAssetsManager.writeAssetContentFromPath}.
+ *
+ * `hash` is empty when the digest could not be computed — the same fallback import uses. It is still
+ * different from the hash it replaces, which is what matters: several readers (`useAssetBlobUrl` and
+ * friends) use the hash as the cache key that decides whether to re-read the file, so a hash that
+ * did not move means every one of them keeps serving the old picture.
+ */
+export interface AssetContentDigest {
+    hash: string;
+    /** Extension of the new source file, lowercased, without the dot. */
+    ext?: string;
+}
+
 export class LocalAssetsManager {
     constructor(private assetsService: AssetsService, private context: WorkspaceContext) {
     }
@@ -129,6 +143,70 @@ export class LocalAssetsManager {
         return {
             success: true,
             data: void 0,
+        };
+    }
+
+    /**
+     * Overwrite an existing local asset's bytes with the file at `sourcePath`, keeping its id — so
+     * every reference (which stores the id, never a path) keeps pointing at the same record and
+     * simply renders the new file.
+     *
+     * Bytes and digest only. Metadata, the thumbnail cache and the `updated` broadcast are handled by
+     * {@link AssetsService.replaceAssetContent}, which has to run them in a fixed order; doing any of
+     * them here would let a caller land halfway through it.
+     */
+    public async writeAssetContentFromPath<T extends AssetType>(
+        asset: Asset<T, AssetSource.Local>,
+        sourcePath: string,
+    ): Promise<RequestStatus<AssetContentDigest>> {
+        if (!isValidAssetStorageId(asset.id)) {
+            return { success: false, error: `Invalid asset id: ${asset.id}` };
+        }
+
+        const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
+        if (!metadata[asset.type][asset.id]) {
+            return { success: false, error: `Asset not found: ${asset.id}` };
+        }
+
+        // Same gate imports pass: a file whose magic bytes say "not an image" must not become the
+        // contents of an image asset, where every consumer would then fail to decode it.
+        const formatValidation = await this.validateFileFormat(asset.type, sourcePath);
+        if (!formatValidation.success) {
+            return { success: false, error: formatValidation.error || "File format validation failed" };
+        }
+
+        const destPath = this.getLocalAssetPath(asset.id);
+        const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const destDir = dirname(destPath);
+        const dirExistCheck = await fsService.isDirExists(destDir);
+        if (!dirExistCheck.ok) {
+            return { success: false, error: `Failed to check destination directory: ${dirExistCheck.error?.message}` };
+        }
+        if (!dirExistCheck.data) {
+            const mkdirResult = await fsService.createDir(destDir);
+            if (!mkdirResult.ok) {
+                return { success: false, error: `Failed to create destination directory: ${destDir}. ${mkdirResult.error?.message}` };
+            }
+        }
+
+        const copyResult = await appPrivilegedFacade.fs.copyFile(sourcePath, destPath);
+        if (!copyResult.success || !copyResult.data.ok) {
+            const message = copyResult.error
+                || (`[${(copyResult.data as FsRequestResult<void, false>)?.error.code}] ${(copyResult.data as FsRequestResult<void, false>)?.error.message}`);
+            return { success: false, error: `Failed to replace asset contents: ${sourcePath} to ${destPath}. ${message}` };
+        }
+
+        // Recomputed from the destination, not the source: this is the digest of what is actually
+        // stored now, and it is the value every cache key downstream compares against.
+        const hashResult = await appPrivilegedFacade.fs.hash(destPath);
+        const fileHash = hashResult.success && hashResult.data.ok ? hashResult.data.data : "";
+
+        return {
+            success: true,
+            data: {
+                hash: fileHash,
+                ext: extname(basename(sourcePath)).slice(1).toLowerCase() || undefined,
+            },
         };
     }
 
