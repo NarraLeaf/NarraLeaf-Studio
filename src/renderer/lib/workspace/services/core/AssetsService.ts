@@ -486,6 +486,56 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     }
 
     /**
+     * Swap the bytes behind an existing asset, keeping its id.
+     *
+     * References store the asset id, never a path, so every place that pointed at this asset follows
+     * automatically — that is the whole point of replacing rather than importing-and-relinking.
+     *
+     * The four steps below have to happen in this order, and three of them had no caller at all
+     * before this method existed:
+     *
+     *  1. write the new bytes (`LocalAssetsManager.writeAssetContentFromPath`);
+     *  2. recompute `hash` — it used to be written once at import and never again, while several
+     *     readers use it as the cache key deciding whether to re-read the file;
+     *  3. drop the cached thumbnail PNG, which is keyed by asset id and would otherwise survive the
+     *     swap and keep every grid tile showing the old picture;
+     *  4. write the record, then announce `updated` — last, so nobody wakes up and re-reads a stale
+     *     thumbnail that step 3 was about to delete.
+     *
+     * There is no asset-level history: this cannot be undone. The UI expresses that with the button
+     * hierarchy on the confirm, not with a sentence.
+     */
+    public async replaceAssetContent<T extends AssetType>(
+        asset: Asset<T, AssetSource>,
+        sourcePath: string,
+    ): Promise<RequestStatus<Asset<T, AssetSource>>> {
+        if (asset.source !== AssetSource.Local) {
+            return { success: false, error: "Replacing the contents of a remote asset is not supported" };
+        }
+
+        const written = await this.getLocalAssetsManager()
+            .writeAssetContentFromPath(asset as Asset<T, AssetSource.Local>, sourcePath);
+        if (!written.success || !written.data) {
+            return { success: false, error: written.error };
+        }
+
+        try {
+            await this.clearThumbnailCache(asset.id);
+        } catch (error) {
+            console.warn(`Failed to clear thumbnail cache for asset: ${asset.id}`, error);
+        }
+
+        const applied = this.getAssetsMetadataManager().applyReplacedContent(asset, written.data);
+        if (!applied.success || !applied.data) {
+            return { success: false, error: applied.error };
+        }
+
+        this.getEvents().emit("updated", applied.data);
+
+        return { success: true, data: applied.data };
+    }
+
+    /**
      * Duplicate an existing asset, returning the new asset metadata.
      */
     public async duplicateAsset<T extends AssetType>(asset: Asset<T, AssetSource>): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {

@@ -20,6 +20,7 @@ export interface UseAssetsContextMenuParams {
     handleCut: () => void;
     handlePaste: () => Promise<void>;
     handleRename: () => Promise<void>;
+    handleReplaceContent: () => Promise<void>;
     handleDelete: () => Promise<void>;
     handleCreateGroup: (type: AssetType, parentGroupId?: string) => Promise<void>;
     handleImportToGroup: (type: AssetType, groupId?: string) => Promise<void>;
@@ -38,6 +39,7 @@ export function useAssetsContextMenu({
     handleCut,
     handlePaste,
     handleRename,
+    handleReplaceContent,
     handleDelete,
     handleCreateGroup,
     handleImportToGroup,
@@ -161,24 +163,33 @@ export function useAssetsContextMenu({
             if (items.length > 0) {
                 items.push({ separator: true as const, id: "sep1" });
             }
-            items.push(
-                {
-                    id: "rename",
-                    label: t("common.rename"),
+            items.push({
+                id: "rename",
+                label: t("common.rename"),
+                onClick: async () => {
+                    await handleRename();
+                    closeContextMenu();
+                },
+            });
+            // Files only: a group has no bytes to swap.
+            if (!contextMenuTarget.isGroup) {
+                items.push({
+                    id: "replace-content",
+                    label: t("assets.menu.replaceContent"),
                     onClick: async () => {
-                        await handleRename();
+                        await handleReplaceContent();
                         closeContextMenu();
                     },
+                });
+            }
+            items.push({
+                id: "delete",
+                label: t("common.delete"),
+                onClick: async () => {
+                    await handleDelete();
+                    closeContextMenu();
                 },
-                {
-                    id: "delete",
-                    label: t("common.delete"),
-                    onClick: async () => {
-                        await handleDelete();
-                        closeContextMenu();
-                    },
-                },
-            );
+            });
         }
 
         // Always show create group and import options at the end
@@ -211,7 +222,7 @@ export function useAssetsContextMenu({
         });
 
         return items;
-    }, [clipboard, closeContextMenu, contextMenuTarget, handleCopy, handleCut, handleDelete, handleImportToGroup, handlePaste, handleRename, handleCreateGroup, isMultiSelectMode, selectedItems, t, tn]);
+    }, [clipboard, closeContextMenu, contextMenuTarget, handleCopy, handleCut, handleDelete, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateGroup, isMultiSelectMode, selectedItems, t, tn]);
 
     return {
         menuState,

@@ -23,6 +23,13 @@ export const assets = {
             other: "删除 {count} 项？",
         },
         confirmMessage: "所选分组内的全部内容也会一并删除，且无法撤销。",
+        action: "删除",
+    },
+    replace: {
+        confirmTitle: "替换 {name} 的文件内容？",
+        confirmAction: "替换",
+        failedTitle: "替换素材内容失败",
+        remoteUnsupported: "远程素材没有可替换的本地文件。",
     },
     types: {
         image: "图片",
@@ -118,6 +125,7 @@ export const assets = {
         newGroup: "新建分组",
         newSubGroup: "新建子分组",
         importAssets: "导入素材…",
+        replaceContent: "替换文件…",
         copyCount: {
             one: "复制 {count} 项",
             other: "复制 {count} 项",
