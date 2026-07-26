@@ -419,7 +419,7 @@ export function ImageCropper({
         >
             <div
                 style={anchorRef?.current ? { position: "fixed", top: anchorStyle.top, left: anchorStyle.left, width: anchorStyle.width } : { width: anchorStyle.width }}
-                className={`${anchorRef?.current ? "" : "mt-10 mx-auto"} bg-surface border border-edge rounded-xl shadow-xl text-fg max-h-[640px] flex flex-col ${className}`}
+                className={`${anchorRef?.current ? "" : "mt-10 mx-auto"} bg-surface-raised border border-edge rounded-xl shadow-xl text-fg max-h-[640px] flex flex-col ${className}`}
                 onMouseDown={(e) => e.stopPropagation()}
             >
                 <div className="flex items-center justify-between px-4 py-3 border-b border-edge">

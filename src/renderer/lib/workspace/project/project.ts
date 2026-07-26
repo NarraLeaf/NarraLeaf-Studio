@@ -1,24 +1,12 @@
 import { join } from "@shared/utils/path";
 import type { ProjectDependencyTable } from "@shared/types/pluginDependencies";
+import type { ProjectIconSet } from "@shared/types/projectIcons";
 import type { ProjectAppConfiguration } from "./configuration";
 
 export type Resolution = {
     width: number;
     height: number;
 };
-
-/**
- * Platforms that take their own app icon. The mobile ones are scaled into their
- * shell template's icon slots by the repack.
- */
-export type ProjectIconPlatform = "macos" | "windows" | "linux" | "android" | "ios";
-
-export interface ProjectIconConfig {
-    path: string;
-    sourceName: string;
-    mediaType: string;
-    updatedAt: string;
-}
 
 export type ProjectMetadata = {
     description: string;
@@ -30,7 +18,12 @@ export type ProjectMetadata = {
     licenseString?: string;
     copyright: string;
     resolution: Resolution;
-    icons: Partial<Record<ProjectIconPlatform, ProjectIconConfig>>;
+    /**
+     * The app-icon set: one master plus a per-target recipe. Stored raw, so
+     * always read it through `normalizeProjectIconSet` - projects saved before
+     * the master model existed hold the legacy five-slot shape here.
+     */
+    icons: ProjectIconSet;
 };
 
 export interface ProjectProps {

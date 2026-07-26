@@ -89,6 +89,8 @@ export type BuildPreflightCode =
     | "identifier-missing"
     | "icon-missing"
     | "icon-unusable"
+    | "icon-low-resolution"
+    | "icon-stale"
     | "plugins-invalid"
     | "encryption-key-unavailable"
     | "web-unprotected"

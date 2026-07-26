@@ -13,6 +13,7 @@ import {
     type GameRuntimeProjectIconPlatform,
 } from "@shared/types/gameRuntime";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
+import { readProjectIconSet, resolveIconFile, resolveIconSource } from "@shared/types/projectIcons";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
 import {
     createSealedBundle,
@@ -31,7 +32,7 @@ import { readPublishedPluginData } from "../../pluginRuntimeData";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { getMimeType } from "@shared/utils/fs";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
-import { WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
+import { WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
 
 const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "other"] as const;
 // "native.js" and "gate.js" are opaque support modules of @narraleaf/encryption
@@ -84,6 +85,16 @@ export type GameRuntimeArtifactCompileInput = {
     /** Runtime entries of enabled plugins to ship inside the pack. */
     runtimePlugins?: GameRuntimePluginSource[];
     /**
+     * Studio's own icon, shipped when the project configures none. Passed in
+     * rather than resolved here because this module also runs off the main
+     * process, where Electron's resource paths are not available.
+     */
+    defaultIcon?: {
+        path: string;
+        /** Pre-flattened variant for the outputs that forbid an alpha channel. */
+        opaquePath?: string;
+    };
+    /**
      * Pack build mode. "preview" keeps developer affordances (DevTools);
      * "production" hardens the runtime. Defaults to "preview".
      */
@@ -132,13 +143,6 @@ type AssetMetadataRecord = {
     hash?: unknown;
     ext?: unknown;
     source?: unknown;
-};
-
-type ProjectIconConfigRecord = {
-    path?: unknown;
-    sourceName?: unknown;
-    mediaType?: unknown;
-    updatedAt?: unknown;
 };
 
 export async function compileGameRuntimeArtifact(
@@ -222,12 +226,16 @@ export async function compileGameRuntimeArtifact(
                 projectPath: input.projectPath,
                 appDir,
                 projectConfig,
+                defaultIcon: input.defaultIcon,
             });
-        const hasFavicon = shell === "web" && await copyWebFavicon({
-            projectPath: input.projectPath,
-            appDir,
-            projectConfig,
-        });
+        const webIcons = shell === "web"
+            ? await copyWebIcons({
+                projectPath: input.projectPath,
+                appDir,
+                projectConfig,
+                defaultIcon: input.defaultIcon,
+            })
+            : { hasFavicon: false, hasAppleTouchIcon: false };
         const packPlugins = await copyRuntimePlugins({
             appDir,
             projectPath: input.projectPath,
@@ -277,7 +285,7 @@ export async function compileGameRuntimeArtifact(
             await fs.writeFile(packPath, packJson);
         }
         if (shell === "web") {
-            await writeWebShellFiles({ appDir, pack, hasFavicon });
+            await writeWebShellFiles({ appDir, pack, ...webIcons });
         } else {
             await fs.writeFile(
                 path.join(appDir, "package.json"),
@@ -505,14 +513,22 @@ async function copyProjectIcon(input: {
     projectPath: string;
     appDir: string;
     projectConfig: ProjectConfigData | null;
+    defaultIcon?: { path: string; opaquePath?: string };
 }): Promise<GameRuntimeProjectIcon | undefined> {
     const platform = getCurrentProjectIconPlatform();
-    const icon = getProjectIconConfig(input.projectConfig, platform);
+    const configured = getProjectIconConfig(input.projectConfig, platform);
+    // A project with no icon of its own runs under NarraLeaf's mark rather than
+    // Electron's default, matching what its packaged build will wear.
+    const icon = configured ?? (input.defaultIcon
+        ? { path: input.defaultIcon.path, sourceName: path.basename(input.defaultIcon.path), mediaType: "image/png" }
+        : null);
     if (!icon) {
         return undefined;
     }
 
-    const sourcePath = resolveProjectRelativePath(input.projectPath, icon.path);
+    const sourcePath = configured
+        ? resolveProjectRelativePath(input.projectPath, icon.path)
+        : icon.path;
     const extension = normalizeExtension(path.extname(icon.path).replace(".", ""), icon.path, "other");
     const relativePath = path.join("icons", `app-icon-${platform}.${extension}`).replace(/\\/g, "/");
     const targetPath = path.join(input.appDir, relativePath);
@@ -527,64 +543,83 @@ async function copyProjectIcon(input: {
     return {
         platform,
         relativePath,
-        originalRelativePath: path.relative(input.projectPath, sourcePath).replace(/\\/g, "/"),
+        originalRelativePath: configured
+            ? path.relative(input.projectPath, sourcePath).replace(/\\/g, "/")
+            : relativePath,
         sourceName: readString(icon.sourceName),
         mediaType: readString(icon.mediaType) ?? getMimeType(targetPath),
     };
 }
 
 /**
- * Best-effort favicon for the web export: the first configured project icon
- * that is a PNG (browsers cannot read .icns/.ico-from-icns reliably, and the
- * conversion tooling lives in electron-builder, which the web path never
- * touches). Missing or non-PNG icons simply mean no favicon.
+ * The web export's own icons. Web used to have no icon of its own and borrowed
+ * whichever desktop slot happened to hold a PNG, so a project that configured
+ * only mobile icons shipped no favicon at all.
+ *
+ * A project that has not baked yet falls back to the master, and is skipped
+ * unless that master is already a PNG - the link tags declare image/png and
+ * Studio does no conversion on this path.
  */
-async function copyWebFavicon(input: {
+async function copyWebIcons(input: {
     projectPath: string;
     appDir: string;
     projectConfig: ProjectConfigData | null;
-}): Promise<boolean> {
-    const platforms: GameRuntimeProjectIconPlatform[] = ["windows", "linux", "macos"];
-    for (const platform of platforms) {
-        const icon = getProjectIconConfig(input.projectConfig, platform);
-        if (!icon || !icon.path.toLowerCase().endsWith(".png")) {
-            continue;
-        }
+    defaultIcon?: { path: string; opaquePath?: string };
+}): Promise<{ hasFavicon: boolean; hasAppleTouchIcon: boolean }> {
+    const set = readProjectIconSet(input.projectConfig);
+    const copy = async (sourcePath: string, fileName: string): Promise<boolean> => {
         try {
-            const sourcePath = resolveProjectRelativePath(input.projectPath, icon.path);
-            await fs.copyFile(sourcePath, path.join(input.appDir, WEB_FAVICON_FILENAME));
+            await fs.copyFile(sourcePath, path.join(input.appDir, fileName));
             return true;
         } catch {
-            continue;
+            return false;
         }
-    }
-    return false;
+    };
+    /** The project's own PNG for this output, or null when it has none usable. */
+    const projectIcon = (outputId: "web-favicon" | "web-apple-touch"): string | null => {
+        const icon = resolveIconFile(set, outputId);
+        // Non-PNG is skipped: the link tags declare image/png and this path does
+        // no conversion. The un-baked apple-touch case is skipped too - falling
+        // back to a master that keeps its transparency would hand Safari the
+        // very icon that file exists to avoid, composited onto black.
+        if (!icon || !icon.path.toLowerCase().endsWith(".png")) {
+            return null;
+        }
+        if (outputId === "web-apple-touch" && !set.baked["web-apple-touch"]) {
+            return null;
+        }
+        return resolveProjectRelativePath(input.projectPath, icon.path);
+    };
+
+    const favicon = projectIcon("web-favicon") ?? input.defaultIcon?.path;
+    const appleTouch = projectIcon("web-apple-touch")
+        ?? input.defaultIcon?.opaquePath
+        ?? input.defaultIcon?.path;
+    return {
+        hasFavicon: favicon ? await copy(favicon, WEB_FAVICON_FILENAME) : false,
+        hasAppleTouchIcon: appleTouch ? await copy(appleTouch, WEB_APPLE_TOUCH_FILENAME) : false,
+    };
 }
 
+/**
+ * The icon file this platform ships, read through the shared model so the
+ * legacy five-slot shape and the master model resolve identically here and in
+ * the build's preflight.
+ */
 function getProjectIconConfig(
     projectConfig: ProjectConfigData | null,
     platform: GameRuntimeProjectIconPlatform,
 ): { path: string; sourceName?: string; mediaType?: string } | null {
-    const metadata = projectConfig?.metadata;
-    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    const set = readProjectIconSet(projectConfig);
+    const file = resolveIconFile(set, platform);
+    if (!file) {
         return null;
     }
-    const rawIcons = (metadata as Record<string, unknown>).icons;
-    if (!rawIcons || typeof rawIcons !== "object" || Array.isArray(rawIcons)) {
-        return null;
-    }
-    const rawIcon = (rawIcons as Record<string, ProjectIconConfigRecord>)[platform];
-    if (!rawIcon || typeof rawIcon !== "object") {
-        return null;
-    }
-    const iconPath = readString(rawIcon.path);
-    if (!iconPath) {
-        return null;
-    }
+    const source = resolveIconSource(set, platform);
     return {
-        path: iconPath,
-        sourceName: readString(rawIcon.sourceName),
-        mediaType: readString(rawIcon.mediaType),
+        path: file.path,
+        sourceName: source?.sourceName,
+        mediaType: file.baked ? "image/png" : source?.mediaType,
     };
 }
 

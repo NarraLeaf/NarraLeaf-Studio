@@ -20,7 +20,16 @@ export const ProjectNameConvention = {
     Assets: ["assets/"],
     ProjectResources: ["resources/"],
     ProjectIcons: ["resources", "icons/"],
-    ProjectIcon: (platform: string, ext: string) => ["resources", "icons", `app-icon-${platform}.${ext}` as const],
+    /** The images the author supplied: the master, plus any per-target override. */
+    ProjectIconSources: ["resources", "icons", "source/"],
+    ProjectIconSource: (slot: string, ext: string) => ["resources", "icons", "source", `${slot}.${ext}` as const],
+    /**
+     * The baked per-target PNGs. Under `resources/` on purpose: these are project
+     * content, not cache - they ride along in the .nlspkg and belong in version
+     * control, which is also why the bake never rewrites an unchanged file.
+     */
+    ProjectIconDerived: ["resources", "icons", "derived/"],
+    ProjectIconDerivedFile: (fileName: string) => ["resources", "icons", "derived", fileName],
     /** Reserved logical folder for shared blueprints; M2 persists bytes via {@link AssetsDataShard} like other assets. */
     AssetsBlueprints: ["assets", "blueprints/"],
     AssetsContent: ["assets", "content/"],

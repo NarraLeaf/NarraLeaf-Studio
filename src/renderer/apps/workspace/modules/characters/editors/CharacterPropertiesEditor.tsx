@@ -93,7 +93,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
     const [name, setName] = useState(snapshot.name);
     const [description, setDescription] = useState(snapshot.description);
     const [tags, setTags] = useState<string[]>(snapshot.tags || []);
-    const [defaultForm, setDefaultForm] = useState<string | null>(snapshot.defaultForm ?? null);
+    const [defaultPose, setDefaultPose] = useState<string | null>(profile.appearance.getDefaultPoseId());
     const [color, setColor] = useState<string | undefined>(snapshot.color);
     const [thumbnailId, setThumbnailId] = useState<string | null>(snapshot.thumbnail);
     const [newTag, setNewTag] = useState("");
@@ -121,7 +121,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
     }, [context, isInitialized]);
 
     const [formsVersion, setFormsVersion] = useState(0);
-    const forms = useMemo(() => [...profile.appearance.getForms()], [profile, formsVersion]);
+    const poses = useMemo(() => profile.appearance.getPoses(), [profile, formsVersion]);
     useEffect(() => {
         const appearance = profile.appearance;
         if (!appearance) return;
@@ -131,10 +131,10 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
     }, [profile]);
     const defaultFormOptions = useMemo(
         () => [
-            { value: "", label: t("characters.properties.followFirstForm") },
-            ...forms.map(form => ({ value: form.name, label: form.name })),
+            { value: "", label: t("characters.properties.followFirstPose") },
+            ...poses.map(pose => ({ value: pose.id, label: pose.name })),
         ],
-        [forms, formsVersion, t]
+        [poses, formsVersion, t]
     );
 
     const normalizeTag = useCallback((tag: string) => tag.trim().toLowerCase(), []);
@@ -176,8 +176,8 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
 
     const handleDefaultFormChange = (value: string | number) => {
         const next = value === "" ? null : String(value);
-        setDefaultForm(next);
-        profile.setDefaultForm(next);
+        setDefaultPose(next);
+        profile.appearance.setDefaultPoseId(next);
     };
 
     const handleSelectThumbnail = async (assets: Asset[]) => {
@@ -322,7 +322,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
         setName(next.name);
         setDescription(next.description);
         setTags(next.tags || []);
-        setDefaultForm(next.defaultForm ?? null);
+        setDefaultPose(character.profile.appearance.getDefaultPoseId());
         setColor(next.color);
         setThumbnailId(next.thumbnail);
         setFormsVersion(v => v + 1);
@@ -335,7 +335,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
             setName(next.name);
             setDescription(next.description);
             setTags(next.tags || []);
-            setDefaultForm(next.defaultForm ?? null);
+            setDefaultPose(character.profile.appearance.getDefaultPoseId());
             setColor(next.color);
             setThumbnailId(next.thumbnail);
             setFormsVersion(v => v + 1);
@@ -530,14 +530,14 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
 
             <div>
                 <label className="block text-xs font-medium text-fg-muted mb-1">
-                    {t("characters.properties.defaultForm")}
+                    {t("characters.properties.defaultPose")}
                 </label>
                 <Select
                     fullWidth
                     options={defaultFormOptions}
-                    value={defaultForm ?? ""}
+                    value={defaultPose ?? ""}
                     onChange={handleDefaultFormChange}
-                    placeholder={t("characters.properties.selectDefaultForm")}
+                    placeholder={t("characters.properties.selectDefaultPose")}
                 />
             </div>
 

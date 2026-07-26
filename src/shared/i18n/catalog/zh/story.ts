@@ -98,8 +98,9 @@ export const story = {
         createNew: "新建图层",
     },
     appearance: {
-        noForms: "该角色未定义任何形象",
-        form: "形象",
+        noPoses: "该角色还没有姿态。",
+        noAxes: "该角色还没有分层轴。",
+        unchanged: "不改动",
         appearance: "外观",
         default: "默认",
         preview: "预览",
@@ -334,7 +335,6 @@ export const story = {
         emptyOpenManual: "打开指令手册",
         variablesPanel: "故事变量",
         snapshotsPanel: "场景快照",
-        inspectorPanel: "检查器",
     },
     preview: {
         label: "预览",
@@ -527,6 +527,7 @@ export const story = {
         choice: "选择",
         option: "选项",
         setBackground: "设置背景 {value}",
+        missingAsset: "资源缺失",
         unassigned: "未指定",
         characterFallback: "角色",
         charOp: {

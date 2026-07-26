@@ -4,7 +4,7 @@ import { useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
-import { ContextMenuTargetState } from "../state/useAssetActions";
+import { contextMenuActsOnSelection, type ContextMenuTargetState } from "../state/assetActionTargets";
 import { ClipboardState } from "../state/useClipboard";
 
 export interface UseAssetsContextMenuParams {
@@ -65,8 +65,13 @@ export function useAssetsContextMenu({
 
         const items: ContextMenuDef = [];
 
+        // The actions resolve their targets the same way (see `resolveAssetActionTargets`): a
+        // right-click on a row outside the selection acts on that row alone, so the menu has to
+        // offer the single-item commands rather than counts the action will not honour.
+        const actsOnSelection = isMultiSelectMode && contextMenuActsOnSelection(contextMenuTarget, selectedItems);
+
         // Always add copy/cut operations first if applicable
-        if (isMultiSelectMode) {
+        if (actsOnSelection) {
             // Check selected items: assets and groups
             const selectedAssetItems = Array.from(selectedItems).filter(id => id.startsWith('asset:'));
             const selectedGroupItems = Array.from(selectedItems).filter(id => id.startsWith('group:'));
@@ -157,7 +162,7 @@ export function useAssetsContextMenu({
         }
 
         // Add rename/delete for single items
-        if (!isMultiSelectMode && contextMenuTarget.item) {
+        if (!actsOnSelection && contextMenuTarget.item) {
             if (items.length > 0) {
                 items.push({ separator: true as const, id: "sep1" });
             }
