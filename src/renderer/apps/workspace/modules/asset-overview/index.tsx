@@ -7,4 +7,3 @@
  */
 export { AssetOverviewView } from "./AssetOverviewView";
 export { useAssetLibrarySnapshot } from "./useAssetLibrarySnapshot";
-export { AssetOverviewCommand } from "./AssetOverviewCommand";
