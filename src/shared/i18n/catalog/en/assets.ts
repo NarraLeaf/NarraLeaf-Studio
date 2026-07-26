@@ -24,6 +24,18 @@ export const assets = {
             other: "Delete {count} items?",
         },
         confirmMessage: "Everything inside a selected group is deleted too. This cannot be undone.",
+        /** The delete button in the reference warning — danger-coloured, never the keyboard default. */
+        action: "Delete",
+    },
+    /**
+     * Swapping the file behind an asset record. The record keeps its id, so every reference follows;
+     * nothing here should suggest the author has to relink anything.
+     */
+    replace: {
+        confirmTitle: "Replace the contents of {name}?",
+        confirmAction: "Replace",
+        failedTitle: "Failed to replace asset contents",
+        remoteUnsupported: "Remote assets have no local file to replace.",
     },
     /** Asset category labels, keyed by the `AssetType` enum value. */
     types: {
@@ -132,6 +144,7 @@ export const assets = {
         newGroup: "New Group",
         newSubGroup: "New Sub-Group",
         importAssets: "Import Assets…",
+        replaceContent: "Replace File…",
         copyCount: {
             one: "Copy {count} item",
             other: "Copy {count} items",

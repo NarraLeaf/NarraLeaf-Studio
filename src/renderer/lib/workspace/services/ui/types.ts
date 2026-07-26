@@ -182,6 +182,12 @@ export interface DialogButton {
     onClick?: () => void | Promise<void>;
     primary?: boolean;
     disabled?: boolean;
+    /**
+     * The button that destroys something. Rendered in the danger colour and never made default:
+     * an irreversible action has to be aimed at, not landed on by pressing Enter. Pair it with a
+     * `primary` cancel so the keyboard default is the way out.
+     */
+    danger?: boolean;
 }
 
 /**

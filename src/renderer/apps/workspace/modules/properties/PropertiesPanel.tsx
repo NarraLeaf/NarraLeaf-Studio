@@ -867,7 +867,24 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         return () => {
             cancelled = true;
         };
-    }, [activeAsset?.id, assetsService]);
+        // `hash` is in the dependency list on purpose: a content replacement keeps the id and changes
+        // the bytes, so without it this panel would keep reporting the dimensions and size of the
+        // file that was there before.
+    }, [activeAsset?.id, activeAsset?.hash, assetsService]);
+
+    /**
+     * The selection carries a *snapshot* of the asset record. A content replacement rewrites that
+     * record in place, so without this the inspector would keep showing the previous hash — and the
+     * metadata reload above, which keys on it, would never run.
+     */
+    useEffect(() => {
+        if (!assetsService || !activeAsset) return;
+        return assetsService.getEvents().on("updated", updated => {
+            if (updated.id === activeAssetRef.current?.id) {
+                setActiveAsset({ ...updated });
+            }
+        });
+    }, [assetsService, activeAsset?.id]);
 
     // Listen to character changes
     useEffect(() => {
