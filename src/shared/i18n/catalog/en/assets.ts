@@ -137,6 +137,12 @@ export const assets = {
         filePathParsingFailed: "File path parsing failed.",
         noMatchingFiles: "No matching files were found in the dropped folder.",
         moreFailures: "…and {count} more.",
+        /** The import strip's failure list — files the run could not read, kept for a retry. */
+        failedCount: {
+            one: "{count} file failed",
+            other: "{count} files failed",
+        },
+        retry: "Retry",
         remoteTitle: "Import Remote Asset",
         remoteDescription: "Paste a direct link to the remote asset",
         remoteInvalidUrl: "Please enter a valid URL",

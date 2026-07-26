@@ -27,6 +27,24 @@ export interface AssetContentDigest {
     ext?: string;
 }
 
+/** Where a multi-file import has got to. Reported once per file, plus once when the run ends. */
+export interface ImportProgress {
+    /** Files finished so far, successful or not. */
+    completed: number;
+    total: number;
+    /** The file being read right now; absent on the final report. */
+    current?: string;
+}
+
+export interface ImportFromPathsOptions {
+    /**
+     * Called before each file and once at the end. Imports are sequential and a large drop can take
+     * a while; without this the only reading available is a boolean spinner, which cannot say
+     * whether anything is still happening.
+     */
+    onProgress?: (progress: ImportProgress) => void;
+}
+
 export class LocalAssetsManager {
     constructor(private assetsService: AssetsService, private context: WorkspaceContext) {
     }
@@ -277,13 +295,16 @@ export class LocalAssetsManager {
 
     public async importFromPaths<T extends AssetType>(
         type: T,
-        paths: string[]
+        paths: string[],
+        options?: ImportFromPathsOptions,
     ): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
         const results: RequestStatus<Asset<T, AssetSource.Local>>[] = [];
 
         for (const path of paths) {
+            options?.onProgress?.({ completed: results.length, total: paths.length, current: path });
             results.push(await this.importLocalAsset(type, path));
         }
+        options?.onProgress?.({ completed: results.length, total: paths.length });
 
         this.assetsService.markDirty(type);
 
