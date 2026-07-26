@@ -85,6 +85,16 @@ export type GameRuntimeArtifactCompileInput = {
     /** Runtime entries of enabled plugins to ship inside the pack. */
     runtimePlugins?: GameRuntimePluginSource[];
     /**
+     * Studio's own icon, shipped when the project configures none. Passed in
+     * rather than resolved here because this module also runs off the main
+     * process, where Electron's resource paths are not available.
+     */
+    defaultIcon?: {
+        path: string;
+        /** Pre-flattened variant for the outputs that forbid an alpha channel. */
+        opaquePath?: string;
+    };
+    /**
      * Pack build mode. "preview" keeps developer affordances (DevTools);
      * "production" hardens the runtime. Defaults to "preview".
      */
@@ -216,9 +226,15 @@ export async function compileGameRuntimeArtifact(
                 projectPath: input.projectPath,
                 appDir,
                 projectConfig,
+                defaultIcon: input.defaultIcon,
             });
         const webIcons = shell === "web"
-            ? await copyWebIcons({ projectPath: input.projectPath, appDir, projectConfig })
+            ? await copyWebIcons({
+                projectPath: input.projectPath,
+                appDir,
+                projectConfig,
+                defaultIcon: input.defaultIcon,
+            })
             : { hasFavicon: false, hasAppleTouchIcon: false };
         const packPlugins = await copyRuntimePlugins({
             appDir,
@@ -497,14 +513,22 @@ async function copyProjectIcon(input: {
     projectPath: string;
     appDir: string;
     projectConfig: ProjectConfigData | null;
+    defaultIcon?: { path: string; opaquePath?: string };
 }): Promise<GameRuntimeProjectIcon | undefined> {
     const platform = getCurrentProjectIconPlatform();
-    const icon = getProjectIconConfig(input.projectConfig, platform);
+    const configured = getProjectIconConfig(input.projectConfig, platform);
+    // A project with no icon of its own runs under NarraLeaf's mark rather than
+    // Electron's default, matching what its packaged build will wear.
+    const icon = configured ?? (input.defaultIcon
+        ? { path: input.defaultIcon.path, sourceName: path.basename(input.defaultIcon.path), mediaType: "image/png" }
+        : null);
     if (!icon) {
         return undefined;
     }
 
-    const sourcePath = resolveProjectRelativePath(input.projectPath, icon.path);
+    const sourcePath = configured
+        ? resolveProjectRelativePath(input.projectPath, icon.path)
+        : icon.path;
     const extension = normalizeExtension(path.extname(icon.path).replace(".", ""), icon.path, "other");
     const relativePath = path.join("icons", `app-icon-${platform}.${extension}`).replace(/\\/g, "/");
     const targetPath = path.join(input.appDir, relativePath);
@@ -519,7 +543,9 @@ async function copyProjectIcon(input: {
     return {
         platform,
         relativePath,
-        originalRelativePath: path.relative(input.projectPath, sourcePath).replace(/\\/g, "/"),
+        originalRelativePath: configured
+            ? path.relative(input.projectPath, sourcePath).replace(/\\/g, "/")
+            : relativePath,
         sourceName: readString(icon.sourceName),
         mediaType: readString(icon.mediaType) ?? getMimeType(targetPath),
     };
@@ -538,31 +564,40 @@ async function copyWebIcons(input: {
     projectPath: string;
     appDir: string;
     projectConfig: ProjectConfigData | null;
+    defaultIcon?: { path: string; opaquePath?: string };
 }): Promise<{ hasFavicon: boolean; hasAppleTouchIcon: boolean }> {
     const set = readProjectIconSet(input.projectConfig);
-    const copy = async (outputId: "web-favicon" | "web-apple-touch", fileName: string): Promise<boolean> => {
-        const icon = resolveIconFile(set, outputId);
-        if (!icon || !icon.path.toLowerCase().endsWith(".png")) {
-            return false;
-        }
+    const copy = async (sourcePath: string, fileName: string): Promise<boolean> => {
         try {
-            await fs.copyFile(
-                resolveProjectRelativePath(input.projectPath, icon.path),
-                path.join(input.appDir, fileName),
-            );
+            await fs.copyFile(sourcePath, path.join(input.appDir, fileName));
             return true;
         } catch {
             return false;
         }
     };
+    /** The project's own PNG for this output, or null when it has none usable. */
+    const projectIcon = (outputId: "web-favicon" | "web-apple-touch"): string | null => {
+        const icon = resolveIconFile(set, outputId);
+        // Non-PNG is skipped: the link tags declare image/png and this path does
+        // no conversion. The un-baked apple-touch case is skipped too - falling
+        // back to a master that keeps its transparency would hand Safari the
+        // very icon that file exists to avoid, composited onto black.
+        if (!icon || !icon.path.toLowerCase().endsWith(".png")) {
+            return null;
+        }
+        if (outputId === "web-apple-touch" && !set.baked["web-apple-touch"]) {
+            return null;
+        }
+        return resolveProjectRelativePath(input.projectPath, icon.path);
+    };
+
+    const favicon = projectIcon("web-favicon") ?? input.defaultIcon?.path;
+    const appleTouch = projectIcon("web-apple-touch")
+        ?? input.defaultIcon?.opaquePath
+        ?? input.defaultIcon?.path;
     return {
-        hasFavicon: await copy("web-favicon", WEB_FAVICON_FILENAME),
-        // Only when it was actually baked: falling back to a master that keeps
-        // its transparency would hand Safari the very icon this file exists to
-        // avoid, composited onto black on the home screen.
-        hasAppleTouchIcon: set.baked["web-apple-touch"]
-            ? await copy("web-apple-touch", WEB_APPLE_TOUCH_FILENAME)
-            : false,
+        hasFavicon: favicon ? await copy(favicon, WEB_FAVICON_FILENAME) : false,
+        hasAppleTouchIcon: appleTouch ? await copy(appleTouch, WEB_APPLE_TOUCH_FILENAME) : false,
     };
 }
 
