@@ -5,18 +5,23 @@ import { Services } from "@/lib/workspace/services/services";
 import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { useWorkspace } from "../../context";
 import { createProjectIconPreview } from "../project/iconPreview";
-import type { GameBuildDesktopPlatform } from "@shared/types/gameBuild";
+import {
+    outputsForTarget,
+    resolveIconFile,
+    resolveIconSource,
+    type ProjectIconTarget,
+} from "@shared/types/projectIcons";
 
 /**
- * One platform's app icon, as the packaged game will show it. Clicking hands the
+ * One target's app icon, as the packaged game will show it. Clicking hands the
  * user off to the project panel's asset settings — the icon is not the build's
  * to edit, but "the icon is wrong" is something you notice exactly here.
  */
 export function BuildIconRow({
-    platform,
+    target,
     onClick,
 }: {
-    platform: GameBuildDesktopPlatform;
+    target: ProjectIconTarget;
     onClick: () => void;
 }) {
     const { t } = useTranslation();
@@ -35,15 +40,17 @@ export function BuildIconRow({
 
         void (async () => {
             try {
-                const config = projectService.getProjectConfig().metadata?.icons?.[platform];
-                if (!config) {
+                const set = projectService.getProjectIconSet();
+                const file = resolveIconFile(set, outputsForTarget(target)[0].id);
+                if (!file) {
                     return;
                 }
-                const bytes = await projectService.readProjectIcon(platform);
+                const bytes = await projectService.readProjectIconFile(file.path);
                 if (!bytes || disposed) {
                     return;
                 }
-                const preview = await createProjectIconPreview(bytes, config.mediaType, config.path);
+                const mediaType = file.baked ? "image/png" : resolveIconSource(set, target)?.mediaType ?? "image/png";
+                const preview = await createProjectIconPreview(bytes, mediaType, file.path);
                 if (disposed) {
                     URL.revokeObjectURL(preview.url);
                     return;
@@ -62,13 +69,13 @@ export function BuildIconRow({
                 URL.revokeObjectURL(objectUrl);
             }
         };
-    }, [context, isInitialized, platform]);
+    }, [context, isInitialized, target]);
 
     return (
         <button
             type="button"
             onClick={onClick}
-            title={t(`build.platform.${platform}`)}
+            title={t(`build.platform.${target}` as "build.platform.windows")}
             className="grid h-10 w-10 place-items-center overflow-hidden rounded-lg border border-edge-subtle bg-fill-subtle transition-colors hover:border-edge-strong"
         >
             {url

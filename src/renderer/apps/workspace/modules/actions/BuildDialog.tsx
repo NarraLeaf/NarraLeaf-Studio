@@ -43,6 +43,7 @@ import {
     type BuildDialogState,
 } from "./buildDialogState";
 import { BuildIconRow } from "./BuildIconRow";
+import { PROJECT_ICON_TARGETS } from "@shared/types/projectIcons";
 
 const SECTIONS: BuildPreflightSection[] = ["targets", "identity", "content", "output"];
 
@@ -437,8 +438,8 @@ function IdentitySection({
             <Field label={t("build.identity.icons")} align="start">
                 <div>
                     <div className="flex gap-2">
-                        {DESKTOP_PLATFORMS.map(platform => (
-                            <BuildIconRow key={platform} platform={platform} onClick={onEditIcons} />
+                        {PROJECT_ICON_TARGETS.map(target => (
+                            <BuildIconRow key={target} target={target} onClick={onEditIcons} />
                         ))}
                     </div>
                     <p className="mt-1.5 text-2xs text-fg-subtle">{t("build.identity.iconsHint")}</p>
