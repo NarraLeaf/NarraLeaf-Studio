@@ -7,6 +7,7 @@ import { AssetType } from "../assetTypes";
 import { Asset, AssetGroup, AssetGroupMap, AssetSource } from "../types";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
+import type { AssetDeleteOptions } from "../assetDeleteGuard";
 
 export class GroupAssetsManager {
     public assetsGroups: AssetGroupMap | null = null;
@@ -64,10 +65,47 @@ export class GroupAssetsManager {
         };
     }
 
+    /**
+     * Every asset a delete of this group would remove: its own, plus — when the delete cascades —
+     * everything in the groups below it, to any depth.
+     *
+     * Split out so the guard can ask the question *before* the first file is unlinked; see
+     * {@link AssetsService.deleteGroup}.
+     */
+    public collectGroupAssets<T extends AssetType>(
+        type: T,
+        groupId: string,
+        recursive: boolean = false,
+    ): Asset<AssetType, AssetSource>[] {
+        this.assertGroups();
+
+        const groupIds = new Set<string>([groupId]);
+        if (recursive) {
+            const candidates = Object.values(this.assetsGroups[type]);
+            // Group nesting has no depth bound, so descend until no new child appears.
+            let grew = true;
+            while (grew) {
+                grew = false;
+                for (const group of candidates) {
+                    if (group.parentGroupId && groupIds.has(group.parentGroupId) && !groupIds.has(group.id)) {
+                        groupIds.add(group.id);
+                        grew = true;
+                    }
+                }
+            }
+        }
+
+        const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
+        return Object.values(metadata[type]).filter(
+            asset => asset.groupId && groupIds.has(asset.groupId)
+        ) as Asset<AssetType, AssetSource>[];
+    }
+
     public async deleteGroup<T extends AssetType>(
-        type: T, 
-        groupId: string, 
-        recursive: boolean = false
+        type: T,
+        groupId: string,
+        recursive: boolean = false,
+        options?: AssetDeleteOptions,
     ): Promise<RequestStatus<void>> {
         this.assertGroups();
 
@@ -96,15 +134,26 @@ export class GroupAssetsManager {
             a => a.groupId === groupId
         );
 
-        // Delete all assets within this group instead of moving them to root
+        // Delete all assets within this group instead of moving them to root.
+        //
+        // A refusal stops the cascade instead of being swallowed: the delete goes through
+        // `AssetsService.deleteAsset`, which is where the reference guard lives, and carrying on
+        // past it would drop the group record while leaving the file it refused to delete behind,
+        // stranded at the root with no way back to where it was.
         for (const asset of assetsInGroup) {
-            await this.assetsService.deleteAsset(asset as Asset<AssetType, AssetSource>);
+            const result = await this.assetsService.deleteAsset(asset as Asset<AssetType, AssetSource>, options);
+            if (!result.success) {
+                return result;
+            }
         }
 
         // Delete child groups recursively
         if (recursive) {
             for (const child of childGroups) {
-                await this.deleteGroup(type, child.id, true);
+                const result = await this.deleteGroup(type, child.id, true, options);
+                if (!result.success) {
+                    return result;
+                }
             }
         }
 

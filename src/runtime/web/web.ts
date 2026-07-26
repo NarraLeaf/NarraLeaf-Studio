@@ -123,6 +123,9 @@ const bridge: GameRuntimePreloadBridge = {
     // is synchronous and heavily restricted), so there is no host-driven close request on the web:
     // registering a handler is a no-op and the blueprint close event simply never fires here.
     onCloseRequested: () => () => undefined,
+    // Says out loud what the no-op above implies, so callers gate on it instead of registering a
+    // handler that can never run (runtime plugins surface it as events.available("closeRequested")).
+    capabilities: { closeRequested: false },
     save: {
         write: async (id, savedGame, capture, metadata) =>
             (await getStorage()).writeSave(id, savedGame, capture, metadata),
@@ -137,6 +140,12 @@ const bridge: GameRuntimePreloadBridge = {
         setValue: async (key, value) => (await getStorage()).setPersistenceValue(key, value),
         removeValue: async key => (await getStorage()).removePersistenceValue(key),
     },
+    // `sidecar` is deliberately absent, not stubbed. A browser has no child
+    // processes and never will, so there is no honest no-op: a stub would let a
+    // plugin call start() and wait forever for a handshake nothing can answer.
+    // Leaving the field off is what removes `app.game.sidecar` on the web export
+    // (the runtime plugin host passes no sidecar backend without it), which is
+    // the same shape a plugin already handles for a sidecar its platform lacks.
 };
 
 window[GAME_RUNTIME_BRIDGE_KEY] = bridge;

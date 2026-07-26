@@ -151,6 +151,78 @@ export class AssetsMetadataManager {
         };
     }
 
+    /**
+     * Record the digest of freshly replaced bytes on an existing asset record.
+     *
+     * Deliberately silent: the `updated` broadcast is the last step of
+     * {@link AssetsService.replaceAssetContent}, after the thumbnail cache has been dropped. Emitting
+     * from here would wake every subscriber while the stale thumbnail PNG is still on disk, and they
+     * would redraw the old picture.
+     */
+    public applyReplacedContent<T extends AssetType>(
+        asset: Asset<T, AssetSource>,
+        digest: { hash: string; ext?: string },
+    ): RequestStatus<Asset<T, AssetSource>> {
+        const metadata = this.getAssets();
+        const existingAsset = metadata[asset.type][asset.id];
+        if (!existingAsset) {
+            return {
+                success: false,
+                error: `Asset not found: ${asset.id}`,
+            };
+        }
+
+        existingAsset.hash = digest.hash;
+
+        // A png swapped for a jpg keeps its name's base but not its lie about the format; the
+        // extension is what the compiler writes into the packaged filename.
+        const nextExt = digest.ext || undefined;
+        if (nextExt !== existingAsset.ext) {
+            existingAsset.ext = nextExt;
+            existingAsset.name = this.resolveNameForExtension(asset.type, existingAsset.name, existingAsset.id, nextExt);
+        }
+
+        this.assetsService.markDirty(asset.type);
+
+        return {
+            success: true,
+            data: existingAsset,
+        };
+    }
+
+    /**
+     * Swap the extension on a display name, keeping it unique within the type (names are the handle
+     * authors use; two `bg.jpg` rows would be indistinguishable).
+     */
+    private resolveNameForExtension<T extends AssetType>(
+        type: T,
+        currentName: string,
+        assetId: string,
+        newExt: string | undefined,
+    ): string {
+        const extIndex = currentName.lastIndexOf(".");
+        const base = extIndex > 0 ? currentName.slice(0, extIndex) : currentName;
+        const suffix = newExt ? `.${newExt}` : "";
+        const taken = new Set(
+            Object.values(this.getAssets()[type])
+                .filter(candidate => candidate.id !== assetId)
+                .map(candidate => candidate.name),
+        );
+
+        const desired = `${base}${suffix}`;
+        if (!taken.has(desired)) {
+            return desired;
+        }
+
+        let counter = 1;
+        let candidate = `${base}-${counter}${suffix}`;
+        while (taken.has(candidate)) {
+            counter += 1;
+            candidate = `${base}-${counter}${suffix}`;
+        }
+        return candidate;
+    }
+
     private async initAssetsMetadata(): Promise<void> {
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const files = Object.values(AssetType).map(type => ({

@@ -78,7 +78,6 @@ export const builtInActionGroups: ModuleActionGroup[] = globalActionGroups;
  * Export individual modules for direct access if needed
  */
 export { assetsModule, assetsBottomModule } from "./assets";
-export { AssetOverviewCommand } from "./asset-overview";
 export { charactersModule } from "./characters";
 export { propertiesModule } from "./properties";
 export { consoleModule } from "./console";

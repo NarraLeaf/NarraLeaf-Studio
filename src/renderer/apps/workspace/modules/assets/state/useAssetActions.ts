@@ -1,10 +1,11 @@
 import { useCallback, useRef } from 'react';
 import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
-import { AssetType } from '@/lib/workspace/services/assets/assetTypes';
+import { AssetExtensions, AssetType } from '@/lib/workspace/services/assets/assetTypes';
+import { runReplaceAssetContentFlow } from '@/lib/workspace/assets/replaceAssetContentFlow';
+import type { ImportQueueController } from './useImportQueue';
 import { WorkspaceContext } from '@/lib/workspace/services/services';
 import { AssetsService } from '@/lib/workspace/services/core/AssetsService';
 import { UIService } from '@/lib/workspace/services/core/UIService';
-import { ReferenceService } from '@/lib/workspace/services/references/ReferenceService';
 import type { AssetReference } from '@/lib/workspace/services/references/referenceModel';
 import { Services } from '@/lib/workspace/services/services';
 import { InputDialog } from '@/lib/components/dialogs/InputDialog';
@@ -36,6 +37,8 @@ export interface UseAssetActionsParams {
     setActionLoading?: (loading: boolean) => void;
     /** Function to expand a group by its ID */
     expandGroup?: (groupId: string) => void;
+    /** Receives per-file import progress and the failures the panel offers a retry for. */
+    importQueue?: ImportQueueController;
 }
 
 /** How many reference lines to spell out per asset in the delete warning before collapsing. */
@@ -134,7 +137,8 @@ export function useAssetActions({
     onActionComplete,
     setClipboard,
     setActionLoading,
-    expandGroup
+    expandGroup,
+    importQueue,
 }: UseAssetActionsParams) {
     const { t, tn } = useTranslation();
 
@@ -222,90 +226,67 @@ export function useAssetActions({
         return false;
     }, [groups]);
 
-    const handleImport = useCallback(async (type: AssetType, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => {
-        if (!context) return;
+    /**
+     * Import a known list of files, reporting per-file progress and leaving the failures where the
+     * panel can offer a retry.
+     *
+     * Every entry point resolves its paths first and comes through here, so a retry is just this
+     * function again with the paths that did not make it — no second trip through the picker.
+     */
+    const runImport = useCallback(async (type: AssetType, paths: string[], groupId?: string) => {
+        const ctx = contextRef.current;
+        if (!ctx || paths.length === 0) return;
+        const uiService = ctx.services.get<UIService>(Services.UI);
+
         notifyLoading(true);
-        
+        importQueue?.start({ type, groupId, total: paths.length });
+
         await withAssetsService(async (assetsService) => {
             await assetsService.transaction(async (svc) => {
-                const uiService = context.services.get<UIService>(Services.UI);
-                let result;
-                if (files && files.length > 0) {
-                    const fileArray = Array.from(files);
-                    const grantResult = await getInterface().fs.grantFileAccessForFiles(fileArray);
-                    if (!grantResult.success) {
-                        uiService.showAlert(t("assets.import.unableTitle"), grantResult.error || t("assets.import.fileAccessFailed"));
-                        return;
-                    }
-                    if (!grantResult.data.ok) {
-                        uiService.showAlert(t("assets.import.unableTitle"), grantResult.data.error.message);
-                        return;
-                    }
-
-                    const paths = grantResult.data.data.length > 0
-                        ? grantResult.data.data
-                        : fileArray
-                        .map(f => {
-                            const pathFromProp = (f as any).path;
-                            if (pathFromProp && pathFromProp.length > 0) return pathFromProp;
-
-                            return getInterface().fs.getPathForFile(f);
-                        })
-                        .filter((p): p is string => typeof p === 'string' && p.length > 0);
-
-                    if (paths.length === 0) {
-                        const uriPaths = parseFileUriList(dataTransfer);
-                        if (uriPaths.length > 0) {
-                            paths.push(...uriPaths);
-                        }
-
-                        if (paths.length === 0) {
-                            uiService.showAlert(
-                                t("assets.import.unableTitle"),
-                                t("assets.import.filePathParsingFailed")
-                            );
-                            return;
-                        }
-                    }
-
-                    // Dropped folders are expanded to their matching files and everything else is
-                    // filtered out; plain files pass through untouched.
-                    const expansion = await svc.expandImportPaths(type, paths);
-                    if (expansion.files.length === 0) {
-                        if (expansion.expandedDirectory) {
-                            uiService.notifications.info(t("assets.import.noMatchingFiles"));
-                        }
-                        return;
-                    }
-                    result = await svc.importFromPaths(type, expansion.files);
-                } else {
-                    result = await svc.importLocalAssets(type);
-                }
+                const result = await svc.importFromPaths(type, paths, {
+                    onProgress: progress => importQueue?.progress(progress),
+                });
 
                 if (!result.success) {
+                    // The whole run fell over, so every file is still outstanding and retryable.
+                    importQueue?.finish(paths.map(path => ({ path, error: result.error })));
                     uiService.showAlert(t("assets.import.failedTitle"), result.error || t("assets.unknownError"));
                     return;
                 }
 
-                const importFailures = result.data?.filter(assetResult => !assetResult.success) ?? [];
-                const importedAssets = result.data?.flatMap(assetResult =>
+                // `importFromPaths` answers 1:1 with the paths it was handed, which is what lets a
+                // failure be named by file rather than by a bare error string.
+                const perFile = result.data ?? [];
+                const failures = perFile.flatMap((assetResult, index) =>
+                    assetResult.success ? [] : [{ path: paths[index], error: assetResult.error }]
+                );
+                const importedAssets = perFile.flatMap(assetResult =>
                     assetResult.success && assetResult.data ? [assetResult.data] : []
-                ) ?? [];
+                );
+
+                importQueue?.finish(failures);
 
                 if (groupId) {
+                    // Collected rather than returned on: a failed move used to abandon the rest of
+                    // the run *and* swallow the import-failure summary that had not been shown yet.
+                    const moveErrors: string[] = [];
                     for (const asset of importedAssets) {
                         const moveResult = await svc.moveAssetToGroup(asset, groupId);
                         if (!moveResult.success) {
-                            uiService.showAlert(t("assets.import.moveFailedTitle"), moveResult.error || t("assets.unknownError"));
-                            return;
+                            moveErrors.push(`${asset.name}: ${moveResult.error || t("assets.unknownError")}`);
                         }
+                    }
+                    if (moveErrors.length > 0) {
+                        uiService.showAlert(t("assets.import.moveFailedTitle"), moveErrors.join("\n"));
                     }
                 }
 
-                if (importFailures.length > 0) {
+                // Failures are listed in the panel with a retry; the alert stays only for callers
+                // that have no strip to read (there is none today, but the summary is cheap to keep).
+                if (failures.length > 0 && !importQueue) {
                     uiService.showAlert(
                         importedAssets.length > 0 ? t("assets.import.someFailedTitle") : t("assets.import.failedTitle"),
-                        summarizeImportFailures(importFailures.map(assetResult => assetResult.error), t)
+                        summarizeImportFailures(failures.map(failure => failure.error), t)
                     );
                 }
             });
@@ -313,7 +294,78 @@ export function useAssetActions({
 
         onActionComplete();
         notifyLoading(false);
-    }, [context, withAssetsService, onActionComplete, notifyLoading]);
+    }, [importQueue, notifyLoading, onActionComplete, t, withAssetsService]);
+
+    const handleImport = useCallback(async (type: AssetType, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => {
+        if (!context) return;
+        const uiService = context.services.get<UIService>(Services.UI);
+
+        let paths: string[];
+        if (files && files.length > 0) {
+            const fileArray = Array.from(files);
+            const grantResult = await getInterface().fs.grantFileAccessForFiles(fileArray);
+            if (!grantResult.success) {
+                uiService.showAlert(t("assets.import.unableTitle"), grantResult.error || t("assets.import.fileAccessFailed"));
+                return;
+            }
+            if (!grantResult.data.ok) {
+                uiService.showAlert(t("assets.import.unableTitle"), grantResult.data.error.message);
+                return;
+            }
+
+            paths = grantResult.data.data.length > 0
+                ? grantResult.data.data
+                : fileArray
+                .map(f => {
+                    const pathFromProp = (f as any).path;
+                    if (pathFromProp && pathFromProp.length > 0) return pathFromProp;
+
+                    return getInterface().fs.getPathForFile(f);
+                })
+                .filter((p): p is string => typeof p === 'string' && p.length > 0);
+
+            if (paths.length === 0) {
+                const uriPaths = parseFileUriList(dataTransfer);
+                if (uriPaths.length > 0) {
+                    paths.push(...uriPaths);
+                }
+
+                if (paths.length === 0) {
+                    uiService.showAlert(
+                        t("assets.import.unableTitle"),
+                        t("assets.import.filePathParsingFailed")
+                    );
+                    return;
+                }
+            }
+
+            // Dropped folders are expanded to their matching files and everything else is
+            // filtered out; plain files pass through untouched.
+            const expansion = await withAssetsService(svc => svc.expandImportPaths(type, paths));
+            if (!expansion || expansion.files.length === 0) {
+                if (expansion?.expandedDirectory) {
+                    uiService.notifications.info(t("assets.import.noMatchingFiles"));
+                }
+                return;
+            }
+            paths = expansion.files;
+        } else {
+            // Picked here rather than inside the importer so the queue knows the file list up front:
+            // it is what "3 of 20" counts against, and what a retry replays.
+            const selection = await getInterface().fs.selectFile(AssetExtensions[type], true);
+            if (!selection.success || !selection.data.ok) {
+                return;
+            }
+            paths = selection.data.data;
+        }
+
+        await runImport(type, paths, groupId);
+    }, [context, runImport, t, withAssetsService]);
+
+    /** Re-run the files the last import could not read, into the same group. */
+    const handleRetryImport = useCallback(async (type: AssetType, paths: string[], groupId?: string) => {
+        await runImport(type, paths, groupId);
+    }, [runImport]);
 
     const handleImportRemote = useCallback(async (type: AssetType) => {
         if (!context || !inputDialog) return;
@@ -484,6 +536,49 @@ export function useAssetActions({
         onActionComplete();
     }, [context, resolveTargets, focusedItemId, inputDialog, onActionComplete, withAssetsService]);
 
+    /**
+     * The one asset the single-subject actions act on, in the same priority order rename uses:
+     * right-clicked row, then a lone selection, then the focused row. Groups resolve to nothing —
+     * replacing contents is per file, and the card rules out a batch version.
+     */
+    const resolveSingleAsset = useCallback((): Asset | null => {
+        if (contextMenuTarget?.item) {
+            return contextMenuTarget.isGroup ? null : (contextMenuTarget.item as Asset);
+        }
+
+        const candidateId = selectedItems.size === 1 ? Array.from(selectedItems)[0] : focusedItemId;
+        if (!candidateId || !candidateId.startsWith('asset:')) {
+            return null;
+        }
+        const assetId = candidateId.replace('asset:', '');
+        return Object.values(assets).flat().find(a => a.id === assetId) ?? null;
+    }, [assets, contextMenuTarget, focusedItemId, selectedItems]);
+
+    /**
+     * Swap the file behind an asset while keeping its id, so every place already pointing at it
+     * renders the new file instead of needing to be relinked one by one.
+     *
+     * `target` lets a caller outside the panel (the inspector) name the asset directly; the panel's
+     * own entry points resolve it from the selection.
+     */
+    const handleReplaceContent = useCallback(async (target?: Asset) => {
+        const ctx = contextRef.current;
+        if (!ctx) return;
+
+        const asset = target ?? resolveSingleAsset();
+        if (!asset) return;
+
+        notifyLoading(true);
+        try {
+            const outcome = await runReplaceAssetContentFlow(ctx, asset, t);
+            if (outcome === "replaced") {
+                onActionComplete();
+            }
+        } finally {
+            notifyLoading(false);
+        }
+    }, [notifyLoading, onActionComplete, resolveSingleAsset, t]);
+
     const handleDelete = useCallback(async () => {
         notifyLoading(true);
         try {
@@ -500,29 +595,19 @@ export function useAssetActions({
             // targets let a whole folder of referenced material through without a warning.
             const affectedAssets = collectAffectedAssets(targets, assets, groups);
 
-            const referenceService = context?.services.get<ReferenceService>(Services.Reference) ?? null;
-            // "No references found" and "could not look for references" must not be the same answer.
-            // An empty index reports every asset as unused, so a build that failed - or a service
-            // that is missing entirely - has to stop the delete rather than wave it through.
-            let referencesByAsset = new Map<string, AssetReference[]>();
-            let referencesChecked = false;
-            if (referenceService) {
-                try {
-                    // The index is lazy; without this an unopened project reports everything as unused.
-                    await referenceService.ensureReady();
-                    // And it is debounced, so an edit made moments ago may still be sitting in a timer.
-                    await referenceService.flushPendingRebuilds();
-                    referencesByAsset = referenceService.getReferencesForAll(affectedAssets.map(asset => asset.id));
-                    referencesChecked = true;
-                } catch {
-                    referencesChecked = false;
-                }
-            }
+            // The same reading the service's guard enforces — asked through the service rather than
+            // looked up here, so the list the author is shown and the list the delete is checked
+            // against cannot drift apart. "No references found" and "could not look for references"
+            // stay different answers: an empty index reports every asset as unused.
+            const { checked: referencesChecked, references: referencesByAsset } =
+                (await withAssetsService(assetsService => assetsService.findAssetReferences(affectedAssets.map(asset => asset.id))))
+                ?? { checked: false, references: new Map<string, AssetReference[]>() };
 
             if (!referencesChecked) {
-                const proceedUnverified = await uiService.showConfirm(
+                const proceedUnverified = await uiService.showDestructiveConfirm(
                     t("assets.delete.unverifiedTitle"),
                     t("assets.delete.unverifiedMessage"),
+                    t("assets.delete.action"),
                 );
                 if (!proceedUnverified) {
                     return;
@@ -546,18 +631,23 @@ export function useAssetActions({
                     })
                     .join("\n");
 
-                const forceConfirmed = await uiService.showConfirm(
+                // Warn, do not block: sometimes deleting the referenced file is exactly the intent.
+                // The hierarchy is what expresses the risk — Cancel is the default and the keyboard
+                // target, the delete is a danger-coloured secondary.
+                const forceConfirmed = await uiService.showDestructiveConfirm(
                     t("assets.delete.inUseTitle"),
                     `${t("assets.delete.inUseMessage")}\n\n${details}`,
+                    t("assets.delete.action"),
                 );
                 if (!forceConfirmed) {
                     return;
                 }
             }
 
-            const confirmed = await uiService.showConfirm(
+            const confirmed = await uiService.showDestructiveConfirm(
                 tn("assets.delete.confirmTitle", targets.length),
                 t("assets.delete.confirmMessage"),
+                t("assets.delete.action"),
             );
             if (!confirmed) {
                 return;
@@ -566,17 +656,25 @@ export function useAssetActions({
             // Remove duplicate targets by id to avoid double deletion
             const uniqueTargets = Array.from(new Map(targets.map(t => [t.item.id, t])).values());
 
+            // The author has now seen the reference list and said go ahead, so this is the one place
+            // allowed through the service guard. Every other caller — a group cascade, anything
+            // programmatic — is refused by default.
+            const deleteFailures: string[] = [];
             await withAssetsService(async (assetsService) => {
                 await assetsService.transaction(async (svc) => {
                     await Promise.all(uniqueTargets.map(async (t) => {
-                        if (t.isGroup) {
-                            await svc.deleteGroup(t.type, (t.item as AssetGroup).id, true);
-                        } else {
-                            await svc.deleteAsset(t.item as Asset);
+                        const result = t.isGroup
+                            ? await svc.deleteGroup(t.type, (t.item as AssetGroup).id, true, { allowReferenced: true })
+                            : await svc.deleteAsset(t.item as Asset, { allowReferenced: true });
+                        if (!result.success && result.error) {
+                            deleteFailures.push(result.error);
                         }
                     }));
                 });
             });
+            if (deleteFailures.length > 0) {
+                uiService.showAlert(t("assets.delete.failedTitle"), deleteFailures.join("\n"));
+            }
             onActionComplete();
         } catch (error) {
             console.error("Failed to delete asset", error);
@@ -658,12 +756,14 @@ export function useAssetActions({
     return {
         handleCreateGroup,
         handleImport,
+        handleRetryImport,
         handleImportToGroup,
         handleImportRemote,
         handleCopy,
         handleCut,
         handlePaste,
         handleRename,
+        handleReplaceContent,
         handleDelete,
         handleCreateMagicTags,
         handleApplyMagicTags,

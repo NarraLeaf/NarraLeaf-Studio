@@ -12,7 +12,7 @@ import { BlueprintService } from "../assets/BlueprintService";
 import { AssetsMetadataManager } from "../assets/mgr/AssetsMetadataManager";
 import { EditorRemoteCacheManager } from "../assets/mgr/EditorRemoteCacheManager";
 import { GroupAssetsManager } from "../assets/mgr/GroupAssetsManager";
-import { LocalAssetsManager } from "../assets/mgr/LocalAssetsManager";
+import { LocalAssetsManager, type ImportFromPathsOptions } from "../assets/mgr/LocalAssetsManager";
 import { RemoteAssetsManager } from "../assets/mgr/RemoteAssetsManager";
 import { OtherService } from "../assets/OtherService";
 import type { ExpandImportPathsResult } from "../assets/importPathExpansion";
@@ -26,6 +26,17 @@ import { MagicTagManager, MagicTagTemplate, MagicTagPreview } from "./MagicTagMa
 import { ProjectService } from "./ProjectService";
 import { UuidService } from "./UuidService";
 import { AssetLockManager, AssetLockReason } from "../assets/AssetLockManager";
+import {
+    collectAssetReferences,
+    describeBlockedDelete,
+    type AssetDeleteOptions,
+    type AssetReferenceLookup,
+    type AssetReferenceReport,
+} from "../assets/assetDeleteGuard";
+// Type-only: the reference index scans stories, blueprints, UI documents and characters, several of
+// which read assets. A value import here would close that loop; the instance is resolved from the
+// service registry at call time instead.
+import type { ReferenceService } from "../references/ReferenceService";
 import { dirname } from "@shared/utils/path";
 
 interface AssetsEvents {
@@ -394,12 +405,28 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return this.getGroupAssetsManager().createGroup(type, name, parentGroupId);
     }
 
+    /**
+     * Delete a group and everything it contains.
+     *
+     * The reference check happens here, at the enumeration stage, over every asset the cascade would
+     * remove — including the contents of nested groups. Checking per asset inside the cascade would
+     * be too late: by the time the third file was refused the first two would already be gone.
+     */
     public async deleteGroup<T extends AssetType>(
-        type: T, 
-        groupId: string, 
-        recursive: boolean = false
+        type: T,
+        groupId: string,
+        recursive: boolean = false,
+        options?: AssetDeleteOptions,
     ): Promise<RequestStatus<void>> {
-        return this.getGroupAssetsManager().deleteGroup(type, groupId, recursive);
+        const groupManager = this.getGroupAssetsManager();
+        const blocked = await this.findDeleteBlocker(groupManager.collectGroupAssets(type, groupId, recursive), options);
+        if (blocked) {
+            return { success: false, error: blocked };
+        }
+
+        // Cleared as a set above; the per-asset guard inside the cascade would only re-ask the same
+        // question once per file.
+        return groupManager.deleteGroup(type, groupId, recursive, { allowReferenced: true });
     }
 
     public async renameGroup<T extends AssetType>(
@@ -463,10 +490,63 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return this.getAssetsMetadataManager().renameAsset(asset, newName);
     }
 
+    /**
+     * The reverse lookup behind the delete guard, exposed so the panel can draw its warning from the
+     * same reading the guard enforces — two independent lookups would eventually disagree, and the
+     * one the author sees is not the one that decides.
+     */
+    public async findAssetReferences(assetIds: readonly string[]): Promise<AssetReferenceReport> {
+        return collectAssetReferences(this.getReferenceLookup(), assetIds);
+    }
+
+    /**
+     * The reference index, or null when it is not registered in this workspace. Resolved at call
+     * time rather than at init: the index scans stories, blueprints, UI documents and characters,
+     * several of which read assets, so depending on it here would be a cycle.
+     */
+    private getReferenceLookup(): AssetReferenceLookup | null {
+        try {
+            return this.getContext().services.get<ReferenceService>(Services.Reference) ?? null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * The guard itself: the single point every delete passes through.
+     *
+     * It used to live in `useAssetActions`, which meant a group cascade — and any programmatic
+     * delete — walked straight past it. Semantics per the ruling: block by default, and let a caller
+     * that has actually asked the author come through with `allowReferenced`. The service never
+     * shows UI; it only refuses.
+     *
+     * Returns the reason to refuse, or null to proceed.
+     */
+    private async findDeleteBlocker(
+        assets: readonly Asset<AssetType, AssetSource>[],
+        options?: AssetDeleteOptions,
+    ): Promise<string | null> {
+        if (options?.allowReferenced || assets.length === 0) {
+            return null;
+        }
+
+        const report = await this.findAssetReferences(assets.map(asset => asset.id));
+        if (report.checked && report.references.size === 0) {
+            return null;
+        }
+        return describeBlockedDelete(report, new Map(assets.map(asset => [asset.id, asset.name])));
+    }
+
     // Asset operations
     public async deleteAsset<T extends AssetType>(
-        asset: Asset<T, AssetSource>
+        asset: Asset<T, AssetSource>,
+        options?: AssetDeleteOptions,
     ): Promise<RequestStatus<void>> {
+        const blocked = await this.findDeleteBlocker([asset], options);
+        if (blocked) {
+            return { success: false, error: blocked };
+        }
+
         let result: RequestStatus<void>;
         if (asset.source === AssetSource.Remote) {
             result = await this.getRemoteAssetsManager().deleteAsset(asset as Asset<T, AssetSource.Remote>);
@@ -486,6 +566,56 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     }
 
     /**
+     * Swap the bytes behind an existing asset, keeping its id.
+     *
+     * References store the asset id, never a path, so every place that pointed at this asset follows
+     * automatically — that is the whole point of replacing rather than importing-and-relinking.
+     *
+     * The four steps below have to happen in this order, and three of them had no caller at all
+     * before this method existed:
+     *
+     *  1. write the new bytes (`LocalAssetsManager.writeAssetContentFromPath`);
+     *  2. recompute `hash` — it used to be written once at import and never again, while several
+     *     readers use it as the cache key deciding whether to re-read the file;
+     *  3. drop the cached thumbnail PNG, which is keyed by asset id and would otherwise survive the
+     *     swap and keep every grid tile showing the old picture;
+     *  4. write the record, then announce `updated` — last, so nobody wakes up and re-reads a stale
+     *     thumbnail that step 3 was about to delete.
+     *
+     * There is no asset-level history: this cannot be undone. The UI expresses that with the button
+     * hierarchy on the confirm, not with a sentence.
+     */
+    public async replaceAssetContent<T extends AssetType>(
+        asset: Asset<T, AssetSource>,
+        sourcePath: string,
+    ): Promise<RequestStatus<Asset<T, AssetSource>>> {
+        if (asset.source !== AssetSource.Local) {
+            return { success: false, error: "Replacing the contents of a remote asset is not supported" };
+        }
+
+        const written = await this.getLocalAssetsManager()
+            .writeAssetContentFromPath(asset as Asset<T, AssetSource.Local>, sourcePath);
+        if (!written.success || !written.data) {
+            return { success: false, error: written.error };
+        }
+
+        try {
+            await this.clearThumbnailCache(asset.id);
+        } catch (error) {
+            console.warn(`Failed to clear thumbnail cache for asset: ${asset.id}`, error);
+        }
+
+        const applied = this.getAssetsMetadataManager().applyReplacedContent(asset, written.data);
+        if (!applied.success || !applied.data) {
+            return { success: false, error: applied.error };
+        }
+
+        this.getEvents().emit("updated", applied.data);
+
+        return { success: true, data: applied.data };
+    }
+
+    /**
      * Duplicate an existing asset, returning the new asset metadata.
      */
     public async duplicateAsset<T extends AssetType>(asset: Asset<T, AssetSource>): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
@@ -497,9 +627,10 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
     public async importFromPaths<T extends AssetType>(
         type: T,
-        paths: string[]
+        paths: string[],
+        options?: ImportFromPathsOptions,
     ): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
-        return this.getLocalAssetsManager().importFromPaths(type, paths);
+        return this.getLocalAssetsManager().importFromPaths(type, paths, options);
     }
 
     /**
