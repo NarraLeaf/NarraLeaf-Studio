@@ -312,12 +312,6 @@ function createEditorRuntimePluginGame(descriptor: WorkspacePluginDescriptor): R
             register: () => registrationUnavailable("widgets"),
             registerMany: () => registrationUnavailable("widgets"),
         },
-        story: {
-            // A compile pass runs while a game is being compiled, which the editor
-            // process never does; registering one from the studio entry would sit
-            // in a registry nothing consults. Same reasoning as the two above.
-            registerCompilePass: () => registrationUnavailable("story.registerCompilePass"),
-        },
         data: {
             // In a game this reads the copy published with the pack, synchronously.
             // The editor's authored copy lives behind the async storage service, so
@@ -602,11 +596,11 @@ export function createPluginApp(
                 actions: {
                     register: registration => {
                         assertOwnedId(descriptor.plugin.id, registration.id ?? "", "story action");
-                        return trackReturn(story.registerPluginAction(registration, descriptor.plugin.id));
+                        return trackReturn(story.registerPluginAction(registration));
                     },
                     registerMany: registrations => combine(registrations.map(registration => {
                         assertOwnedId(descriptor.plugin.id, registration.id ?? "", "story action");
-                        return trackReturn(story.registerPluginAction(registration, descriptor.plugin.id));
+                        return trackReturn(story.registerPluginAction(registration));
                     })),
                 },
             },

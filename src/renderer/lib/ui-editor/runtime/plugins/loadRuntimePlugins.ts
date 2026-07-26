@@ -27,7 +27,6 @@ import {
     type RuntimePluginSidecarHandle,
     type RuntimeWidgetRendererDef,
 } from "./runtimePluginApi";
-import { registerStoryCompilePass, type StoryCompilePass } from "../game/storyCompilePass";
 import type { RuntimePluginHost } from "./runtimePluginHost";
 
 export const RUNTIME_PLUGIN_MODULE_GLOBAL = "__NLS_RUNTIME_PLUGIN_MODULE__";
@@ -230,17 +229,6 @@ function createRuntimePluginApp(
         });
     };
 
-    const registerPass = (pass: StoryCompilePass): void => {
-        const id = typeof pass?.id === "string" ? pass.id.trim() : "";
-        if (!id || typeof pass.scene !== "function") {
-            throw new Error("Runtime compile pass requires an id and a scene function");
-        }
-        if (id !== pluginId && !id.startsWith(`${pluginId}.`)) {
-            throw new Error(`Compile pass id must be the plugin id or prefixed with it: ${pluginId}`);
-        }
-        registerStoryCompilePass(pass, pluginId);
-    };
-
     const readData = <T,>(namespace: string): T | null => {
         const key = typeof namespace === "string" ? namespace.trim() : "";
         if (!key) {
@@ -282,12 +270,6 @@ function createRuntimePluginApp(
             },
         },
         data: { readJson: readData },
-        // Not capability-gated, unlike everything below. A compile pass can inject
-        // engine actions into every scene, so by the rule this file exists to
-        // enforce it ought to be declared — but it shipped ungated and plugins
-        // already use it, and adding the gate here would break them silently as a
-        // side effect of a merge. Gating it is its own decision, with a migration.
-        story: { registerCompilePass: registerPass },
         log,
         ...buildCapabilityDomains(descriptor, options.host ?? {}, pluginId, log),
     };
