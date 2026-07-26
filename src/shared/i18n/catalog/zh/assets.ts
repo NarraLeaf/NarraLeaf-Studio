@@ -117,6 +117,11 @@ export const assets = {
         filePathParsingFailed: "文件路径解析失败",
         noMatchingFiles: "拖入的文件夹中没有可导入的文件",
         moreFailures: "…还有 {count} 个",
+        failedCount: {
+            one: "{count} 个文件失败",
+            other: "{count} 个文件失败",
+        },
+        retry: "重试",
         remoteTitle: "导入远程素材",
         remoteDescription: "粘贴远程素材的直接链接",
         remoteInvalidUrl: "请输入有效的 URL",
