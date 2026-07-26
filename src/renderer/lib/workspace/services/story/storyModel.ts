@@ -328,10 +328,11 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
         migrated = migrateStoryDocumentV8toV9(migrated);
     }
     // v4 (the `invalid` block kind and dialogue's `speakerName`), v7 (the block-level `disabled`
-    // flag) and v8 (the `event` rich-text run) are purely additive: an older document is already
-    // valid at the new version, so there is no step for any of them - only the stamp (a v7 document
-    // falls through every step above and is stamped v8). v9 (M-VAR) is NOT additive - it renames the
-    // persistent `StoryVariableRef` arm - so it has a real step above.
+    // flag), v8 (the `event` rich-text run) and v10 (the `{action:"plugin"}` marker block) are
+    // purely additive: an older document is already valid at the new version, so there is no step
+    // for any of them - only the stamp (a v7 document falls through every step above and is stamped
+    // v10). v9 (M-VAR) is NOT additive - it renames the persistent `StoryVariableRef` arm - so it
+    // has a real step above.
     //
     // The stamp is unconditional, and has to be. Each migrator above ends by writing
     // STORY_DOCUMENT_SCHEMA_VERSION rather than the version it actually produces, so the ladder only

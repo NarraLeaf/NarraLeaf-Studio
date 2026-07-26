@@ -24,6 +24,7 @@ import {
     type RuntimePluginLogLevel,
     type RuntimeWidgetRendererDef,
 } from "./runtimePluginApi";
+import { registerStoryCompilePass, type StoryCompilePass } from "../game/storyCompilePass";
 
 export const RUNTIME_PLUGIN_MODULE_GLOBAL = "__NLS_RUNTIME_PLUGIN_MODULE__";
 
@@ -208,6 +209,17 @@ function createRuntimePluginApp(
         });
     };
 
+    const registerPass = (pass: StoryCompilePass): void => {
+        const id = typeof pass?.id === "string" ? pass.id.trim() : "";
+        if (!id || typeof pass.scene !== "function") {
+            throw new Error("Runtime compile pass requires an id and a scene function");
+        }
+        if (id !== pluginId && !id.startsWith(`${pluginId}.`)) {
+            throw new Error(`Compile pass id must be the plugin id or prefixed with it: ${pluginId}`);
+        }
+        registerStoryCompilePass(pass, pluginId);
+    };
+
     const readData = <T,>(namespace: string): T | null => {
         const key = typeof namespace === "string" ? namespace.trim() : "";
         if (!key) {
@@ -249,6 +261,7 @@ function createRuntimePluginApp(
                 },
             },
             data: { readJson: readData },
+            story: { registerCompilePass: registerPass },
             log: (level, message) => options.log(level, `[plugin:${pluginId}] ${message}`),
         },
     };

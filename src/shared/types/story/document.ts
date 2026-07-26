@@ -25,7 +25,9 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // the scene/saved arms, replacing the old `storageKey`. The migration renames the field on every
 // persistent ref with the identical value (a persistent variable's id equals its storage key), so
 // old references keep resolving unchanged - `storyVariableRefKey` collapses to `scope:variableId`.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 9 as const;
+// v10 adds the `{action:"plugin"}` marker block for plugin compile passes. Purely additive - no
+// existing document changes shape - so the migration only bumps the version (no rewrite step).
+export const STORY_DOCUMENT_SCHEMA_VERSION = 10 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -540,7 +542,29 @@ export type StoryActionPayload =
           action: "blueprint";
           /** Owner blueprint id of the implicit Story Action Blueprint bound 1:1 to this action. */
           blueprintId: string;
+      }
+    | {
+          action: "plugin";
+          /**
+           * The plugin that owns this marker block. Unlike a plugin's `createBlock` output (which
+           * produces standard blocks the document does not depend on), a plugin action block is
+           * meaningful only to its owner's compile pass, so the document hard-depends on `pluginId`.
+           */
+          pluginId: string;
+          /** The plugin's story-action id (namespaced by `pluginId`). */
+          actionId: string;
+          /** Author-set parameters, interpreted by the plugin's compile pass. Must be JSON-serializable. */
+          params: Record<string, StoryPluginActionParamValue>;
       };
+
+/** A JSON-serializable parameter value carried by a `{action:"plugin"}` block. */
+export type StoryPluginActionParamValue =
+    | string
+    | number
+    | boolean
+    | null
+    | StoryPluginActionParamValue[]
+    | { [key: string]: StoryPluginActionParamValue };
 
 /** Mirrors NLR's `VfxBlendMode`; the compiler passes it straight through to the overlay's CSS. */
 export type StoryVfxBlendMode = "normal" | "screen" | "multiply" | "lighten" | "color-dodge" | "overlay";
