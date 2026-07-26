@@ -5,14 +5,21 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 // nativeImage is a main-process API with no standalone implementation; the
 // resize contract is what this module depends on, so that is what is faked.
+let sourceSize = { width: 512, height: 512 };
 const resize = vi.fn((options: { width: number; height: number }) => ({
+    getSize: () => ({ width: options.width, height: options.height }),
+    toBitmap: () => Buffer.alloc(options.width * options.height * 4, 1),
     toPNG: () => Buffer.from(`png:${options.width}x${options.height}`),
 }));
 vi.mock("electron", () => ({
     nativeImage: {
         createFromPath: (iconPath: string) => ({
             isEmpty: () => iconPath.includes("empty"),
+            getSize: () => sourceSize,
             resize,
+        }),
+        createFromBitmap: (_bitmap: Buffer, options: { width: number; height: number }) => ({
+            toPNG: () => Buffer.from(`png:${options.width}x${options.height}:padded`),
         }),
     },
 }));
@@ -24,6 +31,7 @@ const tempDirs: string[] = [];
 
 afterEach(async () => {
     resize.mockClear();
+    sourceSize = { width: 512, height: 512 };
     await Promise.all(tempDirs.splice(0).map(dir => fs.rm(dir, { recursive: true, force: true })));
 });
 
@@ -131,5 +139,40 @@ describe("writeScaledIcons", () => {
         const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-icons-"));
         tempDirs.push(outputDir);
         await expect(writeScaledIcons("/project/empty.png", [], outputDir)).rejects.toThrow(/could not be read/);
+    });
+
+    it("letterboxes a non-square source instead of stretching it to the slot", async () => {
+        // Handing resize both a width and a height makes it resize to exactly
+        // those, so this used to ship a squashed logo with nothing to say so.
+        sourceSize = { width: 1000, height: 500 };
+        const outputDir = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "nls-icons-")), "out");
+        tempDirs.push(path.dirname(outputDir));
+        const written = await writeScaledIcons("/project/wide.png", [
+            { slot: "res/mipmap-xxhdpi-v4/ic_launcher.png", width: 144, height: 144 },
+        ], outputDir);
+
+        expect(resize).toHaveBeenCalledWith({ width: 144, height: 72, quality: "good" });
+        expect(await fs.readFile(written["res/mipmap-xxhdpi-v4/ic_launcher.png"], "utf8")).toBe("png:144x144:padded");
+    });
+
+    it("fits a tall source by its long edge", async () => {
+        sourceSize = { width: 500, height: 1000 };
+        const outputDir = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "nls-icons-")), "out");
+        tempDirs.push(path.dirname(outputDir));
+        await writeScaledIcons("/project/tall.png", [
+            { slot: "res/mipmap-mdpi-v4/ic_launcher.png", width: 48, height: 48 },
+        ], outputDir);
+
+        expect(resize).toHaveBeenCalledWith({ width: 24, height: 48, quality: "good" });
+    });
+
+    it("takes the direct path when the source is already square", async () => {
+        const outputDir = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "nls-icons-")), "out");
+        tempDirs.push(path.dirname(outputDir));
+        const written = await writeScaledIcons("/project/icon.png", [
+            { slot: "res/mipmap-mdpi-v4/ic_launcher.png", width: 48, height: 48 },
+        ], outputDir);
+
+        expect(await fs.readFile(written["res/mipmap-mdpi-v4/ic_launcher.png"], "utf8")).toBe("png:48x48");
     });
 });

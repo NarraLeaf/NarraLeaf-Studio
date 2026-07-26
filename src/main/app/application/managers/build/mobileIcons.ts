@@ -59,6 +59,20 @@ export function readIconSlotSizes(templateZip: Buffer, slots: string[], entryPre
  * slot → path map the worker's job takes. Slot paths become flat file names so
  * nested zip paths (res/mipmap-…/ic_launcher.png) cannot escape the directory
  * or collide.
+ *
+ * The scale preserves the source's aspect ratio and centres the result, letting
+ * a non-square source letterbox rather than stretch. Passing nativeImage.resize
+ * both a width and a height - which is what this did - makes it resize to
+ * exactly those, so a 1000×500 logo arrived on the launcher squashed to a
+ * square with no warning anywhere.
+ *
+ * Note what this does *not* do: it never composites onto a background. Flatten-
+ * ing (which iOS requires, since the App Store rejects an icon with an alpha
+ * channel) happens in the authoring bake, where a canvas does the blending with
+ * known semantics; nativeImage's raw bitmaps are premultiplied on some
+ * platforms and not others, and getting that wrong shows up as a halo nobody
+ * would trace back to here. A project that has baked hands us an already-opaque
+ * square, and one that has not gets the behaviour it had before.
  */
 export async function writeScaledIcons(
     sourceIconPath: string,
@@ -69,16 +83,55 @@ export async function writeScaledIcons(
     if (source.isEmpty()) {
         throw new Error(`The app icon could not be read: ${sourceIconPath}`);
     }
+    const sourceSize = source.getSize();
     await fs.rm(outputDir, { recursive: true, force: true });
     await fs.mkdir(outputDir, { recursive: true });
     const written: Record<string, string> = {};
     for (const [index, { slot, width, height }] of slots.entries()) {
+        const scale = Math.min(width / sourceSize.width, height / sourceSize.height);
+        const drawWidth = Math.max(1, Math.round(sourceSize.width * scale));
+        const drawHeight = Math.max(1, Math.round(sourceSize.height * scale));
         // "good" is nativeImage's highest-quality resampling - icons are
-        // downscaled a long way (512 → 48 at mdpi) and this is a one-off cost.
-        const resized = source.resize({ width, height, quality: "good" });
+        // downscaled a long way (1024 → 48 at mdpi) and this is a one-off cost.
+        const resized = source.resize({ width: drawWidth, height: drawHeight, quality: "good" });
+        const fitted = drawWidth === width && drawHeight === height
+            ? resized
+            : centreOnTransparentCanvas(resized, width, height);
         const outputPath = path.join(outputDir, `${index}-${path.basename(slot)}`);
-        await fs.writeFile(outputPath, resized.toPNG());
+        await fs.writeFile(outputPath, fitted.toPNG());
         written[slot] = outputPath;
     }
     return written;
+}
+
+/**
+ * Place an image in the middle of a larger transparent square. A straight copy
+ * of the pixel rows - no blending - so it is indifferent to whether the
+ * platform's bitmaps carry premultiplied alpha.
+ */
+function centreOnTransparentCanvas(
+    image: Electron.NativeImage,
+    width: number,
+    height: number,
+): Electron.NativeImage {
+    const source = image.getSize();
+    // nativeImage bitmaps are 4 bytes per pixel; the channel order does not
+    // matter here because whole pixels are copied verbatim.
+    const bytesPerPixel = 4;
+    const sourceBitmap = image.toBitmap();
+    const canvas = Buffer.alloc(width * height * bytesPerPixel);
+    const offsetX = Math.floor((width - source.width) / 2);
+    const offsetY = Math.floor((height - source.height) / 2);
+
+    for (let row = 0; row < source.height; row++) {
+        const targetRow = row + offsetY;
+        if (targetRow < 0 || targetRow >= height) {
+            continue;
+        }
+        const sourceStart = row * source.width * bytesPerPixel;
+        const targetStart = (targetRow * width + offsetX) * bytesPerPixel;
+        sourceBitmap.copy(canvas, targetStart, sourceStart, sourceStart + source.width * bytesPerPixel);
+    }
+
+    return nativeImage.createFromBitmap(canvas, { width, height });
 }

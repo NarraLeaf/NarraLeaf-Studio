@@ -99,8 +99,10 @@ export const build = {
         "identifier-missing": "No project identifier; using the app id {appId}.",
         // Platform-neutral: a mobile build falls back to the shell's own
         // placeholder icon, not to Electron's.
-        "icon-missing": "No usable {platform} icon; a default icon ships instead.",
-        "icon-unusable": "The {platform} icon is invalid or smaller than 512×512; a default icon ships instead.",
+        "icon-missing": "No app icon set; a default icon ships instead.",
+        "icon-unusable": "The {platform} icon could not be read; a default icon ships instead.",
+        "icon-low-resolution": "The {platform} icon is smaller than {minimum}×{minimum} and ships upscaled.",
+        "icon-stale": "The {platform} icon has not been prepared; open Project ▸ Assets to bake it.",
         "plugins-invalid": "Plugin validation failed:\n{errors}",
         "encryption-key-unavailable": "Asset protection is on, but its key could not be resolved.",
         "web-unprotected": "Asset protection does not apply to the web export; its files ship unprotected.",
