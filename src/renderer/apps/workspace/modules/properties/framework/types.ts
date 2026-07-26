@@ -2,6 +2,7 @@ import { ReactNode, ComponentType, RefObject } from "react";
 import { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import type { ImageFill, ImageFillMode } from "@shared/types/ui-editor/imageFill";
 import type { PropertyFieldBindingMeta } from "@/apps/workspace/modules/properties/blueprint/bindingMeta";
+import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
 
 /**
  * Supported field types for property editors
@@ -415,9 +416,14 @@ export interface PropertyEditorSchema<TData = any> {
 }
 
 /**
- * Selection types that can trigger property editors
+ * Selection types that can trigger property editors.
+ *
+ * Derived from `SelectionState` rather than restated: the two had already drifted (this list was
+ * missing `storyMotionKeyframe`, and `usePropertyEditor` papered over it with a cast), and a second
+ * hand-maintained copy of the union guarantees it happens again. Type-only import, so nothing about
+ * the module graph changes at runtime.
  */
-export type SelectionType = "asset" | "character" | "element" | "scene" | null;
+export type SelectionType = SelectionState["type"];
 
 /**
  * Property editor registration

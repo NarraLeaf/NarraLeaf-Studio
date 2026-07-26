@@ -1,33 +1,48 @@
 import { useCallback, useSyncExternalStore } from "react";
-import type { StoryBlock, StoryBlockId, StoryDocument, StorySceneId } from "@shared/types/story";
+import type {
+    StoryBlock,
+    StoryBlockId,
+    StoryDocument,
+    StoryId,
+    StoryScene,
+    StorySceneId,
+    StorySceneUpdate,
+} from "@shared/types/story";
 import type { Character } from "@/lib/workspace/services/character/Character";
 
-export const STORY_INSPECTOR_PANEL_ID = "narraleaf-studio:story-inspector";
-
-export type StoryInspectorPanelPayload = {
-    tabId: string;
-    storyId: string;
-    sceneId: string;
-    storyName?: string;
-    sceneName?: string;
-};
-
 /**
- * The live inspector context for one editor tab: the block whose fields the right-panel inspector
- * renders, plus the controller callbacks that edit it. Published by the tab, read by the (globally
- * registered) inspector panel — which lives outside the tab's React subtree and so cannot reach the
- * controller by props. `null` means nothing inspectable is open, and the panel shows its empty state.
+ * The live inspector context for one editor tab: what the right rail renders and the controller
+ * callbacks that edit it. Published by the tab, read by the properties panel — which lives outside the
+ * tab's React subtree and so cannot reach the controller by props.
+ *
+ * This is a transport, not a switch. It says what the subject *is*; whether the rail shows it is
+ * decided by the app-wide selection (`storySelection.ts`), which the same tab publishes. The bridge
+ * used to double as the panel's visibility mechanism — that is what made the rail jump to unrelated
+ * panels and go stale on the previously inspected row.
+ *
+ * `block` is null when no row is focused: the scene is then the subject, and the panel renders the
+ * scene's own fields. `null` for the whole state means this tab has nothing to show (not mounted, not
+ * active, or still loading).
  */
 export type StoryInspectorBridgeState = {
-    block: StoryBlock;
-    document: StoryDocument;
+    storyId: StoryId;
     sceneId: StorySceneId;
+    scene: StoryScene;
+    document: StoryDocument;
     characters: Character[];
+    /** The focused row, or null when the scene itself is the subject. */
+    block: StoryBlock | null;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
     onClose: () => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     generateTextId: () => string;
     onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
+    /**
+     * The one write path for the scene's own metadata — the controller's `updateSceneMetadata`, which
+     * is also what the inline scene header card commits through. Two surfaces, one commit, so undo
+     * stays a single step whichever one the edit came from.
+     */
+    onUpdateScene: (patch: StorySceneUpdate) => boolean;
 };
 
 const states = new Map<string, StoryInspectorBridgeState>();
