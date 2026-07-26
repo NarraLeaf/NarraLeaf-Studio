@@ -568,6 +568,7 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
         if (payload.action === "nvl") return translate("story.describe.nvl");
         if (payload.action === "blueprint") return translate("story.describe.blueprint");
         if (payload.action === "camera") return describeCamera(payload);
+        if (payload.action === "plugin") return payload.actionId;
         return translate("story.describe.effect", { effect: payload.effect });
     }
     if (block.kind === "control") {

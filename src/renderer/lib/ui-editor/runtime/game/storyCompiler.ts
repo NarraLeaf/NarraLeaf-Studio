@@ -120,6 +120,14 @@ import {
     type CompileStoryActionScriptInput,
     type StoryActionFnCatalog,
 } from "./storyActionBlueprint";
+import {
+    getStoryCompilePasses,
+    type SceneCompileContext as PluginSceneCompileContext,
+    type CompileBlockView,
+    type RuntimeFlag,
+    type StageImage,
+    type EngineAction,
+} from "./storyCompilePass";
 
 /**
  * App-level persistent variable bridge (shared with UI blueprints). `get` reads a cached snapshot
@@ -417,6 +425,12 @@ type SceneCompileContext = {
     diagnostics: NlrStoryCompileDiagnostic[];
     actionIdBindings: NlrActionIdBinding[];
     nextActionIndex: () => number;
+    /**
+     * Statements a plugin compile pass attached to a block, keyed by block id. Present only on the
+     * main game-compile path (set once per scene before compiling its blocks); absent on the stage
+     * preview path, so preview snapshots stay free of injected actions.
+     */
+    pluginInjections?: Map<string, { before: NlrStatement[]; after: NlrStatement[] }>;
 };
 
 type CompileInput = {
@@ -562,6 +576,10 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             actionIdBindings,
             nextActionIndex: () => actionIndex++,
         };
+        // Let plugin compile passes observe this scene and record what they inject around each
+        // block. Main game-compile path only — the stage preview never sets ctx.pluginInjections,
+        // so its snapshots stay free of injected actions.
+        runStoryCompilePasses(ctx);
         // Seed declared scene-local defaults at the head of the scene's statement list. They must be
         // statements (not build-time sets): `Scene.local.init` resets the namespace on every scene
         // entry, so the seeds have to re-run each time the scene starts.
@@ -1200,6 +1218,159 @@ async function resolveSceneInitialBackground(input: {
     });
 }
 
+/** A runtime flag whose predicate the compiler reads internally to build a guard. */
+type InternalRuntimeFlag = RuntimeFlag & { __read(scriptCtx: ScriptCtx): boolean };
+
+/**
+ * Run every registered plugin compile pass over one scene and record what they inject.
+ *
+ * Builds the execution-ordered, flat block views + roster the passes read, hands each a context
+ * that turns its darken / flag / guard requests into engine actions, and collects inject() calls
+ * into `ctx.pluginInjections` for compileBlock to splice around each block. No registered passes
+ * → returns immediately and leaves `ctx.pluginInjections` unset, so compileBlock skips the lookup.
+ */
+function runStoryCompilePasses(ctx: SceneCompileContext): void {
+    const passes = getStoryCompilePasses();
+    if (passes.length === 0) {
+        return;
+    }
+
+    // roster (stage object names of characters that appear in this scene) + characterId -> stage
+    // name. A dialogue block carries only characterId, but enter blocks and getImage key on the
+    // stage object name, so we invert the enter-block naming to line dialogue speakers up with it.
+    const rosterSet = new Set<string>();
+    const stageNameByCharacterId = new Map<string, string>();
+    for (const block of Object.values(ctx.scene.blocks)) {
+        if (block.kind !== "action" || block.payload.action !== "character") {
+            continue;
+        }
+        const stageName = normalizeObjectName(getCharacterStageObjectName(block.payload));
+        rosterSet.add(stageName);
+        if (block.payload.characterId && !stageNameByCharacterId.has(block.payload.characterId)) {
+            stageNameByCharacterId.set(block.payload.characterId, stageName);
+        }
+    }
+
+    const speakerOf = (characterId: string | undefined): string | null => {
+        if (!characterId) {
+            return null;
+        }
+        return stageNameByCharacterId.get(characterId) ?? normalizeObjectName(characterId);
+    };
+
+    const classify = (block: StoryBlock): CompileBlockView => {
+        if (block.kind === "nodeAction") {
+            if (block.payload.action === "dialogue") {
+                return { kind: "dialogue", id: block.id, speaker: speakerOf(block.payload.characterId) };
+            }
+            if (block.payload.action === "narration") {
+                return { kind: "dialogue", id: block.id, speaker: null };
+            }
+            if (block.payload.action === "choice" || block.payload.action === "choiceOption") {
+                return { kind: "boundary", id: block.id };
+            }
+            return { kind: "other", id: block.id };
+        }
+        if (block.kind === "action") {
+            if (block.payload.action === "plugin") {
+                return {
+                    kind: "pluginAction",
+                    id: block.id,
+                    pluginId: block.payload.pluginId,
+                    actionId: block.payload.actionId,
+                    params: block.payload.params,
+                };
+            }
+            return { kind: "other", id: block.id };
+        }
+        // control / jump edges break a run; note / code / anything else is neutral.
+        if (block.kind === "control" || block.kind === "jump") {
+            return { kind: "boundary", id: block.id };
+        }
+        return { kind: "other", id: block.id };
+    };
+
+    const views: CompileBlockView[] = [];
+    const walk = (blockIds: readonly string[]): void => {
+        for (const blockId of blockIds) {
+            const block = ctx.scene.blocks[blockId];
+            if (!block || block.disabled) {
+                continue;
+            }
+            views.push(classify(block));
+            if (block.childrenIds.length > 0) {
+                walk(block.childrenIds);
+            }
+        }
+    };
+    walk(ctx.scene.rootBlockIds);
+
+    const injections = new Map<string, { before: NlrStatement[]; after: NlrStatement[] }>();
+    const flags = new Map<string, InternalRuntimeFlag>();
+    const namespaceName = DevTools.getNamespaceName(ctx.nlrScene.local);
+
+    const makeFlag = (name: string): InternalRuntimeFlag => {
+        const existing = flags.get(name);
+        if (existing) {
+            return existing;
+        }
+        const flag: InternalRuntimeFlag = {
+            write: (value: boolean) => Script.execute((scriptCtx: ScriptCtx) => {
+                const ns = scriptCtx.storable.getNamespace(namespaceName);
+                const had = ns.has(name);
+                const previous = ns.get(name);
+                ns.set(name, value as any);
+                // Undo cleaner: restore the previous value so a rewind past this write does not leave
+                // the flag stuck, which would send a later guard down the wrong branch.
+                return () => { ns.set(name, (had ? previous : undefined) as any); };
+            }) as unknown as EngineAction,
+            __read: (scriptCtx: ScriptCtx) => Boolean(scriptCtx.storable.getNamespace(namespaceName).get(name)),
+        };
+        flags.set(name, flag);
+        return flag;
+    };
+
+    const context: PluginSceneCompileContext = {
+        blocks: views,
+        roster: () => [...rosterSet],
+        resolveCharacterImage: (objectName: string): StageImage | null => {
+            const name = normalizeObjectName(objectName);
+            if (!rosterSet.has(name)) {
+                return null;
+            }
+            const image = getImage(ctx, name, { autoFit: true });
+            return {
+                darken: (darkness, durationMs, easing) =>
+                    image.darken(Math.min(1, Math.max(0, darkness)), durationMs, easing as any) as unknown as EngineAction,
+            };
+        },
+        parallel: (actions: EngineAction[]) => Control.allAsync(actions as any) as unknown as EngineAction,
+        guarded: (flag: RuntimeFlag, actions: EngineAction[]) =>
+            Condition.If((scriptCtx: ScriptCtx) => (flag as InternalRuntimeFlag).__read(scriptCtx), actions as any) as unknown as EngineAction,
+        runtimeFlag: (name: string) => makeFlag(name),
+        inject: (blockId: string, injection) => {
+            const entry = injections.get(blockId) ?? { before: [], after: [] };
+            if (injection.before) {
+                entry.before.push(...(injection.before as unknown as NlrStatement[]));
+            }
+            if (injection.after) {
+                entry.after.push(...(injection.after as unknown as NlrStatement[]));
+            }
+            injections.set(blockId, entry);
+        },
+    };
+
+    for (const pass of passes) {
+        try {
+            pass.scene(context);
+        } catch (error) {
+            diagnostic(ctx, "warning", undefined, `Compile pass "${pass.id}" failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    ctx.pluginInjections = injections;
+}
+
 async function compileBlockList(ctx: SceneCompileContext, blockIds: readonly string[]): Promise<NlrStatement[]> {
     const statements: NlrStatement[] = [];
     for (const blockId of blockIds) {
@@ -1208,7 +1379,21 @@ async function compileBlockList(ctx: SceneCompileContext, blockIds: readonly str
     return statements;
 }
 
+/**
+ * Wraps a block's compiled statements with anything a plugin compile pass injected around it
+ * (before / after the whole block subtree). A no-op unless a pass targeted this block on the main
+ * compile path — `ctx.pluginInjections` is absent on the preview path.
+ */
 async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<NlrStatement[]> {
+    const compiled = await compileBlockInner(ctx, blockId);
+    const injection = ctx.pluginInjections?.get(blockId);
+    if (!injection || (injection.before.length === 0 && injection.after.length === 0)) {
+        return compiled;
+    }
+    return [...injection.before, ...compiled, ...injection.after];
+}
+
+async function compileBlockInner(ctx: SceneCompileContext, blockId: string): Promise<NlrStatement[]> {
     const block = ctx.scene.blocks[blockId];
     if (!block) {
         diagnostic(ctx, "warning", undefined, `Missing block: ${blockId}`);
@@ -1713,6 +1898,12 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
             buildStoryActionScriptInput(ctx, payload.blueprintId, message => diagnostic(ctx, "warning", block.id, message)),
         );
         return script ? [recordStatement(ctx, script, block)] : [];
+    }
+
+    if (payload.action === "plugin") {
+        // A plugin marker block emits nothing on its own; its owner's compile pass reads it and
+        // attaches the before/after statements (see the pluginInjections wiring in compileBlock).
+        return [];
     }
 
     if (payload.action === "wait") {
