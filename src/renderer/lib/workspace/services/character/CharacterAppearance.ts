@@ -1,19 +1,77 @@
-import { Asset } from "../assets/types";
-import { AssetType } from "../assets/assetTypes";
-import { CharacterForm, CharacterVariant, CharacterVariantGroup, ICharacterAppearance, PortraitCrop, VariantData } from "./types";
-
-type VariantResolver = {
-    type: "add" | "remove";
-    variant: string;
-};
+import {
+    CharacterAppearanceKind,
+    CharacterAxis,
+    CharacterLayer,
+    CharacterNamed,
+    CharacterPose,
+    CharacterTagSelection,
+    ICharacterAppearance,
+    LayeredAppearance,
+    PortraitCrop,
+    PresetAppearance,
+    ResolvedLayeredDefinition,
+} from "./types";
 
 export type AssetChangeCallback = (oldAssetId: string | null, newAssetId: string | null) => void;
+
+let idCounter = 0;
+
+/**
+ * Ids are per-character rather than global, and are the strings handed to the engine as tags — so
+ * they only have to be unique within one character and stable across renames. A short prefixed
+ * counter satisfies both and stays readable in a diff of the character store.
+ */
+function newId(prefix: string): string {
+    idCounter += 1;
+    const salt = Math.floor(Math.random() * 1296).toString(36).padStart(2, "0");
+    return `${prefix}${idCounter.toString(36)}${salt}`;
+}
+
+export function emptyAppearance(kind: CharacterAppearanceKind): ICharacterAppearance {
+    return kind === "layered"
+        ? { kind: "layered", canvas: null, axes: [], layers: [] }
+        : { kind: "preset", poses: [], defaultPoseId: null };
+}
+
+/** Defensive clone of a persisted appearance, tolerant of whatever the store actually holds. */
+function cloneAppearance(appearance: ICharacterAppearance): ICharacterAppearance {
+    if (appearance?.kind === "layered") {
+        return {
+            kind: "layered",
+            canvas: appearance.canvas ? { ...appearance.canvas } : null,
+            axes: (appearance.axes ?? []).map(axis => ({
+                id: axis.id,
+                name: axis.name,
+                tags: (axis.tags ?? []).map(tag => ({ ...tag })),
+                defaultTagId: axis.defaultTagId ?? null,
+            })),
+            layers: (appearance.layers ?? []).map(layer => ({
+                id: layer.id,
+                name: layer.name,
+                axisId: layer.axisId ?? null,
+                assetId: layer.assetId ?? null,
+                options: layer.options ? { ...layer.options } : undefined,
+                hidden: layer.hidden,
+            })),
+        };
+    }
+    const preset = appearance as PresetAppearance;
+    return {
+        kind: "preset",
+        poses: (preset?.poses ?? []).map(pose => ({ ...pose })),
+        defaultPoseId: preset?.defaultPoseId ?? null,
+    };
+}
 
 export class CharacterAppearance {
     private listeners: Set<() => void> = new Set();
     private assetChangeCallback: AssetChangeCallback | null = null;
-    
-    constructor(private appearance: ICharacterAppearance, private onChange: (() => void) | null = null) { }
+
+    constructor(private appearance: ICharacterAppearance, private onChange: (() => void) | null = null) {
+        if (!appearance || (appearance.kind !== "preset" && appearance.kind !== "layered")) {
+            this.appearance = emptyAppearance("preset");
+        }
+    }
 
     public setOnChange(handler: (() => void) | null): void {
         this.onChange = handler;
@@ -36,376 +94,441 @@ export class CharacterAppearance {
     }
 
     private notifyAssetChange(oldAssetId: string | null, newAssetId: string | null): void {
+        if (oldAssetId === newAssetId) {
+            return;
+        }
         if (this.assetChangeCallback) {
             this.assetChangeCallback(oldAssetId, newAssetId);
         }
     }
 
-    /**
-     * Serialize appearance for persistence/export.
-     */
+    /** Serialize for persistence/export. */
     public toJSON(): ICharacterAppearance {
-        const clonedForms = this.appearance.forms.map(form => ({
-            name: form.name,
-            groups: form.groups.map(group => ({
-                name: group.name,
-                defaultVariant: group.defaultVariant,
-                variants: group.variants.map(v => ({ ...v })),
-            })),
-            variantAssets: { ...form.variantAssets },
-            portrait: form.portrait,
-        }));
+        return cloneAppearance(this.appearance);
+    }
 
-        return {
-            forms: clonedForms,
-        };
+    public getKind(): CharacterAppearanceKind {
+        return this.appearance.kind;
     }
 
     /**
-     * Get all character forms.
+     * Cold-switch the sprite kind. The two kinds share no data — a stack cannot be inferred from
+     * finished sprites, and flattening a stack is a render rather than a conversion — so switching
+     * *discards* the current appearance instead of translating it (user ruling 2026-07-26). Callers
+     * are responsible for confirming with the author and for reporting the story rows the discarded
+     * ids leave dangling.
      */
-    public getForms(): CharacterForm[] {
-        return this.appearance.forms;
-    }
-
-    /**
-     * Get a character form by name.
-     */
-    public getForm(name: string): CharacterForm | null {
-        return this.appearance.forms.find(form => form.name === name) ?? null;
-    }
-
-    /**
-     * Ensure a form exists, create if missing.
-     */
-    public ensureForm(name: string): CharacterForm {
-        const found = this.getForm(name);
-        if (found) return found;
-        const created: CharacterForm = { name, groups: [], variantAssets: {} };
-        this.appearance.forms.push(created);
+    public setKind(kind: CharacterAppearanceKind): void {
+        if (this.appearance.kind === kind) {
+            return;
+        }
+        for (const assetId of this.listAssetIds()) {
+            this.notifyAssetChange(assetId, null);
+        }
+        this.appearance = emptyAppearance(kind);
         this.notifyChange();
-        return created;
     }
 
-    /**
-     * Rename an existing form.
-     */
-    public renameForm(currentName: string, nextName: string): boolean {
-        const form = this.getForm(currentName);
-        if (!form) return false;
-        const normalized = nextName.trim();
-        if (!normalized) return false;
-        const exists = this.appearance.forms.some(f => f.name.toLowerCase() === normalized.toLowerCase());
-        if (exists && currentName.toLowerCase() !== normalized.toLowerCase()) return false;
-        form.name = normalized;
-        this.notifyChange();
-        return true;
-    }
-
-    /**
-     * Remove a form by name.
-     */
-    public removeForm(name: string): boolean {
-        const index = this.appearance.forms.findIndex(form => form.name === name);
-        if (index === -1) return false;
-        
-        // Notify asset changes for all assets in this form
-        const form = this.appearance.forms[index];
-        for (const [variantName, variantData] of Object.entries(form.variantAssets)) {
-            const oldAssetId = variantData.data?.id ?? null;
-            if (oldAssetId) {
-                this.notifyAssetChange(oldAssetId, null);
+    /** Every asset this appearance references, deduplicated. Drives locking and the reference graph. */
+    public listAssetIds(): string[] {
+        const ids = new Set<string>();
+        if (this.appearance.kind === "preset") {
+            for (const pose of this.appearance.poses) {
+                if (pose.assetId) ids.add(pose.assetId);
             }
-        }
-        
-        this.appearance.forms.splice(index, 1);
-        this.notifyChange();
-        return true;
-    }
-
-    /**
-     * Query variant asset data by form and variant.
-     */
-    public query(formName: string, variantName: string): VariantData | null {
-        const form = this.getForm(formName);
-        if (!form) return null;
-        return form.variantAssets[variantName] ?? null;
-    }
-
-    /**
-     * List all variant names within a form.
-     */
-    public listVariants(formName: string): string[] {
-        const form = this.getForm(formName);
-        if (!form) return [];
-        const names: string[] = [];
-        form.groups.forEach(group => {
-            group.variants.forEach(v => names.push(v.name));
-        });
-        return names;
-    }
-
-    /**
-     * List all variant group names in a form.
-     */
-    public listGroups(formName: string): string[] {
-        const form = this.getForm(formName);
-        if (!form) return [];
-        return form.groups.map(g => g.name);
-    }
-
-    /**
-     * Check if a group exists in a form.
-     */
-    public isGroupExists(formName: string, groupName: string): boolean {
-        const form = this.getForm(formName);
-        if (!form) return false;
-        return form.groups.some(g => g.name === groupName);
-    }
-
-    /**
-     * Create or get a group within a form.
-     */
-    public createGroup(formName: string, groupName: string, variants: CharacterVariant[] = [], defaultVariant: string | null = null): CharacterVariantGroup {
-        const form = this.ensureForm(formName);
-        const existing = form.groups.find(g => g.name === groupName);
-        if (existing) return existing;
-        const group: CharacterVariantGroup = {
-            name: groupName,
-            defaultVariant,
-            variants,
-        };
-        form.groups.push(group);
-        this.notifyChange();
-        return group;
-    }
-
-    /**
-     * Rename a variant group inside a form.
-     */
-    public renameGroup(formName: string, currentName: string, nextName: string): boolean {
-        const form = this.getForm(formName);
-        if (!form) return false;
-        const normalized = nextName.trim();
-        if (!normalized) return false;
-        const exists = form.groups.some(g => g.name.toLowerCase() === normalized.toLowerCase());
-        if (exists && currentName.toLowerCase() !== normalized.toLowerCase()) return false;
-        const group = form.groups.find(g => g.name === currentName);
-        if (!group) return false;
-        group.name = normalized;
-        this.notifyChange();
-        return true;
-    }
-
-    /**
-     * Remove a group within a form.
-     */
-    public removeGroup(formName: string, groupName: string): boolean {
-        const form = this.getForm(formName);
-        if (!form) return false;
-        const index = form.groups.findIndex(g => g.name === groupName);
-        if (index === -1) return false;
-        
-        // Clean variant assets for variants under this group and notify asset changes
-        form.groups[index].variants.forEach(v => {
-            const oldAssetId = form.variantAssets[v.name]?.data?.id ?? null;
-            if (oldAssetId) {
-                this.notifyAssetChange(oldAssetId, null);
-            }
-            delete form.variantAssets[v.name];
-        });
-        
-        form.groups.splice(index, 1);
-        this.notifyChange();
-        return true;
-    }
-
-    /**
-     * Create a variant inside a group (group created if missing).
-     */
-    public createVariantInGroup(formName: string, groupName: string, variantName: string): CharacterVariant {
-        const form = this.ensureForm(formName);
-
-        // Prevent duplicate variant names across the whole form (not just within the target group)
-        const duplicated = form.groups.some(g => g.variants.some(v => v.name.toLowerCase() === variantName.toLowerCase()));
-        if (duplicated) {
-            const existing = form.groups.flatMap(g => g.variants).find(v => v.name.toLowerCase() === variantName.toLowerCase());
-            return existing ?? { name: variantName };
-        }
-
-        const group = this.createGroup(formName, groupName, [], null);
-        const existing = group.variants.find(v => v.name === variantName);
-        if (existing) return existing;
-        const variant: CharacterVariant = { name: variantName };
-        group.variants.push(variant);
-        this.notifyChange();
-        return variant;
-    }
-
-    /**
-     * Remove a variant from a group.
-     */
-    public removeVariant(formName: string, groupName: string, variantName: string): boolean {
-        const form = this.getForm(formName);
-        if (!form) return false;
-        const group = form.groups.find(g => g.name === groupName);
-        if (!group) return false;
-        const index = group.variants.findIndex(v => v.name === variantName);
-        if (index === -1) return false;
-        
-        // Get old asset ID before removing
-        const oldAssetId = form.variantAssets[variantName]?.data?.id ?? null;
-        
-        group.variants.splice(index, 1);
-        delete form.variantAssets[variantName];
-        
-        // Notify asset change for lock management
-        if (oldAssetId) {
-            this.notifyAssetChange(oldAssetId, null);
-        }
-        
-        // Reset default if removed variant was default.
-        if (group.defaultVariant === variantName) {
-            group.defaultVariant = group.variants[0]?.name ?? null;
-        }
-        this.notifyChange();
-        return true;
-    }
-
-    /**
-     * Rename a variant within a group.
-     */
-    public renameVariant(formName: string, groupName: string, currentName: string, nextName: string): boolean {
-        const form = this.getForm(formName);
-        if (!form) return false;
-        const group = form.groups.find(g => g.name === groupName);
-        if (!group) return false;
-        const normalized = nextName.trim();
-        if (!normalized) return false;
-        const duplicate = form.groups.some(g => g.variants.some(v => v.name.toLowerCase() === normalized.toLowerCase()));
-        if (duplicate && currentName.toLowerCase() !== normalized.toLowerCase()) return false;
-        const variant = group.variants.find(v => v.name === currentName);
-        if (!variant) return false;
-        variant.name = normalized;
-        if (form.variantAssets[currentName]) {
-            form.variantAssets[normalized] = form.variantAssets[currentName];
-            delete form.variantAssets[currentName];
-        }
-        if (group.defaultVariant === currentName) {
-            group.defaultVariant = normalized;
-        }
-        this.notifyChange();
-        return true;
-    }
-
-    /**
-     * Attach or clear an asset for a specific variant within a form.
-     */
-    public setVariantAsset(formName: string, variantName: string, asset: Asset<AssetType.Image> | null): void {
-        const form = this.getForm(formName);
-        if (!form) return;
-
-        const hasVariant = form.groups.some(group => group.variants.some(v => v.name === variantName));
-        if (!hasVariant) return;
-
-        // Get old asset ID before changing
-        const oldAssetId = form.variantAssets[variantName]?.data?.id ?? null;
-        const newAssetId = asset?.id ?? null;
-
-        if (asset) {
-            form.variantAssets[variantName] = { data: asset };
         } else {
-            delete form.variantAssets[variantName];
-        }
-
-        // Notify asset change for lock management
-        if (oldAssetId !== newAssetId) {
-            this.notifyAssetChange(oldAssetId, newAssetId);
-        }
-
-        this.notifyChange();
-    }
-
-    /**
-     * Set or clear a form's portrait framing override. Clearing (undefined) makes the form inherit the
-     * profile-level rect (or the automatic head crop).
-     */
-    public setFormPortrait(formName: string, portrait: PortraitCrop | undefined): void {
-        const form = this.getForm(formName);
-        if (!form) return;
-        if (portrait) {
-            form.portrait = portrait;
-        } else {
-            delete form.portrait;
-        }
-        this.notifyChange();
-    }
-
-    /**
-     * Update default variant for a group.
-     */
-    public setGroupDefaultVariant(formName: string, groupName: string, variantName: string | null): void {
-        const form = this.getForm(formName);
-        if (!form) return;
-        const group = form.groups.find(g => g.name === groupName);
-        if (!group) return;
-        group.defaultVariant = variantName;
-        this.notifyChange();
-    }
-
-    /**
-     * Resolve mutually exclusive variants within a form.
-     * Returns the final selected variants after applying defaults and resolvers.
-     */
-    public resolve(formName: string, variants: string[], resolvers: VariantResolver[] = []): string[] {
-        const form = this.getForm(formName);
-        if (!form) return [];
-
-        const groupMap: Record<string, CharacterVariantGroup> = {};
-        form.groups.forEach(g => {
-            groupMap[g.name] = g;
-        });
-
-        const variantToGroup: Record<string, CharacterVariantGroup> = {};
-        form.groups.forEach(group => {
-            group.variants.forEach(v => {
-                variantToGroup[v.name] = group;
-            });
-        });
-
-        const resolved = new Set<string>();
-
-        // seed with selected variants, respecting group exclusivity
-        variants.forEach(name => {
-            const group = variantToGroup[name];
-            if (!group) return;
-            group.variants.forEach(v => resolved.delete(v.name));
-            resolved.add(name);
-        });
-
-        // fill defaults for missing groups
-        form.groups.forEach(group => {
-            const hasSelection = group.variants.some(v => resolved.has(v.name));
-            if (!hasSelection && group.defaultVariant) {
-                resolved.add(group.defaultVariant);
-            }
-        });
-
-        // apply resolvers
-        resolvers.forEach(resolver => {
-            const group = variantToGroup[resolver.variant];
-            if (!group) return;
-            if (resolver.type === "add") {
-                group.variants.forEach(v => resolved.delete(v.name));
-                resolved.add(resolver.variant);
-            } else {
-                group.variants.forEach(v => resolved.delete(v.name));
-                if (group.defaultVariant) {
-                    resolved.add(group.defaultVariant);
+            for (const layer of this.appearance.layers) {
+                if (layer.assetId) ids.add(layer.assetId);
+                for (const assetId of Object.values(layer.options ?? {})) {
+                    if (assetId) ids.add(assetId);
                 }
             }
-        });
+        }
+        return [...ids];
+    }
 
-        return Array.from(resolved);
+    // ---------------------------------------------------------------- preset
+
+    private get preset(): PresetAppearance | null {
+        return this.appearance.kind === "preset" ? this.appearance : null;
+    }
+
+    public getPoses(): CharacterPose[] {
+        return this.preset?.poses ?? [];
+    }
+
+    public getPose(poseId: string): CharacterPose | null {
+        return this.preset?.poses.find(pose => pose.id === poseId) ?? null;
+    }
+
+    public getDefaultPoseId(): string | null {
+        const preset = this.preset;
+        if (!preset) return null;
+        const declared = preset.defaultPoseId;
+        const valid = declared && preset.poses.some(pose => pose.id === declared) ? declared : null;
+        return valid ?? preset.poses[0]?.id ?? null;
+    }
+
+    public setDefaultPoseId(poseId: string | null): void {
+        const preset = this.preset;
+        if (!preset) return;
+        preset.defaultPoseId = poseId;
+        this.notifyChange();
+    }
+
+    public createPose(name: string, folder?: string): CharacterPose | null {
+        const preset = this.preset;
+        if (!preset) return null;
+        const pose: CharacterPose = { id: newId("p"), name, folder, assetId: null };
+        preset.poses.push(pose);
+        if (!preset.defaultPoseId) {
+            preset.defaultPoseId = pose.id;
+        }
+        this.notifyChange();
+        return pose;
+    }
+
+    public removePose(poseId: string): boolean {
+        const preset = this.preset;
+        if (!preset) return false;
+        const index = preset.poses.findIndex(pose => pose.id === poseId);
+        if (index === -1) return false;
+        const [removed] = preset.poses.splice(index, 1);
+        this.notifyAssetChange(removed.assetId ?? null, null);
+        if (preset.defaultPoseId === poseId) {
+            preset.defaultPoseId = preset.poses[0]?.id ?? null;
+        }
+        this.notifyChange();
+        return true;
+    }
+
+    public setPoseAsset(poseId: string, assetId: string | null): void {
+        const pose = this.getPose(poseId);
+        if (!pose) return;
+        this.notifyAssetChange(pose.assetId ?? null, assetId);
+        pose.assetId = assetId;
+        this.notifyChange();
+    }
+
+    public setPoseFolder(poseId: string, folder: string | undefined): void {
+        const pose = this.getPose(poseId);
+        if (!pose) return;
+        if (folder) {
+            pose.folder = folder;
+        } else {
+            delete pose.folder;
+        }
+        this.notifyChange();
+    }
+
+    public setPosePortrait(poseId: string, portrait: PortraitCrop | undefined): void {
+        const pose = this.getPose(poseId);
+        if (!pose) return;
+        if (portrait) {
+            pose.portrait = portrait;
+        } else {
+            delete pose.portrait;
+        }
+        this.notifyChange();
+    }
+
+    /**
+     * The asset a pose selection resolves to, or null. A named pose that has no asset resolves to
+     * null rather than to some other pose's image: the old model's "any entry will do" fallback is
+     * what made a missing differential look like a working one.
+     */
+    public resolvePoseAssetId(poseId: string | undefined | null): string | null {
+        const pose = poseId ? this.getPose(poseId) : this.getPose(this.getDefaultPoseId() ?? "");
+        return pose?.assetId ?? null;
+    }
+
+    // --------------------------------------------------------------- layered
+
+    private get layered(): LayeredAppearance | null {
+        return this.appearance.kind === "layered" ? this.appearance : null;
+    }
+
+    public getCanvas(): { width: number; height: number } | null {
+        return this.layered?.canvas ?? null;
+    }
+
+    public setCanvas(canvas: { width: number; height: number } | null): void {
+        const layered = this.layered;
+        if (!layered) return;
+        layered.canvas = canvas ? { ...canvas } : null;
+        this.notifyChange();
+    }
+
+    public getAxes(): CharacterAxis[] {
+        return this.layered?.axes ?? [];
+    }
+
+    public getAxis(axisId: string): CharacterAxis | null {
+        return this.layered?.axes.find(axis => axis.id === axisId) ?? null;
+    }
+
+    public getLayers(): CharacterLayer[] {
+        return this.layered?.layers ?? [];
+    }
+
+    public getLayer(layerId: string): CharacterLayer | null {
+        return this.layered?.layers.find(layer => layer.id === layerId) ?? null;
+    }
+
+    public createAxis(name: string): CharacterAxis | null {
+        const layered = this.layered;
+        if (!layered) return null;
+        const axis: CharacterAxis = { id: newId("x"), name, tags: [], defaultTagId: null };
+        layered.axes.push(axis);
+        this.notifyChange();
+        return axis;
+    }
+
+    public removeAxis(axisId: string): boolean {
+        const layered = this.layered;
+        if (!layered) return false;
+        const index = layered.axes.findIndex(axis => axis.id === axisId);
+        if (index === -1) return false;
+        layered.axes.splice(index, 1);
+        // Layers bound to it fall back to constant, releasing their per-tag assets.
+        for (const layer of layered.layers) {
+            if (layer.axisId !== axisId) continue;
+            for (const assetId of Object.values(layer.options ?? {})) {
+                this.notifyAssetChange(assetId ?? null, null);
+            }
+            layer.axisId = null;
+            delete layer.options;
+        }
+        this.notifyChange();
+        return true;
+    }
+
+    /**
+     * Add a tag to an axis, and give every layer on that axis an entry for it. The completeness of
+     * `options` is the invariant that keeps one engine group driving all of them.
+     */
+    public createTag(axisId: string, name: string): CharacterNamed | null {
+        const layered = this.layered;
+        const axis = this.getAxis(axisId);
+        if (!layered || !axis) return null;
+        const tag: CharacterNamed = { id: newId("t"), name };
+        axis.tags.push(tag);
+        if (!axis.defaultTagId) {
+            axis.defaultTagId = tag.id;
+        }
+        for (const layer of layered.layers) {
+            if (layer.axisId === axisId) {
+                layer.options = { ...(layer.options ?? {}), [tag.id]: null };
+            }
+        }
+        this.notifyChange();
+        return tag;
+    }
+
+    /** Remove a tag, and shrink every bound layer's `options` with it (the same invariant). */
+    public removeTag(axisId: string, tagId: string): boolean {
+        const layered = this.layered;
+        const axis = this.getAxis(axisId);
+        if (!layered || !axis) return false;
+        const index = axis.tags.findIndex(tag => tag.id === tagId);
+        if (index === -1) return false;
+        axis.tags.splice(index, 1);
+        for (const layer of layered.layers) {
+            if (layer.axisId !== axisId || !layer.options) continue;
+            this.notifyAssetChange(layer.options[tagId] ?? null, null);
+            delete layer.options[tagId];
+        }
+        if (axis.defaultTagId === tagId) {
+            axis.defaultTagId = axis.tags[0]?.id ?? null;
+        }
+        this.notifyChange();
+        return true;
+    }
+
+    public setAxisDefaultTag(axisId: string, tagId: string | null): void {
+        const axis = this.getAxis(axisId);
+        if (!axis) return;
+        axis.defaultTagId = tagId;
+        this.notifyChange();
+    }
+
+    /** Rename anything named. Ids are what everything else stores, so this rewrites nothing. */
+    public rename(target: CharacterNamed | null, name: string): boolean {
+        const normalized = name.trim();
+        if (!target || !normalized) return false;
+        target.name = normalized;
+        this.notifyChange();
+        return true;
+    }
+
+    public createLayer(name: string, axisId: string | null = null): CharacterLayer | null {
+        const layered = this.layered;
+        if (!layered) return null;
+        const layer: CharacterLayer = { id: newId("l"), name, axisId: null, assetId: null };
+        layered.layers.push(layer);
+        if (axisId) {
+            this.setLayerAxis(layer.id, axisId);
+        }
+        this.notifyChange();
+        return layer;
+    }
+
+    public removeLayer(layerId: string): boolean {
+        const layered = this.layered;
+        if (!layered) return false;
+        const index = layered.layers.findIndex(layer => layer.id === layerId);
+        if (index === -1) return false;
+        const [removed] = layered.layers.splice(index, 1);
+        this.notifyAssetChange(removed.assetId ?? null, null);
+        for (const assetId of Object.values(removed.options ?? {})) {
+            this.notifyAssetChange(assetId ?? null, null);
+        }
+        this.notifyChange();
+        return true;
+    }
+
+    /** Move a layer within the stack. Index 0 is the bottom, matching the stored order. */
+    public moveLayer(layerId: string, toIndex: number): boolean {
+        const layered = this.layered;
+        if (!layered) return false;
+        const from = layered.layers.findIndex(layer => layer.id === layerId);
+        if (from === -1) return false;
+        const to = Math.max(0, Math.min(layered.layers.length - 1, toIndex));
+        if (from === to) return false;
+        const [layer] = layered.layers.splice(from, 1);
+        layered.layers.splice(to, 0, layer);
+        this.notifyChange();
+        return true;
+    }
+
+    /**
+     * Bind a layer to an axis, or to none. Binding seeds `options` with an entry per tag of that
+     * axis; unbinding drops them. Either way the layer's previous assets are released — a constant
+     * layer's image means nothing once the layer varies, and vice versa.
+     */
+    public setLayerAxis(layerId: string, axisId: string | null): void {
+        const layer = this.getLayer(layerId);
+        if (!layer || layer.axisId === axisId) return;
+
+        this.notifyAssetChange(layer.assetId ?? null, null);
+        for (const assetId of Object.values(layer.options ?? {})) {
+            this.notifyAssetChange(assetId ?? null, null);
+        }
+        layer.assetId = null;
+
+        const axis = axisId ? this.getAxis(axisId) : null;
+        if (axis) {
+            layer.axisId = axis.id;
+            layer.options = Object.fromEntries(axis.tags.map(tag => [tag.id, null]));
+        } else {
+            layer.axisId = null;
+            delete layer.options;
+        }
+        this.notifyChange();
+    }
+
+    /** Set a constant layer's asset. */
+    public setLayerAsset(layerId: string, assetId: string | null): void {
+        const layer = this.getLayer(layerId);
+        if (!layer || layer.axisId) return;
+        this.notifyAssetChange(layer.assetId ?? null, assetId);
+        layer.assetId = assetId;
+        this.notifyChange();
+    }
+
+    /** Set what a bound layer draws for one tag. `null` means it draws nothing for that tag. */
+    public setLayerOption(layerId: string, tagId: string, assetId: string | null): void {
+        const layer = this.getLayer(layerId);
+        if (!layer || !layer.axisId) return;
+        const axis = this.getAxis(layer.axisId);
+        if (!axis?.tags.some(tag => tag.id === tagId)) return;
+        const options = layer.options ?? {};
+        this.notifyAssetChange(options[tagId] ?? null, assetId);
+        layer.options = { ...options, [tagId]: assetId };
+        this.notifyChange();
+    }
+
+    public setLayerHidden(layerId: string, hidden: boolean): void {
+        const layer = this.getLayer(layerId);
+        if (!layer) return;
+        if (hidden) {
+            layer.hidden = true;
+        } else {
+            delete layer.hidden;
+        }
+        this.notifyChange();
+    }
+
+    /** Every axis's default tag, keyed by axis id. An axis with no tags contributes nothing. */
+    public defaultTagSelection(): CharacterTagSelection {
+        const selection: CharacterTagSelection = {};
+        for (const axis of this.getAxes()) {
+            const declared = axis.defaultTagId;
+            const valid = declared && axis.tags.some(tag => tag.id === declared) ? declared : null;
+            const tagId = valid ?? axis.tags[0]?.id;
+            if (tagId) {
+                selection[axis.id] = tagId;
+            }
+        }
+        return selection;
+    }
+
+    /**
+     * Fill a partial selection out to every axis. A partial selection is what a `/face` row stores —
+     * it names only the axes the author touched — while `/show` has to pose the whole character.
+     */
+    public resolveTagSelection(partial: CharacterTagSelection | undefined): CharacterTagSelection {
+        const resolved = this.defaultTagSelection();
+        for (const [axisId, tagId] of Object.entries(partial ?? {})) {
+            const axis = this.getAxis(axisId);
+            if (axis?.tags.some(tag => tag.id === tagId)) {
+                resolved[axisId] = tagId;
+            }
+        }
+        return resolved;
+    }
+
+    /**
+     * Render the stack into the engine's layered src. A layer bound to an axis becomes a variants
+     * map keyed by tag id; the engine derives one group per distinct tag *set*, so every layer on
+     * the same axis collapses onto that axis's single group — which is what makes one tag move them
+     * all, and why {@link createTag} keeps `options` complete.
+     *
+     * A constant layer whose asset does not resolve is dropped rather than emitted as a hole, and a
+     * bound layer is skipped when its axis has no tags: it would otherwise contribute an empty
+     * group, which the engine rejects.
+     */
+    public toLayeredDefinition(resolveAssetUrl: (assetId: string) => string | null): ResolvedLayeredDefinition | null {
+        const layered = this.layered;
+        if (!layered) return null;
+
+        const layers: ResolvedLayeredDefinition["layers"] = [];
+        for (const layer of layered.layers) {
+            if (layer.hidden) continue;
+            if (!layer.axisId) {
+                const url = layer.assetId ? resolveAssetUrl(layer.assetId) : null;
+                if (url) {
+                    layers.push(url);
+                }
+                continue;
+            }
+            const axis = this.getAxis(layer.axisId);
+            if (!axis || axis.tags.length === 0) continue;
+            const variants: Record<string, string | null> = {};
+            for (const tag of axis.tags) {
+                const assetId = layer.options?.[tag.id] ?? null;
+                variants[tag.id] = assetId ? resolveAssetUrl(assetId) : null;
+            }
+            layers.push(variants);
+        }
+
+        // One default per group that actually reached the stack. A default naming a group no layer
+        // emitted is a tag the engine has never heard of, and it rejects those outright.
+        const emitted = new Set(
+            layers.flatMap(layer => (typeof layer === "object" && layer !== null ? Object.keys(layer) : [])),
+        );
+        const defaults = Object.values(this.defaultTagSelection()).filter(tagId => emitted.has(tagId));
+
+        return layers.length > 0 ? { layers, defaults } : null;
     }
 }
