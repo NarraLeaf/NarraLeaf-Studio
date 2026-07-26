@@ -393,7 +393,14 @@ itch/web 版、Dev Mode、没开 Steam 的开发机全部可用，且作者能�
 | 桌面但未声明该 arch | ❌ | ❌（preflight warning） | ✅ | ✅ |
 | Web | ❌ 永远 | ❌ | ✅（localStorage） | ✅ |
 | Android / iOS | ❌ 永远 | ❌ | ✅ | ✅ |
-| Dev Mode / Preview | ✅（同桌面路径） | ✅（需 `steam_appid.txt`） | ✅ | ✅ |
+| **Preview**（独立进程） | ✅（同桌面路径） | ✅ | ✅ | ✅ |
+| **Dev Mode**（Studio 内窗口） | ❌ | ❌ | ✅ | ✅ |
+
+> ⚠️ **Dev Mode 与 Preview 不是一回事**，本卡早先的版本把两者混为一谈。Dev Mode 的插件从
+> 安装注册表加载，**没有 pack**，因此不存在"pack 里声明过的 sidecar 集合"可供拉起；它也没有
+> `assets` 能力（那边资源解析走异步 IPC，而能力签名是同步 `url()`）。
+> **验证 sidecar 的工作流是 Preview，不是 Dev Mode 窗口。** 这是架构后果，不是接线遗漏。
+> `steam_appid.txt` 也不再需要作者操心——sidecar 自己在 `SteamAPI_Init` 前发布 App ID。
 
 ## 13. 工作项
 
