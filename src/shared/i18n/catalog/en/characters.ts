@@ -54,6 +54,12 @@ export const characters = {
         onionSkin: "Onion skin",
         setCanvas: "Set canvas",
         problems: "Problems",
+        snapshots: "Snapshots",
+        combinations: {
+            title: "Combinations",
+            name: "Name this combination",
+            missing: "No art here: {list}",
+        },
         diagnostics: {
             offCanvas: "{name} is {size}, canvas is {canvas}",
             layerNoImage: "{name} draws nothing under any tag",
