@@ -161,7 +161,7 @@ export function PluginDetailsModal({
     );
 
     return (
-        <Modal isOpen onClose={onClose} title={name} size="md" footer={footer} fullWindowOverlay>
+        <Modal isOpen onClose={onClose} title={name} size="md" footer={footer}>
             <div className="space-y-4">
                 <div className="flex items-start gap-3">
                     <PluginAvatar name={name} size={44} />

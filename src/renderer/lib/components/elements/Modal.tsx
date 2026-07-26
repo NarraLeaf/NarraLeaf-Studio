@@ -32,15 +32,6 @@ export interface ModalProps {
     showCloseButton?: boolean;
     footer?: React.ReactNode;
     className?: string;
-    /**
-     * Extend the *backdrop* over the whole window instead of starting below the
-     * titlebar. Needed in the launcher, whose window has no full-width titlebar -
-     * the default leaves the sidebar's top strip undimmed. Only the backdrop goes
-     * full-window; the panel still centers below the titlebar, so the `z-[20000]`
-     * titlebar (above this `z-50` layer) never overlaps the panel and its window
-     * controls stay bright and clickable.
-     */
-    fullWindowOverlay?: boolean;
 }
 
 const sizeStyles = {
@@ -65,7 +56,6 @@ export function Modal({
     showCloseButton = true,
     footer,
     className = "",
-    fullWindowOverlay = false,
 }: ModalProps) {
     const { t } = useTranslation();
     useEffect(() => {
@@ -96,15 +86,16 @@ export function Modal({
 
     return (
         <div className="nl-window-content-layer z-50 flex items-center justify-center p-4">
-            {/* Backdrop — match workspace DialogContainer. With fullWindowOverlay it
-                covers the whole window (fixed inset-0), dimming the launcher's
-                sidebar-top strip; the panel below stays centered inside this
-                below-the-titlebar layer, so the z-[20000] titlebar never crosses it. */}
+            {/* Backdrop. Full *window* (`fixed inset-0`), not just this layer: the layer starts
+                below the titlebar, and the launcher's titlebar covers only the right column, so an
+                `absolute inset-0` backdrop leaves the top 40px of its sidebar - logo included -
+                undimmed. That strip is bare content on Windows, where the sidebar gets no macOS
+                drag spacer, so the seam lands mid-logo. Everywhere else the window's own titlebar
+                already fills the strip and paints above this at `z-[20000]`, so nothing changes
+                there and its window controls stay bright and clickable. The panel keeps centering
+                inside the layer, below the titlebar, so the titlebar never crosses it. */}
             <div
-                className={cn(
-                    "bg-black/60 backdrop-blur-sm animate-fade-in",
-                    fullWindowOverlay ? "fixed inset-0" : "absolute inset-0",
-                )}
+                className="bg-black/60 backdrop-blur-sm animate-fade-in fixed inset-0"
                 onClick={handleOverlayClick}
             />
 
