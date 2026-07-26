@@ -163,10 +163,18 @@ export type RuntimePluginSaveMetadata = {
     metadata?: unknown;
 };
 
-/** `saves.read` — read-only. Writing saves stays the game's own business. */
+/**
+ * `saves.read` grants the read half; `saves.write` additionally grants `write`
+ * and `load`, which can overwrite or abandon a playthrough — hence the separate,
+ * heavier capability.
+ */
 export type RuntimePluginSaves = {
     listIds(): Promise<string[]>;
     readMetadata(id: string): Promise<RuntimePluginSaveMetadata | null>;
+    /** Present only with `saves.write`. Overwrites the slot. */
+    write?: (id: string, metadata?: unknown) => Promise<void>;
+    /** Present only with `saves.write`. Replaces the running playthrough. */
+    load?: (id: string) => Promise<void>;
 };
 
 /**
@@ -174,8 +182,15 @@ export type RuntimePluginSaves = {
  *
  * The plugin returns an element and the *host* renders it: the game environment
  * deliberately withholds `react-dom/client`, so a plugin cannot mount its own
- * React root (a second root would fight the host's over the same tree). Built-in
- * surfaces — dialogue, menus — always stack above plugin overlays.
+ * React root (a second root would fight the host's over the same tree).
+ *
+ * Stacking, precisely: above the game stage, below the app surfaces (menus, save
+ * screens, authored pages) — but **above the dialogue box**, which is not what
+ * you would want. The engine renders say/NVL inside its `Player`, and the only
+ * injection point a host has is `Player`'s children, emitted after it; there is
+ * no DOM position beneath the dialogue for a host layer to take. Putting an
+ * overlay where dialogue happens will cover it. Fixing that needs an
+ * engine-side overlay slot.
  */
 export type RuntimePluginOverlay = {
     mount(render: () => ReactElement | null): RuntimePluginCleanup;

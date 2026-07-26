@@ -179,6 +179,43 @@ nvl / textRead）、devtools。**任何第三方插件今天都能照做。**
 | **R8** | `project/docs/runtime-api.md` 重写 + `packages/plugin-types` 重新生成并验证 | R7 |
 | **E1** | 引擎 `Namespace` 变化事件 + CHANGELOG | — |
 
+## 6.1 实现结论（落地后回填，与上文的设想有出入处以此为准）
+
+**能力集最终 9 项**（`PluginRuntimeCapability`）：`store` / `events` / `state.read` / `state.write` /
+`saves.read` / **`saves.write`** / `ui.overlay` / `assets` / `locale`。
+
+- **新增 `saves.write`**（§5 的裁决之外新出现的）。收窄 ctx 后，内置 Quick Save 插件的两个节点
+  失去了写/读存档的路径。曾一度停成"抛错待裁决"，最终判定：Quick Save 的全部意义就是写一个
+  存档槽，**能力体系表达不了产品已经在卖的功能，是能力体系错了**。与 `saves.read` 分开且更重，
+  提示语直说「覆盖玩家的存档，并读取存档（会替换当前进度）」。
+- **`state.write` 蕴含 `state.read`**：只声明 write 会让权限提示低报（能写就能观察自己写的）。
+- **权限由 contributes 派生**，手写派生类权限是 manifest 错误。因此"提示所说"与"实际能做"
+  在构造上无法分叉。能力→提示文案是 `Record<PluginRuntimeCapability, TranslationKey>`，
+  新增能力不补文案就编译不过。
+
+**几处与设想不同的落地事实：**
+
+- **R1 store 带旧键回退。** Gallery 原先直接写游戏 persistence 的 `narraleaf.gallery.unlocked`；
+  换成插件 store 的前缀键后，**已发行游戏的玩家会丢失已解锁 CG**。故 `get` 未命中时回退读取
+  无前缀旧键，守卫是 `key === pluginId || key.startsWith(pluginId + ".")`——正好是前缀本来
+  就圈定的范围，不是开洞。（因此 gallery 的键名常量**不能**再缩短，会打断回退。）
+- **R2 事件 13 条**；`closeRequested` 从单 handler 改多播（并行征询、各自隔离、抛错读作不反对），
+  插件注册的观察者**恒不可否决**。bridge 新增 `capabilities.closeRequested` 以区分两种壳，
+  web 上 `supports()` 如实返回 false。
+- **R3 无轮询。** persistent 精确订阅；scene/saved 在"故事有可能写过"的点上与快照比对
+  （action 变更 / 行结束 / 场景挂载卸载 / 读档后 / 插件自己的 set），只在有监听者时才走。
+  引擎 E1 已实现（分支 `feat/storable-change-events`，**未发布**），代码里标了它落地后该删哪段。
+- **R4 覆盖层压不到对话框之下。** 引擎把 say/NVL 渲染在 `Player` 内部，宿主唯一的注入点
+  （`Player` children）在对话之后发出，DOM 上没有更低的位置。实际层位：舞台之上、应用面之下
+  （`zIndex: 5`），**但在对话框之上**。要修得靠引擎侧加 overlay 槽。上文 R4 里"内建对话框
+  永远叠在插件覆盖层之上"的说法**是错的**，已在代码注释里改正。
+- **R5 Dev Mode 没有 `assets`**：那边资源解析走异步 IPC，而能力签名是同步 `url()`。
+- **R6 studio 侧同样收窄**，编辑器环境传空 host（于是 `game.saves` 等一律 undefined）。
+- 顺带发现 `project/docs/` 有**四处把这个洞当推荐用法写进文档**（教人用
+  `ctx.hostAdapter.blueprintRuntime?.hostApi` 拿 persistence）——难怪会扩散，已改。
+
+**未验证：** Quick Save 没有测试文件，改造后只做到类型层与真实后端对齐，**round trip 需真机跑一次**。
+
 ## 7. 验收判据（可断言）
 
 1. 一个只声明 `["store"]` 的测试插件：`app.game.store` 可用，`app.game.state` **在对象上不存在**

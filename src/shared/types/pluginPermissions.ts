@@ -73,6 +73,16 @@ export const PluginRuntimeCapability = {
     StateWrite: "state.write",
     /** `app.game.saves` — list and read save metadata. */
     SavesRead: "saves.read",
+    /**
+     * `app.game.saves.write` / `.load` — overwrite a save slot and load one.
+     *
+     * Separate from (and heavier than) `saves.read`: this can destroy a
+     * playthrough. It exists because quick-save/quick-load is an ordinary thing
+     * for a visual novel to ship — the built-in Quick Save plugin is exactly
+     * this — and a capability model that cannot express a feature the product
+     * already has would just push authors back around it.
+     */
+    SavesWrite: "saves.write",
     /** `app.game.ui.overlay` — draw on top of the game. */
     UiOverlay: "ui.overlay",
     /** `app.game.assets` — resolve packaged asset URLs. */
