@@ -104,6 +104,18 @@ export const build = {
         "icon-low-resolution": "The {platform} icon is smaller than {minimum}×{minimum} and ships upscaled.",
         "icon-stale": "The {platform} icon has not been prepared; open Project ▸ Assets to bake it.",
         "plugins-invalid": "Plugin validation failed:\n{errors}",
+        // Carries the cache path so an author on an offline machine still has a
+        // way through: download the file elsewhere and save it there.
+        "build-dependency-unavailable":
+            "{plugin} needs the build dependency {dependency} for {platform}, which is not cached here and could not be "
+            + "fetched from {url} ({reason}). Download it yourself and save it as {path} to build without a network.",
+        // Not an error: the game still builds and runs. What it loses is
+        // whatever that program did, with nothing in the artifact to say so.
+        "sidecar-target-missing":
+            "{plugin} ships no {sidecar} program for {platform}, so anything it provides is missing from that build.",
+        "sidecar-crossbuild-exec-bit":
+            "Windows cannot mark a file executable, so {plugin}'s {sidecar} program would ship into the {platform} "
+            + "artifact unable to run. Build the {targetPlatform} target on a {targetPlatform} machine.",
         "encryption-key-unavailable": "Asset protection is on, but its key could not be resolved.",
         "web-unprotected": "Asset protection does not apply to the web export; its files ship unprotected.",
         "mobile-template-missing": "The mobile shell templates are unavailable: {reason}",

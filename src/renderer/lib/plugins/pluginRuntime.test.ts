@@ -197,6 +197,56 @@ describe("createPluginApp disposal", () => {
         expect(blueprintNodesService.register).toHaveBeenCalledTimes(1);
     });
 
+    it("keeps hostAdapter out of the context a plugin node's execute receives", async () => {
+        const { ctx, blueprintNodesService } = createFakeContext();
+        const { app } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
+
+        const execute = vi.fn();
+        app.services.blueprintNodes.register({ type: "test-plugin.node", execute } as any);
+
+        // What actually landed in the editor catalog is a wrapper, not the
+        // plugin's own function: the host context stops here.
+        const registered = blueprintNodesService.register.mock.calls[0][0];
+        expect(registered.execute).not.toBe(execute);
+
+        // A full host context, including the facade that reaches saves,
+        // localization and quit - none of it declared in any manifest.
+        const hostAdapter = { blueprintRuntime: { hostApi: { game: { writeSave: vi.fn() } } } };
+        await registered.execute({
+            graph: {},
+            entry: {},
+            node: {},
+            params: { a: 1 },
+            resolveInput: () => "wired",
+            hostAdapter,
+            eventName: "onClick",
+            eventPayload: { x: 1 },
+            trace: { emit: vi.fn() },
+            blueprintLocals: { secret: true },
+        } as any);
+
+        const pluginCtx = execute.mock.calls[0][0];
+        expect(pluginCtx).not.toHaveProperty("hostAdapter");
+        expect(Object.keys(pluginCtx).sort()).toEqual(
+            ["eventName", "eventPayload", "game", "params", "resolveInput", "signal"],
+        );
+        // Nothing reachable from the context leads back to the host adapter.
+        // The always-present members and nothing else: every capability-gated
+        // domain is absent because Studio backs none of them. `story` is here
+        // rather than gated - see the note on RuntimePluginGame.story.
+        expect(Object.keys(pluginCtx.game).sort()).toEqual(["blueprintNodes", "data", "log", "story", "widgets"]);
+        // The editor backs no capability, so every gated domain is absent -
+        // not a stub that would quietly reach a host it has no right to.
+        expect(pluginCtx.game.saves).toBeUndefined();
+        expect(pluginCtx.game.store).toBeUndefined();
+        expect(pluginCtx.game.state).toBeUndefined();
+
+        // The declared halves still cross over intact.
+        expect(pluginCtx.params).toEqual({ a: 1 });
+        expect(pluginCtx.resolveInput("any")).toBe("wired");
+        expect(pluginCtx.eventName).toBe("onClick");
+    });
+
     it("confines a plugin's action group to a menu of its own", () => {
         const { ctx, store } = createFakeContext();
         const { app } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
