@@ -595,10 +595,10 @@ export class GameBuildManager {
 
     /**
      * Resolve the configured app icon for a target platform into a worker
-     * `iconPath`. Only an absent or corrupt icon falls back to Electron's
-     * default - an icon that is merely smaller than the packager's floor still
-     * ships, upscaled, because a blurry version of the author's icon beats a
-     * packaged game wearing the Electron logo.
+     * `iconPath`. An absent or corrupt icon falls back to NarraLeaf's mark - an
+     * icon that is merely smaller than the packager's floor still ships,
+     * upscaled, because a blurry version of the author's icon beats a packaged
+     * game wearing somebody else's logo.
      */
     private async resolveTargetIcon(
         session: BuildSession,
@@ -618,14 +618,16 @@ export class GameBuildManager {
             }
             return { iconPath: icon.iconPath };
         }
+        const fallback = this.app.getDefaultGameIconPath();
         this.emit(session, {
             level: "warning",
             source: "Build",
-            message: icon.status === "missing"
-                ? `no ${platform} app icon configured; using the default Electron icon`
-                : `the ${platform} icon could not be read; using the default Electron icon`,
+            message: (icon.status === "missing"
+                ? `no ${platform} app icon configured; `
+                : `the ${platform} icon could not be read; `)
+                + (fallback ? "using the NarraLeaf icon" : "using the default Electron icon"),
         });
-        return {};
+        return fallback ? { iconPath: fallback } : {};
     }
 
     /**
@@ -816,22 +818,32 @@ export class GameBuildManager {
             entryPrefix?: string;
         },
     ): Promise<{ iconPngBySlot?: Record<string, string> }> {
+        // iOS must ship an icon with no alpha channel at all, so its fallback is
+        // the pre-flattened NarraLeaf mark and its scaled slots get the channel
+        // stripped after nativeImage re-adds it.
+        const opaque = input.platform === "ios";
         const icon = await checkIcon(input.projectPath, input.projectConfig, input.platform);
-        if (icon.status !== "ok") {
+        let sourceIconPath = icon.status === "ok" ? icon.iconPath : null;
+        if (!sourceIconPath) {
+            sourceIconPath = this.app.getDefaultGameIconPath(opaque);
             this.emit(session, {
                 level: "warning",
                 source: "Build",
-                message: icon.status === "missing"
-                    ? `no ${input.platform} app icon configured; using the shell's placeholder icon`
-                    : `the ${input.platform} icon could not be read; using the shell's placeholder icon`,
+                message: (icon.status === "missing"
+                    ? `no ${input.platform} app icon configured; `
+                    : `the ${input.platform} icon could not be read; `)
+                    + (sourceIconPath ? "using the NarraLeaf icon" : "using the shell's placeholder icon"),
             });
-            return {};
+            if (!sourceIconPath) {
+                return {};
+            }
         }
         const slots = readIconSlotSizes(await fs.readFile(input.templatePath), input.slots, input.entryPrefix);
         const iconPngBySlot = await writeScaledIcons(
-            icon.iconPath,
+            sourceIconPath,
             slots,
             path.join(input.projectPath, ".nlstudio", "build", "mobile-icons", input.platform),
+            { opaque },
         );
         return { iconPngBySlot };
     }
