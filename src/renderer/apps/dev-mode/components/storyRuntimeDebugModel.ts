@@ -148,15 +148,22 @@ export type ExecutionContextRung = {
     blockId: StoryBlockId;
     /** `Menu` / `Option` / `Repeat` / `Parallel` / `If` … — never an engine enum. */
     pill: string;
-    /** The round this repeat is on, when the engine reports a loop for it: 1-based, `2/3`. */
+    /** How many rounds this repeat is authored to run (from the document). */
+    times?: number;
+    /**
+     * The round it is ON — 1-based, `2/3`. Only present when the engine reports a loop for it, which
+     * today it does not for a `/repeat` row: see {@link findReportedLoop}.
+     */
     round?: { current: number; limit?: number };
 };
 
 export type ExecutionContextBranch = {
     /** 1-based, as the panel numbers them. */
     index: number;
-    /** The branch's current row, as a sentence; `null` when it maps to no Studio row. */
+    /** What that branch is doing, as a sentence; `null` when it holds nothing readable. */
     sentence: string | null;
+    /** The branch the play head is inside. */
+    current: boolean;
 };
 
 export type ExecutionContextView = {
@@ -164,11 +171,142 @@ export type ExecutionContextView = {
     sceneName: string;
     /** Outermost container first; empty at the root of a scene. */
     chain: ExecutionContextRung[];
-    /** Who is running inside the innermost concurrent group, if any. */
+    /** The branches of the innermost concurrent container the play head is inside. */
     branches: ExecutionContextBranch[];
-    /** A loop the engine reports that no container in the chain claims (a stale or foreign frame). */
+    /** A loop the engine reports that no container in the chain claims. */
     orphanRound: { current: number; limit?: number } | null;
 };
+
+/**
+ * The loop the engine is reporting, if any — root first, then the async stacks.
+ *
+ * A `/repeat` row does NOT surface here, and that is an engine limitation rather than an oversight:
+ * `Control.repeat` runs its body in a nested StackModel handed to the parent as
+ * `wait.stackModels`, and `StackModel.snapshot()` maps those to `snapshot().frames` — dropping the
+ * nested stack's `loop` on the floor. The root stack is `$root`, never the loop, so `root.loop` is
+ * empty for every repeat an author can write in a scene. Measured on the running app, not inferred.
+ *
+ * The reading is kept because it costs nothing and is correct the moment the engine reports nested
+ * stacks whole; until then a repeat rung shows the round count it is authored for, from the document.
+ */
+function findReportedLoop(stack: StackViewLike | null): StackLike["loop"] | null {
+    if (!stack) {
+        return null;
+    }
+    return stack.root.loop ?? stack.async.find(entry => entry.loop)?.loop ?? null;
+}
+
+/** The concurrent container (`parallel` / `race`) nearest the play head, or null. */
+function innermostConcurrentBlock(scene: StoryScene, chain: readonly ExecutionContextRung[]): StoryBlock | null {
+    for (let index = chain.length - 1; index >= 0; index -= 1) {
+        const block = scene.blocks[chain[index].blockId];
+        if (block?.kind === "control" && (block.payload.control === "parallel" || block.payload.control === "race")) {
+            return block;
+        }
+    }
+    return null;
+}
+
+/**
+ * The first row a branch actually says something with: containers are walked through, because
+ * "In order" is the shape of a branch, not what it is doing.
+ */
+function firstSpokenRow(scene: StoryScene, blockId: StoryBlockId, seen = new Set<StoryBlockId>()): StoryBlockId | null {
+    if (seen.has(blockId)) {
+        return null;
+    }
+    seen.add(blockId);
+    const block = scene.blocks[blockId];
+    if (!block) {
+        return null;
+    }
+    if (!getStoryContainerHeaderInfo(block)) {
+        return blockId;
+    }
+    for (const childId of block.childrenIds) {
+        const found = firstSpokenRow(scene, childId, seen);
+        if (found) {
+            return found;
+        }
+    }
+    return blockId;
+}
+
+/** Whether `blockId` is inside `ancestorId` (or is it). */
+function isWithin(scene: StoryScene, blockId: StoryBlockId | null, ancestorId: StoryBlockId): boolean {
+    const seen = new Set<StoryBlockId>();
+    let id = blockId;
+    while (id && !seen.has(id)) {
+        if (id === ancestorId) {
+            return true;
+        }
+        seen.add(id);
+        id = scene.blocks[id]?.parentId ?? null;
+    }
+    return false;
+}
+
+/**
+ * Where execution is, in the author's terms: which scene, which containers it is nested in, which
+ * round a repeat runs, and who is running inside a parallel.
+ *
+ * Answered from the *document* wherever the document knows — "where am I" is a fact about the story
+ * the author wrote, so it holds for every row and never has to be reconciled with an engine enum. The
+ * engine is consulted for the two things only it can know, and it currently answers neither: a
+ * repeat's live round is dropped by `snapshot()` (see {@link findReportedLoop}), and a concurrent
+ * branch's frame list is empty whenever the branch is waiting on the player — which is every moment
+ * anyone is looking at this panel. So the branches are listed from the container's own children, with
+ * the one holding the play head marked, and the engine's answer preferred when it has one.
+ */
+export function projectExecutionContext(input: {
+    scene: StoryScene | undefined;
+    sceneName: string;
+    currentBlockId: StoryBlockId | null;
+    stack: StackViewLike | null;
+    bindings: readonly ActionIdBindingLike[];
+    /** The sentence of a Studio row — supplied by the caller, which holds the lookups. */
+    rowSentence: (blockId: StoryBlockId) => string | null;
+}): ExecutionContextView {
+    const { scene, sceneName, currentBlockId, stack, bindings, rowSentence } = input;
+    const chain: ExecutionContextRung[] = scene && currentBlockId
+        ? storyContainerChain(scene, currentBlockId).map(rung => ({
+            blockId: rung.blockId,
+            pill: rung.info.pill,
+            ...(rung.info.repeatTimes !== undefined ? { times: rung.info.repeatTimes } : {}),
+        }))
+        : [];
+
+    const loop = findReportedLoop(stack);
+    let orphanRound: ExecutionContextView["orphanRound"] = null;
+    if (loop) {
+        // `counter` counts COMPLETED iterations, so the round the author is watching is counter + 1 —
+        // clamped, because the counter reaches the limit in the instant before the loop drains.
+        const current = loop.limit != null ? Math.min(loop.counter + 1, loop.limit) : loop.counter + 1;
+        const round = { current, ...(loop.limit != null ? { limit: loop.limit } : {}) };
+        const repeatIndex = findLastIndex(chain, rung => rung.times !== undefined);
+        if (repeatIndex >= 0) {
+            chain[repeatIndex] = { ...chain[repeatIndex], round };
+        } else {
+            orphanRound = round;
+        }
+    }
+
+    const concurrent = scene ? innermostConcurrentBlock(scene, chain) : null;
+    const reported = stack ? findBranchingFrame(stack.root.frames)?.branches ?? null : null;
+    const branches: ExecutionContextBranch[] = concurrent && scene
+        ? concurrent.childrenIds.map((childId, index) => {
+            const fromEngine = blockIdForActionId(bindings, reported?.[index]?.[0]?.actionId ?? null);
+            const target = fromEngine ?? firstSpokenRow(scene, childId);
+            return {
+                index: index + 1,
+                sentence: target ? rowSentence(target) : null,
+                current: isWithin(scene, currentBlockId, childId),
+            };
+        })
+        : [];
+
+    return { sceneName, chain, branches, orphanRound };
+}
 
 /** The first frame carrying a concurrent group, searching top-first (innermost first). */
 function findBranchingFrame(frames: readonly StackFrameLike[]): StackFrameLike | null {
@@ -186,65 +324,6 @@ function findBranchingFrame(frames: readonly StackFrameLike[]): StackFrameLike |
         }
     }
     return null;
-}
-
-/**
- * Where execution is, in the author's terms: which scene, which containers it is nested in, which
- * round a repeat is on, and who is running inside a parallel.
- *
- * The chain is walked from the *story* (`parentId`), not from the engine's frames: "where am I" is a
- * fact about the document, so it holds for every row and never has to be reconciled with an enum. The
- * engine is asked only for the two things the document cannot know — the loop counter and the live
- * branches.
- */
-export function projectExecutionContext(input: {
-    scene: StoryScene | undefined;
-    sceneName: string;
-    currentBlockId: StoryBlockId | null;
-    stack: StackViewLike | null;
-    bindings: readonly ActionIdBindingLike[];
-    /** The sentence of a Studio row — supplied by the caller, which holds the lookups. */
-    rowSentence: (blockId: StoryBlockId) => string | null;
-}): ExecutionContextView {
-    const { scene, sceneName, currentBlockId, stack, bindings, rowSentence } = input;
-    const chain: ExecutionContextRung[] = scene && currentBlockId
-        ? storyContainerChain(scene, currentBlockId).map(rung => ({ blockId: rung.blockId, pill: rung.info.pill }))
-        : [];
-
-    // One loop at a time: the engine reports the running loop on whichever stack owns it, and nesting
-    // two counted loops around one row is rare enough that guessing between them would be worse than
-    // showing the one that is live.
-    const loop = stack
-        ? stack.root.loop ?? stack.async.find(entry => entry.loop)?.loop ?? null
-        : null;
-    let orphanRound: ExecutionContextView["orphanRound"] = null;
-    if (loop) {
-        // `counter` counts COMPLETED iterations, so the round the author is watching is counter + 1 —
-        // clamped, because the counter reaches the limit in the instant before the loop drains.
-        const current = loop.limit != null ? Math.min(loop.counter + 1, loop.limit) : loop.counter + 1;
-        const round = { current, ...(loop.limit != null ? { limit: loop.limit } : {}) };
-        const repeatIndex = scene
-            ? findLastIndex(chain, rung => {
-                const block = scene.blocks[rung.blockId];
-                return Boolean(block && getStoryContainerHeaderInfo(block)?.repeatTimes !== undefined);
-            })
-            : -1;
-        if (repeatIndex >= 0) {
-            chain[repeatIndex] = { ...chain[repeatIndex], round };
-        } else {
-            orphanRound = round;
-        }
-    }
-
-    const branchingFrame = stack
-        ? findBranchingFrame(stack.root.frames) ?? stack.async.map(entry => findBranchingFrame(entry.frames)).find(Boolean) ?? null
-        : null;
-    const branches: ExecutionContextBranch[] = (branchingFrame?.branches ?? []).map((frames, index) => {
-        const blockId = blockIdForActionId(bindings, frames[0]?.actionId ?? null);
-        return { index: index + 1, sentence: blockId ? rowSentence(blockId) : null };
-    });
-
-    return { sceneName, chain, branches, orphanRound };
 }
 
 /** `Array.prototype.findLastIndex` without depending on the lib target. */
