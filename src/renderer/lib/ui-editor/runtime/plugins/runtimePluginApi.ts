@@ -13,6 +13,9 @@ import type { PluginIdentity } from "@shared/types/pluginPermissions";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import type { BehaviorNodeDefinition } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { ElementRendererProps } from "../ElementRendererRegistry";
+import type { StoryCompilePass } from "../game/storyCompilePass";
+
+export type { StoryCompilePass, SceneCompileContext, CompileBlockView, BlockInjection, StageImage, RuntimeFlag, EngineAction } from "../game/storyCompilePass";
 
 export type RuntimePluginLogLevel = "info" | "warning" | "error";
 
@@ -61,6 +64,15 @@ export type RuntimePluginApp = {
          */
         data: {
             readJson<T = unknown>(namespace: string): T | null;
+        };
+        story: {
+            /**
+             * Register a compile pass that observes each scene's blocks and injects engine
+             * actions around them during compilation. Runs in every game environment; there is
+             * no unload, and a duplicate pass id is ignored. The pass id must be prefixed with
+             * the plugin id.
+             */
+            registerCompilePass(pass: StoryCompilePass): void;
         };
         log(level: RuntimePluginLogLevel, message: string): void;
     };
