@@ -1,12 +1,35 @@
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset } from "@/lib/workspace/services/assets/types";
 import { Character } from "@/lib/workspace/services/character/Character";
-import { ImagePlus, Layers, Plus, Trash2 } from "lucide-react";
+import {
+    collectCharacterDiagnostics,
+    type CharacterDiagnostic,
+    type LayerSize,
+} from "@/lib/workspace/services/character/characterDiagnostics";
+import { UIService } from "@/lib/workspace/services/core/UIService";
+import { Services } from "@/lib/workspace/services/services";
+import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import {
+    AlertTriangle,
+    Crop,
+    Eye,
+    EyeOff,
+    ImagePlus,
+    Layers,
+    Lock,
+    Pencil,
+    Plus,
+    Trash2,
+    Unlock,
+    XCircle,
+} from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useWorkspace } from "@/apps/workspace/context";
 import { EditorComponentProps } from "../../types";
-import { LayerStackPreview } from "./components/LayerStackPreview";
+import { LayerStackPreview, type PreviewLayer } from "./components/LayerStackPreview";
 
 type CharacterEditorPayload = { character: Character };
 
@@ -16,15 +39,20 @@ type SlotRef =
     | { kind: "layer"; layerId: string }
     | { kind: "option"; layerId: string; tagId: string };
 
+/** What the author has selected, which is also what a diagnostic row jumps to. */
+type Focus = { kind: "layer" | "axis"; id: string } | null;
+
 const ROW = "flex items-center gap-2 rounded-md border border-edge bg-fill-subtle px-2 py-1.5 text-xs";
 const ICON_BTN = "p-1 rounded-md text-fg-muted hover:text-fg hover:bg-fill transition-colors";
+const CARD = "rounded-md border bg-fill-subtle p-2 space-y-1.5";
+const FOCUSED = "border-primary/60";
 
 function Section(props: { title: string; onAdd: () => void; children: React.ReactNode }) {
     return (
         <div className="space-y-1.5">
             <div className="flex items-center justify-between px-1">
                 <span className="text-2xs tracking-wide text-fg-muted">{props.title}</span>
-                <button className={ICON_BTN} onClick={props.onAdd} title={props.title}>
+                <button className={ICON_BTN} onClick={props.onAdd} aria-label={props.title}>
                     <Plus className="w-4 h-4" />
                 </button>
             </div>
@@ -41,13 +69,20 @@ function Section(props: { title: string; onAdd: () => void; children: React.Reac
  * driven by axes. What both need is the same - name a slot, give it an image - so the row vocabulary
  * is shared and only the tree above it differs.
  *
- * The layered side is deliberately the minimum that lets a stack be built and looked at. The real
- * layer-stack editor (drag reordering, onion skin, canvas and coverage diagnostics) is its own card.
+ * Two pieces of state deliberately live here rather than on the character: which layers are hidden
+ * and which are locked. Hiding a layer to see the one under it must not change what ships, so it
+ * cannot be persisted - `toLayeredDefinition` never learns about it.
  */
 export function CharacterEditor({ payload }: EditorComponentProps<CharacterEditorPayload>) {
     const { t } = useTranslation();
+    const { context } = useWorkspace();
     const character = payload?.character;
     const appearance = character?.profile.appearance;
+
+    const inputDialog = useMemo(() => {
+        const ui = context?.services.get<UIService>(Services.UI);
+        return ui ? createInputDialog(ui) : null;
+    }, [context]);
 
     // The appearance mutates in place, so a version counter is what re-renders this tree.
     const [version, setVersion] = useState(0);
@@ -55,6 +90,12 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
 
     const [slot, setSlot] = useState<SlotRef | null>(null);
     const [previewTags, setPreviewTags] = useState<Record<string, string>>({});
+    const [hidden, setHidden] = useState<Record<string, boolean>>({});
+    const [locked, setLocked] = useState<Record<string, boolean>>({});
+    const [sizes, setSizes] = useState<Record<string, LayerSize>>({});
+    const [onionAxisId, setOnionAxisId] = useState<string | null>(null);
+    const [focus, setFocus] = useState<Focus>(null);
+    const [dragLayerId, setDragLayerId] = useState<string | null>(null);
     const anchorRef = useRef<HTMLElement | null>(null);
     const anchorMemo = useMemo(() => ({ current: anchorRef.current }), [slot]);
 
@@ -64,6 +105,14 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     const layers = useMemo(() => appearance?.getLayers() ?? [], [appearance, version]);
     // Editor-only: which tag each axis is previewing. Never stored on the character.
     const tags = useMemo(() => appearance?.resolveTagSelection(previewTags) ?? {}, [appearance, previewTags, version]);
+
+    const onMeasured = useCallback((layerId: string, size: LayerSize) => {
+        setSizes(current => (
+            current[layerId]?.width === size.width && current[layerId]?.height === size.height
+                ? current
+                : { ...current, [layerId]: size }
+        ));
+    }, []);
 
     const confirmAsset = useCallback((assets: Asset[]) => {
         const assetId = assets[0]?.id ?? null;
@@ -86,15 +135,61 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         setSlot(next);
     };
 
+    /** Ids are what everything else stores, so a rename rewrites nothing and needs no confirmation. */
+    const rename = useCallback(async (target: { id: string; name: string } | null, noun: string) => {
+        if (!appearance || !inputDialog || !target) return;
+        const next = await inputDialog.showRenameDialog(target.name, noun);
+        if (next) {
+            appearance.rename(target, next);
+        }
+    }, [appearance, inputDialog]);
+
+    const diagnostics = useMemo(
+        () => (appearance ? collectCharacterDiagnostics(appearance, sizes) : []),
+        [appearance, sizes, version],
+    );
+
     if (!character || !appearance) {
         return null;
     }
 
-    const previewAssetIds = kind === "preset"
-        ? [poses.find(pose => pose.id === appearance.getDefaultPoseId())?.assetId ?? null]
-        : layers
-            .filter(layer => !layer.hidden)
-            .map(layer => (layer.axisId ? layer.options?.[tags[layer.axisId] ?? ""] : layer.assetId) ?? null);
+    /** What each layer draws under the current preview tags. */
+    const draw = (layerId: string, selection: Record<string, string>): string | null => {
+        const layer = appearance.getLayer(layerId);
+        if (!layer) return null;
+        if (!layer.axisId) return layer.assetId ?? null;
+        return layer.options?.[selection[layer.axisId] ?? ""] ?? null;
+    };
+
+    const visibleLayers: PreviewLayer[] = kind === "preset"
+        ? [{ id: "pose", assetId: poses.find(pose => pose.id === appearance.getDefaultPoseId())?.assetId ?? null }]
+        : layers.filter(layer => !hidden[layer.id]).map(layer => ({ id: layer.id, assetId: draw(layer.id, tags) }));
+
+    // The onion stack is the same layers under the axis's *other* tag - the one the author is
+    // comparing against - so it is built from a selection that differs in exactly one axis.
+    const onionLayers: PreviewLayer[] | null = (() => {
+        if (kind !== "layered" || !onionAxisId) return null;
+        const axis = appearance.getAxis(onionAxisId);
+        if (!axis || axis.tags.length < 2) return null;
+        const current = tags[axis.id];
+        const other = axis.tags.find(tag => tag.id !== current) ?? axis.tags[0];
+        const selection = { ...tags, [axis.id]: other.id };
+        return layers.filter(layer => !hidden[layer.id]).map(layer => ({ id: layer.id, assetId: draw(layer.id, selection) }));
+    })();
+
+    const setCanvasFromBottom = () => {
+        const bottom = layers.map(layer => sizes[layer.id]).find(Boolean);
+        if (bottom) {
+            appearance.setCanvas(bottom);
+        }
+    };
+
+    const moveLayer = (draggedId: string, targetId: string) => {
+        if (draggedId === targetId || locked[draggedId]) return;
+        const target = layers.findIndex(layer => layer.id === targetId);
+        if (target === -1) return;
+        appearance.moveLayer(draggedId, target);
+    };
 
     return (
         <div className="h-full bg-surface text-fg flex flex-col">
@@ -108,7 +203,49 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
             </div>
 
             <div className="flex-1 grid grid-cols-[minmax(0,1fr)_360px] overflow-hidden">
-                <LayerStackPreview assetIds={previewAssetIds} canvas={appearance.getCanvas()} />
+                <div className="flex min-h-0 flex-col">
+                    <LayerStackPreview
+                        layers={visibleLayers}
+                        onion={onionLayers}
+                        canvas={appearance.getCanvas()}
+                        sizes={sizes}
+                        onMeasured={onMeasured}
+                        toolbar={kind === "layered" ? (
+                            <>
+                                <button
+                                    className={ICON_BTN}
+                                    aria-label={t("characters.editor.setCanvas")}
+                                    onClick={setCanvasFromBottom}
+                                >
+                                    <Crop className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                    className={[ICON_BTN, onionAxisId ? "text-primary" : ""].join(" ")}
+                                    aria-label={t("characters.editor.onionSkin")}
+                                    onClick={() => setOnionAxisId(current => (
+                                        current ? null : (axes.find(axis => axis.tags.length > 1)?.id ?? null)
+                                    ))}
+                                >
+                                    <Layers className="w-3.5 h-3.5" />
+                                </button>
+                            </>
+                        ) : null}
+                    />
+                    {diagnostics.length > 0 && (
+                        <div className="max-h-48 shrink-0 overflow-y-auto border-t border-edge">
+                            <div className="px-4 py-1.5 text-2xs tracking-wide text-fg-muted">
+                                {t("characters.editor.problems")}
+                            </div>
+                            {diagnostics.map((diagnostic, index) => (
+                                <DiagnosticRow
+                                    key={`${diagnostic.code}:${diagnostic.target.id}:${index}`}
+                                    diagnostic={diagnostic}
+                                    onClick={() => setFocus(diagnostic.target)}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
 
                 <div className="border-l border-edge overflow-y-auto p-3 space-y-4">
                     {kind === "preset" ? (
@@ -124,14 +261,21 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                     )}
                                     <button
                                         className={ICON_BTN}
-                                        title={t("characters.variantsPanel.changeImage")}
+                                        aria-label={t("common.rename")}
+                                        onClick={() => void rename(pose, "pose")}
+                                    >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                        className={ICON_BTN}
+                                        aria-label={t("characters.variantsPanel.changeImage")}
                                         onClick={event => openSlot({ kind: "pose", poseId: pose.id }, event.currentTarget)}
                                     >
                                         <ImagePlus className="w-3.5 h-3.5" />
                                     </button>
                                     <button
                                         className={ICON_BTN}
-                                        title={t("characters.editor.removePose")}
+                                        aria-label={t("characters.editor.removePose")}
                                         onClick={() => appearance.removePose(pose.id)}
                                     >
                                         <Trash2 className="w-3.5 h-3.5" />
@@ -146,19 +290,30 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                 onAdd={() => appearance.createAxis(t("characters.editor.newAxis"))}
                             >
                                 {axes.map(axis => (
-                                    <div key={axis.id} className="rounded-md border border-edge bg-fill-subtle p-2 space-y-1.5">
+                                    <div
+                                        key={axis.id}
+                                        className={[CARD, focus?.kind === "axis" && focus.id === axis.id ? FOCUSED : "border-edge"].join(" ")}
+                                        onClick={() => setFocus({ kind: "axis", id: axis.id })}
+                                    >
                                         <div className="flex items-center gap-2">
                                             <span className="min-w-0 flex-1 truncate text-xs">{axis.name}</span>
                                             <button
                                                 className={ICON_BTN}
-                                                title={t("characters.editor.newTag")}
+                                                aria-label={t("common.rename")}
+                                                onClick={() => void rename(axis, "axis")}
+                                            >
+                                                <Pencil className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                                className={ICON_BTN}
+                                                aria-label={t("characters.editor.newTag")}
                                                 onClick={() => appearance.createTag(axis.id, t("characters.editor.newTag"))}
                                             >
                                                 <Plus className="w-3.5 h-3.5" />
                                             </button>
                                             <button
                                                 className={ICON_BTN}
-                                                title={t("characters.editor.removeAxis")}
+                                                aria-label={t("characters.editor.removeAxis")}
                                                 onClick={() => appearance.removeAxis(axis.id)}
                                             >
                                                 <Trash2 className="w-3.5 h-3.5" />
@@ -166,18 +321,45 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                         </div>
                                         <div className="flex flex-wrap gap-1">
                                             {axis.tags.map(tag => (
-                                                <button
+                                                <div
                                                     key={tag.id}
                                                     className={[
-                                                        "rounded-md border px-2 py-0.5 text-2xs transition-colors",
+                                                        "group/tag flex items-center gap-0.5 rounded-md border pl-2 pr-1 py-0.5 text-2xs transition-colors",
                                                         tags[axis.id] === tag.id
                                                             ? "border-primary/60 bg-primary/15"
                                                             : "border-edge hover:bg-fill",
                                                     ].join(" ")}
-                                                    onClick={() => setPreviewTags(current => ({ ...current, [axis.id]: tag.id }))}
                                                 >
-                                                    {tag.name}
-                                                </button>
+                                                    <button
+                                                        onClick={() => setPreviewTags(current => ({ ...current, [axis.id]: tag.id }))}
+                                                    >
+                                                        {tag.name}
+                                                    </button>
+                                                    {axis.defaultTagId === tag.id && <span className="text-primary">·</span>}
+                                                    <span className="hidden items-center group-hover/tag:flex">
+                                                        <button
+                                                            className={ICON_BTN}
+                                                            aria-label={t("common.rename")}
+                                                            onClick={() => void rename(tag, "tag")}
+                                                        >
+                                                            <Pencil className="w-3 h-3" />
+                                                        </button>
+                                                        <button
+                                                            className={ICON_BTN}
+                                                            aria-label={t("characters.editor.makeDefault")}
+                                                            onClick={() => appearance.setAxisDefaultTag(axis.id, tag.id)}
+                                                        >
+                                                            <Eye className="w-3 h-3" />
+                                                        </button>
+                                                        <button
+                                                            className={ICON_BTN}
+                                                            aria-label={t("characters.editor.removeTag")}
+                                                            onClick={() => appearance.removeTag(axis.id, tag.id)}
+                                                        >
+                                                            <Trash2 className="w-3 h-3" />
+                                                        </button>
+                                                    </span>
+                                                </div>
                                             ))}
                                         </div>
                                     </div>
@@ -190,65 +372,111 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                             >
                                 {/* Reversed: the top of the stack reads at the top of the list, the way
                                     the art does, while the stored order stays bottom-first. */}
-                                {[...layers].reverse().map(layer => (
-                                    <div key={layer.id} className="rounded-md border border-edge bg-fill-subtle p-2 space-y-1.5">
-                                        <div className="flex items-center gap-2">
-                                            <Layers className="w-3.5 h-3.5 text-fg-subtle shrink-0" />
-                                            <span className="min-w-0 flex-1 truncate text-xs">{layer.name}</span>
-                                            <select
-                                                className="bg-surface border border-edge rounded-md text-2xs px-1 py-0.5"
-                                                value={layer.axisId ?? ""}
-                                                onChange={event => appearance.setLayerAxis(layer.id, event.target.value || null)}
-                                            >
-                                                <option value="">{t("characters.editor.constantLayer")}</option>
-                                                {axes.map(axis => (
-                                                    <option key={axis.id} value={axis.id}>{axis.name}</option>
-                                                ))}
-                                            </select>
-                                            <button
-                                                className={ICON_BTN}
-                                                title={t("characters.editor.removeLayer")}
-                                                onClick={() => appearance.removeLayer(layer.id)}
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                        </div>
-                                        {layer.axisId ? (
-                                            <div className="space-y-1 pl-5">
-                                                {(appearance.getAxis(layer.axisId)?.tags ?? []).map(tag => (
-                                                    <div key={tag.id} className="flex items-center gap-2 text-2xs">
-                                                        <span className="min-w-0 flex-1 truncate text-fg-muted">{tag.name}</span>
-                                                        <span className="text-fg-subtle">
-                                                            {layer.options?.[tag.id]
-                                                                ? t("characters.editor.hasImage")
-                                                                : t("characters.editor.drawsNothing")}
-                                                        </span>
-                                                        <button
-                                                            className={ICON_BTN}
-                                                            title={t("characters.variantsPanel.changeImage")}
-                                                            onClick={event => openSlot({ kind: "option", layerId: layer.id, tagId: tag.id }, event.currentTarget)}
-                                                        >
-                                                            <ImagePlus className="w-3 h-3" />
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <div className="flex items-center gap-2 pl-5 text-2xs">
-                                                <span className="min-w-0 flex-1 truncate text-fg-subtle">
-                                                    {layer.assetId ? t("characters.editor.hasImage") : t("characters.editor.noImage")}
-                                                </span>
+                                {[...layers].reverse().map(layer => {
+                                    const isFocused = focus?.kind === "layer" && focus.id === layer.id
+                                        || (focus?.kind === "axis" && focus.id === layer.axisId);
+                                    return (
+                                        <div
+                                            key={layer.id}
+                                            className={[
+                                                CARD,
+                                                "nl-drag-source",
+                                                isFocused ? FOCUSED : "border-edge",
+                                                dragLayerId === layer.id ? "opacity-50" : "",
+                                            ].join(" ")}
+                                            draggable={!locked[layer.id]}
+                                            onDragStart={() => setDragLayerId(layer.id)}
+                                            onDragEnd={() => setDragLayerId(null)}
+                                            onDragOver={event => { if (dragLayerId) event.preventDefault(); }}
+                                            onDrop={() => {
+                                                if (dragLayerId) moveLayer(dragLayerId, layer.id);
+                                                setDragLayerId(null);
+                                            }}
+                                            onClick={() => setFocus({ kind: "layer", id: layer.id })}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <LayerThumb assetId={draw(layer.id, tags)} />
+                                                <span className="min-w-0 flex-1 truncate text-xs">{layer.name}</span>
                                                 <button
                                                     className={ICON_BTN}
-                                                    title={t("characters.variantsPanel.changeImage")}
-                                                    onClick={event => openSlot({ kind: "layer", layerId: layer.id }, event.currentTarget)}
+                                                    aria-label={t(hidden[layer.id] ? "characters.editor.showLayer" : "characters.editor.hideLayer")}
+                                                    onClick={() => setHidden(current => ({ ...current, [layer.id]: !current[layer.id] }))}
                                                 >
-                                                    <ImagePlus className="w-3 h-3" />
+                                                    {hidden[layer.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                                </button>
+                                                <button
+                                                    className={ICON_BTN}
+                                                    aria-label={t(locked[layer.id] ? "characters.editor.unlockLayer" : "characters.editor.lockLayer")}
+                                                    onClick={() => setLocked(current => ({ ...current, [layer.id]: !current[layer.id] }))}
+                                                >
+                                                    {locked[layer.id] ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                                                </button>
+                                                <button
+                                                    className={ICON_BTN}
+                                                    aria-label={t("common.rename")}
+                                                    onClick={() => void rename(layer, "layer")}
+                                                >
+                                                    <Pencil className="w-3.5 h-3.5" />
+                                                </button>
+                                                <select
+                                                    className="bg-surface border border-edge rounded-md text-2xs px-1 py-0.5"
+                                                    value={layer.axisId ?? ""}
+                                                    disabled={locked[layer.id]}
+                                                    onChange={event => appearance.setLayerAxis(layer.id, event.target.value || null)}
+                                                >
+                                                    <option value="">{t("characters.editor.constantLayer")}</option>
+                                                    {axes.map(axis => (
+                                                        <option key={axis.id} value={axis.id}>{axis.name}</option>
+                                                    ))}
+                                                </select>
+                                                <button
+                                                    className={ICON_BTN}
+                                                    aria-label={t("characters.editor.removeLayer")}
+                                                    disabled={locked[layer.id]}
+                                                    onClick={() => appearance.removeLayer(layer.id)}
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
                                                 </button>
                                             </div>
-                                        )}
-                                    </div>
-                                ))}
+                                            {layer.axisId ? (
+                                                <div className="space-y-1 pl-5">
+                                                    {(appearance.getAxis(layer.axisId)?.tags ?? []).map(tag => (
+                                                        <div key={tag.id} className="flex items-center gap-2 text-2xs">
+                                                            <span className="min-w-0 flex-1 truncate text-fg-muted">{tag.name}</span>
+                                                            <span className="text-fg-subtle">
+                                                                {layer.options?.[tag.id]
+                                                                    ? t("characters.editor.hasImage")
+                                                                    : t("characters.editor.drawsNothing")}
+                                                            </span>
+                                                            <button
+                                                                className={ICON_BTN}
+                                                                aria-label={t("characters.variantsPanel.changeImage")}
+                                                                disabled={locked[layer.id]}
+                                                                onClick={event => openSlot({ kind: "option", layerId: layer.id, tagId: tag.id }, event.currentTarget)}
+                                                            >
+                                                                <ImagePlus className="w-3 h-3" />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-2 pl-5 text-2xs">
+                                                    <span className="min-w-0 flex-1 truncate text-fg-subtle">
+                                                        {layer.assetId ? t("characters.editor.hasImage") : t("characters.editor.noImage")}
+                                                    </span>
+                                                    <button
+                                                        className={ICON_BTN}
+                                                        aria-label={t("characters.variantsPanel.changeImage")}
+                                                        disabled={locked[layer.id]}
+                                                        onClick={event => openSlot({ kind: "layer", layerId: layer.id }, event.currentTarget)}
+                                                    >
+                                                        <ImagePlus className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </Section>
                         </>
                     )}
@@ -266,5 +494,44 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                 multiple={false}
             />
         </div>
+    );
+}
+
+/** The current tag's image for a layer, so the row shows what it draws rather than that it draws. */
+function LayerThumb(props: { assetId: string | null }) {
+    const { url } = useAssetObjectUrl(props.assetId);
+    return (
+        <span className="grid h-6 w-6 shrink-0 place-items-center overflow-hidden rounded-sm bg-fill">
+            {url
+                ? <img src={url} alt="" draggable={false} className="h-full w-full object-contain" />
+                : <Layers className="w-3 h-3 text-fg-subtle" />}
+        </span>
+    );
+}
+
+// Written out rather than interpolated so the keys stay statically checkable against the catalogue.
+const DIAGNOSTIC_KEYS = {
+    offCanvas: "characters.editor.diagnostics.offCanvas",
+    constantNoImage: "characters.editor.diagnostics.constantNoImage",
+    layerNoImage: "characters.editor.diagnostics.layerNoImage",
+    axisNoTags: "characters.editor.diagnostics.axisNoTags",
+    axisUnused: "characters.editor.diagnostics.axisUnused",
+    duplicateTag: "characters.editor.diagnostics.duplicateTag",
+} as const;
+
+function DiagnosticRow(props: { diagnostic: CharacterDiagnostic; onClick: () => void }) {
+    const { t } = useTranslation();
+    const { diagnostic } = props;
+    const Icon = diagnostic.severity === "error" ? XCircle : AlertTriangle;
+    return (
+        <button
+            className="flex w-full items-center gap-2 px-4 py-1 text-left text-xs hover:bg-fill"
+            onClick={props.onClick}
+        >
+            <Icon className={["w-3.5 h-3.5 shrink-0", diagnostic.severity === "error" ? "text-danger" : "text-warning"].join(" ")} />
+            <span className="min-w-0 flex-1 truncate text-fg-muted">
+                {t(DIAGNOSTIC_KEYS[diagnostic.code], diagnostic.values)}
+            </span>
+        </button>
     );
 }

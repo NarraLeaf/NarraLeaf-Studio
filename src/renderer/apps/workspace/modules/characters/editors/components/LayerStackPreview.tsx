@@ -1,16 +1,26 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import type { LayerSize } from "@/lib/workspace/services/character/characterDiagnostics";
 
-type Size = { width: number; height: number };
+/** One slot of the stack: which layer it is, and what that layer draws right now. */
+export type PreviewLayer = { id: string; assetId: string | null };
 
-function Layer(props: { assetId: string | null; index: number; onMeasured: (index: number, size: Size) => void }) {
-    const { url } = useAssetObjectUrl(props.assetId);
-    const { index, onMeasured } = props;
+function Layer(props: {
+    layer: PreviewLayer;
+    index: number;
+    ghost?: boolean;
+    onMeasured: (layerId: string, size: LayerSize) => void;
+}) {
+    const { url } = useAssetObjectUrl(props.layer.assetId);
+    const { layer, ghost, onMeasured } = props;
+    // Only the live stack reports sizes. A ghost is the same layer under a *different* tag, so
+    // letting it measure would make the canvas check flip between two answers for one layer.
     const handleLoad = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
+        if (ghost) return;
         const image = event.currentTarget;
-        onMeasured(index, { width: image.naturalWidth, height: image.naturalHeight });
-    }, [index, onMeasured]);
+        onMeasured(layer.id, { width: image.naturalWidth, height: image.naturalHeight });
+    }, [ghost, layer.id, onMeasured]);
 
     if (!url) {
         return null;
@@ -25,7 +35,7 @@ function Layer(props: { assetId: string | null; index: number; onMeasured: (inde
             draggable={false}
             onLoad={handleLoad}
             className="absolute inset-0 h-full w-full object-contain"
-            style={{ zIndex: props.index }}
+            style={{ zIndex: props.index, opacity: props.ghost ? 0.3 : undefined }}
         />
     );
 }
@@ -37,51 +47,33 @@ function Layer(props: { assetId: string | null; index: number; onMeasured: (inde
  * so the two kinds share one preview surface rather than growing two that can disagree.
  *
  * Sizes are measured off the decoded bitmaps rather than read from asset metadata, which does not
- * carry them. That also means the check is against what is really drawn. It matters because the
- * canvas is a hard constraint rather than a preference: the engine scales each layer independently
- * under autoFit, so a layer of a different size is not slightly out of place, it is stretched to the
- * stage on its own.
+ * carry them, and reported upwards because the canvas check is a diagnostic rather than a caption.
+ * It matters because the canvas is a hard constraint rather than a preference: the engine scales
+ * each layer independently under autoFit, so a layer of a different size is not slightly out of
+ * place, it is stretched to the stage on its own.
+ *
+ * `onion` is the same stack under a different tag, drawn faint *below* the live one. Below rather
+ * than above so the thing being aligned stays readable; it is a registration aid, not a blend.
  */
 export function LayerStackPreview(props: {
-    /** Bottom to top; `null` entries are layers that draw nothing under the current tags. */
-    assetIds: (string | null)[];
+    /** Bottom to top; entries whose `assetId` is null draw nothing under the current tags. */
+    layers: PreviewLayer[];
+    onion?: PreviewLayer[] | null;
     canvas: { width: number; height: number } | null;
+    sizes: Record<string, LayerSize>;
+    onMeasured: (layerId: string, size: LayerSize) => void;
+    toolbar?: React.ReactNode;
 }) {
     const { t } = useTranslation();
-    const [sizes, setSizes] = useState<Record<number, Size>>({});
-
-    const onMeasured = useCallback((index: number, size: Size) => {
-        setSizes(current => (
-            current[index]?.width === size.width && current[index]?.height === size.height
-                ? current
-                : { ...current, [index]: size }
-        ));
-    }, []);
-
-    const drawn = useMemo(
-        () => props.assetIds.filter((assetId): assetId is string => Boolean(assetId)),
-        [props.assetIds],
-    );
-
-    // With no declared canvas the first measured layer is the reference: a stack is consistent or it
-    // is not, and saying so needs no author input.
-    const reference = props.canvas ?? Object.values(sizes)[0] ?? null;
-    const mismatched = reference
-        ? Object.entries(sizes).filter(([, size]) => size.width !== reference.width || size.height !== reference.height)
-        : [];
+    const drawn = props.layers.filter(layer => layer.assetId);
+    const reference = props.canvas ?? props.layers.map(layer => props.sizes[layer.id]).find(Boolean) ?? null;
 
     return (
         <div className="flex h-full flex-col">
             <div className="flex items-center gap-3 border-b border-edge px-4 py-2 text-xs text-fg-muted">
                 <span>{reference ? `${reference.width} × ${reference.height}` : t("characters.editor.noCanvas")}</span>
                 <span>{t("characters.editor.layerCount", { count: drawn.length })}</span>
-                {mismatched.length > 0 && (
-                    <span className="text-danger">
-                        {t("characters.editor.canvasMismatch", {
-                            list: mismatched.map(([, size]) => `${size.width}×${size.height}`).join(", "),
-                        })}
-                    </span>
-                )}
+                <div className="ml-auto flex items-center gap-1">{props.toolbar}</div>
             </div>
             <div className="relative flex-1 overflow-hidden bg-surface">
                 {drawn.length === 0 ? (
@@ -89,14 +81,25 @@ export function LayerStackPreview(props: {
                         {t("characters.preview.placeholder")}
                     </div>
                 ) : (
-                    props.assetIds.map((assetId, index) => (
-                        <Layer
-                            key={`${index}:${assetId ?? "none"}`}
-                            assetId={assetId}
-                            index={index}
-                            onMeasured={onMeasured}
-                        />
-                    ))
+                    <>
+                        {(props.onion ?? []).map((layer, index) => (
+                            <Layer
+                                key={`onion:${layer.id}:${layer.assetId ?? "none"}`}
+                                layer={layer}
+                                index={index}
+                                ghost
+                                onMeasured={props.onMeasured}
+                            />
+                        ))}
+                        {props.layers.map((layer, index) => (
+                            <Layer
+                                key={`${layer.id}:${layer.assetId ?? "none"}`}
+                                layer={layer}
+                                index={(props.onion?.length ?? 0) + index}
+                                onMeasured={props.onMeasured}
+                            />
+                        ))}
+                    </>
                 )}
             </div>
         </div>
