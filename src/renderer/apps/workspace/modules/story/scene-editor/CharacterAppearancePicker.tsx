@@ -2,6 +2,7 @@ import { ImageOff } from "lucide-react";
 import type { StoryCharacterTagSelection } from "@shared/types/story";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
 import { useTranslation } from "@/lib/i18n";
 
 const CARD = "flex items-center gap-2 rounded-md border p-1.5 text-left text-xs transition-colors";
@@ -82,7 +83,11 @@ export function CharacterAppearancePicker(props: {
     };
 
     return (
-        <div className="flex flex-col gap-2 rounded-lg border border-edge bg-fill-subtle p-2">
+        <div className="flex gap-2 rounded-lg border border-edge bg-fill-subtle p-2">
+            {/* What the row will actually put on stage. A stack has no single file to thumbnail, and
+                a column of tag names does not tell an author whether the combination reads. */}
+            <StackThumb character={props.character} tags={props.tags} />
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
             {axes.map(axis => {
                 const chosen = props.tags?.[axis.id];
                 return (
@@ -111,6 +116,20 @@ export function CharacterAppearancePicker(props: {
                     </div>
                 );
             })}
+            </div>
         </div>
     );
+}
+
+/** The whole stack under the row's selection, composited. */
+function StackThumb(props: { character: Character; tags: StoryCharacterTagSelection | undefined }) {
+    const { url } = useCompositedSprite(props.character, { tags: props.tags }, 160);
+    if (!url) {
+        return (
+            <div className="grid h-20 w-14 shrink-0 place-items-center rounded-md bg-fill text-fg-subtle">
+                <ImageOff className="h-4 w-4" />
+            </div>
+        );
+    }
+    return <img src={url} alt="" draggable={false} className="h-20 w-14 shrink-0 rounded-md object-contain" />;
 }

@@ -477,6 +477,23 @@ export class CharacterAppearance {
     }
 
     /**
+     * What this character draws under one selection, bottom to top: asset ids, `null` for a slot that
+     * draws nothing. A preset character is a one-slot stack, which is what lets the compositor and the
+     * preview treat both kinds the same way.
+     *
+     * Partial tag selections are filled out first — a `/face` row names only the axes it touched.
+     */
+    public resolveDrawList(selection: { poseId?: string | null; tags?: CharacterTagSelection | null }): (string | null)[] {
+        if (this.appearance.kind === "preset") {
+            return [this.resolvePoseAssetId(selection.poseId)];
+        }
+        const tags = this.resolveTagSelection(selection.tags ?? undefined);
+        return this.getLayers().map(layer => (
+            layer.axisId ? layer.options?.[tags[layer.axisId] ?? ""] ?? null : layer.assetId ?? null
+        ));
+    }
+
+    /**
      * Render the stack into the engine's layered src. A layer bound to an axis becomes a variants
      * map keyed by tag id; the engine derives one group per distinct tag *set*, so every layer on
      * the same axis collapses onto that axis's single group — which is what makes one tag move them
