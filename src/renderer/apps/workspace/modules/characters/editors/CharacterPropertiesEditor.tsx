@@ -8,7 +8,7 @@ import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAsset
 import { Services } from "@/lib/workspace/services/services";
 import { useWorkspace } from "@/apps/workspace/context";
 import { ImageCropper } from "@/apps/workspace/modules/assets/components/ImageCropper";
-import { X, Plus } from "lucide-react";
+import { X, Plus, ImagePlus } from "lucide-react";
 import { Select } from "@/lib/components/elements";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { useTranslation } from "@/lib/i18n";
@@ -455,10 +455,17 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
                         ) : thumbnailId ? (
                             <div className="absolute inset-0 flex items-center justify-center text-fg-muted"></div>
                         ) : (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center space-y-1">
-                                <div>{t("characters.properties.noThumbnail")}</div>
-                                <div className="text-2xs text-fg-subtle">{t("characters.properties.selectHint")}</div>
-                            </div>
+                            /* The empty frame IS the way in — it opens the same picker the Select
+                               button does — rather than two lines explaining that there is no
+                               thumbnail and which button to press. */
+                            <button
+                                type="button"
+                                onClick={() => setSelectorOpen(true)}
+                                aria-label={t("characters.properties.selectThumbnailTitle")}
+                                className="absolute inset-0 flex items-center justify-center text-fg-subtle transition-colors hover:bg-fill-subtle hover:text-fg-muted"
+                            >
+                                <ImagePlus className="h-6 w-6" />
+                            </button>
                         )}
                     </div>
                     {thumbnailError && <div className="text-xs text-danger">{thumbnailError}</div>}
@@ -586,24 +593,27 @@ function TagEditor({ tags, hasTags, newTag, onChangeNewTag, onAdd, onRemove }: T
     const { t } = useTranslation();
     return (
         <div className="space-y-2">
-            <div className="flex flex-wrap gap-1">
-                {hasTags ? tags.map(tag => (
-                    <span
-                        key={tag}
-                        className="inline-flex items-center gap-1 px-2 py-1 bg-primary/20 text-primary text-xs rounded-md"
-                    >
-                        {tag}
-                        <button
-                            onClick={() => onRemove(tag)}
-                            className="hover:text-primary"
-                            title={t("characters.properties.removeTag")}
-                            aria-label={t("characters.properties.removeTagAria", { tag })}
+            {/* No tags: no chip row. The "Add tag…" field below is the whole affordance. */}
+            {hasTags && (
+                <div className="flex flex-wrap gap-1">
+                    {tags.map(tag => (
+                        <span
+                            key={tag}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-primary/20 text-primary text-xs rounded-md"
                         >
-                            <X className="w-3 h-3" />
-                        </button>
-                    </span>
-                )) : <span className="text-xs text-fg-subtle">{t("characters.properties.noTags")}</span>}
-            </div>
+                            {tag}
+                            <button
+                                onClick={() => onRemove(tag)}
+                                className="hover:text-primary"
+                                title={t("characters.properties.removeTag")}
+                                aria-label={t("characters.properties.removeTagAria", { tag })}
+                            >
+                                <X className="w-3 h-3" />
+                            </button>
+                        </span>
+                    ))}
+                </div>
+            )}
             <div className="flex gap-1">
                 <input
                     type="text"
