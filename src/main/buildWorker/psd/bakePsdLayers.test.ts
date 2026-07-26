@@ -109,7 +109,7 @@ describe("bakeLayers with a merge", () => {
         const write = async (name: string, png: Uint8Array) => { written.set(name, png); return name; };
         const merged = await bakeLayers(
             psdWithBlend("multiply"),
-            [{ path: ["Body"], mergeFrom: [["Shade"]] }],
+            [{ path: ["Body"], mergeFrom: [{ path: ["Shade"] }] }],
             deflate,
             write,
         );
@@ -126,5 +126,113 @@ describe("bakeLayers with a merge", () => {
         const write = async (name: string, png: Uint8Array) => { written.set(name, png); return name; };
         const plain = await bakeLayers(psdWithBlend("multiply"), [{ path: ["Body"] }], deflate, write);
         expect(decodePngToRgba(written.get(plain[0].filePath)!, inflate).rgba[0]).toBe(200);
+    });
+});
+
+describe("layer masks", () => {
+    /** ag-psd hands a mask back with its value copied into every colour channel. */
+    function maskData(width: number, height: number, values: number[]) {
+        const data = new Uint8Array(width * height * 4);
+        values.forEach((value, index) => {
+            data[index * 4] = value;
+            data[index * 4 + 1] = value;
+            data[index * 4 + 2] = value;
+            data[index * 4 + 3] = 255;
+        });
+        return { width, height, data };
+    }
+
+    const opaque2x2 = {
+        width: 2, height: 2,
+        data: new Uint8Array([255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255]),
+    };
+
+    it("multiplies the mask into alpha", async () => {
+        const layer = {
+            name: "Face", left: 0, top: 0, opacity: 1, imageData: opaque2x2,
+            mask: { left: 0, top: 0, right: 2, bottom: 2, imageData: maskData(2, 2, [0, 255, 128, 255]) },
+        } as unknown as Layer;
+        const decoded = decodePngToRgba(await bakeLayer(layer, { width: 2, height: 2 }, deflate), inflate);
+        expect([decoded.rgba[3], decoded.rgba[7], decoded.rgba[11], decoded.rgba[15]]).toEqual([0, 255, 128, 255]);
+        // Colour is untouched where the mask lets the pixel through.
+        expect([...decoded.rgba.slice(4, 7)]).toEqual([255, 0, 0]);
+    });
+
+    it("ignores a mask the author switched off", async () => {
+        const layer = {
+            name: "Face", left: 0, top: 0, opacity: 1, imageData: opaque2x2,
+            mask: { left: 0, top: 0, right: 2, bottom: 2, disabled: true, imageData: maskData(2, 2, [0, 0, 0, 0]) },
+        } as unknown as Layer;
+        const decoded = decodePngToRgba(await bakeLayer(layer, { width: 2, height: 2 }, deflate), inflate);
+        expect(decoded.rgba[3]).toBe(255);
+    });
+
+    it("fills outside the mask's rectangle with its default colour, not with nothing", async () => {
+        // The rectangle is only the bounding box of the painted part; treating everything beyond it
+        // as hidden would blank most of a mask that was painted in one corner.
+        const layer = {
+            name: "Face", left: 0, top: 0, opacity: 1, imageData: opaque2x2,
+            mask: { left: 0, top: 0, right: 1, bottom: 1, defaultColor: 255, imageData: maskData(1, 1, [0]) },
+        } as unknown as Layer;
+        const decoded = decodePngToRgba(await bakeLayer(layer, { width: 2, height: 2 }, deflate), inflate);
+        expect([decoded.rgba[3], decoded.rgba[7], decoded.rgba[11], decoded.rgba[15]]).toEqual([0, 255, 255, 255]);
+    });
+});
+
+describe("clipping masks", () => {
+    /** A base covering only the left column, with a full-canvas blush clipped to it. */
+    function psdWithClip(): Psd {
+        const column = {
+            width: 2, height: 2,
+            data: new Uint8Array([200, 200, 200, 255, 0, 0, 0, 0, 200, 200, 200, 255, 0, 0, 0, 0]),
+        };
+        const fill = {
+            width: 2, height: 2,
+            data: new Uint8Array([255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255]),
+        };
+        return {
+            width: 2, height: 2,
+            children: [
+                { name: "Body", left: 0, top: 0, opacity: 1, blendMode: "normal", imageData: column },
+                { name: "Blush", left: 0, top: 0, opacity: 1, blendMode: "normal", clipping: true, imageData: fill },
+            ],
+        } as unknown as Psd;
+    }
+
+    it("cuts a clipped layer to the base's alpha instead of letting it cover the canvas", async () => {
+        const written = new Map<string, Uint8Array>();
+        const write = async (name: string, png: Uint8Array) => { written.set(name, png); return name; };
+        const baked = await bakeLayers(
+            psdWithClip(),
+            [{ path: ["Body"], mergeFrom: [{ path: ["Blush"], clip: true }] }],
+            deflate,
+            write,
+        );
+        const decoded = decodePngToRgba(written.get(baked[0].filePath)!, inflate);
+        // Where the base is, the blush shows...
+        expect([...decoded.rgba.slice(0, 4)]).toEqual([255, 0, 0, 255]);
+        // ...and where it is not, nothing does. Without the clip this pixel would be opaque red.
+        expect([...decoded.rgba.slice(4, 8)]).toEqual([0, 0, 0, 0]);
+    });
+
+    it("clips to the base's own alpha, not to what an earlier merge widened it to", async () => {
+        const psd = psdWithClip();
+        // A full-canvas layer merged in first would make the whole canvas opaque; the clip that
+        // follows still has to answer to the base alone.
+        (psd.children as Layer[]).push({
+            name: "Glow", left: 0, top: 0, opacity: 1, blendMode: "normal",
+            imageData: { width: 2, height: 2, data: new Uint8Array(16).fill(255) },
+        } as unknown as Layer);
+        const written = new Map<string, Uint8Array>();
+        const write = async (name: string, png: Uint8Array) => { written.set(name, png); return name; };
+        const baked = await bakeLayers(
+            psd,
+            [{ path: ["Body"], mergeFrom: [{ path: ["Glow"] }, { path: ["Blush"], clip: true }] }],
+            deflate,
+            write,
+        );
+        const decoded = decodePngToRgba(written.get(baked[0].filePath)!, inflate);
+        // Glow made this pixel opaque white; the blush must not have reached it.
+        expect([...decoded.rgba.slice(4, 8)]).toEqual([255, 255, 255, 255]);
     });
 });
