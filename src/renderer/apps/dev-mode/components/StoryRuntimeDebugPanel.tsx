@@ -1,22 +1,57 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { DevModeBundle } from "@shared/types/devMode";
-import type { StoryBlockId, StoryDocument, StoryLiteralValue, StorySceneId, StoryVariableValueType } from "@shared/types/story";
+import type { StoryBlockId, StoryDocument, StoryLiteralValue, StoryScene, StorySceneId, StoryVariableValueType } from "@shared/types/story";
 import { useTranslation } from "@/lib/i18n";
 import { Select } from "@/lib/components/elements/Select";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
-import type { GameAppStoryRuntimeBridge, StoryRuntimeStackView } from "@/lib/ui-editor/runtime/app/GameAppHost";
+import type { GameAppStoryRuntimeBridge } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { buildSceneFlowGraph } from "@/apps/workspace/modules/story-flow/sceneFlowModel";
 import { SceneFlowCanvas } from "@/apps/workspace/modules/story-flow/SceneFlowCanvas";
+import { getStorySceneName, storyRowSentence, type StoryRowLookups } from "@/lib/story/storyRowProjection";
 import {
     blockIdForActionId,
     listDeclaredStoryVariables,
+    projectExecutionContext,
     projectSceneTimeline,
     type DeclaredStoryVariable,
+    type StackViewLike,
     type StoryRuntimeVariableScope,
     type StoryTimelineRow,
 } from "./storyRuntimeDebugModel";
 
-type StoryRuntimeTabId = "variables" | "stack" | "timeline" | "scene";
+type StoryRuntimeTabId = "variables" | "context" | "timeline" | "scene";
+
+/**
+ * Node titles in the Dev Mode embed must stay readable after the fit zooms the graph down to fit a
+ * 380px panel: at the measured 0.60 the 12px title rendered at 7.2px. The canvas compensates by
+ * scaling its type up as the zoom drops (see `SceneFlowCanvas.minTitleRenderedPx`).
+ */
+const SCENE_GRAPH_MIN_TITLE_PX = 11.5;
+
+/**
+ * The lookups the shared row projection takes, from what a Dev Mode bundle actually carries.
+ *
+ * This is the whole of what the M5 stopgap could not do: characters arrive as `DevModeCharacterSummary`
+ * (a name, no service) and asset names as the bundle's `assetNames` table, so the panel can read a row
+ * exactly as the editor writes it without ever reaching for a workspace service.
+ */
+function useStoryRowLookups(bundle: DevModeBundle, document: StoryDocument, scene: StoryScene | undefined): StoryRowLookups {
+    const charactersById = useMemo(
+        () => new Map((bundle.storyLibrary?.characters ?? []).map(character => [character.id, character])),
+        [bundle.storyLibrary],
+    );
+    const assetNames = bundle.storyLibrary?.assetNames;
+    return useMemo<StoryRowLookups>(() => ({
+        character: characterId => {
+            const character = charactersById.get(characterId);
+            return character ? { name: character.name } : null;
+        },
+        assetName: assetId => assetNames?.[assetId] ?? null,
+        scene,
+        scenes: document.scenes,
+        document,
+    }), [charactersById, assetNames, scene, document]);
+}
 
 type StoryRuntimeDebugPanelProps = {
     storyRuntime: GameAppStoryRuntimeBridge;
@@ -200,26 +235,18 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
         [snapshots, t],
     );
 
-    // The root execution stack is empty for most of a normal scene, so the tab is shown only while
-    // it holds something rather than standing there with a sentence explaining that it does not.
-    const stackTick = useStoryRuntimeTick(storyRuntime);
-    const hasStack = useMemo(() => {
-        void stackTick;
-        const snapshot = storyRuntime.getStackSnapshot();
-        return Boolean(snapshot && (snapshot.root.frames.length > 0 || snapshot.async.length > 0));
-    }, [storyRuntime, stackTick]);
-
+    // Permanent, unlike the old Stack tab that vanished whenever the root stack drained: at the root
+    // of a scene it still answers "which scene is running", which is a question demo3 could never get
+    // an answer to from anywhere in this panel.
     const tabs = useMemo(
         () => ([
             ["variables", t("devMode.tabs.variables")],
-            ...(hasStack ? [["stack", t("devMode.tabs.stack")]] : []),
+            ["context", t("devMode.tabs.context")],
             ["timeline", t("devMode.tabs.timeline")],
             ["scene", t("devMode.tabs.scene")],
         ] as [StoryRuntimeTabId, string][]),
-        [hasStack, t],
+        [t],
     );
-    const activeTab: StoryRuntimeTabId = tab === "stack" && !hasStack ? "variables" : tab;
-
     return (
         <div className={rootClass}>
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-edge px-2 py-1.5">
@@ -240,7 +267,7 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
                 same token, so repeating it here would double the alpha at anything under 100%. */}
             <div className="flex shrink-0 border-b border-edge" role="tablist" aria-label={t("devMode.runtime.panelsAria")}>
                 {tabs.map(([id, label]) => {
-                    const active = activeTab === id;
+                    const active = tab === id;
                     return (
                         <button
                             key={id}
@@ -267,16 +294,21 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden font-mono leading-snug">
                 {!document || !context ? (
                     <p className="p-2 text-2xs text-fg-subtle">{t("devMode.runtime.noStory")}</p>
-                ) : activeTab === "variables" ? (
+                ) : tab === "variables" ? (
                     <VariablesTab
                         storyRuntime={storyRuntime}
                         scopeBridge={scopeBridge}
                         document={document}
                         entrySceneId={context.sceneId}
                     />
-                ) : activeTab === "stack" ? (
-                    <StackTab storyRuntime={storyRuntime} />
-                ) : activeTab === "timeline" ? (
+                ) : tab === "context" ? (
+                    <ExecutionContextTab
+                        storyRuntime={storyRuntime}
+                        document={document}
+                        entrySceneId={context.sceneId}
+                        bundle={bundle}
+                    />
+                ) : tab === "timeline" ? (
                     <TimelineTab storyRuntime={storyRuntime} document={document} sceneId={context.sceneId} bundle={bundle} />
                 ) : (
                     <SceneTab storyRuntime={storyRuntime} document={document} entrySceneId={context.sceneId} />
@@ -522,102 +554,113 @@ function parseEditableValue(
     return { ok: true, value: raw };
 }
 
-// --- Call stack --------------------------------------------------------------------------------
+// --- Execution context -------------------------------------------------------------------------
 
-function StackTab(props: { storyRuntime: GameAppStoryRuntimeBridge }): ReactNode {
-    const { storyRuntime } = props;
+/**
+ * Where the story is, in the author's terms.
+ *
+ * What it replaced printed the engine's stack verbatim — `Root  control:all · u4f1x7e0… · all
+ * branch 1`: two engine enums, a truncated block id shown to a person who cannot use it, branches
+ * numbered but not named, and no round count at all. None of those is a question an author asks. The
+ * four that they do ask — which scene, inside what, which round, who is running — are the four things
+ * this tab answers, and three of them come from the story document rather than the engine.
+ */
+function ExecutionContextTab(props: {
+    storyRuntime: GameAppStoryRuntimeBridge;
+    document: StoryDocument;
+    entrySceneId: StorySceneId;
+    bundle: DevModeBundle;
+}): ReactNode {
+    const { storyRuntime, document, entrySceneId, bundle } = props;
     const { t } = useTranslation();
     const tick = useStoryRuntimeTick(storyRuntime);
+    const currentBlockId = useCurrentBlockId(storyRuntime);
 
-    const snapshot = useMemo<StoryRuntimeStackView | null>(() => {
+    const sceneId = useMemo<StorySceneId>(() => {
+        if (currentBlockId) {
+            for (const [id, scene] of Object.entries(document.scenes)) {
+                if (currentBlockId in scene.blocks) {
+                    return id;
+                }
+            }
+        }
+        return entrySceneId;
+    }, [currentBlockId, document, entrySceneId]);
+
+    const scene = document.scenes[sceneId];
+    const lookups = useStoryRowLookups(bundle, document, scene);
+
+    const view = useMemo(() => {
         void tick;
-        return storyRuntime.getStackSnapshot();
-    }, [storyRuntime, tick]);
-
-    const bindings = storyRuntime.getActionIdBindings();
-
-    // The tab itself is hidden while the stacks are empty (see the panel's `hasStack`); this only
-    // covers the frame between the last stack frame draining and the tab disappearing.
-    if (!snapshot || (snapshot.root.frames.length === 0 && snapshot.async.length === 0)) {
-        return null;
-    }
+        const stack = storyRuntime.getStackSnapshot() as StackViewLike | null;
+        const bindings = storyRuntime.getActionIdBindings();
+        return projectExecutionContext({
+            scene,
+            sceneName: getStorySceneName(document.scenes, sceneId),
+            currentBlockId,
+            stack,
+            bindings,
+            rowSentence: blockId => {
+                const block = scene?.blocks[blockId];
+                return block ? storyRowSentence(block, lookups) : null;
+            },
+        });
+    }, [tick, storyRuntime, scene, sceneId, document, currentBlockId, lookups]);
 
     return (
         <div className="min-h-0 flex-1 space-y-3 overflow-auto p-2">
-            <StackColumn label={t("devMode.runtime.stackRoot")} stack={snapshot.root} bindings={bindings} t={t} />
-            {snapshot.async.map((stack, index) => (
-                <StackColumn
-                    key={`async-${index}`}
-                    label={stack.tag ?? t("devMode.runtime.stackAsync")}
-                    stack={stack}
-                    bindings={bindings}
-                    t={t}
-                />
-            ))}
-        </div>
-    );
-}
+            <div>
+                <p className="mb-1 text-2xs tracking-wide text-fg-subtle">{t("devMode.runtime.contextScene")}</p>
+                <p className="truncate text-fg" title={view.sceneName}>{view.sceneName}</p>
+            </div>
 
-function StackColumn(props: {
-    label: string;
-    stack: StoryRuntimeStackView["root"];
-    bindings: readonly { staticId: string; blockId: string }[];
-    t: ReturnType<typeof useTranslation>["t"];
-}): ReactNode {
-    const { label, stack, bindings, t } = props;
-    const loop = stack.loop;
-    return (
-        <div>
-            <p className="mb-1 flex items-center gap-2 text-2xs tracking-wide text-fg-subtle">
-                <span>{label}</span>
-                {loop ? (
-                    <span className="text-fg-subtle">
-                        {t("devMode.runtime.loop", {
-                            type: loop.type,
-                            counter: loop.limit != null ? `${loop.counter}/${loop.limit}` : String(loop.counter),
-                        })}
-                    </span>
-                ) : null}
-            </p>
-            {stack.frames.length === 0 ? (
-                <p className="text-2xs text-fg-subtle">{t("common.none")}</p>
-            ) : (
-                <StackFrames frames={stack.frames} bindings={bindings} t={t} depth={0} />
-            )}
-        </div>
-    );
-}
-
-function StackFrames(props: {
-    frames: StoryRuntimeStackView["root"]["frames"];
-    bindings: readonly { staticId: string; blockId: string }[];
-    t: ReturnType<typeof useTranslation>["t"];
-    depth: number;
-}): ReactNode {
-    const { frames, bindings, t, depth } = props;
-    return (
-        <ul className="space-y-0.5">
-            {frames.map((frame, index) => {
-                const blockId = frame.actionId ? blockIdForActionId(bindings, frame.actionId) : null;
-                return (
-                    <li key={`${depth}-${index}-${frame.actionId ?? "none"}`} style={{ paddingLeft: depth * 10 }}>
-                        <span className="text-fg-muted">{frame.actionType ?? "?"}</span>
-                        {blockId ? <span className="text-fg-subtle"> · {blockId.slice(0, 8)}…</span> : null}
-                        {frame.branchWaitType ? (
-                            <span className="text-fg-subtle"> · {frame.branchWaitType}</span>
-                        ) : null}
-                        {frame.branches?.map((branch, branchIndex) => (
-                            <div key={`branch-${branchIndex}`} className="mt-0.5 border-l border-edge-subtle pl-1.5">
-                                <span className="text-2xs text-fg-subtle">
-                                    {t("devMode.runtime.branch", { index: String(branchIndex + 1) })}
-                                </span>
-                                <StackFrames frames={branch} bindings={bindings} t={t} depth={depth + 1} />
-                            </div>
+            {view.chain.length > 0 || view.orphanRound ? (
+                <div>
+                    <p className="mb-1 text-2xs tracking-wide text-fg-subtle">{t("devMode.runtime.contextInside")}</p>
+                    <ul className="space-y-0.5">
+                        {view.chain.map((rung, index) => (
+                            <li key={rung.blockId} className="flex items-baseline gap-1.5" style={{ paddingLeft: index * 10 }}>
+                                <span className="truncate text-fg-muted">{rung.pill}</span>
+                                {rung.round ? <RoundCounter round={rung.round} /> : null}
+                            </li>
                         ))}
-                    </li>
-                );
-            })}
-        </ul>
+                        {view.orphanRound ? (
+                            <li className="flex items-baseline gap-1.5" style={{ paddingLeft: view.chain.length * 10 }}>
+                                <RoundCounter round={view.orphanRound} />
+                            </li>
+                        ) : null}
+                    </ul>
+                </div>
+            ) : null}
+
+            {view.branches.length > 0 ? (
+                <div>
+                    <p className="mb-1 text-2xs tracking-wide text-fg-subtle">{t("devMode.runtime.contextRunning")}</p>
+                    <ul className="space-y-0.5">
+                        {view.branches.map(branch => (
+                            <li key={branch.index} className="flex items-baseline gap-1.5">
+                                <span className="w-3 shrink-0 select-none text-right tabular-nums text-fg-subtle">
+                                    {branch.index}
+                                </span>
+                                <span className="min-w-0 truncate text-fg-muted" title={branch.sentence ?? undefined}>
+                                    {branch.sentence ?? t("common.none")}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
+/** `2/3` — which round of a repeat is running. Tabular so the digits do not jitter as it counts. */
+function RoundCounter(props: { round: { current: number; limit?: number } }): ReactNode {
+    const { round } = props;
+    return (
+        <span className="shrink-0 tabular-nums text-fg-subtle">
+            {round.limit != null ? `${round.current}/${round.limit}` : String(round.current)}
+        </span>
     );
 }
 
@@ -631,13 +674,7 @@ function TimelineTab(props: {
 }): ReactNode {
     const { storyRuntime, document, sceneId: entrySceneId, bundle } = props;
     const { t } = useTranslation();
-    const currentActionId = useCurrentActionId(storyRuntime);
     const currentRowRef = useRef<HTMLLIElement>(null);
-
-    const charactersById = useMemo(
-        () => new Map((bundle.storyLibrary?.characters ?? []).map(character => [character.id, character])),
-        [bundle.storyLibrary],
-    );
 
     const currentBlockId = useCurrentBlockId(storyRuntime);
 
@@ -655,10 +692,13 @@ function TimelineTab(props: {
         return entrySceneId;
     }, [currentBlockId, document, entrySceneId]);
 
-    const rows = useMemo<StoryTimelineRow[]>(() => {
-        const scene = document.scenes[runningSceneId];
-        return scene ? projectSceneTimeline(scene, charactersById, document.scenes) : [];
-    }, [document, runningSceneId, charactersById]);
+    const runningScene = document.scenes[runningSceneId];
+    const lookups = useStoryRowLookups(bundle, document, runningScene);
+
+    const rows = useMemo<StoryTimelineRow[]>(
+        () => (runningScene ? projectSceneTimeline(runningScene, lookups) : []),
+        [runningScene, lookups],
+    );
 
     // Keep the play head in view as execution advances, without stealing scroll from a manual review.
     useEffect(() => {
@@ -711,19 +751,33 @@ function TimelineTab(props: {
                         <li
                             key={row.blockId}
                             ref={isCurrent ? currentRowRef : undefined}
-                            className={`flex cursor-default items-baseline gap-2 rounded-md px-1.5 py-0.5 ${
+                            className={`relative flex cursor-default items-baseline gap-2 rounded-md px-1.5 py-0.5 ${
                                 isCurrent ? "bg-primary/15 text-fg" : "text-fg-muted hover:bg-fill"
                             } ${row.disabled ? "opacity-45" : ""}`}
                             onClick={row.disabled ? undefined : () => void jumpToRow(row)}
                         >
+                            {/* The editor's own category bar, same hue and same weight - a row that is
+                                a `/bg` there has to look like a `/bg` here, or the two lists are two
+                                different readings of one story. Prose rows carry none in either. */}
+                            {row.barColor ? (
+                                <span
+                                    aria-hidden
+                                    className="pointer-events-none absolute inset-y-0 left-0 w-[3px] rounded-l-md"
+                                    style={{ backgroundColor: row.barColor, opacity: 0.85 }}
+                                />
+                            ) : null}
                             <span className="w-7 shrink-0 select-none text-right text-2xs tabular-nums text-fg-subtle">
                                 {row.lineNumber}
                             </span>
                             <span
                                 className="min-w-0 flex-1 truncate text-2xs"
                                 style={{ paddingLeft: row.depth * 10 }}
-                                title={row.summary}
+                                title={row.speaker ? `${row.speaker}: ${row.summary}` : row.summary}
                             >
+                                {/* Repeated on every line, unlike the editor's grouped nametag: at
+                                    380px there is no second line to hang an attribution rail from, so
+                                    the name has to ride with the words it belongs to. */}
+                                {row.speaker ? <span className="text-fg-subtle">{row.speaker}: </span> : null}
                                 {row.summary}
                             </span>
                             {isCurrent ? (
@@ -776,6 +830,10 @@ function SceneTab(props: {
                 onOpenScene={openScene}
                 // Positions are ephemeral in the read-only Dev Mode embed; drags just move the picture.
                 onMoveScene={() => undefined}
+                // A 380px panel fits the graph at a zoom that shrinks the titles below legibility, so
+                // the embed asks for a floor and buys the rest back with a tighter frame.
+                minTitleRenderedPx={SCENE_GRAPH_MIN_TITLE_PX}
+                fitPadding={0.06}
             />
         </div>
     );

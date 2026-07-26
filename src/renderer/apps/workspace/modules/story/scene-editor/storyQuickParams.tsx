@@ -4,7 +4,14 @@ import type { StoryBlock, StoryScene, StorySceneId } from "@shared/types/story";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import { useTranslation } from "@/lib/i18n";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
-import { describeBlock } from "./storySceneBlockUtils";
+import {
+    getQuickParams,
+    quickParamDisplayValue as displayValue,
+    type QuickParam,
+    type QuickParamValue,
+} from "@/lib/story/storyQuickParamsModel";
+import { characterRowLookup } from "./storySceneBlockUtils";
+import { storyActionRowFragments, type StoryRowFragment } from "@/lib/story/storyRowProjection";
 import type { Character } from "@/lib/workspace/services/character/Character";
 
 /**
@@ -13,112 +20,13 @@ import type { Character } from "@/lib/workspace/services/character/Character";
  * tokens so a tweak never has to open the inspector. There is no block→command parser, so the value
  * is read straight from the payload here and written back through the same history path the inspector
  * uses (`onUpdatePayload`), which keeps every quick edit undoable.
+ *
+ * The model half (which params a block has, and what each one reads as) moved to
+ * `@/lib/story/storyQuickParamsModel` with U4 WI-1: the tokens are fragments of the row's *sentence*,
+ * and the Dev Mode timeline has to print that sentence without mounting any of these popovers.
  */
 
-/** Wait presets, in ms — the bible's B10 "high-frequency" set. */
-const WAIT_PRESETS_MS = [200, 500, 1000, 2000, 3000];
-/** Audio operations that carry a meaningful volume / loop. */
-const VOLUME_OPS = new Set(["setBgm", "playSound", "setVolume"]);
-const LOOP_OPS = new Set(["setBgm", "playSound"]);
-
-export type QuickParamValue =
-    | { kind: "duration"; ms: number; presetsMs?: number[] }
-    | { kind: "percent"; ratio: number }
-    | { kind: "toggle"; on: boolean }
-    | { kind: "scene"; sceneId: string | undefined };
-
-export type QuickParam = {
-    id: string;
-    /** Short leading label (the canonical param key, English) — empty for a value-only token. */
-    label: string;
-    value: QuickParamValue;
-    /** The block payload with this param set to `next`. */
-    apply: (next: QuickParamValue) => StoryBlock["payload"];
-};
-
-function durationParam(id: string, label: string, ms: number, presetsMs: number[] | undefined, apply: (ms: number) => StoryBlock["payload"]): QuickParam {
-    return {
-        id,
-        label,
-        value: { kind: "duration", ms, presetsMs },
-        apply: next => (next.kind === "duration" ? apply(next.ms) : apply(ms)),
-    };
-}
-
-/**
- * The quick-edit params a committed block exposes, or `[]` for a block with none. Read directly from
- * the payload; a transition duration only shows when a transition already exists, so a quick edit
- * never has to invent a transition kind (add one from the inspector first).
- */
-export function getQuickParams(block: StoryBlock): QuickParam[] {
-    if (block.kind === "jump") {
-        const payload = block.payload;
-        return [{
-            id: "scene",
-            label: "",
-            value: { kind: "scene", sceneId: payload.targetSceneId },
-            apply: next => (next.kind === "scene" ? { ...payload, targetSceneId: next.sceneId ?? payload.targetSceneId } : payload),
-        }];
-    }
-    if (block.kind !== "action") {
-        return [];
-    }
-    const payload = block.payload;
-    if (payload.action === "wait") {
-        if (payload.mode !== "duration") {
-            return [];
-        }
-        return [durationParam("duration", "", payload.durationMs ?? 0, WAIT_PRESETS_MS, ms => ({ ...payload, mode: "duration", durationMs: ms }))];
-    }
-    if (payload.action === "setBackground") {
-        const transition = payload.transition;
-        if (!transition) {
-            return [];
-        }
-        return [durationParam("d", "d", transition.durationMs ?? 0, undefined, ms => ({ ...payload, transition: { ...transition, durationMs: ms } }))];
-    }
-    if (payload.action === "character" && (payload.operation === "enter" || payload.operation === "exit")) {
-        const transition = payload.transition;
-        if (!transition) {
-            return [];
-        }
-        return [durationParam("d", "d", transition.durationMs ?? 0, undefined, ms => ({ ...payload, transition: { ...transition, durationMs: ms } }))];
-    }
-    if (payload.action === "camera") {
-        // The camera's `d=` is the whole feel of the move — the one knob worth a token on the row.
-        return [durationParam("d", "d", payload.durationMs ?? 0, undefined, ms => ({ ...payload, durationMs: ms }))];
-    }
-    if (payload.action === "audio") {
-        const params: QuickParam[] = [];
-        if (VOLUME_OPS.has(payload.operation)) {
-            params.push({
-                id: "vol",
-                label: "vol",
-                value: { kind: "percent", ratio: payload.volume ?? 1 },
-                apply: next => (next.kind === "percent" ? { ...payload, volume: next.ratio } : payload),
-            });
-        }
-        if (LOOP_OPS.has(payload.operation)) {
-            params.push({
-                id: "loop",
-                label: "loop",
-                value: { kind: "toggle", on: payload.loop ?? false },
-                apply: next => (next.kind === "toggle" ? { ...payload, loop: next.on } : payload),
-            });
-        }
-        return params;
-    }
-    return [];
-}
-
-function displayValue(value: QuickParamValue, sceneName: (id: string | undefined) => string): string {
-    switch (value.kind) {
-        case "duration": return `${formatStorySecondsValue(value.ms)}s`;
-        case "percent": return `${Math.round(value.ratio * 100)}%`;
-        case "toggle": return "loop";
-        case "scene": return sceneName(value.sceneId);
-    }
-}
+export { getQuickParams, type QuickParam, type QuickParamValue };
 
 const TOKEN_CLASS = "cursor-pointer rounded-md px-0.5 underline decoration-dotted decoration-fg-subtle/60 underline-offset-2 transition-colors hover:bg-fill hover:text-fg";
 
@@ -127,20 +35,14 @@ const TOKEN_CLASS = "cursor-pointer rounded-md px-0.5 underline decoration-dotte
  * (the target name and any modifiers the tokens do not own) or a clickable quick-edit token. The
  * tokens ARE fragments in the same stream, not a second layer appended after a finished string.
  */
-export type OverviewFragment =
-    | { kind: "text"; text: string }
-    | { kind: "quick"; param: QuickParam };
+export type OverviewFragment = StoryRowFragment;
 
 /**
  * The structured overview of a committed action row (bible M5): `[target · modifiers]` with the
- * quick-edit params spliced in as first-class fragments. The row's *verb* lives in its badge
- * (`getBlockBadgeInfo`), so the base text carries the target plus whatever the tokens do not own;
- * `describeBlock` is that base — demoted here to the default fallback. wait/jump print their value
- * only through the token, so their base is the bare verb label to avoid saying it twice.
+ * quick-edit params spliced in as first-class fragments.
  *
- * Keyed on payload shape, not a command spec: a committed block carries no command id (bible B11 —
- * no reverse edit) and generic verbs make payload→spec many-to-one, so a payload-shape projection is
- * the honest home — the same shape `describeBlock` / `getBlockBadgeInfo` / `getQuickParams` take.
+ * A thin `Character[]` adapter over the shared `storyActionRowFragments` (U4 WI-1) — the projection
+ * itself is what the Dev Mode timeline reads, so the two surfaces cannot drift.
  */
 export function blockOverview(
     block: StoryBlock,
@@ -149,23 +51,7 @@ export function blockOverview(
     scenes: Record<StorySceneId, StoryScene> | undefined,
     label: (key: "story.quickParam.jumpLabel" | "story.quickParam.waitLabel") => string,
 ): OverviewFragment[] {
-    const params = getQuickParams(block);
-    // The bare verb label replaces `describeBlock` only when a token actually prints the value, or it
-    // would show twice. A click-mode `/wait` owns no token, so it keeps its full "Wait for click" text.
-    const valueInToken = params.length > 0 && ((block.kind === "action" && block.payload.action === "wait") || block.kind === "jump");
-    const base = !valueInToken
-        ? describeBlock(block, characters, scene, scenes)
-        : block.kind === "jump"
-            ? label("story.quickParam.jumpLabel")
-            : label("story.quickParam.waitLabel");
-    const fragments: OverviewFragment[] = [];
-    if (base) {
-        fragments.push({ kind: "text", text: base });
-    }
-    for (const param of params) {
-        fragments.push({ kind: "quick", param });
-    }
-    return fragments;
+    return storyActionRowFragments(block, { character: characterRowLookup(characters), scene, scenes }, label);
 }
 
 /**
