@@ -41,9 +41,15 @@ export function collectCharacterDiagnostics(
     const found: CharacterDiagnostic[] = [];
     const axes = appearance.getAxes();
     const layers = appearance.getLayers();
-    // With no declared canvas the bottom-most measured layer is the reference: a stack either agrees
-    // with itself or it does not, and saying so needs no author input.
-    const canvas = appearance.getCanvas() ?? layers.map(layer => sizes[layer.id]).find(Boolean) ?? null;
+    // With no declared canvas the *largest* measured layer stands in as the reference. A stack either
+    // agrees with itself or it does not, and saying so needs no author input - but the guess has to
+    // survive a reorder, which "the bottom layer" does not: dragging an accessory under the body
+    // would otherwise flip every finding. The canvas is the document size, so the biggest layer
+    // present is the closest thing to it until the author declares one.
+    const canvas = appearance.getCanvas() ?? layers
+        .map(layer => sizes[layer.id])
+        .filter(Boolean)
+        .sort((a, b) => b.width * b.height - a.width * a.height)[0] ?? null;
 
     for (const layer of layers) {
         const size = sizes[layer.id];
