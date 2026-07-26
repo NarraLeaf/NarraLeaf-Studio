@@ -15,6 +15,7 @@ import type { StoryCommandLine, StoryCommandSpan } from "./storyCommandParser";
 import { getCommandSpec } from "./commands/registry";
 import type {
     StoryCommandContext,
+    StoryCommandAppearanceRef,
     StoryCommandNamedRef,
     StoryCommandResolution,
     StoryCommandResolutionIssue,
@@ -39,6 +40,7 @@ import { BGM_OBJECT_NAME } from "./storyCommandValues";
 
 export type {
     StoryCommandContext,
+    StoryCommandAppearanceRef,
     StoryCommandNamedRef,
     StoryCommandResolution,
     StoryCommandResolutionIssue,
@@ -218,12 +220,13 @@ function resolveAgainstType(
                 // The owner is unresolved, a temp speaker, or a stage object - there are no forms to
                 // check against. Not this param's error to report; the owner's own issue (or the
                 // spec's validate) already stands.
-                return { value: { kind: "characterForm", formName: value.trim() } };
+                return { value: { kind: "characterForm", refId: null, label: value.trim() } };
             }
-            const forms = context.formsByCharacterId[characterId] ?? [];
-            const match = forms.find(form => form.trim().toLowerCase() === value.trim().toLowerCase());
+            const refs = context.appearanceByCharacterId[characterId] ?? [];
+            const match = refs.find(ref => ref.name.trim().toLowerCase() === value.trim().toLowerCase());
             if (match) {
-                return { value: { kind: "characterForm", formName: match } };
+                // The row stores the id, so renaming a pose or a tag later leaves it resolving.
+                return { value: { kind: "characterForm", refId: match.id, label: match.name, axisId: match.axisId } };
             }
             const characterName = context.characters.find(entry => entry.id === characterId)?.name ?? "";
             return { issue: { code: "unknownForm", span, value, characterName } };
