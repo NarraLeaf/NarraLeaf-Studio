@@ -15,6 +15,7 @@ import {
 } from "./handlers/vcsAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
 import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./handlers/projectPackageAction";
+import { PsdBakeHandler, PsdOpenHandler } from "./handlers/psdImport";
 import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler } from "./handlers/workspaceAction";
 import {
     DevModeFullscreenGetHandler,
@@ -124,6 +125,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new WorkspaceLaunchHandler(),
         new WorkspaceOpenRecentHandler(),
         new WorkspaceSelectFolderHandler(),
+        new PsdOpenHandler(),
+        new PsdBakeHandler(),
         new WorkspaceCloseHandler(),
         new WorkspaceExportProjectPackageHandler(),
         new WorkspaceImportProjectPackageHandler(),

@@ -80,8 +80,7 @@ export function projectSceneTimeline(scene: StoryScene, lookups: StoryRowLookups
             return;
         }
         seen.add(blockId);
-        // Read-only surface: an empty text row prints nothing, not the editor's double-click prompt.
-        const projected = projectStoryRow(block, lookups, { editingPlaceholders: false });
+        const projected = projectStoryRow(block, lookups);
         rows.push({
             blockId,
             lineNumber: rows.length + 1,

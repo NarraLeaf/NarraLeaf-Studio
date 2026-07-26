@@ -55,6 +55,7 @@ export const motion = {
     },
 
     selector: {
+        emptyKind: "No {kind} motions yet. Use “New” to create one.",
         loadingPreview: "Loading preview…",
     },
 
