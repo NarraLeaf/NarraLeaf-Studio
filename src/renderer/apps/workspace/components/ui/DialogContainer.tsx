@@ -13,8 +13,10 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
     const { t } = useTranslation();
     const dialogRef = useRef<HTMLDivElement | null>(null);
     const defaultButtonRef = useRef<HTMLButtonElement | null>(null);
-    const defaultButtonIndex = dialog.buttons?.findIndex(button => button.primary && !button.disabled) ?? -1;
-    const fallbackButtonIndex = dialog.buttons?.findIndex(button => !button.disabled) ?? -1;
+    const defaultButtonIndex = dialog.buttons?.findIndex(button => button.primary && !button.disabled && !button.danger) ?? -1;
+    // A destructive button is never the fallback default: Enter on a dialog nobody read must not be
+    // able to delete or overwrite anything.
+    const fallbackButtonIndex = dialog.buttons?.findIndex(button => !button.disabled && !button.danger) ?? -1;
     const focusButtonIndex = defaultButtonIndex >= 0 ? defaultButtonIndex : fallbackButtonIndex;
 
     useEffect(() => {
@@ -122,9 +124,11 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
                                     px-4 py-2 text-sm rounded-md transition-colors
                                     ${button.disabled
                                         ? "bg-fill text-fg-subtle cursor-not-allowed"
-                                        : button.primary
-                                            ? "bg-primary hover:bg-primary/80 text-on-primary font-medium"
-                                            : "bg-fill-subtle hover:bg-fill text-fg-muted"
+                                        : button.danger
+                                            ? "bg-fill-subtle hover:bg-danger/20 text-danger border border-danger/40"
+                                            : button.primary
+                                                ? "bg-primary hover:bg-primary/80 text-on-primary font-medium"
+                                                : "bg-fill-subtle hover:bg-fill text-fg-muted"
                                     }
                                 `}
                             >

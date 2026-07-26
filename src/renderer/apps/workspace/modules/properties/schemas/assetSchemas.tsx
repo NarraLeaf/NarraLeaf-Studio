@@ -17,6 +17,7 @@ import {
 } from "../framework";
 import type { Translator } from "@shared/i18n";
 import { AssetReferencesSection } from "../components/AssetReferencesSection";
+import { AssetReplaceAction } from "../components/AssetReplaceAction";
 
 /** Translator function, threaded into schema builders since they run outside React. */
 type TranslateFn = Translator["t"];
@@ -36,6 +37,14 @@ export interface AssetEditorContext<T extends AssetType = AssetType> {
  */
 function createCommonAssetFields<T extends AssetType>(t: TranslateFn): FieldDefinition<AssetEditorContext<T>>[] {
     return [
+        {
+            id: "replaceContent",
+            type: "custom",
+            // Directly under the file readings it invalidates (hash, size, dimensions) and above the
+            // author-owned fields, which a replacement leaves alone.
+            component: ({ data }) => <AssetReplaceAction asset={data.asset} />,
+            order: 50,
+        },
         {
             id: "name",
             type: "text",

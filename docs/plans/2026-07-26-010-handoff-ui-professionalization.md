@@ -13,18 +13,26 @@ plan: 2026-07-26-004-plan-ui-professionalization.md
 ## 0. 三十秒版本
 
 上一轮（`2026-07-22-001`，17 分支）工程赢了、体验没发生。本轮是纠偏，已完成
-**U0 / U0.1 / U1 / U2 / U3a + 一个引擎根治**，剩 **U3b / U4 / U5**。
+**U0 / U0.1 / U1 / U2 / U3a / U3b + 一个引擎根治**，剩 **U4 / U5**。
 本轮和上一轮的唯一实质差别是**验收方式**：orchestrator 亲手拉起应用、亲眼读图、跑自己写的断言。
 **这条不能软化——它是本轮唯一真正的护栏，且已经四次抓到测试与 lint 看不见的问题。**
+
+## 0.5 给下一任：三十秒上手
+
+1. 读 §5 验收协议 + §6 的九个测量错误（这是本文件最有价值的部分），再读 §8.1 隔离树配方与 §8.2 原生对话框边界。
+2. 下一张是 **U4**（见 §7），**出卡前先在当时的 develop 上重测基线**——U2 与 U3b 两次都发现计划描述已过期，
+   U3b 更是因此被砍掉三分之二。
+3. 开卡前 `git status`：只要有别人的未提交文件，就把清单和隔离树审计要求写进卡的 §0.1。
+4. 每张卡收尾**合并回 develop 并 push**，别停在"已合并未推"（用户 2026-07-26 明确要求，是常设规则）。
 
 ## 1. 当前状态（2026-07-26 核实）
 
 | | |
 |---|---|
-| Studio `develop` | `1e10c170`，已推送，0 ahead |
+| Studio `develop` | `26b16569`，已推送，0 ahead（2026-07-26 收尾）|
 | 引擎 `narraleaf-react` | `dev_nomen` @ `1ea5846` = **0.17.1 已由用户发版**，npm latest 0.17.1 |
 | Studio 依赖 | `^0.17.1`，node_modules 已是 npm 生产包（无 sourcemap）——旧的"dist 是开发构建"欠账**已闭合** |
-| 工作树 | **完全干净**——原先 9 个外来未提交文件已于 2026-07-26 提交为新基线（见 §4） |
+| 工作树 | **不干净**——又有别的 session 的未提交改动（launcher / `Modal.tsx` / blueprint / story-motion 等）。**开卡前自己 `git status`**，见 §4 |
 | 本地已合并分支 | `feat/ui-u0-blocking-fixes` / `feat/ui-u0-1-surface-opacity` / `feat/ui-u1-reading-layer` / `feat/ui-u3a-asset-browsing`，可删可留 |
 
 ## 2. 已完成
@@ -61,7 +69,12 @@ plan: 2026-07-26-004-plan-ui-professionalization.md
 
 ## 4. 共享检出：陷阱与当前基线
 
-**工作树现在是干净的。** 2026-07-26 用户确认无其他 agent 在跑，我把那 9 个未提交文件
+**⚠ 2026-07-26 收尾时工作树又不干净了**——别的 session 在同一个检出上开工（launcher、`Modal.tsx`、
+blueprint-lite、story-motion 等）。下面这段讲的是当时那次清理，**当作历史读**，
+你自己开卡时必须重新 `git status`。U3b 那次外来改动里**有两个就落在被改的资产模块里**，
+所以隔离树审计不是形式主义。
+
+**（历史）** 2026-07-26 早些时候用户确认无其他 agent 在跑，我把那 9 个未提交文件
 按关注点分四次提交并推送，作为新的干净基线（`f4ac3556` dock 分隔线 / `20309da0` 预览浮窗
 测量向下取整 / `5fb208e3` 插入槽宿主行提前重测 / `1e10c170` dev 构建并行化 + 补上
 `compileWorker.js`）。提交前我读过全部 9 份 diff、跑了 lint + `build:apps:dev`，
@@ -92,7 +105,7 @@ plan: 2026-07-26-004-plan-ui-professionalization.md
 5. 判据要可断言：对比度比值（非文本 ≥3:1、正文 ≥7:1，且**合成 alpha 之后**再比）、像素尺寸、
    缩略图存在性、跳转落点行号 == 目标行号。
 
-## 6. 我在验收里犯过的五个错（**这是本文件最有价值的部分**）
+## 6. 我在验收里犯过的九个错（**这是本文件最有价值的部分**）
 
 全部同一族：**测量工具本身没被验证过**。所以"看图"不是补充手段，是唯一能兜住工具错误的那一层。
 
@@ -104,7 +117,7 @@ plan: 2026-07-26-004-plan-ui-professionalization.md
 5. **空洞通过（最危险）**——资产面板没打开，于是所有断言因"被测对象不在屏幕上"而为真，
    脚本打印 `all checks passed`。规矩：**每个脚本先证明被测对象在屏幕上（setup guard），否则拒绝出报告。**
 
-U2 又添了四个，都是新种类（2026-07-26）：
+U2 / U3b 又添了五个，都是新种类（2026-07-26）：
 
 6. **rect 不等于可达**——持久化会话恢复的浮动 Live Preview 窗压在行上，行的 rect 完全正常，
    点击却落在浮窗上。守卫必须 `document.elementFromPoint(cx,cy)` 反查命中元素是否在目标行内。
@@ -115,6 +128,13 @@ U2 又添了四个，都是新种类（2026-07-26）：
    同一条延迟量出 5.1s；窗口可见时是 **99/10/105ms**。**量时间前先断言 `document.hidden === false`。**
 9. **我自己的探针污染了持久化视图状态**——探针跑过之后每个场景都存了选中行，
    于是"无选中"这个状态再也复现不出来。规矩：验收用的 profile 留一份 pristine 副本，每轮拷回。
+
+10. **桩本身造出了假缺陷（U3b）**——我为绕开原生文件对话框，在一次性隔离树里打桩
+    `dialog.showOpenDialog`；那次调用挂住、`busy` 卡在 true，屏幕上就是"替换按钮是死的"。
+    我差点把它当缺陷退回去，**干净构建上一测按钮是好的**。
+    规矩：**桩打在被测调用本身上时，先怀疑桩**；判"功能坏了"之前先在无桩构建上复现一次。
+    附带一条：`find | xargs md5sum` 做目录指纹**不可靠**（被别的实例锁住的文件会被静默跳过，
+    我因此误判 demo3 被改）——**用 mtime 判定**（`find -newermt`）。
 
 还有一条不算错但值得记：**断言 FAIL 先怀疑断言**在 U2 兑现了两次——
 "跟随选中 0/12" 是我只取了前 4 行文本、根本没取到主语行；"延迟 5.3s" 是我用 CDP 轮询量一个 120ms 的量。
@@ -134,19 +154,41 @@ U2 又添了四个，都是新种类（2026-07-26）：
   `Text ID` 仍打印裸 uuid、`Stage name` 仍是内部词汇、资产/角色/UI 检查器仍是透明表面。
   另有一条产品事实：**没有任何手势能取消行选中**（Escape / ctrl-click / 点空白都不行，点场景卡会选中第 1 行），
   所以场景级属性只在"还没点过的场景"里可达。
-- **U3b 资产管理层**（触碰写路径，风险最高，单独验收）
-  - 就地重命名/删除/移组、批量选择与操作、替换资产内容（保 id 换文件）、标签管理、导入队列
-  - **删除必须经 `ReferenceService` 反查并在被引用时明确拦截**——那是玩家侧缺资产的唯一防线
-  - 顺手：删掉 `AssetOverviewCommand` 空壳的挂载（在 `WorkspaceLayout.tsx`，**该文件现已提交、可自由改**）
-- **U4 Dev Mode 调试台**
+- ~~**U3b 资产管理层**~~ —— **已完成并合并**（卡 `2026-07-26-015`，报告 `reports/2026-07-26-U3b-report.md`，
+  merge `f37fc04f`）。**发卡前重测基线把这张卡砍掉了三分之二**：重命名/删除/多选/批量删除/
+  批量标签/拖拽移组/导入**在 develop 上早就有了**，连引用反查也有且会列出引用位置。
+  真缺的四块（替换内容、守卫下沉、导入队列、删空壳）已交付。
+  **验收结论**：守卫与按钮层级、空壳、无回归全部亲验绿；替换端到端跑通
+  （hash `a039e2b1`→`bdb75262`、709.7KB→2.0MB、故事行缩略图改画新图）。
+  **两条没验到**：替换后的引用点只验了 1 处（那个资产只有 1 处引用，不是 3 处）；
+  **导入队列的进度与重试至今没有任何人驱动过**——原因见下面 §8 的"原生文件对话框"。
+  另booked：`createWorkspaceBlobUrlResolver` 按实例缓存，内嵌场景预览在重建前仍显示旧图。
+- **U4 Dev Mode 调试台**（下一张）
   - 时间线与编辑器**共用一套 describe**（删 `storyRuntimeDebugModel.describeStoryBlock` 这套弱实现，
     把编辑器投影提到可共享层）；行要带类别色与说话人
   - `Stack` tab 重做为"执行上下文"（当前场景/容器/分支、循环轮次、并行里谁在跑），无内容时整个 tab 隐藏
   - `Scenes` tab 打开即 fitView，节点字号可读
   - 判据：时间线每行文案与编辑器同一行**一致**（现在是 `character enter · character` vs `Enter Nattou`）
-- **U5 语言与空态清扫**
-  - 扫 `No * yet` / `No item selected` / `Nothing on *`；扫内部词汇（`setBackground`、`Stage name`、裸 hash）
+  - **U2 已经把料备好了，出卡前先看**：编辑器侧现成的 block→显示投影是
+    `storySceneBlockUtils.ts` 的 `describeBlock` / `getBlockBadgeInfo`（类别色与图标就在后者），
+    U2 又新增了 `storySelection.ts` 与 `schemas/storySceneSchema.tsx`。
+    "把编辑器投影提到可共享层"多半就是把这两个函数搬到 shared 层再让时间线消费，**不是重写**。
+  - 出卡前务必在当时的 develop 上重测：U2/U3b 两次都证明计划里的描述已经过期。
+
+- **U5 语言与空态清扫**（收尾）
+  - 已经攒下的尾巴（都是我亲测确认还在的）：
+    1. 检查器的 `Text ID` 字段仍直接打印裸 uuid（U2 只治了标题行）
+    2. `Stage name` 仍是内部词汇（值是 `character`）
+    3. 资产 / 角色 / UI 元素的检查器**仍是透明表面**——U2 只给故事内容那块挂了 `.nl-editor-surface`
+    4. 资产面板分类表头的导入按钮**没有 aria-label**（我验收时按可访问名找不到它）
+  - 空态文案清单（Explore 已扫过，**不必重扫**，`src/shared/i18n/catalog/en/`）：
+    `storyInspector.ts:4` / `properties.ts:125,152,156` / `characters.ts:84,98,116,156,157` /
+    `storySnapshot.ts:4` / `storyVars.ts:19,24` / `story.ts:81` / `uiEditor.ts:13,14,128` /
+    `workspace.ts:11,208` / `launcher.ts:15` / `motion.ts:58` / `blueprint.ts:65` /
+    `console.ts:18` / `dashboard.ts:71,10` / `widgetChrome.ts:66`。
+    `properties.panel.noSelection` 与 `.noSelectionHint` **已在 U2 删除**。
   - Dashboard 的 8 块数字砖压缩
+  - i18n en/zh key 集合一致性测试必须保持绿
 
 ## 8. 工具
 
@@ -157,3 +199,32 @@ U2 又添了四个，都是新种类（2026-07-26）：
 - 视口 1400×902 CSS @ dpr 1.25；截图像素 = CSS × 1.25
 - 调试面板是 tween 滑入的，**动画未 settle 时读 rect 会整体偏 380px**——连续两次读数一致再信
 - `yarn lint` 只跑 tsc；仓里有 CI style ratchet；win32 vitest 基线 8–9 个失败不是回归
+
+### 8.1 隔离树验收（U2/U3b 用的标准做法，建议沿用）
+
+共享检出里别人的未提交改动会进你的 `yarn dev` 画面（U1 就是这么栽的）。所以验收在**只含被测分支**的树上做：
+
+```
+git archive <branch> | tar -x -C <isoDir>
+cp yarn.lock <isoDir>/                     # 被 gitignore，yarn 4 没它会拒绝跑
+mklink /J <isoDir>\node_modules <repo>\node_modules
+cp -r .dev/temp/userData-dev <isoDir>/.dev/temp/     # 再另存一份 pristine，每轮拷回
+NLS_DEV_RELOAD_PORT=<p2> node project/app/dev-electron.js --cdp --cdp-port=<p1>
+```
+
+停实例**必须带同一个 `NLS_DEV_RELOAD_PORT`**，否则 stop-dev 找不到会话、下次启动报端口占用。
+别人的实例在 9222/5588，**不要 `yarn stop`**。
+写路径的卡（U3b 这种）还要把 profile 的 `app.recentProjects` 改成只指向**你自己的项目副本**，
+demo3 从 recents 里删掉——这样你连误写 demo3 的可能都没有。
+
+### 8.2 原生文件对话框：验收的硬边界（U3b 实测）
+
+`fs.selectFile` 走的是 Electron 原生对话框，**两条自动化路径都够不到**：
+- 渲染进程侧 `window.__NLS_RENDERER_INTERFACE__` 是 **non-writable / non-configurable 的 window 属性、
+  对象与 `fs` 都 frozen、`selectFile` 不可重定义**——CDP 里无法打桩；
+- dev 构建不是已安装应用，`request_access` 解析不到，**桌面自动化也指不了它**。
+
+我试过在**一次性隔离树**里打桩 `dialog.showOpenDialog`，结果那次调用挂住、`busy` 卡在 true，
+于是"替换按钮是死的"——**这是桩自己造出来的假象**，我在干净构建上推翻了它。
+教训：**打桩打在被测调用本身上时，先怀疑桩**。最终替换是**请用户点了一次选择器**才验成的。
+凡是走这个对话框的判据（替换、导入队列），要么排进用户手测，要么在卡里写明"没人验过"。

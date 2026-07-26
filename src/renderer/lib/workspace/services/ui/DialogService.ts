@@ -62,6 +62,52 @@ export class DialogService {
     }
 
     /**
+     * Confirm something irreversible: deleting an asset, overwriting its bytes.
+     *
+     * Same shape as {@link confirm}, inverted hierarchy — the way out is the primary button and the
+     * keyboard default, the destructive action is a danger-coloured secondary the author has to aim
+     * at. Nothing here is undoable (there is no asset history), so the button layout is what says so;
+     * see the U3b card's ruling against spelling it out in prose.
+     */
+    public async confirmDestructive(message: string, detail: string | undefined, confirmLabel: string): Promise<boolean> {
+        return new Promise<boolean>(resolve => {
+            let settled = false;
+            const safeResolve = (val: boolean) => {
+                if (!settled) {
+                    settled = true;
+                    resolve(val);
+                }
+            };
+
+            const id = this.createDialog({
+                title: translate("common.confirm"),
+                message,
+                content: React.createElement("div", { className: "text-sm text-fg-muted whitespace-pre-wrap" }, detail),
+                buttons: [
+                    {
+                        label: translate("common.cancel"),
+                        primary: true,
+                        onClick: () => {
+                            this.close(id);
+                            safeResolve(false);
+                        },
+                    },
+                    {
+                        label: confirmLabel,
+                        danger: true,
+                        onClick: () => {
+                            safeResolve(true);
+                            this.close(id);
+                        },
+                    },
+                ],
+                closable: true,
+                onClose: () => safeResolve(false),
+            });
+        });
+    }
+
+    /**
      * Show an alert dialog
      */
     public async alert(message: string, detail?: string): Promise<void> {

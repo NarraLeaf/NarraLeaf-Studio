@@ -236,6 +236,14 @@ export class UIService extends Service<UIService> implements IUIService {
     }
 
     /**
+     * Confirm an irreversible action. Cancel is the primary button and the keyboard default; the
+     * destructive one is a danger-coloured secondary. See {@link DialogService.confirmDestructive}.
+     */
+    public async showDestructiveConfirm(message: string, detail: string | undefined, confirmLabel: string): Promise<boolean> {
+        return this._dialogs.confirmDestructive(message, detail, confirmLabel);
+    }
+
+    /**
      * Show an alert dialog
      */
     public async showAlert(message: string, detail?: string): Promise<void> {
