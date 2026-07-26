@@ -100,8 +100,6 @@ export interface CharacterLayer extends CharacterNamed {
     axisId: string | null;
     assetId?: string | null;
     options?: Record<string, string | null>;
-    /** Editor-only visibility toggle. Never affects what is compiled. */
-    hidden?: boolean;
 }
 
 export interface PresetAppearance {

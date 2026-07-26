@@ -51,7 +51,6 @@ function cloneAppearance(appearance: ICharacterAppearance): ICharacterAppearance
                 axisId: layer.axisId ?? null,
                 assetId: layer.assetId ?? null,
                 options: layer.options ? { ...layer.options } : undefined,
-                hidden: layer.hidden,
             })),
         };
     }
@@ -448,17 +447,6 @@ export class CharacterAppearance {
         this.notifyChange();
     }
 
-    public setLayerHidden(layerId: string, hidden: boolean): void {
-        const layer = this.getLayer(layerId);
-        if (!layer) return;
-        if (hidden) {
-            layer.hidden = true;
-        } else {
-            delete layer.hidden;
-        }
-        this.notifyChange();
-    }
-
     /** Every axis's default tag, keyed by axis id. An axis with no tags contributes nothing. */
     public defaultTagSelection(): CharacterTagSelection {
         const selection: CharacterTagSelection = {};
@@ -497,6 +485,10 @@ export class CharacterAppearance {
      * A constant layer whose asset does not resolve is dropped rather than emitted as a hole, and a
      * bound layer is skipped when its axis has no tags: it would otherwise contribute an empty
      * group, which the engine rejects.
+     *
+     * Editor visibility is deliberately not consulted. Hiding a layer while working on the one under
+     * it must not change what ships, so that toggle lives in the editor's own state and never reaches
+     * here (user ruling 2026-07-26).
      */
     public toLayeredDefinition(resolveAssetUrl: (assetId: string) => string | null): ResolvedLayeredDefinition | null {
         const layered = this.layered;
@@ -504,7 +496,6 @@ export class CharacterAppearance {
 
         const layers: ResolvedLayeredDefinition["layers"] = [];
         for (const layer of layered.layers) {
-            if (layer.hidden) continue;
             if (!layer.axisId) {
                 const url = layer.assetId ? resolveAssetUrl(layer.assetId) : null;
                 if (url) {
