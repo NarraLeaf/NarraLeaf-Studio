@@ -202,7 +202,42 @@ async function loadStoryLibrary(projectPath: string): Promise<DevModeStoryLibrar
         documents,
         characters: await loadCharacterSummaries(projectPath),
         animations: await loadStoryAnimations(projectPath),
+        assetNames: await loadAssetNames(projectPath),
     };
+}
+
+/** The media types a story row can name; a font or a blueprint never appears in a row's sentence. */
+const NAMED_ASSET_TYPES = ["image", "audio", "video"] as const;
+
+/**
+ * `assetId → name` for the media a story row names (U4 WI-1).
+ *
+ * Read from the same flat `assets/assets.metadata.<type>.json` shards the renderer's asset service
+ * owns — `{ id: { id, name, ... } }` — and reduced to names alone: this table exists so a Dev Mode
+ * row reads `Set background outside_s.jpg`, not so anything downstream can resolve an asset. A
+ * missing or broken shard degrades to "no name for that id", which prints the id exactly as before.
+ */
+async function loadAssetNames(projectPath: string): Promise<Record<string, string>> {
+    const names: Record<string, string> = {};
+    for (const type of NAMED_ASSET_TYPES) {
+        const shardPath = path.join(projectPath, "assets", `assets.metadata.${type}.json`);
+        let record: Record<string, unknown> | undefined;
+        try {
+            record = await readOptionalJsonFile<Record<string, unknown>>(shardPath);
+        } catch {
+            continue;
+        }
+        if (!record || typeof record !== "object") {
+            continue;
+        }
+        for (const [assetId, raw] of Object.entries(record)) {
+            const name = raw && typeof raw === "object" ? (raw as { name?: unknown }).name : undefined;
+            if (typeof name === "string" && name) {
+                names[assetId] = name;
+            }
+        }
+    }
+    return names;
 }
 
 export function resolveStoryDocumentPathForIndexEntry(projectPath: string, entry: Pick<StoryLibraryEntry, "id">): string | null {
