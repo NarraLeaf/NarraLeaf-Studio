@@ -66,7 +66,11 @@ export function LayerStackPreview(props: {
 }) {
     const { t } = useTranslation();
     const drawn = props.layers.filter(layer => layer.assetId);
-    const reference = props.canvas ?? props.layers.map(layer => props.sizes[layer.id]).find(Boolean) ?? null;
+    // Same stand-in the diagnostics use when no canvas is declared, so the two never disagree.
+    const reference = props.canvas ?? props.layers
+        .map(layer => props.sizes[layer.id])
+        .filter(Boolean)
+        .sort((a, b) => b.width * b.height - a.width * a.height)[0] ?? null;
 
     return (
         <div className="flex h-full flex-col">

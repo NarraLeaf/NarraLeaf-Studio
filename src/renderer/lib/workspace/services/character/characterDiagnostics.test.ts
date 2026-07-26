@@ -48,17 +48,22 @@ describe("collectCharacterDiagnostics", () => {
         expect(codes(appearance)).toContain("axisUnused");
     });
 
-    it("measures against the declared canvas, and against the bottom layer until one is declared", () => {
+    it("measures against the declared canvas, and against the largest layer until one is declared", () => {
         const { appearance, layer, happy } = build();
         appearance.setLayerOption(layer.id, happy.id, "asset-1");
         const second = appearance.createLayer("Hat")!;
         appearance.setLayerAsset(second.id, "asset-2");
 
         const sizes = { [layer.id]: { width: 100, height: 200 }, [second.id]: { width: 64, height: 64 } };
-        // No canvas declared: the bottom layer is the reference, so only the hat is off-canvas.
+        // No canvas declared: the biggest layer stands in, so only the hat is off-canvas.
         const undeclared = collectCharacterDiagnostics(appearance, sizes).filter(d => d.code === "offCanvas");
         expect(undeclared).toHaveLength(1);
         expect(undeclared[0].values).toMatchObject({ name: "Hat", size: "64×64", canvas: "100×200" });
+
+        // And it stays that way when the stack is reordered - the reference is not positional.
+        appearance.moveLayer(second.id, 0);
+        const reordered = collectCharacterDiagnostics(appearance, sizes).filter(d => d.code === "offCanvas");
+        expect(reordered.map(d => d.values.name)).toEqual(["Hat"]);
 
         // Declaring a canvas neither layer matches puts both of them in the list.
         appearance.setCanvas({ width: 800, height: 1200 });

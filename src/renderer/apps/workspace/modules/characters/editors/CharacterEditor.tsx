@@ -96,6 +96,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     const [onionAxisId, setOnionAxisId] = useState<string | null>(null);
     const [focus, setFocus] = useState<Focus>(null);
     const [dragLayerId, setDragLayerId] = useState<string | null>(null);
+    const dragRef = useRef<string | null>(null);
     const anchorRef = useRef<HTMLElement | null>(null);
     const anchorMemo = useMemo(() => ({ current: anchorRef.current }), [slot]);
 
@@ -144,11 +145,6 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         }
     }, [appearance, inputDialog]);
 
-    const diagnostics = useMemo(
-        () => (appearance ? collectCharacterDiagnostics(appearance, sizes) : []),
-        [appearance, sizes, version],
-    );
-
     if (!character || !appearance) {
         return null;
     }
@@ -177,10 +173,21 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         return layers.filter(layer => !hidden[layer.id]).map(layer => ({ id: layer.id, assetId: draw(layer.id, selection) }));
     })();
 
-    const setCanvasFromBottom = () => {
-        const bottom = layers.map(layer => sizes[layer.id]).find(Boolean);
-        if (bottom) {
-            appearance.setCanvas(bottom);
+    // Adopts exactly the size the header is showing - the largest layer measured so far, which is the
+    // same stand-in the diagnostics compare against until a canvas is declared.
+    // A size is only true of the image that was measured, so a layer drawing nothing right now has a
+    // stale one - keeping it would report an off-canvas layer that is not on the canvas at all.
+    // Hidden layers keep theirs: hiding is a way to look at the stack, not a way to narrow it.
+    const measured = Object.fromEntries(
+        layers.filter(layer => draw(layer.id, tags)).map(layer => [layer.id, sizes[layer.id]]).filter(([, size]) => size),
+    ) as Record<string, LayerSize>;
+    const diagnostics = collectCharacterDiagnostics(appearance, measured);
+
+    const setCanvasFromLargest = () => {
+        const largest = Object.values(measured)
+            .sort((a, b) => b.width * b.height - a.width * a.height)[0];
+        if (largest) {
+            appearance.setCanvas(largest);
         }
     };
 
@@ -208,14 +215,14 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                         layers={visibleLayers}
                         onion={onionLayers}
                         canvas={appearance.getCanvas()}
-                        sizes={sizes}
+                        sizes={measured}
                         onMeasured={onMeasured}
                         toolbar={kind === "layered" ? (
                             <>
                                 <button
                                     className={ICON_BTN}
                                     aria-label={t("characters.editor.setCanvas")}
-                                    onClick={setCanvasFromBottom}
+                                    onClick={setCanvasFromLargest}
                                 >
                                     <Crop className="w-3.5 h-3.5" />
                                 </button>
@@ -385,11 +392,26 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                 dragLayerId === layer.id ? "opacity-50" : "",
                                             ].join(" ")}
                                             draggable={!locked[layer.id]}
-                                            onDragStart={() => setDragLayerId(layer.id)}
-                                            onDragEnd={() => setDragLayerId(null)}
-                                            onDragOver={event => { if (dragLayerId) event.preventDefault(); }}
-                                            onDrop={() => {
-                                                if (dragLayerId) moveLayer(dragLayerId, layer.id);
+                                            onDragStart={event => {
+                                                // A native drag runs a nested message loop, so a
+                                                // React state update made here is not visible to the
+                                                // dragover handler that has to preventDefault - the
+                                                // ref is what the drop actually reads.
+                                                dragRef.current = layer.id;
+                                                event.dataTransfer.effectAllowed = "move";
+                                                event.dataTransfer.setData("text/plain", layer.id);
+                                                setDragLayerId(layer.id);
+                                            }}
+                                            onDragEnd={() => { dragRef.current = null; setDragLayerId(null); }}
+                                            onDragOver={event => {
+                                                event.preventDefault();
+                                                event.dataTransfer.dropEffect = "move";
+                                            }}
+                                            onDrop={event => {
+                                                event.preventDefault();
+                                                const dragged = dragRef.current || event.dataTransfer.getData("text/plain");
+                                                if (dragged) moveLayer(dragged, layer.id);
+                                                dragRef.current = null;
                                                 setDragLayerId(null);
                                             }}
                                             onClick={() => setFocus({ kind: "layer", id: layer.id })}
