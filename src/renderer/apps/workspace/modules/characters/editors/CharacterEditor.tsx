@@ -9,6 +9,8 @@ import {
     type CharacterDiagnostic,
     type LayerSize,
 } from "@/lib/workspace/services/character/characterDiagnostics";
+import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { getSpriteCompositor } from "@/lib/workspace/hooks/useCompositedSprite";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
@@ -96,6 +98,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     const [onionAxisId, setOnionAxisId] = useState<string | null>(null);
     const [focus, setFocus] = useState<Focus>(null);
     const [dragLayerId, setDragLayerId] = useState<string | null>(null);
+    const [occluded, setOccluded] = useState<Record<string, boolean>>({});
     const dragRef = useRef<string | null>(null);
     const anchorRef = useRef<HTMLElement | null>(null);
     const anchorMemo = useMemo(() => ({ current: anchorRef.current }), [slot]);
@@ -106,6 +109,25 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     const layers = useMemo(() => appearance?.getLayers() ?? [], [appearance, version]);
     // Editor-only: which tag each axis is previewing. Never stored on the character.
     const tags = useMemo(() => appearance?.resolveTagSelection(previewTags) ?? {}, [appearance, previewTags, version]);
+
+    // "Completely covered by the layers above it" is an alpha question, so it runs off the same
+    // offscreen pass the compositor uses rather than off anything the DOM can tell us.
+    const drawList = appearance && kind === "layered" ? appearance.resolveDrawList({ tags: previewTags }) : [];
+    const drawKey = drawList.join(",");
+    useEffect(() => {
+        const assetsService = context?.services.get<AssetsService>(Services.Assets);
+        if (!assetsService || drawList.filter(Boolean).length < 2) {
+            setOccluded({});
+            return;
+        }
+        let cancelled = false;
+        void getSpriteCompositor(assetsService).occlusion(drawList).then(flags => {
+            if (cancelled || !appearance) return;
+            const ids = appearance.getLayers();
+            setOccluded(Object.fromEntries(flags.map((covered, index) => [ids[index]?.id ?? "", covered])));
+        }).catch(() => { if (!cancelled) setOccluded({}); });
+        return () => { cancelled = true; };
+    }, [context, drawKey, version]);
 
     const onMeasured = useCallback((layerId: string, size: LayerSize) => {
         setSizes(current => (
@@ -181,7 +203,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     const measured = Object.fromEntries(
         layers.filter(layer => draw(layer.id, tags)).map(layer => [layer.id, sizes[layer.id]]).filter(([, size]) => size),
     ) as Record<string, LayerSize>;
-    const diagnostics = collectCharacterDiagnostics(appearance, measured);
+    const diagnostics = collectCharacterDiagnostics(appearance, measured, occluded);
 
     const setCanvasFromLargest = () => {
         const largest = Object.values(measured)
@@ -539,6 +561,7 @@ const DIAGNOSTIC_KEYS = {
     axisNoTags: "characters.editor.diagnostics.axisNoTags",
     axisUnused: "characters.editor.diagnostics.axisUnused",
     duplicateTag: "characters.editor.diagnostics.duplicateTag",
+    occluded: "characters.editor.diagnostics.occluded",
 } as const;
 
 function DiagnosticRow(props: { diagnostic: CharacterDiagnostic; onClick: () => void }) {
