@@ -145,6 +145,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         return new Set(saved ?? []);
     });
     const [collapsedBlockIds, setCollapsedBlockIds] = useState<Set<StoryBlockId>>(() => new Set());
+    /** Counts explicit select gestures — see {@link selectRow}. Read by the tab to re-claim the right rail. */
+    const [selectionRevision, setSelectionRevision] = useState(0);
     // Editor-wide view preferences (WI-6). PanelStateService loads from disk before the editor renders,
     // so the synchronous read below sees the persisted value; the setters write it back.
     const [narrativeOnly, setNarrativeOnlyState] = useState<boolean>(() => (panelStateService ? getStoryEditorViewPrefs(panelStateService).narrativeOnly : false));
@@ -1619,6 +1621,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [characterService, document, setDialogueSpeaker, uiService]);
 
     const selectRow = useCallback((blockId: StoryBlockId, event?: MouseEvent) => {
+        // Bumped on every select gesture, including one that lands on the row already active. The right
+        // rail follows the selection, and something else in the app (clicking an asset) may have taken
+        // the rail since the last time this row was picked — without a revision, re-clicking it would
+        // change no state at all and the rail would stay on the asset.
+        setSelectionRevision(revision => revision + 1);
         setActiveBlockId(blockId);
         if (event?.shiftKey && activeBlockId) {
             setSelectedBlockIds(selectRange(visibleRows, activeBlockId, blockId));
@@ -2119,7 +2126,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     return {
         context, isInitialized, document, scene, loading,
-        activeBlockId, selectedBlockIds, collapsedBlockIds, editorMode, addRowFocused,
+        activeBlockId, selectedBlockIds, collapsedBlockIds, editorMode, addRowFocused, selectionRevision,
         characters, commandContext, visibleRows, shouldRenderActiveInsertSlot,
         density, setDensity, narrativeOnly, setNarrativeOnly,
         lensContainerIds, toggleContainerLens,
