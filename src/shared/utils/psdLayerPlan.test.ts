@@ -67,12 +67,20 @@ describe("unsupportedBlends", () => {
 
 describe("planImport", () => {
     it("makes a top-level group an axis and a rootless layer a constant", () => {
-        const plan = planImport(flattenLeaves(tree()), { "Mood/Blush": "merge" });
+        const plan = planImport(flattenLeaves(tree()), {});
         expect(plan.axes).toEqual([
             { name: "Outfit", tags: ["Uniform", "Casual"] },
             { name: "Mood", tags: ["Happy", "Blush"] },
         ]);
         expect(plan.constants.map(l => l.name)).toEqual(["Body"]);
+    });
+
+    it("does not count a merged layer as a tag — it has no art of its own", () => {
+        // Merging Blush down leaves Mood with a single member, and a one-member group is not an
+        // axis. Counting it would declare a tag that no baked image ever fills.
+        const plan = planImport(flattenLeaves(tree()), { "Mood/Blush": "merge" });
+        expect(plan.axes).toEqual([{ name: "Outfit", tags: ["Uniform", "Casual"] }]);
+        expect(plan.constants.map(l => l.name)).toEqual(["Body", "Happy"]);
     });
 
     it("does not make an axis out of a group of one — it would drive nothing", () => {
@@ -114,19 +122,107 @@ describe("toBakeTargets", () => {
             leaf("Shade", ["Shade"], { blendMode: "multiply" }),
             leaf("Hat", ["Hat"]),
         ]);
-        const resolutions = { Shade: "merge" as const };
-        const targets = toBakeTargets(planImport(leaves, resolutions), resolutions);
+        const targets = toBakeTargets(planImport(leaves, { Shade: "merge" }));
         expect(targets).toEqual([
-            { path: ["Body"], mergeFrom: [["Shade"]] },
+            { path: ["Body"], mergeFrom: [{ path: ["Shade"], clip: false }] },
             { path: ["Hat"] },
         ]);
     });
 
     it("keeps a merged layer that has nothing underneath as a layer of its own", () => {
         const leaves = flattenLeaves([leaf("Shade", ["Shade"], { blendMode: "multiply" }), leaf("Body", ["Body"])]);
-        const resolutions = { Shade: "merge" as const };
-        expect(toBakeTargets(planImport(leaves, resolutions), resolutions))
+        expect(toBakeTargets(planImport(leaves, { Shade: "merge" })))
             .toEqual([{ path: ["Shade"] }, { path: ["Body"] }]);
+    });
+
+    it("emits one target per tag of an axis, in stack order", () => {
+        const targets = toBakeTargets(planImport(flattenLeaves(tree()), { "Mood/Blush": "skip" }));
+        expect(targets.map(target => target.path.join("/"))).toEqual([
+            "Body", "Outfit/Uniform", "Outfit/Casual", "Mood/Happy",
+        ]);
+    });
+});
+
+describe("clipping masks", () => {
+    /** Body, a blush clipped to it, then a hat. */
+    function clipped(extra: Partial<PsdLayerNode> = {}): PsdLayerNode[] {
+        return [
+            leaf("Body", ["Body"], extra),
+            leaf("Blush", ["Blush"], { clipping: true }),
+            leaf("Hat", ["Hat"]),
+        ];
+    }
+
+    it("folds a clipped layer into its base instead of giving it a slot", () => {
+        const plan = planImport(flattenLeaves(clipped()), {});
+        expect(plan.slots.map(slot => (slot.kind === "constant" ? slot.name : slot.axis))).toEqual(["Body", "Hat"]);
+        expect(toBakeTargets(plan)).toEqual([
+            { path: ["Body"], mergeFrom: [{ path: ["Blush"], clip: true }] },
+            { path: ["Hat"] },
+        ]);
+    });
+
+    it("does not let a clipped layer become a tag of its base's axis", () => {
+        // The blush is art belonging to Happy, not a third mood. Counting it would both invent a tag
+        // and make a two-member group look like a three-member one.
+        const plan = planImport(flattenLeaves([{
+            ...leaf("Mood", ["Mood"]),
+            bounds: undefined,
+            children: [
+                leaf("Happy", ["Mood", "Happy"]),
+                leaf("Blush", ["Mood", "Blush"], { clipping: true }),
+                leaf("Angry", ["Mood", "Angry"]),
+            ],
+        }]), {});
+        expect(plan.axes).toEqual([{ name: "Mood", tags: ["Happy", "Angry"] }]);
+        expect(plan.attachments["Mood/Happy"]).toEqual([
+            { leaf: expect.objectContaining({ name: "Blush" }), clip: true },
+        ]);
+    });
+
+    it("drops a clipped layer whose base is not imported rather than spreading it", () => {
+        // Photoshop hides a clip when its base is hidden; importing it anyway would turn a blush
+        // clipped to a face into a rectangle across the whole sprite.
+        const plan = planImport(flattenLeaves(clipped({ hidden: true })), {});
+        expect(plan.dropped.map(entry => `${entry.leaf.name}:${entry.reason}`))
+            .toEqual(["Body:hidden", "Blush:clip-base-dropped"]);
+        expect(plan.slots.map(slot => (slot.kind === "constant" ? slot.name : slot.axis))).toEqual(["Hat"]);
+    });
+
+    it("follows a merged base to the layer that absorbed it", () => {
+        // Blush clips to Shade, but Shade is being flattened onto Body — so the blush has to land on
+        // Body too, or it would be attached to a layer that never gets baked.
+        const plan = planImport(flattenLeaves([
+            leaf("Body", ["Body"]),
+            leaf("Shade", ["Shade"], { blendMode: "multiply" }),
+            leaf("Blush", ["Blush"], { clipping: true }),
+        ]), { Shade: "merge" });
+        expect(toBakeTargets(plan)).toEqual([{
+            path: ["Body"],
+            mergeFrom: [{ path: ["Shade"], clip: false }, { path: ["Blush"], clip: true }],
+        }]);
+    });
+});
+
+describe("planImport slots", () => {
+    it("puts an axis where its first member sits, not at the end", () => {
+        const plan = planImport(flattenLeaves(tree()), {});
+        expect(plan.slots.map(slot => (slot.kind === "constant" ? slot.name : slot.axis)))
+            .toEqual(["Body", "Outfit", "Mood"]);
+    });
+
+    it("lists every tag of an axis with the leaf it comes from", () => {
+        const plan = planImport(flattenLeaves(tree()), {});
+        const outfit = plan.slots.find(slot => slot.kind === "switch" && slot.axis === "Outfit");
+        expect(outfit?.kind === "switch" && outfit.options.map(option => option.tag))
+            .toEqual(["Uniform", "Casual"]);
+    });
+});
+
+describe("unsupportedBlends and hidden layers", () => {
+    it("does not ask about a layer that is being dropped anyway", () => {
+        const leaves = flattenLeaves([leaf("Scratch", ["Scratch"], { hidden: true, blendMode: "multiply" })]);
+        expect(unsupportedBlends(leaves)).toEqual([]);
     });
 });
 
