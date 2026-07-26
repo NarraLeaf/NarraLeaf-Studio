@@ -23,15 +23,40 @@ import { parseZipIndex, readEntryBytes } from "../../../../buildWorker/mobile/zi
 
 export type MobileIconSlot = { slot: string; width: number; height: number };
 
-/** PNG dimensions from the IHDR chunk, or null when it is not a readable PNG. */
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/**
+ * PNG dimensions from the IHDR chunk, or null when it is not a readable PNG.
+ *
+ * IHDR is walked to rather than assumed to be first: Xcode rewrites the icons it
+ * compiles into an app bundle with a private `CgBI` chunk ahead of it, and the
+ * iOS shell template ships exactly those bytes. Reading only offset 12 saw
+ * "CgBI" there and called every iOS icon slot unreadable, which failed the whole
+ * build for any project that configured an app icon.
+ */
 export function readPngSize(bytes: Buffer): { width: number; height: number } | null {
-    // PNG signature (8) + IHDR length/type (8) + width (4) + height (4).
-    if (bytes.length < 24 || bytes.toString("ascii", 12, 16) !== "IHDR") {
+    if (bytes.length < 8 || !bytes.subarray(0, 8).equals(PNG_SIGNATURE)) {
         return null;
     }
-    const width = bytes.readUInt32BE(16);
-    const height = bytes.readUInt32BE(20);
-    return width > 0 && height > 0 ? { width, height } : null;
+    // Chunk layout: length (4) + type (4) + data (length) + CRC (4).
+    for (let offset = 8; offset + 8 <= bytes.length;) {
+        const length = bytes.readUInt32BE(offset);
+        const type = bytes.toString("ascii", offset + 4, offset + 8);
+        if (type === "IHDR") {
+            if (offset + 16 > bytes.length) {
+                return null;
+            }
+            const width = bytes.readUInt32BE(offset + 8);
+            const height = bytes.readUInt32BE(offset + 12);
+            return width > 0 && height > 0 ? { width, height } : null;
+        }
+        // A corrupt length would otherwise loop forever or read past the end.
+        if (length > bytes.length) {
+            return null;
+        }
+        offset += 12 + length;
+    }
+    return null;
 }
 
 /**
