@@ -52,6 +52,21 @@ const { rootDir, isDev } = require('./utils');
         tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
     });
 
+    console.log('[build-main] Bundling PSD import worker…');
+    await esbuild.build({
+        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'psdWorker.ts')],
+        outfile: path.join(outDir, 'psdWorker.js'),
+        platform: 'node',
+        format: 'cjs',
+        bundle: true,
+        // ag-psd is pure JS and bundles fine; electron stays external as everywhere else.
+        external: ['electron'],
+        sourcemap: isDev(),
+        minify: !isDev(),
+        target: ['node18'],
+        tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
+    });
+
     console.log('[build-main] Bundling artifact compile worker…');
     await esbuild.build({
         entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'compileWorker.ts')],

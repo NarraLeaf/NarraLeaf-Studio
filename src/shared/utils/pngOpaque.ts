@@ -26,7 +26,33 @@ export async function encodeOpaquePng(
     height: number,
     deflate: Deflate,
 ): Promise<Uint8Array> {
-    const stride = width * 3;
+    return encodePng(rgba, width, height, 3, deflate);
+}
+
+/**
+ * Encode RGBA samples as a PNG with colour type 6, alpha kept.
+ *
+ * This is the one a baked PSD layer needs: a layer is a transparent cut-out on
+ * the document canvas, and dropping its alpha would fill every empty pixel with
+ * whatever colour happened to sit in the buffer.
+ */
+export async function encodeRgbaPng(
+    rgba: Uint8Array,
+    width: number,
+    height: number,
+    deflate: Deflate,
+): Promise<Uint8Array> {
+    return encodePng(rgba, width, height, 4, deflate);
+}
+
+async function encodePng(
+    rgba: Uint8Array,
+    width: number,
+    height: number,
+    channels: 3 | 4,
+    deflate: Deflate,
+): Promise<Uint8Array> {
+    const stride = width * channels;
     const raw = new Uint8Array((stride + 1) * height);
     const current = new Uint8Array(stride);
     const previous = new Uint8Array(stride);
@@ -34,17 +60,20 @@ export async function encodeOpaquePng(
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             const source = (y * width + x) * 4;
-            const target = x * 3;
+            const target = x * channels;
             current[target] = rgba[source];
             current[target + 1] = rgba[source + 1];
             current[target + 2] = rgba[source + 2];
+            if (channels === 4) {
+                current[target + 3] = rgba[source + 3];
+            }
         }
         const rowStart = y * (stride + 1);
         raw[rowStart] = 4;
         for (let i = 0; i < stride; i++) {
-            const left = i >= 3 ? current[i - 3] : 0;
+            const left = i >= channels ? current[i - channels] : 0;
             const up = previous[i];
-            const upLeft = i >= 3 ? previous[i - 3] : 0;
+            const upLeft = i >= channels ? previous[i - channels] : 0;
             raw[rowStart + 1 + i] = (current[i] - paethPredictor(left, up, upLeft)) & 0xff;
         }
         previous.set(current);
@@ -54,8 +83,8 @@ export async function encodeOpaquePng(
     const headerView = new DataView(header.buffer);
     headerView.setUint32(0, width);
     headerView.setUint32(4, height);
-    header[8] = 8;  // bit depth
-    header[9] = 2;  // colour type: truecolour, no alpha
+    header[8] = 8;                          // bit depth
+    header[9] = channels === 4 ? 6 : 2;     // colour type: truecolour, with or without alpha
     return concatBytes([
         new Uint8Array(SIGNATURE),
         chunk("IHDR", header),
