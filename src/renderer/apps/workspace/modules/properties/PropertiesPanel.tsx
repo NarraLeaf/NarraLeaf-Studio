@@ -1104,22 +1104,26 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         && !activeCharacter
         && !activeAsset;
     if (isEmpty) {
-        return <div className="h-full min-h-0 bg-surface" />;
+        return <div className="nl-editor-surface h-full min-h-0" />;
     }
 
     /**
-     * Story content is opaque, and follows the `editor.surfaceOpacity` knob rather than a fixed colour.
+     * The whole panel is opaque, and follows the `editor.surfaceOpacity` knob rather than a fixed
+     * colour.
      *
      * `.nl-editor-surface` is the one rule the editor's reading surfaces share (prose column, Dev Mode
-     * debug panel, and now this): a custom workspace background otherwise shows straight through a
+     * debug panel, and this): a custom workspace background otherwise shows straight through a
      * panel whose base is `rgba(0,0,0,0)`, and values you have to read must not compete with a
      * photograph. It goes on both the panel root and the scroller so the whole plane paints as one,
      * header included.
+     *
+     * U2 scoped this to story rows only, which left the asset, character, interface and
+     * (empty, on a Dashboard tab) inspectors reading over the wallpaper. A field label is a field
+     * label whatever produced it, so the plate is unconditional — the empty branch above included,
+     * since that is the one the Dashboard tab shows.
      */
-    const surfaceClass = storyContent ? "nl-editor-surface" : "";
-
     return (
-        <div className={["h-full flex flex-col", surfaceClass].filter(Boolean).join(" ")}>
+        <div className="nl-editor-surface h-full flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-edge">
             <div className="flex items-center gap-2">
@@ -1131,7 +1135,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             </div>
 
             {/* Content */}
-            <div className={["flex-1 overflow-y-auto", surfaceClass].filter(Boolean).join(" ")}>{renderPropertyEditor()}</div>
+            <div className="nl-editor-surface flex-1 overflow-y-auto">{renderPropertyEditor()}</div>
         </div>
     );
 }
