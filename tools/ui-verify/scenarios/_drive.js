@@ -55,9 +55,15 @@ async function driveToDevMode() {
     const targets = await listTargets({ port: PORT });
     if (!targets.find((t) => /workspace/i.test(`${t.title}${t.url}`))) {
         await onWindow('launcher', A.WINDOWS.launcher, async (d) => {
-            // The project card carries `title="Open …"` and no aria-label, so the lookup has to
-            // accept either — still by name, never by coordinate.
-            await A.clickNamed(d, 'button, [role="button"]', '^Open ');
+            // The project card carries `title="Open <project name>"` and no aria-label, so the
+            // lookup has to accept `title` too. It must also be ANCHORED on the name: `^Open `
+            // alone matches the toolbar's "Open Folder" button, which comes first in the DOM and
+            // opens a native dialog that nothing here can dismiss — the run then just hangs waiting
+            // for a workspace window that is never coming.
+            const project = process.env.NLS_VERIFY_PROJECT;
+            if (!project) throw new Error('set NLS_VERIFY_PROJECT to the project copy this run may open');
+            const name = path.basename(project.replace(/[\/]+$/, ''));
+            await A.clickNamed(d, 'button, [role="button"]', `^Open ${name}$`);
         });
         await waitForWindow('workspace');
         await A.sleep(4000);
