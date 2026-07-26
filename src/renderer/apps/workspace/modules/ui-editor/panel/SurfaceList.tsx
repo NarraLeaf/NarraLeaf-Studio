@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, MouseEvent, ReactNode } from "react";
-import type { UISurface, UISurfaceKind } from "@shared/types/ui-editor/document";
+import type { UISurface } from "@shared/types/ui-editor/document";
 import { MoreVertical } from "lucide-react";
 import { DEFAULT_APP_SURFACE_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { useTranslation } from "@/lib/i18n";
@@ -12,7 +12,6 @@ const SURFACE_PREVIEW_HEIGHT = 96;
 
 type SurfaceListProps = {
     surfaces: UISurface[];
-    surfaceKind: UISurfaceKind;
     globalBlueprintCard?: SurfaceListGlobalBlueprintCard;
     renderSurfacePreview?: (surface: UISurface) => ReactNode;
     onSurfaceClick: (surface: UISurface) => void;
@@ -95,26 +94,17 @@ const getSurfaceTypeLabel = (surface: UISurface, t: UseTranslation["t"]): string
 
 export function SurfaceList({
     surfaces,
-    surfaceKind,
     globalBlueprintCard,
     renderSurfacePreview,
     onSurfaceClick,
     onOpenMenu,
 }: SurfaceListProps) {
     const { t } = useTranslation();
+    // Nothing to list yet: the list is empty and stays empty. The Create Page / Create Game UI
+    // button is the row directly above this pane (SurfaceActions), so two lines saying there are no
+    // pages and to press that button are the button described rather than offered.
     if (surfaces.length === 0 && !globalBlueprintCard) {
-        const emptyPrimary = surfaceKind === "appSurface" ? t("uiEditor.panel.emptyPages") : t("uiEditor.panel.emptyGameUi");
-        const emptySecondary =
-            surfaceKind === "appSurface"
-                ? t("uiEditor.panel.emptyPagesHint")
-                : t("uiEditor.panel.emptyGameUiHint");
-
-        return (
-            <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2">
-                <p className="text-xs text-fg-muted">{emptyPrimary}</p>
-                <p className="text-xs text-fg-subtle">{emptySecondary}</p>
-            </div>
-        );
+        return <div className="flex-1 overflow-y-auto px-2 py-2" />;
     }
 
     return (

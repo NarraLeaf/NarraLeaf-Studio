@@ -81,6 +81,19 @@ export type StoryRowLookups = {
 /** A lookup that resolves nothing — for call sites with no characters (tests, clipboard of a bare block). */
 export const noStoryRowCharacters: StoryRowLookups["character"] = () => null;
 
+/**
+ * What the *surface* does with the projection, as opposed to what the block contains.
+ *
+ * Only one switch so far: a text row with no text falls back to the editor's `Double-click to enter
+ * narration` prompt. That prompt is an instruction for the person editing, and a read-only surface —
+ * the Dev Mode timeline — has no double-click to offer, so it asks for the empty sentence instead of
+ * inheriting an affordance it does not have.
+ */
+export type StoryRowOptions = {
+    /** Default `true` (the editor). `false` leaves an empty text row's sentence empty. */
+    editingPlaceholders?: boolean;
+};
+
 // --- Text ---------------------------------------------------------------------------------------
 
 export function getStoryTextSegment(block: StoryBlock): StoryTextSegment | null {
@@ -609,6 +622,7 @@ export function storyRowFragments(
     block: StoryBlock,
     lookups: StoryRowLookups,
     label: StoryRowLabel = defaultRowLabel,
+    options: StoryRowOptions = {},
 ): StoryRowFragment[] {
     const fragments: StoryRowFragment[] = [];
     const container = getStoryContainerHeaderInfo(block);
@@ -620,9 +634,10 @@ export function storyRowFragments(
     }
     const segment = getStoryTextSegment(block);
     if (segment) {
+        const placeholder = options.editingPlaceholders === false ? "" : getStoryEmptyTextPlaceholder(block);
         fragments.push({
             kind: "text",
-            text: segmentHasValue(segment) ? storyTextSegmentPlain(segment, lookups) : getStoryEmptyTextPlaceholder(block),
+            text: segmentHasValue(segment) ? storyTextSegmentPlain(segment, lookups) : placeholder,
         });
         return fragments;
     }
@@ -655,9 +670,9 @@ export function storyRowSpeaker(block: StoryBlock, lookups: StoryRowLookups): St
  * flex gap between the description and each token — so "one space between fragments" is what the eye
  * already reads there.
  */
-export function storyRowSentence(block: StoryBlock, lookups: StoryRowLookups): string {
+export function storyRowSentence(block: StoryBlock, lookups: StoryRowLookups, options: StoryRowOptions = {}): string {
     const sceneName = (id: string | undefined) => (id ? lookups.scenes?.[id]?.name || id : "—");
-    return storyRowFragments(block, lookups)
+    return storyRowFragments(block, lookups, defaultRowLabel, options)
         .map(fragment => (fragment.kind === "text" ? fragment.text : quickParamText(fragment.param, sceneName)))
         .filter(text => text.length > 0)
         .join(" ");
@@ -675,9 +690,9 @@ export type StoryRowProjection = {
 };
 
 /** Everything a surface needs to draw one row, from one pass over the block. */
-export function projectStoryRow(block: StoryBlock, lookups: StoryRowLookups): StoryRowProjection {
+export function projectStoryRow(block: StoryBlock, lookups: StoryRowLookups, options: StoryRowOptions = {}): StoryRowProjection {
     return {
-        sentence: storyRowSentence(block, lookups),
+        sentence: storyRowSentence(block, lookups, options),
         speaker: storyRowSpeaker(block, lookups),
         barColor: storyRowBarColor(block),
         containerPill: getStoryContainerHeaderInfo(block)?.pill ?? null,
