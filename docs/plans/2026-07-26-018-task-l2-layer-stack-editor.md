@@ -1,7 +1,7 @@
 ---
 title: "task: L2 层栈编辑器 — 重排、显隐、洋葱皮、诊断"
 type: task
-status: in-progress
+status: done
 date: 2026-07-26
 parent: 2026-07-26-013-plan-layered-sprite-system.md
 branch: feat/layered-sprite-l2
@@ -93,6 +93,44 @@ worktree: D:/Temp/nls-layered
 - 层偏移 / 混合模式（引擎 E4，母卡已裁决不做）。
 - F1（i18n 插值）与 F5（硬编码告警）→ 单独一张微卡，连带 `characterForm` 语法 token
   改名那笔旧债一起收。
+
+## 6.5 落地与验收（2026-07-26，orchestrator 亲手驱动 + 亲自读图）
+
+提交 `b3ad33db`（主体）+ `239c72b3`（三处修正）。实例同 L1：worktree `D:/Temp/nls-layered`
+@ `feat/layered-sprite-l2`，`NLS_DEV_RELOAD_PORT=5601` + CDP 9401，工程 `D:/Temp/nls-l1-verify/demo3`。
+
+| # | 判据 | 结果 |
+|---|---|---|
+| 1 | 从面板新建分层角色（不碰服务层） | ✅ 「+」→ 二选一菜单 →「Layered sprite」→ 命名 →「Stack Two  Layered sprite」 |
+| 2 | 真实鼠标拖拽重排 | ✅ 层序 `Top>Mid>Base` → `Mid>Base>Top`；截图里 Nattou 立绘由「被白条盖住」变成「盖在白条上」，遮挡关系确实反了 |
+| 3 | 隐藏一层：预览掉一层，编译产物不变 | ✅ 预览 `img` 3→2，`toLayeredDefinition().layers.length` 恒为 3 |
+| 4 | 尺寸不符出 error + 差值，点击跳转 | ✅ `Top is 82×43, canvas is 1088×1984`；点它，`Top` 层卡片拿到 `border-primary` |
+| 5 | 改名后 id 不变 | ✅ 轴 `Mood`→`Feeling`，`id` 与全部 `tag.id` 逐字节不变；L1 那侧已验过故事行引用不失效 |
+| 6 | 作用域层不报、全空才报 | ✅ 清掉一个 tag 的图：无诊断；两个都清：`Top draws nothing under any tag` |
+| 7 | lint / test 无新增失败 | ✅ 五个 tsconfig 全绿；`vitest` 2277 通过 / 8 失败，8 条全是 win32 既有基线 |
+
+洋葱皮另验：开启后预览 `img` 由 3 变 6，前三张 `opacity: 0.3` 且 z 在下，看图确认是「另一个 tag 的
+淡影垫在当前之下」。「设定画布」把 `canvas` 由 `null` 写成 `{1088,1984}`。
+
+**三个实现坑，都是被真机验收逼出来的**（写在这里因为它们会再犯）：
+
+1. **原生拖拽跑的是嵌套消息循环**，`dragstart` 里 `setState` 的结果对随后必须 `preventDefault`
+   的 `dragover` **不可见**——第一版 `dragstart` 触发了、`drop` 从来没到过，层序纹丝不动，
+   而合成 `DragEvent` 会让这套代码「测试通过」。改用 ref 存被拖的 id，`dragover` 无条件
+   `preventDefault`。另外 CDP 的鼠标步进要够慢（40ms/步 + 落点悬停），25ms 的版本 drop 也不落。
+2. **画布的兜底基准不能是「最底下那层」**：拖一次序，全部诊断都会翻。改成「最大的那层」，
+   位置无关。
+3. **不画的层还留着上一张图的尺寸**，于是一个「什么都不画」的层同时被报成「尺寸不符」。
+   诊断只吃当前真的在画的层的测量值；隐藏的层仍然吃——隐藏是看的方式，不是筛选。
+
+**本卡砍掉的（不是忘了）**：
+
+- **「被完全遮挡的层」诊断**：要把每层的 alpha 求交，那是 L4 `SpriteCompositor` 同一套离屏合成，
+  两处各写一遍必然给出两个答案。跟着那张卡走。
+- **「层资产未被任何 tag 引用」诊断**：当前模型下没有产生它的路径（`setLayerAxis` 会清空旧图，
+  `removeTag` 会连带删掉 option），写了也永远不触发。等 L3 导入向导带来孤儿资产再说。
+- **像素级缩放 / 洋葱皮浓度**：`ImagePixelPreview` 只吃单张 `src`，层栈要先合成——同样等 L4。
+- **头像裁剪（`portrait`）**：要在合成结果上框选，同上。
 
 ## 7. 判据
 
