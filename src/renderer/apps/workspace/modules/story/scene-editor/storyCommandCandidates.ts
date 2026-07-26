@@ -173,9 +173,9 @@ function candidatesForType(
                 // every form of every character would be worse than offering none.
                 return [];
             }
-            return (context.formsByCharacterId[characterId] ?? [])
-                .filter(form => !query || containsFold(form, query))
-                .map(form => ({ value: form, label: form }));
+            return (context.appearanceByCharacterId[characterId] ?? [])
+                .filter(ref => !query || containsFold(ref.name, query))
+                .map(ref => ({ value: ref.name, label: ref.name }));
         }
         case "scene":
             return refCandidates(context.scenes, query);

@@ -25,7 +25,7 @@ const CONTEXT: StoryCommandContext = {
         // A blueprint-style name with spaces: only addressable on the command line through `'…'`.
         { name: "boss hp", ref: { scope: "saved", variableId: "var_boss" }, valueType: "number", defaultValue: 3 },
     ],
-    formsByCharacterId: { c1: ["smile", "angry"] },
+    appearanceByCharacterId: { c1: [{ id: "t1", name: "smile" }, { id: "t2", name: "angry" }] },
     stageObjects: { image: ["hero"], text: ["title"], layer: ["overlay"], video: ["clip"], audio: ["music"], vfx: ["petals"] },
 };
 
