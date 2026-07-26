@@ -30,11 +30,10 @@ export interface StageImage {
 /**
  * A runtime boolean in scene-local storage (reset on scene entry). `write` produces an action
  * whose undo cleaner restores the previous value — the compiler owns that so a pass cannot get
- * the undo semantics wrong.
+ * the undo semantics wrong. To gate actions on the flag, pass it to `SceneCompileContext.guarded`
+ * rather than reading it directly: the compiler builds the runtime-evaluated predicate.
  */
 export interface RuntimeFlag {
-    /** A predicate evaluated at runtime, for use as a guard. */
-    read(): () => boolean;
     /** An action that sets the flag, undoable. */
     write(value: boolean): EngineAction;
 }
@@ -99,4 +98,9 @@ export function registerStoryCompilePass(pass: StoryCompilePass, owner: string):
 /** Every registered pass, in registration order. */
 export function getStoryCompilePasses(): StoryCompilePass[] {
     return registered.map(entry => entry.pass);
+}
+
+/** Drop all registered passes. For tests; production runtime plugins never unregister. */
+export function clearStoryCompilePasses(): void {
+    registered.length = 0;
 }
