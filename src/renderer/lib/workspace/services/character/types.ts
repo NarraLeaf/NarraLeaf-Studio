@@ -1,4 +1,5 @@
 import type { NormalizedCrop } from "@/lib/utils/headCrop";
+import type { PsdFingerprint } from "@shared/types/psdImport";
 
 /** A portrait framing rect in normalized (0–1) image coordinates — the same shape as {@link NormalizedCrop}. */
 export type PortraitCrop = NormalizedCrop;
@@ -121,6 +122,12 @@ export interface LayeredAppearance {
     layers: CharacterLayer[];
     /** Named tag combinations. See {@link CharacterSnapshot}. */
     snapshots?: CharacterSnapshot[];
+    /**
+     * The PSD this stack was imported from, if any. Studio does not keep the file (user ruling
+     * 2026-07-26) — this is the mapping memory that lets a second import of the same PSD refresh the
+     * art in place instead of building a second set of axes beside the first.
+     */
+    psd?: PsdFingerprint;
 }
 
 /**

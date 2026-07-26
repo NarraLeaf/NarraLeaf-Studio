@@ -12,6 +12,7 @@ import {
     PresetAppearance,
     ResolvedLayeredDefinition,
 } from "./types";
+import type { PsdFingerprint } from "@shared/types/psdImport";
 
 export type AssetChangeCallback = (oldAssetId: string | null, newAssetId: string | null) => void;
 
@@ -58,6 +59,14 @@ function cloneAppearance(appearance: ICharacterAppearance): ICharacterAppearance
                 name: snapshot.name,
                 tags: { ...snapshot.tags },
             })),
+            ...(appearance.psd
+                ? {
+                    psd: {
+                        ...appearance.psd,
+                        slots: (appearance.psd.slots ?? []).map(slot => ({ ...slot, path: [...slot.path] })),
+                    },
+                }
+                : {}),
         };
     }
     const preset = appearance as PresetAppearance;
@@ -451,6 +460,43 @@ export class CharacterAppearance {
         this.notifyAssetChange(options[tagId] ?? null, assetId);
         layer.options = { ...options, [tagId]: assetId };
         this.notifyChange();
+    }
+
+    /** The PSD this stack came from, or null if it was built by hand. */
+    public getPsdFingerprint(): PsdFingerprint | null {
+        return this.layered?.psd ?? null;
+    }
+
+    public setPsdFingerprint(fingerprint: PsdFingerprint | null): void {
+        const layered = this.layered;
+        if (!layered) return;
+        if (fingerprint) {
+            layered.psd = fingerprint;
+        } else {
+            delete layered.psd;
+        }
+        this.notifyChange();
+    }
+
+    /**
+     * Where a PSD layer went last time, if it is still there.
+     *
+     * A re-import asks this for every layer it is about to build. A hit means "refresh this slot's
+     * image" and leaves the author's renames, stack order and axis bindings untouched; a miss means
+     * the layer is new. Slots whose layer or tag has since been deleted read as misses, which is why
+     * the ids are checked against the appearance rather than trusted.
+     */
+    public findPsdSlot(path: string[]): { layerId: string; tagId?: string } | null {
+        const joined = path.join("/");
+        const slot = this.getPsdFingerprint()?.slots.find(entry => entry.path.join("/") === joined);
+        if (!slot) return null;
+        const layer = this.getLayer(slot.layerId);
+        if (!layer) return null;
+        if (!slot.tagId) {
+            return layer.axisId ? null : { layerId: slot.layerId };
+        }
+        const axis = layer.axisId ? this.getAxis(layer.axisId) : null;
+        return axis?.tags.some(tag => tag.id === slot.tagId) ? { layerId: slot.layerId, tagId: slot.tagId } : null;
     }
 
     public getSnapshots(): CharacterSnapshot[] {
