@@ -257,9 +257,29 @@ export function ProjectsTab() {
             )}
 
             <div className="flex-1 min-h-0 overflow-y-auto">
+                {/* First run: the empty list offers the two ways to fill it rather than a sentence
+                    reporting that it is empty. The header carries the same two actions as icons,
+                    which at 24px across an otherwise blank pane is not where an eye lands. */}
                 {recentProjects.length === 0 && (
-                    <div className="px-3 py-10 text-center text-sm text-fg-muted">
-                        {t("launcher.projects.empty")}
+                    <div className="flex flex-col items-center gap-2 px-3 py-10">
+                        <button
+                            type="button"
+                            onClick={handleNewProject}
+                            disabled={isBusy}
+                            className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 py-1.5 text-sm text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+                        >
+                            <Plus className="h-4 w-4" />
+                            {t("launcher.projects.newProject")}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleOpenFolder}
+                            disabled={isBusy}
+                            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-fg-muted transition-colors hover:bg-fill hover:text-fg disabled:opacity-50"
+                        >
+                            <FolderOpen className="h-4 w-4" />
+                            {t("launcher.projects.openFolder")}
+                        </button>
                     </div>
                 )}
 

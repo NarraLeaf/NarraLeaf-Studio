@@ -20,6 +20,7 @@ import type {
     StoryVfxBlendMode,
 } from "@shared/types/story";
 import {
+    characterStageName,
     isStoryExpressionEvaluable,
     layerActionTargetRef,
     resolveDisplayableTargetRef,
@@ -32,7 +33,7 @@ import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTi
 import { useTranslation } from "@/lib/i18n";
 import type { Translator } from "@shared/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronRight, ExternalLink, Image as ImageIcon, Mic, Music, Palette, Play, Square, Trash2, Video } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, ExternalLink, Image as ImageIcon, Mic, Music, Palette, Play, Square, Trash2, Video } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "@/apps/workspace/context";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
@@ -655,7 +656,9 @@ function InspectorFields(props: {
     if (block.kind === "declaration") {
         return <DeclarationPayloadFields payload={block.payload} onChange={props.onUpdatePayload} />;
     }
-    return <div className="text-sm text-fg-muted">{t("storyInspector.noEditableFields")}</div>;
+    // A block kind with no fields of its own contributes no field stack. The inspector's header
+    // already names the row; a line reporting that there is nothing to edit is that fact twice.
+    return null;
 }
 
 const declarationTypeOptions = (t: TFunc): SelectOption[] => [
@@ -1332,6 +1335,25 @@ function CharacterActionEditor(props: {
         onChange({ ...payload, characterId, objectName, pose: undefined, tags: undefined });
     }, [onChange, payload, props.characters]);
 
+    /**
+     * The name later commands use to reach this character on stage. Two things put a value in there
+     * without anyone typing it: the bare block's literal `"character"`, and the auto-fill from the
+     * profile above. Neither is authored content, so neither prints as a value — they show as a
+     * placeholder, and only a name the author actually chose reads as one.
+     *
+     * "Is this authored?" is `characterStageName`'s question, not a second opinion: that rule
+     * discards `"character"` and keys on the id instead, so a stage key that is not the trimmed
+     * text means the text was never a name.
+     *
+     * Display only. Whatever the payload already carries stays exactly as it is, and typing still
+     * writes exactly what was typed.
+     */
+    const derivedObjectName = selectedCharacter?.profile.getName() ?? "";
+    const authoredObjectName = (payload.objectName ?? "").trim();
+    const objectNameIsDerived = !authoredObjectName
+        || authoredObjectName === derivedObjectName
+        || characterStageName(payload.characterId, payload.objectName) !== authoredObjectName;
+
     // A rename touches the speaker label and nothing else - no portrait, so no stage name, appearance,
     // transform or transition. Offering those would be offering to edit fields the compile never reads.
     if (payload.operation === "setName") {
@@ -1362,8 +1384,9 @@ function CharacterActionEditor(props: {
                     onChange={updateCharacter}
                 />
                 <TextField
-                    label={t("storyInspector.character.stageName")}
-                    value={payload.objectName ?? ""}
+                    label={t("storyInspector.character.objectName")}
+                    value={objectNameIsDerived ? "" : payload.objectName ?? ""}
+                    placeholder={derivedObjectName}
                     onChange={objectName => onChange({ ...payload, objectName })}
                 />
             </FieldGrid>
@@ -2305,14 +2328,41 @@ function TextSegmentEditor(props: {
     );
 }
 
+/**
+ * The line's localization key: the id translation and voice-over file this line under. It is a uuid,
+ * which is nothing an author reads — so it stays folded away and copies in one click, the same shape
+ * the asset overview's storage row uses for hashes and shard paths (U3a).
+ */
 function TextIdReadout(props: { text: StoryTextSegment }) {
     const { t } = useTranslation();
+    const [open, setOpen] = useState(false);
     return (
         <div>
-            <div className={FIELD_LABEL_CLASS}>{t("storyInspector.textId")}</div>
-            <div className="flex h-9 min-h-[34px] min-w-0 items-center rounded-md border border-edge bg-surface-raised px-3 text-xs text-fg-muted">
-                <span className="truncate font-mono">{props.text.textId}</span>
-            </div>
+            <button
+                type="button"
+                onClick={() => setOpen(value => !value)}
+                aria-expanded={open}
+                className="flex items-center gap-1 rounded-md text-2xs text-fg-subtle transition-colors hover:text-fg-muted"
+            >
+                <ChevronDown className={`h-3 w-3 transition-transform ${open ? "" : "-rotate-90"}`} />
+                {t("storyInspector.textId")}
+            </button>
+            {open && (
+                <div className="mt-1 flex items-center gap-2 rounded-md border border-edge bg-surface-raised px-2.5 py-1.5">
+                    <span className="min-w-0 flex-1 truncate font-mono text-2xs text-fg-muted" title={props.text.textId}>
+                        {props.text.textId}
+                    </span>
+                    <button
+                        type="button"
+                        title={t("common.copy")}
+                        aria-label={t("common.copy")}
+                        onClick={() => void navigator.clipboard?.writeText(props.text.textId)}
+                        className="shrink-0 rounded-md p-0.5 text-fg-subtle transition-colors hover:bg-fill hover:text-fg-muted"
+                    >
+                        <Copy className="h-3 w-3" />
+                    </button>
+                </div>
+            )}
         </div>
     );
 }
@@ -2333,7 +2383,14 @@ function SelectField(props: { label: string; options: SelectOption[]; value: str
     );
 }
 
-function TextField(props: { label: string; value: string; onChange: (value: string) => void; options?: SelectOption[] }) {
+function TextField(props: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    options?: SelectOption[];
+    /** Shown when `value` is empty — used for a derived default, which is not authored content. */
+    placeholder?: string;
+}) {
     if (props.options) {
         return (
             <SelectField
@@ -2349,6 +2406,7 @@ function TextField(props: { label: string; value: string; onChange: (value: stri
             <label className={FIELD_LABEL_CLASS}>{props.label}</label>
             <EnhancedInput
                 value={props.value}
+                placeholder={props.placeholder}
                 onChange={props.onChange}
             />
         </div>
