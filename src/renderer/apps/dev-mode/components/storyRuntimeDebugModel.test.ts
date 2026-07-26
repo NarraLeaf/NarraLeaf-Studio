@@ -157,7 +157,13 @@ describe("projectExecutionContext", () => {
         expect(view.chain.map(rung => rung.pill)).toEqual(["Repeat", "Run at the same time"]);
     });
 
-    it("shows the round a repeat is on, counting the one in progress", () => {
+    it("carries the repeat's authored round count from the document", () => {
+        // The engine drops a nested loop's counter (see findReportedLoop), so this is what a repeat
+        // rung can always say: how many rounds the author asked for.
+        expect(contextFor("left", null).chain[0]).toMatchObject({ pill: "Repeat", times: 3 });
+    });
+
+    it("shows the round a repeat is on when the engine does report a loop", () => {
         // counter = completed iterations, so the first pass through the body is round 1 of 3.
         const first = contextFor("left", { root: { frames: [], loop: { counter: 0, limit: 3 } }, async: [] });
         expect(first.chain[0]!.round).toEqual({ current: 1, limit: 3 });
@@ -175,33 +181,33 @@ describe("projectExecutionContext", () => {
         expect(view.orphanRound).toEqual({ current: 1, limit: 2 });
     });
 
-    it("names who is running in a parallel instead of numbering anonymous branches", () => {
+    it("lists a parallel's branches by what they say, and marks the one holding the play head", () => {
+        // No engine frames at all: this is the state the panel is actually looked at in, because a
+        // branch waiting on the player has drained its stack. The document still knows the answer.
+        const view = contextFor("left", { root: { frames: [] }, async: [] });
+        expect(view.branches).toEqual([
+            { index: 1, sentence: "left line", current: true },
+            { index: 2, sentence: "right line", current: false },
+        ]);
+    });
+
+    it("prefers the engine's own current row for a branch when it reports one", () => {
         const stack: StackViewLike = {
             root: {
                 frames: [{
                     actionId: null,
                     branches: [
-                        [{ actionId: "s-left" }],
                         [{ actionId: "s-right" }],
+                        [{ actionId: "s-left" }],
                     ],
                 }],
             },
             async: [],
         };
-        const view = contextFor("left", stack);
-        expect(view.branches).toEqual([
-            { index: 1, sentence: "left line" },
-            { index: 2, sentence: "right line" },
-        ]);
+        expect(contextFor("left", stack).branches.map(b => b.sentence)).toEqual(["right line", "left line"]);
     });
 
-    it("finds a concurrent group nested inside another branch", () => {
-        const stack: StackViewLike = {
-            root: { frames: [{ actionId: null }] },
-            async: [{
-                frames: [{ actionId: null, branches: [[{ actionId: "s-right" }]] }],
-            }],
-        };
-        expect(contextFor("right", stack).branches).toEqual([{ index: 1, sentence: "right line" }]);
+    it("has no branch list when the play head is not inside a concurrent container", () => {
+        expect(contextFor(null, null).branches).toEqual([]);
     });
 });

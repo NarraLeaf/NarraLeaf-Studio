@@ -621,7 +621,7 @@ function ExecutionContextTab(props: {
                         {view.chain.map((rung, index) => (
                             <li key={rung.blockId} className="flex items-baseline gap-1.5" style={{ paddingLeft: index * 10 }}>
                                 <span className="truncate text-fg-muted">{rung.pill}</span>
-                                {rung.round ? <RoundCounter round={rung.round} /> : null}
+                                <RoundCounter round={rung.round} times={rung.times} />
                             </li>
                         ))}
                         {view.orphanRound ? (
@@ -639,11 +639,17 @@ function ExecutionContextTab(props: {
                     <ul className="space-y-0.5">
                         {view.branches.map(branch => (
                             <li key={branch.index} className="flex items-baseline gap-1.5">
-                                <span className="w-3 shrink-0 select-none text-right tabular-nums text-fg-subtle">
-                                    {branch.index}
+                                {/* The play head is in exactly one branch; the marker is the whole
+                                    point of the list, since numbering branches was what the old
+                                    tab already did and it said nothing. */}
+                                <span className="w-2 shrink-0 select-none text-primary" aria-hidden>
+                                    {branch.current ? "▸" : ""}
                                 </span>
-                                <span className="min-w-0 truncate text-fg-muted" title={branch.sentence ?? undefined}>
-                                    {branch.sentence ?? t("common.none")}
+                                <span
+                                    className={`min-w-0 truncate ${branch.current ? "text-fg" : "text-fg-muted"}`}
+                                    title={branch.sentence ?? undefined}
+                                >
+                                    {branch.sentence}
                                 </span>
                             </li>
                         ))}
@@ -654,14 +660,24 @@ function ExecutionContextTab(props: {
     );
 }
 
-/** `2/3` — which round of a repeat is running. Tabular so the digits do not jitter as it counts. */
-function RoundCounter(props: { round: { current: number; limit?: number } }): ReactNode {
-    const { round } = props;
-    return (
-        <span className="shrink-0 tabular-nums text-fg-subtle">
-            {round.limit != null ? `${round.current}/${round.limit}` : String(round.current)}
-        </span>
-    );
+/**
+ * `2/3` when the engine reports which round is running, `×3` when only the document knows how many
+ * rounds there are — which is the case for every `/repeat` today (see `findReportedLoop`). Tabular so
+ * the digits do not jitter as it counts.
+ */
+function RoundCounter(props: { round?: { current: number; limit?: number }; times?: number }): ReactNode {
+    const { round, times } = props;
+    if (round) {
+        return (
+            <span className="shrink-0 tabular-nums text-fg-subtle">
+                {round.limit != null ? `${round.current}/${round.limit}` : String(round.current)}
+            </span>
+        );
+    }
+    if (times !== undefined) {
+        return <span className="shrink-0 tabular-nums text-fg-subtle">{`×${times}`}</span>;
+    }
+    return null;
 }
 
 // --- Timeline (L2) -----------------------------------------------------------------------------
