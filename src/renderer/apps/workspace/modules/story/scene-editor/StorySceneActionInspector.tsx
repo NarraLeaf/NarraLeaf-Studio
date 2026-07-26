@@ -20,6 +20,7 @@ import type {
     StoryVfxBlendMode,
 } from "@shared/types/story";
 import {
+    characterStageName,
     isStoryExpressionEvaluable,
     layerActionTargetRef,
     resolveDisplayableTargetRef,
@@ -1335,13 +1336,23 @@ function CharacterActionEditor(props: {
     }, [onChange, payload, props.characters]);
 
     /**
-     * The name later commands use to reach this character on stage. It is derived from the character
-     * by default, and a derived value is not something the author typed — so it shows as a
-     * placeholder, and only a name they actually chose prints as a value. Display only: whatever the
-     * payload already carries stays exactly as it is.
+     * The name later commands use to reach this character on stage. Two things put a value in there
+     * without anyone typing it: the bare block's literal `"character"`, and the auto-fill from the
+     * profile above. Neither is authored content, so neither prints as a value — they show as a
+     * placeholder, and only a name the author actually chose reads as one.
+     *
+     * "Is this authored?" is `characterStageName`'s question, not a second opinion: that rule
+     * discards `"character"` and keys on the id instead, so a stage key that is not the trimmed
+     * text means the text was never a name.
+     *
+     * Display only. Whatever the payload already carries stays exactly as it is, and typing still
+     * writes exactly what was typed.
      */
     const derivedObjectName = selectedCharacter?.profile.getName() ?? "";
-    const objectNameIsDerived = !payload.objectName || payload.objectName === derivedObjectName;
+    const authoredObjectName = (payload.objectName ?? "").trim();
+    const objectNameIsDerived = !authoredObjectName
+        || authoredObjectName === derivedObjectName
+        || characterStageName(payload.characterId, payload.objectName) !== authoredObjectName;
 
     // A rename touches the speaker label and nothing else - no portrait, so no stage name, appearance,
     // transform or transition. Offering those would be offering to edit fields the compile never reads.
