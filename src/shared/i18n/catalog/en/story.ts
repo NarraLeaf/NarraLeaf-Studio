@@ -354,7 +354,6 @@ export const story = {
         emptyOpenManual: "Open the command manual",
         variablesPanel: "Story Variables",
         snapshotsPanel: "Scene Snapshots",
-        inspectorPanel: "Inspector",
     },
     preview: {
         label: "Preview",
@@ -558,6 +557,7 @@ export const story = {
         choice: "Choice",
         option: "Option",
         setBackground: "Set background {value}",
+        missingAsset: "Missing asset",
         unassigned: "unassigned",
         characterFallback: "character",
         charOp: {

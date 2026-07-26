@@ -597,6 +597,46 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
     return block.payload.text.value || translate("story.describe.note");
 }
 
+/**
+ * {@link describeBlock} for the right rail's subject line: the same sentence, with asset ids resolved
+ * to asset names.
+ *
+ * A row can say `Set background 4b645b59-1723-4ac9-98ab-e6859b837bef` because the *payload* stores an
+ * id and `describeBlock` is pure — it has no way to reach the asset table. In the list that is
+ * tolerable (a background row also paints the picture); as the heading of the panel naming what the
+ * author is editing, it is nothing but noise. So the resolver is a parameter: this stays pure, and the
+ * caller, which is in React and has the service, supplies the lookup.
+ *
+ * Only the two payloads that can hold a bare id are handled here — every other branch of
+ * `describeBlock` already resolves through a name with a named fallback.
+ */
+export function describeBlockSubject(
+    block: StoryBlock,
+    characters: Character[],
+    resolveAssetName: (assetId: string) => string | null,
+    scene?: StoryScene,
+    scenes?: Record<StorySceneId, StoryScene>,
+): string {
+    if (block.kind === "action") {
+        const payload = block.payload;
+        if (payload.action === "setBackground") {
+            const named = payload.assetId
+                ? resolveAssetName(payload.assetId) ?? translate("story.background.missingImage")
+                : null;
+            return translate("story.describe.setBackground", {
+                value: named ?? payload.color ?? translate("story.describe.unassigned"),
+            });
+        }
+        if (payload.action === "audio") {
+            const named = payload.assetId
+                ? resolveAssetName(payload.assetId) ?? translate("story.describe.missingAsset")
+                : null;
+            return `${payload.operation} ${payload.objectName || named || translate("story.describe.unassigned")}`;
+        }
+    }
+    return describeBlock(block, characters, scene, scenes);
+}
+
 export function getEmptyTextPlaceholder(block: StoryBlock): string {
     if (block.kind === "nodeAction") {
         if (block.payload.action === "narration") return translate("story.emptyPlaceholder.narration");
