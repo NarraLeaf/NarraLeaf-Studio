@@ -348,7 +348,7 @@ export const story = {
         loadingScene: "Loading story scene…",
         notFound: "Story or scene not found.",
         addRow: "Click or type to add a row…",
-        emptyHint: "This scene is empty. Type {trigger} on a new row to pick a command, or just write a line of narration.",
+        emptyHint: "This scene is empty. Type {{trigger}} on a new row to pick a command, or just write a line of narration.",
         emptyExampleBg: "set the backdrop",
         emptyExampleShow: "bring someone on stage",
         emptyExampleSay: "give them a line",

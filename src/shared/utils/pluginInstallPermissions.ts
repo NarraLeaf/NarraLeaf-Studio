@@ -1,7 +1,6 @@
 import type {
     PluginFileSystemPermissionMode,
     PluginInstallPermission,
-    PluginRuntimeCapability,
 } from "../types/pluginPermissions";
 
 export const NO_INSTALL_PERMISSIONS_COPY = "No privileged Studio controls are included in this install approval.";
@@ -20,46 +19,8 @@ export function describePluginInstallPermission(permission: PluginInstallPermiss
             return `${formatFileSystemMode(permission.mode)} ${permission.recursive ? "inside" : "for"} ${singleLine(permission.path, "declared path")}`;
         case "api":
             return `Use Studio API capability: ${singleLine(permission.capability, "declared capability")}`;
-        case "runtime":
-            return `In your game: ${describeRuntimeCapability(permission.capability)}`;
-        case "sidecar":
-            return `Ship and run a native program inside your game (${singleLine(permission.id, "sidecar")}`
-                + `${permission.platforms.length > 0 ? `, for ${permission.platforms.join(", ")}` : ""})`;
-        case "buildDependency":
-            return `Download binaries while building your game (${singleLine(permission.id, "dependency")}`
-                + `${permission.hosts.length > 0 ? `, from ${permission.hosts.join(", ")}` : ""})`;
         default:
             return exhaustive(permission);
-    }
-}
-
-/**
- * Plain-language stakes for each runtime capability. Deliberately phrased around
- * the player's data rather than the API name: "state.write" means nothing to the
- * person deciding whether to trust the plugin.
- */
-function describeRuntimeCapability(capability: PluginRuntimeCapability): string {
-    switch (capability) {
-        case "store":
-            return "store its own data alongside the player's saves";
-        case "events":
-            return "observe game progress (scenes, dialogue, choices, saves)";
-        case "state.read":
-            return "read story variables";
-        case "state.write":
-            return "change story variables";
-        case "saves.read":
-            return "read the player's save list and metadata";
-        case "saves.write":
-            return "overwrite the player's saves and load them";
-        case "ui.overlay":
-            return "draw on top of the game";
-        case "assets":
-            return "resolve packaged asset URLs";
-        case "locale":
-            return "read and follow the game language";
-        default:
-            return capability;
     }
 }
 
@@ -92,19 +53,6 @@ function covers(granted: PluginInstallPermission, requested: PluginInstallPermis
     if (granted.kind === "filesystem" && requested.kind === "filesystem") {
         return coversFileSystemMode(granted.mode, requested.mode)
             && coversPath(granted, requested);
-    }
-    if (granted.kind === "runtime" && requested.kind === "runtime") {
-        return granted.capability === requested.capability;
-    }
-    // Same sidecar/dependency, no new platforms or download hosts. Adding either
-    // widens what reaches the player's machine, so it re-prompts.
-    if (granted.kind === "sidecar" && requested.kind === "sidecar") {
-        return granted.id === requested.id
-            && requested.platforms.every(platform => granted.platforms.includes(platform));
-    }
-    if (granted.kind === "buildDependency" && requested.kind === "buildDependency") {
-        return granted.id === requested.id
-            && requested.hosts.every(host => granted.hosts.includes(host));
     }
     return false;
 }

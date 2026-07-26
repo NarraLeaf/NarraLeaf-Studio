@@ -49,9 +49,6 @@ export const dialogs = {
     noun: {
         item: "项目",
         layer: "图层",
-        pose: "姿态",
-        axis: "差分轴",
-        tag: "标签",
         character: "角色",
         group: "分组",
         story: "故事",

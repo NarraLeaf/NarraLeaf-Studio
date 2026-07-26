@@ -40,6 +40,23 @@ describe("buildDependencyTable", () => {
         ]);
     });
 
+    it("maps story-action marker-block usage to a hard dependency under usedBy.storyAction", () => {
+        const table = buildDependencyTable({
+            usage: [{ pluginId: "narraleaf.auto-highlight", kind: "storyAction", id: "narraleaf.auto-highlight.enable", hard: true }],
+            authoritativePluginIds: ["narraleaf.auto-highlight"],
+            installed: [{ id: "narraleaf.auto-highlight", version: "0.1.0", enabled: true, builtIn: false }],
+        });
+        expect(table.plugins).toEqual([
+            {
+                id: "narraleaf.auto-highlight",
+                builtIn: false,
+                authoredVersion: "0.1.0",
+                hard: true,
+                usedBy: { storyAction: ["narraleaf.auto-highlight.enable"] },
+            },
+        ]);
+    });
+
     it("refreshes authoredVersion and drops now-unused types for a loaded plugin", () => {
         const existing: ProjectDependencyTable = {
             schemaVersion: PROJECT_DEPENDENCY_SCHEMA_VERSION,

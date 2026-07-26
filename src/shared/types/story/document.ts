@@ -32,12 +32,8 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // so the two migrations need not run together, or even in the same session. A row whose derived id
 // names no pose compiles to a diagnostic — which is the point: the model this replaced answered an
 // unresolvable differential with an arbitrary other image.
-// v11 is a burned number. It added a `{action:"plugin"}` marker block for plugin compile passes;
-// that feature was withdrawn (designed against a Studio that has since moved, and never validated
-// by a consumer), but the number stays spent: documents saved while it existed carry
-// `schemaVersion: 11`, and `assertSupportedStoryDocument` refuses anything newer than this
-// constant. Since v11's migration was a pure no-op bump, such a document is shape-identical to a
-// v10 one, so keeping the number costs nothing and reclaiming it would lock those projects out.
+// v11 adds the `{action:"plugin"}` marker block for plugin compile passes. Purely additive - no
+// existing document changes shape - so the migration only bumps the version (no rewrite step).
 export const STORY_DOCUMENT_SCHEMA_VERSION = 11 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
@@ -559,7 +555,29 @@ export type StoryActionPayload =
           action: "blueprint";
           /** Owner blueprint id of the implicit Story Action Blueprint bound 1:1 to this action. */
           blueprintId: string;
+      }
+    | {
+          action: "plugin";
+          /**
+           * The plugin that owns this marker block. Unlike a plugin's `createBlock` output (which
+           * produces standard blocks the document does not depend on), a plugin action block is
+           * meaningful only to its owner's compile pass, so the document hard-depends on `pluginId`.
+           */
+          pluginId: string;
+          /** The plugin's story-action id (namespaced by `pluginId`). */
+          actionId: string;
+          /** Author-set parameters, interpreted by the plugin's compile pass. Must be JSON-serializable. */
+          params: Record<string, StoryPluginActionParamValue>;
       };
+
+/** A JSON-serializable parameter value carried by a `{action:"plugin"}` block. */
+export type StoryPluginActionParamValue =
+    | string
+    | number
+    | boolean
+    | null
+    | StoryPluginActionParamValue[]
+    | { [key: string]: StoryPluginActionParamValue };
 
 /** Mirrors NLR's `VfxBlendMode`; the compiler passes it straight through to the overlay's CSS. */
 export type StoryVfxBlendMode = "normal" | "screen" | "multiply" | "lighten" | "color-dodge" | "overlay";

@@ -19,8 +19,7 @@ import {
   type Asset,
   type AssetSelectorProps,
   type BlueprintInspectorParamSelectOption,
-  type PluginBlueprintNodeDef,
-  type PluginBlueprintNodeContext,
+  type BlueprintNodeDef,
   type StoryBlock,
   type StoryPluginActionRegistration,
   type PluginInstallPermission,
@@ -263,8 +262,7 @@ app.services.blueprintNodes.notifyDynamicSelectOptionsChanged();
 行为约束：
 
 - node type 必须以插件 ID 为前缀，且必须在 manifest `contributes.blueprintNodes` 中声明（未声明的注册抛错）。
-- studio 侧注册完整 `PluginBlueprintNodeDef`（palette 元数据 + 编辑器预览 execute）；游戏 execute 由 runtime entry 用同一份定义注册（见 [runtime-api.md](./runtime-api.md)）。
-- execute 收到的是窄上下文 `PluginBlueprintNodeContext`（`params` / `resolveInput` / 事件槽 / `signal` / `game`），**不含** `hostAdapter`——宿主 API 只能经 manifest 声明过的 `ctx.game` 取用。编辑器背不动任何运行时能力，所以在 Studio 内 `ctx.game` 的门控域全部缺席，节点须能降级。
+- studio 侧注册完整 `BlueprintNodeDef`（palette 元数据 + 编辑器预览 execute）；游戏 execute 由 runtime entry 用同一份定义注册（见 [runtime-api.md](./runtime-api.md)）。
 - 动态 select 选项源 id 必须以插件 ID 为前缀；数据变化后调用 `notifyDynamicSelectOptionsChanged()`。
 
 ```ts
@@ -289,10 +287,10 @@ app.services.blueprintNodes.register({
     { key: "itemId", label: "Item", kind: "select", dynamicOptionsSource: sourceId },
   ],
   execute: () => ({ nextPort: "next" }),
-} satisfies PluginBlueprintNodeDef);
+} satisfies BlueprintNodeDef);
 ```
 
-`PluginBlueprintNodeDef` 的字段与 `BlueprintNodeDef` 一致，只有 `execute` 换成窄签名。`BlueprintNodePinDef` / `BlueprintInspectorParamDef` 的完整字段见 `src/renderer/lib/ui-editor/blueprint-nodes/types.ts`（类型均从 `narraleaf-studio/plugin` 导出）。
+`BlueprintNodeDef` / `BlueprintNodePinDef` / `BlueprintInspectorParamDef` 的完整字段见 `src/renderer/lib/ui-editor/blueprint-nodes/types.ts`（类型均从 `narraleaf-studio/plugin` 导出）。
 
 ## app.services.story
 

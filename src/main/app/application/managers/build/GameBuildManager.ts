@@ -33,19 +33,13 @@ import { Fs } from "@shared/utils/fs";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
 import {
-    buildDependencyPlatformKey,
-    checkBuildDependencies,
     checkIcon,
     checkOutputDir,
-    collectBuildDependencyRequirements,
-    collectSidecarRequirements,
     isValidProjectVersion,
     MIN_ICON_SIZE,
     readMobileOrientation,
     readProjectIdentifier,
     readProjectVersion,
-    sidecarLosesExecBit,
-    sidecarTargetPlatform,
 } from "./preflight";
 import { readIconSlotSizes, writeScaledIcons } from "./mobileIcons";
 import { loadMobileShellTemplateForApp } from "./mobileShellTemplate";
@@ -300,69 +294,6 @@ export class GameBuildManager {
                 detail: { errors: pluginSelection.errors.join("\n") },
             });
         }
-        // Only desktop targets carry a plugin's native binaries, so only they
-        // can need a build dependency fetched.
-        const binaryPlatformKeys = [...new Set(desktopTargets.map(target => buildDependencyPlatformKey(
-            target.platform,
-            normalizeGameBuildArch(target.platform, target.arch),
-        )))];
-        const dependencyGaps = await checkBuildDependencies(
-            this.app.getUserDataDir(),
-            collectBuildDependencyRequirements(
-                pluginSelection.selected.map(source => source.manifest),
-                binaryPlatformKeys,
-            ),
-        );
-        for (const gap of dependencyGaps) {
-            findings.push({
-                code: "build-dependency-unavailable",
-                severity: "error",
-                section: "content",
-                detail: {
-                    plugin: gap.pluginId,
-                    dependency: gap.dependencyId,
-                    platform: gap.platformKey,
-                    url: gap.target.url,
-                    reason: gap.reason,
-                    path: gap.cachePath,
-                },
-            });
-        }
-        // Sidecars are the other half of the same story: what a plugin ships as
-        // a native program, per platform. A platform it declares nothing for is
-        // a supported shape (the runtime degrades), but the author has to hear
-        // about it before the build, not from a player.
-        for (const requirement of collectSidecarRequirements(
-            pluginSelection.selected.map(source => source.manifest),
-            binaryPlatformKeys,
-        )) {
-            if (!requirement.target) {
-                findings.push({
-                    code: "sidecar-target-missing",
-                    severity: "warning",
-                    section: "content",
-                    detail: {
-                        plugin: requirement.pluginId,
-                        sidecar: requirement.sidecarId,
-                        platform: requirement.platformKey,
-                    },
-                });
-                continue;
-            }
-            if (sidecarLosesExecBit(requirement, hostPlatform)) {
-                findings.push({
-                    code: "sidecar-crossbuild-exec-bit",
-                    severity: "error",
-                    section: "targets",
-                    detail: {
-                        plugin: requirement.pluginId,
-                        sidecar: requirement.sidecarId,
-                        platform: requirement.platformKey,
-                        targetPlatform: sidecarTargetPlatform(requirement.platformKey),
-                    },
-                });
-            }
-        }
         if (desktopTargets.length > 0 && this.encryptAssetsEnabled(projectConfig)) {
             const key = await this.resolveEncryptionKey(normalizedProjectPath, projectConfig).catch(() => undefined);
             if (!key) {
@@ -510,27 +441,6 @@ export class GameBuildManager {
         const runtimeDistDir = path.join(this.app.getDistDir(), "runtime");
         const runtimeVersion = this.readRuntimeVersion();
         let desktopArtifact: GameRuntimeArtifactCompileResult | null = null;
-        // Plugin sidecars are per <platform>-<arch>, but one compiled app dir
-        // serves every desktop target in the request (the packaging worker takes
-        // a single appDir). So they can only ship when the request resolves to
-        // one key: with several, one platform's package would carry the other's
-        // binaries, and the game would try to spawn an executable its OS cannot
-        // run. Ship none and say why, rather than ship the wrong one.
-        const sidecarPlatformKeys = [...new Set(desktopTargets.map(target => buildDependencyPlatformKey(
-            target.platform,
-            normalizeGameBuildArch(target.platform, target.arch),
-        )))];
-        const sidecarPlatformKey = sidecarPlatformKeys.length === 1 ? sidecarPlatformKeys[0] : undefined;
-        if (!sidecarPlatformKey
-            && pluginSelection.selected.some(source => source.manifest.contributes.sidecars.length > 0)) {
-            this.emit(session, {
-                level: "warning",
-                source: "Build",
-                message: `plugin sidecars ship for one platform per build, but this build targets `
-                    + `${sidecarPlatformKeys.join(", ")}; no sidecar is packaged. `
-                    + "Build one desktop target at a time to include them.",
-            });
-        }
         if (desktopTargets.length > 0) {
             // Off the main thread: sealing a protected pack is many seconds of
             // synchronous native-codec CPU. session.worker tracks the compile so
@@ -544,11 +454,6 @@ export class GameBuildManager {
                 runtimePlugins: pluginSelection.selected,
                 mode: "production",
                 encryptionKey,
-                ...(sidecarPlatformKey ? { sidecarPlatformKey } : {}),
-                // The compile runs in a utility process, so the build dependency
-                // cache root travels with the input rather than being read from
-                // Electron on the far side.
-                hostUserDataDir: this.app.getUserDataDir(),
             }, {
                 onStart: worker => { session.worker = worker; },
                 cancelled: () => session.cancelled,
@@ -1179,16 +1084,9 @@ function normalizeTargets(targets: GameBuildTarget[] | undefined): GameBuildTarg
  * readFile/stat/ranged createReadStream, which Electron serves from inside
  * app.asar transparently - so they ship in the archive instead of as a loose
  * per-file tree on disk.
- *
- * Plugin sidecars are unconditional: an executable image and the shared
- * libraries beside it are opened by the OS loader, which knows nothing of asar,
- * so a sidecar packed into the archive could never be spawned. The pattern is
- * listed even for projects with no sidecar - electron-builder ignores a glob
- * that matches nothing, and a conditional here would be one more thing to keep
- * in step with the compiler.
  */
 function buildAsarUnpackPatterns(sealed: boolean): string[] {
-    const patterns = ["native.js", "icons/**", "sidecars/**"];
+    const patterns = ["native.js", "icons/**"];
     if (sealed) {
         patterns.push(RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME);
     }
