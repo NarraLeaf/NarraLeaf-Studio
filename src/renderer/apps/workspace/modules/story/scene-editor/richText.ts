@@ -307,7 +307,10 @@ function createEventChip(event: StoryInlineEvent, options: RichRenderOptions): H
     // An expression switch reads as a face; a sound-only token as a note. Kept icon-compact and
     // zero-width like the pause/value chips - the picker reopens on click.
     if (event.expression) {
-        const form = event.expression.formName?.trim();
+        // The token shows the pose id for a preset character and nothing for a layered one:
+        // its tags are ids too, and resolving them to names needs the character record,
+        // which this renderer deliberately does not take.
+        const form = event.expression.pose?.trim();
         span.title = form ? `${options.titles.expressionEvent}: ${form}` : options.titles.expressionEvent;
         span.innerHTML = EVENT_FACE_ICON_SVG;
         if (form) {
