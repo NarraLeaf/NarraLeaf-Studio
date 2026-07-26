@@ -55,6 +55,12 @@ export const characters = {
         onionSkin: "洋葱皮",
         setCanvas: "设定画布",
         problems: "问题",
+        snapshots: "快照",
+        combinations: {
+            title: "组合",
+            name: "给这个组合起名",
+            missing: "这里没有图：{list}",
+        },
         diagnostics: {
             offCanvas: "{name} 是 {size}，画布是 {canvas}",
             layerNoImage: "{name} 在所有标签下都不绘制",
