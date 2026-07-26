@@ -62,6 +62,7 @@ export const characters = {
             axisNoTags: "{name} 没有标签",
             axisUnused: "{name} 不驱动任何图层",
             duplicateTag: "{axis} 有两个标签叫 {name}",
+            occluded: "{name} 被上面的图层完全遮住",
         },
         header: {
             fallbackName: "角色",
