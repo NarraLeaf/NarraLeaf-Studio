@@ -43,7 +43,7 @@ import type {
     StoryAnimationTrackProperty,
     StoryBlock,
     StoryBlockId,
-    StoryCharacterVariantSelection,
+    StoryCharacterTagSelection,
     StoryConditionRef,
     StoryControlPayload,
     StoryDisplayableTargetRef,
