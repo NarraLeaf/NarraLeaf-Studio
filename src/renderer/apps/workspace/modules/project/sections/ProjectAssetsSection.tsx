@@ -1,20 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-    Globe,
-    HardDrive,
-    Image as ImageIcon,
-    Laptop,
-    Loader2,
-    Monitor,
-    Smartphone,
-    Tablet,
-    X,
-    type LucideIcon,
-} from "lucide-react";
+import { Image as ImageIcon, Loader2, X } from "lucide-react";
 import { Slider } from "@/lib/components/elements";
+import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { useTranslation } from "@/lib/i18n";
 import {
+    DEFAULT_OPAQUE_BACKGROUND,
     MAX_ICON_INSET,
     PROJECT_ICON_TARGETS,
     outputsForTarget,
@@ -40,7 +31,6 @@ import type { ProjectSectionProps } from "./types";
  */
 
 type TargetChrome = {
-    icon: LucideIcon;
     /** The shape the platform masks its icon to, as a CSS radius. */
     radius: string;
     /** Tile-relative size of the artwork; web shows its favicon life-size. */
@@ -48,12 +38,12 @@ type TargetChrome = {
 };
 
 const TARGET_CHROME: Record<ProjectIconTarget, TargetChrome> = {
-    macos: { icon: Laptop, radius: "22%", scale: 1 },
-    windows: { icon: Monitor, radius: "2px", scale: 1 },
-    linux: { icon: HardDrive, radius: "2px", scale: 1 },
-    android: { icon: Smartphone, radius: "50%", scale: 1 },
-    ios: { icon: Tablet, radius: "22%", scale: 1 },
-    web: { icon: Globe, radius: "2px", scale: 0.53 },
+    macos: { radius: "22%", scale: 1 },
+    windows: { radius: "2px", scale: 1 },
+    linux: { radius: "2px", scale: 1 },
+    android: { radius: "50%", scale: 1 },
+    ios: { radius: "22%", scale: 1 },
+    web: { radius: "2px", scale: 0.53 },
 };
 
 const ICON_BUTTON_CLASS = controlButtonClass();
@@ -69,6 +59,9 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
     // back to the persisted value on every change, so the thumb never follows
     // the drag and the commit reads the old number.
     const [insetDraft, setInsetDraft] = useState<number | null>(null);
+    // Same reason as the inset draft: the picker's own colour has to survive the
+    // re-bake, or the swatch flicks back to the previous one on commit.
+    const [backgroundDraft, setBackgroundDraft] = useState<string | null>(null);
     const urlsRef = useRef<string[]>([]);
 
     const releaseUrls = useCallback(() => {
@@ -138,7 +131,7 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
     }, [projectService, refresh, uiService]);
 
     const editSpec = useCallback((target: ProjectIconTarget, patch: Partial<ProjectIconSpec>) => {
-        void refresh(withSpec(projectService.getProjectIconSet(), target, patch));
+        return refresh(withSpec(projectService.getProjectIconSet(), target, patch));
     }, [projectService, refresh]);
 
     if (!set) {
@@ -172,6 +165,7 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
                         selected={selected === target}
                         onClick={() => {
                             setInsetDraft(null);
+                            setBackgroundDraft(null);
                             setSelected(selected === target ? null : target);
                         }}
                     />
@@ -216,8 +210,13 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
                             disabled={busy}
                             onValueChange={setInsetDraft}
                             onValueCommit={value => {
-                                setInsetDraft(null);
-                                editSpec(selected, { inset: value / 100 });
+                                // The draft outlives the commit on purpose. Clearing it
+                                // here would show the *old* persisted inset until the
+                                // re-bake lands - a visible bounce back to where the
+                                // thumb started, for as long as the bake takes.
+                                setInsetDraft(value);
+                                void editSpec(selected, { inset: value / 100 })
+                                    .finally(() => setInsetDraft(null));
                             }}
                             aria-label={t("project.assets.inset")}
                         />
@@ -229,22 +228,30 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
                     <div className="flex items-center justify-between gap-3">
                         <span className="text-xs text-fg-muted">{t("project.assets.background")}</span>
                         <div className="flex items-center gap-2">
-                            <span className="font-mono text-2xs text-fg-subtle">
-                                {spec.background ?? t("project.assets.transparent")}
-                            </span>
-                            <input
-                                type="color"
-                                value={spec.background ?? "#FFFFFF"}
+                            {spec.background ? null : (
+                                <span className="text-2xs text-fg-subtle">{t("project.assets.transparent")}</span>
+                            )}
+                            {/* The same picker the property inspector and Settings use, rather
+                                than a native swatch: a second colour control would drift from
+                                the first, and this one already carries hex/RGB/HSL entry. */}
+                            <ColorPickerTrigger
+                                value={{ hex: backgroundDraft ?? spec.background ?? DEFAULT_OPAQUE_BACKGROUND }}
+                                displayMode="icon-hex"
+                                allowOpacity={false}
                                 disabled={busy}
-                                onChange={event => editSpec(selected, { background: event.target.value.toUpperCase() })}
-                                className="h-6 w-6 cursor-pointer rounded-md border border-edge bg-transparent p-0"
-                                aria-label={t("project.assets.background")}
+                                onChange={value => setBackgroundDraft(value.hex)}
+                                onCommit={value => {
+                                    const hex = value.hex.toUpperCase();
+                                    setBackgroundDraft(hex);
+                                    void editSpec(selected, { background: hex })
+                                        .finally(() => setBackgroundDraft(null));
+                                }}
                             />
                             {spec.background ? (
                                 <button
                                     type="button"
                                     className={ICON_BUTTON_CLASS}
-                                    onClick={() => editSpec(selected, { background: null })}
+                                    onClick={() => void editSpec(selected, { background: null })}
                                     disabled={busy}
                                     aria-label={t("project.assets.clearBackground")}
                                 >
@@ -272,16 +279,11 @@ function TargetTile({
 }) {
     const { t } = useTranslation();
     const chrome = TARGET_CHROME[target];
-    const TargetIcon = chrome.icon;
     const artwork = Math.round(TILE_SIZE * chrome.scale);
+    const label = t(`project.assets.target.${target}` as "project.assets.target.macos");
 
     return (
-        <button
-            type="button"
-            onClick={onClick}
-            className="grid justify-items-center gap-1"
-            aria-label={t(`project.assets.target.${target}` as "project.assets.target.macos")}
-        >
+        <button type="button" onClick={onClick} className="grid justify-items-center gap-1">
             <span
                 className={`grid place-items-center overflow-hidden border bg-surface-raised ${selected ? "border-primary" : "border-edge"}`}
                 style={{ width: TILE_SIZE, height: TILE_SIZE, borderRadius: chrome.radius }}
@@ -290,7 +292,9 @@ function TargetTile({
                     ? <img src={url} alt="" style={{ width: artwork, height: artwork }} className="object-contain" />
                     : <ImageIcon className="h-4 w-4 text-fg-subtle" />}
             </span>
-            <TargetIcon className={`h-3.5 w-3.5 ${selected ? "text-primary" : "text-fg-subtle"}`} />
+            {/* The platform is named, not glyphed: a laptop and a tablet outline
+                do not tell anyone which one is macOS and which one is iOS. */}
+            <span className={`text-2xs ${selected ? "text-primary" : "text-fg-subtle"}`}>{label}</span>
         </button>
     );
 }
