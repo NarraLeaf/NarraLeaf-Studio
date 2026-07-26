@@ -19,7 +19,7 @@ export const devMode = {
         output: "Output",
         scope: "Scope",
         variables: "Variables",
-        stack: "Stack",
+        context: "Context",
         timeline: "Timeline",
         scene: "Scenes",
     },
@@ -31,10 +31,11 @@ export const devMode = {
         noStory: "No story is running",
         noVariables: "No variables declared",
         noRows: "No rows in this scene",
-        stackRoot: "Root",
-        stackAsync: "Async",
-        loop: "loop {type} {counter}",
-        branch: "branch {index}",
+        // Execution context: the scene that is running, the containers the play head sits inside, and
+        // the branches of a parallel. Headings only - each one is followed by the answer.
+        contextScene: "Scene",
+        contextInside: "Inside",
+        contextRunning: "Running",
         currentScene: "Current",
     },
     blueprints: {
