@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils/cn";
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
-import { DashboardSection, StatTile } from "./DashboardPrimitives";
+import { DashboardSection, StatList, StatRow } from "./DashboardPrimitives";
 import { WritingActivityChart } from "./WritingActivityChart";
 import {
     buildActivityTimeline,
@@ -366,42 +366,42 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
 
                 <DashboardSection title={t("dashboard.scale.title")}>
                     {scale ? (
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                            <StatTile label={t("dashboard.scale.scenes")} value={formatNumber(scale.scenes)} />
-                            <StatTile
+                        <StatList>
+                            <StatRow label={t("dashboard.scale.scenes")} value={formatNumber(scale.scenes)} />
+                            <StatRow
                                 label={t("dashboard.scale.dialogueLines")}
                                 value={formatNumber(scale.dialogueLines)}
                             />
-                            <StatTile label={t("dashboard.scale.totalWords")} value={formatNumber(scale.totalWords)} />
-                            <StatTile label={t("dashboard.scale.characters")} value={formatNumber(scale.characters)} />
-                            <StatTile label={t("dashboard.scale.assets")} value={formatNumber(scale.assets)} />
-                            <StatTile
+                            <StatRow label={t("dashboard.scale.totalWords")} value={formatNumber(scale.totalWords)} />
+                            <StatRow label={t("dashboard.scale.characters")} value={formatNumber(scale.characters)} />
+                            <StatRow label={t("dashboard.scale.assets")} value={formatNumber(scale.assets)} />
+                            <StatRow
                                 label={t("dashboard.scale.blueprints")}
                                 value={formatNumber(scale.blueprints)}
                                 hint={tn("dashboard.units.nodes", scale.blueprintNodes, {
                                     count: scale.blueprintNodes,
                                 })}
                             />
-                            <StatTile label={t("dashboard.scale.uiSurfaces")} value={formatNumber(scale.uiSurfaces)} />
-                            <StatTile label={t("dashboard.scale.variables")} value={formatNumber(variableCount)} />
-                        </div>
+                            <StatRow label={t("dashboard.scale.uiSurfaces")} value={formatNumber(scale.uiSurfaces)} />
+                            <StatRow label={t("dashboard.scale.variables")} value={formatNumber(variableCount)} />
+                        </StatList>
                     ) : (
                         <p className="text-xs text-fg-subtle">{failed ? t("dashboard.failed") : t("dashboard.loading")}</p>
                     )}
                 </DashboardSection>
 
                 <DashboardSection title={t("dashboard.activity.title")} description={t("dashboard.activity.description")}>
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                        <StatTile
+                    <StatList>
+                        <StatRow
                             label={t("dashboard.activity.wordsWritten")}
                             value={formatNumber(summary.wordsWritten)}
                         />
-                        <StatTile
+                        <StatRow
                             label={t("dashboard.activity.activeTime")}
                             value={formatActiveTime(translator, summary.activeSeconds)}
                         />
-                        <StatTile label={t("dashboard.activity.edits")} value={formatNumber(summary.edits)} />
-                        <StatTile
+                        <StatRow label={t("dashboard.activity.edits")} value={formatNumber(summary.edits)} />
+                        <StatRow
                             label={t("dashboard.activity.streak")}
                             value={
                                 streak > 0
@@ -409,7 +409,7 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
                                     : t("dashboard.activity.streakNone")
                             }
                         />
-                    </div>
+                    </StatList>
                     <WritingActivityChart points={windowPoints} peak={summary.peakDelta} />
                     {!hasCurve && <p className="text-2xs text-fg-subtle">{t("dashboard.activity.empty")}</p>}
                 </DashboardSection>
@@ -431,13 +431,13 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
 
                 {structure && (
                     <DashboardSection title={t("dashboard.structure.title")}>
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                            <StatTile
+                        <StatList>
+                            <StatRow
                                 label={t("dashboard.structure.chapters")}
                                 value={formatNumber(scale?.chapters ?? 0)}
                             />
-                            <StatTile label={t("dashboard.structure.branches")} value={formatNumber(structure.branches)} />
-                        </div>
+                            <StatRow label={t("dashboard.structure.branches")} value={formatNumber(structure.branches)} />
+                        </StatList>
                     </DashboardSection>
                 )}
 
