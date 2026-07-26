@@ -23,7 +23,6 @@ import type {
     GameAppSaveStore,
     GameAppStoryRuntimeBridge,
 } from "@/lib/ui-editor/runtime/app/GameAppHost";
-import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
 import { blockIdForActionId } from "./storyRuntimeDebugModel";
 import { useDevModeRuntimePlugins } from "../hooks/useDevModeRuntimePlugins";
 import { resolveDevModeViewportSize } from "./devModeViewport";
@@ -533,154 +532,41 @@ export function DevModeContent(props: DevModeContentProps) {
     }, []);
 
     // The Dev Mode window's close guard lives in the main process, which blocks the close until we
-    // answer. The blueprint's decision comes from GameApp, which registers below once it is ready.
-    // Registered on mount rather than with the host, so closing while the game is still starting up
-    // never hangs on a listener that does not exist yet — it just agrees to close.
-    //
-    // A set, not a single slot: runtime plugins observe the same request, and a second registration
-    // must not silently unseat the blueprint decider. All handlers are asked and the close proceeds
-    // only if every one agrees, which leaves the single-decider case byte-for-byte as it was.
-    const closeListenersRef = useRef(new Set<() => Promise<boolean> | boolean>());
+    // answer. The blueprint's decision comes from GameApp, which sets the listener below once it is
+    // ready. Registered on mount rather than with the host, so closing while the game is still
+    // starting up never hangs on a listener that does not exist yet — it just agrees to close.
+    const closeListenerRef = useRef<null | (() => Promise<boolean> | boolean)>(null);
     useEffect(() => {
-        const listeners = closeListenersRef.current;
         const token = getInterface().devMode.onCloseRequested(async () => {
-            const allows = await Promise.all(Array.from(listeners).map(async listener => {
-                try {
-                    return await listener();
-                } catch (error) {
-                    // A failing close handler must not trap the window open.
-                    console.error("[DevMode] Window close handler failed, allowing close:", error);
-                    return true;
-                }
-            }));
-            return { success: true, data: { allow: allows.every(allow => allow !== false) } };
+            const listener = closeListenerRef.current;
+            if (!listener) {
+                return { success: true, data: { allow: true } };
+            }
+            try {
+                const allow = await listener();
+                return { success: true, data: { allow: allow !== false } };
+            } catch (error) {
+                // A failing close handler must not trap the window open.
+                console.error("[DevMode] Window close handler failed, allowing close:", error);
+                return { success: true, data: { allow: true } };
+            }
         });
         return () => token.cancel();
     }, []);
 
     const subscribeCloseRequested = useCallback((listener: () => Promise<boolean> | boolean): (() => void) => {
-        const listeners = closeListenersRef.current;
-        listeners.add(listener);
+        closeListenerRef.current = listener;
         return () => {
-            listeners.delete(listener);
+            if (closeListenerRef.current === listener) {
+                closeListenerRef.current = null;
+            }
         };
     }, []);
-
-    // The project reference arrives with the Dev Mode payload, while runtime plugins load on mount.
-    // Backends therefore resolve it lazily: a plugin that reads storage during setup waits for the
-    // payload instead of failing on a null project.
-    const projectRefRef = useRef<DevModeSaveProjectRef | null>(null);
-    const projectRefWaitersRef = useRef(new Set<(ref: DevModeSaveProjectRef) => void>());
-    useEffect(() => {
-        projectRefRef.current = projectRef;
-        if (!projectRef) {
-            return;
-        }
-        const waiters = Array.from(projectRefWaitersRef.current);
-        projectRefWaitersRef.current.clear();
-        for (const resolve of waiters) {
-            resolve(projectRef);
-        }
-    }, [projectRef]);
-    const awaitProjectRef = useCallback((): Promise<DevModeSaveProjectRef> => {
-        const current = projectRefRef.current;
-        if (current) {
-            return Promise.resolve(current);
-        }
-        return new Promise(resolve => {
-            projectRefWaitersRef.current.add(resolve);
-        });
-    }, []);
-
-    // Runtime plugin capability backends for the Dev Mode window. Built once and kept stable:
-    // plugin setup captures these objects, and they have to outlive every bundle revision and
-    // in-window relaunch.
-    const pluginHost = useMemo(() => new RuntimePluginHostController({
-        persistence: {
-            getAll: async () => {
-                const result = await getInterface().blueprintPersistence.getAll(await awaitProjectRef());
-                if (!result.success) {
-                    throw new Error(result.error ?? "Failed to read plugin storage");
-                }
-                return result.data.values;
-            },
-            getValue: async key => {
-                const result = await getInterface().blueprintPersistence.getValue(await awaitProjectRef(), key);
-                if (!result.success) {
-                    throw new Error(result.error ?? `Failed to read plugin storage key "${key}"`);
-                }
-                return result.data.value;
-            },
-            setValue: async (key, value) => {
-                const result = await getInterface().blueprintPersistence.setValue(await awaitProjectRef(), key, value);
-                if (!result.success) {
-                    throw new Error(result.error ?? `Failed to write plugin storage key "${key}"`);
-                }
-            },
-            removeValue: async key => {
-                const result = await getInterface().blueprintPersistence.removeValue(await awaitProjectRef(), key);
-                if (!result.success) {
-                    throw new Error(result.error ?? `Failed to remove plugin storage key "${key}"`);
-                }
-            },
-        },
-        saves: {
-            // The Dev Mode window always mounts a game app, which attaches the
-            // write and load paths once it is up.
-            writable: true,
-            listIds: async () => {
-                const result = await getInterface().devMode.save.listIds(await awaitProjectRef());
-                if (!result.success) {
-                    throw new Error(result.error ?? "List Saves failed");
-                }
-                return result.data.ids;
-            },
-            readMetadata: async id => {
-                const result = await getInterface().devMode.save.read(await awaitProjectRef(), id);
-                if (!result.success) {
-                    throw new Error(result.error ?? `Read Save failed: ${id}`);
-                }
-                const record = result.data.record;
-                if (!record) {
-                    return null;
-                }
-                const updatedAt = Date.parse(record.metadata.updatedAt ?? "");
-                return {
-                    id: record.metadata.id ?? id,
-                    ...(Number.isFinite(updatedAt) ? { updatedAt } : {}),
-                    ...(record.metadata.user === undefined ? {} : { metadata: record.metadata.user }),
-                };
-            },
-        },
-        // No `assets` backend on purpose: Dev Mode resolves asset ids over IPC, and the capability
-        // is a synchronous `url(assetId)`. A shell that cannot answer synchronously must leave the
-        // namespace absent rather than hand out a URL it has to guess.
-        subscribeFullscreenChanged: listener => {
-            const token = getInterface().devMode.onFullscreenChanged(({ isFullscreen }) => listener(isFullscreen));
-            return () => token.cancel();
-        },
-        // Observers only: a plugin never gets to veto the close, so this handler always agrees and
-        // the blueprint decider stays the only thing that can cancel one.
-        subscribeCloseRequested: listener => subscribeCloseRequested(() => {
-            listener();
-            return true;
-        }),
-        log: (level, message) => {
-            if (level === "error") {
-                console.error(`[DevMode] ${message}`);
-            } else if (level === "warning") {
-                console.warn(`[DevMode] ${message}`);
-            } else {
-                console.info(`[DevMode] ${message}`);
-            }
-        },
-    }), [awaitProjectRef, subscribeCloseRequested]);
-    useEffect(() => pluginHost.bindShellEvents(), [pluginHost]);
 
     // Runtime plugin entries must be registered before the game boots so
     // plugin blueprint nodes and widget renderers resolve at execution time.
     // Failed plugins are logged and skipped; they never block the game.
-    const runtimePlugins = useDevModeRuntimePlugins(rendererRegistry, pluginHost);
+    const runtimePlugins = useDevModeRuntimePlugins(rendererRegistry);
 
     const host = useMemo<GameAppHost | null>(() => {
         if (!bundle || !surface) {
@@ -810,7 +696,6 @@ export function DevModeContent(props: DevModeContentProps) {
                     renderFrame={renderFrame}
                     renderPlaceholder={renderPlaceholder}
                     renderOverlays={renderOverlays}
-                    pluginHost={pluginHost}
                 />
             </div>
         </div>

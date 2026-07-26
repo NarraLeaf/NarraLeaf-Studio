@@ -14,10 +14,6 @@
       "narraleaf.quick-save.save",
       "narraleaf.quick-save.load",
       "narraleaf.quick-save.has"
-    ],
-    "runtimeCapabilities": [
-      "saves.read",
-      "saves.write"
     ]
   },
   "permissions": []

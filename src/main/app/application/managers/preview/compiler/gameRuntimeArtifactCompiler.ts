@@ -8,7 +8,6 @@ import {
     type GameRuntimeAssetManifestEntry,
     type GameRuntimeLaunchEntry,
     type GameRuntimePackPluginEntry,
-    type GameRuntimePackSidecarEntry,
     type GameRuntimePackV1,
     type GameRuntimeProjectIcon,
     type GameRuntimeProjectIconPlatform,
@@ -30,13 +29,6 @@ import {
 } from "@shared/utils/gameRuntimeBundle";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
 import { readPublishedPluginData } from "../../pluginRuntimeData";
-// Relative rather than "@/": this module is unit-tested, and the test runner
-// only aliases "@" to the renderer tree - a value import through it would not
-// resolve. (Same reason as preflight.ts.)
-import {
-    ensurePluginBuildDependency,
-    resolveBuildDependencyFile,
-} from "../../../../../buildWorker/pluginBuildDependencies";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { getMimeType } from "@shared/utils/fs";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
@@ -61,15 +53,6 @@ const OPTIONAL_RUNTIME_FILES = ["main.js.map", "preload.js.map", "renderer.js.ma
 // dist was produced by the runtime build script in production mode; it is
 // validated before packing and never copied into the app dir.
 const RUNTIME_BUILD_MANIFEST_FILENAME = "build-manifest.json";
-/** Where sidecar payload lands inside the app dir; mirrored by buildAsarUnpackPatterns. */
-const SIDECAR_DIR_NAME = "sidecars";
-/**
- * Marks an `include` entry as an artifact of a declared build dependency rather
- * than a file inside the plugin package. Kept in step with the manifest
- * validator's own prefix (pluginManifest.ts), which is where the spelling and
- * the `dep:<id>/<path>` shape are enforced.
- */
-const SIDECAR_DEP_INCLUDE_PREFIX = "dep:";
 
 export type GameRuntimePluginSource = {
     manifest: NormalizedPluginManifestV2;
@@ -77,8 +60,6 @@ export type GameRuntimePluginSource = {
     entry: string;
     /** Absolute path of the built runtime entry file inside the install dir. */
     entryPath: string;
-    /** Absolute path of the plugin package root; sidecar `include` paths resolve against it. */
-    installPath: string;
 };
 
 export type GameRuntimeArtifactCompileInput = {
@@ -103,22 +84,6 @@ export type GameRuntimeArtifactCompileInput = {
     };
     /** Runtime entries of enabled plugins to ship inside the pack. */
     runtimePlugins?: GameRuntimePluginSource[];
-    /**
-     * `<platform>-<arch>` this app dir's native payload is built for - the key
-     * plugin sidecar binaries are declared under. A production build passes the
-     * target's key; a preview passes the host's own, so an author can exercise a
-     * sidecar without a full build. Absent for web compiles, which ship no
-     * sidecars at all (a static site has no process to spawn).
-     */
-    sidecarPlatformKey?: string;
-    /**
-     * Studio's own userData directory, used only as the root of the build
-     * dependency cache that `dep:` sidecar includes resolve through. Passed in
-     * rather than read from Electron because this module also runs off the main
-     * process (see compileGameRuntimeArtifactInWorker), where app.getPath is
-     * unavailable.
-     */
-    hostUserDataDir?: string;
     /**
      * Studio's own icon, shipped when the project configures none. Passed in
      * rather than resolved here because this module also runs off the main
@@ -276,8 +241,6 @@ export async function compileGameRuntimeArtifact(
             projectPath: input.projectPath,
             runtimePlugins: input.runtimePlugins ?? [],
             target,
-            ...(input.sidecarPlatformKey ? { sidecarPlatformKey: input.sidecarPlatformKey } : {}),
-            ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
         });
 
         const pack: GameRuntimePackV1 = {
@@ -514,9 +477,6 @@ async function copyRuntimePlugins(input: {
     projectPath: string;
     runtimePlugins: GameRuntimePluginSource[];
     target: PackTarget;
-    /** Absent on preview and web compiles: those ship no sidecars. */
-    sidecarPlatformKey?: string;
-    hostUserDataDir?: string;
 }): Promise<GameRuntimePackPluginEntry[]> {
     const entries: GameRuntimePackPluginEntry[] = [];
     for (const plugin of input.runtimePlugins) {
@@ -540,198 +500,13 @@ async function copyRuntimePlugins(input: {
             manifest: plugin.manifest,
             onWarning: message => console.warn("[gameRuntimeArtifactCompiler]", message),
         });
-        const sidecars = input.sidecarPlatformKey
-            ? await copyPluginSidecars({
-                appDir: input.appDir,
-                plugin,
-                platformKey: input.sidecarPlatformKey,
-                ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
-            })
-            : [];
         entries.push({
             manifest: plugin.manifest,
             entryRelativePath: relativePath,
             ...(data ? { data } : {}),
-            ...(sidecars.length > 0 ? { sidecars } : {}),
         });
     }
     return entries;
-}
-
-/**
- * Copy one plugin's sidecar payload for the platform this pack is built for.
- *
- * Sidecars are ALWAYS loose files, even when the rest of the pack is sealed.
- * A sidecar is an executable image: the OS loader opens it by path, so it can
- * be neither read out of the protected store nor run from inside the asar, and
- * sealing it would only be a lie about what shipped - the bytes a player can
- * copy out of the app dir are the same either way. (buildAsarUnpackPatterns
- * keeps `sidecars/**` outside the archive for the same reason.)
- *
- * A plugin that declares no target for this platform key is not an error: the
- * contract is that its runtime degrades and `available()` answers false there.
- * Preflight warns the author before they commit to the build; here it is worth
- * only a log line.
- */
-async function copyPluginSidecars(input: {
-    appDir: string;
-    plugin: GameRuntimePluginSource;
-    platformKey: string;
-    hostUserDataDir?: string;
-}): Promise<GameRuntimePackSidecarEntry[]> {
-    const { plugin, platformKey } = input;
-    const entries: GameRuntimePackSidecarEntry[] = [];
-    for (const sidecar of plugin.manifest.contributes.sidecars) {
-        const target = sidecar.targets[platformKey];
-        if (!target) {
-            console.info(
-                "[gameRuntimeArtifactCompiler]",
-                `plugin "${plugin.manifest.id}" ships no "${sidecar.id}" sidecar for ${platformKey}; ` +
-                "it is absent from this build",
-            );
-            continue;
-        }
-        const where = `Sidecar "${sidecar.id}" of plugin "${plugin.manifest.id}" (${platformKey})`;
-        const sidecarRelativeDir = path.posix.join(SIDECAR_DIR_NAME, plugin.manifest.id, sidecar.id);
-        const sidecarDir = path.join(input.appDir, ...sidecarRelativeDir.split("/"));
-        for (const include of target.include) {
-            const { sourcePath, relativePath } = await resolveSidecarInclude({
-                include,
-                plugin,
-                platformKey,
-                target,
-                where,
-                ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
-            });
-            // The include path is also the path inside the sidecar directory
-            // (minus any `dep:<id>/` prefix), so an author who needs a shared
-            // library beside the executable says so by declaring it there -
-            // through the dependency's own `files` mapping for a `dep:` entry.
-            const targetPath = resolveInsideDir(sidecarDir, relativePath, where);
-            await fs.mkdir(path.dirname(targetPath), { recursive: true });
-            try {
-                await fs.copyFile(sourcePath, targetPath);
-            } catch (error) {
-                throw new Error(
-                    `${where}: could not copy "${include}" from ${sourcePath}: ` +
-                    `${error instanceof Error ? error.message : String(error)}`,
-                );
-            }
-        }
-        entries.push({
-            id: sidecar.id,
-            entry: path.posix.join(sidecarRelativeDir, ...normalizeSidecarPath(target.entry).split("/")),
-            kind: sidecar.kind,
-            autostart: sidecar.autostart,
-            startupTimeoutMs: sidecar.startupTimeoutMs,
-            shutdownTimeoutMs: sidecar.shutdownTimeoutMs,
-            restart: { ...sidecar.restart },
-        });
-    }
-    return entries;
-}
-
-/**
- * Locate the bytes one `include` entry names, and say where they belong inside
- * the sidecar directory.
- *
- * A package-relative file is verified against its declared digest before it is
- * copied. The manifest validator checks the same digests at install time, but a
- * build is the last moment before those bytes reach a player's machine, and an
- * install directory is an ordinary folder anything on the host can rewrite
- * afterwards - so the pack re-verifies rather than trusts the install record.
- * `dep:` artifacts are exempt here because the build dependency cache verified
- * the archive they came out of against its own mandatory digest.
- */
-async function resolveSidecarInclude(input: {
-    include: string;
-    plugin: GameRuntimePluginSource;
-    platformKey: string;
-    target: { sha256: Record<string, string> };
-    where: string;
-    hostUserDataDir?: string;
-}): Promise<{ sourcePath: string; relativePath: string }> {
-    const { include, plugin, platformKey, where } = input;
-    if (include.startsWith(SIDECAR_DEP_INCLUDE_PREFIX)) {
-        const reference = include.slice(SIDECAR_DEP_INCLUDE_PREFIX.length);
-        const separator = reference.indexOf("/");
-        const dependencyId = separator === -1 ? reference : reference.slice(0, separator);
-        const relativePath = normalizeSidecarPath(separator === -1 ? "" : reference.slice(separator + 1));
-        if (!relativePath) {
-            throw new Error(`${where}: include "${include}" names no file inside the build dependency`);
-        }
-        const dependency = plugin.manifest.contributes.buildDependencies.find(item => item.id === dependencyId);
-        if (!dependency) {
-            throw new Error(`${where}: include "${include}" references undeclared build dependency "${dependencyId}"`);
-        }
-        const dependencyTarget = dependency.targets[platformKey];
-        if (!dependencyTarget) {
-            throw new Error(
-                `${where}: build dependency "${dependencyId}" declares nothing for ${platformKey}, ` +
-                `so "${include}" cannot be shipped`,
-            );
-        }
-        if (!input.hostUserDataDir) {
-            // A programming error rather than an author's: whoever asked for a
-            // sidecar platform key owes the compile a cache root as well.
-            throw new Error(
-                `${where}: "${include}" needs the build dependency cache, but no cache root was passed to the compile`,
-            );
-        }
-        const dependencyDir = await ensurePluginBuildDependency({
-            userDataDir: input.hostUserDataDir,
-            dependencyId,
-            platformKey,
-            target: dependencyTarget,
-            log: (level, message) => console.info(`[gameRuntimeArtifactCompiler] ${level}:`, message),
-        });
-        return { sourcePath: resolveBuildDependencyFile(dependencyDir, relativePath), relativePath };
-    }
-
-    const relativePath = normalizeSidecarPath(include);
-    const sourcePath = resolveInsideDir(plugin.installPath, relativePath, where);
-    const expected = (input.target.sha256[include] ?? input.target.sha256[relativePath] ?? "").trim().toLowerCase();
-    if (!expected) {
-        throw new Error(`${where}: no sha256 is declared for "${include}", so it cannot be verified`);
-    }
-    let bytes: Buffer;
-    try {
-        bytes = await fs.readFile(sourcePath);
-    } catch (error) {
-        throw new Error(
-            `${where}: could not read "${include}" at ${sourcePath} ` +
-            `(${error instanceof Error ? error.message : String(error)})`,
-        );
-    }
-    const digest = crypto.createHash("sha256").update(bytes).digest("hex");
-    if (digest !== expected) {
-        throw new Error(
-            `${where}: "${include}" has sha256 ${digest}, not the declared ${expected}. ` +
-            "The plugin package has been modified since it was installed; reinstall it rather than ship this binary.",
-        );
-    }
-    return { sourcePath, relativePath };
-}
-
-/** Zip and manifests speak forward slashes; authors copy paths off a Windows shell. */
-function normalizeSidecarPath(value: string): string {
-    return value.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").replace(/^\/+/, "");
-}
-
-/**
- * Resolve a forward-slash relative path inside `root`, refusing to escape it.
- * The manifest validator rejects escaping paths already; this is the second
- * lock, because a hand-edited install record must not be able to read or write
- * outside the package and the app dir.
- */
-function resolveInsideDir(root: string, relativePath: string, where: string): string {
-    const base = path.resolve(root);
-    const resolved = path.resolve(base, ...relativePath.split("/").filter(segment => segment.length > 0));
-    const relative = path.relative(base, resolved);
-    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
-        throw new Error(`${where}: "${relativePath}" escapes ${base}`);
-    }
-    return resolved;
 }
 
 async function copyProjectIcon(input: {

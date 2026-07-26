@@ -165,20 +165,15 @@ function verify(dir) {
     const probePath = path.join(dir, "__verify.ts");
     const tsconfigPath = path.join(dir, "tsconfig.verify.json");
 
-    fs.writeFileSync(probePath, `import type { PluginBlueprintNodeDef, PluginServices } from "./plugin.js";
+    fs.writeFileSync(probePath, `import type { BlueprintNodeDef } from "./plugin.js";
 import type { RuntimeBlueprintNodeDef, RuntimePluginApp } from "./runtime.js";
 
 // A shared node definition must satisfy both surfaces; this is the pattern the
-// authoring guide tells plugins to use. Both sides take the same narrowed
-// execute, so the shared module is written once against the capability-gated
-// context and neither entry is the privileged one - registering with the studio
-// service must therefore be no more permissive than registering with the game.
-declare const shared: PluginBlueprintNodeDef[];
+// authoring guide tells plugins to use.
+declare const shared: BlueprintNodeDef[];
 declare const app: RuntimePluginApp;
-declare const services: PluginServices;
 const _runtimeAccepts: RuntimeBlueprintNodeDef[] = shared;
 app.game.blueprintNodes.registerMany(shared);
-services.blueprintNodes.registerMany(shared);
 export type { };
 `);
 

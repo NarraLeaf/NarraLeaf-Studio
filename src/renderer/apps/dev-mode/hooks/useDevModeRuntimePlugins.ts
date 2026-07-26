@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { getInterface } from "@/lib/app/bridge";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
-import type { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
 
 export type DevModeRuntimePluginsState = {
     /** True once every runtime plugin entry finished loading (or failed). */
@@ -19,10 +18,7 @@ export type DevModeRuntimePluginsState = {
  * loadRuntimePlugins caches per plugin id+version+entry, so StrictMode
  * double-invocation and Dev Mode live reloads never run setup twice.
  */
-export function useDevModeRuntimePlugins(
-    rendererRegistry: ElementRendererRegistry,
-    pluginHost: RuntimePluginHostController,
-): DevModeRuntimePluginsState {
+export function useDevModeRuntimePlugins(rendererRegistry: ElementRendererRegistry): DevModeRuntimePluginsState {
     const [state, setState] = useState<DevModeRuntimePluginsState>({ ready: false, errors: [] });
 
     useEffect(() => {
@@ -35,7 +31,6 @@ export function useDevModeRuntimePlugins(
                 }
                 const loadResults = await loadRuntimePlugins(result.data.plugins, {
                     elementRenderers: rendererRegistry,
-                    host: pluginHost.host,
                     log: (level, message) => {
                         if (level === "error") {
                             console.error(`[DevMode] ${message}`);
@@ -68,7 +63,7 @@ export function useDevModeRuntimePlugins(
         return () => {
             disposed = true;
         };
-    }, [pluginHost, rendererRegistry]);
+    }, [rendererRegistry]);
 
     return state;
 }

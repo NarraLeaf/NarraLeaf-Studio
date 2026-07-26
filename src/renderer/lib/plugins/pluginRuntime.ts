@@ -13,17 +13,10 @@ import {
     AssetType,
     PanelPosition,
     type PluginApp,
-    type PluginBlueprintNodeDef,
     type PluginCleanup,
     type PluginMessageBundle,
     type PluginTranslator,
 } from "@/plugin";
-import type { BlueprintNodeDef } from "@/lib/ui-editor/blueprint-nodes/types";
-import type {
-    RuntimePluginGame,
-    RuntimePluginLogLevel,
-} from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
-import type { RuntimePluginHost } from "@/lib/ui-editor/runtime/plugins/runtimePluginHost";
 import { i18nStore } from "@/lib/i18n/store";
 import { isActionMenuAction, isActionMenuSeparator } from "@/apps/workspace/components/ui/actionMenuModel";
 import type { ActionGroup, ActionMenuItem } from "@/apps/workspace/registry/types";
@@ -266,97 +259,6 @@ function assertDeclaredWidget(descriptor: WorkspacePluginDescriptor, type: strin
 }
 
 /**
- * Build the `game` handed to a plugin node's execute while it runs in the editor.
- *
- * Studio is an environment that backs nothing. Game shells each pass the
- * {@link RuntimePluginHost} subset they can actually serve — the Dev Mode window,
- * the preview shell, the web export all differ — and the editor's subset is empty:
- * there is no playthrough to read state from, no save file, no game to draw an
- * overlay over. So every capability-gated domain is *absent from this object*,
- * indistinguishable from one the manifest never declared, and only the four
- * always-present members remain. Plugin nodes already have to survive that (the
- * web export has no sidecar either); running in the editor is the same situation.
- *
- * Nothing here closes over `hostAdapter`. Routing the host context back in through
- * a side door would undo exactly what narrowing the plugin execute achieved.
- */
-function createEditorRuntimePluginGame(descriptor: WorkspacePluginDescriptor): RuntimePluginGame {
-    const pluginId = descriptor.plugin.id;
-    const log = (level: RuntimePluginLogLevel, message: string): void => {
-        const line = `[plugin:${pluginId}] ${message}`;
-        if (level === "error") {
-            console.error(line);
-        } else if (level === "warning") {
-            console.warn(line);
-        } else {
-            console.info(line);
-        }
-    };
-    // Registration belongs to `setup(app)` in a game environment. In Studio the
-    // equivalent is `app.services.*`, which the plugin already used to get this
-    // node registered - so a call here is a mistake worth naming, not a silent
-    // no-op that drops a contribution on the floor.
-    const registrationUnavailable = (namespace: string): never => {
-        throw new Error(
-            `[plugin:${pluginId}] app.game.${namespace} is only available in a game runtime entry; ` +
-            `use app.services.${namespace} from the studio entry instead.`,
-        );
-    };
-
-    return {
-        blueprintNodes: {
-            register: () => registrationUnavailable("blueprintNodes"),
-            registerMany: () => registrationUnavailable("blueprintNodes"),
-        },
-        widgets: {
-            register: () => registrationUnavailable("widgets"),
-            registerMany: () => registrationUnavailable("widgets"),
-        },
-        data: {
-            // In a game this reads the copy published with the pack, synchronously.
-            // The editor's authored copy lives behind the async storage service, so
-            // there is nothing to return in time; documented as "degrade gracefully
-            // rather than assume authored data exists", which is what null means.
-            readJson: () => {
-                log(
-                    "warning",
-                    "app.game.data is not readable in the editor; read the authored copy through "
-                    + "app.services.storage in the studio entry and pass it into the node.",
-                );
-                return null;
-            },
-        },
-        log,
-    };
-}
-
-/**
- * Adapt a plugin's node definition to the editor catalog's wider execute.
- *
- * The narrowing happens here, mirroring `registerNode` in the runtime loader:
- * the host context carries `hostAdapter`, and with it saves, localization and
- * quit - none of which the manifest declared or the user approved. Only the
- * fields of {@link RuntimeBlueprintNodeContext} cross over, plus the same
- * capability-gated `game` the plugin's runtime entry would see.
- */
-function toEditorBlueprintNodeDef(
-    def: PluginBlueprintNodeDef,
-    game: RuntimePluginGame,
-): BlueprintNodeDef {
-    return {
-        ...def,
-        execute: hostCtx => def.execute({
-            params: hostCtx.params,
-            resolveInput: hostCtx.resolveInput,
-            eventName: hostCtx.eventName,
-            eventPayload: hostCtx.eventPayload,
-            signal: hostCtx.signal,
-            game,
-        }),
-    };
-}
-
-/**
  * Keep a plugin's group in a menu of its own.
  *
  * A group declares where it lands on the macOS menu bar, and two of those slots are load-bearing
@@ -398,9 +300,6 @@ export function createPluginApp(
     const storage = ctx.services.get<ServiceAssetsService>(Services.ServiceAssets);
     const blueprintNodes = ctx.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     const story = ctx.services.get<StoryService>(Services.Story);
-    // One per plugin, shared by every node it registers - the runtime loader
-    // hands a node's execute the same `game` object `setup(app)` received.
-    const nodeGame = createEditorRuntimePluginGame(descriptor);
 
     // Every registration a plugin makes through this app object is recorded
     // so the host can reclaim it on unload, even if the plugin's own cleanup
@@ -596,11 +495,11 @@ export function createPluginApp(
                 actions: {
                     register: registration => {
                         assertOwnedId(descriptor.plugin.id, registration.id ?? "", "story action");
-                        return trackReturn(story.registerPluginAction(registration));
+                        return trackReturn(story.registerPluginAction(registration, descriptor.plugin.id));
                     },
                     registerMany: registrations => combine(registrations.map(registration => {
                         assertOwnedId(descriptor.plugin.id, registration.id ?? "", "story action");
-                        return trackReturn(story.registerPluginAction(registration));
+                        return trackReturn(story.registerPluginAction(registration, descriptor.plugin.id));
                     })),
                 },
             },
@@ -611,7 +510,7 @@ export function createPluginApp(
                 // that reference them.
                 register: def => {
                     assertDeclaredBlueprintNode(descriptor, def.type);
-                    blueprintNodes.register(toEditorBlueprintNodeDef(def, nodeGame), {
+                    blueprintNodes.register(def, {
                         ownerPluginId: descriptor.plugin.id,
                         replaceExisting: true,
                     });
@@ -620,13 +519,10 @@ export function createPluginApp(
                     for (const def of defs) {
                         assertDeclaredBlueprintNode(descriptor, def.type);
                     }
-                    blueprintNodes.registerMany(
-                        defs.map(def => toEditorBlueprintNodeDef(def, nodeGame)),
-                        {
-                            ownerPluginId: descriptor.plugin.id,
-                            replaceExisting: true,
-                        },
-                    );
+                    blueprintNodes.registerMany(defs, {
+                        ownerPluginId: descriptor.plugin.id,
+                        replaceExisting: true,
+                    });
                 },
                 registerDynamicSelectOptionsSource: (sourceId, provider) => {
                     const disposer = blueprintNodes.registerDynamicSelectOptionsSource(sourceId, provider, {

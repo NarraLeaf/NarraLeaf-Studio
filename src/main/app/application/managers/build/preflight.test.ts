@@ -3,17 +3,7 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
-import type {
-    NormalizedPluginManifestV2,
-    PluginSidecarContribution,
-    PluginSidecarTargetContribution,
-} from "@shared/types/plugins";
-import {
-    checkIcon,
-    collectSidecarRequirements,
-    readMobileOrientation,
-    sidecarLosesExecBit,
-} from "./preflight";
+import { checkIcon, readMobileOrientation } from "./preflight";
 
 const config = (app: unknown): ProjectConfigData => ({ app, metadata: {} } as ProjectConfigData);
 
@@ -38,107 +28,6 @@ describe("readMobileOrientation", () => {
         expect(readMobileOrientation(config({ mobile: { orientation: "sideways" } }))).toBe("landscape");
         expect(readMobileOrientation(config({ mobile: { orientation: 42 } }))).toBe("landscape");
         expect(readMobileOrientation(config({ mobile: "portrait" }))).toBe("landscape");
-    });
-});
-
-describe("sidecar preflight", () => {
-    const target: PluginSidecarTargetContribution = {
-        entry: "bin/tool",
-        include: ["bin/tool"],
-        sha256: { "bin/tool": "a".repeat(64) },
-    };
-
-    function manifestWith(
-        pluginId: string,
-        sidecars: Array<Partial<PluginSidecarContribution> & { id: string }>,
-    ): NormalizedPluginManifestV2 {
-        return {
-            manifestVersion: 2,
-            id: pluginId,
-            name: pluginId,
-            version: "1.0.0",
-            entries: { runtime: "runtime.js" },
-            contributes: {
-                blueprintNodes: [],
-                widgets: [],
-                runtimeData: [],
-                locales: [],
-                runtimeCapabilities: [],
-                buildDependencies: [],
-                sidecars: sidecars.map(sidecar => ({
-                    kind: "executable",
-                    transport: "stdio-jsonl",
-                    autostart: "onGameStart",
-                    startupTimeoutMs: 5000,
-                    shutdownTimeoutMs: 3000,
-                    restart: { maxRetries: 3, backoffMs: 1000 },
-                    targets: {},
-                    ...sidecar,
-                })),
-            },
-            permissions: [],
-        };
-    }
-
-    it("reports a pair for every platform being built, target or not", () => {
-        const manifest = manifestWith("acme.p", [{
-            id: "acme.p.bridge",
-            targets: { "windows-x64": target },
-        }]);
-
-        const requirements = collectSidecarRequirements([manifest], ["windows-x64", "linux-x64"]);
-
-        // The missing pair is the whole point: a plugin with no Linux binary
-        // still packages, and whatever it provided is simply gone there.
-        expect(requirements).toEqual([
-            { pluginId: "acme.p", sidecarId: "acme.p.bridge", kind: "executable", platformKey: "windows-x64", target },
-            { pluginId: "acme.p", sidecarId: "acme.p.bridge", kind: "executable", platformKey: "linux-x64" },
-        ]);
-    });
-
-    it("yields nothing for plugins that contribute no sidecar at all", () => {
-        expect(collectSidecarRequirements([manifestWith("acme.p", [])], ["windows-x64"])).toEqual([]);
-    });
-
-    it("blocks an executable sidecar cross-built from Windows for macOS or Linux", () => {
-        const requirements = collectSidecarRequirements(
-            [manifestWith("acme.p", [{
-                id: "acme.p.bridge",
-                targets: { "macos-arm64": target, "linux-x64": target, "windows-x64": target },
-            }])],
-            ["macos-arm64", "linux-x64", "windows-x64"],
-        );
-
-        // NTFS has no executable bit, so the copy inside the dmg/AppImage would
-        // not be runnable. Only the Windows target itself is unaffected.
-        expect(requirements.filter(requirement => sidecarLosesExecBit(requirement, "windows"))
-            .map(requirement => requirement.platformKey))
-            .toEqual(["macos-arm64", "linux-x64"]);
-        // A Unix host carries the mode through, so nothing is blocked there.
-        expect(requirements.some(requirement => sidecarLosesExecBit(requirement, "macos"))).toBe(false);
-        expect(requirements.some(requirement => sidecarLosesExecBit(requirement, "linux"))).toBe(false);
-    });
-
-    it("does not block a node sidecar, which needs no executable bit", () => {
-        const [requirement] = collectSidecarRequirements(
-            [manifestWith("acme.p", [{
-                id: "acme.p.bridge",
-                kind: "node",
-                targets: { "macos-arm64": target },
-            }])],
-            ["macos-arm64"],
-        );
-        expect(sidecarLosesExecBit(requirement, "windows")).toBe(false);
-    });
-
-    it("does not block a platform the plugin ships nothing for", () => {
-        // Nothing is copied, so nothing loses its mode; that pair is the
-        // warning's business, not the error's.
-        const [requirement] = collectSidecarRequirements(
-            [manifestWith("acme.p", [{ id: "acme.p.bridge", targets: { "windows-x64": target } }])],
-            ["macos-arm64"],
-        );
-        expect(sidecarLosesExecBit(requirement, "windows")).toBe(false);
     });
 });
 

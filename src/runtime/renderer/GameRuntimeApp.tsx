@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeBundle } from "@shared/types/devMode";
-import type { GameRuntimePackV1, GameRuntimePreloadBridge } from "@shared/types/gameRuntime";
+import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
@@ -11,8 +11,6 @@ import { GameApp } from "@/lib/ui-editor/runtime/app/GameApp";
 import type { GameAppFrameContext, GameAppHost, GameAppSaveStore } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
-import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
-import { RuntimeSidecarBackend } from "./runtimeSidecarBackend";
 import {
     preloadRuntimePackAssets,
     type RuntimeSurfacePreloadResult,
@@ -168,11 +166,7 @@ function useRuntimePackPreload(input: {
  * game boots. A failing plugin never blocks the game; errors go to the
  * runtime log. loadRuntimePlugins is idempotent per plugin id+version+entry.
  */
-function useRuntimePlugins(
-    pack: GameRuntimePackV1 | null,
-    rendererRegistry: ElementRendererRegistry,
-    pluginHost: RuntimePluginHostController,
-): boolean {
+function useRuntimePlugins(pack: GameRuntimePackV1 | null, rendererRegistry: ElementRendererRegistry): boolean {
     const [ready, setReady] = useState(false);
 
     useEffect(() => {
@@ -204,11 +198,7 @@ function useRuntimePlugins(
                 ?? `nlgame://runtime/${entry.entryRelativePath}`,
             ...(entry.data ? { data: entry.data } : {}),
         }));
-        void loadRuntimePlugins(descriptors, {
-            log,
-            elementRenderers: rendererRegistry,
-            host: pluginHost.host,
-        }).finally(() => {
+        void loadRuntimePlugins(descriptors, { log, elementRenderers: rendererRegistry }).finally(() => {
             if (!disposed) {
                 setReady(true);
             }
@@ -216,72 +206,9 @@ function useRuntimePlugins(
         return () => {
             disposed = true;
         };
-    }, [pack, pluginHost, rendererRegistry]);
+    }, [pack, rendererRegistry]);
 
     return ready;
-}
-
-/**
- * Capability backends this shell can serve, built from the runtime bridge alone
- * so it is identical on desktop and web except where the bridge itself differs
- * (`capabilities.closeRequested`). Created once per process: plugin `setup()`
- * captures these objects and they have to outlive every game session.
- */
-function createRuntimePluginHost(
-    bridge: GameRuntimePreloadBridge | null,
-    sidecar: RuntimeSidecarBackend | null,
-): RuntimePluginHostController {
-    if (!bridge) {
-        // No bridge means nothing can load anyway; an empty shell keeps the
-        // capability gating honest instead of handing out backends that throw.
-        return new RuntimePluginHostController({});
-    }
-    return new RuntimePluginHostController({
-        persistence: {
-            getAll: () => bridge.persistence.getAll(),
-            getValue: key => bridge.persistence.getValue(key),
-            setValue: (key, value) => bridge.persistence.setValue(key, value),
-            removeValue: key => bridge.persistence.removeValue(key),
-        },
-        saves: {
-            // This shell always mounts a game app, which attaches the write and
-            // load paths once it is up.
-            writable: true,
-            listIds: () => bridge.save.listIds(),
-            readMetadata: async id => {
-                // readPreview would be cheaper but only yields the screenshot;
-                // the record is the only place the timestamps and the game's own
-                // metadata live.
-                const record = await bridge.save.read(id);
-                if (!record) {
-                    return null;
-                }
-                const updatedAt = Date.parse(record.metadata.updatedAt ?? "");
-                return {
-                    id: record.metadata.id ?? id,
-                    ...(Number.isFinite(updatedAt) ? { updatedAt } : {}),
-                    ...(record.metadata.user === undefined ? {} : { metadata: record.metadata.user }),
-                };
-            },
-        },
-        assetUrl: assetId => bridge.assetUrl(assetId),
-        subscribeFullscreenChanged: listener => bridge.onFullscreenChanged(listener),
-        // Observers only: a plugin watching the close never gets to veto it, so
-        // this handler always agrees and the blueprint decider stays the only
-        // thing that can cancel a close.
-        ...(bridge.capabilities?.closeRequested
-            ? {
-                subscribeCloseRequested: (listener: () => void) => bridge.onCloseRequested(() => {
-                    listener();
-                    return true;
-                }),
-            }
-            : {}),
-        // Present on desktop, absent on the web export - see web.ts. The loader
-        // turns that absence into "no app.game.sidecar here".
-        ...(sidecar ? { sidecar } : {}),
-        log: (level, message) => bridge.log(level, message),
-    });
 }
 
 export function GameRuntimeApp() {
@@ -290,28 +217,10 @@ export function GameRuntimeApp() {
     const bridge = getGameRuntimeBridge();
     const rendererRegistry = useMemo(() => new ElementRendererRegistry(BuiltinElementRenderers), []);
 
-    const sidecarBackend = useMemo(
-        () => (bridge?.sidecar ? new RuntimeSidecarBackend(bridge.sidecar, bridge.log) : null),
-        [bridge],
-    );
-    const pluginHost = useMemo(
-        () => createRuntimePluginHost(bridge, sidecarBackend),
-        [bridge, sidecarBackend],
-    );
-    useEffect(() => pluginHost.bindShellEvents(), [pluginHost]);
-    // Before useRuntimePlugins' effect, which is what makes `available()` a real
-    // answer by the time any plugin's setup() can ask: effects run in the order
-    // their hooks were called, and this hook is declared above that one.
-    useEffect(() => {
-        if (pack) {
-            sidecarBackend?.applyPack(pack);
-        }
-    }, [pack, sidecarBackend]);
-
     const entrySurfaceId = pack?.entry.surfaceId ?? undefined;
     const entrySurface = pack ? findSurface(pack.bundle, entrySurfaceId) : null;
     const preload = useRuntimePackPreload({ pack, firstSurface: entrySurface });
-    const pluginsReady = useRuntimePlugins(pack, rendererRegistry, pluginHost);
+    const pluginsReady = useRuntimePlugins(pack, rendererRegistry);
     const runtimeReady = preload.ready && pluginsReady;
 
     const persistenceAdapter = useMemo(() => {
@@ -477,7 +386,6 @@ export function GameRuntimeApp() {
             getScale={getScale}
             renderFrame={renderFrame}
             renderPlaceholder={renderPlaceholder}
-            pluginHost={pluginHost}
         />
     );
 }

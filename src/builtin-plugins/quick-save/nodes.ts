@@ -7,37 +7,14 @@
  *
  * All nodes operate on one reserved save slot id that players never see,
  * so a story graph gets quick save / quick read without managing ids.
- *
- * Powers come from `app.game`, the capability-gated surface the manifest
- * declares (`contributes.runtimeCapabilities`): `saves.read` to see whether the
- * slot exists, `saves.write` to fill or restore it.
  */
 
-import type { PluginBlueprintNodeContext, PluginBlueprintNodeDef } from "narraleaf-studio/plugin";
-
-/** The capability-gated game surface a node execute is handed. */
-type NodeGame = PluginBlueprintNodeContext["game"];
+import type { BlueprintNodeDef } from "narraleaf-studio/plugin";
 
 export const PLUGIN_ID = "narraleaf.quick-save";
 export const QUICK_SAVE_SLOT_ID = `${PLUGIN_ID}.slot`;
 
-/**
- * The write half is gated on `saves.write` *and* on the environment backing it,
- * so it can legitimately be absent (an editor preview backs nothing). Failing
- * with a named reason beats a silent no-op: a story graph whose quick save never
- * happened should say so.
- */
-function requireSaveWriting(game: NodeGame): NonNullable<NodeGame["saves"]> {
-    const saves = game.saves;
-    if (!saves?.write || !saves.load) {
-        throw new Error(
-            "Quick Save needs the \"saves.write\" capability, and an environment that can serve it.",
-        );
-    }
-    return saves;
-}
-
-export function createQuickSaveBlueprintNodes(): PluginBlueprintNodeDef[] {
+export function createQuickSaveBlueprintNodes(): BlueprintNodeDef[] {
     return [
         {
             type: `${PLUGIN_ID}.save`,
@@ -52,7 +29,7 @@ export function createQuickSaveBlueprintNodes(): PluginBlueprintNodeDef[] {
                 { id: "next", kind: "output", semantic: "exec", label: "Next" },
             ],
             execute: async ctx => {
-                await requireSaveWriting(ctx.game).write!(QUICK_SAVE_SLOT_ID);
+                await getHostApi(ctx).game.writeSave(QUICK_SAVE_SLOT_ID);
                 return { nextPort: "next" };
             },
         },
@@ -67,10 +44,13 @@ export function createQuickSaveBlueprintNodes(): PluginBlueprintNodeDef[] {
             pins: [
                 { id: "in", kind: "input", semantic: "exec", label: "In" },
             ],
-            // No exec output: loading replaces the running playthrough, so
-            // whatever followed this node in the old one is gone.
             execute: async ctx => {
-                await requireSaveWriting(ctx.game).load!(QUICK_SAVE_SLOT_ID);
+                const game = getHostApi(ctx).game;
+                if (!await hasQuickSave(game)) {
+                    return { nextPort: undefined };
+                }
+                await game.loadSave(QUICK_SAVE_SLOT_ID);
+                return { nextPort: undefined };
             },
         },
         {
@@ -96,7 +76,7 @@ export function createQuickSaveBlueprintNodes(): PluginBlueprintNodeDef[] {
                 return {
                     nextPort: "next",
                     outputValues: {
-                        hasQuickSave: await hasQuickSave(ctx.game),
+                        hasQuickSave: await hasQuickSave(getHostApi(ctx).game),
                     },
                 };
             },
@@ -104,15 +84,15 @@ export function createQuickSaveBlueprintNodes(): PluginBlueprintNodeDef[] {
     ];
 }
 
-/**
- * False when the environment cannot back `saves.read` at all - the editor has no
- * playthrough, so there is no quick save there by definition. Degrading beats
- * throwing: a menu graph previewed in Studio should render, not blow up.
- */
-async function hasQuickSave(game: NodeGame): Promise<boolean> {
-    if (!game.saves) {
-        return false;
-    }
-    const ids = await game.saves.listIds();
+async function hasQuickSave(game: ReturnType<typeof getHostApi>["game"]): Promise<boolean> {
+    const ids = await game.listSaveIds();
     return ids.includes(QUICK_SAVE_SLOT_ID);
+}
+
+function getHostApi(ctx: Parameters<BlueprintNodeDef["execute"]>[0]) {
+    const hostApi = ctx.hostAdapter.blueprintRuntime?.hostApi;
+    if (!hostApi) {
+        throw new Error("Quick Save nodes require game host APIs");
+    }
+    return hostApi;
 }
