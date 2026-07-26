@@ -11,6 +11,7 @@ import { useAssetsContextMenu } from "./hooks/useAssetsContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { SearchBox } from "./components/SearchBox";
 import { FilterSystem, type ActiveFilter } from "./components/FilterSystem";
+import { ImportQueueStrip } from "./components/ImportQueueStrip";
 
 import { useAssetData } from "./state/useAssetData";
 import { useMultiSelection } from "./state/useMultiSelection";
@@ -21,6 +22,7 @@ import { useDragAndDrop, type InternalAssetDropCompletedInfo } from "./state/use
 import { useClipboard } from "./state/useClipboard";
 import { useAssetFocus } from "./state/useAssetFocus";
 import { useAssetActions, ContextMenuTargetState } from "./state/useAssetActions";
+import { useImportQueue } from "./state/useImportQueue";
 import { useKeyboardShortcuts } from "./state/useKeyboardShortcuts";
 import { AssetsPanelContext, type AssetsIconViewToolbarCenter } from './AssetsPanelContext';
 import { Services } from "@/lib/workspace/services/services";
@@ -284,13 +286,21 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         setExpandedGroups(prev => new Set(prev).add(groupId));
     }, []);
 
+    const { importQueue, importState, dismissImportFailures } = useImportQueue();
+
     const {
-        handleCreateGroup, handleCopy, handleCut, handlePaste, handleRename, handleDelete, handleImport, handleImportToGroup, handleImportRemote,
+        handleCreateGroup, handleCopy, handleCut, handlePaste, handleRename, handleReplaceContent, handleDelete, handleImport, handleRetryImport, handleImportToGroup, handleImportRemote,
         handleCreateMagicTags, handleApplyMagicTags
     } = useAssetActions({
         context, inputDialog, assets, groups, selectedItems, clipboard, contextMenuTarget,
-        focusedItemId, onActionComplete, setClipboard, setActionLoading, expandGroup
+        focusedItemId, onActionComplete, setClipboard, setActionLoading, expandGroup, importQueue
     });
+
+    const handleRetryFailedImports = useCallback(() => {
+        const run = importState.run;
+        if (!run || importState.failures.length === 0) return;
+        void handleRetryImport(run.type, importState.failures.map(failure => failure.path), run.groupId);
+    }, [handleRetryImport, importState]);
 
     // Use refs to store latest function references to avoid stale closures in action group
     const handleCopyRef = useRef(handleCopy);
@@ -393,6 +403,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         handlePaste: () => handlePasteRef.current(),
         handleDelete: () => handleDeleteRef.current(),
         handleRename,
+        handleReplaceContent: () => handleReplaceContent(),
         handleCreateGroup, handleImportToGroup, handleCreateMagicTags: handleMagicTagsClick
     });
 
@@ -628,6 +639,12 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                         )}
                     </div>
                 )}
+
+                <ImportQueueStrip
+                    state={importState}
+                    onRetry={handleRetryFailedImports}
+                    onDismiss={dismissImportFailures}
+                />
 
                 <div className="flex-1 overflow-y-auto">
                     {viewMode === "overview" ? (
