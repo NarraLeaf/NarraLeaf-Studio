@@ -528,18 +528,22 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
                 />
             </div>
 
-            <div>
-                <label className="block text-xs font-medium text-fg-muted mb-1">
-                    {t("characters.properties.defaultPose")}
-                </label>
-                <Select
-                    fullWidth
-                    options={defaultFormOptions}
-                    value={defaultPose ?? ""}
-                    onChange={handleDefaultFormChange}
-                    placeholder={t("characters.properties.selectDefaultPose")}
-                />
-            </div>
+            {/* A layered character has no poses - what it starts in is one default tag per axis, and
+                those belong next to the axes in the editor rather than in a second place here. */}
+            {profile.appearance.getKind() === "preset" && (
+                <div>
+                    <label className="block text-xs font-medium text-fg-muted mb-1">
+                        {t("characters.properties.defaultPose")}
+                    </label>
+                    <Select
+                        fullWidth
+                        options={defaultFormOptions}
+                        value={defaultPose ?? ""}
+                        onChange={handleDefaultFormChange}
+                        placeholder={t("characters.properties.selectDefaultPose")}
+                    />
+                </div>
+            )}
 
             <AssetSelector
                 visible={selectorOpen}
