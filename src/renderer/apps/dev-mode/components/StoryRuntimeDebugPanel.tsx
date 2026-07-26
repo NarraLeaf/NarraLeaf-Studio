@@ -602,8 +602,7 @@ function ExecutionContextTab(props: {
             bindings,
             rowSentence: blockId => {
                 const block = scene?.blocks[blockId];
-                // Read-only surface: no editing placeholders (same as the timeline above).
-                return block ? storyRowSentence(block, lookups, { editingPlaceholders: false }) : null;
+                return block ? storyRowSentence(block, lookups) : null;
             },
         });
     }, [tick, storyRuntime, scene, sceneId, document, currentBlockId, lookups]);

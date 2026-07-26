@@ -106,12 +106,6 @@ describe("storyRowSentence — the sentence the editor shows", () => {
     it("shows an empty text row's placeholder, which is what the editor draws there", () => {
         expect(storyRowSentence(narration(""), bare)).toBe("Double-click to enter narration");
     });
-
-    it("drops that placeholder for a read-only surface, which has no double-click to offer", () => {
-        expect(storyRowSentence(narration(""), bare, { editingPlaceholders: false })).toBe("");
-        // Only the empty case changes: a row with words reads identically on both surfaces.
-        expect(storyRowSentence(narration("Rain."), bare, { editingPlaceholders: false })).toBe("Rain.");
-    });
 });
 
 describe("speaker", () => {

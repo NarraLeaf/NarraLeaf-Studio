@@ -557,6 +557,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             />
             <SurfaceList
                 surfaces={filteredSurfaces}
+                surfaceKind={kind}
                 globalBlueprintCard={globalBlueprintCard}
                 renderSurfacePreview={renderSurfacePreview}
                 onSurfaceClick={handleSurfaceClick}

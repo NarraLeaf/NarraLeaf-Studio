@@ -46,6 +46,7 @@ export const characters = {
         hasImage: "image set",
         noImage: "no image",
         drawsNothing: "draws nothing",
+        noCanvas: "No canvas size yet",
         layerCount: "{count} drawn",        hideLayer: "Hide",
         showLayer: "Show",
         lockLayer: "Lock",
@@ -120,6 +121,8 @@ export const characters = {
         thumbnail: "Thumbnail",
         preview: "Preview",
         select: "Select",
+        noThumbnail: "No thumbnail yet",
+        selectHint: "Click Select to choose one",
         thumbnailAlt: "thumbnail",
         color: "Color",
         namePlaceholder: "Character name",
@@ -132,6 +135,7 @@ export const characters = {
         cropThumbnailTitle: "Crop Thumbnail",
         removeTag: "Remove tag",
         removeTagAria: "Remove tag {tag}",
+        noTags: "No tags yet",
         addTagPlaceholder: "Add tag…",
         addTag: "Add tag",
         error: {
@@ -149,6 +153,7 @@ export const characters = {
         collapse: "Collapse forms",
         default: "Default",
         formActions: "Form actions",
+        empty: "No forms yet, click + to create one.",
         groupCount: {
             one: "{count} group",
             other: "{count} groups",
@@ -188,6 +193,8 @@ export const characters = {
         deleteGroup: "Delete group",
         groupPrefix: "Group: {name}",
         selectForm: "Select a form from the left.",
+        noVariants: "No variants yet, use the buttons above.",
+        groupNoVariants: "No variants yet, click \"+\" to add.",
         variantCount: {
             one: "{count} variant",
             other: "{count} variants",

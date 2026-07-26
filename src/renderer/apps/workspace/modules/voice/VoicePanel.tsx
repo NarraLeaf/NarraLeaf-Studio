@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, Ellipsis, Plus } from "lucide-react";
+import { Check, Ellipsis, Mic, Plus } from "lucide-react";
 import type { PanelComponentProps } from "../types";
 import { ContextMenu, Progress, type ContextMenuDef } from "@/lib/components/elements";
 import { useWorkspace } from "../../context";
@@ -397,9 +397,12 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                     <p className="text-2xs leading-snug text-fg-subtle">
                         {t("workspace.voice.panel.languagesHint")}
                     </p>
-                    {/* No voice languages: no list. The "+ Add voice language" row directly below is
-                        the action, so a bordered box repeating it is that button twice. */}
-                    {locales.length === 0 ? null : (
+                    {locales.length === 0 ? (
+                        <div className="flex flex-col items-center gap-2 rounded-md border border-edge-subtle px-3 py-6 text-center text-2xs text-fg-subtle">
+                            <Mic className="h-5 w-5" />
+                            {t("workspace.voice.panel.empty")}
+                        </div>
+                    ) : (
                         <div className="flex flex-col gap-1">
                             {locales.map(locale => {
                                 const progress = progressByLocale[locale.code];

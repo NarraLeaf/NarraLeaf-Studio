@@ -121,6 +121,7 @@ export const properties = {
         base: "基础",
         common: "常用",
         recent: "最近使用",
+        noRecent: "还没有最近使用的颜色",
         custom: "自定义",
     },
     references: {
@@ -147,9 +148,12 @@ export const properties = {
         add: "添加标签",
         remove: "移除标签",
         removeAria: "移除标签 {tag}",
+        empty: "尚无标签",
     },
     thumbnail: {
         alt: "缩略图",
+        empty: "尚无缩略图",
+        emptyHint: "点击“选择”来指定一张",
         selectTitle: "选择缩略图",
         cropTitle: "裁剪缩略图",
         error: {

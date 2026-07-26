@@ -77,8 +77,6 @@ export function SettingsStep({
                                             type="button"
                                             onClick={onSelectDirectory}
                                             disabled={isSelectingDirectory || isValidatingDirectory}
-                                            title={t("wizard.settings.browseLocation")}
-                                            aria-label={t("wizard.settings.browseLocation")}
                                             className="absolute inset-y-0 right-0 pr-3 flex items-center text-fg-muted hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             <FolderOpen className="w-4 h-4" />

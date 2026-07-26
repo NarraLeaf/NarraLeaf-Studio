@@ -89,8 +89,6 @@ export const wizard = {
         },
         projectLocation: "Project Location",
         projectLocationPlaceholder: "Enter project location…",
-        // Accessible name for the folder button inside the location field.
-        browseLocation: "Choose folder…",
         validatingDirectory: "Validating directory…",
         directoryWillBeCreated: "This directory will be created automatically when you create the project",
         versionControlSystem: "Version Control System",

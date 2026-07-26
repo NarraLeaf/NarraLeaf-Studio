@@ -542,15 +542,12 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                 {stories.length === 0 && sourceValue !== UI_SOURCE_VALUE ? (
                     <EmptyMessage icon={<BookOpenText className="h-5 w-5" />} text={t("workspace.localization.table.noStories")} />
                 ) : rows.length === 0 && !showKeysExtras ? (
-                    // Interface text: nothing here is marked for localization, and nothing in this
-                    // tab can mark it — the switch lives on the widget, in the UI editor. So the
-                    // table is simply empty rather than carrying instructions for another window.
-                    sourceValue === UI_SOURCE_VALUE ? null : (
-                        <EmptyMessage
-                            icon={<MessageSquareText className="h-5 w-5" />}
-                            text={t("workspace.localization.table.emptyStory")}
-                        />
-                    )
+                    <EmptyMessage
+                        icon={<MessageSquareText className="h-5 w-5" />}
+                        text={sourceValue === UI_SOURCE_VALUE
+                            ? t("workspace.localization.table.emptyUi")
+                            : t("workspace.localization.table.emptyStory")}
+                    />
                 ) : reviewQueueEmpty ? (
                     <EmptyMessage icon={<CheckCircle2 className="h-5 w-5 text-success" />} text={t("workspace.localization.table.reviewAllClear")} />
                 ) : visibleRows.length === 0 && !showKeysExtras ? (

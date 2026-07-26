@@ -1,8 +1,7 @@
 /** `storyInspector` - the per-action-type inspector in the story scene editor. */
 export const storyInspector = {
-    // The disclosure that hides this line's translation/voice unit id. The id itself is a uuid, so
-    // the label names what it is FOR rather than what it is.
-    textId: "Localization key",
+    noEditableFields: "No editable fields for this action yet.",
+    textId: "Text ID",
     advanced: "Advanced",
     advancedParams: "Advanced params",
     noVariablesDeclared: "No variables declared",
@@ -392,9 +391,7 @@ export const storyInspector = {
     },
 
     character: {
-        // The handle later rows use to reach this character — `/move Nattou`, `/hide Nattou`. Named
-        // for what the author does with it; "stage name" was the engine's word for the object.
-        objectName: "Refer to as",
+        stageName: "Stage name",
         // Named for what the player reads, not for the field it writes: this is the speaker label from
         // this row on, which is what makes "？？？" become a name.
         displayName: "Speaks as",

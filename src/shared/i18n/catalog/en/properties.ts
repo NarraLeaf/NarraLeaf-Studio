@@ -120,6 +120,7 @@ export const properties = {
         base: "Base",
         common: "Common",
         recent: "Recent",
+        noRecent: "No recent colors yet",
         custom: "Custom",
     },
     references: {
@@ -146,9 +147,12 @@ export const properties = {
         add: "Add tag",
         remove: "Remove tag",
         removeAria: "Remove tag {tag}",
+        empty: "No tags yet",
     },
     thumbnail: {
         alt: "Thumbnail",
+        empty: "No thumbnail yet",
+        emptyHint: "Click Select to choose one",
         selectTitle: "Select Thumbnail",
         cropTitle: "Crop Thumbnail",
         error: {

@@ -542,15 +542,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             <FilterSystem filters={filterConfigs} activeFilters={activeFilters} onFiltersChange={setActiveFilters} onFilterOpen={handleFilterOpen} />
                             <div className="flex items-center gap-2">
                                 <ViewModeToggle mode={viewMode} onChange={setViewMode} />
-                                <button
-                                    onClick={handleRefresh}
-                                    disabled={loading}
-                                    title={t("common.refresh")}
-                                    aria-label={t("common.refresh")}
-                                    className="p-1 rounded-md hover:bg-fill"
-                                >
-                                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                                </button>
+                                <button onClick={handleRefresh} disabled={loading} className="p-1 rounded-md hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
                             </div>
                         </div>
                     </div>
@@ -642,15 +634,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                     the total) and it never gave way: `hidden sm:inline` is a VIEWPORT
                                     query, so a narrow sidebar in a wide window still paid for it. */}
                                 <ViewModeToggle mode={viewMode} onChange={setViewMode} />
-                                <button
-                                    onClick={handleRefresh}
-                                    disabled={loading}
-                                    title={t("common.refresh")}
-                                    aria-label={t("common.refresh")}
-                                    className="p-1 rounded-md hover:bg-fill"
-                                >
-                                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                                </button>
+                                <button onClick={handleRefresh} disabled={loading} className="p-1 rounded-md hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
                             </div>
                         )}
                     </div>
