@@ -1,10 +1,25 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { AlertTriangle, EyeOff, Flag, RotateCcw } from "lucide-react";
+import type { CSSProperties } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { SCENE_FLOW_NODE_HEIGHT, SCENE_FLOW_NODE_WIDTH, type SceneFlowNodeModel } from "./sceneFlowModel";
 
 export type SceneFlowNodeData = SceneFlowNodeModel & Record<string, unknown>;
+
+/**
+ * `text-xs` / `text-2xs` written out so the canvas can scale them (see `--nl-scene-flow-type-scale`).
+ * The line-height scales with the size, or a grown title would be clipped by its own line box; with
+ * the variable unset the computed values are byte-for-byte the two classes these replaced.
+ */
+const NODE_TITLE_STYLE: CSSProperties = {
+    fontSize: "calc(0.75rem * var(--nl-scene-flow-type-scale, 1))",
+    lineHeight: "calc(1rem * var(--nl-scene-flow-type-scale, 1))",
+};
+const NODE_META_STYLE: CSSProperties = {
+    fontSize: "calc(0.6875rem * var(--nl-scene-flow-type-scale, 1))",
+    lineHeight: "calc(1rem * var(--nl-scene-flow-type-scale, 1))",
+};
 
 /**
  * Edges still need handles to anchor to, but the map is read-only, so they are kept invisible: a
@@ -41,10 +56,13 @@ export function SceneFlowNode({ data, selected }: NodeProps) {
                 {scene.isEntry && (
                     <Flag className="h-3 w-3 shrink-0 text-primary" aria-label={t("story.flow.badge.entry")} />
                 )}
-                <span className="truncate text-xs font-medium text-fg">{scene.name}</span>
+                {/* Sized through the canvas's scale variable so a zoomed-out embed can keep the title
+                    legible (SceneFlowCanvas `minTitleRenderedPx`). The fallbacks are `text-xs`'s own
+                    numbers, so with the variable unset - the workspace tab - nothing moves. */}
+                <span className="truncate font-medium text-fg" style={NODE_TITLE_STYLE}>{scene.name}</span>
             </div>
 
-            <div className="flex items-center gap-2 text-2xs text-fg-subtle">
+            <div className="flex items-center gap-2 text-fg-subtle" style={NODE_META_STYLE}>
                 <span className="tabular-nums">{tn("story.flow.node.blocks", scene.blockCount)}</span>
                 {scene.selfJumpCount > 0 && (
                     <span
