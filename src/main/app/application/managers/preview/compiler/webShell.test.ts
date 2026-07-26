@@ -75,4 +75,19 @@ describe("buildWebIndexHtml", () => {
         const html = buildWebIndexHtml(packWith({}), { hasFavicon: true });
         expect(html).toContain("<link rel=\"icon\" type=\"image/png\" href=\"./favicon.png\" />");
     });
+
+    it("links the apple-touch icon, which iOS uses instead of rel=icon", () => {
+        const html = buildWebIndexHtml(packWith({}), { hasFavicon: true, hasAppleTouchIcon: true });
+        expect(html).toContain("<link rel=\"apple-touch-icon\" href=\"./apple-touch-icon.png\" />");
+    });
+
+    it("omits each icon link independently", () => {
+        const faviconOnly = buildWebIndexHtml(packWith({}), { hasFavicon: true, hasAppleTouchIcon: false });
+        expect(faviconOnly).toContain("rel=\"icon\"");
+        expect(faviconOnly).not.toContain("apple-touch-icon");
+
+        const appleOnly = buildWebIndexHtml(packWith({}), { hasFavicon: false, hasAppleTouchIcon: true });
+        expect(appleOnly).toContain("apple-touch-icon");
+        expect(appleOnly).not.toContain("rel=\"icon\"");
+    });
 });

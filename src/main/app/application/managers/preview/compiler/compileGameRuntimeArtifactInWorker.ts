@@ -9,7 +9,7 @@ import type {
     GameRuntimeArtifactCompileResult,
 } from "./gameRuntimeArtifactCompiler";
 
-type CompileWorkerHostApp = Pick<App, "getDistDir">;
+type CompileWorkerHostApp = Pick<App, "getDistDir" | "getDefaultGameIconPath">;
 
 export type CompileWorkerHooks = {
     /**
@@ -40,6 +40,20 @@ export function compileGameRuntimeArtifactInWorker(
     hooks?: CompileWorkerHooks,
 ): Promise<GameRuntimeArtifactCompileResult> {
     const workerPath = path.join(app.getDistDir(), "main", "compileWorker.js");
+    // Filled in here rather than at each call site: the worker cannot resolve
+    // Electron's resource paths itself, and every artifact a project without
+    // its own icon produces should wear NarraLeaf's mark.
+    const defaultIconPath = app.getDefaultGameIconPath();
+    const opaqueIconPath = app.getDefaultGameIconPath(true);
+    const withDefaults: GameRuntimeArtifactCompileInput = input.defaultIcon || !defaultIconPath
+        ? input
+        : {
+            ...input,
+            defaultIcon: {
+                path: defaultIconPath,
+                ...(opaqueIconPath ? { opaquePath: opaqueIconPath } : {}),
+            },
+        };
     return new Promise<GameRuntimeArtifactCompileResult>((resolve, reject) => {
         const worker = utilityProcess.fork(workerPath, [], {
             serviceName: "narraleaf-artifact-compile",
@@ -76,7 +90,7 @@ export function compileGameRuntimeArtifactInWorker(
             )));
         });
         worker.once("spawn", () => {
-            worker.postMessage({ type: "compile", input });
+            worker.postMessage({ type: "compile", input: withDefaults });
         });
     });
 }

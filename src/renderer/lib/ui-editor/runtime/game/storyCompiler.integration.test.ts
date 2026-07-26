@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { BlurDissolve, Darkness, DevTools, Push, Reveal, ThroughColor, Transition } from "narraleaf-react";
+import type { CharacterAppearanceSummary, DevModeCharacterSummary } from "@shared/types/devMode";
 import type { StoryAnimationAsset, StoryBlock, StoryDocument, StoryTransitionRef } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
+
+/** A character with no sprites: enough to be a speaker, which is all these cases need. */
+const EMPTY_APPEARANCE: CharacterAppearanceSummary = { kind: "preset", poses: [], defaultPoseId: null };
 import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 
 function declarationBlock(id: string, valueType: "boolean" | "number", defaultValue?: number | boolean): StoryBlock {
@@ -136,7 +140,7 @@ describe("compileStudioStoryToNlr", () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument(blocks, ["bg", "say", "wait", "jump"]),
             sceneId: "scene-1",
-            characters: [{ id: "char-alice", name: "Alice" }],
+            characters: [{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
             resolveAssetUrl: async (assetId, assetType) => {
                 calls.push(`${assetType}:${assetId}`);
                 return `nlr://${assetId}`;
@@ -233,18 +237,7 @@ describe("compileStudioStoryToNlr", () => {
             characters: [{
                 id: "char-alice",
                 name: "Alice",
-                defaultForm: "base",
-                forms: [{
-                    name: "base",
-                    groups: [{
-                        name: "Expression",
-                        defaultVariant: "Neutral",
-                        variants: [{ name: "Neutral" }],
-                    }],
-                    variantAssets: {
-                        Neutral: { assetId: "asset-alice-neutral" },
-                    },
-                }],
+                appearance: { kind: "preset", poses: [{ id: "pose-Neutral", name: "Neutral", assetId: "asset-alice-neutral" }], defaultPoseId: "pose-Neutral" },
             }],
             resolveAssetUrl: async (assetId, assetType) => {
                 calls.push(`${assetType}:${assetId}`);
@@ -474,14 +467,7 @@ describe("compileStudioStoryToNlr", () => {
             characters: [{
                 id: "char-alice",
                 name: "Alice",
-                defaultForm: "base",
-                forms: [{
-                    name: "base",
-                    groups: [],
-                    variantAssets: {
-                        base: { assetId: "asset-alice" },
-                    },
-                }],
+                appearance: { kind: "preset", poses: [{ id: "pose-base", name: "base", assetId: "asset-alice" }], defaultPoseId: "pose-base" },
             }],
             animations: { [animation.id]: animation },
             resolveAssetUrl: async (assetId, assetType) => {
@@ -806,7 +792,7 @@ describe("compileStudioStoryToNlr", () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument(blocks, ["say"]),
             sceneId: "scene-1",
-            characters: [{ id: "char-alice", name: "Alice" }],
+            characters: [{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
         });
 
         expect(compiled.diagnostics).toEqual([]);
@@ -815,14 +801,17 @@ describe("compileStudioStoryToNlr", () => {
 
     describe("inline expression events", () => {
         /** A character summary whose "angry" form resolves to one differential asset. */
-        const alice = {
+        const alice: DevModeCharacterSummary = {
             id: "char-alice",
             name: "Alice",
-            defaultForm: "default",
-            forms: [
-                { name: "default", groups: [], variantAssets: { base: { assetId: "asset-default" } } },
-                { name: "angry", groups: [], variantAssets: { base: { assetId: "asset-angry" } } },
-            ],
+            appearance: {
+                kind: "preset",
+                poses: [
+                    { id: "pose-default", name: "default", assetId: "asset-default" },
+                    { id: "pose-angry", name: "angry", assetId: "asset-angry" },
+                ],
+                defaultPoseId: "pose-default",
+            },
         };
 
         function eventDialogue(event: unknown): Record<string, StoryBlock> {
@@ -871,7 +860,7 @@ describe("compileStudioStoryToNlr", () => {
             };
             const compiled = await compileStudioStoryToNlr({
                 document: baseDocument(
-                    { enter, ...eventDialogue({ event: { expression: { characterId: "char-alice", formName: "angry" } } }) },
+                    { enter, ...eventDialogue({ event: { expression: { characterId: "char-alice", pose: "pose-angry" } } }) },
                     ["enter", "say"],
                 ),
                 sceneId: "scene-1",
@@ -927,7 +916,7 @@ describe("compileStudioStoryToNlr", () => {
             // The image resolves, but char-alice was never shown, so there is no on-stage portrait to
             // swap - the token would be a silent no-op. WI-0.1: surface it instead of dropping it quietly.
             const compiled = await compileStudioStoryToNlr({
-                document: baseDocument(eventDialogue({ event: { expression: { characterId: "char-alice", formName: "angry" } } }), ["say"]),
+                document: baseDocument(eventDialogue({ event: { expression: { characterId: "char-alice", pose: "pose-angry" } } }), ["say"]),
                 sceneId: "scene-1",
                 characters: [alice],
                 resolveAssetUrl: async assetId => `nlr://${assetId}`,
@@ -961,7 +950,7 @@ describe("compileStudioStoryToNlr", () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument(blocks, ["say"]),
             sceneId: "scene-1",
-            characters: [{ id: "char-alice", name: "Alice" }],
+            characters: [{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
         });
 
         expect(compiled.diagnostics).toEqual([]);
@@ -986,7 +975,7 @@ describe("compileStudioStoryToNlr", () => {
         }
 
         /** The Character the compiler bound to the `say` block, via `sentence.config.character`. */
-        async function compileSpeaker(characters: { id: string; name: string }[], characterId = "char-alice") {
+        async function compileSpeaker(characters: DevModeCharacterSummary[], characterId = "char-alice") {
             const compiled = await compileStudioStoryToNlr({
                 document: baseDocument(dialogueBlocks(characterId), ["say"]),
                 sceneId: "scene-1",
@@ -1000,7 +989,7 @@ describe("compileStudioStoryToNlr", () => {
         }
 
         it("keeps an authored name as the nametag", async () => {
-            const speaker = await compileSpeaker([{ id: "char-alice", name: "Alice" }]);
+            const speaker = await compileSpeaker([{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }]);
             expect(speaker.state.name).toBe("Alice");
         });
 
@@ -1011,7 +1000,7 @@ describe("compileStudioStoryToNlr", () => {
             ["empty", ""],
             ["whitespace-only", "   "],
         ])("does not collapse a %s character name into the Narrator", async (_label, name) => {
-            const speaker = await compileSpeaker([{ id: "char-alice", name }]);
+            const speaker = await compileSpeaker([{ id: "char-alice", name, appearance: EMPTY_APPEARANCE }]);
 
             expect(speaker.state.name).not.toBe("");
             expect(speaker.state.name).toBeTruthy();
@@ -1021,7 +1010,7 @@ describe("compileStudioStoryToNlr", () => {
             const uuid = "0f1c6b3e-8a2d-4c77-9f5a-1b2c3d4e5f60";
 
             // Unnamed character, and a character the host never sent a summary for.
-            const unnamed = await compileSpeaker([{ id: uuid, name: "" }], uuid);
+            const unnamed = await compileSpeaker([{ id: uuid, name: "", appearance: EMPTY_APPEARANCE }], uuid);
             const missing = await compileSpeaker([], uuid);
 
             for (const speaker of [unnamed, missing]) {
@@ -1047,7 +1036,7 @@ describe("compileStudioStoryToNlr", () => {
                     },
                 }, ["say", "say2"]),
                 sceneId: "scene-1",
-                characters: [{ id: "char-alice", name: "" }, { id: "char-bob", name: "" }],
+                characters: [{ id: "char-alice", name: "", appearance: { kind: "preset", poses: [], defaultPoseId: null } }, { id: "char-bob", name: "", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
             });
 
             const speakers = ["say", "say2"].map(blockId => {
@@ -1079,7 +1068,7 @@ describe("compileStudioStoryToNlr", () => {
             };
         }
 
-        async function compileSpeakers(blocks: Record<string, StoryBlock>, characters: { id: string; name: string }[] = []) {
+        async function compileSpeakers(blocks: Record<string, StoryBlock>, characters: DevModeCharacterSummary[] = []) {
             const compiled = await compileStudioStoryToNlr({
                 document: baseDocument(blocks, Object.keys(blocks)),
                 sceneId: "scene-1",
@@ -1111,7 +1100,7 @@ describe("compileStudioStoryToNlr", () => {
         it("prefers a resolving characterId over speakerName", async () => {
             const [speaker] = await compileSpeakers(
                 { say: speakerLine("say", { characterId: "char-alice", speakerName: "Stale" }) },
-                [{ id: "char-alice", name: "Alice" }],
+                [{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
             );
             expect(speaker.state.name).toBe("Alice");
         });
@@ -1768,7 +1757,7 @@ describe("compileStudioStoryToNlr localization", () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument(blocks, ["enter", "darken"]),
             sceneId: "scene-1",
-            characters: [{ id: "char-alice", name: "Alice" }],
+            characters: [{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
             resolveAssetUrl: async assetId => `nlr://${assetId}`,
         });
 
@@ -1814,7 +1803,7 @@ describe("compileStudioStoryToNlr voice", () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({ say: dialogueBlock("say", "text-say", "こんにちは。") }, ["say"]),
             sceneId: "scene-1",
-            characters: [{ id: "char-alice", name: "Alice" }],
+            characters: [{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
             voice: voiceSetup(() => "ja"),
             resolveAssetUrl: async assetId => `nlr://${assetId}`,
         });
@@ -1839,7 +1828,7 @@ describe("compileStudioStoryToNlr voice", () => {
         const partial = await compileStudioStoryToNlr({
             document: baseDocument({ say: dialogueBlock("say", "text-other", "no take") }, ["say"]),
             sceneId: "scene-1",
-            characters: [{ id: "char-alice", name: "Alice" }],
+            characters: [{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
             voice: voiceSetup(() => "ja"),
             resolveAssetUrl: async assetId => `nlr://${assetId}`,
         });
@@ -1849,7 +1838,7 @@ describe("compileStudioStoryToNlr voice", () => {
         const none = await compileStudioStoryToNlr({
             document: baseDocument({ say: dialogueBlock("say", "text-say", "hi") }, ["say"]),
             sceneId: "scene-1",
-            characters: [{ id: "char-alice", name: "Alice" }],
+            characters: [{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
         });
         expect(getSaySentence(none, "say").config?.voiceId ?? null).toBeNull();
         expect((none.scenes["scene-1"] as any).config?.voices ?? null).toBeNull();
@@ -1859,7 +1848,7 @@ describe("compileStudioStoryToNlr voice", () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({ say: dialogueBlock("say", "text-legacy", "hi", { voiceAssetId: "asset-voice" }) }, ["say"]),
             sceneId: "scene-1",
-            characters: [{ id: "char-alice", name: "Alice" }],
+            characters: [{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
             resolveAssetUrl: async assetId => `nlr://${assetId}`,
         });
         const sentence = getSaySentence(compiled, "say");
@@ -2085,7 +2074,7 @@ describe("compileStudioStoryToNlr voice", () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument(blocks, ["rename", "line"]),
             sceneId: "scene-1",
-            characters: [{ id: "char-alice", name: "？？？" }],
+            characters: [{ id: "char-alice", name: "？？？", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
         });
 
         const actionsOf = (blockId: string) => compiled.actionIdBindings

@@ -149,7 +149,12 @@ export function AssetsIconView({
             }}
         >
             {activeGroup && !isNarrowed && !compactToolbar && (
-                <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 bg-surface border-b border-edge">
+                <div
+                    // `bg-surface-sunken`, like the other sticky group headers (localization, voice):
+                    // a base `bg-surface` is cleared under a workspace wallpaper, and the grid would
+                    // scroll straight through this strip.
+                    className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 bg-surface-sunken border-b border-edge"
+                >
                     <button
                         onClick={handleBack}
                         className="p-1 rounded-md hover:bg-fill"

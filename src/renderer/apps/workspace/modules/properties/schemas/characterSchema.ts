@@ -16,7 +16,8 @@ type TranslateFn = Translator["t"];
 export interface CharacterEditorContext {
     character: Character;
     thumbnailUrl: string | null;
-    forms: Array<{ name: string }>;
+    /** A preset character's poses; empty for a layered one, whose default is per axis. */
+    poses: Array<{ id: string; name: string }>;
 }
 
 /**
@@ -77,18 +78,20 @@ export const characterPropertySchema = (t: TranslateFn) =>
             order: 40,
         },
         {
-            id: "defaultForm",
+            id: "defaultPose",
             type: "select",
-            label: t("characters.properties.defaultForm"),
-            placeholder: t("characters.properties.selectDefaultForm"),
+            label: t("characters.properties.defaultPose"),
+            placeholder: t("characters.properties.selectDefaultPose"),
+            // A layered character has no single default to pick here — each axis carries its own —
+            // so the row collapses to the follow-first option rather than offering a wrong control.
             options: (ctx): SelectOption[] => [
-                { value: "", label: t("characters.properties.followFirstForm") },
-                ...ctx.forms.map((form) => ({ value: form.name, label: form.name })),
+                { value: "", label: t("characters.properties.followFirstPose") },
+                ...ctx.poses.map((pose) => ({ value: pose.id, label: pose.name })),
             ],
-            getValue: (ctx) => ctx.character.profile.getProfile().defaultForm ?? "",
+            getValue: (ctx) => ctx.character.profile.appearance.getDefaultPoseId() ?? "",
             setValue: async (ctx, value) => {
                 const next = value === "" ? null : String(value);
-                ctx.character.profile.setDefaultForm(next);
+                ctx.character.profile.appearance.setDefaultPoseId(next);
             },
             order: 50,
         },

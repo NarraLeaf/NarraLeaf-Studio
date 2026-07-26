@@ -1,6 +1,7 @@
 import { FsRequestResult } from "@shared/types/os";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
-import { Porject, ProjectConfig, ProjectIconConfig, ProjectIconPlatform, ProjectMetadata } from "../project/project";
+import { Porject, ProjectConfig, ProjectMetadata } from "../project/project";
+import type { ProjectIconSet, ProjectIconSource } from "@shared/types/projectIcons";
 import type { MobileConfiguration, NetworkConfiguration, SecurityConfiguration } from "../project/configuration";
 import type {
     LocalizationConfiguration,
@@ -18,7 +19,7 @@ import { ServiceRegistry } from "./serviceRegistry";
 import { AssetData, AssetType } from "./assets/assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Character } from "./character/Character";
-import { CharacterGroup } from "./character/types";
+import { CharacterAppearanceKind, CharacterGroup } from "./character/types";
 import type {
     UIDocument,
     UISurface,
@@ -175,15 +176,13 @@ interface IProjectService extends IService {
     getSecurityConfiguration(): SecurityConfiguration;
     updateSecurityConfiguration(patch: Partial<SecurityConfiguration>): Promise<ProjectConfig>;
     updateMobileConfiguration(patch: Partial<MobileConfiguration>): Promise<ProjectConfig>;
-    importProjectIcon(platform: ProjectIconPlatform): Promise<{
-        platform: ProjectIconPlatform;
-        sourcePath: string;
-        projectPath: string;
-        relativePath: string;
-        icon: ProjectIconConfig;
-        bytes: Uint8Array;
-    } | null>;
-    readProjectIcon(platform: ProjectIconPlatform): Promise<Uint8Array | null>;
+    getProjectIconSet(): ProjectIconSet;
+    updateProjectIconSet(updater: (set: ProjectIconSet) => ProjectIconSet): Promise<ProjectIconSet>;
+    importProjectIconSource(slot: string): Promise<{ source: ProjectIconSource; bytes: Uint8Array } | null>;
+    readProjectIconFile(relativePath: string): Promise<Uint8Array | null>;
+    projectIconFileExists(relativePath: string): Promise<boolean>;
+    writeProjectIconBake(relativePath: string, bytes: Uint8Array): Promise<boolean>;
+    deleteProjectIconFile(relativePath: string): Promise<void>;
     getDependencyTable(): ProjectDependencyTable | undefined;
     setDependencyTable(table: ProjectDependencyTable | undefined): Promise<ProjectConfig>;
 }
@@ -817,7 +816,7 @@ interface IUIEditorHistoryService extends IService {
 interface ICharacterService extends IService {
     getCharacter(id: string): Character | undefined;
     listCharacter(): Character[];
-    createCharacter(name: string): Character;
+    createCharacter(name: string, kind?: CharacterAppearanceKind): Character;
     renameCharacter(id: string, name: string): boolean;
     deleteCharacter(id: string): boolean;
     listGroups(): CharacterGroup[];

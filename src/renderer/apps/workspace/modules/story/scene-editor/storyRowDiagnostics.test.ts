@@ -12,7 +12,7 @@ const CONTEXT = {
     scenes: [],
     labels: [],
     variables: [],
-    formsByCharacterId: {},
+    appearanceByCharacterId: {},
     stageObjects: { image: [], text: [], layer: [], video: [], audio: [], vfx: [] },
 } as unknown as StoryCommandContext;
 

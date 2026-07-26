@@ -9,7 +9,7 @@ describe("mapCharacterStoreEntriesToSummaries", () => {
     it("maps a named character", () => {
         const summaries = mapCharacterStoreEntriesToSummaries([entry({ id: "char-alice", name: "Alice" })]);
 
-        expect(summaries).toEqual([{ id: "char-alice", name: "Alice", defaultForm: null, forms: [] }]);
+        expect(summaries).toEqual([{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }]);
     });
 
     it("trims the name", () => {

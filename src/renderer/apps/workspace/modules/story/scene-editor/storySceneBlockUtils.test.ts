@@ -236,16 +236,16 @@ describe("isReadableAccentColor", () => {
 describe("buildDialogueAppearances", () => {
     it("gives a dialogue its speaker's most recent enter/expression, resetting on exit", () => {
         const blocks = [
-            characterAction("e", { action: "character", operation: "enter", characterId: "c1", formName: "casual", variants: ["smile"] }),
+            characterAction("e", { action: "character", operation: "enter", characterId: "c1", pose: "casual", tags: { axis: "smile" } }),
             dialogue("d1", { characterId: "c1" }),
-            characterAction("f", { action: "character", operation: "expression", characterId: "c1", variants: ["angry"] }),
+            characterAction("f", { action: "character", operation: "expression", characterId: "c1", tags: { axis: "angry" } }),
             dialogue("d2", { characterId: "c1" }),
             characterAction("x", { action: "character", operation: "exit", characterId: "c1" }),
             dialogue("d3", { characterId: "c1" }),
         ];
         const map = buildDialogueAppearances(scene(blocks, blocks.map(b => b.id)));
-        expect(map.get("d1")).toMatchObject({ formName: "casual", variants: ["smile"] });
-        expect(map.get("d2")).toMatchObject({ variants: ["angry"] });
+        expect(map.get("d1")).toMatchObject({ pose: "casual", tags: { axis: "smile" } });
+        expect(map.get("d2")).toMatchObject({ tags: { axis: "angry" } });
         expect(map.has("d3")).toBe(false);
     });
 
@@ -265,24 +265,24 @@ describe("buildDialogueAppearances", () => {
 
     it("a move relocates the placement and becomes the new source, keeping the form", () => {
         const blocks = [
-            characterAction("e", { action: "character", operation: "enter", characterId: "c1", formName: "casual", transform: { preset: "left" } }),
+            characterAction("e", { action: "character", operation: "enter", characterId: "c1", pose: "casual", transform: { preset: "left" } }),
             dialogue("d1", { characterId: "c1" }),
             characterAction("m", { action: "character", operation: "move", characterId: "c1", transform: { preset: "right" } }),
             dialogue("d2", { characterId: "c1" }),
         ];
         const map = buildDialogueAppearances(scene(blocks, blocks.map(b => b.id)));
         expect(map.get("d1")).toMatchObject({ position: "left", positionSourceId: "e" });
-        expect(map.get("d2")).toMatchObject({ position: "right", positionSourceId: "m", formName: "casual" });
+        expect(map.get("d2")).toMatchObject({ position: "right", positionSourceId: "m", pose: "casual" });
     });
 
     it("an expression keeps the placement and its source untouched", () => {
         const blocks = [
             characterAction("e", { action: "character", operation: "enter", characterId: "c1", transform: { preset: "right" } }),
-            characterAction("f", { action: "character", operation: "expression", characterId: "c1", variants: ["angry"] }),
+            characterAction("f", { action: "character", operation: "expression", characterId: "c1", tags: { axis: "angry" } }),
             dialogue("d1", { characterId: "c1" }),
         ];
         expect(buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).get("d1"))
-            .toMatchObject({ position: "right", positionSourceId: "e", variants: ["angry"] });
+            .toMatchObject({ position: "right", positionSourceId: "e", tags: { axis: "angry" } });
     });
 
     it("marks an entered speaker shown, so its avatar still resolves", () => {

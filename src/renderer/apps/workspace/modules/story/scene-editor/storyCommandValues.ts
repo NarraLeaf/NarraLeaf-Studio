@@ -20,6 +20,13 @@ export type StoryCommandSpan = { start: number; end: number };
 
 export type StoryCommandNamedRef = { id: string; name: string };
 
+/**
+ * A named appearance of one character. `axisId` is present exactly when the character is layered,
+ * which is what tells a row whether the id it stores is a pose or a tag — and, for a tag, which
+ * axis it belongs to.
+ */
+export type StoryCommandAppearanceRef = { id: string; name: string; axisId?: string };
+
 export type StoryCommandVariableEntry = {
     name: string;
     ref: StoryVariableRef;
@@ -67,14 +74,14 @@ export type StoryCommandContext = {
      */
     labels: readonly string[];
     variables: readonly StoryCommandVariableEntry[];
-    /** Form / appearance names per character id - the candidates for a form slot, which only exist once the character resolves. */
-    formsByCharacterId: Readonly<Record<string, readonly string[]>>;
+    /** Per character: its poses (preset) or every tag across its axes (layered). */
+    appearanceByCharacterId: Readonly<Record<string, readonly StoryCommandAppearanceRef[]>>;
     /** Named objects on stage in the current scene, per kind. */
     stageObjects: StoryCommandStageObjects;
 };
 
 export const EMPTY_STORY_COMMAND_CONTEXT: StoryCommandContext = {
-    images: [], audio: [], videos: [], characters: [], tempSpeakers: [], scenes: [], labels: [], variables: [], formsByCharacterId: {},
+    images: [], audio: [], videos: [], characters: [], tempSpeakers: [], scenes: [], labels: [], variables: [], appearanceByCharacterId: {},
     stageObjects: EMPTY_STORY_COMMAND_STAGE_OBJECTS,
 };
 
@@ -95,7 +102,14 @@ export type StoryCommandValue =
     | { kind: "character"; characterId: string }
     /** A name backing no character - legal only where the param opted in via `allowTemp`. */
     | { kind: "speakerName"; speakerName: string }
-    | { kind: "characterForm"; formName: string }
+    /**
+     * A named appearance of the owning character: a pose id for a preset character, a tag id for a
+     * layered one. `label` is what the author typed, kept for the diagnostic when nothing matched.
+     *
+     * (The `characterForm` grammar token predates the appearance rework and no longer names a form;
+     * renaming it reaches a dozen files plus the i18n catalogues, so it is deferred — see the L1 card.)
+     */
+    | { kind: "characterForm"; refId: string | null; label: string; axisId?: string }
     | { kind: "scene"; sceneId: string }
     /** A label declared in this scene - stored as declared, so it matches what the engine sees. */
     | { kind: "label"; name: string }
