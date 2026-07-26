@@ -16,9 +16,11 @@ import { Services } from "@/lib/workspace/services/services";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import {
     AlertTriangle,
+    Bookmark,
     Crop,
     Eye,
     EyeOff,
+    Grid3x3,
     ImagePlus,
     Layers,
     Lock,
@@ -32,6 +34,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useWorkspace } from "@/apps/workspace/context";
 import { EditorComponentProps } from "../../types";
 import { LayerStackPreview, type PreviewLayer } from "./components/LayerStackPreview";
+import { CombinationGrid } from "./components/CombinationGrid";
+import { combinationKey, enumerateCombinations } from "@/lib/workspace/services/character/characterCombinations";
 
 type CharacterEditorPayload = { character: Character };
 
@@ -99,6 +103,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     const [focus, setFocus] = useState<Focus>(null);
     const [dragLayerId, setDragLayerId] = useState<string | null>(null);
     const [occluded, setOccluded] = useState<Record<string, boolean>>({});
+    const [grid, setGrid] = useState(false);
     const dragRef = useRef<string | null>(null);
     const anchorRef = useRef<HTMLElement | null>(null);
     const anchorMemo = useMemo(() => ({ current: anchorRef.current }), [slot]);
@@ -157,6 +162,27 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         anchorRef.current = element;
         setSlot(next);
     };
+
+    const combinationSet = useMemo(
+        () => (appearance && kind === "layered"
+            ? enumerateCombinations(appearance)
+            : { combinations: [], total: 0, axisNames: [] }),
+        [appearance, kind, version],
+    );
+
+    /** Name the look currently on screen, so it can be jumped back to. */
+    const nameCombination = useCallback(async (selection: Record<string, string>) => {
+        if (!appearance || !inputDialog) return;
+        const name = await inputDialog.show({
+            title: t("characters.editor.combinations.name"),
+            placeholder: t("characters.panel.namePlaceholder"),
+            required: true,
+            maxLength: 100,
+        });
+        if (name) {
+            appearance.createSnapshot(name, selection);
+        }
+    }, [appearance, inputDialog, t]);
 
     /** Ids are what everything else stores, so a rename rewrites nothing and needs no confirmation. */
     const rename = useCallback(async (target: { id: string; name: string } | null, noun: string) => {
@@ -233,6 +259,16 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
 
             <div className="flex-1 grid grid-cols-[minmax(0,1fr)_360px] overflow-hidden">
                 <div className="flex min-h-0 flex-col">
+                    {grid ? (
+                        <CombinationGrid
+                            character={character}
+                            set={combinationSet}
+                            activeKey={combinationKey(tags)}
+                            onPick={combination => { setPreviewTags(combination.tags); setGrid(false); }}
+                            onName={combination => void nameCombination(combination.tags)}
+                            onClose={() => setGrid(false)}
+                        />
+                    ) : (
                     <LayerStackPreview
                         layers={visibleLayers}
                         onion={onionLayers}
@@ -257,9 +293,17 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                 >
                                     <Layers className="w-3.5 h-3.5" />
                                 </button>
+                                <button
+                                    className={ICON_BTN}
+                                    aria-label={t("characters.editor.combinations.title")}
+                                    onClick={() => setGrid(true)}
+                                >
+                                    <Grid3x3 className="w-3.5 h-3.5" />
+                                </button>
                             </>
                         ) : null}
                     />
+                    )}
                     {diagnostics.length > 0 && (
                         <div className="max-h-48 shrink-0 overflow-y-auto border-t border-edge">
                             <div className="px-4 py-1.5 text-2xs tracking-wide text-fg-muted">
@@ -522,6 +566,39 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                     );
                                 })}
                             </Section>
+
+                            {appearance.getSnapshots().length > 0 && (
+                                <Section
+                                    title={t("characters.editor.snapshots")}
+                                    onAdd={() => void nameCombination(tags)}
+                                >
+                                    {appearance.getSnapshots().map(snapshot => (
+                                        <div key={snapshot.id} className={ROW}>
+                                            <Bookmark className="w-3.5 h-3.5 shrink-0 text-fg-subtle" />
+                                            <button
+                                                className="min-w-0 flex-1 truncate text-left"
+                                                onClick={() => setPreviewTags(snapshot.tags)}
+                                            >
+                                                {snapshot.name}
+                                            </button>
+                                            <button
+                                                className={ICON_BTN}
+                                                aria-label={t("common.rename")}
+                                                onClick={() => void rename(snapshot, "item")}
+                                            >
+                                                <Pencil className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                                className={ICON_BTN}
+                                                aria-label={t("common.delete")}
+                                                onClick={() => appearance.removeSnapshot(snapshot.id)}
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </Section>
+                            )}
                         </>
                     )}
                 </div>

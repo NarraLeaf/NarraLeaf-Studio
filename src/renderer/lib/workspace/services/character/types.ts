@@ -119,6 +119,19 @@ export interface LayeredAppearance {
     canvas: { width: number; height: number } | null;
     axes: CharacterAxis[];
     layers: CharacterLayer[];
+    /** Named tag combinations. See {@link CharacterSnapshot}. */
+    snapshots?: CharacterSnapshot[];
+}
+
+/**
+ * A combination worth coming back to ("angry, arms crossed").
+ *
+ * Editor convenience only: a story row stores tags, never a snapshot id. Letting rows name a snapshot
+ * would put it in the story schema and make renaming and deleting one a referential-integrity problem
+ * — the plan leaves that question open, and nothing here forecloses it.
+ */
+export interface CharacterSnapshot extends CharacterNamed {
+    tags: CharacterTagSelection;
 }
 
 export type ICharacterAppearance = PresetAppearance | LayeredAppearance;
