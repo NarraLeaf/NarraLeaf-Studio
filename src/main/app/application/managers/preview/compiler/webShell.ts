@@ -19,6 +19,14 @@ import {
 export const WEB_FAVICON_FILENAME = "favicon.png";
 
 /**
+ * iOS ignores `rel="icon"` entirely: a game added to the home screen from
+ * Safari gets a screenshot of the page unless this file exists. It is baked
+ * opaque for the same reason the iOS app icon is - Safari composites an icon
+ * with an alpha channel onto black.
+ */
+export const WEB_APPLE_TOUCH_FILENAME = "apple-touch-icon.png";
+
+/**
  * Which host the emitted entry document targets. The mobile shells serve the
  * very same site - only the entry document differs, and only in its viewport -
  * so the mobile variant is generated from the same pack and injected into the
@@ -30,6 +38,7 @@ export async function writeWebShellFiles(input: {
     appDir: string;
     pack: GameRuntimePackV1;
     hasFavicon: boolean;
+    hasAppleTouchIcon: boolean;
 }): Promise<void> {
     const pluginApiDir = path.join(input.appDir, "plugin-api");
     await fs.mkdir(pluginApiDir, { recursive: true });
@@ -39,7 +48,10 @@ export async function writeWebShellFiles(input: {
     }
     await fs.writeFile(
         path.join(input.appDir, "index.html"),
-        buildWebIndexHtml(input.pack, { hasFavicon: input.hasFavicon }),
+        buildWebIndexHtml(input.pack, {
+            hasFavicon: input.hasFavicon,
+            hasAppleTouchIcon: input.hasAppleTouchIcon,
+        }),
         "utf-8",
     );
 }
@@ -55,14 +67,19 @@ export async function writeWebShellFiles(input: {
  */
 export function buildWebIndexHtml(
     pack: GameRuntimePackV1,
-    options: { hasFavicon: boolean; variant?: GameWebShellVariant },
+    options: { hasFavicon: boolean; hasAppleTouchIcon?: boolean; variant?: GameWebShellVariant },
 ): string {
     const title = escapeHtml(pack.project.name?.trim() || "NarraLeaf Game");
     // Guaranteed markup-safe: a #rrggbb hex or a bare lowercase color name.
     const background = resolveGameRuntimeInitialBackgroundColor(pack);
-    const faviconLink = options.hasFavicon
-        ? `    <link rel="icon" type="image/png" href="./${WEB_FAVICON_FILENAME}" />\n`
-        : "";
+    const iconLinks = [
+        options.hasFavicon
+            ? `    <link rel="icon" type="image/png" href="./${WEB_FAVICON_FILENAME}" />\n`
+            : "",
+        options.hasAppleTouchIcon
+            ? `    <link rel="apple-touch-icon" href="./${WEB_APPLE_TOUCH_FILENAME}" />\n`
+            : "",
+    ].join("");
     // viewport-fit=cover lets the game paint under a notch/home indicator
     // instead of being letterboxed by the browser's default safe-area inset;
     // the shells run full-screen, so the inset would show as bars.
@@ -86,7 +103,7 @@ export function buildWebIndexHtml(
         }
     }
     </script>
-${faviconLink}    <link rel="stylesheet" href="./renderer.css" />
+${iconLinks}    <link rel="stylesheet" href="./renderer.css" />
     <style>html, body { margin: 0; background: ${background}; }</style>
 </head>
 <body>
