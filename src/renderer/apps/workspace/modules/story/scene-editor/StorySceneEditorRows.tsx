@@ -6,6 +6,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterTagSelection, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
 import { representativeAssetId } from "@shared/utils/characterVariant";
 import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
+import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
 import type { NormalizedCrop } from "@/lib/utils/headCrop";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useTranslation } from "@/lib/i18n";
@@ -2468,16 +2469,21 @@ function getBadgeImageSpec(
 }
 
 /**
+ * Longest edge of a composited badge sprite. The plate itself tops out at 40px (U1's comfortable
+ * density) and the head crop reads a sub-rectangle of it, so this is the largest useful size at 2x.
+ */
+const BADGE_COMPOSITE_PX = 96;
+
+/**
  * The sprite `Asset` + portrait frame a character badge should picture, resolved against the same
  * rule the runtime uses (shared `representativeAssetId`). The frame is the pose's own portrait
  * override, else the profile default; `undefined` lets the badge fall back to the automatic head
  * crop. The `Asset` object (not just its id) is returned because a sprite is a *project* asset and
  * loads through the asset library, not the editor store.
  *
- * A layered character has no single sprite, so the badge shows its bottom-most drawing layer — a
- * 24px badge only has to tell two characters apart, and compositing the real stack is the sprite
- * compositor's job (L4). It is deliberately not a lie about which differential is showing: the row
- * text carries that.
+ * A layered character has no single sprite: this returns its bottom-most drawing layer, which the
+ * badge uses only until the composite of the whole stack arrives (and as the fallback when the
+ * compositor cannot draw). See {@link useCharacterBadgeImage}.
  */
 function resolveCharacterBadgeImage(
     character: Character,
@@ -2527,8 +2533,16 @@ function useCharacterBadgeImage(
         : thumbnailId
             ? { kind: "editor", fileId: thumbnailId }
             : null;
-    const url = useBadgeImageUrl(source);
-    return { url, frame: resolved.frame, showingSprite: resolved.asset !== null };
+    const fallbackUrl = useBadgeImageUrl(source);
+    // A layered character is a stack, so the badge shows the whole thing composited. The single-asset
+    // path above still runs: it is what the badge shows while the composite is being drawn, which
+    // keeps a scrolling list from flashing empty plates.
+    const layered = character && spec?.resolveVariant && character.profile.appearance.getKind() === "layered"
+        ? character
+        : null;
+    const composite = useCompositedSprite(layered, { tags: spec?.tags }, BADGE_COMPOSITE_PX);
+    const url = composite.url ?? fallbackUrl;
+    return { url, frame: resolved.frame, showingSprite: Boolean(composite.url) || resolved.asset !== null };
 }
 
 /**
