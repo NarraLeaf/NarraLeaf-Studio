@@ -31,8 +31,16 @@ import {
  */
 export const EDITOR_SPLIT_RATIO_EPSILON = 0.02;
 
+/**
+ * What the app considers "the thing the inspector is about".
+ *
+ * Members are literals rather than a shared enum because each one is owned by the editor that
+ * publishes it (see `storyMotionKeyframe` / `storyBlock`), and the store only has to name them. Note
+ * that nothing in the app switches on this union: every consumer tests it with `if`, so ADDING a
+ * member compiles everywhere and changes nothing — the dispatch sites have to be found by hand.
+ */
 export interface SelectionState {
-    type: "asset" | "character" | "element" | "scene" | "storyMotionKeyframe" | null;
+    type: "asset" | "character" | "element" | "scene" | "storyMotionKeyframe" | "storyBlock" | null;
     data: any | UIElementSelection | null;
 }
 
