@@ -404,10 +404,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                 className={`${visibleEntries.length > 0 ? "nl-selectable-text cursor-text" : "cursor-default select-none"} min-h-0 flex-1 overflow-auto overscroll-contain py-1 font-mono text-2xs leading-relaxed`}
             >
                 {visibleEntries.length === 0 ? (
-                    <ConsoleEmptyState
-                        label={activeChannelDef ? channelLabel(t, activeChannelDef) : t("console.outputFallback")}
-                        total={channelEntries.length}
-                    />
+                    <ConsoleEmptyState total={channelEntries.length} />
                 ) : (
                     <ConsoleEntryGrid entries={visibleEntries} />
                 )}
@@ -458,15 +455,21 @@ function ConsoleProgressBar({ progress }: { progress: ConsoleProgress | null }) 
     );
 }
 
-function ConsoleEmptyState({ label, total }: { label: string; total: number }) {
+/**
+ * A channel that has produced nothing prints nothing — the blank pane already says it, the way a
+ * terminal does. Only the *filtered* case still speaks, because there the entries exist and the
+ * level filter beside this pane is hiding them: that is a state the author set and can undo.
+ */
+function ConsoleEmptyState({ total }: { total: number }) {
     const { t } = useTranslation();
+    if (total === 0) {
+        return null;
+    }
     return (
         <div className="flex h-full min-h-24 items-center justify-center px-4 text-center text-fg-subtle">
             <div>
                 <Terminal className="mx-auto mb-2 h-8 w-8 opacity-45" />
-                <p className="text-xs text-fg-muted">
-                    {total > 0 ? t("console.emptyFiltered") : t("console.emptyChannel", { label })}
-                </p>
+                <p className="text-xs text-fg-muted">{t("console.emptyFiltered")}</p>
             </div>
         </div>
     );

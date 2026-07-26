@@ -255,7 +255,9 @@ export function StorySnapshotPanel({ payload }: PanelComponentProps<StorySnapsho
                         className="min-w-0 flex-1"
                     />
                 ) : (
-                    <span className="min-w-0 flex-1 truncate text-xs italic text-fg-subtle">{t("storySnapshot.none")}</span>
+                    // No snapshots: no picker, and nothing in its place. The Add button at the end of
+                    // this same row is the way to make the first one.
+                    <span className="min-w-0 flex-1" />
                 )}
                 {selected ? (
                     <button

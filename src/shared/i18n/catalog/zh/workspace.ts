@@ -5,7 +5,6 @@ export const workspace = {
         panel: {
             languagesTitle: "语言",
             languagesHint: "游戏本体的语言：源语言是你所使用的编写语言，其他所有语言都会以此为基准进行翻译",
-            empty: "还没有语言，先添加源语言",
             addLanguage: "添加语言",
             codePlaceholder: "代码（en、ja、zh-CN…）",
             namePlaceholder: "显示名称",
@@ -30,7 +29,6 @@ export const workspace = {
             storyLabel: "范围",
             sourceUi: "界面文本",
             sourceKeys: "通用文本",
-            emptyUi: "尚未标记任何界面文本用于本地化，请在文本或按钮控件上启用\"本地化文本\"选项",
             modeTranslate: "翻译",
             modeReview: "审校",
             filterAll: "全部",
@@ -75,7 +73,6 @@ export const workspace = {
         panel: {
             languagesTitle: "配音语言",
             languagesHint: "游戏已有配音的语言。与文本语言相互独立，你可以在文本保持英文的同时录制日语配音。",
-            empty: "还没有配音语言。添加一个，再把导入的音频指派到台词上。",
             addLanguage: "添加配音语言",
             codePlaceholder: "代码（ja、en、zh-CN…）",
             namePlaceholder: "显示名称",
@@ -199,7 +196,6 @@ export const workspace = {
         // 通知中心（控制栏铃铛；所有 toast 的环形历史）。
         notifications: {
             title: "通知",
-            empty: "暂无通知",
             clearAll: "清空",
         },
         // 自定义背景对话框（从设置或命令面板打开）。
