@@ -98,8 +98,9 @@ export const story = {
         createNew: "新建图层",
     },
     appearance: {
-        noForms: "该角色未定义任何形象",
-        form: "形象",
+        noPoses: "该角色还没有姿态。",
+        noAxes: "该角色还没有分层轴。",
+        unchanged: "不改动",
         appearance: "外观",
         default: "默认",
         preview: "预览",

@@ -38,6 +38,7 @@ import {
     StoryVariableValueType,
 } from "@shared/types/story";
 import { assertValidStoryEntityId, assertValidStoryId, isValidStoryEntityId, isValidStoryId } from "@shared/utils/storyId";
+import { legacyPoseId } from "../character/migrateAppearance";
 import type { StoryExpressionScope } from "@shared/utils/storyExpressionParser";
 import { createStoryExpressionScope, parseStoryExpression } from "@shared/utils/storyExpressionParser";
 
@@ -327,6 +328,9 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     if (version < 9) {
         migrated = migrateStoryDocumentV8toV9(migrated);
     }
+    if (version < 10) {
+        migrated = migrateStoryDocumentV9toV10(migrated);
+    }
     // v4 (the `invalid` block kind and dialogue's `speakerName`), v7 (the block-level `disabled`
     // flag) and v8 (the `event` rich-text run) are purely additive: an older document is already
     // valid at the new version, so there is no step for any of them - only the stamp (a v7 document
@@ -340,6 +344,76 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     // v2 tests kept passing because V2toV3 stamps whatever the constant currently says. Landing the
     // stamp here means the next additive bump cannot reopen that hole.
     return { ...migrated, schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION };
+}
+
+/**
+ * v9→v10: a character no longer has forms, so `formName` + `variants` become `pose`.
+ *
+ * The pose id is *derived* from the old `(formName, variantName)` pair by the same function the
+ * character-store migration used, so this step never has to read the character store — the two
+ * migrations are independent and can run in either order, or in different sessions.
+ *
+ * Which variant becomes the pose: the first one the old selection named. That is not quite what the
+ * old resolver did — it took the first variant that happened to *have an asset*, which needs the
+ * character to know — but it is closer to what the author wrote, and where the two disagree the
+ * compiler now reports a missing pose instead of quietly drawing a different differential.
+ *
+ * Rows on a layered character are not translated: a stack cannot be inferred from a form name. They
+ * migrate to a pose id that resolves to nothing, and the compiler says so.
+ */
+function migrateStoryDocumentV9toV10(document: StoryDocument): StoryDocument {
+    return migrateCharacterFormsToPose(document) as StoryDocument;
+}
+
+type LegacyCharacterSelection = {
+    formName?: unknown;
+    variants?: unknown;
+    pose?: unknown;
+};
+
+/** The first variant an old selection named, in the order the old resolver would have walked. */
+function firstLegacyVariant(variants: unknown): string | null {
+    if (Array.isArray(variants)) {
+        const first = variants.find(entry => typeof entry === "string" && entry.trim());
+        return typeof first === "string" ? first.trim() : null;
+    }
+    if (variants && typeof variants === "object") {
+        for (const value of Object.values(variants as Record<string, unknown>)) {
+            if (typeof value === "string" && value.trim()) {
+                return value.trim();
+            }
+        }
+    }
+    return null;
+}
+
+function migrateCharacterFormsToPose(node: unknown): unknown {
+    if (Array.isArray(node)) {
+        return node.map(migrateCharacterFormsToPose);
+    }
+    if (!node || typeof node !== "object") {
+        return node;
+    }
+    const record = node as Record<string, unknown>;
+    const legacy = record as LegacyCharacterSelection;
+    const hasLegacy = "formName" in record || "variants" in record;
+    if (!hasLegacy || legacy.pose !== undefined) {
+        return Object.fromEntries(
+            Object.entries(record).map(([key, value]) => [key, migrateCharacterFormsToPose(value)]),
+        );
+    }
+
+    const formName = typeof legacy.formName === "string" ? legacy.formName.trim() : "";
+    const variantName = firstLegacyVariant(legacy.variants);
+    const migrated: Record<string, unknown> = Object.fromEntries(
+        Object.entries(record)
+            .filter(([key]) => key !== "formName" && key !== "variants")
+            .map(([key, value]) => [key, migrateCharacterFormsToPose(value)]),
+    );
+    if (formName && variantName) {
+        migrated.pose = legacyPoseId(formName, variantName);
+    }
+    return migrated;
 }
 
 /**

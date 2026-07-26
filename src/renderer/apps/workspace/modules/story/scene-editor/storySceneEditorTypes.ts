@@ -1,4 +1,4 @@
-import type { StoryBlock, StoryBlockId, StoryCharacterVariantSelection, StoryRichRun } from "@shared/types/story";
+import type { StoryBlock, StoryBlockId, StoryCharacterTagSelection, StoryRichRun } from "@shared/types/story";
 import type { StoryLensRowTrack } from "./storyStagingLens";
 
 export type StoryBlockTarget = {
@@ -9,10 +9,12 @@ export type StoryBlockTarget = {
 /** The three stage placements `at=` accepts (bible §1.2). */
 export type StoryStagePlacement = "left" | "center" | "right";
 
-/** The form + variants a character is showing at a given point — its "current appearance". */
+/** What a character is showing at a given point — its "current appearance". */
 export type CharacterAppearanceRef = {
-    formName?: string;
-    variants?: StoryCharacterVariantSelection;
+    /** Preset character: the pose id. */
+    pose?: string;
+    /** Layered character: the tag per axis, accumulated across rows the way the engine accumulates them. */
+    tags?: StoryCharacterTagSelection;
     /**
      * Whether the character was actually shown (an enter/expression), as opposed to only positioned by
      * a move on a character that was never shown. Only a shown character pictures an avatar; a

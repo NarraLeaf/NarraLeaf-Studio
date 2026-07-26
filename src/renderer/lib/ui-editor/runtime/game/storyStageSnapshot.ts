@@ -2,7 +2,7 @@ import type {
     StoryActionPayload,
     StoryAnimationAsset,
     StoryBlock,
-    StoryCharacterVariantSelection,
+    StoryCharacterTagSelection,
     StoryConditionRef,
     StoryDocument,
     StoryLayerRef,
@@ -44,7 +44,7 @@ export type StageSnapshotDiagnostic = {
 export type StageSnapshotImageSource =
     | { type: "asset"; assetId: string }
     | { type: "color"; color: string }
-    | { type: "character"; characterId?: string; formName?: string; variants?: StoryCharacterVariantSelection };
+    | { type: "character"; characterId?: string; pose?: string; tags?: StoryCharacterTagSelection };
 
 /** Residual instant effects to re-apply on the pre-posed element ("clear" = the clear-op ran last). */
 export type StageSnapshotEffects = {
@@ -442,10 +442,19 @@ class SnapshotWalker {
             record.props = mergeTransformProps(record.props, this.finalProps(payload.transform, "none", block.id));
             return;
         }
-        // enter / expression update the source.
+        // enter / expression update the source. A layered character's expression row is incremental
+        // — it names only the axes it changes — so the snapshot has to accumulate them the way the
+        // engine does, or pre-posing at a later block would drop every earlier axis change.
+        const previous = record.source?.type === "character" ? record.source : null;
+        const carried = payload.operation === "expression" ? previous?.tags : undefined;
         record.source = payload.assetId
             ? { type: "asset", assetId: payload.assetId }
-            : { type: "character", characterId: payload.characterId, formName: payload.formName, variants: payload.variants };
+            : {
+                type: "character",
+                characterId: payload.characterId,
+                pose: payload.pose ?? (payload.operation === "expression" ? previous?.pose : undefined),
+                tags: carried || payload.tags ? { ...carried, ...payload.tags } : undefined,
+            };
         if (payload.operation === "enter") {
             record.visible = true;
             record.props = mergeTransformProps(record.props, this.finalProps(payload.transform, "show", block.id));
